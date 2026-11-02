@@ -14,9 +14,14 @@ ends.
 
 **Read first:** `docs/METHOD.md`, the sections "The merge bar", "What a green
 suite cannot see", "The four recurring defect patterns" and "Driver rules".
-Then `git diff origin/main...HEAD` and the brief, which is the issue the
-branch names (`gh api repos/<owner>/<repo>/issues/<n> --jq .body`; `gh issue`
-is refused on a cloud container).
+Then the brief, which is the issue the branch names (`gh api
+repos/<owner>/<repo>/issues/<n> --jq .body`; `gh issue` is refused on a cloud
+container), and the diff. **Round one** reads the whole branch, `git diff
+origin/main...HEAD`. **Round two** is told round one's head and reviews the
+fix commits, `git diff <round one head>..HEAD`, reading the whole branch only
+for context: a fix round's own defects, and the same shape one file over, are
+what it is for (U196). The calling session tells you the card's size; a small
+card gets one round unless you report something BLOCKING.
 
 **How to review.** Drive, do not argue. Every finding you report was reached
 by running something: a test you wrote, the verb through `.venv/bin/crate`,

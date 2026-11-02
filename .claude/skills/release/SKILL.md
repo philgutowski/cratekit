@@ -7,8 +7,8 @@ description: Cut a Cratekit release when Phillip asks for one, in any session. P
 
 Phillip and the DJs the tool is shared with install tagged releases only,
 never raw `main` (U159). A release is cut when Phillip asks, never on a
-schedule and never on a session's own initiative. METHOD's releases section
-is the rule; this is the procedure.
+schedule and never on a session's own initiative. The releases section of
+`docs/METHOD-local.md` is the rule; this is the procedure.
 
 **A cloud session cannot cut.** Its git proxy refuses a tag push and the
 REST git tags path, and the releases API refuses "this session type", all

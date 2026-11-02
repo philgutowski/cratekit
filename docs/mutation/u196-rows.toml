@@ -1,0 +1,99 @@
+name = "u196"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_no_run_is_green"
+description = "verdict: read no pull request run yet as green, so a session merges before CI has started"
+file = "scripts/wait_ci.py"
+surface = "maintainer"
+tests = ["tests/test_wait_ci.py"]
+old = '''    if not runs:
+        return PENDING, "no pull request run on this head yet"'''
+new = '''    if not runs:
+        return PASSED, "no pull request run on this head yet"'''
+
+[[rows]]
+id = "C2_unfinished_ignored"
+description = "verdict: drop the unfinished check, so a run still going reads as its null conclusion"
+file = "scripts/wait_ci.py"
+surface = "maintainer"
+tests = ["tests/test_wait_ci.py"]
+old = '''    if unfinished:
+        names'''
+new = '''    if False:
+        names'''
+
+[[rows]]
+id = "C3_neutral_red"
+description = "GREEN: drop neutral, so a neutral run makes a green head red"
+file = "scripts/wait_ci.py"
+surface = "maintainer"
+tests = ["tests/test_wait_ci.py"]
+old = '''GREEN = ("success", "neutral", "skipped")'''
+new = '''GREEN = ("success", "skipped")'''
+
+[[rows]]
+id = "C4_deadline_overrun"
+description = "wait: sleep past the deadline before giving up"
+file = "scripts/wait_ci.py"
+surface = "maintainer"
+tests = ["tests/test_wait_ci.py"]
+old = '''        if clock() + every > deadline:'''
+new = '''        if clock() > deadline:'''
+
+[[rows]]
+id = "C5_unread_exits_pending"
+description = "main: drop the unread exit, so a wait that could not read the runs exits 2 as if it timed out"
+file = "scripts/wait_ci.py"
+surface = "maintainer"
+tests = ["tests/test_wait_ci.py"]
+old = '''    return {PASSED: 0, FAILED: 1, UNREAD: 3}.get(state, 2)'''
+new = '''    return {PASSED: 0, FAILED: 1}.get(state, 2)'''
+
+[[rows]]
+id = "S1_any_word"
+description = "search_residuals: match a heading carrying any word rather than every word"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '''        if all(word in title.casefold() for word in wanted)'''
+new = '''        if any(word in title.casefold() for word in wanted)'''
+
+[[rows]]
+id = "S2_case_sensitive"
+description = "search_residuals: compare without folding case, so a heading in capitals is missed"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '''        if all(word in title.casefold() for word in wanted)'''
+new = '''        if all(word in title for word in wanted)'''
+
+[[rows]]
+id = "S3_empty_search"
+description = "cmd_residuals: drop the refusal of an empty search, which matches every heading"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '''        if args.land or not words:'''
+new = '''        if args.land:'''
+
+[[rows]]
+id = "C6_failures_never_reset"
+description = "wait: never reset the failure count after a good read, so failures that are not in a row end the wait as unread"
+file = "scripts/wait_ci.py"
+surface = "maintainer"
+tests = ["tests/test_wait_ci.py"]
+old = '''            failures = 0
+            state, line = verdict(runs)'''
+new = '''            state, line = verdict(runs)'''
+
+[[rows]]
+id = "S4_missing_ledger_no_match"
+description = "search_residuals: drop the refusal of a missing ledger, so a search over a file never read says no match"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_residual_search.py"]
+old = '''    if not source.is_file():
+        # A missing'''
+new = '''    if False:
+        # A missing'''

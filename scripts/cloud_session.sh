@@ -16,7 +16,7 @@ if [ -z "$CLAUDE_CODE_REMOTE" ]; then
         out=$(timeout 20 .venv/bin/python scripts/board.py local 2>/dev/null) && {
             printf '%s\n' "Cratekit local work, from the board's attended cards:"
             printf '%s\n' "$out"
-            printf '%s\n' "Offer Phillip the first ready card; each card's body says what to run and when it is done, and METHOD's local attended work section says how to branch and commit it without colliding with the cloud."
+            printf '%s\n' "Offer Phillip the first ready card; each card's body says what to run and when it is done, and the attended work section of docs/METHOD-local.md says how to branch and commit it without colliding with the cloud."
         }
     fi
     exit 0
