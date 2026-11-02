@@ -119,15 +119,62 @@ def test_an_alias_to_a_folder_whose_name_files_nothing_by_itself_is_refused(name
     assert word_edit.folder(_shipped(), WORD, name).writes
 
 
-@pytest.mark.parametrize("word", ["Electronic", "Electro", "Experimental", "Techno", "Other"])
-def test_a_too_coarse_word_is_refused_with_why(word):
+@pytest.mark.parametrize("word", ["Electronic", "Electro", "Experimental", "Electronica", "Other"])
+def test_a_too_coarse_word_is_refused_as_an_alias_with_why(word):
     with pytest.raises(word_edit.Refused) as refused:
         word_edit.alias(_shipped(), word, AFRO)
     assert refused.value.why == word_edit.TOO_COARSE
     assert "too coarse" in str(refused.value)
-    with pytest.raises(word_edit.Refused) as again:
-        word_edit.folder(_shipped(), word) if word != "Techno" else word_edit.folder(_shipped(), "Electronica")
-    assert again.value.why == word_edit.TOO_COARSE
+
+
+@pytest.mark.parametrize("word", ["Electronic", "Electro", "Experimental", "Other"])
+def test_a_too_coarse_word_is_refused_as_a_folder_with_why(word):
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.folder(_shipped(), word)
+    assert refused.value.why == word_edit.TOO_COARSE
+
+
+def test_a_declined_word_that_is_a_folders_name_is_a_folder_already_declared():
+    """Techno declines for tagging and is the Techno folder's name, so the
+    folder answer is already given and plans nothing."""
+    edit = word_edit.folder(_shipped(), "Techno")
+    assert not edit.writes and edit.bucket_id == "techno"
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.alias(_shipped(), "Techno", AFRO)
+    assert refused.value.why == word_edit.ALREADY_FILED
+
+
+def test_the_fallback_refusal_says_what_a_hand_alias_would_do_since_u118():
+    """A tagging alias of another bucket wins over the fallback's routing alias,
+    so the refusal must not say an alias cannot answer the word."""
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.alias(_shipped(), "Electro", AFRO)
+    message = str(refused.value)
+    assert "neither an alias" not in message
+    assert "by hand would override" in message
+
+
+@pytest.mark.parametrize("word", ["breaks / d&b / dubstep", "nonelectronic", "AFRO HOUSE"])
+def test_a_folders_own_name_in_another_case_is_already_filed(word):
+    """Two shipped folders do not list their own name as an alias, so its
+    lowercased form is off taxonomy to the last tier; answered anyway as the
+    folder's name, so a file carrying the name exactly is never retagged."""
+    declared = taxonomy.load_taxonomy(_shipped())
+    if word != "AFRO HOUSE":
+        assert routing.suggest_tag(declared, word).off_taxonomy
+    for answer in (lambda: word_edit.alias(_shipped(), word, "Tech House"), lambda: word_edit.folder(_shipped(), word)):
+        with pytest.raises(word_edit.Refused) as refused:
+            answer()
+        assert refused.value.why == word_edit.ALREADY_FILED
+        assert "in another case" in str(refused.value)
+
+
+def test_a_genre_named_in_a_case_two_folders_share_is_refused_by_name():
+    text = _shipped().replace('display = "Organic House"', 'display = "afro house"', 1)
+    declared = taxonomy.load_taxonomy(text)
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.genre(declared, "AFRO HOUSE")
+    assert "2 genre folders" in str(refused.value)
 
 
 def test_a_word_the_taxonomy_already_tags_is_refused_naming_where():
@@ -386,6 +433,30 @@ def test_an_alias_to_an_undeclared_genre_is_refused_before_the_gate(configured, 
     assert "nothing was written" in refused["cause"]["message"]
     assert copy.read_text(encoding="utf-8") == _shipped() and _genres(latin) == (WORD,)
     assert _backups(copy) == []
+
+
+def test_a_file_carrying_a_folders_own_name_is_never_retagged(configured, silence):
+    """The review's drive: the tagger writes the breaks folder's name, and a
+    lowercased twin of it on another file must not retag either."""
+    copy = write_active(configured, _shipped())
+    exact = _track(configured, silence, "exact.flac", "Breaks / D&B / Dubstep")
+    lower = _track(configured, silence, "lower.flac", "breaks / d&b / dubstep")
+    code, refused = drive(["taxonomy", "alias", "breaks / d&b / dubstep", AFRO])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "taxonomy-word-refused"
+    assert refused["cause"]["remediation"]["steps"]
+    assert _genres(exact) == ("Breaks / D&B / Dubstep",)
+    assert _genres(lower) == ("breaks / d&b / dubstep",)
+    assert copy.read_text(encoding="utf-8") == _shipped()
+
+
+def test_nothing_to_do_does_not_claim_a_file_it_could_not_read(configured):
+    write_active(configured, word_edit.alias(_shipped(), WORD, AFRO).after)
+    (Path(configured.library.root) / "bad.flac").write_bytes(b"not a flac at all")
+    code, acted = drive(ALIAS)
+    assert acted["outcome"] == "no_op", acted
+    assert _codes(acted) == [word_cli.FILES_NOT_READ, word_cli.NOTHING_TO_DO]
+    assert "could not be read" in acted["warnings"][1]["message"]
 
 
 def test_a_too_coarse_word_is_refused_before_the_gate(configured, silence):

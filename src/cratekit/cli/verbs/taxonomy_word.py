@@ -95,7 +95,10 @@ def build_alias(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
         "--folder",
         default=None,
         metavar="FOLDER",
-        help="retag only the files under this folder, rather than every file under the library root",
+        help=(
+            "retag the files under this folder rather than every file under the "
+            "library root; any folder of audio may be named"
+        ),
     )
     parser.set_defaults(_handler=taxonomy_alias_verb)
 
@@ -134,7 +137,9 @@ def _refused(exc: word_edit.Refused, word: str) -> Exception:
     elif exc.why in (word_edit.NOT_EDITABLE, word_edit.WOULD_NOT_LOAD):
         reason, steps = "config-unusable", ("make the edit by hand, as the message says",)
     else:
-        reason, steps = "taxonomy-word-refused", ()
+        reason, steps = "taxonomy-word-refused", (
+            "leave the word as it is, or answer another word the warning named",
+        )
     return refuse(
         reason,
         f"{exc}; nothing was written",
@@ -387,7 +392,8 @@ def taxonomy_alias_verb(ctx: "Context") -> Envelope:
                     "code": NOTHING_TO_DO,
                     "message": (
                         f"{edit.word!r} is already a tagging alias of {edit.display} in the "
-                        f"copy at {path}, and no file under {root} carries it alone"
+                        f"copy at {path}, and no file read under {root} carries it alone"
+                        + (", past the files named above that could not be read" if files.of(UNREAD) else "")
                     ),
                 },
             ],

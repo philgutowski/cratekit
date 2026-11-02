@@ -17,11 +17,13 @@ through the one loader every verb routes by.
 
 ONLY AN OFF TAXONOMY WORD IS ANSWERED. The word must be one tagging passes
 through as its own, the last tier of :func:`cratekit.core.routing.suggest_tag`.
-A word that declines, or that the taxonomy files in its fallback on purpose, is
-too coarse to be a genre: an alias cannot answer it, because the refusal runs
-ahead of every alias, and a folder for it is the blanket genre the fallback
-exists to prevent (the solutions entry on ``unmapped-genre``). A word the
-taxonomy already tags as one of its genres needs no answer, and the refusal
+A word that declines is too coarse to be a genre, and an alias cannot answer
+it, because the refusal runs ahead of every alias (the solutions entry on
+``unmapped-genre``). A word the taxonomy files in its fallback on purpose is
+declined too, though a tagging alias written by hand would answer it since
+U118: the copy declares it a catch-all, and the brief asked that choice be left
+standing. A word the taxonomy already tags as one of its genres, a genre
+folder's own name in any case among them, needs no answer, and the refusal
 says which.
 
 A GENRE IS A BUCKET. A file wearing a sub's name lands in the fallback, since
@@ -120,6 +122,12 @@ def genre(declared: taxonomy.Taxonomy, name: str) -> taxonomy.Bucket:
     folded = [b for b in declared.buckets if b.display.casefold() == wanted.casefold()]
     if len(folded) == 1:
         return folded[0]
+    if folded:
+        raise Refused(
+            NO_SUCH_GENRE,
+            f"{wanted!r} names {len(folded)} genre folders in different cases, "
+            f"{', '.join(repr(b.display) for b in folded)}; name one exactly",
+        )
     names = ", ".join(b.display for b in declared.buckets)
     raise Refused(
         NO_SUCH_GENRE,
@@ -134,6 +142,20 @@ def off_taxonomy(declared: taxonomy.Taxonomy, word: str) -> routing.Suggestion:
     The one test ``tag folder`` and ``tag guess`` warn by, so a word they name
     is a word this answers.
     """
+    # A GENRE FOLDER'S OWN NAME IN ANOTHER CASE IS ITS NAME. Two shipped
+    # folders do not list their own name among their aliases, so the last tier
+    # passes the name through in another case and flags it, while the files
+    # this would retag, matched in any case, include the ones carrying the name
+    # exactly. Answered first, so a correct tag is never rewritten as another
+    # genre and no copy comes to answer a folder's name with a second one.
+    named = [b for b in declared.buckets if b.display.casefold() == word.casefold()]
+    if named:
+        raise Refused(
+            ALREADY_FILED,
+            f"{word!r} is the name of the genre folder {named[0].display}"
+            + ("" if named[0].display == word else " in another case")
+            + ", so it already has a place in the taxonomy and there is nothing to answer",
+        )
     said = routing.suggest_tag(declared, word)
     if said.off_taxonomy:
         return said
@@ -146,11 +168,18 @@ def off_taxonomy(declared: taxonomy.Taxonomy, word: str) -> routing.Suggestion:
             f"alias, so neither an alias nor a folder of its own can answer it",
         )
     if said.bucket_id == fallback:
+        # NOT "AN ALIAS CANNOT ANSWER IT". Since U118 a tagging alias of
+        # another bucket wins over a routing alias for tagging, so a hand edit
+        # does answer it; what this verb declines is overriding a word the copy
+        # declares a catch-all on purpose, which the brief asked it to refuse.
+        # A folder of its own cannot take it: the fallback already routes it.
         raise Refused(
             TOO_COARSE,
-            f"{word!r} is a word the taxonomy treats as too coarse to be a genre: it "
-            f"files it only in the fallback folder {declared.bucket(fallback).display} "
-            f"on purpose, so neither an alias nor a folder of its own can answer it",
+            f"{word!r} is one of the words the taxonomy files in its fallback folder "
+            f"{declared.bucket(fallback).display} on purpose, as too coarse to be a "
+            f"genre, so this verb does not take it away from there; a folder of its "
+            f"own cannot take it, since the fallback already routes it, and a "
+            f"tagging alias written into the copy by hand would override the choice",
         )
     if said.bucket_id is not None:
         where = routing.display_of(declared, (said.bucket_id, said.sub_id))
@@ -293,7 +322,8 @@ def alias(text: str, word: str, name: str) -> Edit:
         raise Refused(
             NOT_EDITABLE,
             f"the copy's {target.id} bucket could not be given the tagging alias "
-            f"{saved!r} without moving anything else it declares; add "
+            f"{saved!r} by this verb, since its tag_aliases are written in a shape "
+            f"it does not edit or its header could not be matched to its entry; add "
             f"{_string(saved)} to that bucket's tag_aliases by hand",
         )
     loaded = _loaded(after)

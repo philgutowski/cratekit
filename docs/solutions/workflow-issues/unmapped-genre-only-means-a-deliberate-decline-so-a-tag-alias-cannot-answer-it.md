@@ -41,3 +41,7 @@ The premise was read and never driven. Driving `searchers._resolved` against `ta
 Both owed items are discharged. R-247's text was corrected on `groom/board-2026-09-21` and superseded by R-650, and the R24 test in `tests/test_tag_workers.py` now spends `Techno` and `Electronic`, two strings the shipped resolver really declines, rather than `gqom` and `footwork`, which it writes.
 
 R-650 itself was built on 2026-09-21, issue #189: the last tier now sets `off_taxonomy`, the sweep counts the distinct strings and warns. Its build found that "no bucket" identifies nothing, because the shipped template declares `Melodic Techno` as a rule with a literal tag and no bucket, and that the suppression must ask routing's question rather than the vocabulary's. That is filed beside this one as `a-suppression-rule-must-ask-the-question-that-decides-the-outcome.md`.
+
+## Since U118 and U194
+
+The second half of the claim above is stale. U118 let a bucket's tagging only alias win over another bucket's routing alias, so a tag alias of `Electro` on Afro House now loads and tags `Electro` as Afro House; the "claimed by both" refusal still holds for two routing aliases. U194's review drove it on 2026-11-02. The exact `decline` rules still run ahead of every alias, so for those five words the claim stands. `crate taxonomy alias` refuses both classes all the same, as its brief asked: a word the copy declares a catch-all stays one unless a person edits the copy by hand, and the refusal now says that rather than that no alias could answer it.
