@@ -3014,3 +3014,53 @@ def test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it
     assert [title for _artist, title in answers.asked].count("a") == 1, (
         "the resume asked about a file the interrupted drive had settled"
     )
+
+
+def test_the_off_taxonomy_warning_names_a_folders_own_name_with_its_one_answer():
+    """R-1184: a folder's own name in another case is named with the one
+    answer it has, and without a readable taxonomy the warning is unchanged."""
+    from cratekit.core import taxonomy
+
+    declared = taxonomy.load_taxonomy(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    summary = {"tagged": 3, "off_taxonomy": {"gqom": 1, "nonelectronic": 2}}
+    (plain,) = tag_cli._off_taxonomy_warning(summary)
+    (named,) = tag_cli._off_taxonomy_warning(summary, declared)
+    assert named["message"].startswith(plain["message"] + ". A word that is")
+    assert "'nonelectronic' is the name of the genre folder NonElectronic" in named["message"]
+    assert "neither answer takes the word" in named["message"]
+
+
+def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_when_the_copy_breaks(
+    cfg, folder, silence, monkeypatch
+):
+    """R-1184 through the dispatcher. The sweep writes the catalogue's word as
+    given, so a folder's own name in another case is on disk and named, with
+    the alias to its own folder. A copy that no longer loads at the report
+    keeps the plain warning rather than refusing the report."""
+    from tests.test_active_taxonomy import write_active
+
+    for name in ("a", "b"):
+        place(folder, silence, name)
+    bound(
+        monkeypatch,
+        answering(
+            {
+                "a": hit("breaks / d&b / dubstep", "breaks / d&b / dubstep", off_taxonomy=True),
+                "b": hit("gqom", "gqom", off_taxonomy=True),
+            }
+        ),
+    )
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    message = {w["code"]: w["message"] for w in resumed["warnings"]}[tag_cli.OFF_TAXONOMY]
+    assert "crate taxonomy alias 'breaks / d&b / dubstep' 'Breaks / D&B / Dubstep'" in message
+    assert "gqom" in message.split("takes one answer only")[0]
+    assert "gqom" not in message.split("takes one answer only")[1]
+
+    write_active(cfg, "this is not a taxonomy [[[")
+    code, again = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), again
+    plain = {w["code"]: w["message"] for w in again["warnings"]}[tag_cli.OFF_TAXONOMY]
+    assert "takes one answer only" not in plain and "breaks / d&b / dubstep" in plain

@@ -21,6 +21,8 @@ from cratekit.core.exit_codes import ExitCode
 
 WORD = "Latin Electronic"
 AFRO = "Afro House"
+BREAKS = "Breaks / D&B / Dubstep"
+BREAKS_LOWER = "breaks / d&b / dubstep"
 
 
 def _shipped() -> str:
@@ -154,19 +156,107 @@ def test_the_fallback_refusal_says_what_a_hand_alias_would_do_since_u118():
     assert "by hand would override" in message
 
 
-@pytest.mark.parametrize("word", ["breaks / d&b / dubstep", "nonelectronic", "AFRO HOUSE"])
-def test_a_folders_own_name_in_another_case_is_already_filed(word):
+@pytest.mark.parametrize("word", [BREAKS_LOWER, "nonelectronic", "AFRO HOUSE"])
+def test_a_folders_own_name_in_another_case_is_refused_to_any_other_folder(word):
     """Two shipped folders do not list their own name as an alias, so its
-    lowercased form is off taxonomy to the last tier; answered anyway as the
-    folder's name, so a file carrying the name exactly is never retagged."""
+    lowercased form is off taxonomy to the last tier. An alias of another
+    folder would retag the files carrying the name exactly too, and a folder of
+    its own would be a second folder of that name, so both are refused with a
+    sentence saying where the files are filed now (R-1184)."""
     declared = taxonomy.load_taxonomy(_shipped())
     if word != "AFRO HOUSE":
         assert routing.suggest_tag(declared, word).off_taxonomy
     for answer in (lambda: word_edit.alias(_shipped(), word, "Tech House"), lambda: word_edit.folder(_shipped(), word)):
         with pytest.raises(word_edit.Refused) as refused:
             answer()
+        assert refused.value.why == word_edit.OWN_NAME
+        message = str(refused.value)
+        assert "in another case" in message and "is filed in" in message
+        assert "already has a place" not in message
+        assert refused.value.step
+
+
+def test_the_premise_routing_knows_a_folders_name_only_exactly():
+    """Driven on the shipped template: each lowercased name is filed by a
+    keyword rule, nonelectronic in the fallback and not in NonElectronic."""
+    declared = taxonomy.load_taxonomy(_shipped())
+    breaks = routing.resolve_bucket(declared, BREAKS_LOWER)
+    assert breaks.match is routing.Match.FUZZY and breaks.bucket_id == "breaks_dnb_dubstep"
+    non = routing.resolve_bucket(declared, "nonelectronic")
+    assert non.match is routing.Match.FUZZY and non.bucket_id == declared.fallback.bucket
+    assert routing.resolve_bucket(declared, BREAKS).match is routing.Match.PASSTHROUGH
+
+
+@pytest.mark.parametrize("name", [BREAKS, "breaks_dnb_dubstep", BREAKS_LOWER])
+def test_a_folders_own_name_in_another_case_is_answered_by_its_own_folder(name):
+    """A plan that changes no text, since the word is the folder's name, and
+    files the word's files under the exact name, which files them by itself."""
+    edit = word_edit.alias(_shipped(), BREAKS_LOWER, name)
+    assert not edit.writes and edit.own_name
+    assert edit.bucket_id == "breaks_dnb_dubstep" and edit.display == BREAKS
+
+
+def test_a_folders_own_name_whose_folder_files_nothing_by_its_name_is_refused_truly():
+    """NonElectronic files each track by the track's own genre, so its bare
+    name files nothing by itself: the word is refused by its own folder, the
+    sentence says the files are filed by keyword in the fallback, and the one
+    step is a retag by hand, never the folder verb that refuses it too."""
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.alias(_shipped(), "nonelectronic", "NonElectronic")
+    assert refused.value.why == word_edit.OWN_NAME
+    message = str(refused.value)
+    assert "is filed in Electronica / Other by the keyword rule 'electronic'" in message
+    assert "neither answer takes the word" in message
+    assert "already has a place" not in message
+    assert "by hand" in refused.value.step
+    assert word_edit.FOLDER_VERB not in refused.value.step
+    assert word_edit.ALIAS_VERB not in refused.value.step
+
+
+def test_the_folder_refusal_of_an_own_name_names_the_alias_that_answers_it():
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.folder(_shipped(), BREAKS_LOWER)
+    step = refused.value.step
+    assert step.startswith(f"run {word_edit.ALIAS_VERB} '{BREAKS_LOWER}' '{BREAKS}'")
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.folder(_shipped(), "nonelectronic")
+    assert word_edit.ALIAS_VERB not in refused.value.step
+
+
+def test_a_folders_name_exactly_already_has_a_place():
+    """Routing recognises a folder's name exactly, so there the sentence holds."""
+    for answer in (lambda: word_edit.alias(_shipped(), BREAKS, AFRO),):
+        with pytest.raises(word_edit.Refused) as refused:
+            answer()
         assert refused.value.why == word_edit.ALREADY_FILED
-        assert "in another case" in str(refused.value)
+        assert "already has a place" in str(refused.value)
+    assert not word_edit.folder(_shipped(), BREAKS).writes
+
+
+def test_the_bare_folder_refusal_has_its_own_step_naming_the_folder_verb():
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.alias(_shipped(), WORD, "NonElectronic")
+    assert refused.value.why == word_edit.BARE_FOLDER
+    assert refused.value.step.endswith(f"{word_edit.FOLDER_VERB} '{WORD}'")
+
+
+def test_a_too_coarse_word_to_a_bare_folder_is_refused_as_too_coarse():
+    """The word is asked first, so the bare folder's step never offers the
+    folder verb for a word that verb refuses."""
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.alias(_shipped(), "Electronic", "NonElectronic")
+    assert refused.value.why == word_edit.TOO_COARSE
+
+
+def test_the_warnings_name_each_own_name_with_its_one_answer():
+    declared = taxonomy.load_taxonomy(_shipped())
+    said = word_edit.own_names(declared, ["gqom", BREAKS_LOWER, "nonelectronic"])
+    assert f"{word_edit.ALIAS_VERB} '{BREAKS_LOWER}' '{BREAKS}'" in said
+    assert "'nonelectronic' is the name of the genre folder NonElectronic" in said
+    assert "gqom" not in said
+    assert said.startswith(". A word that is a genre folder's name in another case")
+    assert word_edit.own_names(declared, ["gqom", WORD]) == ""
+    assert word_edit.own_names(None, [BREAKS_LOWER]) == ""
 
 
 def test_a_genre_named_in_a_case_two_folders_share_is_refused_by_name():
@@ -444,10 +534,62 @@ def test_a_file_carrying_a_folders_own_name_is_never_retagged(configured, silenc
     code, refused = drive(["taxonomy", "alias", "breaks / d&b / dubstep", AFRO])
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "taxonomy-word-refused"
-    assert refused["cause"]["remediation"]["steps"]
+    (step,) = refused["cause"]["remediation"]["steps"]
+    assert step.startswith(f"run {word_edit.ALIAS_VERB} '{BREAKS_LOWER}' '{BREAKS}'"), step
     assert _genres(exact) == ("Breaks / D&B / Dubstep",)
     assert _genres(lower) == ("breaks / d&b / dubstep",)
     assert copy.read_text(encoding="utf-8") == _shipped()
+
+
+def test_a_folders_own_name_in_another_case_is_retagged_to_the_exact_name(configured, silence):
+    """R-1184 driven through the verb: the lowercased name on a file is retagged
+    to its own folder's exact name, the copy is not rewritten, and the file
+    already carrying the exact name is not touched."""
+    copy = write_active(configured, _shipped())
+    exact = _track(configured, silence, "exact.flac", BREAKS)
+    lower = _track(configured, silence, "lower.flac", BREAKS_LOWER)
+    other = _track(configured, silence, "other.flac", "Deep House")
+    argv = ["taxonomy", "alias", BREAKS_LOWER, BREAKS]
+    run_id, refused = _asked(argv, word_cli.ALIAS_GATE)
+    shown = refused["cause"]["detail"]["shown"]
+    assert [(i["kind"], i.get("path"), i["change"]) for i in shown["items"]] == [("file", "lower.flac", "write")]
+    assert not any(i["kind"] == "tag_alias" for i in shown["items"])
+
+    _decided(run_id, word_cli.ALIAS_GATE, "approve")
+    code, acted = drive(["--run", run_id, *argv])
+
+    assert code == int(ExitCode.OK), acted
+    assert _codes(acted) == [word_cli.FILES_RETAGGED]
+    assert _genres(lower) == (BREAKS,) and _genres(exact) == (BREAKS,)
+    assert _genres(other) == ("Deep House",)
+    assert copy.read_text(encoding="utf-8") == _shipped() and not _backups(copy)
+
+    code, again = drive(argv)
+    assert code == int(ExitCode.OK) and again["outcome"] == "no_op", again
+    assert _codes(again) == [word_cli.NOTHING_TO_DO]
+    message = again["warnings"][0]["message"]
+    assert "in another case" in message and "already a tagging alias" not in message
+
+
+def test_a_folders_own_name_its_folder_cannot_take_is_refused_with_its_step(configured, silence):
+    copy = write_active(configured, _shipped())
+    lower = _track(configured, silence, "lower.flac", "nonelectronic")
+    code, refused = drive(["taxonomy", "alias", "nonelectronic", "NonElectronic"])
+    assert code == int(ExitCode.PRECONDITION), refused
+    assert refused["cause"]["reason"] == "taxonomy-word-refused"
+    assert refused["cause"]["detail"]["why"] == word_edit.OWN_NAME
+    (step,) = refused["cause"]["remediation"]["steps"]
+    assert "by hand" in step
+    assert _genres(lower) == ("nonelectronic",)
+    assert copy.read_text(encoding="utf-8") == _shipped()
+
+
+def test_the_bare_folder_refusal_names_the_folder_verb_as_its_step(configured):
+    write_active(configured, _shipped())
+    code, refused = drive(["taxonomy", "alias", WORD, "NonElectronic"])
+    assert code == int(ExitCode.PRECONDITION), refused
+    (step,) = refused["cause"]["remediation"]["steps"]
+    assert word_edit.FOLDER_VERB in step and "leave the word" not in step
 
 
 def test_nothing_to_do_does_not_claim_a_file_it_could_not_read(configured):

@@ -48,7 +48,7 @@ from collections.abc import Mapping
 from pathlib import Path
 
 from cratekit.cli.output import Envelope
-from cratekit.core import active_taxonomy, art, config, jobs, taxonomy_word
+from cratekit.core import active_taxonomy, art, config, jobs, taxonomy, taxonomy_word
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.label import registry as labels
@@ -460,7 +460,21 @@ def _published_warnings(summary: dict) -> tuple[dict[str, str], ...]:
     return tuple(warnings)
 
 
-def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
+def _declared(cfg: config.Config) -> taxonomy.Taxonomy | None:
+    """The library's taxonomy for a warning's wording, or None when it cannot be read.
+
+    A report is never refused for a sentence: an unreadable copy keeps the
+    warning as it was, and doctor and every routing verb name the copy.
+    """
+    try:
+        return active_taxonomy.load(cfg)
+    except CratekitError:
+        return None
+
+
+def _off_taxonomy_warning(
+    summary: dict, declared: taxonomy.Taxonomy | None = None
+) -> tuple[dict[str, str], ...]:
     """Say out loud that some of what was tagged is outside the declared table.
 
     THE PAYLOAD ALONE IS NOT THE FIX, which is the product decision inside this
@@ -490,6 +504,10 @@ def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
     warning exists to fix, one turn further on, so this says only the part that
     is true of every word it names. Which of them also landed in the catch-all
     is recorded as a residual rather than guessed at here.
+
+    A GENRE FOLDER'S OWN NAME IN ANOTHER CASE TAKES ONE ANSWER ONLY (R-1184),
+    so when the library's taxonomy could be read the warning names each such
+    word with it. When it could not, the warning says what it said before.
     """
     counted = summary.get("off_taxonomy") or {}
     if not counted:
@@ -508,6 +526,7 @@ def _off_taxonomy_warning(summary: dict) -> tuple[dict[str, str], ...]:
                 f"you want the taxonomy to own as an alias of one of your genres, "
                 f"with {taxonomy_word.ALIAS_VERB} WORD GENRE, or make it a genre "
                 f"folder of its own, with {taxonomy_word.FOLDER_VERB} WORD"
+                + taxonomy_word.own_names(declared, counted)
             ),
         },
     )
@@ -797,7 +816,7 @@ def _resume(
             warnings=queued
             + tuple(warnings)
             + _label_warnings(typed_label, job.payload or {}, summary)
-            + _off_taxonomy_warning(summary)
+            + _off_taxonomy_warning(summary, _declared(cfg) if summary.get("off_taxonomy") else None)
             + _unread_warnings(summary)
             + _published_warnings(summary),
         )

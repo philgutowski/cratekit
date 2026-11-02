@@ -1128,12 +1128,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'core/taxonomy_upgrade.py': ['config-unusable', 'internal-error'],
     # 2026-11-02, U194: a new module, the off taxonomy word's planner. Its
     # kinds of refusal, read by the verb and carried in a refusal's detail.
+    # 2026-11-02, R-1184: 'own-name' joined, a genre folder's own name in
+    # another case.
     'core/taxonomy_word.py': [
         'already-filed',
         'bare-folder',
         'no-such-genre',
         'no-word',
         'not-editable',
+        'own-name',
         'too-coarse',
         'would-not-load',
     ],

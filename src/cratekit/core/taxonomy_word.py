@@ -23,8 +23,18 @@ it, because the refusal runs ahead of every alias (the solutions entry on
 declined too, though a tagging alias written by hand would answer it since
 U118: the copy declares it a catch-all, and the brief asked that choice be left
 standing. A word the taxonomy already tags as one of its genres, a genre
-folder's own name in any case among them, needs no answer, and the refusal
-says which.
+folder's own name exactly among them, needs no answer, and the refusal says
+which.
+
+A GENRE FOLDER'S OWN NAME IN ANOTHER CASE IS ANSWERED BY THAT FOLDER ALONE
+(R-1184). Routing knows a folder's name only exactly, so a file carrying
+``nonelectronic`` or ``breaks / d&b / dubstep`` is filed by a keyword rule or
+the fallback, and the last tier of tagging flags the word. Its one answer is
+the alias to its own folder, a plan that changes no text and retags its files
+to the exact name, and only where that name files a track by itself. An alias
+to any other folder is refused, since the files it would retag, matched in any
+case, include the ones carrying the folder's name exactly; so is a folder of
+its own, which would be a second folder of that name.
 
 A GENRE IS A BUCKET. A file wearing a sub's name lands in the fallback, since
 routing recognises a bucket's display exactly and a sub's not at all, so an
@@ -38,8 +48,10 @@ from __future__ import annotations
 import copy
 import json
 import re
+import shlex
 import tomllib
 import unicodedata
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -54,6 +66,7 @@ TOO_COARSE = "too-coarse"
 ALREADY_FILED = "already-filed"
 NO_SUCH_GENRE = "no-such-genre"
 BARE_FOLDER = "bare-folder"
+OWN_NAME = "own-name"
 NO_WORD = "no-word"
 NOT_EDITABLE = "not-editable"
 WOULD_NOT_LOAD = "would-not-load"
@@ -67,13 +80,15 @@ class Refused(ValueError):
 
     ``why`` is one of the module's kinds, and the message is the sentence a
     person reads. ``problems`` carries the loader's own words for a copy that
-    would not load after the edit.
+    would not load after the edit. ``step`` is the one next move when the
+    refusal knows it, which the verb offers in place of its kind's default.
     """
 
-    def __init__(self, why: str, message: str, problems: tuple[str, ...] = ()) -> None:
+    def __init__(self, why: str, message: str, problems: tuple[str, ...] = (), step: str = "") -> None:
         super().__init__(message)
         self.why = why
         self.problems = problems
+        self.step = step
 
 
 @dataclass(frozen=True, slots=True)
@@ -87,6 +102,9 @@ class Edit:
     after: str
     #: For a genre folder, the bucket its family, tempo window and rating came from.
     like: str = ""
+    #: For an alias, true when the word is the folder's own name in another
+    #: case, which is answered by retagging alone and never saved (R-1184).
+    own_name: bool = False
 
     @property
     def writes(self) -> bool:
@@ -136,26 +154,115 @@ def genre(declared: taxonomy.Taxonomy, name: str) -> taxonomy.Bucket:
     )
 
 
+def own_folder(declared: taxonomy.Taxonomy, word: str) -> taxonomy.Bucket | None:
+    """The genre folder whose name ``word`` is in another case, or None.
+
+    None when the word is a folder's name exactly, which routing recognises, or
+    no folder's name in any case. Two folders answering in one case is the
+    first of them, since either way the word is a folder's name and is refused
+    to every other folder.
+    """
+    if declared.bucket_for_display(word) is not None:
+        return None
+    folded = word.casefold()
+    return next((b for b in declared.buckets if b.display.casefold() == folded), None)
+
+
+def files_by_name(declared: taxonomy.Taxonomy, bucket: taxonomy.Bucket) -> bool:
+    """Whether a track carrying ``bucket``'s name exactly is filed in that folder by it.
+
+    False for the fallback, a catch-all, and for a folder that files each track
+    into a sub by the track's own genre, where the bare name lands in its
+    default sub. The loader's own test, the one a vocabulary row's tag passes.
+    """
+    return declared.named_folder(bucket.display) == (bucket.id, None)
+
+
+def _filed_now(declared: taxonomy.Taxonomy, word: str) -> str:
+    """Where routing files a track carrying ``word`` now, and by which tier, as a phrase."""
+    found = routing.resolve_bucket(declared, word)
+    where = declared.bucket(found.bucket_id).display
+    if found.match is routing.Match.FUZZY:
+        return f"in {where} by the keyword rule {found.matched_on!r}"
+    if found.match is routing.Match.FALLBACK:
+        return f"in {where}, the fallback"
+    return f"in {where} by a routing alias"
+
+
+def own_name_answer(declared: taxonomy.Taxonomy, word: str, bucket: taxonomy.Bucket) -> tuple[str, str]:
+    """The sentence and the one step for a word that is ``bucket``'s name in another case.
+
+    The sentence says where its files are filed now, which is never the folder
+    by its name, and the step is the alias to that folder when its name files
+    a track by itself, or retagging each file by hand when it does not.
+    """
+    said = (
+        f"{word!r} is the name of the genre folder {bucket.display} in another case, "
+        f"and routing knows a folder's name only exactly, so a file carrying it is "
+        f"filed {_filed_now(declared, word)} until it is retagged {bucket.display!r}"
+    )
+    if files_by_name(declared, bucket):
+        command = f"{ALIAS_VERB} {shlex.join((word, bucket.display))}"
+        return (
+            f"{said}; {command} retags its files to the exact name and saves nothing",
+            f"run {command}, which retags the files carrying the word to the folder's exact name",
+        )
+    return (
+        f"{said}; but {bucket.display}'s own name does not file a track by itself, "
+        f"since it is the fallback or files each track into a sub by the track's own "
+        f"genre, so neither answer takes the word: give each file carrying it the "
+        f"genre it means",
+        "retag each file carrying the word with the genre it means, by hand",
+    )
+
+
+def own_names(declared: taxonomy.Taxonomy | None, words: Iterable[str]) -> str:
+    """The off taxonomy warning's last sentence, naming each of ``words`` that is a folder's name in another case.
+
+    The warnings offer both answers for every word they name, and neither
+    takes such a word as the warning puts it (R-1184), so they end with this,
+    naming the one answer each has. Sorted, as the warnings are. Empty when no
+    word is one, or when the taxonomy could not be read, and otherwise opening
+    with the full stop that ends the warning's sentence before it.
+    """
+    if declared is None:
+        return ""
+    said = []
+    for word in sorted(words):
+        own = own_folder(declared, word)
+        if own is not None:
+            said.append(own_name_answer(declared, word, own)[0])
+    if not said:
+        return ""
+    return ". A word that is a genre folder's name in another case takes one answer only: " + "; ".join(said)
+
+
 def off_taxonomy(declared: taxonomy.Taxonomy, word: str) -> routing.Suggestion:
     """What tagging makes of ``word``, refused unless it is passed through as the word's own.
 
     The one test ``tag folder`` and ``tag guess`` warn by, so a word they name
     is a word this answers.
     """
-    # A GENRE FOLDER'S OWN NAME IN ANOTHER CASE IS ITS NAME. Two shipped
-    # folders do not list their own name among their aliases, so the last tier
-    # passes the name through in another case and flags it, while the files
-    # this would retag, matched in any case, include the ones carrying the name
+    # A GENRE FOLDER'S OWN NAME IS ITS NAME, in any case. Two shipped folders
+    # do not list their own name among their aliases, so the last tier passes
+    # the name through in another case and flags it, while the files an alias
+    # would retag, matched in any case, include the ones carrying the name
     # exactly. Answered first, so a correct tag is never rewritten as another
-    # genre and no copy comes to answer a folder's name with a second one.
-    named = [b for b in declared.buckets if b.display.casefold() == word.casefold()]
-    if named:
+    # genre and no copy comes to answer a folder's name with a second one. In
+    # another case it does NOT have a place: its files are filed by a keyword
+    # or the fallback, and the refusal says so and names the one answer
+    # (R-1184).
+    exact = declared.bucket_for_display(word)
+    if exact is not None:
         raise Refused(
             ALREADY_FILED,
-            f"{word!r} is the name of the genre folder {named[0].display}"
-            + ("" if named[0].display == word else " in another case")
-            + ", so it already has a place in the taxonomy and there is nothing to answer",
+            f"{word!r} is the name of the genre folder {word}, so it already has a "
+            f"place in the taxonomy and there is nothing to answer",
         )
+    own = own_folder(declared, word)
+    if own is not None:
+        said, step = own_name_answer(declared, word, own)
+        raise Refused(OWN_NAME, said, step=step)
     said = routing.suggest_tag(declared, word)
     if said.off_taxonomy:
         return said
@@ -299,11 +406,32 @@ def alias(text: str, word: str, name: str) -> Edit:
     declared = taxonomy.load_taxonomy(text)
     spelled = _word(word)
     target = genre(declared, name)
-    if declared.named_folder(target.display) != (target.id, None):
+    own = own_folder(declared, spelled)
+    if own is not None:
+        # ITS OWN FOLDER, AND THAT ONE ONLY (R-1184). The plan changes no text,
+        # since the word is the folder's name and no alias is needed for it,
+        # and the verb retags the files carrying it to the exact name.
+        said, step = own_name_answer(declared, spelled, own)
+        if own.id != target.id:
+            raise Refused(
+                OWN_NAME,
+                f"{said}; saving it as an alias of {target.display} would retag the "
+                f"files carrying {own.display!r} exactly as well",
+                step=step,
+            )
+        if not files_by_name(declared, own):
+            raise Refused(OWN_NAME, said, step=step)
+        return Edit(
+            word=spelled, bucket_id=own.id, display=own.display, before=text, after=text, own_name=True
+        )
+    if not files_by_name(declared, target):
         # THE FALLBACK, OR A FOLDER THAT FILES BY THE TRACK'S OWN GENRE. Its bare
         # name on a file is a catch-all, or lands in its default sub, so the
         # retag would file every track by a default and not by the answer. The
-        # loader's own test, the one a vocabulary row's tag passes.
+        # loader's own test, the one a vocabulary row's tag passes. The word is
+        # asked first, so the step offering a folder of its own is never
+        # offered for a word that verb refuses too.
+        off_taxonomy(declared, spelled)
         raise Refused(
             BARE_FOLDER,
             f"{target.display} is a genre folder whose own name does not file a track "
@@ -312,6 +440,10 @@ def alias(text: str, word: str, name: str) -> Edit:
             f"would file them by a default rather than by this answer; name the genre "
             f"folder the word means, or make it a genre folder of its own with "
             f"{FOLDER_VERB}",
+            step=(
+                f"name the genre folder the word means, or make the word a genre "
+                f"folder of its own with {FOLDER_VERB} {shlex.join((spelled,))}"
+            ),
         )
     if declared.tagging_alias(spelled.lower()) == (target.id, None):
         return Edit(word=spelled, bucket_id=target.id, display=target.display, before=text, after=text)
@@ -442,6 +574,7 @@ __all__ = [
     "NOT_EDITABLE",
     "NO_SUCH_GENRE",
     "NO_WORD",
+    "OWN_NAME",
     "TOO_COARSE",
     "WOULD_NOT_LOAD",
     "Edit",
@@ -450,5 +583,9 @@ __all__ = [
     "bucket_id_for",
     "folder",
     "genre",
+    "files_by_name",
     "off_taxonomy",
+    "own_folder",
+    "own_name_answer",
+    "own_names",
 ]
