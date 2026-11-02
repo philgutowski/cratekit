@@ -3674,6 +3674,34 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── A genre for the files every catalogue missed (U172) ─────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="tag.guess",
+        summary="give each file in a folder with no genre one guessed from its "
+        "artist's other tracks and the playlist it came from; writes files",
+        module="cratekit.tagging.guess_cli",
+        builder="build",
+        handler_key="tag.guess",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT. The source system left a track
+        # no catalogue knew to a person in rekordbox.
+        #
+        # CORE, as ``tag.folder`` is: the tail runs it in every pass, and a
+        # genre is what a tree files a landed track by.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: THE FILE AND ONLY THE FILE, a genre on a file that carries none. It
+        #: READS the database, with ``require_closed`` off as ``name.apply``
+        #: does, so it never reaches the guarded writer or the cloud sync
+        #: decision, which binds to write intent only. NO GATE, as ``tag.folder``
+        #: writes the same field on the same files with none: Phillip answered
+        #: on 2026-11-01 that every guess is written and nothing waits on him.
+        writes=frozenset({"files"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=("library.mounted",),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

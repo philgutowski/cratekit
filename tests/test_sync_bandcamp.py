@@ -166,7 +166,8 @@ def test_the_verb_queues_nothing_of_its_own_and_declares_no_gate():
 
 def test_the_steps_are_the_plan_the_fetch_the_shared_tail_the_rehearsal_and_the_landing():
     assert sync_bandcamp.STEPS == (
-        "preflight", "plan", "fetch", "tag", "analyze", "restamp", "name", "rehearse", "land",
+        "preflight", "plan", "fetch", "tag", "guess", "analyze", "restamp", "name", "rehearse",
+        "land",
     )
 
 
@@ -190,6 +191,7 @@ def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_lab
         ("acquire", "bandcamp"),
         ("acquire", "bandcamp-fetch"),
         ("tag", "folder"), ("tag", "folder"),
+        ("tag", "guess"),
         ("analyze", "run"), ("analyze", "run"),
         ("analyze", "restamp"), ("analyze", "restamp"),
         ("name", "apply"),
@@ -235,7 +237,11 @@ def test_the_tail_runs_on_the_absolute_batch_folder(signed_in, account, puls, ch
 
     folder = str(_folder(signed_in))
     queued = [argv for argv in chain.calls if argv[:1] in (["tag"], ["analyze"]) and "--job" not in argv]
-    assert [argv[-1] for argv in queued] == [folder] * 3
+    # Three queued steps and the genre guess between them (U172), which a
+    # Bandcamp batch runs with no pass, since no account playlist asked for it.
+    assert [argv[-1] for argv in queued] == [folder] * 4
+    (guessed,) = [argv for argv in queued if argv[:2] == ["tag", "guess"]]
+    assert "--pass" not in guessed
     (named,) = chain.named
     assert named[-1] == folder
 

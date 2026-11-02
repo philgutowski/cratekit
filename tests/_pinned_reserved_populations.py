@@ -1830,6 +1830,19 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tag-folder-sources-unread',
         'tag-folder-unnamed',
     ],
+    # 2026-11-01, U172: tag guess joined, its engine and its verb.
+    'tagging/guess.py': ['tag-guess'],
+    'tagging/guess_cli.py': [
+        'config-unusable',
+        'source-missing',
+        'tag-guess-file-not-read',
+        'tag-guess-library-unread',
+        'tag-guess-no-votes',
+        'tag-guess-off-taxonomy',
+        'tag-guess-pass-unread',
+        'tag-guess-split',
+        'tag-guess-unwritten',
+    ],
     'tagging/remap.py': [
         'ambiguous-record',
         'changed-since',
@@ -2930,6 +2943,8 @@ PINNED_LITERAL_HOLDERS = {
     'sync/watermarks.py': ['sync-watermark-unusable'],
     # 2026-10-31, U178: tag folder refuses a --label nobody registered.
     'tagging/cli.py': ['config-unusable', 'label-unknown', 'source-missing'],
+    # 2026-11-01, U172: tag guess's verb joined.
+    'tagging/guess_cli.py': ['config-unusable', 'source-missing'],
     'tagging/remap_cli.py': ['config-unusable', 'internal-error', 'tag-remap-unwritten'],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],

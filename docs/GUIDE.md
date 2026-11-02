@@ -338,6 +338,30 @@ crate route inbox
 crate route pending
 ```
 
+`tag folder` leaves a file with no genre when no catalogue that answers knows
+the track, and some never answer here: Traxsource and Bandcamp refuse every
+search with a bot check. `crate tag guess` gives each such file a genre from
+what sits beside it: the same artist's other tracks, in your library and in
+the folder, and, with `--pass`, the playlist on your account the pass
+downloaded it for, which the catalogues mostly did tag. The weighing and its
+bands are `tag suggest`'s, and a playlist counts as one voice
+however long it is, so three tracks by the artist outweigh a long playlist of
+another genre. Every guess is written, whatever its band; a tie is written as
+the genre the artist's tracks weigh most, then the first by name, and named in
+the report so you can check it. A file nothing votes for keeps no genre and is
+named. A file that already carries a genre is never changed. The report gives
+how many of the folder's files carried a genre before and after, and names any
+word on a file your taxonomy has no folder for, offering to save it as an alias
+of one of your genres or to make it a genre folder of its own. `--report`
+writes nothing and says what a run would write, which is how a folder that has
+already landed is measured. The passes below run it for you, right after `tag
+folder`.
+
+```bash
+crate tag guess /path/to/staging --pass PASS
+crate tag guess /path/to/staging --report
+```
+
 `intake land` reads download staging unless you name another folder. The files go
 to a new folder under your music folder, and the batch playlist under INBOX takes
 the same name. Unless you pass `--name`, that name is the landing's date and what
@@ -626,7 +650,9 @@ queue instead, and a rate limit parks the download rather than retrying. A go
 that stopped part way is picked up by the next `--go`, which resumes it before
 anything new, and a track is never asked for twice. Once the download has
 landed its tracks, the same command runs the acquisition tail on the staging
-folder the way `crate sync land` does: `tag folder`, `analyze run` followed by
+folder the way `crate sync land` does: `tag folder`, `tag guess` (with no
+playlist vote, since no playlist on your account asked for a label's tracks),
+`analyze run` followed by
 `analyze vocals --unscored`, `analyze restamp` and `name apply`, each driven to
 the end, then plans `intake land
 --manifest ... --pass ...`, which names the batch for the date and the label,
@@ -702,7 +728,7 @@ crate sync bandcamp --seller PULS
 It plans your purchases first, so a session that has expired stops there
 with the login step before anything downloads. It fetches what you do not
 own into `Bandcamp <today's date>` under download staging (or the folder
-`--batch` names), runs `tag folder`, `analyze run`, `analyze restamp` and
+`--batch` names), runs `tag folder`, `tag guess`, `analyze run`, `analyze restamp` and
 `name apply` on it the way `crate sync land` does, rehearses the landing on a
 copy, and plans the landing itself, stopping at its gate with the commands
 that answer and apply it as the session and the rekordbox visit after. The
