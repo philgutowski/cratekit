@@ -41312,3 +41312,145 @@ drift warning either, so it is not a regression.
 engine's refusal carrying them, or `drive_queued` returning them beside its
 refusal), so the go's carried path names the drift as the clean path does.
 Ledger only: a lost advisory is none of the board bar's four costs.
+
+---
+
+## R-1173. A landing planned before midnight and answered after it goes stale on the account playlists' date, and the refusal does not say the date moved
+
+**Found:** at the review of #356, U175, 2026-11-01.
+
+**The mechanism.** Since U175 each account playlist's INBOX name carries the
+landing's date, read from `batch_name.today` when the plan is built. The
+landing's two acts each build the plan, so a gate asked before midnight and
+answered after it plans names with the next day's date, the digest moves, and
+the second act refuses `decision-stale` with nothing written. A batch named
+by `--name` used to survive midnight, since only the default batch name was
+dated; now the account playlists move it too.
+
+**Measured cost.** Driven by Fable's round 1 on both media, with and without
+`--name`: exit 11, nothing written, INBOX empty. The person answers the gate
+once more, and the refusal says the plan changed without saying it was the
+date. No data is at risk.
+
+**Closes when:** the date is frozen on the run with the plan (as the account
+mirror freezes its plan, R-1031), or the stale refusal names a date that
+moved. Ledger only: a repeated gate is a wording and convenience cost.
+
+---
+
+## R-1174. inbox refill asks the account's bare name beside a dated name an intake file recorded, so a bare named playlist another pass's intake file gave the account makes the refill two found
+
+**Found:** at the review of #356, U175, 2026-11-01.
+
+**The mechanism.** `refill.locate`'s fallback asks the account's bare name and,
+since U175, the first dated name an intake file of this pass recorded for this
+account. `others` holds only playlists a record names by identifier, so a bare
+named playlist an intake file of another pass or account landed (before U175)
+still answers beside the dated one, and the account playlist is refused as two
+found.
+
+**Measured cost.** Driven by Fable's round 2 on records built by hand (S1,
+S1b): the gate lists the account playlist unfound, two answering, and nothing
+is written. On `main` the same input filled the other record's playlist, so
+the branch is safer. Reaching it needs a bridge landing before U175 and one
+after it of the same account, then a cutover; the live library is native, so
+the producer was not driven.
+
+**Closes when:** a recorded dated name, when there is one, is asked alone, or
+`others` also excludes names intake files recorded for another pass or account.
+
+---
+
+## R-1175. inbox refill takes the first name an intake file of the pass recorded even while that file still awaits an import that never came, so a later landing's live playlist is not found
+
+**Found:** at the review of #356, U175, 2026-11-01.
+
+**The mechanism.** `refill.bridge_names` reads every standing intake record,
+`AWAITING_IMPORT` included, while `rotate.landings` reads an intake record only
+once its import is proven. When the first landing of a pass was never imported
+and a second one was, the first's name is asked and answers nothing, and the
+second's live ` 2` is never asked.
+
+**Measured cost.** Driven by Fable's round 2 on hand built records (S2c): the
+screen says no live INBOX playlist answers the account playlist while a record
+of this pass names one; nothing is written. `main` gives the same answer for
+the undated pair, so it is not new. The producer, a second bridge landing
+while the first awaits import followed by a cutover, was not driven.
+
+**Closes when:** the name asked is the first one whose import was proven, the
+rule `rotate.landings` keeps.
+
+---
+
+## R-1176. That refill asks the first name an intake file of the pass recorded, not a later one, is pinned only by the function's own test and not at the verb
+
+**Found:** at the review of #356, U175, 2026-11-01.
+
+**The mechanism.** `refill.plan_refill` hands `locate` the first of
+`bridge_names`. Taking the last instead kills no test: the order is pinned by
+`test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id`,
+and no verb level test lands a pass twice by intake file before a refill.
+
+**Measured cost.** None at the verb today, driven by Fable's round 2 (S2, S2b):
+the first is filled and a later ` 2` left, as U134 decided. A guard that kills
+nothing is a finding under the merge bar, and maintainer facing.
+
+**Closes when:** a refill test lands one pass twice by intake file and asserts
+the first playlist is the one filled.
+
+---
+
+## R-1177. inbox refill shows a playlist it found by an intake file's recorded dated name as found by the account's name
+
+**Found:** at the review of #356, U175, 2026-11-01.
+
+**The mechanism.** `refill.locate` answers `BY_NAME`, "found by the account's
+name under INBOX", whichever of the two names it asked answered, so a playlist
+found by the dated name an intake file recorded is described as found by the
+account's bare name.
+
+**Measured cost.** Wording on the gate screen only, asserted by the branch's own
+test of that path; no data at risk.
+
+**Closes when:** a third way of finding, by the recorded name, is shown when
+that name answered.
+
+---
+
+## R-1178. inbox refill fills a native landing's later partial playlist when the pass's first and whole mirror was landed by intake file
+
+**Found:** at the review of #356, U175, 2026-11-01.
+
+**The mechanism.** `refill.locate` takes the oldest playlist a record names by
+identifier before it asks any name. When the first landing of a pass came by
+intake file (recorded with no identifier) and a later one natively (by
+identifier, its ` 2` holding only its new files), the ` 2` is the one filled
+`BY_RECORD` with the whole account playlist, and the first mirror is passed
+over. The record first rule is U134's and unchanged by U175.
+
+**Measured cost.** Driven by Fable's round 2 on hand built records (S2d): the
+gate plans five additions into the ` 2`. Reaching it needs a cutover between
+two landings of one pass, which was not driven.
+
+**Closes when:** the oldest landing of the pass is chosen across both kinds of
+entry, by start time, before the record or the name decides.
+
+---
+
+## R-1179. The rotation dating a batch by its first landing rather than its latest kills no test
+
+**Found:** at the mutation table of #356, U175, 2026-11-01.
+
+**The mechanism.** `rotate.landings` keeps, for each playlist a native record
+names by identifier, the EARLIEST committed landing, so a batch is as old as
+its first tracks. Taking the latest instead (row R2 of
+`docs/mutation/u175.md`) kills nothing on the full suite: no test lands into
+one playlist twice and then plans a rotation.
+
+**Measured cost.** Not driven to a user. The input exists: a set landing
+adds to the INBOX playlist an earlier landing of the same set made (U135), so
+a later landing would make the batch read younger and rotate later than it
+should. Sampled by U175 as an existing guard; it predates the unit.
+
+**Closes when:** a rotation test lands one set twice on two days and asserts
+the batch is aged from the first.
