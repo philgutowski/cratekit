@@ -1,0 +1,232 @@
+name = "r1184"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_own_folder_exact_first"
+description = "own_folder: drop the exact name guard, so a folder's name exactly is read as its own name in another case"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if declared.bucket_for_display(word) is not None:
+        return None
+    folded = word.casefold()'''
+new = '''    folded = word.casefold()'''
+
+[[rows]]
+id = "M2_own_folder_casefold"
+description = "own_folder: compare the name exactly rather than in any case, so no word is ever a folder's own name in another case"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''b.display.casefold() == folded), None)'''
+new = '''b.display == word), None)'''
+
+[[rows]]
+id = "M3_files_by_name"
+description = "files_by_name: say every folder's name files a track by itself, so nonelectronic is retagged NonElectronic"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''    return declared.named_folder(bucket.display) == (bucket.id, None)
+
+
+def _filed_now'''
+new = '''    return True
+
+
+def _filed_now'''
+
+[[rows]]
+id = "M4_filed_now_keyword"
+description = "_filed_now: drop the keyword rule branch, so a keyword filed word is said to be filed by a routing alias"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''    if found.match is routing.Match.FUZZY:
+        return f"in {where} by the keyword rule {found.matched_on!r}"
+'''
+new = ''''''
+
+[[rows]]
+id = "M5_answer_branch"
+description = "own_name_answer: offer the alias to the folder even when its name files nothing by itself"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''    if files_by_name(declared, bucket):
+        command'''
+new = '''    if True:
+        command'''
+
+[[rows]]
+id = "M6_alias_other_folder"
+description = "alias: drop the refusal of an own name to another folder, so it plans its own folder's retag under another name"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        if own.id != target.id:
+            raise Refused('''
+new = '''        if False:
+            raise Refused('''
+
+[[rows]]
+id = "M7_alias_own_bare"
+description = "alias: drop the refusal of an own name whose folder files nothing by its name"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        if not files_by_name(declared, own):
+            raise Refused(OWN_NAME, said, step=step)'''
+new = '''        if False:
+            raise Refused(OWN_NAME, said, step=step)'''
+
+[[rows]]
+id = "M8_alias_own_block"
+description = "alias: drop the own name branch whole, so the alias takes the path main took"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    own = own_folder(declared, spelled)
+    if own is not None:'''
+new = '''    own = own_folder(declared, spelled)
+    if False:'''
+
+[[rows]]
+id = "M9_off_taxonomy_own_block"
+description = "off_taxonomy: drop the own name refusal, so the folder verb plans a second folder of that name"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    own = own_folder(declared, word)
+    if own is not None:
+        said, step = own_name_answer(declared, word, own)
+        raise'''
+new = '''    own = own_folder(declared, word)
+    if False:
+        said, step = own_name_answer(declared, word, own)
+        raise'''
+
+[[rows]]
+id = "M10_off_taxonomy_exact"
+description = "off_taxonomy: drop the exact name refusal, so a folder's name exactly falls to the tagging tier"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    exact = declared.bucket_for_display(word)
+    if exact is not None:'''
+new = '''    exact = declared.bucket_for_display(word)
+    if False:'''
+
+[[rows]]
+id = "M11_edit_own_name_flag"
+description = "alias: mark the own name plan as an ordinary one, so the no change sentence claims a tagging alias"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''before=text, after=text, own_name=True'''
+new = '''before=text, after=text, own_name=False'''
+
+[[rows]]
+id = "M12_bare_asks_word_first"
+description = "alias: drop asking the word before the bare folder refusal, so a too coarse word is offered the folder verb"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        off_taxonomy(declared, spelled)
+        raise Refused(
+            BARE_FOLDER,'''
+new = '''        raise Refused(
+            BARE_FOLDER,'''
+
+[[rows]]
+id = "M13_bare_step_names_word"
+description = "alias: the bare folder step names the folder verb without the word"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''{FOLDER_VERB} {shlex.join((spelled,))}"'''
+new = '''{FOLDER_VERB}"'''
+
+[[rows]]
+id = "M14_step_command_words"
+description = "own_name_answer: the step's command names the folder only, not the word"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''{shlex.join((word, bucket.display))}'''
+new = '''{shlex.join((bucket.display,))}'''
+
+[[rows]]
+id = "M15_own_names_none"
+description = "own_names: drop the guard on an unread taxonomy"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''    if declared is None:
+        return ""
+    said = []'''
+new = '''    said = []'''
+
+[[rows]]
+id = "M16_own_names_empty"
+description = "own_names: drop the empty answer, so every warning ends with an empty own name sentence"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''    if not said:
+        return ""
+    return ". A word'''
+new = '''    return ". A word'''
+
+[[rows]]
+id = "M17_verb_takes_step"
+description = "taxonomy alias verb: ignore the refusal's own step, so the bare folder and own name refusals say leave the word"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if exc.step:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M18_verb_nothing_to_do"
+description = "taxonomy alias verb: the no change sentence for an own name claims a tagging alias"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''                        if edit.own_name
+'''
+new = '''                        if False
+'''
+
+[[rows]]
+id = "M19_tag_folder_wiring"
+description = "tag folder report: never hand the warning the taxonomy, so the own name answer is dropped"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''_off_taxonomy_warning(summary, _declared(cfg) if summary.get("off_taxonomy") else None)'''
+new = '''_off_taxonomy_warning(summary, None)'''
+
+[[rows]]
+id = "M20_tag_folder_fallback"
+description = "tag folder report: drop the catch of an unreadable copy, so the report is refused over a sentence"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''    try:
+        return active_taxonomy.load(cfg)
+    except CratekitError:
+        return None'''
+new = '''    return active_taxonomy.load(cfg)'''
+
+[[rows]]
+id = "M21_guess_wiring"
+description = "tag guess: drop the own name sentence from the off taxonomy warning"
+file = "src/cratekit/tagging/guess_cli.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_tag_workers.py", "tests/test_tag_guess.py"]
+old = '''                    + taxonomy_word.own_names(declared, found.off_taxonomy)
+'''
+new = ''''''
