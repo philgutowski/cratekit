@@ -167,8 +167,9 @@ INBOX_PLAYLISTS_KEY = ingest.INBOX_PLAYLISTS_KEY
 #: The playlist directly under the intake root every row a landing creates
 #: joins (U166), so the rekordbox visit selects one playlist. Its display
 #: form is ``<intake root> / Analyze``. Reserved: :func:`plan_rows` refuses a
-#: batch of the name and an account playlist of it is named ``Analyze 2``,
-#: through :data:`cratekit.intake.batch_name.ANALYZE`, which spells the same
+#: batch of the name, and an account playlist of it lands dated, ``Analyze
+#: 2026-10-27`` (U175), so never as it; :data:`cratekit.intake.batch_name.ANALYZE`
+#: spells the same
 #: value because that module reaches this one through the landing; a test
 #: holds the two equal.
 ANALYZE = "Analyze"
@@ -2582,7 +2583,8 @@ def _record_landing_commit(
     # proof this pass landed. Only with the commit, never for a plan.
     if plan.pass_name:
         record.detail[PASS_KEY] = plan.pass_name
-    # AND EACH ACCOUNT PLAYLIST (U113), whose name carries no date to age it by.
+    # AND EACH ACCOUNT PLAYLIST (U113), by identifier, so it is aged from this
+    # record with the batch and never by its name, whose date (U175) is a label.
     if written:
         record.detail[INBOX_PLAYLISTS_KEY] = [
             {
