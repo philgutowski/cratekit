@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import active_taxonomy, config, rb_writer, taxonomy_word
+from cratekit.core import active_taxonomy, config, rb_writer, taxonomy, taxonomy_word
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import guess, suggest
@@ -233,7 +233,7 @@ def _payload(found: guess.GuessPlan) -> dict[str, Any]:
     }
 
 
-def _advisories(found: guess.GuessPlan) -> list[dict[str, str]]:
+def _advisories(found: guess.GuessPlan, declared: taxonomy.Taxonomy | None = None) -> list[dict[str, str]]:
     warnings: list[dict[str, str]] = []
     by = {
         name: [item.relative for item in found.items if item.outcome == name]
@@ -320,6 +320,7 @@ def _advisories(found: guess.GuessPlan) -> list[dict[str, str]]:
                     f"either save it as an alias of one of your genres and retag "
                     f"its files, with {taxonomy_word.ALIAS_VERB} WORD GENRE, or make "
                     f"it a genre folder of its own, with {taxonomy_word.FOLDER_VERB} WORD"
+                    + taxonomy_word.own_names(declared, found.off_taxonomy)
                 ),
             }
         )
@@ -354,7 +355,7 @@ def tag_guess(ctx) -> Envelope:
     return ctx.envelope(
         data=data,
         outcome=Outcome.OK if written else Outcome.NO_OP,
-        warnings=_advisories(found),
+        warnings=_advisories(found, declared),
     )
 
 

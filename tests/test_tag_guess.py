@@ -487,6 +487,21 @@ def test_an_off_taxonomy_word_is_named_with_both_offers(machine, silence):
     assert envelope["data"]["totals"]["off_taxonomy"] == {LATIN: 1}
 
 
+def test_a_folders_own_name_in_another_case_is_named_with_its_one_answer(machine, silence):
+    """R-1184: the lowercased name of the breaks folder is off taxonomy, and
+    neither offer takes it as the warning puts it, so the warning names the
+    alias to its own folder that does."""
+    build(machine, silence)
+    _stage(machine, silence, "breaks", artist="Ana Vale", title="Breaks", genre="breaks / d&b / dubstep")
+
+    code, envelope = drive([*VERB, str(_folder(machine))])
+
+    assert code == int(ExitCode.OK), envelope
+    message = _warned(envelope, guess_cli.OFF_TAXONOMY)
+    assert "takes one answer only" in message
+    assert "crate taxonomy alias 'breaks / d&b / dubstep' 'Breaks / D&B / Dubstep'" in message
+
+
 def test_a_tie_is_warned_with_the_genre_it_was_written_as(machine, silence):
     build(
         machine,

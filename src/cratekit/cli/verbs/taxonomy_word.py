@@ -9,7 +9,9 @@ make it a genre folder of its own. Each is one of these verbs.
   genre folder GENRE names, so a catalogue giving it again is tagged as that
   genre, and rewrites the genre of every audio file under the library root
   (or ``--folder``) whose one genre is the word, in any case, to that genre.
-  The rows follow by ``tag rows``, which a run that wrote names.
+  The rows follow by ``tag rows``, which a run that wrote names. A word that
+  is a genre folder's own name in another case is answered by an alias to
+  that folder alone, which saves nothing and only retags (R-1184).
 - ``taxonomy folder WORD`` adds a top level genre folder named the word, with
   energy bands, so the files already wearing it route there with nothing
   rewritten. ``route resort`` files them, which the run names.
@@ -140,6 +142,11 @@ def _refused(exc: word_edit.Refused, word: str) -> Exception:
         reason, steps = "taxonomy-word-refused", (
             "leave the word as it is, or answer another word the warning named",
         )
+    if exc.step:
+        # THE REFUSAL'S OWN NEXT MOVE, for a bare folder and for a folder's own
+        # name in another case (R-1184), where leaving the word is not the
+        # answer its message gives.
+        steps = (exc.step,)
     return refuse(
         reason,
         f"{exc}; nothing was written",
@@ -391,10 +398,18 @@ def taxonomy_alias_verb(ctx: "Context") -> Envelope:
                 {
                     "code": NOTHING_TO_DO,
                     "message": (
-                        f"{edit.word!r} is already a tagging alias of {edit.display} in the "
-                        f"copy at {path}, and no file read under {root} carries it alone"
-                        + (", past the files named above that could not be read" if files.of(UNREAD) else "")
-                    ),
+                        (
+                            f"{edit.word!r} is the name of the genre folder {edit.display} in "
+                            f"another case, which needs no alias, and no file read under "
+                            f"{root} carries it alone"
+                        )
+                        if edit.own_name
+                        else (
+                            f"{edit.word!r} is already a tagging alias of {edit.display} in the "
+                            f"copy at {path}, and no file read under {root} carries it alone"
+                        )
+                    )
+                    + (", past the files named above that could not be read" if files.of(UNREAD) else ""),
                 },
             ],
         )

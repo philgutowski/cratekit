@@ -3014,3 +3014,17 @@ def test_an_interrupted_sweep_names_its_job_command_and_that_command_finishes_it
     assert [title for _artist, title in answers.asked].count("a") == 1, (
         "the resume asked about a file the interrupted drive had settled"
     )
+
+
+def test_the_off_taxonomy_warning_names_a_folders_own_name_with_its_one_answer():
+    """R-1184: a folder's own name in another case is named with the one
+    answer it has, and without a readable taxonomy the warning is unchanged."""
+    from cratekit.core import taxonomy
+
+    declared = taxonomy.load_taxonomy(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    summary = {"tagged": 3, "off_taxonomy": {"gqom": 1, "nonelectronic": 2}}
+    (plain,) = tag_cli._off_taxonomy_warning(summary)
+    (named,) = tag_cli._off_taxonomy_warning(summary, declared)
+    assert named["message"].startswith(plain["message"] + ". A word that is")
+    assert "'nonelectronic' is the name of the genre folder NonElectronic" in named["message"]
+    assert "neither answer takes the word" in named["message"]

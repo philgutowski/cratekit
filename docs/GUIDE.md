@@ -363,7 +363,8 @@ crate tag guess /path/to/staging --report
 ```
 
 Each word `tag folder` or `tag guess` names that your taxonomy has no folder for
-is answered in one command, either way. `crate taxonomy alias` saves the word as
+is answered in one command, either way, save the one kind named below. `crate
+taxonomy alias` saves the word as
 an alias of one of your genre folders, so a catalogue that gives it again is
 tagged as that genre, and retags every audio file under your library root whose
 one genre is the word, in any case; `--folder` retags only the files under one
@@ -377,6 +378,18 @@ now, or of the one `--like` names. Both edit your taxonomy copy behind an
 explicit gate, keep the copy as it was beside it under a dated name, and refuse
 a word the taxonomy treats as too coarse to be a genre, such as `Electronic`, a
 word it already files, and a genre it does not declare, writing nothing.
+
+One kind of word takes one answer only: a genre folder's own name in another
+case, such as `breaks / d&b / dubstep`. Rekordbox folders are matched by their
+exact name, so a file carrying it is filed by a keyword or the fallback until
+it is retagged. `crate taxonomy alias "breaks / d&b / dubstep" "Breaks / D&B /
+Dubstep"` retags those files to the folder's exact name and changes nothing in
+your taxonomy, and the warning names that command for you. An alias to any
+other folder is refused, since it would retag the files already carrying the
+exact name too, and so is a folder of its own. Where the folder's own name does
+not file a track by itself, as with `nonelectronic` and the NonElectronic
+folder, which files each track by the track's own genre, neither verb takes the
+word, and the refusal says to retag each file with the genre it means.
 
 ```bash
 crate taxonomy alias "Latin Electronic" "Afro House"

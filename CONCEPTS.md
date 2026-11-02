@@ -518,6 +518,15 @@ routing alias is the word, so its files route there unchanged. Only an off
 taxonomy word is answered: a word tagging declines, or files in the fallback on
 purpose, is too coarse to be a genre, and a word it tags already has a place.
 
+The one exception is a genre folder's own name in another case (R-1184), such
+as `breaks / d&b / dubstep`, which routing does not recognise and so files by a
+keyword or the fallback. It takes one answer only, `crate taxonomy alias` to
+that same folder, which saves nothing and retags its files to the exact name,
+and only where that name files a track by itself; otherwise, as with
+`nonelectronic`, neither verb takes it and each file is retagged by hand. An
+alias to another folder, or a folder of its own, is refused, and the off
+taxonomy warning names the one answer.
+
 *Avoid:* answering it with a sub. A genre an alias names is a bucket, because a
 file wearing a sub's display lands where that word's alias or the fallback
 sends it, never in the sub.
