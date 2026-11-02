@@ -1,0 +1,134 @@
+name = "u197"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_config_fold"
+description = "_acquisition: return the section as written, so a file naming the retired key reaches doctor and every report under it"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_adapter_contract.py"]
+old = '''    current = current_adapter_name(built.adapter)
+    if current == built.adapter:
+        return built'''
+new = '''    current = current_adapter_name(built.adapter)
+    if True:
+        return built'''
+
+[[rows]]
+id = "M2_retired_mapping_empty"
+description = "RETIRED_ADAPTER_NAMES: forget the vendored downloader's old key, so an older configuration names an unknown adapter"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_doctor.py", "tests/test_adapter_contract.py"]
+old = '''RETIRED_ADAPTER_NAMES: Mapping[str, str] = MappingProxyType({"tidal_dl_ng": "vendored"})'''
+new = '''RETIRED_ADAPTER_NAMES: Mapping[str, str] = MappingProxyType({})'''
+
+[[rows]]
+id = "M3_registry_load_fold"
+description = "registry load: look the name up as given, so a caller holding the retired key is refused"
+file = "src/cratekit/acquire/__init__.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_doctor.py"]
+old = '''        target = ADAPTERS[current_adapter_name(name)]'''
+new = '''        target = ADAPTERS[name]'''
+
+[[rows]]
+id = "M4_registry_alternatives_fold"
+description = "alternatives_to: compare the name as given, so the retired key is offered its own adapter as the replacement"
+file = "src/cratekit/acquire/__init__.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_doctor.py"]
+old = '''    return tuple(other for other in ADAPTERS if other != current)'''
+new = '''    return tuple(other for other in ADAPTERS if other != name)'''
+
+[[rows]]
+id = "M5_adapter_name"
+description = "VendoredAdapter.name: keep the retired key, so the class disagrees with the registry and the configuration"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_doctor.py", "tests/test_acquire_workers.py"]
+old = '''    name = "vendored"'''
+new = '''    name = "tidal_dl_ng"'''
+
+[[rows]]
+id = "M6_config_default"
+description = "AcquisitionConfig: default to the retired key, so a fresh configuration names it"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_config.py", "tests/test_adapter_contract.py", "tests/test_doctor.py"]
+old = '''    adapter: str = "vendored"'''
+new = '''    adapter: str = "tidal_dl_ng"'''
+
+[[rows]]
+id = "M7_display_name"
+description = "__name_display__: pin the state directory back to the upstream name"
+file = "src/cratekit/_vendor/downloader/__init__.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''__name_display__ = "cratekit-downloader"'''
+new = '''__name_display__ = "tidal-dl-ng"'''
+
+[[rows]]
+id = "M8_adoption_off"
+description = "path_config_base: never adopt the old state directory, so a token written before the rename is stranded"
+file = "src/cratekit/_vendor/downloader/helper/path.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''    if not os.path.lexists(path_base) and os.path.isdir(path_before):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M9_adoption_ignores_new"
+description = "path_config_base: adopt whenever the old directory exists, even with the new one present"
+file = "src/cratekit/_vendor/downloader/helper/path.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''    if not os.path.lexists(path_base) and os.path.isdir(path_before):'''
+new = '''    if os.path.isdir(path_before):'''
+
+[[rows]]
+id = "M10_adoption_copies"
+description = "path_config_base: make an empty new directory instead of moving the old one, leaving the token behind"
+file = "src/cratekit/_vendor/downloader/helper/path.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''            os.rename(path_before, path_base)'''
+new = '''            os.makedirs(path_base)'''
+
+[[rows]]
+id = "M11_failed_move_fallback"
+description = "path_config_base: a failed move resolves the new, empty directory instead of the old one holding the token"
+file = "src/cratekit/_vendor/downloader/helper/path.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''            if not os.path.isdir(path_base):
+                return path_before'''
+new = '''            pass'''
+
+[[rows]]
+id = "M12_lost_race_fallback"
+description = "path_config_base: a move lost to another process resolves the old directory, which no longer exists"
+file = "src/cratekit/_vendor/downloader/helper/path.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''            if not os.path.isdir(path_base):
+                return path_before'''
+new = '''            return path_before'''
+
+[[rows]]
+id = "M13_adopt_only_a_directory"
+description = "path_config_base: adopt whatever sits under the old name, a regular file included"
+file = "src/cratekit/_vendor/downloader/helper/path.py"
+surface = "user"
+tests = ["tests/test_vendor_import.py"]
+old = '''    if not os.path.lexists(path_base) and os.path.isdir(path_before):'''
+new = '''    if not os.path.lexists(path_base) and os.path.exists(path_before):'''
+
+[[rows]]
+id = "M14_drift_fold"
+description = "drift: compare the frozen copy as written, so every job queued before the rename reports the adapter as moved"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    if "acquisition.adapter" in before:'''
+new = '''    if False:'''
