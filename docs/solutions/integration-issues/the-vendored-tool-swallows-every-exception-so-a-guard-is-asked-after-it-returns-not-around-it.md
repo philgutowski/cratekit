@@ -13,11 +13,10 @@ symptoms:
   - "A refusal raised inside the tool's call comes out as False, which the adapter reads as a rejected session or as no file came back"
 applies_when:
   - "Any guard, refusal or park is raised from inside a call the vendored downloader makes on its session"
-  - "An except clause is being written around tidal.login_token or Download.item"
+  - "An except clause is being written around the session's login_token or Download.item"
   - "A fake of the tool is being written for a test that drives authenticate or fetch"
 tags:
   - "vendored"
-  - "tidal-dl-ng"
   - "provider-gate"
   - "r705"
   - "r703"
@@ -26,8 +25,8 @@ tags:
 ## The trap
 
 The vendored downloader catches every exception inside the two calls the
-adapter makes on it and answers with a value. `Tidal.login_token`, read at
-`_vendor/tidal_dl_ng/config.py:143-160`, wraps `load_oauth_session` in
+adapter makes on it and answers with a value. Its `login_token`, read at the
+vendored `config.py:143-160`, wraps `load_oauth_session` in
 `except Exception`, deletes the session file, prints a line and returns
 False. `Download._get_stream_info`, at `download.py:897-905`, catches
 `TooManyRequests` and then `Exception`, logs, and returns nothing, which

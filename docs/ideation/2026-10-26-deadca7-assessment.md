@@ -35,7 +35,7 @@ One Rust executable, `bin/engine`, speaks a JSON Lines protocol (one JSON object
 
 ## 2. Goal one: DEADCA7 as the primary curation tool
 
-It covers the hands on work rekordbox's window does today: browsing, playlisting, cueing, exporting to a stick, and it can push the result back into rekordbox. It does not cover what Cratekit does: Tidal acquisition, hearts and account playlist mirroring, taxonomy routing trees, energy calibration, vocal scoring, filename heads, label folders, favorites, organize, set building, mastering, `master.db` backup rotation. The switch is feasible. It changes Cratekit's foundation rather than Cratekit's features.
+It covers the hands on work rekordbox's window does today: browsing, playlisting, cueing, exporting to a stick, and it can push the result back into rekordbox. It does not cover what Cratekit does: acquisition, hearts and account playlist mirroring, taxonomy routing trees, energy calibration, vocal scoring, filename heads, label folders, favorites, organize, set building, mastering, `master.db` backup rotation. The switch is feasible. It changes Cratekit's foundation rather than Cratekit's features.
 
 Three consequences:
 

@@ -71,7 +71,7 @@ And the favourites loop is open. `crate sync favorites` reads All Favorites as i
 - AE1. **Covers R4, R7.** **Given** a Deep House track tagged with vox and in All Favorites, **when** the genre Favorites refresh, **then** it is in Deep House / Med, Deep House / with vox and Deep House / Favorites.
 - AE2. **Covers R5.** **Given** a track in Afro House / Favorites, **when** the author removes it from All Favorites and the next `sync favorites` runs, **then** it is gone from Afro House / Favorites and still in its Afro House band.
 - AE3. **Covers R4, R8.** **Given** a favourite with no genre tag sitting in Electronica / Other / Low, **when** the first refresh runs, **then** it is in Electronica / Other / Favorites and in no other Favorites.
-- AE4. **Covers R9, R11.** **Given** a track hearted on Tidal in 2026-Q4 that the sync downloads and lands, **when** the landing completes, **then** it is in its INBOX batch, All Favorites and Favorites / 2026-Q4, and in no genre Favorites; **when** adoption later files it into Soul / Low, **then** it is also in Soul / Favorites.
+- AE4. **Covers R9, R11.** **Given** a track hearted on the account in 2026-Q4 that the sync acquires and lands, **when** the landing completes, **then** it is in its INBOX batch, All Favorites and Favorites / 2026-Q4, and in no genre Favorites; **when** adoption later files it into Soul / Low, **then** it is also in Soul / Favorites.
 - AE5. **Covers R2, R3.** **Given** a track tagged "Soul / R&B" in R&B / Med, **when** the Soul folder lands and the former place move runs, **then** it is in Soul / Med and no longer in R&B / Med.
 
 ### Scope Boundaries
