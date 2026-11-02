@@ -79,17 +79,25 @@ def origin_repo() -> str:
     return match.group(1)
 
 
-def pull_request_runs(repo: str, sha: str) -> list[dict]:
-    """The pull request runs on one head; `ReadFailed` when they cannot be read."""
-    result = subprocess.run(
-        [
-            "gh",
-            "api",
-            f"repos/{repo}/actions/runs?event=pull_request&head_sha={sha}",
-        ],
+def _gh_runs(repo: str, sha: str) -> subprocess.CompletedProcess:
+    return subprocess.run(
+        ["gh", "api", f"repos/{repo}/actions/runs?event=pull_request&head_sha={sha}"],
         capture_output=True,
         text=True,
     )
+
+
+def pull_request_runs(repo: str, sha: str) -> list[dict]:
+    """The pull request runs on one head; `ReadFailed` when they cannot be read.
+
+    Every way the read can fail is a `ReadFailed` with its reason, `gh` missing
+    from the path included, so no unreadable state leaves `main` as a traceback
+    and an exit 1 a session would read as red.
+    """
+    try:
+        result = _gh_runs(repo, sha)
+    except OSError as exc:
+        raise ReadFailed(f"gh could not run: {exc}") from None
     if result.returncode != 0:
         reason = (result.stderr or result.stdout or "").strip().splitlines()
         raise ReadFailed(reason[-1] if reason else f"gh exited {result.returncode}")

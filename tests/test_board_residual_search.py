@@ -80,3 +80,14 @@ def test_the_command_prints_hits_and_refuses_an_empty_search(board, ledger, monk
     assert "R-7." not in out
     args = SimpleNamespace(land=False, search=[])
     assert board.cmd_residuals(args) == 2
+
+
+def test_a_missing_ledger_is_refused_never_read_as_no_match(board, tmp_path, monkeypatch, capsys):
+    missing = tmp_path / "residual-findings.md"
+    with pytest.raises(FileNotFoundError):
+        board.search_residuals(["token"], missing)
+    monkeypatch.setattr(board, "LEDGER", missing)
+    assert board.cmd_residuals(SimpleNamespace(land=False, search=["token"])) == 2
+    captured = capsys.readouterr()
+    assert "cannot search" in captured.err
+    assert "No ledger heading" not in captured.out

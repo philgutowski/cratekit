@@ -1131,10 +1131,15 @@ def search_residuals(
     search narrows as it gains words. A search with no word is refused by the
     caller rather than read as a match for everything.
     """
+    source = LEDGER if ledger is None else ledger
+    if not source.is_file():
+        # A missing ledger is not an empty one: "nothing matches" over a file
+        # never read is how a duplicate card gets filed.
+        raise FileNotFoundError(f"no residual ledger at {source}")
     wanted = [word.casefold() for word in words]
     hits = [
         (number, title)
-        for number, title in residual_titles(ledger).items()
+        for number, title in residual_titles(source).items()
         if all(word in title.casefold() for word in wanted)
     ]
     hits.sort(reverse=True)
@@ -1543,7 +1548,11 @@ def cmd_residuals(args) -> int:
         if args.land or not words:
             print("board: --search takes one word or more, and not with --land", file=sys.stderr)
             return 2
-        hits, more = search_residuals(words)
+        try:
+            hits, more = search_residuals(words)
+        except FileNotFoundError as exc:
+            print(f"board: cannot search, {exc}", file=sys.stderr)
+            return 2
         for number, title in hits:
             print(f"R-{number}. {title}")
         if more:

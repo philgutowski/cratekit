@@ -136,6 +136,21 @@ def test_a_failed_read_is_a_reason_never_an_empty_list(wait_ci, monkeypatch, ans
         wait_ci.pull_request_runs("owner/name", "abc123")
 
 
+def test_gh_missing_is_a_failed_read_not_a_traceback(wait_ci, monkeypatch):
+    def missing(*a, **k):
+        raise FileNotFoundError(2, "No such file or directory", "gh")
+
+    monkeypatch.setattr(wait_ci.subprocess, "run", missing)
+    with pytest.raises(wait_ci.ReadFailed, match="gh could not run"):
+        wait_ci.pull_request_runs("owner/name", "abc123")
+
+
+def test_a_list_body_is_a_failed_read(wait_ci, monkeypatch):
+    monkeypatch.setattr(wait_ci.subprocess, "run", lambda *a, **k: _Answer(0, stdout="[]"))
+    with pytest.raises(wait_ci.ReadFailed, match="no workflow_runs"):
+        wait_ci.pull_request_runs("owner/name", "abc123")
+
+
 def test_a_good_read_returns_the_runs(wait_ci, monkeypatch):
     answer = _Answer(0, stdout='{"total_count": 1, "workflow_runs": [{"name": "ci"}]}')
     monkeypatch.setattr(wait_ci.subprocess, "run", lambda *a, **k: answer)

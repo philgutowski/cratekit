@@ -346,9 +346,11 @@ foreground sleep and never a poll you repeat by hand, so the session wakes
 once (U196):
 
     SHA=$(git rev-parse HEAD)
-    .venv/bin/python scripts/wait_ci.py $SHA      # exit 0 green, 1 red, 2 timed out
+    .venv/bin/python scripts/wait_ci.py $SHA      # exit 0 green, 1 red, 2 timed out, 3 unread
 
-It waits for the pull request run on that head and prints one line. Every
+It waits for the pull request run on that head and prints one line. Exit 3
+means the runs could not be read three times in a row, and the line says
+why: fix the read (the token, the repository), never the branch. Every
 check run on the head must be `completed`, and green means each conclusion is
 `success`, `neutral` or `skipped`; to read them by hand:
 
