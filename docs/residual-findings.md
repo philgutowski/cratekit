@@ -11352,7 +11352,7 @@ Two things the unit found that this entry does not say. `token_persist` cannot
 write the flag through `set_option`: that method calls `.lower()` on the incoming
 value whenever the existing one is a bool, and `is_pkce` is the token model's
 only bool field, so the obvious edit raises `AttributeError`. And the source must
-be the SESSION's flag, not the vendored session object's, because `login()` calls
+be the SESSION's flag, not the vendored login wrapper's, because `login()` calls
 `login_token()` first and that assigns `self.is_pkce` from its own defaulted
 argument before any PKCE handshake runs, so reading it there would record every
 fresh PKCE session as a device flow one.
@@ -12306,7 +12306,7 @@ vendored classes are constructed, so the refusal's wiring is proven only by the
 pure function plus an AST assertion that `do_pkce=True` appears in the source.
 
 **Why it was left.** Reaching that line offline means letting `authenticate`
-construct the vendored session class, and its `__init__` reads `path_file_token()`,
+construct the vendored login wrapper, and its `__init__` reads `path_file_token()`,
 the real user's own `token.json` for the tool, before the adapter overrides
 `file_path`. `conftest.py` redirects Cratekit's own state roots and not that one,
 so a test driving this path would read, and on a bad day rewrite, a real
