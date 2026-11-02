@@ -41526,3 +41526,24 @@ the batch is aged from the first.
 **Measured cost.** Driven by the review. The pass never names the word, since it is not off taxonomy, so nobody is sent there; the cost is a sentence that says "a place" for a word with no folder.
 
 **Closes when:** the sentence says the word is one tagging writes as itself with no folder of its own, declared so by the copy, or the folder verb accepts such a word. Ledger only: wording, and the plan's decision that only an off taxonomy word is answered stands.
+
+---
+
+## R-1186. An abbreviated calls option is kept in the continue command beside the raised one
+
+**Found:** at the build of #464, U193, 2026-11-02.
+
+**The mechanism.** argparse accepts any unambiguous prefix of a long option, so
+`crate --cal 600 ...` is read as `--calls 600`. The continue command the call
+ceiling prints, `cli.continue_command`, takes out only `--calls N` and
+`--calls=N` before it adds the raised `--calls`, so a command typed with the
+prefix is given back carrying both, `--cal 600 --calls 1200`. argparse keeps
+the last, so the printed command still runs with the raised ceiling.
+
+**Measured cost.** Not driven past reading argparse's rule: one redundant
+option in a printed command, which still continues the run. Nobody is told
+anything false and nothing is lost.
+
+**Closes when:** the continue command is built from the parsed options rather
+than from the typed words, or the root parser sets `allow_abbrev=False`. Ledger
+only.
