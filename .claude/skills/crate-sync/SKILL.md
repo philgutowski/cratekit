@@ -183,7 +183,11 @@ One message, in this order, and nothing before it except a stop:
    word the `tag-guess-off-taxonomy` warning names, offered two ways as Phillip
    asked on 2026-11-01 (save it as an alias of one of his genres and retag its
    tracks, or make it a genre folder of its own), anything else the pass could
-   not decide.
+   not decide. His answer to a word is one command, rehearsed on a copy and
+   then approved at its explicit gate as the session, like any gate here:
+   `crate taxonomy alias WORD GENRE` for an alias, then `crate tag rows` and
+   `crate route resort`; or `crate taxonomy folder WORD` for a folder of its
+   own, then `crate route resort`.
 6. **State.** The installed copy against the latest release (`crate doctor`'s
    `install.release`), whether the checkout that ran it is clean and current,
    and the attended cards now ready on the board.
