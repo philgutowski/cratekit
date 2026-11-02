@@ -51,6 +51,7 @@ FOLDER_VERB = "crate taxonomy folder"
 TOO_COARSE = "too-coarse"
 ALREADY_FILED = "already-filed"
 NO_SUCH_GENRE = "no-such-genre"
+BARE_FOLDER = "bare-folder"
 NO_WORD = "no-word"
 NOT_EDITABLE = "not-editable"
 WOULD_NOT_LOAD = "would-not-load"
@@ -269,6 +270,20 @@ def alias(text: str, word: str, name: str) -> Edit:
     declared = taxonomy.load_taxonomy(text)
     spelled = _word(word)
     target = genre(declared, name)
+    if declared.named_folder(target.display) != (target.id, None):
+        # THE FALLBACK, OR A FOLDER THAT FILES BY THE TRACK'S OWN GENRE. Its bare
+        # name on a file is a catch-all, or lands in its default sub, so the
+        # retag would file every track by a default and not by the answer. The
+        # loader's own test, the one a vocabulary row's tag passes.
+        raise Refused(
+            BARE_FOLDER,
+            f"{target.display} is a genre folder whose own name does not file a track "
+            f"by itself: it is the taxonomy's fallback, or it files each track into a "
+            f"sub by the track's own genre, so retagging the files {target.display!r} "
+            f"would file them by a default rather than by this answer; name the genre "
+            f"folder the word means, or make it a genre folder of its own with "
+            f"{FOLDER_VERB}",
+        )
     if declared.tagging_alias(spelled.lower()) == (target.id, None):
         return Edit(word=spelled, bucket_id=target.id, display=target.display, before=text, after=text)
     off_taxonomy(declared, spelled)
@@ -392,6 +407,7 @@ def folder(text: str, word: str, like_name: str | None = None) -> Edit:
 __all__ = [
     "ALIAS_VERB",
     "ALREADY_FILED",
+    "BARE_FOLDER",
     "FOLDER_VERB",
     "NOT_EDITABLE",
     "NO_SUCH_GENRE",

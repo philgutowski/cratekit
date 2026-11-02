@@ -107,6 +107,18 @@ def test_a_sub_is_not_a_genre_an_alias_can_name():
         word_edit.genre(declared, "Caribbean")
 
 
+@pytest.mark.parametrize("name", ["Electronica / Other", "NonElectronic"])
+def test_an_alias_to_a_folder_whose_name_files_nothing_by_itself_is_refused(name):
+    """The fallback's name is a catch-all, and the non electronic folder files by
+    the track's own genre, so either name on a file files it by a default."""
+    with pytest.raises(word_edit.Refused) as refused:
+        word_edit.alias(_shipped(), WORD, name)
+    assert refused.value.why == word_edit.BARE_FOLDER
+    assert word_edit.FOLDER_VERB in str(refused.value)
+    # Each may still lend a new folder its priors.
+    assert word_edit.folder(_shipped(), WORD, name).writes
+
+
 @pytest.mark.parametrize("word", ["Electronic", "Electro", "Experimental", "Techno", "Other"])
 def test_a_too_coarse_word_is_refused_with_why(word):
     with pytest.raises(word_edit.Refused) as refused:

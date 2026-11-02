@@ -1127,6 +1127,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # kinds of refusal, read by the verb and carried in a refusal's detail.
     'core/taxonomy_word.py': [
         'already-filed',
+        'bare-folder',
         'no-such-genre',
         'no-word',
         'not-editable',
