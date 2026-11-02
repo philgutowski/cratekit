@@ -7,9 +7,9 @@ description: The pipeline for a Claude Code cloud session on the Cratekit board,
 
 The cloud is where Cratekit is built, decided by Phillip on 2026-10-27. A
 cloud session takes one card from the queue and runs METHOD's whole pipeline
-on it: brainstorm if it is an idea, plan, build with Opus 5.5 at high effort,
-review with Fable at high effort, drive the findings to the merge bar, measure
-the mutation table, write the record, open a pull request and merge it to
+on it: brainstorm if it is an idea, plan, build with Opus 5.5 at the effort
+its size calls for, review with Fable at high effort, drive the findings to the
+merge bar, measure the mutation table sized to the card, write the record, open a pull request and merge it to
 `main` with the closing trailer once CI on its head is green. A card that cannot be built without the machine is set
 aside with the steps to build it locally, and only those are built locally.
 
@@ -43,9 +43,12 @@ record it as a residual file, and keep going.
 
 ## Models
 
-Brainstorm, plan and build are Opus 5.5's at high effort. Review is Fable's at
-high effort. The coordinator starts its build threads on Opus 5.5 at high
-effort, so a build thread plans and builds itself. A session on any other model hands the plan and the build to the
+Brainstorm, plan and build are Opus 5.5's, at high effort, or medium for a
+small card (METHOD's card sizes). Review is Fable's at high effort. The
+coordinator starts its build threads on Opus 5.5 at the effort the card's size
+calls for, so a build thread plans and builds itself; a thread that finds its
+card a different size from the one it was started for says so in the plan and
+carries on. A session on any other model hands the plan and the build to the
 `opus-builder` agent and does the rest itself. The review is always the
 `fable-reviewer` agent, whatever the session's own model.
 
@@ -229,7 +232,9 @@ METHOD's step 2, as a message and never in plan mode: plan mode waits for an
 approval nobody is here to give. Grep `docs/solutions/` by module and tag for
 the area you are about to touch and read the matches. The plan names the
 seam, the files, the test scenarios from the brief, the residuals the unit
-closes, what is out of scope, and which of the three the card was. If the
+closes, what is out of scope, which of the three the card was, and its size
+(small, medium or large, METHOD's card sizes), which sets its effort, its
+review rounds and its mutation table. If the
 brief is insufficient on a point the plan needs, fix the issue body, then plan
 against the fixed brief. Post it as `Plan`, then build it.
 
@@ -248,16 +253,27 @@ its work where the next one resumes it. Post `Progress` when it is built.
 
 ## 6. Review with Fable, to the merge bar
 
-METHOD's step 4. Run the `fable-reviewer` agent on the branch and take its
-report as findings to drive, not to argue with. Apply what holds, commit the
-fixes as `fix(uN): ...`, push, and run the agent again on the fixed branch.
-**At most two fix rounds.** What is still open when they are spent becomes a
-residual file and the unit goes on. Post `Progress` after each round, naming
+METHOD's step 4. Run the `fable-reviewer` agent on the branch, telling it the
+card's size, and take its report as findings to drive, not to argue with.
+Apply what holds, commit the fixes as `fix(uN): ...`, and push. Note the head
+round one reviewed.
+
+**Round two only when it can find something**, decided by U196. If round one
+found nothing BLOCKING and no file under `src`, `tests` or `scripts` changed
+after it, there is no round two. A small card gets round two only when round
+one found something BLOCKING. Otherwise run the agent again, telling it round
+one's head, and it reviews the fix commits (`git diff <round one head>..HEAD`)
+rather than the whole branch. **At most two fix rounds.** What is still open
+when they are spent becomes a residual file and the unit goes on. Post `Progress` after each round, naming
 what it drove. Then the hunts a green suite cannot see, METHOD's list.
 
 ## 7. The mutation table
 
-METHOD's mutation table, up to 25 rows targeted at the code the unit added, in
+METHOD's mutation table, sized to blast radius (decided by Phillip on
+2026-11-02): up to 25 rows for a unit that writes or deletes, about 8 for a
+read only report or a static registry, and none for a unit that changes only
+docs or skill text, whose record says so in one line and skips the rest of
+this step. Rows target the code the unit added, in
 `docs/mutation/uN-rows.toml` in the form of `docs/mutation/u99-b-rows.toml`.
 Commit the rows, then measure them as a tracked background job, starting
 nothing else against the tree until it reports:
@@ -317,18 +333,25 @@ MCP `create_pull_request` tool works as well):
     gh api -X POST repos/<owner>/<repo>/pulls -f title='UN: <what landed>' \
       -f head=cloud/N-<slug> -f base=main -F body=@pr.md --jq .number
 
-The body is the landing's record: a line naming the card by its link (the
-issue URL, never a keyword and a number), the `cloud_battery.py compare`
-counts, the review rounds and what each drove, the mutation table's result,
-the residual files filed, and what is OWED. **No closing keyword anywhere in
+The body is short, because the record already holds the detail (U196): a
+line naming the card by its link (the issue URL, never a keyword and a
+number), a link to `docs/restart/uN.md` on the branch, and five lines at most:
+the `cloud_battery.py compare` counts, the review rounds, the mutation table's
+result, the residual files, and what is OWED. Never restate the record. **No closing keyword anywhere in
 it**: GitHub closes from a pull request body on merge, which would bypass
 `board.py closing`, so the merge commit's trailer is the one close.
 
-**Wait for CI on the head commit**, as a tracked background job, never a
-foreground sleep. Every check run on the head must be `completed`, and green
-means each conclusion is `success`, `neutral` or `skipped`:
+**Wait for CI on the head commit** with one tracked background job, never a
+foreground sleep and never a poll you repeat by hand, so the session wakes
+once (U196):
 
     SHA=$(git rev-parse HEAD)
+    .venv/bin/python scripts/wait_ci.py $SHA      # exit 0 green, 1 red, 2 timed out
+
+It waits for the pull request run on that head and prints one line. Every
+check run on the head must be `completed`, and green means each conclusion is
+`success`, `neutral` or `skipped`; to read them by hand:
+
     gh api repos/<owner>/<repo>/commits/$SHA/check-runs \
       --jq '.check_runs[] | "\(.name) \(.status) \(.conclusion)"'
     gh api "repos/<owner>/<repo>/actions/runs?event=pull_request&head_sha=$SHA" \
@@ -385,11 +408,25 @@ library, the account, rekordbox, or the macOS battery), file one attended card
 for Phillip's Mac, titled `A<N>: <the check>` with N one past the highest `A`
 title on the board, labelled `attended` and nothing else, with a body opening
 `**Depends on:** #<the release card or this card>` and saying what to run and
-when it is done. METHOD's local attended work section is the form.
+when it is done. The attended work section of `docs/METHOD-local.md` is the
+form.
 
-Then `board.py audit --labels-only`, and post `Landed` on the card: the pull
-request, the merge commit, the commits it carried, the battery counts from `compare`, the review
-rounds and what each drove, the mutation table's result, tests added by file
-and count, residuals numbered and issues filed, and what is OWED. The push of
+Then `board.py audit --labels-only`, and post `Landed` on the card, short,
+linking the record rather than restating it (U196): the pull request, the
+merge commit, a link to `docs/restart/uN.md` on `main`, residuals numbered and
+issues filed, attended cards filed, and one line each for the battery, the
+review rounds and the mutation table. The push of
 the trailer closes the card and the board workflow relabels what it released.
 Then tell the coordinator, so the lane this card held fills at once, and stop.
+
+## Small card runs
+
+A thread the coordinator hands two or three small cards in the same module
+builds them one after another, decided by Phillip on 2026-11-02 (METHOD's
+card sizes). Each card is its own unit from step 1: its own `Started`, plan,
+branch from the current `main`, review, record, pull request and `Landed`.
+What carries over is the thread's reading and its baseline: measure the
+baseline again only if `main` moved in `src`, `tests`, `scripts` or
+`pyproject.toml` since it was measured. If a card turns out not to be small,
+build it as its size calls for and hand the rest of the run back to the
+coordinator.

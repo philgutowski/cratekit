@@ -2,16 +2,18 @@
 
 This file is the operating instruction. It is deliberately fixed in size and it
 is the only document a session reads to learn how to work here. `CLAUDE.md` is
-the session contract and points at this file. `RESTART-cratekit.md` is verified
-state and nothing else.
+the session contract and points at this file. `docs/METHOD-local.md` holds the
+part only a session on Phillip's Mac needs (the local board commands, attended
+cards, releases), moved there by U196 so a cloud session does not carry it.
+`RESTART-cratekit.md` is verified state and nothing else.
 
 **The compound engineering plugin is out of the loop, decided 2026-09-07.** No
 `ce-plan`, no `ce-work`, no `ce-code-review`, no `ce-compound`. Each of those
 spent a multi agent pass on work a single session can do against the issue
 brief, and the largest of them, the independent verifier, was measured at 258k
 tokens for one round trip. The rules they enforced that were actually paid for
-are kept below as rules. The ceremony is not. Native Relay, which runs this
-file's pipeline and none of those skills, is in the loop. See Relay below.
+are kept below as rules. The ceremony is not. Native Relay ran this file's
+pipeline until 2026-10-27 and is retired; the cloud lane below replaced it.
 
 `docs/history/` is HISTORY. It holds the wave state files, the independent
 reviews and the long narrative handoff. Read one when you need the reasoning
@@ -25,9 +27,10 @@ ending the next session cannot diagnose. When a decision is genuinely the
 person's, record it as a residual with the options and pick the conservative
 one.
 
-1. **Orient.** `board.py next`, `board.py show N`, `board.py start N`. The issue
-   is the brief. Read this file, `RESTART-cratekit.md`, and `CONCEPTS.md` for
-   any term that is unclear. Grep `docs/solutions/` by module and tag for the
+1. **Orient.** `board.py next`, `board.py show N`, `board.py start N` locally,
+   `board.py cloud` in the cloud. The issue is the brief. Read this file, and
+   locally `RESTART-cratekit.md`; grep `CONCEPTS.md` for any term that is
+   unclear rather than reading it whole. Grep `docs/solutions/` by module and tag for the
    area you are about to touch, and read the entries that match.
 2. **Plan, in plan mode, as a message.** The plan names the seam, the files,
    the test scenarios from the brief, the residuals the unit closes, and what is
@@ -60,6 +63,30 @@ one.
    delete the branch in both places, `board.py audit`. File the issue for
    each residual `--land` names as meeting the board bar.
 
+## Card sizes, decided by Phillip on 2026-11-02
+
+The plan names the card's size from its brief, so the process is sized to what
+the card can damage (U196). **A card that adds or changes a path that writes or
+deletes is large, whatever its size in lines.**
+
+- **Small**: under about 200 lines of source, no new or changed path that
+  writes or deletes, or docs and skill text only. It builds at medium effort
+  and gets one review round by Fable at high effort; a second round is spent
+  only if that round finds something BLOCKING.
+- **Medium**: everything else that writes or deletes nothing. Built at high
+  effort, up to two review rounds.
+- **Large**: anything that writes or deletes. Built at high effort, up to two
+  review rounds, the full mutation table.
+
+**A thread may build up to three small cards in the same module in a row**,
+one after another, each with its own branch from the current `main`, its own
+pull request, review, record and landing. The second and third reuse the
+thread's Linux baseline unless `main` moved in `src`, `tests`, `scripts` or
+`pyproject.toml` since it was measured, in which case it is measured again.
+
+The merge bar, the two round cap and every standing constraint are the same
+for every size.
+
 ## The merge bar, decided 2026-08-09
 
 A branch merges when it has no open BLOCKING finding.
@@ -87,6 +114,14 @@ that is a property of large test suites rather than of any branch.
 
 **And a hard cap: each unit has at most two fix rounds.** The floor is meant to
 end the loop on merit. The cap is what guarantees an end date if it does not.
+
+**Round two reviews the fix, not the branch again**, decided by U196. When
+round one found nothing BLOCKING and no file under `src`, `tests` or `scripts`
+changed after it, there is no round two. Otherwise round two reads only the
+commits made after round one, `git diff <round one head>..HEAD`, with the
+branch's whole diff at hand for context, and hunts the class one file over as
+the fifth pattern below says. A fix round's own defect is what round two is
+for: U179's round two caught one its fix round introduced.
 
 ## The board bar, decided 2026-09-18
 
@@ -123,10 +158,12 @@ zero row therefore reads as "the author could not kill it", and the record
 says exactly that in one line rather than pretending otherwise. Phillip can ask
 for a full pass on a unit that writes or deletes, and it is his to ask for.
 
-Verification depth is still proportional to blast radius. A unit that writes or
-deletes gets its full 25 rows and a composite on every user facing zero. A read
-only report or a static registry gets a table scoped to its new guards and a
-line per zero.
+Verification depth is proportional to blast radius, decided by Phillip on
+2026-11-02 (U196). A unit that writes or deletes gets its full 25 rows and a
+composite on every user facing zero. A read only report or a static registry
+gets about 8 rows scoped to its new guards and a line per zero. A unit that
+changes only docs or skill text has no guard to revert and gets no table; its
+record says so in one line.
 
 ## The mutation table
 
@@ -165,8 +202,10 @@ Every tool result stays in context and is re-sent on every later call, so the
 bill is tool calls times context size. Thinking is cheap here. Reading is not.
 
 - **Never read a file over 400 lines whole.** Grep for the symbol, then read the
-  region around it. `docs/residual-findings.md` is twelve thousand lines: grep
-  for `^## R-NNN` and read that entry.
+  region around it. `docs/residual-findings.md` is over forty thousand lines
+  with over a thousand headings: find a finding with `board.py residuals
+  --search WORDS`, grep for `^## R-NNN` and read that entry. Never print every
+  heading.
 - **Delegate a sweep, keep the conclusion.** A search across many files goes to
   a read only subagent that returns the answer, not the file dumps.
 - **Every report opens with a verdict header under 60 lines**: the verdict, a
@@ -392,28 +431,6 @@ in an interview is met per phase, not per unit. Units land with commit messages
 and the record. When a phase merges, Phillip runs the `code-explainer` skill
 over the merged range once. A session does not run it.
 
-## The order
-
-`board.py next` orders the queue. The list serialized here on 2026-09-07 is
-spent, every line of it landed or was closed back to the ledger by 2026-09-18,
-and its text is in git history. On 2026-09-18 a parity audit against DJ_tools
-found the product could not finish an acquisition workflow, and the board
-gained Phase G, units U67 onward, plus the residuals that meet the board bar.
-`docs/ideation/2026-09-18-parity-to-feature-complete.md` is the design those
-units were cut from, read for reasoning, never for instruction. The issue is
-the brief.
-
-**#29, U29, stays attended and is never a session's to take.** See below.
-
-## Relay, retired 2026-10-27
-
-Native Relay, the feeder, the watcher, the fable builder and `/board-up` ran
-this file's pipeline on Phillip's machine from 2026-09-07 to 2026-10-27. They
-are abandoned, decided by Phillip on 2026-10-27, and the cloud lane below
-replaces them. Their manifests and run state live outside this repository and
-are not read. What they taught stays in `docs/solutions/` and in the driver
-rules above, and `docs/history/` has how they ran.
-
 ## The cloud lane, decided 2026-10-27
 
 **The cloud is where Cratekit is built.** The coordinator, the Claude that
@@ -469,9 +486,10 @@ paste his answers into the project chat, and the coordinator has the relay
 thread pass them on at once rather than on the hour. Any session, attended
 or not, asks him this way rather than stopping.
 
-**Opus 5.5 at high effort brainstorms, plans and builds; Fable at high
-effort reviews.** The coordinator starts each build thread on Opus 5.5 at
-high effort, and the review is the `fable-reviewer` agent
+**Opus 5.5 brainstorms, plans and builds, at high effort, or medium for a
+small card; Fable at high effort reviews.** The coordinator starts each build
+thread on Opus 5.5 at the effort its card's size calls for (Card sizes,
+above), and the review is the `fable-reviewer` agent
 whatever the session runs. A session on another model hands the plan and the
 build to the `opus-builder` agent. The plan is posted on the card rather than
 proposed in plan mode, because plan mode waits for an approval nobody is
@@ -504,50 +522,14 @@ harness's under `CLAUDE_CODE_REMOTE`.
 the card lands, or the cloud session meets a moved `main` at its merge and
 has to merge it in and run the battery again.
 
-## Releases, decided by U159 on 2026-10-28
+## Local and attended work, releases
 
-**People install tagged releases, never raw `main`.** A release is cut when
-Phillip asks, in any session, by the `release` skill in the repository's
-Claude Code skills directory: `scripts/release.py plan` lists the pull
-requests (and, before U158, the merges) since the last `vX.Y.Z` tag and
-proposes a semantic version bump with a reason for each; the session judges
-it; `scripts/release.py cut --bump <kind>` refuses off a clean `main` equal
-to `origin/main` and without a clean battery on that commit, then writes the
-version into `pyproject.toml` and `src/cratekit/__init__.py` together, commits
-`release: vX.Y.Z`, tags it, pushes `main` and the tag, and publishes the
-GitHub release with its notes. The release commit is the one commit that
-reaches `main` without a pull request, because it carries nothing but the
-version. `crate doctor`'s `install.release` check tells an installed copy
-when a newer release exists and prints the pipx command that upgrades it,
-keeping its extras. No package index, no automatic upgrade, no cadence.
-**The cut is the Mac's**: a cloud session's proxy refuses tag pushes and the
-releases API, so a cloud session plans and judges the bump and hands the cut
-to an attended card, which runs it with `--mac-battery`.
-
-## Local attended work, decided 2026-10-28
-
-**Work only Phillip's Mac can do is an attended card**, titled `A<N>:` and
-labelled `attended`, so the cloud never offers it. `board.py local` lists
-them, ready first, and a local Claude Code session shows that list when it
-starts. A cloud worker files one card per live check its landing owes, rather
-than leaving it in a comment.
-
-**How a local session takes one without colliding with the cloud**, which
-writes `main` at any hour:
-
-1. Start from a fresh `main`: `git checkout main && git pull --ff-only`.
-2. **A run and its record** (most attended cards): do the run, write the
-   record (`docs/cutover.md` or the card's own file), commit on `main`, then
-   `git pull` (a merge, never a rebase or a force) and push. Records are
-   append only and per sitting, so a merge of them is clean.
-3. **A run that shows code must change:** do not fix it locally. File a card
-   with the `file-card` skill, carrying what the run showed, and let the cloud
-   build it. Only a card that cannot be built without the machine is built
-   locally, on a branch from `board.py start N` and merged after the battery,
-   between cloud landings: check `board.py cloud` shows no held card touching
-   the same files, merge `origin/main` in again just before the merge, and
-   run the battery once more if it moved.
-4. Close the card with a comment naming the record's commit.
+`docs/METHOD-local.md` holds the local board commands (`next`, `start`, `sync`,
+`audit`), the queue's order, the retired Relay, releases and attended cards.
+Two rules from it every session keeps: **a release is cut only when Phillip
+asks, and the cut runs on his Mac**, since a cloud session's proxy refuses
+tag pushes; and **work only his Mac can do is an attended card**, titled
+`A<N>:` and labelled `attended`, one per live check a landing owes.
 
 ## Do not touch
 

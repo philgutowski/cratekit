@@ -3,141 +3,68 @@
 Acquisition and curation for rekordbox DJs. A slim core, toggleable feature
 modules, and guarded library writes.
 
-This file is the session contract. **`docs/METHOD.md` is the operating
-instruction and is what to read next**: the pipeline, the merge bar, the
-mutation method, the driver rules, the merge constraints and the do-not-touch
-list. `RESTART-cratekit.md` is the verified current state, and each unit's own
-record of it is a file in `docs/restart/`. `docs/history/` is
-the narrative record of how the rules were arrived at, read for reasoning, never
-for instruction.
+This file is the session contract, kept short because every session and every
+agent loads it on every call (U196). **`docs/METHOD.md` is the operating
+instruction and is what to read next**: the pipeline, the card sizes, the merge
+bar, the mutation method, the driver rules, the merge constraints and the
+do-not-touch list. `docs/METHOD-local.md` is the part only a session on
+Phillip's Mac needs: the local board commands, attended cards and releases.
+`RESTART-cratekit.md` is the verified current state, read by a local session;
+each unit's own record is a file in `docs/restart/`. `docs/history/` is the
+narrative of how the rules were arrived at, read for reasoning, never for
+instruction.
 
-Two more are worth knowing about rather than reading front to back.
-`docs/solutions/` is the durable record of problems already solved here, filed by
-category with YAML frontmatter (`module`, `problem_type`, `tags`) so it can be
-searched rather than read; most entries are traps that cost real time once and are
-written so they do not cost it twice. `CONCEPTS.md` is the shared vocabulary, the
-words that carry a specific meaning in this project rather than their ordinary
-one. Both are relevant when starting work in an area either one covers, and
-`CONCEPTS.md` is the faster of the two when a term is the thing that is unclear.
+`docs/solutions/` is the record of problems already solved, filed with YAML
+frontmatter (`module`, `problem_type`, `tags`) so it is searched rather than
+read: grep it by module before touching an area. `CONCEPTS.md` is the shared
+vocabulary; grep it for a term that is unclear, never read it whole.
 
-## How a session runs, decided 2026-09-07
-
-**The compound engineering plugin is not used here.** No `ce-plan`, `ce-work`,
-`ce-code-review`, `ce-compound`. A session does the whole of one unit itself:
-the plan against the issue brief, build, review, an author's mutation table
-capped at 25 rows, the record, the merge. METHOD's pipeline section is the
-exact sequence.
+## How a session runs
 
 **The cloud is where Cratekit is built**, decided by Phillip on 2026-10-27.
-Native Relay, the board lanes, `/board-up` and the lane dispatcher are
-retired. The coordinator of Phillip's Claude project, which turns his ideas
-and bugs into cards, keeps five fresh Opus 5.5 build threads going at once,
-while the project's relay thread carries his answers back from the decisions page
-every hour; each build thread runs the `cloud-unit`
-skill, which takes its card from `board.py cloud`, plans
-and builds it at high effort, has Fable review it to the merge bar, measures
-the mutation table against the Linux suite's known failures, opens a pull
-request and merges it to `main` with the closing trailer once CI is green. An idea gets a brainstorm posted
-on its card and waits for Phillip's answer, and every question for him goes
-on the decisions page, https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS, where he answers it
-with a tap. **Only a card that cannot be
-built without the machine is built locally**, and the cloud session sets it
-aside with a comment carrying the steps. The `file-card` skill turns a
-request into a card in the brief form. METHOD's cloud lane section is the
-rule.
+The coordinator of Phillip's Claude project turns his ideas and bugs into
+cards with the `file-card` skill and keeps build threads going, each running
+the `cloud-unit` skill on its card: plan, build, Fable's review to the merge
+bar, the mutation table, the record, a pull request merged to `main` with the
+closing trailer once CI is green. A session does the whole of a unit itself;
+the compound engineering plugin is not used. **Only a card that cannot be
+built without the machine is built locally**, set aside by the cloud with a
+comment carrying the steps; `docs/METHOD-local.md` is how.
 
-A restart prompt names a board item and nothing else, because the issue is the
-brief. "Take #56" is a complete instruction once this file and METHOD are read.
-Nobody is watching a session while it runs, so a question is a stop: make the
-conservative call, record it as a residual, and keep going.
+Every question for Phillip goes on the decisions page,
+https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS, where he answers with a
+tap. Nobody is watching a session while it runs, so a question is a stop:
+make the conservative call, record it as a residual, and keep going.
 
 ## The board is the queue
 
-Work is not picked from a plan document, a backlog, or a conversation. It is
-picked from the board:
+Work is picked from the board, https://github.com/users/philgutowski/projects/2,
+never from a plan document or a conversation. Every implementation unit `U-N`
+and every attended chore `A-N` is an issue, and **the issue is the brief**:
+goal, requirements, dependencies, key files, approach, test scenarios,
+verification. If the brief is insufficient, fix the issue rather than working
+around it. An issue number does not always match its unit number (U38 is
+issue #51), so look it up before writing a trailer.
 
-    https://github.com/users/philgutowski/projects/2
+**U29, #29, is attended and never a session's to take**, whatever a queue
+says; METHOD's do-not-touch section says why.
 
-**The board is the BUILD. `docs/residual-findings.md` is the LEDGER.** Two
-registers answering two questions, and they are not mirrors of each other.
+`docs/residual-findings.md` is the LEDGER. A residual `R-N` is a real problem
+recorded rather than fixed; a unit files it unnumbered in `docs/residuals/`,
+it takes its number when it lands on `main`, and it earns an issue only when
+it meets METHOD's board bar. **Do not backfill the rest.** The ledger is over
+forty thousand lines: search it with `board.py residuals --search WORDS`.
 
-- Every implementation unit `U-N` is an issue, and so is every attended chore
-  `A-N`. Those are the work, and the board is where work is picked.
-- A residual `R-N` is a real problem that was recorded rather than fixed, because
-  it did not meet the bar to hold a merge. It lives in the file and usually has
-  no issue. A unit files it unnumbered in `docs/residuals/`, and it takes its
-  number when it lands on `main`. **Do not backfill the rest.** A residual earns an issue only if
-  somebody decides to act on it, and the thirteen that have one are now in the
-  queue behind the units, each to be done or closed back to the ledger.
-
-An issue number usually matches its unit number, U11 is issue #11, and it is not
-guaranteed: U38 is issue #51. Look it up before writing a trailer.
-
-**Start every session here:**
-
-    .venv/bin/python scripts/board.py next
-
-That prints what is ready, ranked by how much of the remaining build each unit
-releases, and names the one to take. **It will name #29 and you must not take
-it.** U29 is attended. METHOD's do-not-touch section says why. A cloud session
-reads `board.py cloud` instead, which never offers an attended card.
-
-**Take a unit:**
-
-    .venv/bin/python scripts/board.py start 11
-
-That refuses if the unit is blocked, if the working tree is dirty, or if you are
-not on `main`. Otherwise it branches, marks the issue In Progress, and prints the
-closing trailer to use.
-
-**The issue is the brief.** Each unit issue carries its full specification: goal,
-requirements, dependencies, key files, approach, test scenarios, verification.
-Read it with `board.py show 11`. If the brief is insufficient, fix the issue
-rather than working around it.
+The merge commit ends with the closing trailer, `Closes #N`, and pushing
+`main` closes the issue; the board workflow then flips every unit waiting on it
+from blocked to ready. Never hand-edit `ready` and `blocked` labels or drag
+cards: change the dependency line in an issue body and let the sync recompute
+them. `board.py closing --since origin/main` before writing a trailer refuses
+one that closes a unit a register still owes a module.
 
 `DJ_tools/docs/migration/00-SEAM-DECISIONS.md` remains authoritative over any
 brief. Part 5 is seven failure shapes learned the expensive way and applies to
 every unit.
-
-## The board stays true on its own
-
-End the merge commit with the trailer `board.py start` printed:
-
-    Closes #11
-
-Pushing `main` closes the issue, and `.github/workflows/board.yml` fires and flips
-every unit that was waiting on it from blocked to ready.
-
-Do not hand-edit `ready` and `blocked` labels or drag cards. Those are derived
-values. Change the dependency line in an issue body and let the sync recompute
-them.
-
-**Before ending a session:**
-
-    .venv/bin/python scripts/board.py audit
-
-- **Exit 1, drift.** A derived value fell out of date. `board.py sync` repairs it.
-- **Exit 2, contradiction.** A unit's issue is closed while a register still owes
-  it a module, so the board says work landed that the repository says did not.
-  Two registers are read: `tests/_pending.py`, and the `planned_in` markers on
-  the verb registry. `sync` deliberately will not touch these, because repairing
-  them automatically means picking one source of truth to overwrite, which is how
-  the wrong one wins silently. Either reopen the issue or clear the register
-  entry.
-
-Run the audit even when you changed nothing.
-
-**Before writing a merge commit that closes a unit:**
-
-    .venv/bin/python scripts/board.py closing --since main
-
-Exit 2 means the trailer you are about to write closes a unit that a register
-still owes a module. That is the same comparison `audit` makes, asked before the
-close instead of after it, and it is the last moment it is cheap: once the close
-has cascaded, `sync` will not repair it. It is network-free, so it works with no
-token. It runs in CI on every push and in a `commit-msg` hook if you installed
-that hook type, and it is here as well because the hook is absent from a fresh
-clone (R1) and CI answers after the push rather than before it.
 
 ## The battery
 
@@ -147,14 +74,12 @@ Nothing merges until all three are clean:
     .venv/bin/python -m pytest
     .venv/bin/python scripts/scan_repo.py
 
-The suite runs across every core and takes about a minute. It is the merge
-gate, not the edit loop: while building, run the test files for what you
-touched. METHOD's battery section has the numbers.
-
-An author's own battery is not a review. Every defect the adversarial reviews
-found in this repository passed a green suite written by the person who wrote the
-defect. After a unit's suite is green, hunt what a green suite cannot see. METHOD
-lists what.
+On a Linux cloud container the suite is read against the base's own failures
+with `scripts/cloud_battery.py`. The suite is the merge gate, not the edit
+loop: while building, run the test files for what you touched. An author's own
+battery is not a review; every defect the adversarial reviews found here
+passed a green suite written by its author, so after a green suite, hunt what
+a green suite cannot see, as METHOD lists.
 
 ## Standing constraints
 
