@@ -38,6 +38,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import importlib
+import shlex
 import sys
 from dataclasses import dataclass
 from typing import Any, Callable, Mapping, Sequence
@@ -204,6 +205,17 @@ def _stub_cause(entry: Entry, exc: ImportError) -> Cause:
     )
 
 
+def _positive_calls(text: str) -> int:
+    """``--calls``: a positive whole number, refused by argparse otherwise (U193)."""
+    try:
+        value = int(text)
+    except ValueError:
+        raise argparse.ArgumentTypeError(f"must be a positive whole number, found {text!r}")
+    if value < 1:
+        raise argparse.ArgumentTypeError(f"must be a positive whole number, found {text!r}")
+    return value
+
+
 def _group_parser(
     root: Any, groups: dict[tuple[str, ...], Any], path: tuple[str, ...]
 ) -> Any:
@@ -251,6 +263,16 @@ def build_parser(
         "--run",
         metavar="RUN_ID",
         help="continue a run that stopped at a gate, rather than starting a new one",
+    )
+    parser.add_argument(
+        "--calls",
+        type=_positive_calls,
+        default=None,
+        metavar="N",
+        help=(
+            "the most calls to the streaming provider this one run may make, raising "
+            "[provider] calls_per_command for this run only"
+        ),
     )
     root = parser.add_subparsers(dest="_verb", metavar="<command>")
 
@@ -552,7 +574,93 @@ def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
     return _dispatched(args, list(argv), entry, as_json=args.output == "json", stderr=stderr)
 
 
+#: The warning a run carries when the call ceiling stopped it but the verb
+#: caught the park and answered normally (U193).
+CALL_CEILING = provider_gate.CEILING
+
+
+def _without_calls(tokens: Sequence[str]) -> list[str]:
+    """The global options with any ``--calls`` taken out, so it is given once."""
+    kept: list[str] = []
+    skip = False
+    for token in tokens:
+        if skip:
+            skip = False
+            continue
+        if token == "--calls":
+            skip = True
+            continue
+        if token.startswith("--calls="):
+            continue
+        kept.append(token)
+    return kept
+
+
+def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
+    """The exact command that continues a run the call ceiling stopped (U193).
+
+    A job it was driving is parked with its remaining items pending, and the
+    job engine names the job on the cause, so the command resumes THAT job: a
+    verb run again would queue a second one. Anything else is this command line
+    again with ``--calls`` raised, the global options kept, since a run that
+    stopped at a gate continues by the same words.
+    """
+    detail = cause.detail or {}
+    higher = str(detail.get("higher") or 2 * int(detail.get("ceiling") or 1))
+    job_id = detail.get("job_id")
+    if job_id:
+        return shlex.join(["crate", "--calls", higher, "job", "resume", str(job_id)])
+    tokens = list(argv)
+    verb = _verb_argv(tokens, entry)
+    if verb is None:
+        return shlex.join(["crate", "--calls", higher, *_without_calls(tokens)])
+    lead = _without_calls(tokens[: len(tokens) - len(verb)])
+    return shlex.join(["crate", *lead, "--calls", higher, *verb])
+
+
+def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:
+    """The ceiling's cause with its first step naming the exact command."""
+    command = continue_command(argv, entry, cause)
+    steps = (
+        f"continue with a higher ceiling for one run: {command}",
+        *cause.remediation.steps[1:],
+    )
+    return dataclasses.replace(
+        cause,
+        remediation=dataclasses.replace(cause.remediation, steps=steps),
+        detail={**dict(cause.detail or {}), "continue": command},
+    )
+
+
 def _dispatched(
+    args: argparse.Namespace, argv: Sequence[str], entry: Entry, *, as_json: bool, stderr
+) -> Envelope:
+    """Run one parsed verb inside one command's call ceiling scope (U193).
+
+    The scope is opened HERE, around every verb, so a verb added later is under
+    the ceiling without knowing about it. A run the ceiling stopped whose verb
+    caught the park and answered normally carries a warning saying so, since a
+    clean report over a run the ceiling cut short is a report over reads that
+    were never made.
+    """
+    with provider_gate.command(getattr(args, "calls", None)) as scope:
+        envelope = _dispatched_in_scope(args, argv, entry, as_json=as_json, stderr=stderr)
+    stopped = scope.stopped
+    reported = envelope.cause is not None and envelope.cause.reason == CALL_CEILING
+    if stopped is not None and not reported:
+        command = continue_command(argv, entry, stopped)
+        entry_warning = {
+            "code": CALL_CEILING,
+            "message": (
+                f"{stopped.message}; what this run reports after that point was not "
+                f"read from the provider. Continue with: {command}"
+            ),
+        }
+        envelope = dataclasses.replace(envelope, warnings=(*envelope.warnings, entry_warning))
+    return envelope
+
+
+def _dispatched_in_scope(
     args: argparse.Namespace, argv: Sequence[str], entry: Entry, *, as_json: bool, stderr
 ) -> Envelope:
     """Run one parsed verb and answer its envelope; every refusal is converted here."""
@@ -588,6 +696,9 @@ def _dispatched(
         gates.save(state)
     except CratekitError as exc:
         cause = exc.cause
+        ceiling_stop = cause.reason == provider_gate.CEILING
+        if ceiling_stop:
+            cause = _with_continue(cause, argv, entry)
         # A PARKED JOB IS BLOCKED TOO, AND IT IS NOT RESUMABLE IN THIS FIELD'S
         # SENSE (R-290). ``resumable`` names the GATE RUN: it tells a caller that
         # ``crate run`` can continue this run id, and it is what saves the run
@@ -599,7 +710,10 @@ def _dispatched(
         # cause's code alone, and ``jobs.transition`` names a missing
         # acknowledgment among the reasons to park, which is a gate code. The
         # comment above was a claim about every worker until this enforced it.
-        parked = isinstance(exc, JobBlocked)
+        # THE CALL CEILING IS A PARK TOO (U193), raised as ``Parked`` straight
+        # out of a verb that drives no job. What the run did is kept, so it is
+        # blocked at a line the person set and not failed.
+        parked = isinstance(exc, JobBlocked) or ceiling_stop
         resumable = cause.code in gates.GATE_CODES and not parked
         if state is not None and resumable:
             gates.save(state)

@@ -1578,3 +1578,425 @@ def test_calls_another_process_made_are_not_reported_as_this_runs(installed, mon
     assert _spend_warnings(envelope) == [
         "1 call to the streaming provider this run, none answered with a rate limit"
     ]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. The call ceiling, a line per command (U193)
+# ═══════════════════════════════════════════════════════════════════════════
+
+from cratekit.core.provider_gate import CALLS_ENV, CEILING  # noqa: E402
+
+
+def ceiling_gate(paths, clock, ceiling: int) -> Gate:
+    state, lock = paths
+    return Gate(
+        GateSettings(min_interval_s=1.0, cooldown_s=900.0, calls_per_command=ceiling),
+        path=state,
+        lock_path=lock,
+        clock=clock,
+        sleep=clock.sleep,
+    )
+
+
+def test_a_command_stops_before_the_call_past_its_ceiling_with_the_count_at_the_ceiling(
+    paths, clock
+):
+    gate = ceiling_gate(paths, clock, 3)
+    transport = Transport()
+
+    with provider_gate.command() as scope:
+        for _ in range(3):
+            send_through(gate, transport)
+        with pytest.raises(jobs.Parked) as caught:
+            send_through(gate, transport)
+        spent = scope.spent()
+
+    assert len(transport.calls) == 3, "the call past the ceiling was sent"
+    assert spent == 3
+    cause = caught.value.cause
+    assert cause.reason == CEILING
+    assert cause.detail["calls"] == 3 and cause.detail["ceiling"] == 3
+    assert cause.detail["raised"] is False
+    assert "made 3 calls" in cause.message
+    assert "[provider] calls_per_command" in cause.message
+    assert scope.stopped is cause
+    assert gate.spend().calls == 3, "the refused call was counted"
+
+
+def test_the_stop_is_remembered_so_a_swallowing_tool_still_parks(paths, clock):
+    """The vendored downloader catches every exception inside its calls, so
+    the ceiling must come out of ``raise_if_parked`` like a trip does."""
+    gate = ceiling_gate(paths, clock, 1)
+    transport = Transport()
+
+    with provider_gate.command():
+        send_through(gate, transport)
+        try:
+            send_through(gate, transport)
+        except CratekitError:
+            pass  # what the tool does with it
+        with pytest.raises(jobs.Parked) as caught:
+            gate.raise_if_parked()
+
+    assert caught.value.cause.reason == CEILING
+
+
+def test_outside_a_command_nothing_is_capped(paths, clock):
+    gate = ceiling_gate(paths, clock, 2)
+    transport = Transport()
+
+    for _ in range(5):
+        send_through(gate, transport)
+
+    assert len(transport.calls) == 5
+
+
+def test_a_command_is_charged_only_for_its_own_calls(paths, clock):
+    gate = ceiling_gate(paths, clock, 2)
+    transport = Transport()
+    for _ in range(4):
+        send_through(gate, transport)
+
+    with provider_gate.command():
+        send_through(gate, transport)
+        send_through(gate, transport)
+        with pytest.raises(jobs.Parked):
+            send_through(gate, transport)
+
+    assert len(transport.calls) == 6
+
+
+def test_a_nested_dispatch_keeps_the_outer_commands_count(paths, clock):
+    """``run decide --continue`` dispatches the verb again in the same process;
+    a fresh count there would let one command spend its ceiling twice."""
+    gate = ceiling_gate(paths, clock, 2)
+    transport = Transport()
+
+    with provider_gate.command() as outer:
+        send_through(gate, transport)
+        with provider_gate.command(calls=50) as inner:
+            assert inner is outer
+            send_through(gate, transport)
+            with pytest.raises(jobs.Parked):
+                send_through(gate, transport)
+
+    assert len(transport.calls) == 2
+
+
+def test_a_raised_ceiling_lasts_one_run_and_the_next_is_back_at_the_configured_one(
+    paths, clock, monkeypatch
+):
+    monkeypatch.delenv(CALLS_ENV, raising=False)
+    gate = ceiling_gate(paths, clock, 2)
+    transport = Transport()
+
+    with provider_gate.command(calls=5) as scope:
+        assert os.environ[CALLS_ENV] == "5", "a job's detached child would not see it"
+        assert provider_gate.ceiling(gate.settings) == 5
+        for _ in range(5):
+            send_through(gate, transport)
+        with pytest.raises(jobs.Parked) as caught:
+            send_through(gate, transport)
+    assert scope.spent() == 5
+    assert caught.value.cause.detail["raised"] is True
+    assert "--calls" in caught.value.cause.message
+    assert CALLS_ENV not in os.environ, "the raised ceiling outlived its run"
+
+    with provider_gate.command():
+        assert provider_gate.ceiling(gate.settings) == 2
+        send_through(gate, transport)
+        send_through(gate, transport)
+        with pytest.raises(jobs.Parked):
+            send_through(gate, transport)
+
+    assert len(transport.calls) == 7
+
+
+def test_a_raised_ceiling_restores_a_variable_the_shell_already_held(monkeypatch):
+    monkeypatch.setenv(CALLS_ENV, "900")
+    with provider_gate.command(calls=40) as scope:
+        assert scope.raised == 40
+        assert os.environ[CALLS_ENV] == "40"
+    assert os.environ[CALLS_ENV] == "900"
+
+
+@pytest.mark.parametrize(
+    ("value", "raised"),
+    [("700", 700), ("0", None), ("-3", None), ("abc", None), ("1.5", None), ("", None), ("²", None)],
+)
+def test_a_detached_child_reads_the_raised_ceiling_off_the_environment(
+    monkeypatch, value, raised
+):
+    """A job's child is a fresh process and a fresh scope. A value that is not a
+    positive whole number leaves the configured ceiling, the lower one, in place."""
+    monkeypatch.setenv(CALLS_ENV, value)
+    with provider_gate.command() as scope:
+        assert scope.raised == raised
+        assert provider_gate.ceiling(GateSettings(calls_per_command=3)) == (raised or 3)
+
+
+def test_the_ceiling_parks_a_job_and_the_resumed_job_continues(paths, clock, queue, cfg):
+    """Three items, two calls each, a ceiling of three. The first item is done,
+    the second stops part way and goes back to pending, the job is blocked and
+    names itself, and the next run, a fresh command under the raised ceiling
+    the refusal names, finishes the job."""
+    store, root = queue
+    gate = ceiling_gate(paths, clock, 3)
+    transport = Transport()
+    job = jobs.enqueue(
+        store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a", "b", "c"]
+    )
+
+    def handle(_job, item):
+        send_through(gate, transport)
+        send_through(gate, transport)
+        return None
+
+    with provider_gate.command():
+        first = jobs.drive(store, job.job_id, handle, root=root)
+
+    assert first.job.state is jobs.JobState.BLOCKED
+    assert first.job.cause is not None and first.job.cause.reason == CEILING
+    assert first.job.cause.detail["job_id"] == job.job_id
+    # What ``job show`` reads when a detached child stopped: the resume form.
+    assert "crate --calls 6 job resume JOB_ID" in first.job.cause.remediation.steps[0]
+    assert len(transport.calls) == 3
+    states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
+    assert states == {
+        "a": jobs.ItemState.DONE,
+        "b": jobs.ItemState.PENDING,
+        "c": jobs.ItemState.PENDING,
+    }
+
+    # The resume the refusal names raises the ceiling for its run; the two
+    # items left take four calls, one past the configured three.
+    with provider_gate.command(calls=first.job.cause.detail["higher"]):
+        second = jobs.drive(store, job.job_id, handle, root=root)
+
+    assert second.job.state is jobs.JobState.SUCCEEDED
+    assert len(transport.calls) == 7
+
+
+def test_a_park_that_names_its_job_keeps_its_own_job_id(paths, clock, queue, cfg):
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg, item_ids=["a"])
+    from cratekit.core.cause import Cause, Remediation  # noqa: PLC0415
+
+    def handle(_job, _item):
+        raise jobs.Parked(
+            Cause(
+                reason=COOLDOWN,
+                message="held",
+                remediation=Remediation(remedy=jobs.Remedy.RETRY_LATER),
+                detail={"job_id": "another"},
+            )
+        )
+
+    result = jobs.drive(store, job.job_id, handle, root=root)
+
+    assert result.job.cause.detail["job_id"] == "another"
+
+
+def test_a_separate_session_such_as_the_media_segment_fetch_is_not_counted(paths, clock):
+    """The vendored downloader fetches media segments through a session of its
+    own, never the client's transport; those are not provider calls and a
+    command at its ceiling still fetches them."""
+    gate = ceiling_gate(paths, clock, 1)
+    client = SimpleNamespace(request_session=Transport())
+    assert gate.attach(client)
+
+    class _Segments(requests.adapters.BaseAdapter):
+        def send(self, request, **kwargs):
+            answer = requests.Response()
+            answer.status_code = 200
+            answer._content = b"segment"
+            answer.request = request
+            return answer
+
+        def close(self):
+            pass
+
+    with provider_gate.command() as scope:
+        client.request_session.request("GET", "https://api.invalid/track")
+        with requests.Session() as segments:
+            segments.mount("https://", _Segments())
+            fetched = [segments.get(f"https://cdn.invalid/{n}").content for n in range(3)]
+        with pytest.raises(jobs.Parked):
+            client.request_session.request("GET", "https://api.invalid/next")
+
+    assert fetched == [b"segment"] * 3
+    assert scope.spent() == 1
+    assert gate.calls == 1
+
+
+def test_the_ceiling_defaults_to_five_hundred_and_round_trips(tmp_path):
+    section = config.from_dict(_config_data(tmp_path)).provider
+    assert section.calls_per_command == config.DEFAULT_PROVIDER_CALLS_PER_COMMAND == 500
+    assert GateSettings().calls_per_command == 500
+
+    built = config.from_dict(_config_data(tmp_path, provider={"calls_per_command": 2000}))
+    config.save(built)
+    config.reset_cache()
+    assert GateSettings.from_config(config.load()).calls_per_command == 2000
+
+
+@pytest.mark.parametrize("value", [0, -1, 1.5, True, "500"])
+def test_a_ceiling_that_is_not_a_positive_whole_number_refuses_at_load(tmp_path, value):
+    problems = config.validate(_config_data(tmp_path, provider={"calls_per_command": value}))
+    assert len(problems) == 1
+    assert "provider.calls_per_command" in problems[0]
+    assert "no value that switches the ceiling off" in problems[0]
+    with pytest.raises(config.ConfigError):
+        config.from_dict(_config_data(tmp_path, provider={"calls_per_command": value}))
+
+
+def test_the_ceiling_reason_is_declared_as_a_policy_refusal():
+    assert REASONS[CEILING] is ExitCode.REFUSED_BY_POLICY
+
+
+# ── through the real dispatcher ──────────────────────────────────────────
+
+
+HARVEST = ["label", "harvest", "https://example.invalid/playlist/harvest"]
+
+
+@pytest.fixture
+def one_call(installed, tmp_path):
+    """The installed machine with a ceiling of one call per command."""
+    built = config.from_dict(
+        _config_data(tmp_path, provider={"min_interval_s": 0.01, "calls_per_command": 1})
+    )
+    config.save(built)
+    config.reset_cache()
+    return built
+
+
+def _two_more_calls(monkeypatch, client, *, swallow: bool = False) -> list[str]:
+    """Two calls beyond the login, as the catalogue would make; ``swallow``
+    catches the stop the way a verb that walks a list per item might."""
+    original = tidal_catalogue.open_catalogue
+    caught: list[str] = []
+
+    def opening(cfg=None):
+        opened = original(cfg)
+        for path in ("a", "b"):
+            try:
+                client.request_session.request("GET", f"https://api.invalid/{path}")
+            except CratekitError as exc:
+                if not swallow:
+                    raise
+                caught.append(exc.cause.reason)
+        return opened
+
+    monkeypatch.setattr(tidal_catalogue, "open_catalogue", opening)
+    return caught
+
+
+def test_a_verb_at_its_ceiling_is_blocked_and_names_the_exact_command_that_continues(
+    one_call, monkeypatch
+):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    _two_more_calls(monkeypatch, client)
+
+    code, envelope = drive(HARVEST)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["outcome"] == "blocked"
+    cause = envelope["cause"]
+    assert cause["reason"] == CEILING
+    assert len(client.request_session.calls) == 1, "a call past the ceiling was sent"
+    # ``drive`` asks for the json envelope, and the global options are kept.
+    expected = "crate --output json --calls 2 " + " ".join(HARVEST)
+    assert cause["detail"]["continue"] == expected
+    assert cause["remediation"]["steps"][0].endswith(expected)
+    said = [w for w in envelope.get("warnings", ()) if w.get("code") == CEILING]
+    assert said == [], "the refusal already says the stop; a warning says it twice"
+
+
+def test_calls_on_the_command_line_lets_one_run_pass_and_the_next_is_back_at_the_ceiling(
+    one_call, monkeypatch
+):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    _two_more_calls(monkeypatch, client)
+
+    _, raised = drive(["--calls", "3", *HARVEST])
+    assert (raised.get("cause") or {}).get("reason") != CEILING, raised
+    assert len(client.request_session.calls) == 3
+
+    _, again = drive(HARVEST)
+    assert again["cause"]["reason"] == CEILING
+    assert len(client.request_session.calls) == 4
+    assert CALLS_ENV not in os.environ
+
+
+def test_the_continue_command_replaces_a_calls_already_given(one_call, monkeypatch):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    _two_more_calls(monkeypatch, client)
+
+    _, envelope = drive(["--calls=2", *HARVEST])
+
+    assert envelope["cause"]["detail"]["continue"] == (
+        "crate --output json --calls 4 " + " ".join(HARVEST)
+    )
+
+
+def test_the_continue_command_replaces_a_spaced_calls_already_given(one_call, monkeypatch):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    _two_more_calls(monkeypatch, client)
+
+    _, envelope = drive(["--calls", "2", *HARVEST])
+
+    assert len(client.request_session.calls) == 2
+    assert envelope["cause"]["detail"]["continue"] == (
+        "crate --output json --calls 4 " + " ".join(HARVEST)
+    )
+
+
+@pytest.mark.parametrize("value", ["0", "-2", "many"])
+def test_a_calls_that_is_not_a_positive_whole_number_is_a_usage_error(value, capsys):
+    out, err = io.StringIO(), io.StringIO()
+    assert cli.run(["--calls", value, *HARVEST], stdout=out, stderr=err) == int(ExitCode.USAGE)
+    assert "positive whole number" in capsys.readouterr().err
+
+
+def test_a_ceiling_stop_a_verb_swallowed_is_still_said(one_call, monkeypatch):
+    """A verb that catches the park per item and answers would otherwise show a
+    report over reads the ceiling stopped."""
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    caught = _two_more_calls(monkeypatch, client, swallow=True)
+
+    _, envelope = drive(HARVEST)
+
+    assert caught == [CEILING, CEILING]
+    said = [w["message"] for w in envelope.get("warnings", ()) if w.get("code") == CEILING]
+    assert len(said) == 1, envelope
+    assert "was not read from the provider" in said[0]
+    assert "crate --output json --calls 2 " + " ".join(HARVEST) in said[0]
+
+
+def test_the_continue_command_for_a_job_resumes_that_job():
+    from cratekit.cli import continue_command  # noqa: PLC0415
+    from cratekit.cli.registry import landed_entries  # noqa: PLC0415
+    from cratekit.core.cause import Cause, Remediation  # noqa: PLC0415
+
+    entry = next(one for one in landed_entries() if one.name == "label.harvest")
+    cause = Cause(
+        reason=CEILING,
+        message="stopped",
+        remediation=Remediation(remedy=jobs.Remedy.FIX_COMMAND_LINE),
+        detail={"ceiling": 500, "higher": 1000, "job_id": "2026-11-02T00:00:00Z-ab12"},
+    )
+
+    assert continue_command(HARVEST, entry, cause) == (
+        "crate --calls 1000 job resume 2026-11-02T00:00:00Z-ab12"
+    )

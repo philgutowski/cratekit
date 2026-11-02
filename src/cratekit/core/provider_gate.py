@@ -51,6 +51,19 @@ running totals across processes and in this module for this process, so a
 verb can report what its own run spent. The count is written BEFORE the
 request is sent: a crash mid request is still a call the account saw.
 
+THE CALL CEILING (U193). Nothing above capped how many calls one command
+made: a full label build spent 3,026 before the breaker parked it. The
+dispatcher opens a :func:`command` scope around every verb, and :meth:`Gate.call`
+asks, under the lock and before the send, whether this command has already made
+``[provider] calls_per_command`` calls, or the higher ceiling ``--calls`` set
+for this one run. If it has, the call is not made and the refusal is the same
+park a trip raises, so an item in flight goes back to pending, what the run did
+is kept, and the count at the stop is the ceiling exactly. It is a line per
+command, never per day, so the next run starts fresh. Outside any scope nothing
+is capped, which only a library caller or a test is, since every verb passes
+the dispatcher. A job's detached child is a fresh process: a ceiling raised for
+the run reaches it through :data:`CALLS_ENV`, set only while the scope is open.
+
 WHAT IT DOES NOT COVER. The vendored downloader fetches media segments through
 its own session against a content delivery host. Those are not calls to the
 provider's API and are not paced here.
@@ -102,6 +115,15 @@ RATE_LIMIT_STATUS = 429
 COOLDOWN = "provider-cooldown"
 HELD = "provider-gate-held"
 
+#: The reason a command that made as many calls as its ceiling allows stops
+#: with (U193), declared in ``cause.REASONS``.
+CEILING = "provider-call-ceiling"
+
+#: How a ceiling raised for one run reaches a job's detached child, which is a
+#: fresh process with a fresh scope. Written by :func:`command` while its scope
+#: is open and restored when it closes, so the next run reads the configuration.
+CALLS_ENV = "CRATEKIT_PROVIDER_CALLS"
+
 #: This process's own spend, across every gate it built. The dispatcher reads
 #: the difference over one verb and reports it as the run's, which is true of
 #: this process alone: another process spending the same account writes the
@@ -112,7 +134,7 @@ _PROCESS_RATE_LIMITED = 0
 
 @dataclass(frozen=True, slots=True)
 class GateSettings:
-    """The two numbers the configuration owns, frozen with a job like the rest.
+    """The numbers the configuration owns, frozen with a job like the rest.
 
     The defaults are the configuration module's, READ WHEN A SETTINGS OBJECT
     IS BUILT rather than bound at import, on the rule ``tests/test_config.py``
@@ -124,6 +146,9 @@ class GateSettings:
         default_factory=lambda: float(config.DEFAULT_PROVIDER_MIN_INTERVAL_S)
     )
     cooldown_s: float = field(default_factory=lambda: float(config.DEFAULT_PROVIDER_COOLDOWN_S))
+    calls_per_command: int = field(
+        default_factory=lambda: int(config.DEFAULT_PROVIDER_CALLS_PER_COMMAND)
+    )
 
     @classmethod
     def from_config(cls, cfg: Any) -> GateSettings:
@@ -138,6 +163,7 @@ class GateSettings:
         return cls(
             min_interval_s=float(provider.min_interval_s),
             cooldown_s=float(provider.cooldown_s),
+            calls_per_command=int(provider.calls_per_command),
         )
 
 
@@ -198,6 +224,90 @@ class _State:
             value = data.get(name)
             setattr(state, name, None if value is None else _as_float(value, None))
         return state
+
+
+@dataclass
+class Command:
+    """One command's ceiling scope, opened by the dispatcher around a verb.
+
+    ``started`` is this process's call count when the command began, so the
+    command's spend is a difference and a test process that made calls before
+    it is not charged for them. ``raised`` is the ceiling ``--calls`` set for
+    this run, or None for the configured one. ``stopped`` is the refusal the
+    gate raised when the ceiling was reached, kept here because a verb that
+    catches a park per item and returns normally would otherwise leave a clean
+    report over a run the ceiling cut short, and the dispatcher reads it.
+    """
+
+    started: int
+    raised: int | None = None
+    stopped: Cause | None = None
+
+    def spent(self) -> int:
+        return max(0, _PROCESS_CALLS - self.started)
+
+
+#: The open command scope, or None outside the dispatcher.
+_COMMAND: Command | None = None
+
+
+def _raised_from_env() -> int | None:
+    """The ceiling a parent run raised, read off :data:`CALLS_ENV`.
+
+    A value that is not a positive whole number is ignored, so the configured
+    ceiling, the lower of the two, holds: only :func:`command` writes the
+    variable, and a hand written one that cannot be read must not lift the
+    line it was meant to move.
+    """
+    text = os.environ.get(CALLS_ENV, "").strip()
+    if not (text.isascii() and text.isdigit()):
+        return None
+    value = int(text)
+    return value if value > 0 else None
+
+
+@contextmanager
+def command(calls: int | None = None) -> Iterator[Command]:
+    """Open one command's ceiling scope for the length of a verb.
+
+    ``calls`` is the ceiling raised for this run alone. A scope opened inside
+    an open one, which ``run decide --continue`` does when it dispatches the
+    verb again in the same process, yields the OUTER scope unchanged, so one
+    command cannot spend its ceiling twice by nesting.
+    """
+    global _COMMAND
+    if _COMMAND is not None:
+        yield _COMMAND
+        return
+    raised = calls if calls is not None else _raised_from_env()
+    previous = os.environ.get(CALLS_ENV)
+    if calls is not None:
+        os.environ[CALLS_ENV] = str(calls)
+    scope = Command(started=_PROCESS_CALLS, raised=raised)
+    _COMMAND = scope
+    try:
+        yield scope
+    finally:
+        _COMMAND = None
+        if calls is not None:
+            if previous is None:
+                os.environ.pop(CALLS_ENV, None)
+            else:
+                os.environ[CALLS_ENV] = previous
+
+
+def command_spent() -> int:
+    """The calls the open command has made so far, 0 outside a scope."""
+    scope = _COMMAND
+    return scope.spent() if scope is not None else 0
+
+
+def ceiling(settings: GateSettings | None = None) -> int:
+    """The ceiling the open command runs under: the raised one, else the configured."""
+    scope = _COMMAND
+    if scope is not None and scope.raised is not None:
+        return scope.raised
+    return (settings or GateSettings()).calls_per_command
 
 
 def _as_float(value: Any, fallback: Any) -> Any:
@@ -453,6 +563,46 @@ class Gate:
             },
         )
 
+    def _ceiling_cause(self, scope: Command, line: int) -> Cause:
+        spent = scope.spent()
+        where = (
+            "the ceiling raised for this run with --calls"
+            if scope.raised is not None
+            else "the ceiling for one command, [provider] calls_per_command"
+        )
+        higher = line * 2
+        return Cause(
+            reason=CEILING,
+            message=(
+                f"this command made {spent} {'call' if spent == 1 else 'calls'} to the "
+                f"streaming provider, "
+                f"{where}, so it stopped before the next one; what it did is kept "
+                f"and the remaining items stay queued"
+            ),
+            remediation=Remediation(
+                remedy=Remedy.FIX_COMMAND_LINE,
+                steps=(
+                    # THE STORED FORM, read off ``job show`` when a detached
+                    # child stopped: it names both shapes, since a job is
+                    # continued by its id and never by queueing it again. The
+                    # dispatcher replaces it with the one exact command.
+                    f"continue with a higher ceiling for one run: a parked job with "
+                    f"crate --calls {higher} job resume JOB_ID, any other command by "
+                    f"running it again with --calls {higher} before it",
+                    "or raise [provider] calls_per_command in the configuration for every run",
+                ),
+            ),
+            scope=Scope.RUN,
+            retryable=False,
+            origin=("provider_gate",),
+            detail={
+                "calls": spent,
+                "ceiling": line,
+                "raised": scope.raised is not None,
+                "higher": higher,
+            },
+        )
+
     def _stopped(self, cause: Cause) -> CratekitError:
         """A refusal as the job engine's own park, so an item in flight is
         released rather than failed and the driver claims nothing further.
@@ -516,6 +666,16 @@ class Gate:
                 now = self._clock()
                 if state.cooling(now):
                     raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+                scope = _COMMAND
+                if scope is not None:
+                    line = ceiling(self.settings)
+                    if scope.spent() >= line:
+                        # BEFORE THE SEND, so the count at the stop is the
+                        # ceiling exactly and the call that would pass it is
+                        # never made.
+                        cause = self._ceiling_cause(scope, line)
+                        scope.stopped = cause
+                        raise self._stopped(cause)
                 due = max(state.last_call + self.settings.min_interval_s, state.not_before)
                 if due - now > self.settings.min_interval_s:
                     long_wait = due - now
@@ -599,6 +759,8 @@ def process_spend() -> Spend:
 
 
 __all__ = [
+    "CALLS_ENV",
+    "CEILING",
     "COOLDOWN",
     "HELD",
     "LOCK_KEY",
@@ -607,9 +769,13 @@ __all__ = [
     "RATE_LIMIT_STATUS",
     "STATE_KEY",
     "TRIP_AFTER",
+    "Command",
     "Gate",
     "GateSettings",
     "Spend",
+    "ceiling",
+    "command",
+    "command_spent",
     "header_value",
     "process_spend",
     "retry_after_seconds",

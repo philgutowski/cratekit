@@ -968,6 +968,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # cooldown lifts at a named time the cause carries. Every provider
         # opener asks the gate before it logs in, so the refusal makes no call.
         "provider-cooldown": ExitCode.UPSTREAM_UNAVAILABLE,
+        # U193. One command made as many calls to the streaming provider as its
+        # call ceiling allows, so the gate stopped it before the next one. The
+        # account never said no, the person's own line did, which is why this is
+        # the policy code and not the cooldown's. Raised as the job engine's
+        # park, so what the run did is kept and the cause names the command that
+        # continues with a higher ceiling for one run.
+        "provider-call-ceiling": ExitCode.REFUSED_BY_POLICY,
         # U56. No public catalogue could be READ, which is a different fact from
         # no catalogue carrying the track, and the slug is the only place that
         # difference survives. The tagging searcher declines when a source
