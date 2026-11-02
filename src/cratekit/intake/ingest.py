@@ -54,7 +54,8 @@ VERIFY_VERB = "intake.imported"
 
 #: The session record field listing the INBOX playlists a landing wrote for the
 #: playlists the author made on the account (U113), so ``inbox rotate`` ages
-#: each from the day it landed, since its name carries no date. A native
+#: each from the day it landed, never from its name, whose date at the end
+#: (U175) is for a person to read. A native
 #: landing lists each by ``id`` and ``name``; an intake file's playlist has no
 #: identifier until rekordbox imports it, so its entry is the ``name`` and the
 #: ``batch`` folder it landed in. Both media add the account's identifier and

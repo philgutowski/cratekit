@@ -97,7 +97,10 @@ def test_a_landing_that_finishes_two_custom_playlists_writes_two_twins_and_marks
 
     assert code == int(ExitCode.OK), acted
     assert _twins(cfg) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
+    assert _inbox(cfg, root_id) == {
+        "Sunset Warmup 2026-10-03": ["One", "Two"],
+        "Deep Cuts 2026-10-03": ["Three"],
+    }
     held = pairs.PairStore(cfg).all()
     assert sorted(held) == ["pl-a", "pl-b"]
     assert all(one.twin and one.first for one in held.values())
@@ -151,7 +154,7 @@ def test_a_twin_name_the_folder_holds_is_left_and_named_and_the_landing_still_la
     _stage(cfg, silence, "One")
     code, acted, refused = _two_acts(_land())
     assert code == int(ExitCode.OK), acted
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": ["One"]}
+    assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": ["One"]}
     assert _twins(cfg) == {"Sunset Warmup": []}, "a second twin was made beside the first"
     assert pairs.PairStore(cfg).all() == {}
     assert land_cli.TWINS_LEFT in _codes(acted)

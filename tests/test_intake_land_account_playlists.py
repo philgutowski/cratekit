@@ -135,11 +135,24 @@ def test_two_swept_playlists_land_as_two_inbox_playlists_under_their_exact_names
         "Two.flac",
     ]
     # Only the playlists split, and the batch playlist, holding nothing, is not written.
-    assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One", "Two"], "Deep Cuts": ["Three"]}
+    assert _inbox(_intake(envelope)) == {
+        "Sunset Warmup 2026-10-03": ["One", "Two"],
+        "Deep Cuts 2026-10-03": ["Three"],
+    }
     split = [item for item in envelope["data"]["items"] if item["action"] == "playlist"]
     assert split == [
-        {"action": "playlist", "playlist": "Sunset Warmup", "account": "pl-a", "count": 2},
-        {"action": "playlist", "playlist": "Deep Cuts", "account": "pl-b", "count": 1},
+        {
+            "action": "playlist",
+            "playlist": "Sunset Warmup 2026-10-03",
+            "account": "pl-a",
+            "count": 2,
+        },
+        {
+            "action": "playlist",
+            "playlist": "Deep Cuts 2026-10-03",
+            "account": "pl-b",
+            "count": 1,
+        },
     ]
 
 
@@ -154,12 +167,12 @@ def test_a_track_both_playlists_brought_in_is_a_member_of_both(cfg, silence, exp
     envelope = _applied(export, "--pass", PASS)
 
     assert _inbox(_intake(envelope)) == {
-        "Sunset Warmup": ["One", "Shared"],
-        "Deep Cuts": ["Shared"],
+        "Sunset Warmup 2026-10-03": ["One", "Shared"],
+        "Deep Cuts 2026-10-03": ["Shared"],
     }
 
 
-def test_a_second_landing_of_one_playlist_the_next_week_is_named_two(
+def test_a_second_landing_of_one_playlist_the_next_week_takes_its_own_date(
     cfg, silence, export, monkeypatch
 ):
     swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
@@ -177,8 +190,10 @@ def test_a_second_landing_of_one_playlist_the_next_week_is_named_two(
     envelope = _applied(first, "--pass", missing_cli.synced_name(run))
 
     held = _inbox(_intake(envelope))
-    assert held["Sunset Warmup"] == ["One"]
-    assert held["Sunset Warmup 2"] == ["Two"]
+    assert held["Sunset Warmup 2026-10-03"] == ["One"]
+    # Its own landing's date tells the two passes apart, so no `` 2`` is needed.
+    assert held["Sunset Warmup 2026-10-10"] == ["Two"]
+    assert "Sunset Warmup 2026-10-03 2" not in held
 
 
 def test_a_name_an_unimported_intake_file_holds_is_not_given_again(cfg, silence, export):
@@ -193,7 +208,7 @@ def test_a_name_an_unimported_intake_file_holds_is_not_given_again(cfg, silence,
     _stage(cfg, silence, "Two.flac")
     envelope = _applied(export, "--pass", missing_cli.synced_name(run))
 
-    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2": ["Two"]}
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2026-10-03 2": ["Two"]}
 
 
 def test_a_name_at_the_playlist_root_is_not_given_since_an_import_lands_there(
@@ -201,7 +216,7 @@ def test_a_name_at_the_playlist_root_is_not_given_since_an_import_lands_there(
 ):
     body = export.read_text(encoding="utf-8").replace(
         '<NODE Name="INBOX" Type="0" Count="0">',
-        '<NODE Name="Sunset Warmup" Type="1" KeyType="0" Entries="0">\r\n'
+        '<NODE Name="Sunset Warmup 2026-10-03" Type="1" KeyType="0" Entries="0">\r\n'
         "      </NODE>\r\n"
         '      <NODE Name="INBOX" Type="0" Count="0">',
     )
@@ -211,7 +226,7 @@ def test_a_name_at_the_playlist_root_is_not_given_since_an_import_lands_there(
 
     envelope = _applied(export, "--pass", PASS)
 
-    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2": ["One"]}
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2026-10-03 2": ["One"]}
 
 
 def test_a_label_landing_keeps_the_name_u110_gives_it(cfg, silence, export, tmp_path):
@@ -239,9 +254,9 @@ def test_a_file_no_account_playlist_claimed_stays_in_the_batch_playlist(cfg, sil
     envelope = _applied(export, "--pass", PASS)
 
     batch = "2026-10-03 Tidal playlists and Favorites"
-    assert _inbox(_intake(envelope)) == {batch: ["Hearted"], "Sunset Warmup": ["One"]}
+    assert _inbox(_intake(envelope)) == {batch: ["Hearted"], "Sunset Warmup 2026-10-03": ["One"]}
     steps = " ".join(envelope["pending_human_action"]["steps"])
-    assert f"each of the {batch} and Sunset Warmup playlists" in steps
+    assert f"each of the {batch} and Sunset Warmup 2026-10-03 playlists" in steps
 
 
 def test_a_job_queued_with_no_name_lands_in_the_batch_playlist_as_before(cfg, silence, export):
@@ -252,6 +267,21 @@ def test_a_job_queued_with_no_name_lands_in_the_batch_playlist_as_before(cfg, si
 
     assert _inbox(_intake(envelope)) == {BATCH: ["One"]}
     assert not [i for i in envelope["data"]["items"] if i["action"] == "playlist"]
+
+
+def test_an_account_playlist_whose_dated_name_is_the_batchs_takes_two(cfg, silence, export):
+    """A batch named by hand can be the dated name; the account playlist never merges into it."""
+    swept(cfg, {"pl-a": ("Sunset Warmup", ("One",))})
+    swept(cfg, {"favorites": (None, ("Hearted",))}, source_id=intake_cli.FAVORITES_SOURCE_ID)
+    for name in ("One.flac", "Hearted.flac"):
+        _stage(cfg, silence, name)
+
+    envelope = _applied(export, "--pass", PASS, "--name", "Sunset Warmup 2026-10-03")
+
+    assert _inbox(_intake(envelope)) == {
+        "Sunset Warmup 2026-10-03": ["Hearted"],
+        "Sunset Warmup 2026-10-03 2": ["One"],
+    }
 
 
 def test_a_landing_with_no_pass_splits_nothing(cfg, silence, export):
@@ -275,9 +305,9 @@ def test_an_owned_track_whose_row_the_export_does_not_hold_is_warned(cfg, silenc
 
     envelope = _applied(export, "--pass", PASS)
 
-    assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One"]}
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2026-10-03": ["One"]}
     (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
-    assert "Sunset Warmup 2. Probe - Held" in warning["message"]
+    assert "Sunset Warmup 2026-10-03 2. Probe - Held" in warning["message"]
     assert account_playlists.NO_ROW in warning["message"]
 
 
@@ -312,13 +342,18 @@ def test_a_playlist_of_three_owned_and_two_new_lands_all_five_in_account_order(
     envelope = _applied(held, "--pass", PASS)
 
     inbox = _inbox(_intake(envelope))
-    assert inbox["Sunset Warmup"] == ["Held1", "New1", "Held2", "New2", "Held3"]
+    assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1", "Held2", "New2", "Held3"]
     # The owned tracks are the export's own entries, not spliced a second time.
     body = _intake(envelope).read_text(encoding="utf-8")
     assert body.count('Name="Held1"') == 1
     split = [item for item in envelope["data"]["items"] if item["action"] == "playlist"]
     assert split == [
-        {"action": "playlist", "playlist": "Sunset Warmup", "account": "pl-a", "count": 5}
+        {
+            "action": "playlist",
+            "playlist": "Sunset Warmup 2026-10-03",
+            "account": "pl-a",
+            "count": 5,
+        }
     ]
     assert not [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
 
@@ -332,7 +367,9 @@ def test_the_gate_screen_counts_the_owned_tracks_beside_the_new(cfg, silence, ex
 
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
-    assert shown["account playlists"] == ["Sunset Warmup (2 file(s), 1 already in the library)"]
+    assert shown["account playlists"] == [
+        "Sunset Warmup 2026-10-03 (2 file(s), 1 already in the library), the account's Sunset Warmup"
+    ]
 
 
 def test_an_owned_track_in_two_account_playlists_is_in_both(cfg, silence, export):
@@ -349,8 +386,8 @@ def test_an_owned_track_in_two_account_playlists_is_in_both(cfg, silence, export
     envelope = _applied(held, "--pass", PASS)
 
     inbox = _inbox(_intake(envelope))
-    assert inbox["Sunset Warmup"] == ["Held1", "New1"]
-    assert inbox["Deep Cuts"] == ["New1", "Held1"]
+    assert inbox["Sunset Warmup 2026-10-03"] == ["Held1", "New1"]
+    assert inbox["Deep Cuts 2026-10-03"] == ["New1", "Held1"]
 
 
 def test_a_track_neither_owned_nor_brought_is_named_in_the_warnings(cfg, silence, export):
@@ -362,9 +399,9 @@ def test_a_track_neither_owned_nor_brought_is_named_in_the_warnings(cfg, silence
 
     envelope = _applied(export, "--pass", PASS)
 
-    assert _inbox(_intake(envelope)) == {"Sunset Warmup": ["One"]}
+    assert _inbox(_intake(envelope)) == {"Sunset Warmup 2026-10-03": ["One"]}
     (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
-    assert "Sunset Warmup 2. Probe - Gone" in warning["message"]
+    assert "Sunset Warmup 2026-10-03 2. Probe - Gone" in warning["message"]
     assert account_playlists.NOT_BROUGHT in warning["message"]
 
 
@@ -398,7 +435,7 @@ def test_a_row_that_only_resembles_a_file_does_not_claim_it(cfg, silence, export
 
     envelope = _applied(export, "--pass", PASS)
 
-    assert _inbox(_intake(envelope)) == {BATCH: ["One"], "Sunset Warmup": ["Two"]}
+    assert _inbox(_intake(envelope)) == {BATCH: ["One"], "Sunset Warmup 2026-10-03": ["Two"]}
 
 
 # ---------------------------------------------------------------------------
@@ -415,7 +452,10 @@ def test_the_gate_screen_names_each_playlist_before_anything_moves(cfg, silence,
 
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
-    assert shown["account playlists"] == ["Sunset Warmup (1 file(s))", "Deep Cuts (1 file(s))"]
+    assert shown["account playlists"] == [
+        "Sunset Warmup 2026-10-03 (1 file(s)), the account's Sunset Warmup",
+        "Deep Cuts 2026-10-03 (1 file(s)), the account's Deep Cuts",
+    ]
     assert shown["batch playlist holds"] == "1 file(s) no account playlist claimed"
     assert sorted(p.name for p in Path(cfg.paths.download_staging).glob("*.flac")) == [
         "One.flac",
@@ -439,7 +479,7 @@ def test_an_answer_given_for_one_split_is_stale_for_another(cfg, silence, export
     body = export.read_text(encoding="utf-8").replace(
         '<NODE Name="INBOX" Type="0" Count="0">',
         '<NODE Name="INBOX" Type="0" Count="1">\r\n'
-        '        <NODE Name="Sunset Warmup" Type="1" KeyType="0" Entries="0">\r\n'
+        '        <NODE Name="Sunset Warmup 2026-10-03" Type="1" KeyType="0" Entries="0">\r\n'
         "        </NODE>",
     )
     export.write_text(body, encoding="utf-8")
@@ -460,7 +500,7 @@ def test_the_intake_record_names_each_playlist_and_its_batch_folder(cfg, silence
     # The account and the pass beside the name since U128, which a rerun of
     # the pass reads to find what it already mirrored.
     assert record.detail[ingest.INBOX_PLAYLISTS_KEY] == [
-        {"name": "Sunset Warmup", "batch": BATCH, "account": "pl-a", "pass": PASS}
+        {"name": "Sunset Warmup 2026-10-03", "batch": BATCH, "account": "pl-a", "pass": PASS}
     ]
 
 
@@ -482,7 +522,7 @@ def test_a_name_the_export_came_to_hold_after_the_gate_is_refused_and_moves_noth
     body = export.read_text(encoding="utf-8").replace(
         '<NODE Name="INBOX" Type="0" Count="0">',
         '<NODE Name="INBOX" Type="0" Count="1">\r\n'
-        '        <NODE Name="Sunset Warmup" Type="1" KeyType="0" Entries="0">\r\n'
+        '        <NODE Name="Sunset Warmup 2026-10-03" Type="1" KeyType="0" Entries="0">\r\n'
         "        </NODE>",
     )
     export.write_text(body, encoding="utf-8")
@@ -520,15 +560,34 @@ def test_sync_all_records_the_name_the_account_listed_on_each_playlist_job(slim,
 def test_inbox_names_counts_past_every_name_inbox_holds_and_this_landing_took():
     assert batch_name.inbox_names(
         ["Sunset Warmup", "Deep Cuts", "Sunset Warmup", "B"],
-        ["Sunset Warmup", "Sunset Warmup 2"],
-        batch="B",
-    ) == ("Sunset Warmup 3", "Deep Cuts", "Sunset Warmup 4", "B 2")
+        ["Sunset Warmup 2026-10-03", "Sunset Warmup 2026-10-03 2"],
+        batch="B 2026-10-03",
+    ) == (
+        "Sunset Warmup 2026-10-03 3",
+        "Deep Cuts 2026-10-03",
+        "Sunset Warmup 2026-10-03 4",
+        "B 2026-10-03 2",
+    )
 
 
 def test_inbox_names_keeps_a_name_exactly_and_compares_it_exactly():
     assert batch_name.inbox_names(
-        ["sunset warmup", "A/B: C?"], ["Sunset Warmup"], batch="x"
-    ) == ("sunset warmup", "A/B: C?")
+        ["sunset warmup", "A/B: C?"], ["Sunset Warmup 2026-10-03"], batch="x"
+    ) == ("sunset warmup 2026-10-03", "A/B: C? 2026-10-03")
+
+
+def test_inbox_names_puts_the_landing_date_at_the_end_of_the_accounts_name(monkeypatch):
+    """U175: INBOX stays flat and the date goes after the name, never before it."""
+    monkeypatch.setattr(batch_name, "today", lambda: date(2026, 10, 27))
+    assert batch_name.inbox_names(["Lisa_10_27_26"], (), batch="b") == (
+        "Lisa_10_27_26 2026-10-27",
+    )
+    monkeypatch.setattr(batch_name, "today", lambda: DAY)
+    # An undated name INBOX holds, one landed before U175, takes nothing from a
+    # dated one, and is never renamed.
+    assert batch_name.inbox_names(["Sunset Warmup"], ["Sunset Warmup"], batch="b") == (
+        "Sunset Warmup 2026-10-03",
+    )
 
 
 def test_a_bridge_landing_is_what_a_rerun_of_its_pass_reads_as_mirrored(cfg, silence, export):
@@ -613,7 +672,7 @@ def test_an_export_entry_on_another_machine_is_no_owned_row(cfg, silence, export
 
     envelope = _applied(held, "--pass", PASS)
 
-    assert _inbox(_intake(envelope))["Sunset Warmup"] == ["New1"]
+    assert _inbox(_intake(envelope))["Sunset Warmup 2026-10-03"] == ["New1"]
     (warning,) = [w for w in envelope["warnings"] if w["code"] == account_playlists.LEFT_OUT]
     assert "Probe - Held1" in warning["message"]
 

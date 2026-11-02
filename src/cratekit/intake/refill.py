@@ -322,6 +322,33 @@ def recorded_entries(records: Iterable[session.SessionRecord]) -> tuple[Recorded
     return tuple(found)
 
 
+def bridge_names(
+    records: Iterable[session.SessionRecord], *, pass_name: str, account: str
+) -> tuple[str, ...]:
+    """The INBOX names intake file landings of ``pass_name`` recorded for ``account``, oldest first.
+
+    AN INTAKE FILE'S ENTRY CARRIES NO IDENTIFIER (U113), only the name it gave
+    the playlist, the batch folder, and since U128 the account and the pass.
+    Since U175 that name is dated, so the account's own name no longer finds
+    the playlist, and this is the name :func:`locate` asks as well. Only an
+    entry carrying this account and this pass counts.
+    """
+    names: list[str] = []
+    for record in sorted(records, key=lambda one: (one.started, one.session_id)):
+        if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in _STANDING:
+            continue
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
+            if (
+                isinstance(entry, Mapping)
+                and not entry.get("id")
+                and entry.get("name")
+                and str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "") == account
+                and str(entry.get(ingest.INBOX_PASS_KEY) or "") == pass_name
+            ):
+                names.append(str(entry["name"]))
+    return tuple(dict.fromkeys(names))
+
+
 def ours(entry: Recorded, *, pass_name: str, account: str, name: str) -> bool:
     """Whether the entry names the INBOX mirror of this account playlist in this pass.
 
@@ -365,6 +392,7 @@ def locate(
     account: str,
     name: str,
     job_id: str,
+    recorded_name: str = "",
 ) -> Target | Unfound:
     """The one INBOX playlist the account playlist was mirrored into, or why there is none.
 
@@ -380,8 +408,16 @@ def locate(
     (``others``), and only while every session record could be read: a record
     nobody could read may name the playlist this name would take. NEVER OF
     INBOX / Analyze (U166): its name is reserved, an account playlist of that
-    name lands as ``Analyze 2``, and filling it would put rows already
-    analysed back in front of the visit.
+    name lands dated (U175), and filling it would put rows already analysed
+    back in front of the visit.
+
+    THE NAME ASKED IS THE ACCOUNT'S, AND THE ONE AN INTAKE FILE RECORDED.
+    A landing before U175 named the playlist as the account names it. An
+    intake file's landing since U175 named it with its date at the end and
+    records that name, with no identifier until rekordbox imports it, so the
+    first such name this pass recorded for this account is asked too
+    (``recorded``, :func:`bridge_names`). Two playlists answering is still
+    two, and nothing is filled.
     """
 
     def unfound(why: str, rows: Sequence[Any] = ()) -> Unfound:
@@ -416,13 +452,13 @@ def locate(
     else:
         if unreadable:
             return unfound(UNREADABLE)
+        asked = {name, recorded_name} - {"", native.ANALYZE}
         rows = [
             row
             for key, row in under.items()
             if key not in others
             and not rb_writer.is_folder(row)
-            and str(getattr(row, "Name", "") or "") == name
-            and name != native.ANALYZE
+            and str(getattr(row, "Name", "") or "") in asked
         ]
         if len(rows) != 1:
             return unfound(TWO_FOUND if rows else NOT_FOUND, rows)
@@ -513,6 +549,9 @@ def plan_refill(
                     account=account,
                     name=name,
                     job_id=job.job_id,
+                    recorded_name=next(
+                        iter(bridge_names(records, pass_name=pass_name, account=account)), ""
+                    ),
                 ),
             )
         )
@@ -687,6 +726,7 @@ def assert_read_back(refilled: Refilled) -> None:
 
 
 __all__ = [
+    "bridge_names",
     "ADD",
     "AGAIN",
     "BY_NAME",

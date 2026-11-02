@@ -37,16 +37,19 @@ or Old is a batch when ANY of these holds, and the plan says which:
                                 make for every landing
 ==============================  ===============================================
 
-AN ACCOUNT PLAYLIST'S NAME CARRIES NO DATE (U113), ``Sunset Warmup``, so it is
-never recognised by its name's shape. A native landing names each one on its
-record by identifier, ``ingest.INBOX_PLAYLISTS_KEY``, and it is a ``run
-record`` batch. An intake file's playlist has no identifier until rekordbox
-imports it, so its record names it and its batch folder. ONLY A PROVEN IMPORT
-COUNTS: an intake file nobody imported made no playlist, and a playlist of that
-name somebody makes later is theirs. The LATEST proven landing of a name wins:
-a landing takes a name only while INBOX and the pending intake files do not
-hold it, so the newest record naming it is the one that made the playlist INBOX
-shows now.
+AN ACCOUNT PLAYLIST'S NAME IS NOT THE BATCH SHAPE: it carried no date before
+U175, ``Sunset Warmup``, and since U175 carries its landing's date at the END,
+``Sunset Warmup 2026-10-27``, so it is never recognised by its name's shape,
+and a native landing's batch and account playlists are aged from its one
+record and rotate together. A native
+landing names each one on its record by identifier,
+``ingest.INBOX_PLAYLISTS_KEY``, and it is a ``run record`` batch. An intake
+file's playlist has no identifier until rekordbox imports it, so its record
+names it and its batch folder. ONLY A PROVEN IMPORT COUNTS: an intake file
+nobody imported made no playlist, and a playlist of that name somebody makes
+later is theirs. The LATEST proven landing of a name wins: a landing takes a
+name only while INBOX and the pending intake files do not hold it, so the
+newest record naming it is the one that made the playlist INBOX shows now.
 
 EVERYTHING ELSE IS LEFT ALONE AND LISTED: a folder, a smart playlist, and an
 ordinary playlist no rule recognises. A dated name with no batch folder is a

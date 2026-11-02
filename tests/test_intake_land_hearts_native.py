@@ -173,7 +173,7 @@ def test_a_hearted_file_lands_in_its_batch_all_favorites_and_a_month_made_for_it
 
     acted, refused = _landed()
 
-    assert _inbox(cfg, root_id) == {batch: [_title("Hearted")], "Sunset Warmup": [_title("One")]}
+    assert _inbox(cfg, root_id) == {batch: [_title("Hearted")], "Sunset Warmup 2026-10-03": [_title("One")]}
     assert _favorites(cfg, folder_id) == {
         SOURCE: [_title("Hearted")],
         "2026-11": [_title("Hearted")],
@@ -353,7 +353,7 @@ def test_a_heart_a_playlist_also_asked_for_is_in_that_playlist_and_in_all_favori
 
     _landed()
 
-    assert _inbox(cfg, root_id) == {"Sunset Warmup": [_title("Shared")]}
+    assert _inbox(cfg, root_id) == {"Sunset Warmup 2026-10-03": [_title("Shared")]}
     assert _favorites(cfg, folder_id) == {SOURCE: [_title("Shared")], "2026-11": [_title("Shared")]}
     assert len(_query(cfg, "SELECT ID FROM djmdContent WHERE Title = ?", _title("Shared"))) == 1
 

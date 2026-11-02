@@ -1,0 +1,156 @@
+name = "u175"
+pass_kind = "light"
+
+# U175: each account playlist a landing writes into INBOX carries the landing's
+# date at the end of the account's own name. The rows revert the naming rule
+# one piece at a time, then sample the record guards the rotation and the
+# INBOX mirror rest on, which the unit claims they follow unchanged.
+
+[[rows]]
+id = "N1_date_first"
+description = "dated: put the date before the account's name, the order Phillip declined"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '''    return f"{account_name} {day.isoformat()}"'''
+new = '''    return f"{day.isoformat()} {account_name}"'''
+
+[[rows]]
+id = "N2_no_date"
+description = "dated: return the account's name alone, undated as before U175"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '''    return f"{account_name} {day.isoformat()}"'''
+new = '''    return account_name'''
+
+[[rows]]
+id = "N3_date_form"
+description = "dated: write the date as the account's own month_day_year form rather than ISO"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '''    return f"{account_name} {day.isoformat()}"'''
+new = '''    return f"{account_name} {day.month}_{day.day:02d}_{day.year % 100:02d}"'''
+
+[[rows]]
+id = "N4_clock_not_seam"
+description = "inbox_names: read the system clock rather than the landing's today seam, so the playlist's date can differ from the batch's"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '''    on = today()'''
+new = '''    on = date.today()'''
+
+[[rows]]
+id = "N6_batch_not_held"
+description = "inbox_names: stop holding the batch's own name, so a dated name equal to it merges into the batch playlist"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py"]
+old = '''    taken = {*held, batch}'''
+new = '''    taken = {*held}'''
+
+[[rows]]
+id = "N7_held_not_held"
+description = "inbox_names: stop holding what INBOX holds, so a second landing the same day adds into the first's playlist"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '''    taken = {*held, batch}'''
+new = '''    taken = {batch}'''
+
+[[rows]]
+id = "N8_counter_before_date"
+description = "inbox_names: count from the undated name, so a held name becomes Sunset Warmup 2 with no date"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py", "tests/test_inbox_refill.py"]
+old = '''            candidate = f"{base} {count}"
+        taken.add(candidate)'''
+new = '''            candidate = f"{account_name} {count}"
+        taken.add(candidate)'''
+
+[[rows]]
+id = "N9_landing_not_held"
+description = "inbox_names: do not hold a name an earlier playlist of the same landing took, so two account playlists of one name share one INBOX playlist"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_inbox_analyzed.py"]
+old = '''            candidate = f"{base} {count}"
+        taken.add(candidate)'''
+new = '''            candidate = f"{base} {count}"
+        pass'''
+
+[[rows]]
+id = "F4_bridge_names_any_state"
+description = "refill.bridge_names: read an intake record that no longer stands, so an abandoned landing's name is asked"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''        if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in _STANDING:
+            continue
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
+            if ('''
+new = '''        if record.workflow != ingest.INTAKE_WORKFLOW:
+            continue
+        for entry in record.detail.get(ingest.INBOX_PLAYLISTS_KEY) or ():
+            if ('''
+
+[[rows]]
+id = "F5_bridge_names_by_id_order"
+description = "refill.bridge_names: order the records by identifier alone, so a later landing whose identifier sorts first is asked as the first"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''    names: list[str] = []
+    for record in sorted(records, key=lambda one: (one.started, one.session_id)):'''
+new = '''    names: list[str] = []
+    for record in sorted(records, key=lambda one: one.session_id):'''
+
+[[rows]]
+id = "R1_account_ids_unrecorded"
+description = "rotate._named_ids: read no account playlist off a native landing record, so a dated playlist is no batch and is neither rotated nor mirrored"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_organize_mirror_inbox.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py"]
+old = '''    accounts = record.detail.get(native.INBOX_PLAYLISTS_KEY)
+    if isinstance(accounts, list):'''
+new = '''    accounts = None
+    if isinstance(accounts, list):'''
+
+[[rows]]
+id = "F1_bridge_name_unasked"
+description = "refill.locate: ask only the account's bare name again, so a dated playlist an intake file recorded by name alone is called unfound"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''        asked = {name, recorded_name} - {"", native.ANALYZE}'''
+new = '''        asked = {name} - {"", native.ANALYZE}'''
+
+[[rows]]
+id = "F2_bridge_names_any_account"
+description = "refill.bridge_names: take an intake file's entry of any account, so another account playlist's dated name is asked"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py"]
+old = '''                and str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "") == account'''
+new = '''                and True'''
+
+[[rows]]
+id = "F3_analyze_asked"
+description = "refill.locate: stop excluding the reserved Analyze from the names asked"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_inbox_refill.py", "tests/test_inbox_analyzed.py"]
+old = '''        asked = {name, recorded_name} - {"", native.ANALYZE}'''
+new = '''        asked = {name, recorded_name} - {""}'''
+
+[[rows]]
+id = "R2_latest_landing_ages"
+description = "rotate.landings: date a playlist by its latest landing rather than its first"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_intake_land_account_playlists_native.py", "tests/test_organize_mirror_inbox.py", "tests/test_inbox_rotate.py", "tests/test_inbox_rotate_account_playlists.py"]
+old = '''            if key not in by_id or landed < by_id[key]:'''
+new = '''            if key not in by_id or landed > by_id[key]:'''

@@ -1,6 +1,7 @@
 """U113: the rotation ages an account playlist by its landing record, never by its name.
 
-An account playlist lands as ``Sunset Warmup``, a name with no date in it. The
+An account playlist lands as ``Sunset Warmup 2026-10-03`` since U175, its date
+at the end, and before it as ``Sunset Warmup``, neither the batch shape. The
 native landing names it on its record by identifier, which the landing suite
 drives end to end in ``tests/test_intake_land_account_playlists_native.py``.
 An intake file's playlist has no identifier until rekordbox imports it, so its

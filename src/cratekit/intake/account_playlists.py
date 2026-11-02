@@ -1,8 +1,9 @@
 """Which playlist on the account each file of a landing came from (U113).
 
 A pass sweeps the playlists the author made on the streaming account, and each
-one becomes an INBOX playlist of its own, named exactly as the account names
-it, holding every track of it the library holds (U128). This module answers the
+one becomes an INBOX playlist of its own, named as the account names it with
+the landing's date at the end (U175), holding every track of it the library
+holds (U128). This module answers the
 one question that needs: which of the files about to land did which playlist
 ask for, and which tracks it already owned. The name itself is chosen by :func:`cratekit.intake.batch_name.inbox_names`
 and written by whichever medium lands the batch.

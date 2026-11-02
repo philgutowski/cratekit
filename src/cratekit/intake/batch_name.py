@@ -40,10 +40,12 @@ A BATCH OF BANDCAMP PURCHASES IS NAMED BY ``crate sync bandcamp`` (U179),
 and ``2026-11-01 Bandcamp`` otherwise, through :func:`bandcamp`, made free the
 same way, since the files' tags, not a manifest or a pass, say what it holds.
 
-A PLAYLIST THE AUTHOR MADE ON THE ACCOUNT KEEPS ITS OWN NAME (U113). The files
+A PLAYLIST THE AUTHOR MADE ON THE ACCOUNT KEEPS ITS OWN NAME (U113), DATED (U175). The files
 of a pass still land in the one batch folder named above, and the tracks each
-account playlist brought in go into an INBOX playlist named exactly as the
-account names it, :func:`inbox_names`. The batch playlist keeps only what no
+account playlist brought in go into an INBOX playlist named as the account
+names it with the landing's date at the end, ``Lisa_10_27_26 2026-10-27``
+(U175), :func:`inbox_names`, so INBOX says which pass brought each one while
+it stays flat. The batch playlist keeps only what no
 account playlist claimed. :mod:`cratekit.intake.account_playlists` decides which
 file is whose.
 
@@ -312,20 +314,39 @@ def free(cfg: config.Config, base: str) -> str:
 ANALYZE = "Analyze"
 
 
-def inbox_names(wanted: Iterable[str], held: Iterable[str], *, batch: str) -> tuple[str, ...]:
-    """The INBOX playlist each account playlist lands as, in order (U113).
+def dated(account_name: str, day: date) -> str:
+    """An account playlist's INBOX name before it is made free: its name, then the day (U175).
 
-    EXACTLY THE ACCOUNT'S NAME, ``Sunset Warmup`` for ``Sunset Warmup``, with no
-    date and nothing made folder safe, since a playlist name is not a path. A
-    name already ``held`` under INBOX, the batch's own, or one an earlier
-    playlist of this landing took, gets `` 2``, `` 3`` and on, so one landing
-    never adds its tracks to another's playlist. Compared exactly, the way the
-    database writer finds a playlist by its name. :data:`ANALYZE` is always
-    held (U166), whether or not INBOX holds it yet.
+    ``Lisa_10_27_26 2026-10-27``. THE DATE GOES AT THE END, Phillip's answer of
+    2026-11-01: INBOX stays flat, every playlist keeps the name it was given,
+    and the landing's date after it says which pass brought it. The batch's own
+    name keeps its date first (U110), since that name is its folder's too.
     """
-    taken = {*held, batch, ANALYZE}
+    return f"{account_name} {day.isoformat()}"
+
+
+def inbox_names(wanted: Iterable[str], held: Iterable[str], *, batch: str) -> tuple[str, ...]:
+    """The INBOX playlist each account playlist lands as, in order (U113, U175).
+
+    THE ACCOUNT'S NAME EXACTLY, THEN THE LANDING'S DATE, ``Sunset Warmup
+    2026-10-27`` for ``Sunset Warmup`` (:func:`dated`), with nothing of the
+    account's name made folder safe, since a playlist name is not a path.
+    The date is :func:`today`'s, the landing's, the one the batch name takes.
+    A name already ``held`` under INBOX, the batch's own, or one an
+    earlier playlist of this landing took, gets `` 2``, `` 3`` and on after the
+    date, so one landing never adds its tracks to another's playlist. Compared
+    exactly, the way the database writer finds a playlist by its name.
+
+    :data:`ANALYZE` IS NEVER TAKEN (U166), and since U175 no longer needs
+    holding here: every name this gives ends in a date, so none can be the
+    reserved ``Analyze``, and an account playlist of that name lands as
+    ``Analyze 2026-10-27``.
+    """
+    on = today()
+    taken = {*held, batch}
     named: list[str] = []
-    for base in wanted:
+    for account_name in wanted:
+        base = dated(account_name, on)
         candidate, count = base, 1
         while candidate in taken:
             count += 1
@@ -410,6 +431,7 @@ __all__ = [
     "bandcamp",
     "filed_folders",
     "free",
+    "dated",
     "inbox_names",
     "is_default_shape",
     "job_word",
