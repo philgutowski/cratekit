@@ -186,6 +186,72 @@ def _restore(path: Path, raw: bytes) -> str | None:
     return None
 
 
+def write_copy(
+    cfg: config.Config,
+    spec: registry.GateSpec,
+    run_id: str,
+    path: Path,
+    before: str,
+    after: str,
+    digest: str,
+    *,
+    what: str,
+) -> tuple[Path, str, bytes]:
+    """Keep the copy as it was, write ``after`` over it, and read it back through the loader.
+
+    ONE WRITE FOR EVERY VERB THAT EDITS THE COPY, the upgrade and the answers
+    to an off taxonomy word (U194), so each keeps the same backup, the same
+    stale check on the bytes and the same restore. Returns the backup's path,
+    the line ending written, and the bytes the copy held.
+
+    THE BYTES ON DISK ARE WHAT IS KEPT AND PUT BACK. The planner reads the
+    copy as text, which folds CRLF to LF, so the copy is read again as bytes:
+    the backup and any restore are those bytes exactly, and the new copy keeps
+    their line ending. Bytes that no longer read as the planned ``before`` are
+    an edit made after the second plan, refused as stale like one made before
+    it.
+
+    READ BACK THROUGH THE LOADER every verb reads the copy with, so what was
+    written is what routes. A copy that does not read back is replaced by the
+    one it replaced, from the bytes this holds, so the library is never left
+    with a declaration every routing verb refuses. That restore is read back
+    too, and the refusal says whether it took: a disk that fills or a volume
+    that drops after the write can fail it, and then the person needs the
+    backup's path more than anything else the verb says.
+    """
+    raw = path.read_bytes()
+    if as_read(raw) != before:
+        # The copy's digest, not a plan's: there is no plan of bytes that changed.
+        moved_to = taxonomy.template_digest(raw.decode("utf-8", errors="replace"))
+        raise gates.DecisionStale(spec, run_id, digest, moved_to)
+    ending = newline(raw)
+    written = after.replace("\n", ending).encode("utf-8")
+
+    kept = backup_path(path, datetime.now())
+    config.atomic_write_bytes(raw, kept)
+    config.atomic_write_bytes(written, path)
+
+    problem = _read_back(cfg, path, written)
+    if problem is not None:
+        failed = _restore(path, raw)
+        if failed is None:
+            outcome = f"so the copy as it was has been put back; it is also kept at {kept}"
+        else:
+            outcome = (
+                f"and putting the copy as it was back failed too ({failed}), so {path} may "
+                f"hold the text that did not read back; the copy as it was is kept at "
+                f"{kept}, copy it over {path} by hand"
+            )
+        raise refuse(
+            "internal-error",
+            f"the {what} copy at {path} did not read back ({problem}), {outcome}",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=_ORIGIN,
+            detail={"path": str(path), "backup": str(kept), "restored": failed is None},
+        )
+    return kept, ending, raw
+
+
 def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
     """Plan what the copy lacks, ask, keep the copy as it was, write, read back."""
     cfg = _load()
@@ -229,49 +295,9 @@ def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
     if moved["digest"] != data["digest"]:
         raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], moved["digest"])
 
-    # THE BYTES ON DISK ARE WHAT IS KEPT AND PUT BACK. The planner reads the
-    # copy as text, which folds CRLF to LF, so the copy is read again as bytes:
-    # the backup and any restore are those bytes exactly, and the upgraded copy
-    # keeps their line ending. Bytes that no longer read as the planned text
-    # are an edit made after the second plan, refused as stale like one made
-    # before it.
-    raw = path.read_bytes()
-    if as_read(raw) != fresh.before:
-        # The copy's digest, not a plan's: there is no plan of bytes that changed.
-        moved_to = taxonomy.template_digest(raw.decode("utf-8", errors="replace"))
-        raise gates.DecisionStale(spec, ctx.run.run_id, data["digest"], moved_to)
-    ending = newline(raw)
-    written = fresh.after.replace("\n", ending).encode("utf-8")
-
-    kept = backup_path(path, datetime.now())
-    config.atomic_write_bytes(raw, kept)
-    config.atomic_write_bytes(written, path)
-
-    # READ BACK THROUGH THE LOADER every verb reads the copy with, so what was
-    # written is what routes. A copy that does not read back is replaced by the
-    # one it replaced, from the bytes this verb holds, so the library is never
-    # left with a declaration every routing verb refuses. That restore is read
-    # back too, and the refusal says whether it took: a disk that fills or a
-    # volume that drops after the write can fail it, and then the person needs
-    # the backup's path more than anything else this verb says.
-    problem = _read_back(cfg, path, written)
-    if problem is not None:
-        failed = _restore(path, raw)
-        if failed is None:
-            outcome = f"so the copy as it was has been put back; it is also kept at {kept}"
-        else:
-            outcome = (
-                f"and putting the copy as it was back failed too ({failed}), so {path} may "
-                f"hold the text that did not read back; the copy as it was is kept at "
-                f"{kept}, copy it over {path} by hand"
-            )
-        raise refuse(
-            "internal-error",
-            f"the upgraded copy at {path} did not read back ({problem}), {outcome}",
-            remedy=Remedy.REPORT_DEFECT,
-            origin=_ORIGIN,
-            detail={"path": str(path), "backup": str(kept), "restored": failed is None},
-        )
+    kept, ending, raw = write_copy(
+        cfg, spec, ctx.run.run_id, path, fresh.before, fresh.after, data["digest"], what="upgraded"
+    )
 
     added = [*fresh.classes, *fresh.buckets]
     return ctx.envelope(
@@ -309,4 +335,5 @@ __all__ = [
     "newline",
     "payload",
     "taxonomy_upgrade_verb",
+    "write_copy",
 ]

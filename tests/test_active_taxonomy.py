@@ -83,10 +83,17 @@ def shipped_without(section: str) -> str:
 # load; it returns names and text, never a parsed taxonomy, so nothing routes
 # by what it reads.
 UPGRADER = SRC / "core" / "taxonomy_upgrade.py"
+#
+# THE ANSWERS TO AN OFF TAXONOMY WORD PARSE AS WELL, and never the shipped text
+# (U194). They edit the active copy's text the caller read through
+# active_taxonomy, and parse it before and after the edit to refuse an answer
+# the copy cannot take; like the upgrader they return text, so nothing routes
+# by what they parse. They are kept off the shipped text list on purpose.
+ANSWERER = SRC / "core" / "taxonomy_word.py"
 READERS = {
     "default_taxonomy": frozenset({LOADER, DEFINER}),
     "shipped_template_text": frozenset({LOADER, DEFINER, UPGRADER, SRC / "cli" / "setup.py"}),
-    "load_taxonomy": frozenset({LOADER, DEFINER, UPGRADER, SRC / "cli" / "doctor.py"}),
+    "load_taxonomy": frozenset({LOADER, DEFINER, UPGRADER, ANSWERER, SRC / "cli" / "doctor.py"}),
 }
 
 

@@ -601,6 +601,15 @@ def planned(cfg: config.Config) -> tuple[Path, Plan]:
         ) from exc
 
 
+# THE THREE PIECES ANOTHER EDIT OF THE COPY REUSES (U194): the headers, the
+# placement of a new ``[[entry]]`` among the copy's own, and the parse that
+# names every problem. Public names for the same functions, so the answers to
+# an off taxonomy word edit the copy's text by the rules this module keeps.
+blocks = _blocks
+placed = _placed
+loads = _loads
+
+
 __all__ = [
     "BUCKET",
     "MARKER",
@@ -610,8 +619,11 @@ __all__ = [
     "NoCopy",
     "Plan",
     "ShippedUnreadable",
+    "blocks",
     "cut",
     "gap",
+    "loads",
+    "placed",
     "plan",
     "planned",
     "read",
