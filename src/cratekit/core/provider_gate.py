@@ -582,8 +582,13 @@ class Gate:
             remediation=Remediation(
                 remedy=Remedy.FIX_COMMAND_LINE,
                 steps=(
-                    f"continue with a higher ceiling for one run: put --calls {higher} "
-                    f"before the command and run it again",
+                    # THE STORED FORM, read off ``job show`` when a detached
+                    # child stopped: it names both shapes, since a job is
+                    # continued by its id and never by queueing it again. The
+                    # dispatcher replaces it with the one exact command.
+                    f"continue with a higher ceiling for one run: a parked job with "
+                    f"crate --calls {higher} job resume JOB_ID, any other command by "
+                    f"running it again with --calls {higher} before it",
                     "or raise [provider] calls_per_command in the configuration for every run",
                 ),
             ),

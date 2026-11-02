@@ -270,10 +270,13 @@ def test_an_estimate_over_the_call_ceiling_asks_even_under_the_builds_own_line()
     assert "more than the 150 provider calls one command may make" in said
     assert "3 of them spent on the listing already" in said
     assert "--calls 400" in said
+    # ONLY THE CEILING ASKS HERE, so the reason names it and not the build's line.
+    assert "ceiling of 150" in under_line.shown()["why this asks"]
 
     roomy = playlists_cli.Estimate("x", "X", releases=251, pace_s=1.0, ceiling=5000)
     assert roomy.over and not roomy.over_ceiling
     assert "call ceiling" not in roomy.shown()
+    assert "a full build over 500" in roomy.shown()["why this asks"]
 
     at_default = playlists_cli.Estimate("x", "X", releases=250, pace_s=1.0)
     assert at_default.ceiling == config.DEFAULT_PROVIDER_CALLS_PER_COMMAND

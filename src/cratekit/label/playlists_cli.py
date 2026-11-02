@@ -535,6 +535,9 @@ class Estimate:
             "why this asks": (
                 f"a full build over {FULL_BUILD_CALLS} provider calls reads the "
                 f"whole catalogue, so it starts only once you choose it"
+                if self.calls > FULL_BUILD_CALLS
+                else f"a crawl past this command's ceiling of {self.ceiling} provider "
+                f"calls would stop part way, so it starts only once you choose it"
             ),
             "instead": shlex.join(["crate", "label", "playlists", self.name, "--releases"])
             + " adds only the releases a label sync took",

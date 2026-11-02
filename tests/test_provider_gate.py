@@ -1758,6 +1758,8 @@ def test_the_ceiling_parks_a_job_and_the_resumed_job_continues(paths, clock, que
     assert first.job.state is jobs.JobState.BLOCKED
     assert first.job.cause is not None and first.job.cause.reason == CEILING
     assert first.job.cause.detail["job_id"] == job.job_id
+    # What ``job show`` reads when a detached child stopped: the resume form.
+    assert "crate --calls 6 job resume JOB_ID" in first.job.cause.remediation.steps[0]
     assert len(transport.calls) == 3
     states = {item.item_id: item.state for item in jobs.items(store, job.job_id)}
     assert states == {
@@ -1909,6 +1911,8 @@ def test_a_verb_at_its_ceiling_is_blocked_and_names_the_exact_command_that_conti
     expected = "crate --output json --calls 2 " + " ".join(HARVEST)
     assert cause["detail"]["continue"] == expected
     assert cause["remediation"]["steps"][0].endswith(expected)
+    said = [w for w in envelope.get("warnings", ()) if w.get("code") == CEILING]
+    assert said == [], "the refusal already says the stop; a warning says it twice"
 
 
 def test_calls_on_the_command_line_lets_one_run_pass_and_the_next_is_back_at_the_ceiling(
