@@ -1946,6 +1946,20 @@ def test_the_continue_command_replaces_a_calls_already_given(one_call, monkeypat
     )
 
 
+def test_the_continue_command_replaces_a_spaced_calls_already_given(one_call, monkeypatch):
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    _two_more_calls(monkeypatch, client)
+
+    _, envelope = drive(["--calls", "2", *HARVEST])
+
+    assert len(client.request_session.calls) == 2
+    assert envelope["cause"]["detail"]["continue"] == (
+        "crate --output json --calls 4 " + " ".join(HARVEST)
+    )
+
+
 @pytest.mark.parametrize("value", ["0", "-2", "many"])
 def test_a_calls_that_is_not_a_positive_whole_number_is_a_usage_error(value, capsys):
     out, err = io.StringIO(), io.StringIO()
