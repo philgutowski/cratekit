@@ -576,6 +576,33 @@ def test_the_state_directory_name_is_pinned():
     assert not module.__name_display__.endswith("-dev")
 
 
+def test_nothing_outside_the_tree_reaches_the_package_by_its_old_path():
+    """U197 renamed the package. A straggler that still names the old import path
+    or the old licence copy imports nothing, or ships nothing, and is invisible
+    until the line that holds it runs. The tree's own self imports are swept by
+    the test above; this sweeps the code, the tests, the scripts, the packaging
+    and CI around it. This file is left out because it spells the old names to
+    look for them."""
+    old_names = re.compile(
+        r"_vendor[./]tidal_dl_ng|TIDAL_DL_NG|LICENSE\.tidal-dl-ng"
+    )
+    roots = [REPO_ROOT / "src", REPO_ROOT / "tests", REPO_ROOT / "scripts"]
+    files = [path for root in roots for path in root.rglob("*.py")]
+    files += [PYPROJECT, *sorted((REPO_ROOT / ".github").rglob("*.yml"))]
+    this_file = Path(__file__).resolve()
+    stragglers = [
+        f"{path.relative_to(REPO_ROOT)}:{number}"
+        for path in files
+        if path.resolve() != this_file
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1)
+        if old_names.search(line)
+    ]
+    assert files and not stragglers, (
+        "these lines still name the vendored package by its old path:\n  "
+        + "\n  ".join(stragglers)
+    )
+
+
 # ── the state directory an installation made before U197 is adopted ────────
 
 
@@ -654,6 +681,21 @@ def test_no_old_state_directory_resolves_the_new_one_and_makes_nothing(tmp_path,
     new, old = _state_directories(tmp_path, monkeypatch)
     assert tool_path.path_config_base() == str(new)
     assert not new.exists() and not old.exists()
+
+
+def test_a_file_under_the_old_name_is_not_moved_into_the_state_directory_slot(
+    tmp_path, monkeypatch
+):
+    """Only a directory is adopted. A file moved into the slot would make every
+    later settings or token write fail on a path that is not a directory."""
+    from cratekit._vendor.downloader.helper import path as tool_path
+
+    new, old = _state_directories(tmp_path, monkeypatch)
+    old.write_text("not a directory", encoding="utf-8")
+
+    assert tool_path.path_config_base() == str(new)
+    assert not new.exists()
+    assert old.read_text(encoding="utf-8") == "not a directory"
 
 
 def test_a_failed_move_keeps_the_old_state_directory_in_use(tmp_path, monkeypatch):

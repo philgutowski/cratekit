@@ -13,6 +13,7 @@ and the kernel is the half doing the work.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import signal
@@ -20,10 +21,12 @@ import sqlite3
 import subprocess
 import sys
 import time
+import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import tomli_w
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
@@ -140,6 +143,27 @@ def test_a_config_that_changed_while_queued_names_what_drifted(queue, cfg, tmp_p
     assert drifted == ("paths.download_staging",)
     # The job still runs against the frozen copy, which is the whole point.
     assert jobs.frozen_config(job).paths.download_staging == cfg.paths.download_staging
+
+
+def test_a_job_frozen_under_the_retired_adapter_key_reports_no_drift(queue, cfg):
+    """U197. A job queued before the rename froze the adapter as its old key, and
+    the loader now reads that key as ``vendored``. Read the same way, nothing
+    moved, so resuming it after the upgrade names no change nobody made, while
+    a real move of the adapter is still named."""
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    assert cfg.acquisition.adapter == "vendored"
+    frozen = tomllib.loads(job.config_toml)
+    frozen["acquisition"]["adapter"] = "tidal_dl_ng"
+    before_rename = dataclasses.replace(
+        job, config_toml=tomli_w.dumps(frozen), config_fingerprint="queued before U197"
+    )
+    assert jobs.drift(before_rename, cfg) == ()
+
+    switched = config.from_dict(
+        {**cfg.to_toml_dict(), "acquisition": {**frozen["acquisition"], "adapter": "streamrip"}}
+    )
+    assert jobs.drift(before_rename, switched) == ("acquisition.adapter",)
 
 
 def test_transitions_are_forward_only(queue, cfg):
