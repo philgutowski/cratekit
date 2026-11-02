@@ -1,0 +1,260 @@
+name = "u194"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_off_taxonomy_any_word"
+description = "off_taxonomy: answer every word as off taxonomy, so a too coarse or already filed word becomes an alias or a folder"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    said = routing.suggest_tag(declared, word)
+    if said.off_taxonomy:
+        return said'''
+new = '''    said = routing.suggest_tag(declared, word)
+    if True:
+        return said'''
+
+[[rows]]
+id = "W2_decline_not_too_coarse"
+description = "off_taxonomy: drop the decline branch, so a word tagging refuses by rule is called already filed"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if said.decline is not None:
+        raise Refused('''
+new = '''    if False:
+        raise Refused('''
+
+[[rows]]
+id = "W3_fallback_not_too_coarse"
+description = "off_taxonomy: drop the fallback branch, so a word the taxonomy files in its fallback on purpose is called already filed"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if said.bucket_id == fallback:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W4_bare_folder_alias"
+description = "alias: drop the refusal of a folder whose own name files nothing by itself, so a word is aliased to the fallback"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if declared.named_folder(target.display) != (target.id, None):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W5_saved_alias_rerun"
+description = "alias: drop the short circuit for an alias already saved to the genre, so a rerun after a partial write is refused"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if declared.tagging_alias(spelled.lower()) == (target.id, None):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W6_kept_whole_alias"
+description = "alias: drop the parse back that holds every other entry unchanged, so a misplaced edit is written"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if after is None or not _kept_whole_but_alias(text, after, target.id, saved):'''
+new = '''    if after is None:'''
+
+[[rows]]
+id = "W7_genre_casefold_unique"
+description = "genre: take the first bucket whose name matches in another case rather than only a unique one"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if len(folded) == 1:
+        return folded[0]'''
+new = '''    if folded:
+        return folded[-1]'''
+
+[[rows]]
+id = "W8_folder_already_declared"
+description = "folder: drop the short circuit for a folder already declared, so a second run of the same answer is refused"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    made = declared.bucket_for_display(spelled)
+    if made is not None:'''
+new = '''    made = declared.bucket_for_display(spelled)
+    if False:'''
+
+[[rows]]
+id = "W9_folder_like_default"
+description = "folder: take the fallback's priors by default rather than those of the bucket the word routes to now"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        like = declared.bucket(routing.resolve_bucket(declared, spelled).bucket_id)'''
+new = '''        like = declared.bucket(declared.fallback.bucket)'''
+
+[[rows]]
+id = "W10_folder_rates"
+description = "folder: never write rates = false, so a folder like Jazz is given a star rating its model never had"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if not like.rates:
+        out.append("rates = false\n")'''
+new = '''    if False:
+        out.append("rates = false\n")'''
+
+[[rows]]
+id = "W11_folder_name_any_case"
+description = "off_taxonomy: drop the refusal of a folder's own name in another case, so files carrying the name exactly are retagged as another genre"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    named = [b for b in declared.buckets if b.display.casefold() == word.casefold()]
+    if named:'''
+new = '''    named = [b for b in declared.buckets if b.display.casefold() == word.casefold()]
+    if False:'''
+
+[[rows]]
+id = "W12_string_escape"
+description = "_string: write the word between quotes unescaped, so a quote or a backslash in it breaks the copy"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    return json.dumps(value, ensure_ascii=False)'''
+new = '''    return f'"{value}"' '''
+
+[[rows]]
+id = "W13_inline_joiner"
+description = "_with_tag_alias: join an inline array without a comma"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''            joiner = "" if body.endswith("[") else ", " if not body.endswith(",") else " "'''
+new = '''            joiner = "" if body.endswith("[") else " "'''
+
+[[rows]]
+id = "W14_bucket_id_unique"
+description = "bucket_id_for: never step past an id the copy holds"
+file = "src/cratekit/core/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    while candidate in taken:'''
+new = '''    while False:'''
+
+[[rows]]
+id = "W15_alias_stale_digest"
+description = "alias verb: drop the digest comparison after the answer, so a file retagged since is written over"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if _alias_payload(fresh, fresh_files)["digest"] != data["digest"]:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W16_folder_stale_digest"
+description = "folder verb: drop the digest comparison after the answer; the copy's byte check is the layer under it"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    moved = _folder_payload(fresh)
+    if moved["digest"] != data["digest"]:'''
+new = '''    moved = _folder_payload(fresh)
+    if False:'''
+
+[[rows]]
+id = "W17_alias_nothing_to_do"
+description = "alias verb: drop the empty plan short circuit, so a rerun with nothing to do asks again"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if not edit.writes and not files.of(WRITE):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W18_carrying_several_genres"
+description = "carrying: plan a write for a file carrying the word beside another genre"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        current = _JOINED.join(values)
+        if len(values) == 1:'''
+new = '''        current = _JOINED.join(values)
+        if True:'''
+
+[[rows]]
+id = "W19_carrying_unread"
+description = "carrying: read a file whose genre could not be read as one carrying no genre"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        if values is None:
+            items.append(FileItem(path=path, relative=relative, change=UNREAD))
+            continue'''
+new = '''        if values is None:
+            continue'''
+
+[[rows]]
+id = "W20_retag_reread"
+description = "_retag: drop the read before the write, so a file changed since the second plan is written over"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        if _genres(item.path) != (item.current,):
+            done.moved.append(item)'''
+new = '''        if False:
+            done.moved.append(item)'''
+
+[[rows]]
+id = "W21_retag_read_back"
+description = "_retag: drop the read back, so a write that did not take is counted as retagged"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''        if _genres(item.path) != (display,):
+            done.wrong.append(item)'''
+new = '''        if False:
+            done.wrong.append(item)'''
+
+[[rows]]
+id = "W22_unwritten_refusal"
+description = "alias verb: leave a file the writer could not write out of the refusal, so the run reports success"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if done.moved or done.failed or done.wrong:'''
+new = '''    if done.moved or done.wrong:'''
+
+[[rows]]
+id = "W23_root_missing"
+description = "_root: drop the refusal of a folder that is not there, so the walk plans nothing and reads clean"
+file = "src/cratekit/cli/verbs/taxonomy_word.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py"]
+old = '''    if not root.is_dir():
+        raise refuse(
+            "source-missing",
+            f"{root} is not a folder, so there are no files to retag; nothing was written",'''
+new = '''    if False:
+        raise refuse(
+            "source-missing",
+            f"{root} is not a folder, so there are no files to retag; nothing was written",'''
+
+[[rows]]
+id = "W24_write_copy_bytes_stale"
+description = "write_copy: drop the byte check after the second plan, so an edit made since is written over"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_taxonomy_upgrade.py"]
+old = '''    if as_read(raw) != before:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W25_write_copy_read_back"
+description = "write_copy: drop the read back, so a copy that does not load is left as every verb's declaration"
+file = "src/cratekit/cli/verbs/taxonomy.py"
+surface = "user"
+tests = ["tests/test_taxonomy_word.py", "tests/test_taxonomy_upgrade.py"]
+old = '''    problem = _read_back(cfg, path, written)
+    if problem is not None:'''
+new = '''    problem = _read_back(cfg, path, written)
+    if False:'''

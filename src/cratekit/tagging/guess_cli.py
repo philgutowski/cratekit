@@ -40,7 +40,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import active_taxonomy, config, rb_writer
+from cratekit.core import active_taxonomy, config, rb_writer, taxonomy_word
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.tagging import guess, suggest
@@ -318,7 +318,8 @@ def _advisories(found: guess.GuessPlan) -> list[dict[str, str]]:
                     f"{len(found.off_taxonomy)} genre(s) on these files have no place "
                     f"of their own in the taxonomy: {'; '.join(words)}. For each, "
                     f"either save it as an alias of one of your genres and retag "
-                    f"its files, or make it a genre folder of its own"
+                    f"its files, with {taxonomy_word.ALIAS_VERB} WORD GENRE, or make "
+                    f"it a genre folder of its own, with {taxonomy_word.FOLDER_VERB} WORD"
                 ),
             }
         )

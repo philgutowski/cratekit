@@ -3585,6 +3585,73 @@ ENTRIES: tuple[Entry, ...] = (
             ),
         ),
     ),
+    # ── A genre word outside the taxonomy, answered in one command (U194) ──
+    #
+    # Appended, for the reason the deferred routing block above gives. The two
+    # answers ``tag folder`` and ``tag guess`` offer for a word the taxonomy has
+    # no place for, each an edit of the library's copy in the upgrade's order.
+    Entry(
+        name="taxonomy.alias",
+        summary="save a genre word the taxonomy has no place for as a tagging alias "
+        "of one of its genre folders, and retag the files carrying it; writes files",
+        module="cratekit.cli.verbs.taxonomy_word",
+        builder="build_alias",
+        handler_key="taxonomy.alias",
+        # NO FEATURE ROW. The source system had one taxonomy table in code and
+        # an alias was an edit of that code.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: THE FILE AND ONLY THE FILE, a genre rewritten to the folder's name,
+        #: beside the library's taxonomy copy and a dated backup of it, which
+        #: are library state as ``taxonomy.upgrade``'s are. No row is written:
+        #: the rows follow by ``tag.rows``, which the run names, so no database
+        #: is opened and the cloud sync decision is not one this can reach.
+        #: ``destructive`` because a genre a file carries is replaced.
+        writes=frozenset({"files"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="taxonomy.alias.apply",
+                options=("approve", "abort"),
+                prompt="Save this word as an alias of the genre in this library's "
+                "taxonomy copy, and retag the files carrying it?",
+                #: EXPLICIT (R34). The copy is the declaration every verb routes
+                #: by, and a genre is written once and stays.
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="taxonomy.folder",
+        summary="make a genre word the taxonomy has no place for a genre folder of "
+        "its own, with energy bands, in this library's taxonomy copy",
+        module="cratekit.cli.verbs.taxonomy_word",
+        builder="build_folder",
+        handler_key="taxonomy.folder",
+        # NO FEATURE ROW, for the alias's reason.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: No declared surface, as ``taxonomy.upgrade``: the library's taxonomy
+        #: copy and a dated backup of it. No file and no row: the files already
+        #: carry the word, and ``route.resort`` files them, which the run
+        #: names. Not destructive: it only adds, and the copy as it was is
+        #: kept beside it.
+        writes=frozenset(),
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="taxonomy.folder.apply",
+                options=("approve", "abort"),
+                prompt="Add this genre folder to this library's taxonomy copy?",
+                #: EXPLICIT (R34), as the upgrade's.
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
     # ── A playlist pair, kept one list on both sides (U130) ─────────────────
     #
     # Appended, for the reason the deferred routing block above gives.
