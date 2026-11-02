@@ -77,6 +77,7 @@ from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.tail import (
     ACK_STOP,
     ANALYZE,
+    GUESS,
     LAND,
     LAND_VERB,
     NAME,
@@ -103,7 +104,7 @@ PREFLIGHT = sync_land.PREFLIGHT
 PLAN = "plan"
 FETCH = "fetch"
 STEPS: tuple[str, ...] = (
-    PREFLIGHT, PLAN, FETCH, TAG, ANALYZE, RESTAMP, NAME, REHEARSE, LAND,
+    PREFLIGHT, PLAN, FETCH, TAG, GUESS, ANALYZE, RESTAMP, NAME, REHEARSE, LAND,
 )
 
 #: The report row the staged files' tags are read into, after the tail.

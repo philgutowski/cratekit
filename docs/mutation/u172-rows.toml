@@ -1,0 +1,244 @@
+name = "u172"
+pass_kind = "full"
+
+# The genre guess (U172): its engine, its verb and its step in the tail. Every
+# row is a guard or a value this unit added; A12, A17 and B2 are the review
+# fixes, measured so a regression of any is seen. C2 is the pass the guess is
+# given in a sync pass.
+
+[[rows]]
+id = "A1_unreadable_read_as_blank"
+description = "plan: drop the unreadable branch, so a file whose genre could not be read is a candidate and written over"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if not one.readable:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A2_tagged_file_is_a_candidate"
+description = "plan: drop the fill if empty branch, so a file carrying a genre is guessed and overwritten"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if one.genre:
+            if off_taxonomy'''
+new = '''        if False:
+            if off_taxonomy'''
+
+[[rows]]
+id = "A3_off_taxonomy_never_named"
+description = "plan: never name an off taxonomy word on a staged file, so the review offers nothing"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''            if off_taxonomy(declared, one.genre):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "A4_self_in_share"
+description = "_share: keep the candidate in its own playlist's share"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if path != candidate.path and (one := staged.get(path)) is not None'''
+new = '''        if (one := staged.get(path)) is not None'''
+
+[[rows]]
+id = "A5_same_artist_votes_twice"
+description = "_share: keep the artist's own tracks in the playlist's share, so they vote twice"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if not member.genre or (own and artist_key(member.artist) == own):'''
+new = '''        if not member.genre:'''
+
+[[rows]]
+id = "A6_vote_per_member"
+description = "_share: a vote per member rather than one shared voice, so a long playlist drowns the artist"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''Fraction(PLAYLIST_WEIGHT * count, total)'''
+new = '''Fraction(count)'''
+
+[[rows]]
+id = "A7_playlist_weight_halved"
+description = "PLAYLIST_WEIGHT: halve the playlist's voice, from four to two"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''PLAYLIST_WEIGHT = 4'''
+new = '''PLAYLIST_WEIGHT = 2'''
+
+[[rows]]
+id = "A8_artist_weight_halved"
+description = "_artist_votes: an artist neighbour weighs one rather than two"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        votes[word] += ARTIST_WEIGHT'''
+new = '''        votes[word] += 1'''
+
+[[rows]]
+id = "A9_folder_artist_ignored"
+description = "_artist_votes: the folder's own tracks by the artist give no vote"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if one.path != candidate.path and one.genre and artist_key(one.artist) == own'''
+new = '''        if False'''
+
+[[rows]]
+id = "A10_tie_not_broken_by_artist"
+description = "_broken: a split goes to the first by name only, ignoring the artist's weight"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''    return sorted(tied, key=lambda word: (-artist.get(word, 0), word))[0]'''
+new = '''    return sorted(tied)[0]'''
+
+[[rows]]
+id = "A11_split_not_written"
+description = "plan: a split writes no genre, contrary to Phillip's write every guess"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if band == suggest.SPLIT:
+            genre = _broken(tied, artist)'''
+new = '''        if band == suggest.SPLIT:
+            genre = '''''
+
+[[rows]]
+id = "A12_fraction_into_weigh"
+description = "plan: drop the exact band, so tag suggest's float band_of decides, the rounds 1 and 2 defect"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if band in suggest.BANDS:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A13_report_writes"
+description = "write: drop the report's early return, so --report writes"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''    if found.report:
+        return found'''
+new = '''    if False:
+        return found'''
+
+[[rows]]
+id = "A14_write_false_trusted"
+description = "write: trust the writer's answer, so a file that would not take the genre is reported guessed"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if not tags.write_genre(item.path, item.genre):'''
+new = '''        if tags.write_genre(item.path, item.genre) and False:'''
+
+[[rows]]
+id = "A15_read_back_skipped"
+description = "write: skip the read back, so a file reading back another genre is reported guessed"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if back != item.genre:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A16_tombstone_votes"
+description = "library_by_artist: a soft deleted row votes"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if trees.soft_delete_marker(row):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "A17_bound_read_as_float"
+description = "band_of: compare the exact share with the float bound, so an exact eighty percent reads medium"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if share >= Fraction(str(least)) and total >= votes:'''
+new = '''        if share >= least and total >= votes:'''
+
+[[rows]]
+id = "B1_library_read_for_nothing"
+description = "signals: read the library and the pass even when no file needs a genre"
+file = "src/cratekit/tagging/guess_cli.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''    if not any(one.readable and not one.genre for one in staged):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B2_unknown_pass_silent"
+description = "_playlists: read a pass no job carries as no playlists, the round 1 defect"
+file = "src/cratekit/tagging/guess_cli.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if not batch_name.pass_jobs(cfg, pass_name):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B3_pass_ignored"
+description = "signals: never read the pass's playlists"
+file = "src/cratekit/tagging/guess_cli.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''    if pass_name:
+        playlists, playlists_unread'''
+new = '''    if False:
+        playlists, playlists_unread'''
+
+[[rows]]
+id = "B4_outcome_ok_always"
+description = "tag_guess: answer OK when nothing was written"
+file = "src/cratekit/tagging/guess_cli.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        outcome=Outcome.OK if written else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK,'''
+
+[[rows]]
+id = "B5_missing_folder_walked"
+description = "tag_guess: drop the refusal of a folder that is not there"
+file = "src/cratekit/tagging/guess_cli.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''    if not root.is_dir():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C1_tail_skips_guess"
+description = "through_name: never run the guess after tag folder"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_sync_bandcamp.py"]
+old = '''        if step == TAG:
+            guess(chain, folder, pass_name)'''
+new = '''        if False:
+            guess(chain, folder, pass_name)'''
+
+[[rows]]
+id = "C2_guess_without_pass"
+description = "guess_argv: never name the pass, so no playlist votes in a pass"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_sync_bandcamp.py"]
+old = '''*([PASS_FLAG, pass_name] if pass_name else [])'''
+new = '''*([])'''
+
+[[rows]]
+id = "C3_left_miscounted"
+description = "guess: count the files left as the candidates written rather than the files still without a genre"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_sync_bandcamp.py"]
+old = '''    left = count - after'''
+new = '''    left = count - before - written'''

@@ -1,0 +1,7 @@
+# U172 mutation notes
+
+`u172.md` measured 25 rows: 21 killed, 4 zero.
+
+- **A4_self_in_share, zero, equivalent.** The candidate is a file with no genre, and `_share` skips every member with no genre, so keeping the candidate in its own playlist's share adds nothing. The path guard is redundant with the genre guard on every input the engine can be handed; it stays as the statement of intent and is not a guard anything else relies on.
+- **A14_write_false_trusted, A16_tombstone_votes, C3_left_miscounted, zero, then killed.** A14 fell through to the read back behind it, which reported the file unwritten with another note; A16 had no test with a soft deleted row; C3's text matched the round 2 line only as a prefix, so its mutant equalled the code on the test meant to kill it. `test(u172)` added the three pins and `u172-b.md` measured the same three mutations again, C3 restated against the whole line: all three killed, one test each.
+- **u172-b ran with `TMPDIR` under `/var/tmp`.** Its first two attempts were refused, the null control and then the baseline reddened by `tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random`, the container's inode bound trap the solutions entry of 2026-10-28 describes; it passed alone. The third, with the driver's temporary directory on `/var/tmp` as that entry gives, ran a green baseline and a zero null control. No id was written into the baseline file.

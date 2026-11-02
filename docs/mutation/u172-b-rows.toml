@@ -1,0 +1,36 @@
+name = "u172-b"
+pass_kind = "full"
+
+# The three zero rows of the u172 table measured again, unchanged in what they
+# mutate, after the tests that pin them were added. C3 is restated against the
+# line as it stands since round 2, which the first table's text matched only as
+# a prefix, so its mutant equalled the code on the test that should kill it.
+
+[[rows]]
+id = "A14_write_false_trusted"
+description = "write: trust the writer's answer, so a file that would not take the genre is reported guessed"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if not tags.write_genre(item.path, item.genre):'''
+new = '''        if tags.write_genre(item.path, item.genre) and False:'''
+
+[[rows]]
+id = "A16_tombstone_votes"
+description = "library_by_artist: a soft deleted row votes"
+file = "src/cratekit/tagging/guess.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py"]
+old = '''        if trees.soft_delete_marker(row):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "C3_left_miscounted"
+description = "guess: count the files left as the candidates written rather than the files still without a genre"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_tag_guess.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_sync_bandcamp.py"]
+old = '''    left = count - after - unread'''
+new = '''    left = count - before - written - unread'''

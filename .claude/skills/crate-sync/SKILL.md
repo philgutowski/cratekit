@@ -53,9 +53,9 @@ Every one of these holds, or the pass does not start.
     crate --output json sync land
 
 One verb runs the whole pass: `sync all`, the intake jobs it queued, the
-missing list, the download, then the tail of `tag folder`, `analyze run`,
-`analyze restamp` and `name apply` over the staging folder, and the landing
-planned and stopped at its gate. Read `data.summary.stopped_at` and the exit
+missing list, the download, then the tail of `tag folder`, `tag guess`,
+`analyze run`, `analyze restamp` and `name apply` over the staging folder, and
+the landing planned and stopped at its gate. Read `data.summary.stopped_at` and the exit
 status:
 
 - **It stopped at `intake.land.native`.** The pass is downloaded, tagged,
@@ -173,12 +173,17 @@ One message, in this order, and nothing before it except a stop:
    rows cleared from INBOX / Analyze.
 3. **The account.** The playlists marked, by pass, and where each was filed.
 4. **What was refused or left.** Every download refused (`lossy-refused`
-   above all), every track with no genre (it waits in INBOX for a hand tag),
+   above all), the genre guess (`data.summary.guess`: how many files carried a
+   genre before and after it, and the ties it wrote, from the `tag-guess-split`
+   warning), every track still with no genre (it waits in INBOX for a hand tag),
    every review item, every playlist left unmarked with its reason, and every
    difference the rehearsal showed.
 5. **The questions no rule answers**, each as a multiple choice with a
-   recommendation first, batched here: a vocal cut that reads wrong, a genre
-   word outside the taxonomy, anything else the pass could not decide.
+   recommendation first, batched here: a vocal cut that reads wrong, each genre
+   word the `tag-guess-off-taxonomy` warning names, offered two ways as Phillip
+   asked on 2026-11-01 (save it as an alias of one of his genres and retag its
+   tracks, or make it a genre folder of its own), anything else the pass could
+   not decide.
 6. **State.** The installed copy against the latest release (`crate doctor`'s
    `install.release`), whether the checkout that ran it is clean and current,
    and the attended cards now ready on the board.
