@@ -1198,6 +1198,34 @@ def test_there_is_no_configuration_in_which_lossy_goes_unmarked(library):
         assert any("lossless_policy" in p for p in problems), bad
 
 
+def test_the_vendored_adapter_is_the_default_under_its_neutral_name(library):
+    assert config.from_dict(valid_data(library)).acquisition.adapter == "vendored"
+
+
+def test_a_file_naming_the_retired_adapter_key_reads_back_as_the_current_one(library, tmp_path):
+    """U197. The vendored downloader's key was its upstream project's name, and a
+    file written before the rename still says it. It selects the same adapter,
+    read through the file the way an installation reads it, and every reader
+    downstream sees the current key."""
+    path = tmp_path / "config.toml"
+    written = valid_data(library, acquisition={"adapter": "tidal_dl_ng", "quality": "lossless"})
+    path.write_bytes(tomli_w.dumps(written).encode("utf-8"))
+    loaded = config.load_from_path(path)
+    assert loaded.acquisition.adapter == "vendored"
+    assert loaded.acquisition.quality == "lossless"
+    assert config.validate(written) == []
+
+
+def test_only_a_retired_adapter_key_is_folded(library):
+    """The fold is a mapping of retired names, never a fallback: any other name,
+    an unknown one included, reaches the registry as written, where an unknown
+    one is refused rather than silently switched."""
+    assert dict(config.RETIRED_ADAPTER_NAMES) == {"tidal_dl_ng": "vendored"}
+    for name in ("streamrip", "vendored", "not-a-real-adapter", "Tidal_DL_NG"):
+        cfg = config.from_dict(valid_data(library, acquisition={"adapter": name}))
+        assert cfg.acquisition.adapter == name
+
+
 def test_config_carries_only_the_taxonomy_selection(cfg):
     """S6. The active template is library-scoped state, not a config value."""
     field_names = {f for f in type(cfg.taxonomy).__dataclass_fields__}

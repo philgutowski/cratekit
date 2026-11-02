@@ -13,6 +13,7 @@ and the kernel is the half doing the work.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import os
 import signal
@@ -20,10 +21,12 @@ import sqlite3
 import subprocess
 import sys
 import time
+import tomllib
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 import pytest
+import tomli_w
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope, refuse
@@ -140,6 +143,52 @@ def test_a_config_that_changed_while_queued_names_what_drifted(queue, cfg, tmp_p
     assert drifted == ("paths.download_staging",)
     # The job still runs against the frozen copy, which is the whole point.
     assert jobs.frozen_config(job).paths.download_staging == cfg.paths.download_staging
+
+
+def test_a_job_frozen_under_the_retired_adapter_key_reports_no_drift(queue, cfg):
+    """U197. A job queued before the rename froze the adapter as its old key, and
+    the loader now reads that key as ``vendored``. Read the same way, nothing
+    moved, so resuming it after the upgrade names no change nobody made, while
+    a real move of the adapter is still named."""
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=cfg)
+    assert cfg.acquisition.adapter == "vendored"
+    frozen = tomllib.loads(job.config_toml)
+    frozen["acquisition"]["adapter"] = "tidal_dl_ng"
+    before_rename = dataclasses.replace(
+        job, config_toml=tomli_w.dumps(frozen), config_fingerprint="queued before U197"
+    )
+    assert jobs.drift(before_rename, cfg) == ()
+
+    switched = config.from_dict(
+        {**cfg.to_toml_dict(), "acquisition": {**frozen["acquisition"], "adapter": "streamrip"}}
+    )
+    assert jobs.drift(before_rename, switched) == ("acquisition.adapter",)
+
+
+def test_the_retired_key_fold_leaves_a_value_that_is_not_a_name_as_written(queue, tmp_path):
+    """Only a name is folded, as the loader folds only a name. A hand edited value
+    of another type is compared as it was written, so a run that changed some
+    other key names that key alone."""
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    document = {
+        "schema_version": config.CURRENT_SCHEMA_VERSION,
+        "library": {
+            "root": str(root),
+            "volume_id": "F1E2-D3C4",
+            "db_path": str(root / "db" / "master.db"),
+        },
+        "paths": {"download_staging": str(tmp_path / "staging")},
+        "profile": {"name": "slim"},
+        "acquisition": {"adapter": 5},
+    }
+    store, _ = queue
+    job = jobs.enqueue(store, handler_key="job.resume", payload={}, cfg=config.from_dict(document))
+    moved = config.from_dict(
+        {**document, "paths": {"download_staging": str(tmp_path / "elsewhere")}}
+    )
+    assert jobs.drift(job, moved) == ("paths.download_staging",)
 
 
 def test_transitions_are_forward_only(queue, cfg):

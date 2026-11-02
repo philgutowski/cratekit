@@ -6,8 +6,8 @@ from tidalapi.media import MediaMetadataTags, Quality
 from tidalapi.session import SearchTypes
 from tidalapi.user import LoggedInUser
 
-from cratekit._vendor.tidal_dl_ng.constants import FAVORITES, MediaType
-from cratekit._vendor.tidal_dl_ng.helper.exceptions import MediaUnknown
+from cratekit._vendor.downloader.constants import FAVORITES, MediaType
+from cratekit._vendor.downloader.helper.exceptions import MediaUnknown
 
 
 def name_builder_artist(media: Track | Video | Album, delimiter: str = ", ") -> str:

@@ -151,12 +151,12 @@ vendored downloader already owns that conversation. So authorising is two
 commands rather than one.
 
 Step 1 mints a PKCE session. This opens a browser and writes the tool's own token
-file, by default `~/.config/tidal-dl-ng/token.json`. It has to run with the Python
+file, by default `~/.config/cratekit-downloader/token.json`. It has to run with the Python
 inside Cratekit's own environment, which pipx keeps out of sight, so the command
 asks pipx where that is:
 
 ```bash
-"$(pipx environment --value PIPX_LOCAL_VENVS)/cratekit/bin/python" -c "from cratekit._vendor.tidal_dl_ng.cli import app; app()" login
+"$(pipx environment --value PIPX_LOCAL_VENVS)/cratekit/bin/python" -c "from cratekit._vendor.downloader.cli import app; app()" login
 ```
 
 From a development checkout with `.venv` active, plain `python` in place of the
@@ -165,13 +165,13 @@ long path does the same job.
 Step 2 moves it into the keychain, which is where the adapter reads it from:
 
 ```bash
-crate login provider-session --from-file ~/.config/tidal-dl-ng/token.json
+crate login provider-session --from-file ~/.config/cratekit-downloader/token.json
 ```
 
 Step 3 erases the plaintext original. Step 2 copies it and does not consume it:
 
 ```bash
-rm ~/.config/tidal-dl-ng/token.json
+rm ~/.config/cratekit-downloader/token.json
 ```
 
 Step 3 is not tidying. R4's promise is that no provider token sits on disk
@@ -184,6 +184,12 @@ being replaced falls through to the mint rather than being reported as a
 successful login. Without that, this procedure would be a loop on exactly the
 machines that need it.
 
+An installation that logged in before U197 kept the tool's state, token included,
+in a directory named after the upstream project. The first time the tool looks for
+its directory and finds only that one, it moves it into place under the new name,
+so a token left there is found where step 2 reads it. If both directories exist the
+new one is used and the old one is left as it is, to be deleted by hand.
+
 **What is verified about this procedure and what is not.** Every command above
 was checked to exist and resolve: the vendored app exposes `login`, `crate login`
 accepts `provider-session` with `--from-file`, and a token file's JSON text
@@ -195,8 +201,11 @@ correct by construction rather than by observation.
 ## Switching adapters
 
 `acquisition.adapter` in the configuration file names the adapter, by its
-registry key. Nothing else changes: the same requests go in and the same
-contract-shaped report comes out.
+registry key: `vendored` for the vendored downloader, the default, and
+`streamrip` for the alternative. Nothing else changes: the same requests go in and
+the same contract-shaped report comes out. A configuration written before U197
+names the vendored downloader by its old key; it still selects the same adapter,
+and every report names it `vendored`.
 
 ```toml
 [acquisition]

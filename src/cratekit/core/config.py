@@ -102,7 +102,7 @@ import sys
 import tempfile
 import tomllib
 from collections.abc import Callable, Mapping, Sequence
-from dataclasses import dataclass, field, fields, is_dataclass
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from datetime import date
 from enum import StrEnum
 from pathlib import Path
@@ -2614,11 +2614,28 @@ class NamingConfig:
     filename_max_bytes: int = 255
 
 
+#: Adapter names a configuration file once recorded, each to the name the same
+#: adapter goes by now. The vendored downloader's key was its upstream project's
+#: name until U197 renamed it to a neutral one; a file written before that still
+#: says the old name, and reading it must select the same adapter rather than
+#: refuse. The fold happens where the file is read, so doctor, every report and
+#: every receipt name the adapter by its current key, and the acquisition
+#: registry consults the same mapping for a caller holding an old name. It lives
+#: here rather than beside the registry because a foundation module may not
+#: import ``cratekit.acquire``.
+RETIRED_ADAPTER_NAMES: Mapping[str, str] = MappingProxyType({"tidal_dl_ng": "vendored"})
+
+
+def current_adapter_name(name: str) -> str:
+    """The name an adapter goes by now, given any name configuration recorded."""
+    return RETIRED_ADAPTER_NAMES.get(name, name)
+
+
 @dataclass(frozen=True, slots=True)
 class AcquisitionConfig:
     """What acquires, at what quality, under which lossless policy."""
 
-    adapter: str = "tidal_dl_ng"
+    adapter: str = "vendored"
     quality: str = "lossless"
     #: None means "the adapter's own default". The adapter owns pacing (KTD20).
     pacing_delay_s: float | None = None
@@ -3936,7 +3953,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
         modules=modules,
         taxonomy=_build(TaxonomyConfig, data.get("taxonomy") or {}),
         naming=_build(NamingConfig, data.get("naming") or {}),
-        acquisition=_build(AcquisitionConfig, data.get("acquisition") or {}),
+        acquisition=_acquisition(data.get("acquisition") or {}),
         analysis=_build(AnalysisConfig, data.get("analysis") or {}),
         rekordbox=_build(RekordboxConfig, data.get("rekordbox") or {}),
         # ``remote`` DERIVED from the destinations when the file does not spell
@@ -3998,6 +4015,15 @@ def _build(cls, raw: Mapping, *, overrides: Mapping[str, object] | None = None):
             continue
         kwargs[f.name] = _coerce(f.type, raw[f.name])
     return cls(**kwargs)
+
+
+def _acquisition(raw: Mapping) -> AcquisitionConfig:
+    """The acquisition section, with a retired adapter name read as its current one."""
+    built = _build(AcquisitionConfig, raw)
+    current = current_adapter_name(built.adapter)
+    if current == built.adapter:
+        return built
+    return replace(built, adapter=current)
 
 
 def _coerce(annotation, value):
@@ -4685,6 +4711,7 @@ __all__ = [
     "PRIVATE_DIR_MODE",
     "PRIVATE_FILE_MODE",
     "REQUIRED_KEYS",
+    "RETIRED_ADAPTER_NAMES",
     "SET_WORKSPACE_DIRNAME",
     "SQLITE_SIDECARS",
     "STATE_FILES",
@@ -4725,6 +4752,7 @@ __all__ = [
     "config_dir",
     "config_path",
     "coupled_state_files",
+    "current_adapter_name",
     "from_dict",
     "installation_state_dir",
     "library_coupled_dir",

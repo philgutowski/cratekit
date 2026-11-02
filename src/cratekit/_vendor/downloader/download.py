@@ -38,8 +38,8 @@ from tidalapi.media import (
     VideoExtensions,
 )
 
-from cratekit._vendor.tidal_dl_ng.config import Settings, Tidal
-from cratekit._vendor.tidal_dl_ng.constants import (
+from cratekit._vendor.downloader.config import Settings, Tidal
+from cratekit._vendor.downloader.constants import (
     CHUNK_SIZE,
     COVER_NAME,
     EXTENSION_LYRICS,
@@ -54,16 +54,16 @@ from cratekit._vendor.tidal_dl_ng.constants import (
     MetadataTargetUPC,
     QualityVideo,
 )
-from cratekit._vendor.tidal_dl_ng.helper.camelot import format_initial_key
-from cratekit._vendor.tidal_dl_ng.helper.decryption import decrypt_file, decrypt_security_token
-from cratekit._vendor.tidal_dl_ng.helper.exceptions import MediaMissing
-from cratekit._vendor.tidal_dl_ng.helper.path import (
+from cratekit._vendor.downloader.helper.camelot import format_initial_key
+from cratekit._vendor.downloader.helper.decryption import decrypt_file, decrypt_security_token
+from cratekit._vendor.downloader.helper.exceptions import MediaMissing
+from cratekit._vendor.downloader.helper.path import (
     check_file_exists,
     format_path_media,
     path_file_sanitize,
     url_to_filename,
 )
-from cratekit._vendor.tidal_dl_ng.helper.tidal import (
+from cratekit._vendor.downloader.helper.tidal import (
     instantiate_media,
     items_results_all,
     name_builder_album_artist,
@@ -71,9 +71,9 @@ from cratekit._vendor.tidal_dl_ng.helper.tidal import (
     name_builder_item,
     name_builder_title,
 )
-from cratekit._vendor.tidal_dl_ng.metadata import Metadata
-from cratekit._vendor.tidal_dl_ng.model.downloader import DownloadSegmentResult, TrackStreamInfo
-from cratekit._vendor.tidal_dl_ng.model.gui_data import ProgressBars
+from cratekit._vendor.downloader.metadata import Metadata
+from cratekit._vendor.downloader.model.downloader import DownloadSegmentResult, TrackStreamInfo
+from cratekit._vendor.downloader.model.gui_data import ProgressBars
 
 
 # TODO: Set appropriate client string and use it for video download.

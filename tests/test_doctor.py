@@ -608,6 +608,18 @@ def test_doctor_verifies_the_configured_adapter_against_the_contract(library):
     assert finding.remedy is Remedy.CHOOSE_KNOWN_ADAPTER
 
 
+def test_a_configuration_naming_the_retired_vendored_key_passes_the_adapter_check(library):
+    """U197. The check refuses a configured name the resolved class does not call
+    itself, so the retired key would read as a mismatch unless it is folded where
+    the file is read. Folded, the check passes and names the current key."""
+    document = document_for(library)
+    document["acquisition"] = {"adapter": "tidal_dl_ng"}
+    finding = find(doctor.run(config.from_dict(document), probes=probes()), "adapter.contract")
+    assert finding.status is doctor.Status.OK, finding.detail
+    assert "'vendored'" in finding.detail
+    assert "tidal_dl_ng" not in finding.detail
+
+
 def test_an_adapter_whose_name_disagrees_with_the_configuration_is_refused(
     library, monkeypatch
 ):
@@ -634,7 +646,7 @@ def test_an_adapter_whose_name_disagrees_with_the_configuration_is_refused(
 
 def test_an_adapter_missing_a_contract_member_is_refused(library, monkeypatch):
     class Partial:
-        name = "tidal_dl_ng"
+        name = "vendored"
 
     monkeypatch.setattr("cratekit.acquire.load", lambda _name: Partial)
     finding = find(

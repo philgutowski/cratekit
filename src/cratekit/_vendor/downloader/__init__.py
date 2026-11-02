@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 import requests
 # `import toml` removed when vendored: only the replaced metadata_project() used it.
 
-from cratekit._vendor.tidal_dl_ng.constants import REQUESTS_TIMEOUT_SEC
-from cratekit._vendor.tidal_dl_ng.model.meta import ProjectInformation, ReleaseLatest
+from cratekit._vendor.downloader.constants import REQUESTS_TIMEOUT_SEC
+from cratekit._vendor.downloader.model.meta import ProjectInformation, ReleaseLatest
 
 
 # Cratekit patch: the version is PINNED at vendoring time.
@@ -113,7 +113,7 @@ def name_app() -> str:
 
 # Cratekit patch: pinned. Derived from __package__ upstream, which vendored
 # would name the settings, log, and token directory after an import path.
-__name_display__ = "tidal-dl-ng"
+__name_display__ = "cratekit-downloader"
 __version__ = version_app()
 
 

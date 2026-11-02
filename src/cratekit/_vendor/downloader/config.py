@@ -10,15 +10,15 @@ from typing import Any
 
 import tidalapi
 
-from cratekit._vendor.tidal_dl_ng.constants import (
+from cratekit._vendor.downloader.constants import (
     ATMOS_CLIENT_ID,
     ATMOS_CLIENT_SECRET,
     ATMOS_REQUEST_QUALITY,
 )
-from cratekit._vendor.tidal_dl_ng.helper.decorator import SingletonMeta
-from cratekit._vendor.tidal_dl_ng.helper.path import path_config_base, path_file_settings, path_file_token
-from cratekit._vendor.tidal_dl_ng.model.cfg import Settings as ModelSettings
-from cratekit._vendor.tidal_dl_ng.model.cfg import Token as ModelToken
+from cratekit._vendor.downloader.helper.decorator import SingletonMeta
+from cratekit._vendor.downloader.helper.path import path_config_base, path_file_settings, path_file_token
+from cratekit._vendor.downloader.model.cfg import Settings as ModelSettings
+from cratekit._vendor.downloader.model.cfg import Token as ModelToken
 
 
 class BaseConfig:

@@ -818,7 +818,7 @@ def test_the_product_builds_a_provider_client_at_exactly_two_sites():
         for path in package.rglob("*.py")
         if "tidalapi.Session(" in path.read_text(encoding="utf-8")
     )
-    assert found == ["_vendor/tidal_dl_ng/config.py", "acquire/provider_session.py"]
+    assert found == ["_vendor/downloader/config.py", "acquire/provider_session.py"]
 
 
 def test_the_two_reasons_are_declared_with_their_codes():
@@ -1153,7 +1153,7 @@ def test_a_rate_limited_login_comes_out_of_the_vendored_adapter_as_the_park(
     real ``authenticate`` path accepts, since nothing offline drives it
     otherwise; the gate is attached before the login, so the login is the one
     counted call and the one rate limited answer."""
-    import cratekit._vendor.tidal_dl_ng.config as tool_config
+    import cratekit._vendor.downloader.config as tool_config
 
     source = _vendored(tmp_path, paths, clock)
     gate = source._gate

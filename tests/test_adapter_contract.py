@@ -742,6 +742,17 @@ def test_the_configured_adapter_name_resolves_through_the_registry(tmp_path, mon
     assert registry.load(cfg.acquisition.adapter) is vendored.VendoredAdapter
 
 
+def test_the_retired_vendored_key_resolves_to_the_same_adapter():
+    """U197: a caller holding the key the vendored adapter had before its rename
+    still reaches it, and is offered the same alternatives as the current key."""
+    assert "tidal_dl_ng" not in registry.ADAPTERS
+    assert registry.load("tidal_dl_ng") is registry.load("vendored")
+    assert registry.load("vendored") is vendored.VendoredAdapter
+    assert vendored.VendoredAdapter.name == "vendored"
+    assert registry.alternatives_to("tidal_dl_ng") == registry.alternatives_to("vendored")
+    assert "vendored" not in registry.alternatives_to("tidal_dl_ng")
+
+
 def test_pacing_runs_between_acquisitions_and_not_before_the_first(settings, stored_session):
     """The delay is a gap between requests, so N requests means N-1 waits."""
     paced = AdapterSettings(download_staging=settings.download_staging, pacing_delay_s=0.25)
@@ -1030,7 +1041,7 @@ def test_the_alternative_reports_its_absence_as_a_broken_adapter(
 
 def test_an_absent_alternative_is_still_nameable_as_the_replacement(tool_absent):
     """The circularity that would make the boundary useless, asserted away."""
-    assert "streamrip" in registry.alternatives_to("tidal_dl_ng")
+    assert "streamrip" in registry.alternatives_to("vendored")
     assert registry.load("streamrip") is streamrip.StreamripAdapter
 
 
@@ -1251,8 +1262,8 @@ def _token_round_trip(tmp_path, *, is_pkce: bool):
     directly would assert the dataclass has a field and prove nothing about the
     code that fills it.
     """
-    from cratekit._vendor.tidal_dl_ng.config import Tidal
-    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+    from cratekit._vendor.downloader.config import Tidal
+    from cratekit._vendor.downloader.model.cfg import Token
 
     holder = Tidal.__new__(Tidal)
     holder.cls_model = Token
@@ -1294,8 +1305,8 @@ def test_the_persisted_flag_never_goes_through_the_bool_coercing_setter(tmp_path
     does not go through that setter at all, which is the thing a future reader
     would otherwise "fix" for consistency with its four neighbours.
     """
-    from cratekit._vendor.tidal_dl_ng.config import Tidal
-    from cratekit._vendor.tidal_dl_ng.model.cfg import Token
+    from cratekit._vendor.downloader.config import Tidal
+    from cratekit._vendor.downloader.model.cfg import Token
 
     holder = Tidal.__new__(Tidal)
     holder.cls_model = Token
@@ -1475,7 +1486,7 @@ def test_every_keyword_fetch_passes_exists_on_the_real_downloader():
     """
     import inspect
 
-    from cratekit._vendor.tidal_dl_ng.download import Download
+    from cratekit._vendor.downloader.download import Download
 
     declared = set(inspect.signature(Download.__init__).parameters)
     assert vendored.DOWNLOADER_ARGUMENTS <= declared, (
@@ -1541,7 +1552,7 @@ def _through_the_real_tool(settings, tmp_path, monkeypatch, error):
     proves a tool that does not exist, and a revendor that stops looking media
     up through the attribute ``observe_session`` stands in fails here.
     """
-    from cratekit._vendor.tidal_dl_ng import download as tool_download
+    from cratekit._vendor.downloader import download as tool_download
     from cratekit.acquire.adapter import acquire_one
 
     tool_settings = types.SimpleNamespace(
@@ -1630,7 +1641,7 @@ def test_the_paced_pool_reads_no_pacing_signal_off_the_carried_words(carried):
 
 
 def test_the_tools_own_control_flow_is_not_called_the_providers_answer():
-    from cratekit._vendor.tidal_dl_ng.helper.exceptions import MediaMissing
+    from cratekit._vendor.downloader.helper.exceptions import MediaMissing
 
     assert vendored.describe_cause(MediaMissing()) == "the downloader failed on MediaMissing"
 
@@ -2155,7 +2166,7 @@ def test_every_remedy_is_a_token_and_not_a_command():
 # #82: the logger the adapter hands the vendored tool
 # ---------------------------------------------------------------------------
 
-VENDORED_TOOL_ROOT = REPO_ROOT / "src" / "cratekit" / "_vendor" / "tidal_dl_ng"
+VENDORED_TOOL_ROOT = REPO_ROOT / "src" / "cratekit" / "_vendor" / "downloader"
 
 
 def _attributes_the_tool_uses_on_its_logger() -> dict[str, set[str]]:

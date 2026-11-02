@@ -3,7 +3,7 @@ from dataclasses import dataclass
 from dataclasses_json import dataclass_json
 from tidalapi import Quality
 
-from cratekit._vendor.tidal_dl_ng.constants import CoverDimensions, InitialKey, MetadataTargetUPC, QualityVideo
+from cratekit._vendor.downloader.constants import CoverDimensions, InitialKey, MetadataTargetUPC, QualityVideo
 
 
 @dataclass_json

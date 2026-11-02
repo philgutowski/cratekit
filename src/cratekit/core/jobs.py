@@ -1101,6 +1101,16 @@ def drift(job: Job, current: config.Config) -> tuple[str, ...]:
     if job.config_fingerprint == current.fingerprint():
         return ()
     before = _flatten(tomllib.loads(job.config_toml))
+    # A job frozen before a rename records the adapter by the key it had then,
+    # and the loader folds that key to the current one, so read the frozen
+    # copy the way the loader would. Otherwise every job open at the upgrade
+    # reports the adapter as moved when nobody touched it (U197).
+    # Only a string is folded, as the loader folds only a name; anything else is
+    # compared as it was written.
+    if isinstance(before.get("acquisition.adapter"), str):
+        before["acquisition.adapter"] = config.current_adapter_name(
+            before["acquisition.adapter"]
+        )
     after = _flatten(current.to_toml_dict())
     return tuple(
         sorted(key for key in set(before) | set(after) if before.get(key) != after.get(key))

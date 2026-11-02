@@ -660,7 +660,7 @@ def _png(width: int = 320, height: int = 200) -> bytes:
 def plant(path: Path, data: bytes, *, dims=(0, 0, 0), mime="image/jpeg", kind=3, desc=""):
     """Add one FLAC picture block, by default in the vendored downloader's shape.
 
-    ``_vendor/tidal_dl_ng/metadata.py`` sets type, data and mime and never a
+    ``_vendor/downloader/metadata.py`` sets type, data and mime and never a
     width, height or depth, so mutagen writes zeroes. ``dims`` fills them for a
     block that is meant to be sound.
     """

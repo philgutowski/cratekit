@@ -198,10 +198,10 @@ jobs:
         run: |
           cd /tmp
           /tmp/cold/bin/python -c "
-          import cratekit._vendor.tidal_dl_ng as vendored
-          from cratekit._vendor import TIDAL_DL_NG, license_text
+          import cratekit._vendor.downloader as vendored
+          from cratekit._vendor import DOWNLOADER, license_text
           assert 'site-packages' in vendored.__file__, vendored.__file__
-          assert vendored.__version__ == TIDAL_DL_NG.version
-          assert 'AFFERO' in license_text(TIDAL_DL_NG)
-          print('vendored', TIDAL_DL_NG.project, vendored.__version__, TIDAL_DL_NG.license_id)
+          assert vendored.__version__ == DOWNLOADER.version
+          assert 'AFFERO' in license_text(DOWNLOADER)
+          print('vendored', DOWNLOADER.project, vendored.__version__, DOWNLOADER.license_id)
           "

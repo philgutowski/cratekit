@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Rebuild ``src/cratekit/_vendor/tidal_dl_ng/`` from an upstream source distribution.
+"""Rebuild ``src/cratekit/_vendor/downloader/`` from an upstream source distribution.
 
 KTD4 vendors the downloader as a source tree because its upstream was removed
 from GitHub and PyPI in December 2025, taking the author's account with it. There
@@ -39,11 +39,13 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
-VENDOR_PACKAGE = REPO_ROOT / "src" / "cratekit" / "_vendor" / "tidal_dl_ng"
-VENDOR_LICENSE_COPY = REPO_ROOT / "vendor" / "LICENSE.tidal-dl-ng"
+#: Where the tree lands, and the name it is imported by. Neutral since U197; the
+#: upstream package name below is the source distribution's own, read out of it.
+VENDOR_PACKAGE = REPO_ROOT / "src" / "cratekit" / "_vendor" / "downloader"
+VENDOR_LICENSE_COPY = REPO_ROOT / "vendor" / "LICENSE.downloader"
 
 UPSTREAM_PACKAGE = "tidal_dl_ng"
-VENDORED_IMPORT_ROOT = "cratekit._vendor.tidal_dl_ng"
+VENDORED_IMPORT_ROOT = "cratekit._vendor.downloader"
 
 # ---------------------------------------------------------------------------
 # Reduction 1: the GUI half is not vendored.
@@ -276,8 +278,8 @@ PATCH_COMMENTED_CLIENT_SECRET = LinePatch(
 # `["project"]["version"]` and `["project"]["urls"]["repository"]` out of it,
 # with no guard on whose file it just read.
 #
-# Vendored at src/cratekit/_vendor/tidal_dl_ng/, those three parents are
-# tidal_dl_ng/, _vendor/, and cratekit/. Cratekit's own pyproject.toml sits one
+# Vendored at src/cratekit/_vendor/downloader/, those three parents are
+# downloader/, _vendor/, and cratekit/. Cratekit's own pyproject.toml sits one
 # level further up, so today the walk misses it by exactly one directory. If it
 # ever reached it, the lookup would raise KeyError — Cratekit declares no
 # [project.urls] — and the KeyError is outside the try, so `import tidal_dl_ng`
@@ -351,23 +353,69 @@ PATCH_DROP_PATH_IMPORT = LinePatch(
 # `__name_display__` is derived from `__package__`, and it is not cosmetic: it
 # names the directory holding the settings file, the log, and the persisted
 # token (`helper/path.py::path_config_base`). Vendored, `__package__` becomes
-# "cratekit._vendor.tidal_dl_ng", and because the distribution is not installed
+# "cratekit._vendor.downloader", and because the distribution is not installed
 # under that name `is_dev_env()` appends "-dev", so the tool would write its
 # state to a directory literally named after an internal import path.
 #
-# Pinning it to the upstream display name keeps vendored behaviour identical to
-# a normal install, which is the point of vendoring rather than forking. U14 owns
-# redirecting this state once the adapter takes ownership of the credential.
+# It was pinned to the upstream display name until U197, which renamed the
+# vendored tree to neutral names and pinned this to one as well. Patch 11 adopts
+# the directory an installation made under the old name.
 # ---------------------------------------------------------------------------
+STATE_DIRECTORY_NAME = "cratekit-downloader"
+#: The state directory's name before U197, which patch 11 adopts.
+STATE_DIRECTORY_NAME_BEFORE = "tidal-dl-ng"
+
 PATCH_DISPLAY_NAME = Patch(
     relative_path="__init__.py",
     old="__name_display__ = name_app()",
     new=(
         "# Cratekit patch: pinned. Derived from __package__ upstream, which vendored\n"
         "# would name the settings, log, and token directory after an import path.\n"
-        '__name_display__ = "tidal-dl-ng"'
+        f'__name_display__ = "{STATE_DIRECTORY_NAME}"'
     ),
     why="the display name is the on-disk state directory, not a label",
+)
+
+
+# ---------------------------------------------------------------------------
+# Patch 11: the state directory an older installation made is adopted.
+#
+# Patch 4's name changed in U197, and the directory it names holds the token
+# the tool's own login writes. An installation that logged in before the rename
+# keeps that token under the old name, where nothing would look for it again.
+# So the first time the tool resolves its directory and finds only the old one,
+# it MOVES the old one into place: a rename, never a copy, so no second
+# plaintext token is made. When both exist the new one wins and the old one is
+# left alone. When the move fails the tool keeps using the old one, so a token
+# there is never stranded.
+#
+# It is a patch here rather than Cratekit code because the tool's own login
+# command resolves the directory too, and that command runs no Cratekit code.
+# ---------------------------------------------------------------------------
+PATCH_STATE_DIRECTORY_ADOPTION = Patch(
+    relative_path="helper/path.py",
+    old=(
+        "    path_base: str = os.path.join(path_home(), path_config, __name_display__)\n"
+        "\n"
+        "    return path_base\n"
+    ),
+    new=f"""    path_base: str = os.path.join(path_home(), path_config, __name_display__)
+
+    # Cratekit patch (U197): adopt the state directory an installation made
+    # before the rename, so a token left in it is not stranded. A move, never a
+    # copy, so no second plaintext token is made. The new directory wins when
+    # both exist, and a move that fails keeps the old one in use.
+    path_before: str = os.path.join(path_home(), path_config, "{STATE_DIRECTORY_NAME_BEFORE}")
+    if not os.path.lexists(path_base) and os.path.isdir(path_before):
+        try:
+            os.rename(path_before, path_base)
+        except OSError:
+            if not os.path.isdir(path_base):
+                return path_before
+
+    return path_base
+""",
+    why="an installation's token, written under the old directory name, is found",
 )
 
 
@@ -649,6 +697,7 @@ def main(argv: list[str]) -> int:
             PATCH_COMMENTED_CLIENT_ID,
             PATCH_COMMENTED_CLIENT_SECRET,
             PATCH_DISPLAY_NAME,
+            PATCH_STATE_DIRECTORY_ADOPTION,
             _pinned_metadata_patch(version),
             PATCH_DROP_TOML_IMPORT,
             PATCH_DROP_PATH_IMPORT,

@@ -29,6 +29,7 @@ import importlib
 from collections.abc import Mapping
 
 from cratekit.acquire.adapter import AdapterSettings, Remedy, UnknownAdapter
+from cratekit.core.config import current_adapter_name
 
 #: Adapter name to ``"module:attribute"``. The NAME is the stable identifier that
 #: ``acquisition.adapter`` records in configuration, so it must never be a display
@@ -37,8 +38,13 @@ from cratekit.acquire.adapter import AdapterSettings, Remedy, UnknownAdapter
 #: Adding an entry here is the whole cost of adding an adapter: the conformance
 #: suite derives its parameter set from this mapping, so a new adapter is tested
 #: against the full contract by arriving, not by somebody remembering (P3).
+#:
+#: A name retired from here stays readable: ``core.config.RETIRED_ADAPTER_NAMES``
+#: maps it to the name its adapter goes by now, and ``load`` and
+#: ``alternatives_to`` read through that mapping, so a configuration written
+#: before a rename selects the same adapter (U197).
 ADAPTERS: Mapping[str, str] = {
-    "tidal_dl_ng": "cratekit.acquire.vendored:VendoredAdapter",
+    "vendored": "cratekit.acquire.vendored:VendoredAdapter",
     "streamrip": "cratekit.acquire.streamrip:StreamripAdapter",
 }
 
@@ -57,7 +63,8 @@ def alternatives_to(name: str) -> tuple[str, ...]:
     that goes stale the moment a third arrives, and going stale here means the
     user is told there is nowhere to go while somewhere to go exists.
     """
-    return tuple(other for other in ADAPTERS if other != name)
+    current = current_adapter_name(name)
+    return tuple(other for other in ADAPTERS if other != current)
 
 
 def load(name: str) -> type:
@@ -69,7 +76,7 @@ def load(name: str) -> type:
     exists to remove.
     """
     try:
-        target = ADAPTERS[name]
+        target = ADAPTERS[current_adapter_name(name)]
     except KeyError:
         raise UnknownAdapter(
             f"no acquisition adapter is registered under {name!r}; "

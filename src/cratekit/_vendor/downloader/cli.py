@@ -19,21 +19,21 @@ from rich.progress import (
 )
 from rich.table import Table
 
-from cratekit._vendor.tidal_dl_ng import __version__
-from cratekit._vendor.tidal_dl_ng.config import HandlingApp, Settings, Tidal
-from cratekit._vendor.tidal_dl_ng.constants import CTX_TIDAL, FAVORITES, MediaType
-from cratekit._vendor.tidal_dl_ng.download import Download
-from cratekit._vendor.tidal_dl_ng.helper.cli import parse_timestamp
-from cratekit._vendor.tidal_dl_ng.helper.path import get_format_template, path_file_settings
-from cratekit._vendor.tidal_dl_ng.helper.tidal import (
+from cratekit._vendor.downloader import __version__
+from cratekit._vendor.downloader.config import HandlingApp, Settings, Tidal
+from cratekit._vendor.downloader.constants import CTX_TIDAL, FAVORITES, MediaType
+from cratekit._vendor.downloader.download import Download
+from cratekit._vendor.downloader.helper.cli import parse_timestamp
+from cratekit._vendor.downloader.helper.path import get_format_template, path_file_settings
+from cratekit._vendor.downloader.helper.tidal import (
     all_artist_album_ids,
     get_tidal_media_id,
     get_tidal_media_type,
     instantiate_media,
     url_ending_clean,
 )
-from cratekit._vendor.tidal_dl_ng.helper.wrapper import LoggerWrapped
-from cratekit._vendor.tidal_dl_ng.model.cfg import HelpSettings
+from cratekit._vendor.downloader.helper.wrapper import LoggerWrapped
+from cratekit._vendor.downloader.model.cfg import HelpSettings
 
 app = typer.Typer(context_settings={"help_option_names": ["-h", "--help"]}, add_completion=False)
 app_dl_fav = typer.Typer(
