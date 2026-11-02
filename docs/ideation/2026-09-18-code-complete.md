@@ -88,7 +88,7 @@ Inventory is covered. Inventing units for uncovered inventory would reopen a clo
 - Do not write the live rekordbox database. Do not launch rekordbox or `rekordboxAgent`.
 - Do not edit DJ_tools code. It is read-only source for discovery and the debris filter.
 - Do not edit the rekordbox application pin. A2, issue 50, is attended.
-- Do not compose `acquire download` into `sync all`. That spends Tidal downloads and is a later product decision.
+- Do not compose `acquire download` into `sync all`. That spends downloads and is a later product decision.
 - Do not build an XML bridge membership writer (R-235).
 - Do not change listing stop rules without a driven producer (R-385).
 - Do not guess provider refresh rotation (R-350) or live login rejection shapes (R-353).
@@ -124,7 +124,7 @@ Locked here. Open Questions lists the same items marked decided. Do not reopen t
 
 11. **R-349.** Persist the backup outcome payload and print it from `job show` and the foreground envelope, on success and on failure. Success uses `jobs.Produced` (staged JSON, engine flush-then-rename, item DONE). Failure does not use `Produced`. On a failed transfer, write the outcome JSON to the state directory first (explicit mode, P1), then re-raise the existing refusal (`backup-transfer-failed` from `refusal_for`) so `fail_item` keeps the item FAILED. `job show` reads that file by `job_id` / `item_id` even when the item is not DONE. Do not call `backup_facts.record` on a failed portion. Do not mutate the frozen job payload (KTD9). Routing failure through `Produced` would mark the portion DONE, and a resume would not re-arm it.
 
-12. **R-359, conservative.** Do not compose `acquire download` into `sync all` in this plan. Make the human and JSON report say in words that swept means resolved, not acquired. Composing acquire is a later product decision and is attended because it spends Tidal downloads.
+12. **R-359, conservative.** Do not compose `acquire download` into `sync all` in this plan. Make the human and JSON report say in words that swept means resolved, not acquired. Composing acquire is a later product decision and is attended because it spends downloads.
 
 13. **R-358.** Adding playlist rename to the outbound account seam is in scope as unattended CODE because dual-running with DJ_tools is the current state until U29. The live mark of already-swept playlists is attended. The unit lands the rename member and wires `marks.apply_deferred` for future sweeps that produce an importable file. Production `sync.playlists` stays `"mark": "unbound"` until that file exists. Do not perform live renames in an unattended session. Required test files include `tests/outbound_fakes.py` `PROTOCOL_METHODS`, `FakeAccount.rename_playlist`, and the TidalAccount protocol-membership test.
 
@@ -724,9 +724,9 @@ No SQLite migration. No rekordbox schema change. No XML rewrite.
 
 ### Swept means acquired
 
-1. **Report wording (chosen).** Honest, unattended, no Tidal spend.
+1. **Report wording (chosen).** Honest, unattended, no download spend.
 2. **Compose `acquire download` into `sync all`.** Makes swept mean held. Spends downloads, attended. Deferred.
-3. **Hold the cursor until no MISSING item.** Re-queues forever for tracks Tidal will not serve. Rejected.
+3. **Hold the cursor until no MISSING item.** Re-queues forever for tracks the provider will not serve. Rejected.
 
 ### Resume of permanent failures
 

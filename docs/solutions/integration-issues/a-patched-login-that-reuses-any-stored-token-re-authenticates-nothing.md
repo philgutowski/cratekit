@@ -2,7 +2,7 @@
 title: "A patched login that reuses any stored token re-authenticates nothing"
 date: 2026-09-01
 category: integration-issues
-module: src/cratekit/_vendor/tidal_dl_ng/config.py, src/cratekit/acquire/vendored.py
+module: src/cratekit/_vendor (config.py), src/cratekit/acquire/vendored.py
 problem_type: integration_issue
 component: authentication
 symptoms:
@@ -12,14 +12,14 @@ symptoms:
 root_cause: wrong_api
 resolution_type: code_fix
 severity: high
-tags: [tidal, oauth, pkce, vendored-downloader, code-review, token-reuse, re-authentication]
+tags: [provider, oauth, pkce, vendored-downloader, code-review, token-reuse, re-authentication]
 ---
 
 # A patched login that reuses any stored token re-authenticates nothing
 
 ## Problem
 
-U47 replaced the vendored Tidal downloader's device-flow login with PKCE-only login (closing R-196), because the provider silently serves lossy audio to the device-flow client. The straightforward patch, mint through `login_pkce` instead of `login_oauth_simple`, was not enough on its own: two independent reviewers found that the surrounding `Tidal.login()` method still reused *any* loadable stored token before ever reaching the new login branch.
+U47 replaced the vendored downloader's device-flow login with PKCE-only login (closing R-196), because the provider silently serves lossy audio to the device-flow client. The straightforward patch, mint through `login_pkce` instead of `login_oauth_simple`, was not enough on its own: two independent reviewers found that the surrounding vendored `login()` method still reused *any* loadable stored token before ever reaching the new login branch.
 
 ## Symptoms
 
@@ -29,11 +29,11 @@ U47 replaced the vendored Tidal downloader's device-flow login with PKCE-only lo
 
 ## What Didn't Work
 
-Patching only the mint call — swapping `login_oauth_simple` for `login_pkce` inside the branch that runs when no valid token is found — is not sufficient. `Tidal.login()` in `src/cratekit/_vendor/tidal_dl_ng/config.py` first checks whether *any* stored token loads successfully and, if so, returns early without ever reaching the mint branch. A device-flow token loads successfully (`load_oauth_session` does not care which client minted it), so the early return fires on every pre-existing installation and the new mint code is dead on exactly the machines that need it.
+Patching only the mint call, swapping `login_oauth_simple` for `login_pkce` inside the branch that runs when no valid token is found, is not sufficient. The vendored `login()`, in the downloader's `config.py` under `src/cratekit/_vendor/`, first checks whether *any* stored token loads successfully and, if so, returns early without ever reaching the mint branch. A device-flow token loads successfully (`load_oauth_session` does not care which client minted it), so the early return fires on every pre-existing installation and the new mint code is dead on exactly the machines that need it.
 
 ## Solution
 
-The short-circuit itself has to distinguish which client minted the stored token, not just whether a token loads. `src/cratekit/_vendor/tidal_dl_ng/config.py:265`:
+The short-circuit itself has to distinguish which client minted the stored token, not just whether a token loads. The vendored `config.py:265`:
 
 ```python
 is_token = bool(getattr(self.data, "is_pkce", False)) and self.login_token(

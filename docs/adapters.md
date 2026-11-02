@@ -200,8 +200,7 @@ contract-shaped report comes out.
 
 ```toml
 [acquisition]
-adapter = "tidal_dl_ng"        # the vendored downloader, the default
-# adapter = "streamrip"        # the alternative
+# adapter = "streamrip"        # the alternative; leave unset for the vendored downloader, the default
 lossless_policy = "strict"     # or "allow_lossy_marked"
 ```
 

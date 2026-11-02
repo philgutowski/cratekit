@@ -1,7 +1,7 @@
 # Vendoring policy
 
 Cratekit ships one piece of code it did not write, inside its own source tree:
-the acquisition downloader, at `src/cratekit/_vendor/tidal_dl_ng/`.
+the acquisition downloader, under `src/cratekit/_vendor/`.
 
 This document is the policy. The inventory, the patch list, and the replacement
 procedure are in [`vendor/README.md`](../vendor/README.md).
@@ -103,7 +103,8 @@ client and serves the device-linking client lossy, so upstream's login produced
 silently degraded downloads. The patch flips which of two calls is live, because
 upstream carried the PKCE call beside the one it used as a comment, and adds the
 one field its token model drops. No login flow is written into the vendored tree
-and no new capability is added; `tidalapi` already ships the handshake.
+and no new capability is added; the provider's client library already ships the
+handshake.
 
 That boundary is what keeps this from becoming "patch in the features you want".
 A patch in this category has to point at an upstream line that already exists and

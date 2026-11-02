@@ -7,7 +7,7 @@ status: open
 
 # Tidal favourites into rekordbox, end to end
 
-The target: a heart on the Tidal account becomes a file in the library,
+The target: a heart on the streaming account becomes a file in the library,
 analysed, tagged with genre and art, named to the library's form, landed,
 imported, and filed into its playlist under `BY GENRE + ENERGY` in the
 rekordbox database. Every step exists as a verb. The acquisition half is

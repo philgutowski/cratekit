@@ -13,16 +13,15 @@ This file is the inventory and the replacement procedure.
 
 | | |
 |---|---|
-| Component | `tidal-dl-ng` |
+| Component | the acquisition downloader |
 | Vendored version | **0.33.0** |
 | Vendored on | 2026-08-01 |
 | Smoke-tested end to end | **2026-08-28** (A1): authorize, download, no tempo tag on the MP4 or the FLAC surface. R-195, R-196 and R-197 were found there and are closed by U47 (2026-09-01). The attended re-run those fixes now need is R-210, and it is not done |
-| Location | `src/cratekit/_vendor/tidal_dl_ng/` |
-| Import root | `cratekit._vendor.tidal_dl_ng` |
+| Location | the one package under `src/cratekit/_vendor/`, which `src/cratekit/_vendor/__init__.py` records as data |
 | Licence | **AGPL-3.0-only** |
-| Licence text | `src/cratekit/_vendor/tidal_dl_ng/LICENSE` and `vendor/LICENSE.tidal-dl-ng` (byte-identical, asserted) |
+| Licence text | the package's own `LICENSE` and the copy in this directory (byte-identical, asserted) |
 | Upstream author | Robert Honz |
-| Upstream repository | `https://github.com/exislow/tidal-dl-ng` (deleted) |
+| Upstream repository | deleted; its address is kept for attribution in `src/cratekit/_vendor/__init__.py` |
 | Supported Python | `>=3.12,<3.14`, which is where Cratekit's own bound comes from (KTD19) |
 
 Cratekit's authored code is MIT. The vendored component keeps its own AGPL
@@ -31,7 +30,7 @@ licence, which ships with it in both locations above.
 ### Why it is vendored
 
 The project was removed from GitHub and from PyPI in late December 2025, along
-with its author's account, reportedly under a terms-of-service action. Its
+with its author's account. Its
 documented install command fails outright, so no new machine can be provisioned
 from any public source. A known-good copy exists only as a local backup. R6 and
 R8 require a fresh clone to work without reaching a public index for it, and a
@@ -47,8 +46,8 @@ scratch directory, and never in place.
 
 | Artifact | Shape | Status |
 |---|---|---|
-| `tidal_dl_ng-0.33.0.tar.gz` | proper source distribution | **the vendored copy** |
-| `tidal-dl-ng-0.26.2-venv-backup.tar.gz` | tarball of an installed virtualenv | fallback, not shipped |
+| the 0.33.0 source distribution | proper source distribution | **the vendored copy** |
+| a 0.26.2 virtualenv backup | tarball of an installed virtualenv | fallback, not shipped |
 
 The 0.33.0 source distribution was chosen over the older backup on evidence, not
 preference:
@@ -133,13 +132,13 @@ file that is not there.
 | 1 | `constants.py` | `ATMOS_ID_B64` and `ATMOS_SECRET_B64` emptied | Upstream ships a third-party client id and secret here, base64-encoded and split across concatenated literals. Decoded, one is the same key published in `api.py`. R1: no shipped artifact carries credential material, encoded or not. |
 | 2 | `config.py` | two commented-out plaintext credential lines removed | A scanner cannot tell a commented credential from a live one, and neither can a reader skimming a diff. Leaving them would force an exemption in the secret scan, and an exemption there is the hole the widened scan exists to close. |
 | 3 | `__init__.py` | `metadata_project()` replaced by a pinned constant | **The sharpest hazard, and vendoring caused it.** Upstream walks up to three parent directories from its own `__file__` looking for a `pyproject.toml` and reads `["project"]["version"]` and `["project"]["urls"]["repository"]` out of whichever it finds, with no check on whose file that is. Vendored, the nearest such file is the HOST application's. Reading it raises `KeyError` at import time when the host declares no `[project.urls]`, and that lookup sits outside upstream's `try`, so `import` itself fails for a reason naming none of this. Today the walk misses Cratekit's `pyproject.toml` by exactly one directory level. That is a coincidence of depth, not a design. |
-| 4 | `__init__.py` | `__name_display__` pinned to `"tidal-dl-ng"` | It is not a label. It names the directory holding the settings file, the log, and the persisted token (`helper/path.py::path_config_base`). Derived from `__package__`, vendored it becomes `cratekit._vendor.tidal_dl_ng`, plus a `-dev` suffix because the distribution is not installed under that name, so the tool would write its state to a directory named after an internal import path. |
+| 4 | `__init__.py` | `__name_display__` pinned to the upstream display name | It is not a label. It names the directory holding the settings file, the log, and the persisted token (`helper/path.py::path_config_base`). Derived from `__package__`, vendored it becomes the package's internal import path, plus a `-dev` suffix because the distribution is not installed under that name, so the tool would write its state to a directory named after an internal import path. |
 | 5 | `metadata.py`, `download.py` | **all three tempo tag writes removed**, and the provider tempo zeroed at its entry point | **R17, the one rule with no configuration flag.** Upstream writes the provider's BPM into every file it saves: a Vorbis `BPM` comment for FLAC, an ID3 `TBPM` frame for MP3 and AIFF, and an MP4 `tmpo` atom. rekordbox reads file tags on import, so each seeds a grid Cratekit never authored. A wrong grid is worse than none: detection octave-folds, so a half-time or double-time grid drags every cue point and every loop the user ever set against that track. |
 | 6 | `__init__.py` | `import toml` and `from pathlib import Path` removed | Only the replaced `metadata_project()` used them. `toml` is an unmaintained 2020 package the standard library replaced with `tomllib` in 3.11; declaring it as a Cratekit dependency to support dead code is a cost with no buyer. |
 | 7 | `model/cfg.py` | `is_pkce` added to the `Token` dataclass | Upstream persists four token keys and has no field for the one that says which client minted the session. A PKCE token therefore reloads as a device-flow token and refreshes against the wrong client, and that client is the one the provider serves lossy audio to. A field the write never stores is a field the read cannot see (R-196). |
-| 8 | `config.py` | `token_persist()` writes `is_pkce` | The other half of row 7: the field exists and nothing fills it. Written through `self.data` rather than `set_option`, because `set_option` calls `.lower()` on the incoming value whenever the existing one is a bool and `is_pkce` is this model's only bool field, so the obvious edit raises `AttributeError`. The source is the SESSION's flag, not the `Tidal` object's: `login()` calls `login_token()` first, which assigns `self.is_pkce` from its own defaulted argument before any PKCE handshake runs, so reading it there would record every fresh PKCE session as a device-flow one. |
-| 9 | `config.py` | `Tidal.login()` mints through `login_pkce`, and reuses a stored session only when it is already PKCE (two patch objects, one per edit) | **The provider changed under this tool.** Lossless audio is gated behind the PKCE client; the device-linking client upstream calls is served lossy, silently, for every requested quality (R-196, driven by A1 on 2026-08-28 against the same account, track and minute). Upstream already carried the PKCE call here as a comment beside the one it used, so this flips which of two existing lines is live. No handshake is authored: `tidalapi` ships it. There is deliberately no flag preserving the device flow, because a flag that preserves it preserves the defect. The reuse half is not cosmetic: upstream reuses ANY loadable token, so on a machine holding a device-flow token this method reports "you are logged in", never reaches the mint, and hands back the token the adapter refuses. That is every machine that ran the tool before the switch, which would have made the documented re-authorisation an unbreakable loop. |
-| 10 | every module | absolute self-imports re-rooted to `cratekit._vendor.tidal_dl_ng` | The package imports itself absolutely throughout (33 statements across 8 files). Moved, none of them resolve. Absolute re-rooting is used rather than relative imports because a relative rewrite depends on each module's depth in the package, which is three rules instead of one and gets a file wrong quietly. |
+| 8 | `config.py` | `token_persist()` writes `is_pkce` | The other half of row 7: the field exists and nothing fills it. Written through `self.data` rather than `set_option`, because `set_option` calls `.lower()` on the incoming value whenever the existing one is a bool and `is_pkce` is this model's only bool field, so the obvious edit raises `AttributeError`. The source is the SESSION's flag, not the vendored session object's: `login()` calls `login_token()` first, which assigns `self.is_pkce` from its own defaulted argument before any PKCE handshake runs, so reading it there would record every fresh PKCE session as a device-flow one. |
+| 9 | `config.py` | the vendored `login()` mints through `login_pkce`, and reuses a stored session only when it is already PKCE (two patch objects, one per edit) | **The provider changed under this tool.** Lossless audio is gated behind the PKCE client; the device-linking client upstream calls is served lossy, silently, for every requested quality (R-196, driven by A1 on 2026-08-28 against the same account, track and minute). Upstream already carried the PKCE call here as a comment beside the one it used, so this flips which of two existing lines is live. No handshake is authored: `tidalapi` ships it. There is deliberately no flag preserving the device flow, because a flag that preserves it preserves the defect. The reuse half is not cosmetic: upstream reuses ANY loadable token, so on a machine holding a device-flow token this method reports "you are logged in", never reaches the mint, and hands back the token the adapter refuses. That is every machine that ran the tool before the switch, which would have made the documented re-authorisation an unbreakable loop. |
+| 10 | every module | absolute self-imports re-rooted under `cratekit._vendor` | The package imports itself absolutely throughout (33 statements across 8 files). Moved, none of them resolve. Absolute re-rooting is used rather than relative imports because a relative rewrite depends on each module's depth in the package, which is three rules instead of one and gets a file wrong quietly. |
 
 ### Two guard gaps this work exposed
 
@@ -165,7 +164,7 @@ so this component is covered either way.
 Run the procedure, do not perform it by hand:
 
 ```
-python scripts/revendor_downloader.py path/to/tidal_dl_ng-<version>.tar.gz
+python scripts/revendor_downloader.py path/to/<the downloader's sdist>-<version>.tar.gz
 ```
 
 The script extracts the sdist into a temporary directory, copies the package,
