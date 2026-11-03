@@ -64,10 +64,13 @@ old = '''        if entry.new not in fragments.get(entry.fragment, ""):'''
 new = '''        if entry.new not in "\n\n".join(fragments.values()):'''
 
 [[rows]]
-id = "M8_stale_check_not_asserted"
-description = "test_every_moved_paragraph_is_in_a_fragment_byte_for_byte: stop asserting the table is current before comparing"
+id = "M8_stale_table_applied"
+description = "_problems: compare with a stale table rather than report it, so an entry whose old text is in no moved paragraph excuses nothing and passes"
 file = "tests/test_restart_and_residual_files.py"
 tests = ["tests/test_restart_and_residual_files.py"]
-old = '''    assert _stale_rewordings(moved, fragments, REWORDINGS) == []
-'''
-new = ''
+old = '''    if stale:
+        return stale
+    return _lost_paragraphs'''
+new = '''    if False:
+        return stale
+    return _lost_paragraphs'''

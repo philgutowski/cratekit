@@ -488,6 +488,16 @@ def _lost_paragraphs(
     return [p[:80] for p in expected if p not in joined]
 
 
+def _problems(
+    moved: list[str], fragments: dict[str, str], rewordings: tuple[Rewording, ...]
+) -> list[str]:
+    """The check's whole verdict: a stale table is reported and never applied."""
+    stale = _stale_rewordings(moved, fragments, rewordings)
+    if stale:
+        return stale
+    return _lost_paragraphs(moved, fragments, rewordings)
+
+
 def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
     """The split moved text and changed none of it, but for the named rewordings.
 
@@ -499,10 +509,8 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
     without it is a shallow one, and CI does not run the suite.
     """
     moved = _moved_paragraphs()
-    fragments = _fragments()
     assert len(moved) > 250
-    assert _stale_rewordings(moved, fragments, REWORDINGS) == []
-    assert _lost_paragraphs(moved, fragments, REWORDINGS) == []
+    assert _problems(moved, _fragments(), REWORDINGS) == []
 
 
 R301_OPENING = "**The session before: R-301, issue #168"
@@ -571,9 +579,10 @@ def test_a_paragraph_removed_from_another_fragment_still_fails(position):
     ],
 )
 def test_a_stale_rewording_fails_rather_than_excusing_nothing(entry, says):
-    stale = _stale_rewordings(_moved_paragraphs(), _fragments(), (entry,))
-    assert len(stale) == 1
-    assert says in stale[0]
+    # Added beside the real entry, so the only thing wrong is the stale one.
+    problems = _problems(_moved_paragraphs(), _fragments(), REWORDINGS + (entry,))
+    assert len(problems) == 1
+    assert says in problems[0]
 
 
 def test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction(
