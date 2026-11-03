@@ -1718,6 +1718,18 @@ none. Its macOS battery passed inside the v0.3.0 cut (`release.py cut
 --mac-battery`). A43: the landing `crate sync land` reached at sitting 51 is
 now analysed in rekordbox.
 
+## Sitting 53, 2026-11-03, the attended session, v0.5.0 cut and the vocal frames measured
+
+From the installed v0.4.0 until the upgrade below. Both backup ages 7 days at the start, so `crate backup run` ran first.
+
+| Workflow | Ran | Observed | State |
+|---|---|---|---|
+| `release.py cut --bump minor --mac-battery`, first run | on the Mac at d8633c17 | Refused, red. Ruff refused one import block only on this venv's 0.16.1, while CI's 0.17.3 passes it; the venv moved to 0.17.3, no source changed. One test failed, `test_every_moved_paragraph_is_in_a_fragment_byte_for_byte`, 1 failed, 15976 passed, 1 skipped: U195 reworded a moved record. Carded as U199, built in the cloud and merged at 2568d7f6. | refused |
+| `release.py cut --bump minor --mac-battery`, second run | on the Mac at 1631ed99 | The full macOS battery (ruff, pytest, `scan_repo.py`) clean on the cut commit; release commit 632a0fd0, tag `v0.5.0` pushed with `main` atomically, release published at https://github.com/philgutowski/cratekit/releases/tag/v0.5.0. | live |
+| The macOS battery owed | the same run | **The cut's battery is the macOS battery every unit landed since v0.4.0 owed**, 41 merges, U188 through U199, named in the release notes. | live |
+| A64 (#432), the vocal frames | read only, over `Music/2026-10-27 Tidal playlists and Favorites` and ten known vocal tracks | Distribution reproduces sitting 47 exactly: 80 at 0, 10 under 2, 14 from 2 to under 5, 12 at 5 or more. None undecodable, chunks match length. Donna Summer "I Feel Love", a sung lead, scored exactly 0. Tables on U171 (#352). | live |
+| Stale branches | by Phillip's second session, on the local session's checks | Eleven remote branches deleted, ten `cloud/` and one fully merged `claude/`. `cloud/release-v0.2.0` held only the abandoned commit 673c64c4. | live |
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**

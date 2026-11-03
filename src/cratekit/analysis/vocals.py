@@ -373,6 +373,13 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
         return _inactive(result, REASON_INFERENCE_FAILED)
     result["vocal_active"] = True
     result["vocal_reason"] = None
+    # A ZERO IS WHAT THE MODEL HEARD, ROUNDED (U171). The stamp is the share of
+    # frames whose Singing score reaches the floor, to the nearest whole
+    # percent, so a 0 is either no frame at the floor or fewer than half a
+    # percent of them. A64 measured both on sitting 47's 80 zeros, 68 and 12,
+    # with the decode whole and the chunks complete on every track. The scale
+    # is the one the library's vox tags were stamped on, so changing the floor
+    # or the rounding is a restamp, not a fix here.
     result["voxlevel"] = int(round(score.presence))
     result["voxgender"] = score.gender
     result["voxgenderconf"] = int(round(100 * score.gender_conf))

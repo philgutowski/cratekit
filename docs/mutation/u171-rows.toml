@@ -1,0 +1,82 @@
+name = "u171"
+pass_kind = "light"
+
+# U171 adds no guard: it measures why a batch stamps vocal levels of exactly 0
+# and pins the reduction that produces them. So the rows target the existing
+# code the new tests pin, the rounding, the floor and its comparison, and the
+# silence path, to measure what tests/test_vocal_zeros.py holds that the
+# suite did not.
+
+[[rows]]
+id = "Z1_round_to_ceil"
+description = "vocals.analyse: stamp a trace under half a percent as 1 by rounding the presence up"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''    result["voxlevel"] = int(round(score.presence))'''
+new = '''    result["voxlevel"] = int(-(-score.presence // 1))'''
+
+[[rows]]
+id = "Z2_round_to_truncate"
+description = "vocals.analyse: truncate the presence instead of rounding, so 0.6 percent stamps 0"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''    result["voxlevel"] = int(round(score.presence))'''
+new = '''    result["voxlevel"] = int(score.presence)'''
+
+[[rows]]
+id = "Z3_floor_lowered"
+description = "vocal.DEFAULT_FRAME_FLOOR: 0.05 to 0.03, so a lead the model hears at 0.034 scores"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''DEFAULT_FRAME_FLOOR = 0.05'''
+new = '''DEFAULT_FRAME_FLOOR = 0.03'''
+
+[[rows]]
+id = "Z4_floor_nudged"
+description = "vocal.DEFAULT_FRAME_FLOOR: 0.05 to 0.045, a realistic nearby value the review found unpinned"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''DEFAULT_FRAME_FLOOR = 0.05'''
+new = '''DEFAULT_FRAME_FLOOR = 0.045'''
+
+[[rows]]
+id = "Z5_floor_raised"
+description = "vocal.DEFAULT_FRAME_FLOOR: 0.05 to 0.10, so a trace heard at 0.08 never counts"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''DEFAULT_FRAME_FLOOR = 0.05'''
+new = '''DEFAULT_FRAME_FLOOR = 0.10'''
+
+[[rows]]
+id = "Z6_floor_strict"
+description = "vocal.presence_score: a frame at exactly the floor no longer counts"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''    return 100.0 * float((series >= frame_floor).mean())'''
+new = '''    return 100.0 * float((series > frame_floor).mean())'''
+
+[[rows]]
+id = "Z7_any_for_mean"
+description = "vocal.presence_score: any frame at the floor scores 100, so coverage becomes presence"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''    return 100.0 * float((series >= frame_floor).mean())'''
+new = '''    return 100.0 * float((series >= frame_floor).any())'''
+
+[[rows]]
+id = "Z8_silence_is_undecodable"
+description = "vocal.decode seam in vocals.analyse: a silent decode reported as undecodable rather than heard as 0"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_vocal_zeros.py", "tests/test_analysis.py"]
+old = '''    if samples is None:
+        return _inactive(result, REASON_AUDIO_UNDECODABLE)'''
+new = '''    if samples is None or not samples.any():
+        return _inactive(result, REASON_AUDIO_UNDECODABLE)'''
