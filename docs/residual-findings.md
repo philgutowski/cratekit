@@ -41645,6 +41645,14 @@ machine owns, and the cloud unit skill says the same of the mutation
 driver's known failures. A one line `git fetch --unshallow origin main`
 before the baseline would have shown this defect on U195's own branch.
 
+**Closed 2026-11-03, U200 (issue #486).** `cloud_battery.py baseline` and
+`compare` unshallow a shallow clone from `origin main` before anything is
+measured and refuse when it stays shallow; the baseline header ends `history
+full`, which `compare` and `mutate.py --known-failures` require, and the driver
+refuses known failures on a shallow clone. The cloud unit skill and METHOD say
+so. Measured on 1631ed99 with full history: 163 ids, none of them history
+bound.
+
 ---
 
 ## R-1192. The frame model hears no singing on the library copy of I Feel Love, a sung lead buried in synths, so it stamps 0 and gets no vox tag

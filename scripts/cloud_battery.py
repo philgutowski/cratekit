@@ -28,6 +28,15 @@ since those two must be clean on any platform.
 The state directory is gitignored. A baseline measured on another machine is
 not a baseline, so the file names its commit and the hostname it was measured
 on and `compare` refuses one from elsewhere.
+
+Both verbs read the clone's full history first (U200, from R-1191). A cloud
+clone is shallow, so a test that reads an old commit fails on the base for
+want of it, and a failure subtracted by node id hides every later failure of
+that test, whatever its cause: that is how U195's defect reached `main`. So a
+shallow clone is unshallowed from `origin main` before anything is measured,
+and refused when the fetch cannot complete it. The baseline's header says
+`history full`, and `compare`, like `scripts/mutate.py --known-failures`,
+refuses a baseline that does not say so.
 """
 
 from __future__ import annotations
@@ -51,8 +60,59 @@ RUFF = ROOT / ".venv" / "bin" / "ruff"
 SUMMARY_RE = re.compile(r"^(?:FAILED|ERROR) (\S+)")
 
 
+#: The header's last field, which `compare` and the mutation driver require.
+FULL_HISTORY = "history full"
+
+
 def run(cmd: list[str]) -> subprocess.CompletedProcess:
     return subprocess.run(cmd, cwd=ROOT, capture_output=True, text=True)
+
+
+def _shallow(root: Path) -> str:
+    """`true`, `false`, or why git could not say, which is never read as `false`."""
+    done = subprocess.run(
+        ["git", "rev-parse", "--is-shallow-repository"], cwd=root, capture_output=True, text=True
+    )
+    answer = done.stdout.strip()
+    if done.returncode == 0 and answer in ("true", "false"):
+        return answer
+    return f"git could not say whether the clone is shallow: {(done.stderr or answer).strip()}"
+
+
+def ensure_full_history(root: Path | None = None) -> str | None:
+    """Unshallow the clone at ``root`` from `origin main`; the reason it could not, or None.
+
+    A complete clone runs no fetch. A shallow one fetches the rest of `main`'s
+    history, then is read again, since a fetch can succeed and leave another
+    shallow root behind.
+    """
+    root = ROOT if root is None else root
+    state = _shallow(root)
+    if state == "false":
+        return None
+    if state != "true":
+        return state
+    fetch = subprocess.run(
+        ["git", "fetch", "--unshallow", "origin", "main"], cwd=root, capture_output=True, text=True
+    )
+    after = _shallow(root)
+    if after == "false":
+        print("history: the shallow clone was unshallowed from origin main")
+        return None
+    detail = (fetch.stderr or fetch.stdout).strip()[-1000:]
+    return (
+        "the clone is still shallow after `git fetch --unshallow origin main`, so a test "
+        "that reads old history would fail for want of it and be subtracted unread; "
+        f"fetch the full history and run this again. {detail}"
+    ).strip()
+
+
+def full_history_or_refuse() -> bool:
+    reason = ensure_full_history()
+    if reason is None:
+        return True
+    print(f"history: REFUSED, {reason}")
+    return False
 
 
 def head() -> str:
@@ -98,12 +158,14 @@ def failing_ids() -> tuple[set[str], str]:
 
 
 def cmd_baseline(_args) -> int:
+    if not full_history_or_refuse():
+        return 1
     if not static_checks():
         return 1
     ids, summary = failing_ids()
     STATE.mkdir(exist_ok=True)
     BASELINE.write_text(
-        f"# commit {head()} host {socket.gethostname()}\n# {summary}\n"
+        f"# commit {head()} host {socket.gethostname()} {FULL_HISTORY}\n# {summary}\n"
         + "".join(f"{i}\n" for i in sorted(ids))
     )
     print(f"baseline at {head()}: {summary}")
@@ -116,11 +178,17 @@ def read_baseline() -> tuple[set[str], str] | None:
         return None
     lines = BASELINE.read_text().splitlines()
     header = lines[0] if lines else ""
-    match = re.match(r"# commit (\S+) host (\S+)", header)
+    match = re.match(r"# commit (\S+) host (\S+)(?: (history \S+))?$", header)
     if not match:
         return None
     if match.group(2) != socket.gethostname():
         print(f"the baseline was measured on {match.group(2)}, not this machine; measure it again")
+        return None
+    if match.group(3) != FULL_HISTORY:
+        print(
+            "the baseline does not say it was measured with full history, so a test a "
+            "shallow clone held red may be in it; measure it again"
+        )
         return None
     ids = {line for line in lines if line and not line.startswith("#")}
     return ids, match.group(1)
@@ -132,6 +200,8 @@ def cmd_compare(_args) -> int:
         print("no baseline for this machine: run `cloud_battery.py baseline` on origin/main first")
         return 2
     base_ids, base_commit = base
+    if not full_history_or_refuse():
+        return 1
     if not static_checks():
         return 1
     ids, summary = failing_ids()

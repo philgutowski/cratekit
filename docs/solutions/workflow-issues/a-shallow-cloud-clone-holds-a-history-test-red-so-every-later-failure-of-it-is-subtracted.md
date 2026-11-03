@@ -45,7 +45,12 @@ U195's rewording, and not U199's mutant. Five tests of
 
 ## What to do
 
-Before the baseline, unshallow: `git fetch --unshallow origin main`. Then a
+Since U200 the battery does this itself: `cloud_battery.py baseline` and
+`compare` run `git fetch --unshallow origin main` on a shallow clone and
+refuse when it stays shallow, the baseline's header ends `history full`, and
+`compare` and `mutate.py --known-failures` refuse a baseline without it; the
+driver also refuses on a shallow clone. By hand, the step is the same:
+`git fetch --unshallow origin main`. Then a
 history test fails only for its own reason, and the base's baseline names it
 only if the base is really broken. For the mutation driver's known failures,
 use a baseline measured on the branch head with full history when the branch

@@ -223,7 +223,10 @@ the `**Depends on:**` line first and every field the brief form has.
     .venv/bin/python scripts/cloud_battery.py baseline   # background job, about ten minutes
 
 The baseline measures the machine's failures on the base, on this container,
-and writes them to `.cloud-battery/baseline.txt`. Run it as a tracked
+and writes them to `.cloud-battery/baseline.txt`. The clone is shallow, so it
+first fetches `main`'s full history and refuses if it cannot (U200, from
+R-1191): a test the missing history holds red would otherwise be subtracted by
+its id, and every later failure of it with it. Run it as a tracked
 background job before the first edit, so it measures the base and not your
 work in progress, and edit nothing under `src` or `tests` until it reports.
 
@@ -284,7 +287,9 @@ nothing else against the tree until it reports:
     .venv/bin/python scripts/mutate.py docs/mutation/uN-rows.toml --known-failures .cloud-battery/baseline.txt
 
 The driver subtracts the machine's failures from every run, so its baseline
-is green net of them and its table says so. If it still refuses a red
+is green net of them and its table says so. It refuses a known failures file
+whose header does not say `history full`, and refuses on a shallow clone, so
+pass it only a baseline `cloud_battery.py` measured. If it still refuses a red
 baseline, rerun the test it names alone. If it fails alone it is yours: fix
 it. If it passes alone it is intermittent under the parallel run: run the
 driver again, and if the same test reddens the baseline a second time, treat

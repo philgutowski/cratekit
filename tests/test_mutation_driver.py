@@ -682,7 +682,7 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
     """
     red_id = "tests/test_red.py::test_that_fails"
     known = tmp_path / "baseline.txt"
-    known.write_text(f"# commit abc host here\n{red_id}\n", encoding="utf-8")
+    known.write_text(f"# commit abc host here history full\n{red_id}\n", encoding="utf-8")
     read = mutate.read_known_failures(known)
     assert read == frozenset({red_id})
 
@@ -733,12 +733,90 @@ def test_a_zero_row_promoted_on_a_known_red_suite_stays_a_zero(red_repo):
 
 def test_known_failures_ignore_indented_comments_and_refuse_a_missing_file(tmp_path, capsys):
     listed = tmp_path / "known.txt"
-    listed.write_text("# header\n  # indented\n\n  tests/a.py::t  \n", encoding="utf-8")
+    listed.write_text(
+        "# commit abc host here history full\n  # indented\n\n  tests/a.py::t  \n",
+        encoding="utf-8",
+    )
     assert mutate.read_known_failures(listed) == frozenset({"tests/a.py::t"})
     spec = tmp_path / "rows.toml"
     spec.write_text('name = "x"\npass_kind = "light"\n', encoding="utf-8")
     code = mutate.main(["mutate.py", str(spec), "--known-failures", str(tmp_path / "absent.txt")])
     assert code == 2
+
+
+#: A spec the loader accepts, so a refusal after it is the known failures' own.
+ONE_ROW_SPEC = (
+    'name = "x"\npass_kind = "light"\n\n[[rows]]\nid = "G1"\n'
+    'description = "Drop the guard"\nfile = "src/fixtpkg/guards.py"\n'
+    "old = 'if value > limit:'\nnew = \"\"\n"
+)
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "# commit abc host here",
+        "# commit abc host here history shallow",
+        "# header",
+        "# header history full",
+        "# commit abc host here history full and more",
+        "",
+    ],
+    ids=["before-u200", "shallow", "by-hand", "by-hand-with-field", "field-not-last", "empty"],
+)
+def test_known_failures_not_measured_with_full_history_are_refused(header, tmp_path, capsys):
+    """U200, from R-1191: a shallow clone's baseline subtracts a test the missing
+    history held red, and with it every later failure of that test, so the driver
+    reads only a baseline that says it was measured with full history."""
+    listed = tmp_path / "known.txt"
+    listed.write_text(f"{header}\ntests/a.py::t\n", encoding="utf-8")
+    with pytest.raises(mutate.DriverRefusal, match="full history"):
+        mutate.read_known_failures(listed)
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+    # A tree and an output directory of the test's own, so a driver that let
+    # the file through measures a fixture and writes nothing in the repository.
+    argv = ["mutate.py", str(spec), "--known-failures", str(listed)]
+    argv += ["--repo-root", str(tmp_path), "--out-dir", str(tmp_path / "out")]
+    assert mutate.main(argv) == 2
+    assert "full history" in capsys.readouterr().err
+
+
+def test_known_failures_are_refused_on_a_shallow_clone(repo, tmp_path, capsys):
+    """The driver reads git and never fetches, so a shallow clone is a refusal."""
+    shallow = tmp_path / "shallow"
+    done = subprocess.run(
+        ["git", "clone", "--depth", "1", repo.as_uri(), str(shallow)],
+        capture_output=True,
+        check=False,
+    )
+    assert done.returncode == 0, done.stderr
+    listed = tmp_path / "known.txt"
+    listed.write_text("# commit abc host here history full\ntests/a.py::t\n", encoding="utf-8")
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+
+    with pytest.raises(mutate.DriverRefusal, match="shallow"):
+        mutate.refuse_a_shallow_clone(shallow)
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+    with pytest.raises(mutate.DriverRefusal, match="could not say"):
+        mutate.refuse_a_shallow_clone(not_a_repo)
+    mutate.refuse_a_shallow_clone(repo)
+    code = mutate.main(
+        [
+            "mutate.py",
+            str(spec),
+            "--known-failures",
+            str(listed),
+            "--repo-root",
+            str(shallow),
+            "--out-dir",
+            str(tmp_path / "out"),
+        ]
+    )
+    assert code == 2
+    assert "shallow" in capsys.readouterr().err
 
 
 def test_the_child_inherits_the_callers_environment(env_repo, monkeypatch):

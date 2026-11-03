@@ -501,7 +501,10 @@ every directory, no `hdiutil`, the timing calibration pinned to one Mac,
 darwin paths). `scripts/cloud_battery.py baseline` measures them on the base
 commit before the first edit, `compare` reads the branch against them, and
 `scripts/mutate.py --known-failures` subtracts them from every mutation run,
-so the driver's baseline is green net of them and its table says so. Nothing
+so the driver's baseline is green net of them and its table says so. Both
+read the full history first, since the clone is shallow and a test held red
+by missing history would hide every later failure of it (U200): the battery
+unshallows or refuses, and the driver refuses a shallow clone. Nothing
 is skipped or marked, a newly failing test is the branch's, and a test that
 fails only under a parallel run on ext4 is rerun alone before it is called
 either. The macOS battery is owed on a Mac and named in each record's OWED
