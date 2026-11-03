@@ -1667,15 +1667,45 @@ def build_parser() -> argparse.ArgumentParser:
         help=(
             "a file of node ids that fail on this machine and not for the tree, one "
             "a line, # comments allowed, as scripts/cloud_battery.py baseline writes "
-            "it; subtracted from every run"
+            "it with full history; subtracted from every run, and refused on a shallow clone"
         ),
     )
     return parser
 
 
+#: The field `cloud_battery.py baseline` ends its first line with (U200).
+KNOWN_FAILURES_FULL_HISTORY = "history full"
+
+
 def read_known_failures(path: Path) -> frozenset[str]:
-    lines = (line.strip() for line in path.read_text(encoding="utf-8").splitlines())
+    """The node ids of a baseline, refused unless it was measured with full history.
+
+    A shallow clone fails every test that reads old history, and a failure
+    subtracted by id hides each later failure of that test (R-1191), so a file
+    whose first line does not end with the field `cloud_battery.py baseline`
+    writes, an older baseline or one written by hand, is refused.
+    """
+    text = path.read_text(encoding="utf-8").splitlines()
+    first = text[0].strip() if text else ""
+    if not (first.startswith("# commit ") and first.endswith(f" {KNOWN_FAILURES_FULL_HISTORY}")):
+        raise DriverRefusal(
+            f"{path} does not say it was measured with full history; measure it with "
+            f"`scripts/cloud_battery.py baseline`, never write one by hand"
+        )
+    lines = (line.strip() for line in text)
     return frozenset(line for line in lines if line and not line.startswith("#"))
+
+
+def refuse_a_shallow_clone(repo_root: Path) -> None:
+    """Known failures are subtracted only from a clone with its full history."""
+    done = _git(repo_root, "rev-parse", "--is-shallow-repository")
+    answer = done.stdout.decode("utf-8", "replace").strip()
+    if done.returncode != 0 or answer != "false":
+        raise DriverRefusal(
+            f"{repo_root} is a shallow clone, or git could not say ({answer or done.returncode}); "
+            f"a test the missing history holds red would be subtracted unread, so run "
+            f"`git fetch --unshallow origin main` first"
+        )
 
 
 def main(argv: list[str]) -> int:
@@ -1692,7 +1722,12 @@ def main(argv: list[str]) -> int:
         if not args.known_failures.is_file():
             print(f"refused: no known failures file at {args.known_failures}", file=sys.stderr)
             return 2
-        known = read_known_failures(args.known_failures)
+        try:
+            known = read_known_failures(args.known_failures)
+            refuse_a_shallow_clone(args.repo_root)
+        except DriverRefusal as refusal:
+            print(f"refused: {refusal}", file=sys.stderr)
+            return 2
 
     prior = None
     sidecar = args.out_dir / f"{name}.json"
