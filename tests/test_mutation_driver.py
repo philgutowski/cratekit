@@ -754,8 +754,15 @@ ONE_ROW_SPEC = (
 
 @pytest.mark.parametrize(
     "header",
-    ["# commit abc host here", "# commit abc host here history shallow", "# header", ""],
-    ids=["before-u200", "shallow", "by-hand", "empty"],
+    [
+        "# commit abc host here",
+        "# commit abc host here history shallow",
+        "# header",
+        "# header history full",
+        "# commit abc host here history full and more",
+        "",
+    ],
+    ids=["before-u200", "shallow", "by-hand", "by-hand-with-field", "field-not-last", "empty"],
 )
 def test_known_failures_not_measured_with_full_history_are_refused(header, tmp_path, capsys):
     """U200, from R-1191: a shallow clone's baseline subtracts a test the missing
@@ -787,6 +794,10 @@ def test_known_failures_are_refused_on_a_shallow_clone(repo, tmp_path, capsys):
 
     with pytest.raises(mutate.DriverRefusal, match="shallow"):
         mutate.refuse_a_shallow_clone(shallow)
+    not_a_repo = tmp_path / "not-a-repo"
+    not_a_repo.mkdir()
+    with pytest.raises(mutate.DriverRefusal, match="could not say"):
+        mutate.refuse_a_shallow_clone(not_a_repo)
     mutate.refuse_a_shallow_clone(repo)
     code = mutate.main(
         ["mutate.py", str(spec), "--known-failures", str(listed), "--repo-root", str(shallow)]

@@ -104,10 +104,13 @@ def test_a_complete_clone_runs_no_fetch(origin, tmp_path):
     repo, _ = origin
     clone = _clone(repo, tmp_path / "clone", shallow=False)
     assert _is_shallow(clone) == "false"
-    # Any fetch would now fail, so a None proves none was attempted.
+    assert not (clone / ".git" / "FETCH_HEAD").exists()
+    # A fetch would fail against this remote and write FETCH_HEAD, so None and
+    # no FETCH_HEAD together show none was attempted.
     assert _git(clone, "remote", "set-url", "origin", (tmp_path / "nowhere").as_uri()).returncode == 0
 
     assert battery.ensure_full_history(clone) is None
+    assert not (clone / ".git" / "FETCH_HEAD").exists()
 
 
 def test_a_directory_git_cannot_read_is_refused_not_read_as_complete(tmp_path):
