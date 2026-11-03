@@ -13,10 +13,12 @@ them, because they are not part of the distribution.
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 import re
 import subprocess
 from pathlib import Path
+from typing import NamedTuple
 
 import pytest
 
@@ -394,18 +396,37 @@ def _paragraphs(text: str) -> list[str]:
     return [p for p in text.split("\n\n") if p.strip()]
 
 
-def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
-    """The split moved text and changed none of it.
+class Rewording(NamedTuple):
+    """One span of a moved paragraph that a later unit changed on purpose."""
 
-    Every paragraph of the restart state at the split base that is not in the
-    restart state now is found verbatim in some ``docs/restart/`` file. A
-    paragraph can only be split at a blank line, and the split moved whole
-    records, so a paragraph is the unit of comparison. "Moved" is read off the
-    base's own layout, everything outside the sections the restart state
-    keeps, so a later edit to a kept section is not mistaken for a lost
-    record. The base commit is on main's history, so a clone without it is a
-    shallow one, and CI does not run the suite.
-    """
+    unit: str
+    fragment: str
+    old: str
+    new: str
+
+
+#: The deliberate rewordings of moved text since the split, as data. Each entry
+#: is the smallest span a later unit changed on purpose: the text as the split
+#: base has it, the text its fragment has now, and the fragment it lives in.
+#: The comparison applies each entry to the base's moved paragraphs and then
+#: compares byte for byte, so the rest of that paragraph, and every other
+#: paragraph, is still held exactly. An entry is checked before it is used, so
+#: a stale one fails rather than silently excusing nothing.
+REWORDINGS = (
+    # U195 (#469) stopped the public prose naming the service beside the
+    # vendored downloader, and this sentence of R-301's record was one it
+    # reworded on purpose. Restoring the old sentence would undo that unit.
+    Rewording(
+        unit="U195",
+        fragment="r301.md",
+        old="the vendored Tidal\nclient, neither",
+        new="the vendored\ndownloader, neither",
+    ),
+)
+
+
+@functools.cache
+def _split_base_restart() -> str:
     shown = subprocess.run(
         ["git", "show", f"{SPLIT_BASE}:RESTART-cratekit.md"],
         cwd=REPO_ROOT,
@@ -414,8 +435,18 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
         check=False,
     )
     assert shown.returncode == 0, f"the split base {SPLIT_BASE} is not in this clone"
+    return shown.stdout
+
+
+def _moved_paragraphs() -> list[str]:
+    """The paragraphs the split moved out of the restart state, as the base had them.
+
+    "Moved" is read off the base's own layout, everything outside the sections
+    the restart state keeps, so a later edit to a kept section is not mistaken
+    for a lost record.
+    """
     scan = _load("scan_repo")
-    sections = re.split(r"\n(?=## )", shown.stdout)
+    sections = re.split(r"\n(?=## )", _split_base_restart())
     # The head kept its title and its first paragraph; the rest was records.
     moved = _paragraphs(sections[0])[2:]
     for section in sections[1:]:
@@ -425,12 +456,124 @@ def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
             moved += _paragraphs(section)[2:]
         elif heading not in scan.RESTART_SECTIONS:
             moved += _paragraphs(section)
-    fragments = "\n\n".join(
-        p.read_text() for p in sorted((REPO_ROOT / "docs" / "restart").glob("*.md"))
-    )
+    return moved
+
+
+def _fragments() -> dict[str, str]:
+    return {p.name: p.read_text() for p in sorted((REPO_ROOT / "docs" / "restart").glob("*.md"))}
+
+
+def _stale_rewordings(
+    moved: list[str], fragments: dict[str, str], rewordings: tuple[Rewording, ...]
+) -> list[str]:
+    """Every entry that no longer describes a change the tree actually holds."""
+    stale = []
+    for entry in rewordings:
+        found = sum(p.count(entry.old) for p in moved)
+        if found != 1:
+            stale.append(f"{entry.unit}: its old text is in the split base {found} times, not once")
+        if entry.new not in fragments.get(entry.fragment, ""):
+            stale.append(f"{entry.unit}: its new text is not in {entry.fragment}")
+    return stale
+
+
+def _lost_paragraphs(
+    moved: list[str], fragments: dict[str, str], rewordings: tuple[Rewording, ...]
+) -> list[str]:
+    """The opening of every moved paragraph no fragment holds verbatim, after the table."""
+    expected = moved
+    for entry in rewordings:
+        expected = [p.replace(entry.old, entry.new) for p in expected]
+    joined = "\n\n".join(fragments.values())
+    return [p[:80] for p in expected if p not in joined]
+
+
+def test_every_moved_paragraph_is_in_a_fragment_byte_for_byte():
+    """The split moved text and changed none of it, but for the named rewordings.
+
+    Every paragraph of the restart state at the split base that is not in the
+    restart state now is found verbatim in some ``docs/restart/`` file, once
+    the ``REWORDINGS`` table is applied to it. A paragraph can only be split at
+    a blank line, and the split moved whole records, so a paragraph is the
+    unit of comparison. The base commit is on main's history, so a clone
+    without it is a shallow one, and CI does not run the suite.
+    """
+    moved = _moved_paragraphs()
+    fragments = _fragments()
     assert len(moved) > 250
-    lost = [p[:80] for p in moved if p not in fragments]
-    assert lost == []
+    assert _stale_rewordings(moved, fragments, REWORDINGS) == []
+    assert _lost_paragraphs(moved, fragments, REWORDINGS) == []
+
+
+R301_OPENING = "**The session before: R-301, issue #168"
+
+
+@pytest.mark.parametrize(
+    "old, new",
+    [
+        # A word in the same paragraph, outside the reworded span.
+        ("tagging searchers", "tag searchers"),
+        # A word inside the reworded span itself.
+        ("downloader, neither", "downloader, nor"),
+        # A word in the same sentence, just before the span.
+        ("literal\nprovider hosts", "literal\nprovider names"),
+    ],
+)
+def test_another_change_to_the_reworded_record_still_fails(old, new):
+    moved = _moved_paragraphs()
+    fragments = _fragments()
+    assert fragments["r301.md"].count(old) == 1
+    fragments["r301.md"] = fragments["r301.md"].replace(old, new)
+    lost = _lost_paragraphs(moved, fragments, REWORDINGS)
+    assert [p for p in lost if p.startswith(R301_OPENING)] != []
+
+
+@pytest.mark.parametrize("position", ["first", "middle", "last"])
+def test_a_paragraph_removed_from_another_fragment_still_fails(position):
+    moved = _moved_paragraphs()
+    fragments = _fragments()
+    joined = "\n\n".join(fragments.values())
+    # Paragraphs held by exactly one fragment other than R-301's, so removing
+    # it from that one fragment is a real loss.
+    held_once = [
+        (name, p)
+        for p in moved
+        if joined.count(p) == 1
+        for name, text in fragments.items()
+        if name != "r301.md" and p in text
+    ]
+    assert len(held_once) > 200
+    index = {"first": 0, "middle": len(held_once) // 2, "last": -1}[position]
+    name, paragraph = held_once[index]
+    fragments[name] = fragments[name].replace(paragraph, "")
+    assert paragraph[:80] in _lost_paragraphs(moved, fragments, REWORDINGS)
+
+
+@pytest.mark.parametrize(
+    "entry, says",
+    [
+        (
+            Rewording("U0", "r301.md", "the vendored Tidal\nservice, neither", REWORDINGS[0].new),
+            "in the split base 0 times",
+        ),
+        (
+            Rewording("U0", "r301.md", "\n", REWORDINGS[0].new),
+            "times, not once",
+        ),
+        (
+            Rewording("U0", "r301.md", REWORDINGS[0].old, "the vendored\nfetcher, neither"),
+            "its new text is not in r301.md",
+        ),
+        (
+            Rewording("U0", "r999.md", REWORDINGS[0].old, REWORDINGS[0].new),
+            "its new text is not in r999.md",
+        ),
+    ],
+)
+def test_a_stale_rewording_fails_rather_than_excusing_nothing(entry, says):
+    stale = _stale_rewordings(_moved_paragraphs(), _fragments(), (entry,))
+    assert len(stale) == 1
+    assert says in stale[0]
 
 
 def test_audit_counts_a_residual_file_that_cannot_land_as_a_contradiction(
