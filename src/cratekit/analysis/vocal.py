@@ -222,6 +222,14 @@ def infer_frames(
 
 
 def presence_score(vocals: np.ndarray, *, frame_floor: float = DEFAULT_FRAME_FLOOR) -> float:
+    """The percentage of frames whose Singing score reaches ``frame_floor``.
+
+    Coverage, not loudness: a sung lead heard for most of a track scores high,
+    and a hook heard for a few seconds of seven minutes scores under one. On a
+    dense electronic mix the model's Singing often never reaches the floor at
+    all, which is a 0 the model meant rather than a frame lost on the way
+    (U171, A64's measurement of the zeros, ``tests/test_vocal_zeros.py``).
+    """
     series = np.asarray(vocals, dtype=float)
     if series.size == 0:
         return 0.0
