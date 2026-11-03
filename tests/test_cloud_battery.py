@@ -100,17 +100,27 @@ def test_a_remote_that_cannot_serve_the_history_is_refused(origin, tmp_path):
     assert _is_shallow(clone) == "true"
 
 
-def test_a_complete_clone_runs_no_fetch(origin, tmp_path):
+def test_a_complete_clone_runs_no_fetch(origin, tmp_path, monkeypatch):
+    """Every git call is recorded, so a fetch is seen whether or not it succeeds.
+
+    A None alone cannot show it, since a fetch that fails on a complete clone
+    still leaves it complete, which the review of U200 drove.
+    """
     repo, _ = origin
     clone = _clone(repo, tmp_path / "clone", shallow=False)
     assert _is_shallow(clone) == "false"
-    assert not (clone / ".git" / "FETCH_HEAD").exists()
-    # A fetch would fail against this remote and write FETCH_HEAD, so None and
-    # no FETCH_HEAD together show none was attempted.
-    assert _git(clone, "remote", "set-url", "origin", (tmp_path / "nowhere").as_uri()).returncode == 0
+    calls: list[list[str]] = []
+    real_run = subprocess.run
+
+    def recording_run(cmd, *args, **kwargs):
+        calls.append(list(cmd))
+        return real_run(cmd, *args, **kwargs)
+
+    monkeypatch.setattr(battery.subprocess, "run", recording_run)
 
     assert battery.ensure_full_history(clone) is None
-    assert not (clone / ".git" / "FETCH_HEAD").exists()
+    assert calls, "ensure_full_history read nothing"
+    assert not any("fetch" in cmd for cmd in calls), calls
 
 
 def test_a_directory_git_cannot_read_is_refused_not_read_as_complete(tmp_path):

@@ -774,7 +774,11 @@ def test_known_failures_not_measured_with_full_history_are_refused(header, tmp_p
         mutate.read_known_failures(listed)
     spec = tmp_path / "rows.toml"
     spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
-    assert mutate.main(["mutate.py", str(spec), "--known-failures", str(listed)]) == 2
+    # A tree and an output directory of the test's own, so a driver that let
+    # the file through measures a fixture and writes nothing in the repository.
+    argv = ["mutate.py", str(spec), "--known-failures", str(listed)]
+    argv += ["--repo-root", str(tmp_path), "--out-dir", str(tmp_path / "out")]
+    assert mutate.main(argv) == 2
     assert "full history" in capsys.readouterr().err
 
 
@@ -800,7 +804,16 @@ def test_known_failures_are_refused_on_a_shallow_clone(repo, tmp_path, capsys):
         mutate.refuse_a_shallow_clone(not_a_repo)
     mutate.refuse_a_shallow_clone(repo)
     code = mutate.main(
-        ["mutate.py", str(spec), "--known-failures", str(listed), "--repo-root", str(shallow)]
+        [
+            "mutate.py",
+            str(spec),
+            "--known-failures",
+            str(listed),
+            "--repo-root",
+            str(shallow),
+            "--out-dir",
+            str(tmp_path / "out"),
+        ]
     )
     assert code == 2
     assert "shallow" in capsys.readouterr().err
