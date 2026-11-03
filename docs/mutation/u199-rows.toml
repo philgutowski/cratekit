@@ -1,0 +1,76 @@
+name = "u199"
+pass_kind = "light"
+
+# The guard U199 added lives in the test itself, so every row mutates
+# tests/test_restart_and_residual_files.py and runs that file. Each row is
+# maintainer facing: the guard protects the record of what the split moved.
+
+[[rows]]
+id = "M1_table_not_applied"
+description = "_lost_paragraphs: apply no rewording at all, as if the table were empty, so U195's deliberate sentence reads as a lost paragraph"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    for entry in rewordings:
+        expected = [p.replace(entry.old, entry.new) for p in expected]'''
+new = '''    for entry in ():
+        expected = [p.replace(entry.old, entry.new) for p in expected]'''
+
+[[rows]]
+id = "M2_entry_widened_to_paragraph"
+description = "_lost_paragraphs: an entry excuses the whole paragraph holding its old text rather than replacing only its span"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        expected = [p.replace(entry.old, entry.new) for p in expected]'''
+new = '''        expected = [entry.new if entry.old in p else p for p in expected]'''
+
+[[rows]]
+id = "M3_only_the_opening_compared"
+description = "_lost_paragraphs: compare only each paragraph's first 80 characters, so the byte for byte check stops holding the rest"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    return [p[:80] for p in expected if p not in joined]'''
+new = '''    return [p[:80] for p in expected if p[:80] not in joined]'''
+
+[[rows]]
+id = "M4_exactly_once_relaxed"
+description = "_stale_rewordings: accept an old text found many times, so an entry can rewrite several paragraphs at once"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if found != 1:'''
+new = '''        if found == 0:'''
+
+[[rows]]
+id = "M5_old_text_unchecked"
+description = "_stale_rewordings: drop the check on the old text, so an entry whose old text is not in the split base passes"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if found != 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M6_new_text_unchecked"
+description = "_stale_rewordings: drop the check on the new text, so an entry whose new text is in no fragment passes"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if entry.new not in fragments.get(entry.fragment, ""):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M7_new_text_in_any_fragment"
+description = "_stale_rewordings: look for the new text in every fragment rather than the one the entry names"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''        if entry.new not in fragments.get(entry.fragment, ""):'''
+new = '''        if entry.new not in "\n\n".join(fragments.values()):'''
+
+[[rows]]
+id = "M8_stale_table_applied"
+description = "_problems: compare with a stale table rather than report it, so an entry whose old text is in no moved paragraph excuses nothing and passes"
+file = "tests/test_restart_and_residual_files.py"
+tests = ["tests/test_restart_and_residual_files.py"]
+old = '''    if stale:
+        return stale
+    return _lost_paragraphs'''
+new = '''    if False:
+        return stale
+    return _lost_paragraphs'''
