@@ -34,13 +34,17 @@ and of ten known sung leads.
 
 ## What it was
 
-The stamp is `round(100 * share of frames with Singing >= 0.05)`, and that
-reproduces the voxlevel on all 126 rows. The decode covered every whole file
+The stamp is `round(100 * share of frames with Singing >= 0.05)`. A64's
+script computed both through the shipped `infer_frames` and `reduce_frames`,
+so the 126 rows agreeing is a self check; the independent evidence is that
+its distribution, 80, 10, 14 and 12, is exactly sitting 47's `analyze run`
+stamps. The decode covered every whole file
 (100.1 frames a second on every row), the chunk count matched every length,
 and the singing columns were the ones read. Of the 80 zeros, 68 never reach
 0.05 on a single frame (median loudest frame 0.013), and 12 reach it on under
-half a percent of frames, which rounds to 0. Those 12 are the whole of the
-"none at 1" look.
+half a percent of frames, which rounds to 0. Those 12 are why zeros so far
+outnumber ones (the 116 has 10 at 1), and why a small batch like sitting 51's
+can show none at 1.
 
 One known sung lead, Donna Summer "I Feel Love", stamps 0 because the model
 hears no vocal class on it at all (Singing at most 0.034). That is the model's

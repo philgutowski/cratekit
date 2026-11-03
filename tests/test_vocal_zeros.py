@@ -8,7 +8,9 @@ a percent of their frames. No decode, chunking or column defect was involved.
 
 These tests drive ``vocals.analyse`` end to end with a fake model that plays
 back a Singing series shaped on those measurements, so each shape is scored
-through the same decode, chunking, reduction and rounding a real track takes.
+through the same chunk walk, reduction and rounding a real track takes. The
+decode is bound to a constant signal, so ``vocal.decode`` is not exercised
+here; a real file's decode is A64's to measure.
 The shapes are synthetic: the frame values A64 printed are summaries (max,
 95th percentile, share at the floor), and each series below is built to match
 the summary of the row it names, not copied from a file.
@@ -180,3 +182,11 @@ def test_the_stamp_is_the_share_of_frames_at_the_floor_rounded():
         singing = _series(10_000, heard=share, at=0.2, floor_noise=0.0)
         score = vocal.reduce_frames(singing, singing * 0.05, singing * 0.4)
         assert score.presence == pytest.approx(100.0 * share, abs=0.011)
+
+
+def test_the_floor_is_reached_at_exactly_its_value_and_not_just_under():
+    """A frame at exactly the floor counts, and one just under it does not."""
+    at = np.full(100, vocal.DEFAULT_FRAME_FLOOR, dtype=np.float64)
+    under = np.full(100, 0.0499, dtype=np.float64)
+    assert vocal.presence_score(at) == 100.0
+    assert vocal.presence_score(under) == 0.0

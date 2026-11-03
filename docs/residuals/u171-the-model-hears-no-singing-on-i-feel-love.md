@@ -1,5 +1,5 @@
 ---
-title: The frame model hears no singing on a sung lead buried in synths, so a vocal track like I Feel Love stamps 0 and gets no vox tag
+title: The frame model hears no singing on the library copy of I Feel Love, a sung lead buried in synths, so it stamps 0 and gets no vox tag
 found: at the build of #352, U171, 2026-11-03, from A64's frame tables.
 issue: no
 ---
@@ -18,6 +18,10 @@ Speech or Rapping and never on Singing (Pedestrian, Mr. Tophat, Wajatta,
 Luke Vibert), but Speech reaches the floor on at least one percent of the
 frames of 43 of the 116, and on only two of the ten known sung leads, so
 counting it needs ground truth the session does not have.
+
+The file is the library's `_PN` copy, a processed version, and whether the
+processing or the mix is what hides the voice was not separated: the decode
+delivered music (Music at most 0.79), and no unprocessed copy was measured.
 
 **Measured cost.** One sung lead among ten known vocals scored 0 and carries
 no `vox` tag, so a DJ filtering on `with vox` does not see it. How many of the
