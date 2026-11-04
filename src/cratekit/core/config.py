@@ -2916,6 +2916,13 @@ DEFAULT_EXPORT_STALE_DAYS = 7
 MAX_EXPORT_STALE_DAYS = 3650
 
 
+#: The rekordbox top folders a sync of every pair skips unless the file says
+#: otherwise (U198), decided by Phillip on 2026-11-04.
+DEFAULT_PAIR_SKIP_FOLDERS: tuple[str, ...] = ("ARCHIVE",)
+
+PAIR_SKIP_FOLDERS_KEY = "outbound.pair_skip_folders"
+
+
 @dataclass(frozen=True, slots=True)
 class OutboundConfig:
     """Policy for the verbs that write to a streaming account (R-227).
@@ -2933,6 +2940,10 @@ class OutboundConfig:
     """
 
     export_stale_days: int = DEFAULT_EXPORT_STALE_DAYS
+    #: The rekordbox top folders ``crate sync pair`` lists and never pairs
+    #: when it finds the author's own playlists (U198), by exact name. ARCHIVE
+    #: by Phillip's answer of 2026-11-04; an empty list pairs every folder.
+    pair_skip_folders: tuple[str, ...] = DEFAULT_PAIR_SKIP_FOLDERS
 
 
 #: The recognition service's identify endpoint for the region most accounts are
@@ -3415,6 +3426,7 @@ def validate(data: Mapping) -> list[str]:
 
     problems += _validate_aging_thresholds(data)
     problems += _validate_export_staleness(data)
+    problems += _validate_pair_skip_folders(data)
     problems += _validate_open_gate_staleness(data)
     problems += _validate_recognition(data)
     problems += _validate_provider(data)
@@ -3593,6 +3605,22 @@ def _validate_export_staleness(data: Mapping) -> list[str]:
         maximum=MAX_EXPORT_STALE_DAYS,
     )
     return [] if problem is None else [problem]
+
+
+def _validate_pair_skip_folders(data: Mapping) -> list[str]:
+    """The rekordbox folders a sync of every pair leaves out (U198): a list of names."""
+    value = _dig(data, PAIR_SKIP_FOLDERS_KEY)
+    if value is None:
+        return []
+    if not isinstance(value, list | tuple) or not all(
+        isinstance(one, str) and one.strip() for one in value
+    ):
+        return [
+            f"{PAIR_SKIP_FOLDERS_KEY} must be a list of rekordbox folder names, found "
+            f"{value!r}. A folder that cannot be named would skip nothing, and the "
+            f"playlists under it would be paired with the account."
+        ]
+    return []
 
 
 def _validate_open_gate_staleness(data: Mapping) -> list[str]:
@@ -3967,7 +3995,7 @@ def from_dict(data: Mapping, *, path: Path | None = None) -> Config:
             overrides={"remote": derived_backup_remote(data)},
         ),
         reports=_build(ReportsConfig, data.get("reports") or {}),
-        outbound=_build(OutboundConfig, data.get("outbound") or {}),
+        outbound=_outbound(data.get("outbound") or {}),
         recognition=_build(RecognitionConfig, data.get("recognition") or {}),
         provider=_build(ProviderConfig, data.get("provider") or {}),
         labels=_build(LabelsConfig, data.get("labels") or {}),
@@ -4015,6 +4043,12 @@ def _build(cls, raw: Mapping, *, overrides: Mapping[str, object] | None = None):
             continue
         kwargs[f.name] = _coerce(f.type, raw[f.name])
     return cls(**kwargs)
+
+
+def _outbound(raw: Mapping) -> OutboundConfig:
+    """The outbound section, the skip list held as a tuple so the frozen config stays hashable."""
+    built = _build(OutboundConfig, raw)
+    return replace(built, pair_skip_folders=tuple(str(one) for one in built.pair_skip_folders))
 
 
 def _acquisition(raw: Mapping) -> AcquisitionConfig:

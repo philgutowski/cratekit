@@ -1796,14 +1796,17 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'sync/mark_record.py': ['sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
-    # 2026-10-10, U130: the sync pair verb joined.
+    # 2026-10-10, U130: the sync pair verb joined. 2026-11-04, U198: the
+    # not discovered and released warnings joined.
     'sync/pair_cli.py': [
         'playlist-pair',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
         'sync-pair-left-out',
+        'sync-pair-not-discovered',
         'sync-pair-nothing',
         'sync-pair-out-of-scope',
+        'sync-pair-released',
         'sync-pair-skipped',
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',

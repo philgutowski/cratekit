@@ -27,13 +27,20 @@ question that removal asks: a playlist the author marked here is one whose
 removals the author asked to have applied, by the rule U130 decided on
 2026-10-10, and nothing else is.
 
+**WHAT A SYNC OF EVERY PAIR RECORDS BESIDE THE PAIRS (U198).** The account
+root folders it made or adopted, by name; every rekordbox row the account had
+no track for, with the ISRC it was asked under and the answer; and the
+playlists a made pair left behind when its other side was deleted, so nothing
+makes that side again. A write of the pairs alone reads them again under its
+lock and keeps them.
+
 Layer: modules.
 """
 
 from __future__ import annotations
 
 import json
-from collections.abc import Iterator, Mapping, Sequence
+from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -82,6 +89,12 @@ class Pair:
     #: custom playlist twin (U149), so a sync unpairs it, rather than leaving
     #: it out, once the account playlist is gone.
     twin: bool = False
+    #: Whether the product made the account side for a rekordbox playlist a
+    #: sync of every pair found (U198), so a sync unpairs it, rather than
+    #: leaving it out, once either side is gone. ``folder`` is the account
+    #: root folder it was made in.
+    made: bool = False
+    folder: str = ""
 
     @property
     def first(self) -> bool:
@@ -98,11 +111,57 @@ class Pair:
         }
         if self.twin:
             record["twin"] = True
+        if self.made:
+            record["made"] = True
+            record["folder"] = self.folder
         if self.account is not None:
             record["account"] = list(self.account)
         if self.rekordbox is not None:
             record["rekordbox"] = [member.to_json() for member in self.rekordbox]
         return record
+
+
+#: The two sides a released playlist is recorded under.
+ACCOUNT_SIDE = "account"
+REKORDBOX_SIDE = "rekordbox"
+
+
+@dataclass(frozen=True, slots=True)
+class MadeFolder:
+    """One account root folder a sync of every pair made or adopted (U198)."""
+
+    name: str
+    folder_id: str
+    #: True only when this product created it; one adopted by its name may be a person's.
+    created: bool = False
+
+
+@dataclass(frozen=True, slots=True)
+class Miss:
+    """What the account said of one rekordbox row it had no track for, and under which ISRC."""
+
+    isrc: str
+    reason: str
+
+
+@dataclass(frozen=True, slots=True)
+class Released:
+    """Playlists left behind when a made pair lost its other side (U198)."""
+
+    #: Account playlists whose rekordbox playlist was deleted.
+    account: frozenset[str] = frozenset()
+    #: Rekordbox playlists whose account playlist was deleted.
+    rekordbox: frozenset[str] = frozenset()
+
+
+@dataclass
+class Document:
+    """The whole pairs document as read: the pairs and what U198 records beside them."""
+
+    pairs: dict[str, Pair] = field(default_factory=dict)
+    folders: dict[str, MadeFolder] = field(default_factory=dict)
+    misses: dict[str, Miss] = field(default_factory=dict)
+    released: Released = field(default_factory=Released)
 
 
 class PairStore:
@@ -148,15 +207,66 @@ class PairStore:
             lock.__exit__(None, None, None)
 
     def _load(self) -> dict[str, Pair]:
+        return self._document().pairs
+
+    def _document(self) -> Document:
         if not self.path.exists():
-            return {}
+            return Document()
         try:
             raw = json.loads(self.path.read_text(encoding="utf-8"))
         except OSError as exc:
             raise self._unusable("it could not be opened") from exc
         except ValueError as exc:
             raise self._unusable("it is not JSON") from exc
-        return self._recognize(raw)
+        pairs = self._recognize(raw)
+        return Document(
+            pairs=pairs,
+            folders=self._folders(raw.get("folders", {})),
+            misses=self._misses(raw.get("misses", {})),
+            released=self._released(raw.get("released", {})),
+        )
+
+    def _folders(self, raw: Any) -> dict[str, MadeFolder]:
+        if not isinstance(raw, Mapping):
+            raise self._unusable("its folders are not a map")
+        found: dict[str, MadeFolder] = {}
+        for name, value in raw.items():
+            if (
+                not isinstance(value, Mapping)
+                or not isinstance(value.get("folder_id"), str)
+                or not value.get("folder_id")
+                or not isinstance(value.get("created", False), bool)
+            ):
+                raise self._unusable(f"the folder {name!r} is not a recorded folder")
+            found[str(name)] = MadeFolder(
+                str(name), str(value["folder_id"]), value.get("created") is True
+            )
+        return found
+
+    def _misses(self, raw: Any) -> dict[str, Miss]:
+        if not isinstance(raw, Mapping):
+            raise self._unusable("its misses are not a map")
+        found: dict[str, Miss] = {}
+        for content_id, value in raw.items():
+            if (
+                not isinstance(value, Mapping)
+                or not isinstance(value.get("isrc"), str)
+                or not isinstance(value.get("reason"), str)
+            ):
+                raise self._unusable(f"the miss of row {content_id!r} is not a recorded miss")
+            found[str(content_id)] = Miss(str(value["isrc"]), str(value["reason"]))
+        return found
+
+    def _released(self, raw: Any) -> Released:
+        if not isinstance(raw, Mapping):
+            raise self._unusable("its released playlists are not a map")
+        sides: dict[str, frozenset[str]] = {}
+        for side in (ACCOUNT_SIDE, REKORDBOX_SIDE):
+            ids = raw.get(side, [])
+            if not isinstance(ids, list) or not all(isinstance(one, str) and one for one in ids):
+                raise self._unusable(f"its released {side} playlists are not ids")
+            sides[side] = frozenset(ids)
+        return Released(account=sides[ACCOUNT_SIDE], rekordbox=sides[REKORDBOX_SIDE])
 
     def _recognize(self, raw: Any) -> dict[str, Pair]:
         if not isinstance(raw, Mapping):
@@ -210,6 +320,12 @@ class PairStore:
         twin = value.get("twin", False)
         if not isinstance(twin, bool):
             raise self._unusable(f"the pair {account_id!r} says twin as something not true or false")
+        made = value.get("made", False)
+        if not isinstance(made, bool):
+            raise self._unusable(f"the pair {account_id!r} says made as something not true or false")
+        folder = value.get("folder", "")
+        if not isinstance(folder, str):
+            raise self._unusable(f"the pair {account_id!r} names a folder that is not a name")
         return Pair(
             account_id=account_id,
             rekordbox_id=rekordbox_id,
@@ -220,14 +336,38 @@ class PairStore:
             rekordbox=members,
             links=MappingProxyType(dict(links)),
             twin=twin,
+            made=made,
+            folder=folder,
         )
 
-    def _write(self, pairs: Mapping[str, Pair]) -> None:
-        payload = {
+    def _write(self, pairs: Mapping[str, Pair], document: Document | None = None) -> None:
+        """Write the pairs, and the rest of the document as it was read or as given.
+
+        THE REST IS READ AGAIN HERE when no document is given, under the
+        caller's lock, so a write of the pairs alone never drops the folders,
+        the misses or the released playlists another sync recorded.
+        """
+        rest = document if document is not None else self._document()
+        payload: dict[str, Any] = {
             "version": PAIRS_VERSION,
             "library_id": self.cfg.library.volume_id,
             "pairs": {key: pair.to_json() for key, pair in sorted(pairs.items())},
         }
+        if rest.folders:
+            payload["folders"] = {
+                name: {"folder_id": one.folder_id, "created": one.created}
+                for name, one in sorted(rest.folders.items())
+            }
+        if rest.misses:
+            payload["misses"] = {
+                content_id: {"isrc": one.isrc, "reason": one.reason}
+                for content_id, one in sorted(rest.misses.items())
+            }
+        if rest.released.account or rest.released.rekordbox:
+            payload["released"] = {
+                ACCOUNT_SIDE: sorted(rest.released.account),
+                REKORDBOX_SIDE: sorted(rest.released.rekordbox),
+            }
         config.atomic_write_bytes(
             (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8"),
             self.path,
@@ -327,6 +467,113 @@ class PairStore:
             self._write(pairs)
             return held
 
+    # ── U198: what a sync of every pair makes, remembers and lets go ────────
+
+    def folders(self) -> dict[str, MadeFolder]:
+        """Every account root folder a sync of every pair made or adopted, by name."""
+        return self._document().folders
+
+    def misses(self) -> dict[str, Miss]:
+        """Every rekordbox row the account was asked about and had no track for."""
+        return self._document().misses
+
+    def released(self) -> Released:
+        """Every playlist whose other side was deleted, so nothing makes it again."""
+        return self._document().released
+
+    def reserve_folder(
+        self, name: str, create: Callable[[], str], *, adopt: str = "", stale: str = ""
+    ) -> tuple[str, bool]:
+        """The account root folder for ``name``, made only if none is recorded. ``(id, created)``.
+
+        The ledger's reserve shape: the lock is taken before the create, so an
+        unwritable document refuses before anything exists on the account;
+        ``adopt`` is the one root folder of the name the plan found and a
+        person was shown, and ``stale`` a recorded folder read as gone.
+        """
+        with self._locked():
+            document = self._document()
+            held = document.folders.get(name)
+            if held is not None and held.folder_id != stale:
+                return held.folder_id, False
+            if adopt:
+                folder_id, created = adopt, False
+            else:
+                folder_id, created = str(create()), True
+            document.folders[name] = MadeFolder(name, folder_id, created)
+            self._write(document.pairs, document)
+            return folder_id, created
+
+    def reserve_made(
+        self, rekordbox_id: str, *, name: str, folder: str, create: Callable[[], str]
+    ) -> tuple[str, bool]:
+        """The account playlist made for one rekordbox playlist, and its pair. ``(id, created)``.
+
+        MADE AND MARKED IN ONE WRITE, under one lock taken before the create:
+        an unwritable document refuses before the playlist exists, and a
+        rekordbox playlist a pair already holds answers that pair's account
+        playlist, so two syncs never make two.
+        """
+        rekordbox_id = str(rekordbox_id)
+        with self._locked():
+            document = self._document()
+            for pair in document.pairs.values():
+                if pair.rekordbox_id == rekordbox_id:
+                    return pair.account_id, False
+            account_id = str(create())
+            if account_id in document.pairs:
+                raise conflict(account_id, rekordbox_id, document.pairs[account_id])
+            document.pairs[account_id] = Pair(
+                account_id=account_id,
+                rekordbox_id=rekordbox_id,
+                name=str(name),
+                marked=timestamp(),
+                made=True,
+                folder=str(folder),
+            )
+            self._write(document.pairs, document)
+            return account_id, True
+
+    def remember(self, misses: Mapping[str, Miss], *, forget: Iterable[str] = ()) -> None:
+        """Remember rows the account had no track for, and forget rows matched since (R-988)."""
+        gone = {str(one) for one in forget}
+        if not misses and not gone:
+            return
+        with self._locked():
+            document = self._document()
+            for content_id in gone:
+                document.misses.pop(content_id, None)
+            document.misses.update({str(k): v for k, v in misses.items()})
+            self._write(document.pairs, document)
+
+    def release(self, account_id: str, rekordbox_id: str, *, side: str) -> Pair | None:
+        """Unpair a made pair one of whose sides is gone, and remember the side left.
+
+        ``side`` is the side that is GONE. The other side's playlist is left
+        where it is and recorded as released, so a sync of every pair never
+        makes its partner again. Answers the pair forgotten, or None when it is
+        not this pair any more.
+        """
+        if side not in (ACCOUNT_SIDE, REKORDBOX_SIDE):
+            raise ValueError(f"no such side: {side!r}")
+        with self._locked():
+            document = self._document()
+            held = document.pairs.get(str(account_id))
+            if held is None or held.rekordbox_id != str(rekordbox_id):
+                return None
+            del document.pairs[str(account_id)]
+            if side == ACCOUNT_SIDE:
+                document.released = replace(
+                    document.released,
+                    rekordbox=document.released.rekordbox | {held.rekordbox_id},
+                )
+            else:
+                document.released = replace(
+                    document.released, account=document.released.account | {held.account_id}
+                )
+            self._write(document.pairs, document)
+            return held
+
 
 def conflict(account_id: str, rekordbox_id: str, held: Pair) -> CratekitError:
     """The refusal for an identifier already paired with something else."""
@@ -368,10 +615,16 @@ def paired_ids(cfg: config.Config) -> frozenset[str]:
 
 
 __all__ = [
+    "ACCOUNT_SIDE",
     "PAIRS_VERSION",
+    "REKORDBOX_SIDE",
+    "Document",
+    "MadeFolder",
     "Membership",
+    "Miss",
     "Pair",
     "PairStore",
+    "Released",
     "conflict",
     "paired",
     "paired_ids",
