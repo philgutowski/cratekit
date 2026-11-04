@@ -213,7 +213,7 @@ description = "plan: a made pair moved under a skipped folder keeps syncing"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
-old = '''                if skipped:'''
+old = '''                if moved:'''
 new = '''                if False:'''
 
 [[rows]]

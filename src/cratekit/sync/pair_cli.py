@@ -1138,16 +1138,23 @@ def plan(
                 # U198. A MADE PAIR WHOSE REKORDBOX PLAYLIST IS GONE IS UNPAIRED,
                 # and its account playlist left where it is, named.
                 there = playlist_pair.read_playlist(db, pair.rekordbox_id)
-                skipped = (
-                    there is not None
-                    and not there.removed
-                    and there.ancestors
-                    and there.top[1] in set(cfg.outbound.pair_skip_folders)
-                )
-                if skipped:
-                    # MOVED UNDER A SKIPPED FOLDER, such as ARCHIVE, is let go as
-                    # a rekordbox side gone: a skipped folder is never written,
-                    # so the pair stops and its account playlist stays.
+                moved = ""
+                if there is not None and not there.removed:
+                    from cratekit.core import active_taxonomy as _taxonomy
+                    from cratekit.favorites import placement
+                    from cratekit.sync import pair_discover
+
+                    moved = pair_discover.left_behind(
+                        db,
+                        there,
+                        favorites=placement.source_name(_taxonomy.load(cfg)),
+                        skip=cfg.outbound.pair_skip_folders,
+                    )
+                if moved:
+                    # MOVED WHERE NO PAIR IS KEPT, under ARCHIVE, another app's
+                    # folder or the Favorites folder, is let go as a rekordbox
+                    # side gone, so nothing there is written and the account
+                    # playlist stays.
                     unpaired.append(
                         Unpaired(
                             account_id=target.account_id,
@@ -1156,7 +1163,7 @@ def plan(
                             rekordbox_name=there.name,
                             gone="rekordbox",
                             made=True,
-                            why=f"moved under {there.top[1]!r}, a folder the configuration skips",
+                            why=moved,
                         )
                     )
                     continue

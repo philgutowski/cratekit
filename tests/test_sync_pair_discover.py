@@ -788,3 +788,66 @@ def test_a_version_one_document_is_read_and_written_as_version_two(world, cfg):
     assert "acc-1" in store.all()
     store.mark("acc-2", "rb-2", name="Two")
     assert json.loads(path.read_text())["version"] == pairs.PAIRS_VERSION == 2
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The review's findings, round two
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("where", ["foreign", "favorites"])
+def test_a_made_pair_moved_into_another_apps_or_the_favorites_folder_is_let_go(
+    world, cfg, where
+):
+    from cratekit.core import foreign_tree
+
+    opener, made = _made_pair(world)
+    if where == "foreign":
+        target = world.folder(foreign_tree.OWNER)
+    else:
+        target = world.folder("Favorites")
+        world.playlist("All Favorites", "9", under=target)
+    world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", target, opener)
+    world.account.playlists[made].append("t3")
+    gig = [pid for pid, name in world.sql("SELECT ID, Name FROM djmdPlaylist") if name == "GIG READY"][0]
+    world.playlist("Closer", "4", under=str(gig))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(opener) == ["1", "2"]
+    assert pairs.PairStore(cfg).get(made) is None
+    assert pair_cli.RELEASED in _codes(envelope)
+    assert "GIG READY Closer" in world.account.titles.values()
+
+
+def test_a_made_pair_deleted_inside_archive_is_said_to_be_gone(world):
+    opener, _made = _made_pair(world)
+    archive = world.folder("ARCHIVE")
+    world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, opener)
+    world.delete_rekordbox(opener)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert "playlist is gone" in _said(envelope, pair_cli.RELEASED)
+
+
+def test_a_root_playlist_named_like_a_skip_folder_is_still_paired(world):
+    world.playlist("ARCHIVE", "1")
+    assert sync()[0] == int(ExitCode.OK)
+    made = world.titled("Playlists ARCHIVE")
+    world.account.playlists[made].append("t2")
+    assert sync()[0] == int(ExitCode.OK)
+    opener = [pid for pid, name in world.sql("SELECT ID, Name FROM djmdPlaylist") if name == "ARCHIVE"][0]
+    assert world.held(str(opener)) == ["1", "2"]
+
+
+def test_a_favourites_name_inside_another_apps_folder_does_not_unsettle_the_home(world):
+    from cratekit.core import foreign_tree
+
+    theirs = world.folder(foreign_tree.OWNER)
+    world.playlist("All Favorites", "1", under=theirs)
+    favorites = world.folder("Favorites")
+    world.playlist("All Favorites", "2", under=favorites)
+    world.playlist("Loose", "3")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert sorted(world.account.titles.values()) == ["Playlists Loose"]
+    assert pair_cli.NOT_DISCOVERED not in _codes(envelope)

@@ -935,10 +935,12 @@ Never paired: Cratekit's own trees, the Favorites folder and the custom
 playlist twins, which other verbs keep. Listed on the gate and never written:
 a smart playlist, and every playlist under a top folder
 `outbound.pair_skip_folders` names, which is `["ARCHIVE"]` unless you change
-it. A made pair whose rekordbox playlist you move into such a folder is
-unpaired, and its account playlist stays. A track the account cannot carry stays in
+it. A made pair whose rekordbox playlist you move into such a folder, another
+app's folder or the Favorites folder is unpaired, and its account playlist
+stays. A track the account cannot carry stays in
 rekordbox, counted on the gate, and is not asked about again until its ISRC
-changes. Two playlists that would take one account title refuse that title
+changes, except a tie between releases, which is asked again. Another app's
+folder is never paired either. Two playlists that would take one account title refuse that title
 until you rename one. Delete either side of such a pair and the next sync
 unpairs it, leaves the other side where it is, and does not make it again.
 

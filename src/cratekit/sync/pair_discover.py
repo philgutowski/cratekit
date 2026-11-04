@@ -292,6 +292,36 @@ def discover(
     return Discovery(found=tuple(kept), listed=tuple(listed))
 
 
+def left_behind(db: Any, playlist: Any, *, favorites: str, skip: Iterable[str]) -> str:
+    """Why a made pair's rekordbox playlist now sits where no pair is kept, or ``""``.
+
+    U198, from the review: a playlist moved after it was paired, under a
+    folder the configuration skips, into another app's folder (U185), or
+    into the folder that holds the favourites, sits where discovery would
+    never have found it, so its pair is let go rather than synced there. A
+    playlist at the rekordbox root sits under nothing.
+    """
+    from cratekit.core import foreign_tree
+
+    if not playlist.ancestors:
+        return ""
+    top_id, top_name = playlist.top
+    if top_name in set(str(one) for one in skip):
+        return f"moved under {top_name!r}, a folder the configuration skips"
+    live = [row for row in db.get_playlist() if not rb_writer.node_removed(row)]
+    if top_id in {str(row.ID) for row in foreign_tree.roots_in(live)}:
+        return f"moved into {top_name!r}, another app's folder"
+    above = {node_id for node_id, _name in playlist.ancestors}
+    for row in live:
+        if (
+            _attribute(row) == PLAIN
+            and str(getattr(row, "Name", "") or "") == favorites
+            and str(getattr(row, "ParentID", "") or "") in above
+        ):
+            return "moved into the folder that holds the favourites"
+    return ""
+
+
 def by_kind(listed: Iterable[Listed]) -> Mapping[str, tuple[Listed, ...]]:
     """The listed playlists grouped by why, in :data:`LISTED_KINDS` order."""
     grouped: dict[str, list[Listed]] = {kind: [] for kind in LISTED_KINDS}
@@ -317,5 +347,6 @@ __all__ = [
     "Listed",
     "by_kind",
     "discover",
+    "left_behind",
     "title_of",
 ]
