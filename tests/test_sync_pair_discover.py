@@ -47,11 +47,13 @@ def remote(index: str) -> str:
 class Listed:
     """A provider track in the shape the playlist reader reads."""
 
-    def __init__(self, track_id: str, code: str) -> None:
+    def __init__(self, track_id: str, code: str, added=None) -> None:
         self.id = track_id
         self.name = f"Title {track_id}"
         self.artist = {"name": f"Artist {track_id}"}
         self.isrc = code
+        # U202. The provider's client copies a playlist item's dateAdded here.
+        self.date_added = added
 
 
 class LivePlaylist:
@@ -68,7 +70,8 @@ class LivePlaylist:
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists.get(self.playlist_id, [])
         return [
-            Listed(one, self.world.codes.get(one, "")) for one in members[offset : offset + size]
+            Listed(one, self.world.codes.get(one, ""), self.world.dates.get(one))
+            for one in members[offset : offset + size]
         ]
 
 
@@ -102,6 +105,8 @@ class World:
             {content_id: remote(content_id) for content_id in ROWS}
         )
         self.codes = {remote(one): isrc(one) for one in ROWS}
+        #: U202. When the account says each track was added, by track id.
+        self.dates: dict = {}
         self.catalogue = LiveCatalogue(self)
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.catalogue))
         monkeypatch.setattr(account_module, "resolve", outbound_fakes.account_factory(self.account))
