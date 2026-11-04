@@ -915,6 +915,35 @@ the twin is left and named, and you pair the one there by hand with
 playlist on the account, the next `crate sync pair` unpairs the twin and leaves
 it in rekordbox, named.
 
+### Keep every playlist you made in rekordbox on the account
+
+```bash
+crate sync pair
+```
+
+With no argument, `crate sync pair` also finds every plain playlist you made in
+rekordbox and syncs it with a playlist of its own on the account, both ways. A
+rekordbox top folder becomes one root folder of the same name on the account,
+holding one private playlist per playlist, titled with the folder first:
+`GIG READY Opener`, or `GIG READY Halloween Opener` for one in a subfolder. A
+playlist at the rekordbox root goes in the root folder `Playlists`. The first
+sync makes the account playlist on the account's gate and adds only; after
+that an addition or a removal on either side lands on both, and a track added
+on the account that the library does not own is queued for download once.
+
+Never paired: Cratekit's own trees, the Favorites folder and the custom
+playlist twins, which other verbs keep. Listed on the gate and never written:
+a smart playlist, and every playlist under a top folder
+`outbound.pair_skip_folders` names, which is `["ARCHIVE"]` unless you change
+it. A made pair whose rekordbox playlist you move into such a folder, another
+app's folder or the Favorites folder is unpaired, and its account playlist
+stays. A track the account cannot carry stays in
+rekordbox, counted on the gate, and is not asked about again until its ISRC
+changes, except a tie between releases, which is asked again. Another app's
+folder is never paired either. Two playlists that would take one account title refuse that title
+until you rename one. Delete either side of such a pair and the next sync
+unpairs it, leaves the other side where it is, and does not make it again.
+
 ### Publish a playlist
 
 ```bash

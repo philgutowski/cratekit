@@ -1,0 +1,235 @@
+name = "u198"
+pass_kind = "full"
+
+[[rows]]
+id = "D1_roots"
+description = "pair_discover: a node the registry records as a tree root is walked"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if node_id in roots:
+            return'''
+new = '''        if False:
+            return'''
+
+[[rows]]
+id = "D2_favorites_home"
+description = "pair_discover: the one favourites home is walked like any folder"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''            if not unsure:
+                return'''
+new = '''            if False:
+                return'''
+
+[[rows]]
+id = "D3_held"
+description = "pair_discover: a playlist a pair holds is found again"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if node_id in held:
+            return'''
+new = '''        if False:
+            return'''
+
+[[rows]]
+id = "D4_skip"
+description = "pair_discover: a playlist under a skipped folder is found"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if skip_why:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D5_smart"
+description = "pair_discover: a smart playlist is found as a plain one"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if attribute != PLAIN:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D6_released"
+description = "pair_discover: a released playlist is found again"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if node_id in gone:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D7_twice"
+description = "pair_discover: two playlists of one title are both found"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if counted[one.title] > 1:'''
+new = '''        if counted[one.title] > 2:'''
+
+[[rows]]
+id = "D8_top_names"
+description = "pair_discover: a top folder the taxonomy names is walked"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if top_id in roots or top_name in names or top_id in foreign:'''
+new = '''        if top_id in roots or top_id in foreign:'''
+
+[[rows]]
+id = "D9_foreign"
+description = "pair_discover: another app's top folder is walked"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if top_id in roots or top_name in names or top_id in foreign:'''
+new = '''        if top_id in roots or top_name in names:'''
+
+[[rows]]
+id = "D10_twins"
+description = "pair_discover: a twins folder is walked"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if _attribute(top) == FOLDER and TWIN_FOLDER.fullmatch(top_name):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D11_two_homes"
+description = "pair_discover: two favourites playlists read as one home, hidden"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if len(named) > 1'''
+new = '''        if len(named) > 2'''
+
+[[rows]]
+id = "C1_miss_reuse"
+description = "pair_cli._ask: a remembered miss is never reused"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "C2_miss_isrc"
+description = "pair_cli._ask: a remembered miss is reused whatever the row's ISRC"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:'''
+new = '''    if held is not None and AGREEING_RELEASES not in held.reason:'''
+
+[[rows]]
+id = "C3_unread_remembered"
+description = "pair_cli._ask: an unreadable candidate is remembered"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''    if UNREADABLE_CANDIDATE not in reason and AGREEING_RELEASES not in reason:'''
+new = '''    if AGREEING_RELEASES not in reason:'''
+
+[[rows]]
+id = "C4_tie_remembered"
+description = "pair_cli._ask: a tie is remembered"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''    if UNREADABLE_CANDIDATE not in reason and AGREEING_RELEASES not in reason:'''
+new = '''    if UNREADABLE_CANDIDATE not in reason:'''
+
+[[rows]]
+id = "C5_folder_twice"
+description = "pair_cli._discovered: two root folders of the name adopt the first"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''            if len(named) > 1:'''
+new = '''            if len(named) > 2:'''
+
+[[rows]]
+id = "C6_folder_others"
+description = "pair_cli._discovered: a folder another list keeps is adopted"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''            elif named and named[0] in others:'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "C7_title_taken"
+description = "pair_cli._discovered: a person's playlist of the title gets a second beside it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''            if one.title in taken:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "C8_folder_gone"
+description = "pair_cli._discovered: a recorded folder is reused though the account deleted it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if recorded is not None and recorded.folder_id in root:'''
+new = '''        if recorded is not None:'''
+
+[[rows]]
+id = "C9_account_only"
+description = "apply_pair: a new pair is made when only rekordbox was approved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''        if not account:
+            return done'''
+new = '''        if False:
+            return done'''
+
+[[rows]]
+id = "C10_unpair_account_gone"
+description = "plan: a made pair whose account playlist is gone is planned, not unpaired"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''            if pair is not None and (pair.twin or pair.made) and target.account_id not in listed:'''
+new = '''            if pair is not None and pair.twin and target.account_id not in listed:'''
+
+[[rows]]
+id = "C11_unpair_rekordbox_gone"
+description = "plan: a made pair whose rekordbox playlist is gone is left out, not released"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''                if there is None or there.removed:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "C12_archive_move"
+description = "plan: a made pair moved under a skipped folder keeps syncing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''                if moved:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "P1_reserve_made_once"
+description = "pairs.reserve_made: a rekordbox playlist already paired gets a second account playlist"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''                if pair.rekordbox_id == rekordbox_id:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "P2_release_side"
+description = "pairs.release: the survivor is recorded on the wrong side"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''            if side == ACCOUNT_SIDE:'''
+new = '''            if side != ACCOUNT_SIDE:'''

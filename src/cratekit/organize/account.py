@@ -551,7 +551,7 @@ def _yours(
     moving: frozenset[str] = frozenset(),
 ) -> None:
     from cratekit.favorites import placeholders
-    from cratekit.modules.outbound import ledger
+    from cratekit.modules.outbound import ledger, pairs
     from cratekit.sync import playlists
 
     title = "list your own playlists"
@@ -565,6 +565,8 @@ def _yours(
             label_built
             | set_built
             | ledger.product_made_among(cfg, (one.playlist_id for one in listed))
+            # U198. A PAIRED PLAYLIST IS SYNC PAIR'S, not one of yours to home.
+            | pairs.paired_ids(cfg)
         )
     except CratekitError as exc:
         area.steps.append(refused(YOURS, title, exc.cause))

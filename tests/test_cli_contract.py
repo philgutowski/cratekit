@@ -2063,8 +2063,9 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # either plans nothing or refuses on its own, and both areas still ask.
         "organize": [],
         # U130. No argument and no pair marked: the plan is empty, both explicit
-        # gates are still asked over it, the account is never listed and the
-        # database never opened, and the verb ends NO_OP. It reads the backup
+        # gates are still asked over it, the account is never listed, the
+        # database is read only for the playlists U198 discovers, of which the
+        # fixture holds none, and the verb ends NO_OP. It reads the backup
         # acknowledgment first, see ACKNOWLEDGED_BEFORE_THE_GATE. The syncing
         # path is driven in tests/test_sync_pair.py.
         "sync.pair": [],

@@ -1373,6 +1373,24 @@ def mirror_playlist_ids(cfg: config.Config) -> frozenset[str]:
     )
 
 
+def recorded_folder_ids(cfg: config.Config) -> frozenset[str]:
+    """Every account root folder this ledger keeps for one of its own lists (U198).
+
+    A label's folder, a set or year folder, a kind folder and a mirrored
+    folder, read once. ``crate sync pair`` adopts a root folder by its name
+    only when none of these records it, so a pair's playlists are never
+    made inside a folder another verb fills.
+    """
+    document = _load(cfg)
+    found = {str(record.get("folder_id") or "") for record in document["labels"].values()}
+    found |= {str(folder_id or "") for folder_id in document["set_folders"].values()}
+    found |= {
+        str((record or {}).get("folder_id") or "") for record in document["kind_folders"].values()
+    }
+    found |= {str(record.get("folder_id") or "") for record in document["mirrors"].values()}
+    return frozenset(one for one in found if one)
+
+
 def mirror_links(cfg: config.Config) -> dict[str, tuple[str, str]]:
     """Each content row a mirror matched, to ``(account track, ISRC matched under)``."""
     return {
