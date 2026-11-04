@@ -101,6 +101,7 @@ from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.favorites import placeholders
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest
+from cratekit.modules.outbound.pairs import ACCOUNT_SIDE, REKORDBOX_SIDE
 from cratekit.sync import cli as sync_cli
 from cratekit.sync import pair_merge, playlists
 from cratekit.write import playlist_pair
@@ -1022,7 +1023,7 @@ class Unpaired:
     rekordbox_name: str
     #: U198. The side that is GONE, and whether the product made the account
     #: side for a discovered playlist, whose survivor is then released.
-    gone: str = "account"
+    gone: str = ACCOUNT_SIDE
     made: bool = False
     #: Why the rekordbox side is let go when it is still there: moved under a
     #: folder the configuration skips (U198, the review's finding).
@@ -1161,7 +1162,7 @@ def plan(
                             rekordbox_id=pair.rekordbox_id,
                             name=pair.name,
                             rekordbox_name=there.name,
-                            gone="rekordbox",
+                            gone=REKORDBOX_SIDE,
                             made=True,
                             why=moved,
                         )
@@ -1174,7 +1175,7 @@ def plan(
                             rekordbox_id=pair.rekordbox_id,
                             name=pair.name,
                             rekordbox_name=there.name if there is not None else "",
-                            gone="rekordbox",
+                            gone=REKORDBOX_SIDE,
                             made=True,
                         )
                     )
@@ -1435,7 +1436,7 @@ def facts(planned: Plan) -> dict[str, Any]:
             )
         )
     for gone in planned.unpaired:
-        if gone.gone == "rekordbox":
+        if gone.gone == REKORDBOX_SIDE:
             shown[f"pair {gone.account_id}"] = (
                 f"the rekordbox playlist {gone.rekordbox_name or gone.rekordbox_id!r} is "
                 f"{gone.why or 'gone'}, so {gone.name!r} is unpaired and left on the account"
@@ -1808,7 +1809,7 @@ def sync_pair(ctx) -> Envelope:
                         (
                             f"{one.name or one.account_id} stays on the account (its "
                             f"rekordbox playlist is {one.why or 'gone'})"
-                            if one.gone == "rekordbox"
+                            if one.gone == REKORDBOX_SIDE
                             else f"{one.rekordbox_name or one.rekordbox_id} stays in "
                             f"rekordbox (its account playlist is gone)"
                         )
