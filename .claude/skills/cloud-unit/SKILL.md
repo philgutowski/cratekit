@@ -167,9 +167,8 @@ cloud's lanes are held (five by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
 as long as the queue lists it as takeable; the coordinator chose it so that
 parallel threads never pick the same card. Otherwise take the one the queue
-names, passing over any card METHOD's Sharing the board section gives to
-another builder: one held on a `grok/` branch, or one of the other Claude
-project's parity. If every lane is held, or nothing is takeable, say so in one line,
+names, passing over any card held on a `grok/` branch, which belongs to
+another builder (METHOD's Sharing the board section). If every lane is held, or nothing is takeable, say so in one line,
 tell the coordinator (above), and stop.
 
 **Post `Started` on the card at once**, before reading anything else, so the

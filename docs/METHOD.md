@@ -533,19 +533,21 @@ repository on `grok/` branches. A card with a `grok/` branch, or held by that
 builder's comment, is never a cloud thread's to take, and a `grok/` branch is
 never touched, merged in or pruned by a cloud thread.
 
-**Two Claude projects build Cratekit**, each on its own Claude account and
-each from this board. Each project's own instructions name the issue parity it
-takes, odd or even, and how many threads it keeps building at once; the two
-together never hold more than `CLOUD_LANES`. A card of the other project's
-parity is never this project's, whatever its state, resume included, and its
-`cloud/` branch is never touched. `board.py cloud` does not yet read parity,
-so a thread skips a card of the other parity by hand and takes the next one
-the queue lists. The decisions page and its relay thread belong to one
-account only; a project without them asks Phillip in its own chat, in the form
-the `cloud-unit` skill's Asking Phillip section gives, and on the card, and
-its coordinator posts his chat answer on the card under `Answer from
-Phillip`. A project never files a card for an idea Phillip raised in the
-other project.
+**Two Claude projects share Cratekit, and one of them builds.** The project
+on Phillip's first account builds nothing: it files cards from his ideas,
+keeps the decisions page, and relays his answers. The project on his second
+account does all of the building, up to `CLOUD_LANES` threads at once, taking
+every card `board.py cloud` lists as takeable, in order. So a held card
+belongs to one of the building project's threads or to the `grok/` builder,
+and is never taken. The building project cannot reach the decisions page and
+never writes to it: a thread's question for Phillip goes on its card only, in
+the form the `cloud-unit` skill's Asking Phillip section gives, under a
+`Brainstorm` or `Question` heading, and the thread carries on with the
+conservative call. The first project copies the question onto the decisions
+page and posts Phillip's answer on the card under `Answer from Phillip`,
+which makes the card takeable again. An idea or bug Phillip raises in the
+building project's chat is filed there with the `file-card` skill, after a
+search of the open cards so nothing is filed twice.
 
 **No stale branches.** Phillip does not want branches left to go stale. The
 "Automatically delete head branches" setting stays on, so a merged pull
