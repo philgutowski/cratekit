@@ -38,6 +38,12 @@ so a track may be taken off it. ``mirror_links`` maps a library content row to
 the account track it matched and the ISRC it matched under, so a refresh does
 not ask the provider to match the same row again.
 
+SINCE U201 EACH MIRRORED PLAYLIST KEEPS ITS SNAPSHOT, under ``agreed``: the
+account tracks both sides last held, written by the mirror when it finishes a
+playlist, so a refresh tells an edit made on the account from a change made in
+rekordbox. A playlist with no ``agreed`` has never been agreed, and every
+difference on it is read as rekordbox's.
+
 SINCE R-1031 IT REMEMBERS EACH ROW THE MIRROR COULD NOT MATCH, under
 ``mirror_misses``: the reason, and what the row was asked under, its database
 code, title, artist, path and, for a row with no code, its file's size and
@@ -187,6 +193,14 @@ def _load(cfg: config.Config) -> dict[str, Any]:
                     str(title): {
                         "remote_id": str(record.get("remote_id") or ""),
                         "refused": _listed(record, "refused"),
+                        # THE SNAPSHOT, KEPT ONLY WHEN RECORDED (U201): absent
+                        # is a playlist never agreed, which is not one agreed
+                        # empty, and the mirror reads the two apart.
+                        **(
+                            {"agreed": _listed(record, "agreed")}
+                            if isinstance(record.get("agreed"), list)
+                            else {}
+                        ),
                     }
                     for title, record in (value.get("playlists") or {}).items()
                     if isinstance(record, Mapping) and record.get("remote_id")
@@ -1324,6 +1338,9 @@ class MirrorPlaylist:
     #: Tracks the provider was asked for and would not add. Not asked again,
     #: so a refresh over an unchanged playlist plans nothing.
     refused: frozenset[str] = frozenset()
+    #: The snapshot (U201): the account tracks both sides held when the mirror
+    #: last finished this playlist, or ``None`` for one never agreed.
+    agreed: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1350,6 +1367,11 @@ def mirror_folders(cfg: config.Config) -> dict[str, MirrorFolder]:
                     name=title,
                     remote_id=str(entry["remote_id"]),
                     refused=frozenset(_listed(entry, "refused")),
+                    agreed=(
+                        frozenset(_listed(entry, "agreed"))
+                        if isinstance(entry.get("agreed"), list)
+                        else None
+                    ),
                 )
                 for title, entry in (record.get("playlists") or {}).items()
             },
@@ -1557,6 +1579,36 @@ def record_mirror_refused(
         held += [one for one in wanted if one not in held]
         entry["refused"] = held
         _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def record_mirror_agreed(
+    cfg: config.Config, folder: str, agreed: Mapping[str, tuple[str, Iterable[str]]]
+) -> None:
+    """Record each mirrored playlist's snapshot, title to ``(remote id, tracks)`` (U201).
+
+    ONLY ON THE RECORD OF THAT PLAYLIST, by its title and its identifier both,
+    :func:`forget_mirror_playlist`'s rule, so a snapshot taken of one playlist
+    never lands on another recorded under the title since. A title with no
+    record, or another identifier, is skipped: the next refresh reads it as
+    never agreed, which changes nothing in the library.
+    """
+    if not agreed:
+        return
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        playlists = (document["mirrors"].get(folder) or {}).get("playlists") or {}
+        wrote = False
+        for name, (remote_id, tracks) in agreed.items():
+            entry = playlists.get(name)
+            if not entry or str(entry.get("remote_id") or "") != str(remote_id):
+                continue
+            entry["agreed"] = sorted({str(one) for one in tracks if str(one)})
+            wrote = True
+        if wrote:
+            _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)
 

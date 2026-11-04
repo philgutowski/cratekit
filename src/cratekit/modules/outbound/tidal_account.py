@@ -68,7 +68,11 @@ from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import account, kinds, ledger, pairs
-from cratekit.modules.outbound.service import AGREEING_RELEASES, UNREADABLE_CANDIDATE
+from cratekit.modules.outbound.service import (
+    AGREEING_RELEASES,
+    UNREADABLE_CANDIDATE,
+    PlaylistListing,
+)
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -152,6 +156,17 @@ def _row_of(title: str, artist: str) -> match.Wanted | None:
 def _count(value: Any) -> bool:
     """Whether a declared count is a whole number and not a flag."""
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _added_at(track: Any) -> str:
+    """When a playlist item was added, as ISO 8601 UTC text, or ``""`` when unknown (U201)."""
+    from datetime import datetime, timezone
+
+    for name in ("user_date_added", "date_added"):
+        value = getattr(track, name, None)
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).isoformat()
+    return ""
 
 
 def _shown_artist(track: Any) -> str:
@@ -880,6 +895,40 @@ class TidalAccount:
             for track in tracks
             if str(getattr(track, "id", "") or "")
         }
+
+    def playlist_listing(self, playlist_id: str) -> PlaylistListing:
+        """Every track on the playlist with its added time and the declared count (U201).
+
+        One read, as :meth:`track_names` reads, and the membership it read is
+        remembered the same way. The added time is the client's
+        ``user_date_added``, else ``date_added``, which it copies from the
+        playlist item's own ``dateAdded``; a time with no zone, or none, is
+        left out rather than guessed, since the mirror reads an absent time as
+        unknown. The declared count is the playlist's ``num_tracks``.
+        """
+        playlist = self._playlist(playlist_id)
+        tracks = self._listed(playlist_id, playlist)
+        ids = [str(getattr(track, "id", "") or "") for track in tracks]
+        self._members[playlist_id] = ids
+        names: dict[str, tuple[str, str]] = {}
+        added: dict[str, str] = {}
+        for identifier, track in zip(ids, tracks, strict=True):
+            if not identifier or identifier in names:
+                continue
+            names[identifier] = (
+                _shown_artist(track),
+                str(getattr(track, "full_name", "") or getattr(track, "name", "") or ""),
+            )
+            moment = _added_at(track)
+            if moment:
+                added[identifier] = moment
+        declared = getattr(playlist, "num_tracks", None)
+        return PlaylistListing(
+            names=names,
+            added=added,
+            listed=len(ids),
+            declared=declared if isinstance(declared, int) and not isinstance(declared, bool) else None,
+        )
 
     def _positions(self, playlist_id: str, playlist: Any) -> list[str]:
         """The playlist's tracks by position, refused when a position is unknowable.
