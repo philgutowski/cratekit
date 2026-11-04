@@ -144,8 +144,13 @@ a green suite cannot see, as METHOD lists.
   judged on its range, and its close on the push to `main`. **A cloud session merges
   itself**, attended or not, authorized by Phillip on 2026-10-27 ("I
   authorize you to merge to main here in the cloud now and going forward").
-  A cloud session cannot delete a remote branch, so merged `cloud/` branches
-  are pruned locally.
+  A cloud session cannot delete a remote branch, so "Automatically delete
+  head branches" stays on and a merged pull request takes its branch; any
+  other stale `cloud/` branch is listed for Phillip's next local session.
+- **Other builders share the board**, decided by Phillip on 2026-11-04. Never
+  take a card or touch a branch held on `grok/`, and a second Claude project
+  owns the issue parity its own instructions name. METHOD's Sharing the board
+  section has the rules, the limits and the definition of done.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.

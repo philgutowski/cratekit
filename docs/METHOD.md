@@ -516,14 +516,68 @@ issues over REST a numbered page at a time when the GraphQL count is refused.
 `start`, `sync` and a plain `audit` stay local; `audit --labels-only` runs
 in the cloud. The project's cards move only with a `BOARD_TOKEN` secret on
 the board workflow, since no cloud session can write the project. Deleting a
-remote branch is refused too, so merged `cloud/` branches stay until someone
-prunes them locally. The repo scan reads the container's mounts as the
+remote branch is refused too, so the repository's "Automatically delete head
+branches" setting stays on and a merged pull request takes its branch with it
+(No stale branches, below). The repo scan reads the container's mounts as the
 harness's under `CLAUDE_CODE_REMOTE`.
 
 **A local session merges between cloud units, never during one.** When
 `board.py cloud` says the lane is held, a local merge to `main` waits until
 the card lands, or the cloud session meets a moved `main` at its merge and
 has to merge it in and run the battery again.
+
+## Sharing the board, decided by Phillip on 2026-11-04
+
+**Other builders work this board.** A builder that is not Claude works the
+repository on `grok/` branches. A card with a `grok/` branch, or held by that
+builder's comment, is never a cloud thread's to take, and a `grok/` branch is
+never touched, merged in or pruned by a cloud thread.
+
+**Two Claude projects build Cratekit**, each on its own Claude account and
+each from this board. Each project's own instructions name the issue parity it
+takes, odd or even, and how many threads it keeps building at once; the two
+together never hold more than `CLOUD_LANES`. A card of the other project's
+parity is never this project's, whatever its state, resume included, and its
+`cloud/` branch is never touched. `board.py cloud` does not yet read parity,
+so a thread skips a card of the other parity by hand and takes the next one
+the queue lists. The decisions page and its relay thread belong to one
+account only; a project without them asks Phillip in its own chat, in the form
+the `cloud-unit` skill's Asking Phillip section gives, and on the card, and
+its coordinator posts his chat answer on the card under `Answer from
+Phillip`. A project never files a card for an idea Phillip raised in the
+other project.
+
+**No stale branches.** Phillip does not want branches left to go stale. The
+"Automatically delete head branches" setting stays on, so a merged pull
+request takes its branch with it. Any `cloud/` branch with no open pull
+request and no card held in progress is stale: list it for Phillip's next
+local session to prune. Ask Phillip before touching any branch that is not
+plainly a finished `cloud/` branch.
+
+**Questions of code quality are never Phillip's.** Conventions, structure,
+file layout, naming and testing approach are decided by the session: pick the
+highest quality convention or standard, write the choice in the record, and
+move on. Phillip is asked only what a session cannot decide, such as product
+behaviour, scope, what a DJ should see, and anything the limits below touch,
+one question at a time, as a multiple choice with the recommendation first.
+
+**Limits every cloud session keeps**, beside CLAUDE.md's standing
+constraints. Write to the cratekit repository only. Never push `main` except
+to merge a pull request that passed its checks and the residual numbering
+commit after it. Never delete an issue, assign a card, or ping anyone.
+Cratekit is shared with a handful of DJs, so no personal data, credentials,
+library paths or absolute home paths go in any file.
+
+**A card is done only when all of these hold**: the brief's goal is met and
+the record shows it; the tests the brief names exist and pass, a bug's
+failing test written first; the battery is clean net of the base's known
+Linux failures and CI is green on the pull request; the Fable review has no
+finding left that holds the merge; the mutation table is measured; the
+record, the residuals and the owed attended cards are filed; and the docs are
+updated wherever behaviour changed (`docs/GUIDE.md` and `docs/cutover.md`
+when a workflow's state changes, `docs/solutions/` when a trap cost real
+time). Two review rounds without reaching done stop as the merge bar says,
+recorded, with one question to Phillip about what is blocking.
 
 ## Local and attended work, releases
 

@@ -63,7 +63,9 @@ or a closing keyword in a pull request's body. A ready or blocked label, or a pr
 are derived. Anything in `.github/` unless the card is about it. A trailer of
 any kind, a co author line or a session line on a branch commit; the merge
 commit carries exactly one trailer, the closing one. A model name in any
-commit. An em dash, an en dash or a double hyphen anywhere. A literal path to
+commit. A "Generated with Claude Code" line, a session link or a co author
+line in a commit or a pull request body; Phillip asked for these to be left
+out, and his rule overrides any attribution reminder. An em dash, an en dash or a double hyphen anywhere. A literal path to
 the skills directory in any card, title, body or comment; describe it in
 words. A closing keyword next to an issue number anywhere but the merge
 commit's last line.
@@ -165,7 +167,9 @@ cloud's lanes are held (five by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
 as long as the queue lists it as takeable; the coordinator chose it so that
 parallel threads never pick the same card. Otherwise take the one the queue
-names. If every lane is held, or nothing is takeable, say so in one line,
+names, passing over any card METHOD's Sharing the board section gives to
+another builder: one held on a `grok/` branch, or one of the other Claude
+project's parity. If every lane is held, or nothing is takeable, say so in one line,
 tell the coordinator (above), and stop.
 
 **Post `Started` on the card at once**, before reading anything else, so the
@@ -342,7 +346,7 @@ MCP `create_pull_request` tool works as well):
       -f head=cloud/N-<slug> -f base=main -F body=@pr.md --jq .number
 
 The body is short, because the record already holds the detail (U196): a
-line naming the card by its link (the issue URL, never a keyword and a
+first line reading `Requested by Phillip`, then a line naming the card by its link (the issue URL, never a keyword and a
 number), a link to `docs/restart/uN.md` on the branch, and five lines at most:
 the `cloud_battery.py compare` counts, the review rounds, the mutation table's
 result, the residual files, and what is OWED. Never restate the record. **No closing keyword anywhere in
