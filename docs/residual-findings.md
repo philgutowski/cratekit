@@ -41689,3 +41689,63 @@ hear, also counts rap and speech, or is scored on a separated vocal stem, and
 a card builds the choice with its restamp. Ledger only until then: the
 product says what its model heard, and a change is a product decision rather
 than a defect.
+
+---
+
+## R-1193. A made pair's account playlist whose move into its folder failed stays at the account root
+
+**Found:** at the review of #483, U198, 2026-11-04.
+
+**The mechanism.** `pair_cli._made` reserves and marks the account playlist in the pairs document, then moves it into its root folder. When the move raises, the run fails with the pair already marked, and no later sync moves it, since only a sync that made the playlist moves it.
+
+**Measured cost.** Driven by the review with `move_to_folder` patched to raise: the second sync is `ok` and the playlist sits at the account root for good. It still syncs both ways; it is in the wrong place, and `crate organize`'s filing may then read it as a root playlist. Nothing is lost.
+
+**Closes when:** the pair records that its playlist was placed, and a sync moves any made pair not yet placed into its recorded folder. Ledger only.
+
+---
+
+## R-1194. A matched row of a new pair is asked of the provider once per plan, three times per sync
+
+**Found:** at the review of #483, U198, 2026-11-04.
+
+**The mechanism.** U198 remembers a row the account has no track for before the gate (R-988), but a row it does match is linked only when the pair is written. One sync plans three times, once per invocation the two explicit gates make, so every matched row of a new pair is asked three times on its first sync.
+
+**Measured cost.** Driven by the review on the fake account: a first sync of a four row playlist made twelve `match_track` calls. Over the roughly 112 playlists outside ARCHIVE the first live run asks about three times each row, paced by the provider gate. Not measured live; the attended card records the run's request count.
+
+**Closes when:** the links a plan made are carried through the run, as the misses are, so the gates' plans reuse them. Ledger only.
+
+---
+
+## R-1195. A made pair released by a move under ARCHIVE and moved back is named as a title no pair made
+
+**Found:** at the review of #483, U198, 2026-11-04.
+
+**The mechanism.** A made pair whose rekordbox playlist moves under a skipped folder is released, and its account playlist stays in its root folder. Moved back out, the rekordbox playlist is found again, and `pair_cli._discovered` meets the account playlist of its title, which no pair now holds, so it lists the rekordbox playlist as taken by "a playlist ... that no pair made for this one".
+
+**Measured cost.** Driven by the review's second round. Wording only: nothing is written, and the steps given, to pair the two by hand, work.
+
+**Closes when:** `_discovered` reads the released account playlists and says the pair was released when it moved, or pairs the two again. Ledger only.
+
+---
+
+## R-1196. sync pair's discovery leaves out a registered tree root by its identifier, and no test pins it apart from the name
+
+**Found:** at the mutation table of #483, U198, 2026-11-04.
+
+**The mechanism.** `pair_discover.discover` leaves out a node the tree registry records as a root, and separately a top level node carrying a name the taxonomy declares. Every test tree names its roots by the taxonomy, so the identifier check is masked by the name check: row D1 of `docs/mutation/u198.md`, reverted alone, kills nothing over the full suite.
+
+**Measured cost.** Not driven. The input is a Cratekit tree root renamed in rekordbox away from its declared name, which the registry still records; with the identifier check gone its playlists would be paired with the account. The check is in place, so nothing is paid today.
+
+**Closes when:** a test registers a root under a name the taxonomy does not declare and shows its playlists are never discovered. Ledger only.
+
+---
+
+## R-1197. sync pair records its remembered misses before either gate, so a run with both gates skipped writes the pairs document
+
+**Found:** at the review of #483, U198, 2026-11-04.
+
+**The mechanism.** `sync_pair` records what the account said of each unmatched row as soon as the plan is made, so the plans the two gates make again ask the provider nothing. A run whose gates are both answered skip has still written those misses to the pairs document.
+
+**Measured cost.** Driven by the review: both gates skipped, and the document then held the miss. No user facing cost: a miss is a fact about a row and the provider, the mirror records its own the same way (R-1031), and nothing in either playlist is written. A rehearsal reading the document as untouched would be wrong.
+
+**Closes when:** the misses ride the run and are recorded only once a gate is applied, or the rule is accepted as the mirror's. Ledger only.
