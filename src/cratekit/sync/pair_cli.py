@@ -1083,8 +1083,13 @@ def plan(
     store_of_pairs = pairs.PairStore(cfg)
     document = store_of_pairs._document()
     held = document.pairs
-    found = catalogue.resolve(cfg)
-    listed = {one.playlist_id: one for one in playlists._listed_or_refuse(found)}
+    # U198. THE ACCOUNT IS LISTED ONLY FOR A MARKED PAIR: a sync that only
+    # discovers plans its new pairs over an empty account side, and asks the
+    # account seam for its root folders only when it found something.
+    found = catalogue.resolve(cfg) if wanted else None
+    listed = (
+        {one.playlist_id: one for one in playlists._listed_or_refuse(found)} if wanted else {}
+    )
     label_owned = ledger.label_playlist_ids(cfg) | ledger.label_dated_ids(cfg)
     set_built = ledger.set_playlist_ids(cfg)
     tops = generated_tops(active_taxonomy.load(cfg), tree_registry.read(cfg))
