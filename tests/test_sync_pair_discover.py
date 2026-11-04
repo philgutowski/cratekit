@@ -697,3 +697,94 @@ def test_title_of_names_each_place():
         "GIG READY",
         "GIG READY Halloween Opener",
     )
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The review's findings, round one
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_made_pair_moved_into_archive_is_let_go_and_never_written_again(world, cfg):
+    opener, made = _made_pair(world)
+    archive = world.folder("ARCHIVE")
+    world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, opener)
+    world.account.playlists[made].append("t3")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(opener) == ["1", "2"]
+    assert pairs.PairStore(cfg).get(made) is None
+    assert "ARCHIVE" in _said(envelope, pair_cli.RELEASED)
+    assert world.account.playlists[made] == ["t1", "t2", "t3"]
+    code, again = sync()
+    assert code == int(ExitCode.OK), again
+    assert world.held(opener) == ["1", "2"]
+
+
+def test_two_favourites_playlists_leave_both_folders_out_and_say_so(world):
+    gig = world.folder("GIG READY")
+    world.playlist("All Favorites", "1", under=gig)
+    world.playlist("Opener", "2", under=gig)
+    favorites = world.folder("Favorites")
+    world.playlist("All Favorites", "3", under=favorites)
+    world.playlist("Loose", "4")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert sorted(world.account.titles.values()) == ["Playlists Loose"]
+    said = _said(envelope, pair_cli.NOT_DISCOVERED)
+    assert "2 playlists are named 'All Favorites'" in said
+
+
+def test_a_tie_is_never_remembered_and_is_asked_again(world, cfg):
+    from cratekit.modules.outbound.service import AGREEING_RELEASES
+
+    del world.account.catalog["3"]
+    world.account.reasons["3"] = f"2 {AGREEING_RELEASES}"
+    gig = world.folder("GIG READY")
+    world.playlist("Opener", "3", under=gig)
+    assert sync()[0] == int(ExitCode.OK)
+    assert "3" not in pairs.PairStore(cfg).misses()
+    world.account.catalog["3"] = "t3"
+    assert sync()[0] == int(ExitCode.OK)
+    assert world.account.playlists[world.titled("GIG READY Opener")] == ["t3"]
+
+
+def test_another_apps_top_folder_is_never_discovered(world):
+    from cratekit.core import foreign_tree
+
+    theirs = world.folder(foreign_tree.OWNER)
+    world.playlist("Pushed", "1", under=theirs)
+    world.playlist("Loose", "2")
+    assert sync()[0] == int(ExitCode.OK)
+    assert sorted(world.account.titles.values()) == ["Playlists Loose"]
+
+
+def test_a_paired_playlist_is_not_listed_on_a_later_run(world):
+    _made_pair(world)
+    plan = plan_only()
+    assert [item for item in plan["items"] if item["side"] == "discovery"] == []
+
+
+def test_a_recorded_folder_deleted_on_the_account_is_made_again(world, cfg):
+    _made_pair(world)
+    old = pairs.PairStore(cfg).folders()["GIG READY"].folder_id
+    world.account.folder_names.pop(old)
+    gig = [pid for pid, name in world.sql("SELECT ID, Name FROM djmdPlaylist") if name == "GIG READY"][0]
+    world.playlist("Closer", "3", under=str(gig))
+    assert sync()[0] == int(ExitCode.OK)
+    fresh = pairs.PairStore(cfg).folders()["GIG READY"].folder_id
+    assert fresh != old
+    assert world.account.placed[world.titled("GIG READY Closer")] == fresh
+
+
+def test_a_version_one_document_is_read_and_written_as_version_two(world, cfg):
+    import json
+
+    store = pairs.PairStore(cfg)
+    store.mark("acc-1", "rb-1", name="One")
+    path = config.state_path("playlist_pairs", cfg)
+    document = json.loads(path.read_text())
+    document["version"] = 1
+    path.write_text(json.dumps(document))
+    assert "acc-1" in store.all()
+    store.mark("acc-2", "rb-2", name="Two")
+    assert json.loads(path.read_text())["version"] == pairs.PAIRS_VERSION == 2

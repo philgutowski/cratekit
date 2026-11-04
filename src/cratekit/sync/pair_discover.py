@@ -180,15 +180,30 @@ def discover(
             parent = ""
         children.setdefault(parent, []).append(row)
 
-    # EVERY HOME THE FAVOURITES COULD HAVE, so two of them leave both out.
-    homes: set[str] = set()
-    for row in live:
-        if _attribute(row) == PLAIN and str(getattr(row, "Name", "") or "") == favorites:
-            homes.add(str(row.ID))
-            parent = str(getattr(row, "ParentID", "") or "")
-            if parent not in rb_writer.ROOT_PARENT_SENTINELS:
-                homes.add(parent)
     foreign = {str(row.ID) for row in foreign_tree.roots_in(live)}
+    # THE FAVOURITES' HOME, by placement's rule: the one live plain playlist of
+    # its name outside another app's folder, and the folder it sits in. Two of
+    # them are no home a name decides, so each is left out with its folder and
+    # every playlist there is LISTED as such, never hidden in silence.
+    named = [
+        row
+        for row in foreign_tree.outside(
+            [r for r in live if _attribute(r) == PLAIN and str(getattr(r, "Name", "") or "") == favorites],
+            every,
+        )
+    ]
+    homes: set[str] = set()
+    for row in named:
+        homes.add(str(row.ID))
+        parent = str(getattr(row, "ParentID", "") or "")
+        if parent not in rb_writer.ROOT_PARENT_SENTINELS:
+            homes.add(parent)
+    unsure = (
+        f"{len(named)} playlists are named {favorites!r}, so which folder is Favorites is not "
+        f"something a name decides, and none of them is paired; rename the extra ones"
+        if len(named) > 1
+        else ""
+    )
 
     found: list[Found] = []
     listed: list[Listed] = []
@@ -196,8 +211,12 @@ def discover(
     def walk(row: Any, path: tuple[str, ...], skip_why: str) -> None:
         node_id = str(row.ID)
         name = str(getattr(row, "Name", "") or "")
-        if node_id in roots or node_id in homes:
+        if node_id in roots:
             return
+        if node_id in homes:
+            if not unsure:
+                return
+            skip_why = skip_why or unsure
         here = (*path, name)
         attribute = _attribute(row)
         if attribute == FOLDER:

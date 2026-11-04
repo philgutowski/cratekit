@@ -51,7 +51,12 @@ from cratekit.cli.output import timestamp
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 
-PAIRS_VERSION = 1
+#: 2 since U198, which records made pairs, their folders, the remembered
+#: misses and the released playlists. A copy built before it refuses the
+#: document rather than rewriting it without them, which would forget a
+#: released playlist and make it again. Version 1 is still read.
+PAIRS_VERSION = 2
+READ_VERSIONS = (1, 2)
 
 _ORIGIN = ("outbound", "pairs")
 
@@ -271,7 +276,7 @@ class PairStore:
     def _recognize(self, raw: Any) -> dict[str, Pair]:
         if not isinstance(raw, Mapping):
             raise self._unusable(f"the document is a {type(raw).__name__}, not a pair map")
-        if raw.get("version") != PAIRS_VERSION:
+        if raw.get("version") not in READ_VERSIONS:
             raise self._unusable(
                 f"it says version {raw.get('version')!r} and this build writes {PAIRS_VERSION}"
             )

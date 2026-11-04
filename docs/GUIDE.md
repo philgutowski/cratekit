@@ -931,10 +931,12 @@ sync makes the account playlist on the account's gate and adds only; after
 that an addition or a removal on either side lands on both, and a track added
 on the account that the library does not own is queued for download once.
 
-Left out and named on the gate, never written: Cratekit's own trees, the
-Favorites folder, the custom playlist twins, a smart playlist, and every
-playlist under a top folder `outbound.pair_skip_folders` names, which is
-`["ARCHIVE"]` unless you change it. A track the account cannot carry stays in
+Never paired: Cratekit's own trees, the Favorites folder and the custom
+playlist twins, which other verbs keep. Listed on the gate and never written:
+a smart playlist, and every playlist under a top folder
+`outbound.pair_skip_folders` names, which is `["ARCHIVE"]` unless you change
+it. A made pair whose rekordbox playlist you move into such a folder is
+unpaired, and its account playlist stays. A track the account cannot carry stays in
 rekordbox, counted on the gate, and is not asked about again until its ISRC
 changes. Two playlists that would take one account title refuse that title
 until you rename one. Delete either side of such a pair and the next sync

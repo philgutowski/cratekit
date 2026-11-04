@@ -924,10 +924,12 @@ def _ask(reader: _Reader, row: Any, *, isrc: str, title: str, album: str) -> tup
     says a candidate could not be read is no answer about the row, and is
     never remembered.
     """
-    from cratekit.modules.outbound.service import UNREADABLE_CANDIDATE
+    from cratekit.modules.outbound.service import AGREEING_RELEASES, UNREADABLE_CANDIDATE
 
     held = reader.misses.get(row.content_id)
-    if held is not None and held.isrc == isrc:
+    # A TIE IS ASKED AGAIN (R-1032's rule, one file over): releases that agree
+    # today may be told apart tomorrow, so a tie is never remembered as an answer.
+    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:
         return "", held.reason
     remote = reader.remote
     remote_id = str(
@@ -945,7 +947,7 @@ def _ask(reader: _Reader, row: Any, *, isrc: str, title: str, album: str) -> tup
             reader.matched.add(row.content_id)
         return remote_id, ""
     reason = remote.unmatched_reason(row.content_id) or NO_MATCH
-    if UNREADABLE_CANDIDATE not in reason:
+    if UNREADABLE_CANDIDATE not in reason and AGREEING_RELEASES not in reason:
         from cratekit.modules.outbound import pairs
 
         reader.fresh[row.content_id] = pairs.Miss(isrc, reason)
@@ -1022,6 +1024,9 @@ class Unpaired:
     #: side for a discovered playlist, whose survivor is then released.
     gone: str = "account"
     made: bool = False
+    #: Why the rekordbox side is let go when it is still there: moved under a
+    #: folder the configuration skips (U198, the review's finding).
+    why: str = ""
 
     def identity(self) -> dict[str, str]:
         block = {"account_id": self.account_id, "rekordbox_id": self.rekordbox_id}
@@ -1133,6 +1138,28 @@ def plan(
                 # U198. A MADE PAIR WHOSE REKORDBOX PLAYLIST IS GONE IS UNPAIRED,
                 # and its account playlist left where it is, named.
                 there = playlist_pair.read_playlist(db, pair.rekordbox_id)
+                skipped = (
+                    there is not None
+                    and not there.removed
+                    and there.ancestors
+                    and there.top[1] in set(cfg.outbound.pair_skip_folders)
+                )
+                if skipped:
+                    # MOVED UNDER A SKIPPED FOLDER, such as ARCHIVE, is let go as
+                    # a rekordbox side gone: a skipped folder is never written,
+                    # so the pair stops and its account playlist stays.
+                    unpaired.append(
+                        Unpaired(
+                            account_id=target.account_id,
+                            rekordbox_id=pair.rekordbox_id,
+                            name=pair.name,
+                            rekordbox_name=there.name,
+                            gone="rekordbox",
+                            made=True,
+                            why=f"moved under {there.top[1]!r}, a folder the configuration skips",
+                        )
+                    )
+                    continue
                 if there is None or there.removed:
                     unpaired.append(
                         Unpaired(
@@ -1404,7 +1431,7 @@ def facts(planned: Plan) -> dict[str, Any]:
         if gone.gone == "rekordbox":
             shown[f"pair {gone.account_id}"] = (
                 f"the rekordbox playlist {gone.rekordbox_name or gone.rekordbox_id!r} is "
-                f"gone, so {gone.name!r} is unpaired and left on the account"
+                f"{gone.why or 'gone'}, so {gone.name!r} is unpaired and left on the account"
             )
             continue
         shown[f"pair {gone.account_id}"] = (
@@ -1657,10 +1684,11 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
         parts = []
         for kind, rows in pair_discover.by_kind(planned.listed).items():
             if kind == pair_discover.SKIPPED:
-                folders = sorted({one.path[0] for one in rows})
-                parts.append(
-                    f"{len(rows)} playlist(s) under {', '.join(folders)} skipped, as "
-                    f"outbound.pair_skip_folders says"
+                reasons: dict[str, int] = {}
+                for one in rows:
+                    reasons[one.why] = reasons.get(one.why, 0) + 1
+                parts.extend(
+                    f"{count} playlist(s) skipped: {why}" for why, count in reasons.items()
                 )
                 continue
             parts.append(
@@ -1772,7 +1800,7 @@ def sync_pair(ctx) -> Envelope:
                     + "; ".join(
                         (
                             f"{one.name or one.account_id} stays on the account (its "
-                            f"rekordbox playlist is gone)"
+                            f"rekordbox playlist is {one.why or 'gone'})"
                             if one.gone == "rekordbox"
                             else f"{one.rekordbox_name or one.rekordbox_id} stays in "
                             f"rekordbox (its account playlist is gone)"
