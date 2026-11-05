@@ -413,6 +413,12 @@ def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
 #: becomes a block.
 PROVIDER_SPEND = "provider-spend"
 
+#: The warning code every run that looked an ISRC up carries (U206): how many
+#: lookups a remembered answer settled and how many went to the provider. A
+#: warning for the reason the spend is one, and beside it, so a rehearsal and
+#: its live run can be read against each other.
+ISRC_LOOKUPS = "isrc-lookups"
+
 
 def _with_sibling_runs(envelope: Envelope, state: gates.RunState) -> Envelope:
     """The envelope of a run persisted at its gate, with every sibling run named (U186).
@@ -498,6 +504,36 @@ def _with_provider_spend(envelope: Envelope, before: provider_gate.Spend) -> Env
             f"{spent.account_calls} on the account and {app} under Cratekit's app "
             f"credentials{why}"
         ),
+    }
+    return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))
+
+
+def _isrc_lookups() -> tuple[int, int]:
+    """Lookups the ISRC cache settled and lookups asked of the provider, so far (U206).
+
+    READ OFF THE MODULE ONLY WHEN SOMETHING LOADED IT, rather than imported
+    here: the dispatcher imports nothing a verb does not need, and the counts
+    move only inside that module, so a run that never loaded it looked
+    nothing up. This process's own counts, for the reason the spend line gives.
+    """
+    module = sys.modules.get("cratekit.acquire.isrc_cache")
+    if module is None:
+        return (0, 0)
+    done = module.process_lookups()
+    return (done.remembered, done.asked)
+
+
+def _with_isrc_lookups(envelope: Envelope, before: tuple[int, int]) -> Envelope:
+    """The envelope with one line added when this run looked any ISRC up (U206)."""
+    now = _isrc_lookups()
+    remembered = max(0, now[0] - before[0])
+    asked = max(0, now[1] - before[1])
+    if remembered == 0 and asked == 0:
+        return envelope
+    lookups = "1 ISRC lookup" if remembered == 1 else f"{remembered} ISRC lookups"
+    entry = {
+        "code": ISRC_LOOKUPS,
+        "message": f"{lookups} answered from the cache, {asked} asked of the streaming provider",
     }
     return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))
 
@@ -687,6 +723,7 @@ def _dispatched_in_scope(
     started = output.timestamp()
     state: gates.RunState | None = None
     spent_before = _provider_spend()
+    looked_before = _isrc_lookups()
 
     try:
         stub = getattr(args, "_stub", None)
@@ -807,6 +844,7 @@ def _dispatched_in_scope(
     # AFTER EVERY BRANCH ABOVE, the refusals included: the sitting's failed
     # downloads spent calls into a live limit and nothing on the screen said so.
     envelope = _with_provider_spend(envelope, spent_before)
+    envelope = _with_isrc_lookups(envelope, looked_before)
     return envelope
 
 

@@ -889,6 +889,23 @@ rather than at the bottom. A folder made before that reads oldest first, and
 playlist's position now and after, asks one gate, and writes positions and
 nothing else, no membership and no name. A folder already in order asks nothing.
 
+An ISRC the service has answered is not asked again for a while, by any verb.
+The answer is kept in one file of the installation, beside the service's pacing
+state and never under the library, so a rehearsal on a library copy with its
+state redirected and the live run after it pay for their lookups once, and a
+mirror after a pair, or `intake missing` after a sync, pay nothing. A found
+answer is kept for `[provider] isrc_cache_days` days, 30 unless set; an ISRC
+the service files nothing under is kept for a week, or for fewer days if the
+setting is lower; 0 turns it off. Only an answer is kept: an outage, a rate
+limit or a rejected session is asked again next time. Every run that looked an
+ISRC up says how many lookups the cache answered and how many went to the
+service. `crate doctor` notes how many answers are kept, and names any copy of
+the file it could not read and set aside; nothing reads those, and they may be
+removed. A rehearsal keeps using the live answers even though it
+redirects everything else; a copy run made by hand that redirects
+`CRATEKIT_STATE_DIR` sets `CRATEKIT_ISRC_CACHE_DIR` to the live state folder
+first, or its lookups are paid for again on the live run.
+
 ### Keep your custom playlists in rekordbox for good
 
 ```bash
@@ -1560,6 +1577,7 @@ the provider". Delete the plaintext token file once it is in the keychain.
 | Configuration | `~/Library/Application Support/cratekit/config.toml` |
 | Library state, active taxonomy, write sessions and snapshots | `.cratekit/` under the library root |
 | Credentials | the OS keychain |
+| The service's pacing state and the ISRC answers it gave | the installation's state directory, `crate doctor` names the file |
 | Backups | the rclone remote named in `[backup]` |
 
 You never need to open a run or job record by hand. `crate status`,
