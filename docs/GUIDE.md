@@ -1090,7 +1090,9 @@ you accept or reject each one with `crate review resolve`. Nothing is inferred.
 behind a confirm gate, and never one the rekordbox collection references, since
 that would strand the row. It does not re-point rows or rewrite an export. `converge` reports and never repairs. If a tree has fallen
 out of step, `crate rebuild --tree TREE_ID --actor YOUR_NAME` is the only way to
-clear it.
+clear it. INBOX is the exception: no rebuild can reproduce its batches, so
+naming it asks the explicit gate `rebuild.accept`, and accepting records you
+as having taken it as it stands after a restore.
 
 To tidy everything the product's rules govern in one pass, on both sides:
 

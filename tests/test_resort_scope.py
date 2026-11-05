@@ -26,7 +26,15 @@ import pytest
 
 from cratekit import cli
 from cratekit.cli import output
-from cratekit.core import config, preflight, rb_writer, session, taxonomy, tree_registry
+from cratekit.core import (
+    config,
+    convergence,
+    preflight,
+    rb_writer,
+    session,
+    taxonomy,
+    tree_registry,
+)
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.write import rebuild, routing_cli
@@ -444,3 +452,177 @@ def test_the_derivation_refuses_the_intake_tree_before_reading_a_file(configured
             vocal_threshold=None,
         )
     assert caught.value.cause.reason == "rebuild-tree-not-derivable"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round one: the favourites pass, and a marked INBOX
+# ═══════════════════════════════════════════════════════════════════════════
+
+FAVORITES_SOURCE = "All Favorites"
+
+
+@pytest.fixture
+def with_favourite(both_native):
+    """Track 1 is in the library's All Favorites, the favourites class's source.
+
+    Neither track sits in the genre tree yet, so its genre folder's Favorites
+    is derived only once the first write files it there: the shape the round
+    one review drove past the gate.
+    """
+    cfg = config.load()
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    try:
+        folder = handle.create_playlist_folder("Favorites")
+        source = handle.create_playlist(FAVORITES_SOURCE, parent=folder)
+        handle.add_to_playlist(source, "1")
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    return both_native
+
+
+def _landed(genre: dict[str, set[str]]) -> set[tuple[str, str]]:
+    return {(path, content_id) for path, held in genre.items() for content_id in held}
+
+
+def _shown(items: list[dict]) -> set[tuple[str, str]]:
+    ids = {FIRST: "1", SECOND: "2"}
+    return {(f"{row['folder']} / {row['playlist']}", ids[Path(row["path"]).name]) for row in items}
+
+
+def test_a_resort_writes_no_favourite_its_gate_did_not_show(with_favourite):
+    """Every membership the resort writes was a row on the screen it was approved over."""
+    cfg = config.load()
+    shown = _shown(_offered()["cause"]["detail"]["shown"]["items"])
+    code, done = _resort()
+    assert code == int(ExitCode.OK), done
+    written = _landed(_below(cfg, with_favourite["genre"]))
+    assert written == shown, (
+        f"the resort wrote {sorted(written - shown)}, which its gate never showed"
+    )
+
+
+def test_the_favourite_a_resort_left_is_shown_and_filed_by_the_next(with_favourite):
+    cfg = config.load()
+    code, done = _resort()
+    assert code == int(ExitCode.OK), done
+    following = _shown(_offered()["cause"]["detail"]["shown"]["items"])
+    assert following == {(f"{BUCKET_FOLDER} / Favorites", "1")}, following
+    code, done = _resort()
+    assert code == int(ExitCode.OK), done
+    assert (f"{BUCKET_FOLDER} / Favorites", "1") in _landed(_below(cfg, with_favourite["genre"]))
+    assert _offered()["cause"]["detail"]["shown"]["items"] == []
+
+
+@pytest.fixture
+def restored(both_native) -> dict[str, str]:
+    """An out of band restore detected: every native tree is marked unconverged.
+
+    The producer is the real detection, over a fingerprint recorded ahead of
+    the database, which is what a database recovered behind the product's back
+    looks like to it.
+    """
+    cfg = config.load()
+    entries = tree_registry.read(cfg)
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    try:
+        taken = convergence.probe(handle)
+        ahead = convergence.Fingerprint(
+            schema_version=taken.schema_version,
+            active_rows=taken.active_rows,
+            local_usn=taken.local_usn + 100,
+            taken="2026-11-01T00:00:00Z",
+        )
+        convergence.write(cfg, convergence.read(cfg).with_fingerprint(ahead))
+        found = convergence.detect_out_of_band_restore(cfg, handle, entries)
+        assert found.regression is not None
+        assert "inbox" in found.trees
+    finally:
+        rb_writer.close_db(handle)
+    return both_native
+
+
+def _landing_refuses(cfg: config.Config) -> bool:
+    """Whether the latch every intake write meets refuses the intake tree."""
+    try:
+        convergence.assert_converged(cfg, "inbox")
+    except CratekitError as refused:
+        assert refused.cause.reason == "tree-unconverged"
+        return True
+    return False
+
+
+def test_a_restore_marked_inbox_is_accepted_by_a_named_person(restored):
+    """The one way out for a tree no rebuild can reproduce, through R34's two acts."""
+    cfg = config.load()
+    assert _landing_refuses(cfg)
+    verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
+    code, refused = _drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["gate"] == "rebuild.accept"
+    run_id = refused["run_id"]
+    code, envelope = _drive(
+        ["run", "decide", run_id, "rebuild.accept", "accept", "--actor", "the-dj"]
+    )
+    assert code == int(ExitCode.OK), envelope
+    code, accepted = _drive(["--run", run_id, *verb])
+    assert code == int(ExitCode.OK), accepted
+    assert accepted["data"]["state"] == "accepted"
+    record = convergence.read(cfg).tree("inbox")
+    assert record.unconverged and record.disposition is not None
+    assert record.disposition.actor == "the-dj", (
+        "the disposition names the command line's string rather than who answered"
+    )
+    assert not _landing_refuses(cfg)
+    assert _below(cfg, restored["intake"]) == {BATCH: {"1", "2"}}, "accepting wrote INBOX"
+
+
+def test_an_aborted_acceptance_leaves_the_inbox_refusing(restored):
+    cfg = config.load()
+    verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
+    run_id = _drive(verb)[1]["run_id"]
+    _drive(["run", "decide", run_id, "rebuild.accept", "abort", "--actor", "the-dj"])
+    code, declined = _drive(["--run", run_id, *verb])
+    assert code == int(ExitCode.OK), declined
+    assert declined["data"]["state"] == "declined"
+    assert _landing_refuses(cfg)
+
+
+def test_the_engine_never_accepts_a_tree_a_rebuild_can_repair(restored):
+    """Acceptance is for a tree nothing derives; the routing tree is cleared on evidence."""
+    cfg = config.load()
+    declared = taxonomy.default_taxonomy()
+    with pytest.raises(CratekitError) as caught:
+        rebuild.accept_as_it_stands(cfg, declared, declared.tree.id, actor="the-dj")
+    assert caught.value.cause.reason == "refused-by-policy"
+    assert convergence.read(cfg).tree(declared.tree.id).blocking
+
+
+def test_a_rebuild_of_one_named_tree_names_nothing_it_left_alone(both_native):
+    code, queued = _drive(["rebuild", "--actor", "a-person", "--tree", "genre_energy"])
+    assert code == int(ExitCode.OK), queued
+    assert queued["warnings"] == [], queued
+
+
+def test_two_files_that_swap_places_after_the_gate_refuse_by_their_paths(
+    both_native, monkeypatch
+):
+    """Same count, same destinations, different files: the approved check reads the path."""
+    cfg = config.load()
+
+    def split(first: str, second: str):
+        def readings(music: Path):
+            return [
+                rebuild.Truth(location=str(music / FIRST), genre=first, energy=5),
+                rebuild.Truth(location=str(music / SECOND), genre=second, energy=5),
+            ]
+
+        return readings
+
+    monkeypatch.setattr(rebuild, "library_truth", split(GENRE_SUB, "Minimal"))
+    run_id, job_id = approve_and_queue(["route", "resort"], GATE)
+    monkeypatch.setattr(rebuild, "library_truth", split("Minimal", GENRE_SUB))
+    code, refused = _drive(["--run", run_id, "route", "resort", "--job", job_id])
+    assert code != int(ExitCode.OK), refused
+    assert "resort-plan-stale" in json.dumps(refused), refused
+    assert _below(cfg, both_native["genre"]) == {}

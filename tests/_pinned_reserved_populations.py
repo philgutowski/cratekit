@@ -2115,6 +2115,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
         'rebuild-tree-not-derivable',  # 2026-11-05, U219
+        'refused-by-policy',  # 2026-11-05, U219
         'resort-plan-stale',  # 2026-11-05, U219
         'routing-destination-renamed',
         'tree-rebuild',
@@ -3155,6 +3156,7 @@ PINNED_LITERAL_HOLDERS = {
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
         'rebuild-tree-not-derivable',  # 2026-11-05, U219
+        'refused-by-policy',  # 2026-11-05, U219
         'resort-plan-stale',  # 2026-11-05, U219
         'routing-destination-renamed',
         'tree-unconverged',

@@ -538,6 +538,46 @@ def assert_derivable(declared: taxonomy.Taxonomy, tree_id: str) -> None:
     )
 
 
+def accept_as_it_stands(
+    cfg: config.Config, declared: taxonomy.Taxonomy, tree_id: str, *, actor: str
+) -> None:
+    """Record a named person accepting a marked tree no rebuild can reproduce (U219).
+
+    THE ENGINE OWNS WHICH TREES THIS MAY TOUCH. Only a tree
+    :func:`derivable` says no derivation describes, the intake flow above all,
+    and only while its record refuses. A routing tree is cleared by
+    :func:`rebuild_tree` on the evidence of a check and never here, so this
+    cannot become the flag's off switch for a tree a rebuild can repair.
+
+    A DISPOSITION, NOT A CLEARING. The flag stays set and the report still
+    says unconverged; the refusal is answered by ``actor``, who answered the
+    explicit gate, and a later restore clears the answer and marks it again.
+    """
+    if derivable(declared, tree_id):
+        # No surface asks this for a routing tree; one that did is a defect.
+        raise refuse(
+            "refused-by-policy",
+            f"the tree {tree_id!r} is one a rebuild reproduces, so it is cleared "
+            f"by a rebuild on the evidence of a check and never accepted as it stands",
+            remedy=Remedy.REPORT_DEFECT,
+            steps=(f"run the rebuild for {tree_id!r}",),
+            scope=Scope.RUN,
+            origin=("tree_rebuild",),
+            detail={"tree_id": tree_id},
+        )
+    record = convergence.read(cfg).tree(tree_id)
+    reason = "a restore" if record is None or not record.reason else record.reason
+    convergence.clear_unconverged(
+        cfg,
+        tree_id,
+        differences=(),
+        disposition=convergence.Disposition(
+            actor=actor,
+            note=f"accepted as it stands after {reason}; no rebuild can reproduce it",
+        ),
+    )
+
+
 def declared_membership(
     cfg: config.Config,
     declared: taxonomy.Taxonomy,
@@ -1910,6 +1950,17 @@ def rebuild_tree(
         cfg, db, declared, registry, collection, derived, not_compared, tree_id=tree_id
     )
     favorites = tuple(entry for entry in placements if entry not in set(derived))
+    if approved is not None:
+        # A RESORT WRITES ONLY WHAT ITS GATE SHOWED (U219). A favourite whose
+        # track the first write has just moved into a new folder is derived
+        # only now, from the tree as this run left it, so no gate before the
+        # write could have shown it. It is left for the next resort, whose
+        # plan shows it, rather than written past the person who approved this
+        # one. The before check is what the approved rows were matched to.
+        shown = {(entry.location, entry.bucket, entry.sub) for entry in before.missing}
+        favorites = tuple(
+            entry for entry in favorites if (entry.location, entry.bucket, entry.sub) in shown
+        )
     if favorites:
         standing_now = read_tree(db, root_id)
         record_now = convergence.read(cfg).tree(tree_id)
@@ -2178,6 +2229,7 @@ def governed_not_compared(
 
 __all__ = [
     "DERIVATIONS",
+    "accept_as_it_stands",
     "additions",
     "assert_as_approved",
     "assert_derivable",
