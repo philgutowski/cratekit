@@ -43506,3 +43506,84 @@ literally named `DOWNLOADED`, since a title cannot otherwise copy itself once
 no test.
 
 **Closes when:** a test drives each. Ledger only, a maintainer facing guard.
+
+---
+
+## R-1279. board.py cloud reads a card the grok builder holds as ready, since that builder's comments carry no session footer
+
+**Found:** at the review of #536, U218, 2026-11-05.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads only comments
+that carry the Claude Code session footer as a hold. The `grok/` builder's
+comments carry none (its comments on #309 and #310 of 2026-10-13), so a card
+it holds reads `ready, no cloud session has taken it`, and `board.py cloud`
+prints no branch names. Driven at review on comments shaped like #310's.
+
+**Measured cost.** No card pays today: the two `grok/` branches on the remote
+belong to #309 and #310, both closed. A grok held card offered to a build
+thread would put two builders on one card. The same reader takes a comment
+of that builder's posted after a cloud thread's `Brainstorm` or `Question for
+Phillip` as Phillip's reply (driven at review on a synthetic pair: `answered,
+Phillip replied`), so a thread could fold another builder's words into a
+brief as his answer; no open card carries that input today. The cloud-unit skill now tells a
+thread to look for a `grok/` branch naming the card and that builder's
+comment before it posts `Started`.
+
+**Closes when:** `board.py cloud` reads a `grok/` branch or that builder's
+comment as a hold, with a test. Ledger only: maintainer facing, and
+`board.py` was out of U218's scope.
+
+---
+
+## R-1280. board.py cloud stops counting a card as held once its thread posts a question for Phillip, though the thread keeps building
+
+**Found:** at the build of #536, U218, 2026-11-05.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads a card whose
+session's last stated comment is `Question for Phillip` (or `Brainstorm`) as
+`waiting-on-phillip`, and `cmd_cloud` counts only `underway` cards against
+`CLOUD_LANES`. Since Phillip's rules of 2026-11-04 a question does not stop
+the build: the thread makes the conservative call and keeps going, posting
+`Progress` notes that the reader skips when it picks the stated heading. So
+the queue prints one lane fewer held than there are threads building, and a
+session reading the queue alone would start a thread the cap has no room for.
+
+**Measured cost.** Driven on the live board on 2026-11-05: four threads
+held #526, #532, #533 and #536, #533 having posted a question while it kept
+building, and `board.py cloud` printed `Held, 3 of 5` and offered #537. The
+same reader also reads such a card `answered` once Phillip's answer lands,
+while its thread is still building, and step 1 of the cloud-unit skill would
+hand it to a second thread; the skill now says to pass over an `answered`
+card whose thread is still writing. No user of the shipped verbs pays: the building project's coordinator counts lanes by
+its own running threads (METHOD's cloud lane section, written by U218), and
+`CLOUD_LANES` is five against the building project's cap of four, so one
+uncounted question still leaves the cap within the lane count.
+
+**Closes when:** the reader keeps a card held while a session that posted a
+question is still writing under it, for example a `Progress` comment after the
+question read as a hold, with a test, or the coordinator's own count is the
+documented source and `board.py cloud` says its held count excludes
+questioning threads. Ledger only: maintainer facing.
+
+---
+
+## R-1281. Two open cards are both titled U218, #536 and #537, because parallel threads read the next unit number at the same time
+
+**Found:** at the build of #536, U218, 2026-11-05.
+
+**The mechanism.** The `file-card` skill takes a new card's number as one
+past the highest U number any issue title carries. Two threads grooming the
+board on 2026-11-05 read it within two minutes of each other: #536 was filed
+at 14:14 and #537 at 14:16, both as U218. The same race gave two A93 cards
+(#525, #528).
+
+**Measured cost.** Read from the issue titles over REST. A unit number names a
+record, `docs/restart/u218.md`, a mutation table and residual files, so the
+later card's landing would write over or collide with the earlier one's
+record, and the board names two units by one number. No library or DJ pays.
+
+**Closes when:** the later card, #537, takes the next free number in its
+title before it is built, and its record is named for that number. METHOD's
+Sharing the board section, written by U218, now says a number is read just
+before filing; a check in `board.py audit` that refuses two open cards with
+one number would close the class. Ledger only: maintainer facing.
