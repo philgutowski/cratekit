@@ -159,7 +159,6 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'refused-by-policy',
     # U134, 2026-10-12: the refill's refusal of a recorded playlist moved out of INBOX.
     'refill-playlist-outside-inbox',
-    'rekordbox-absence-unconfirmed',  # 2026-11-05, U211: a process the scan could not read.
     'removal-sequence-unreadable',
     'rename-incomplete',
     'report-as-of-invalid',
@@ -233,7 +232,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
 })
 
 # Reserved table size. Moves only when a reservation is added or removed.
-PINNED_RESERVED_CAUSE_COUNT = 28
+# 2026-11-05, U211: rekordbox-absence-unconfirmed joined the backup reservations.
+PINNED_RESERVED_CAUSE_COUNT = 29
 
 # Kebab-shaped string literals per module. A card that adds literals edits only its own module's entry. The package-wide distinct counts are derived below.
 PINNED_KEBAB_LITERALS_BY_MODULE = {
@@ -515,6 +515,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-snapshot-available',
         'output-exists',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'repair-backup-facts',
@@ -1703,6 +1704,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'prune-archive',
         'prune-archive-folder',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-database',
@@ -2221,6 +2223,7 @@ PINNED_NAMED_WITHOUT_OWN = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -2408,6 +2411,7 @@ PINNED_NAMED_WITH_OWN = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -2984,6 +2988,7 @@ PINNED_LITERAL_HOLDERS = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',

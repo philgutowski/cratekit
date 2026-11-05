@@ -666,11 +666,17 @@ def run_continue_command(state: gates.RunState) -> str:
 
 
 def _with_run_continue(cause: Cause, state: gates.RunState) -> Cause:
-    """A kept refusal's cause with its first step naming the command that continues the run."""
+    """A kept refusal's cause with its first step naming the command that continues the run.
+
+    The step REPLACES the cause's first one, as the call ceiling's does,
+    because that one says to run it again, and a person who follows it
+    literally starts a fresh run and loses the answers this run keeps.
+    """
     command = run_continue_command(state)
     steps = (
-        f"once it clears, continue this run with its answers: {command}",
-        *cause.remediation.steps,
+        f"wait a moment for the process to finish exiting, then continue this "
+        f"run with its answers: {command}",
+        *cause.remediation.steps[1:],
     )
     return dataclasses.replace(
         cause,

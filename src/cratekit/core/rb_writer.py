@@ -793,6 +793,7 @@ def rekordbox_processes_running() -> str:
     have stopped.
     """
     running = []
+    unconfirmed: processes.AbsenceUnconfirmed | None = None
     for name in processes.REKORDBOX_PROCESSES:
         probe_name = _PROCESS_PROBES.get(name)
         if probe_name is None:
@@ -802,8 +803,21 @@ def rekordbox_processes_running() -> str:
                 f"can be declared safe",
                 detail={"process": name},
             )
-        if globals()[probe_name]():
-            running.append(name)
+        try:
+            if globals()[probe_name]():
+                running.append(name)
+        except processes.AbsenceUnconfirmed as exc:
+            unconfirmed = unconfirmed or exc
+    if unconfirmed is not None:
+        # ONE ANSWER WITH ``core.processes`` (U211, from the review). A probe
+        # that could not confirm its own name still reports what the scan did
+        # read, so a rekordbox process read beside an unreadable one is
+        # running, which is established, and only a scan that read none of
+        # them leaves the absence unknown.
+        read = {processes.executable_stem(found) for _pid, found in unconfirmed.read}
+        running = [name for name in processes.REKORDBOX_PROCESSES if name in running or name in read]
+        if not running:
+            raise unconfirmed
     return ", ".join(running)
 
 

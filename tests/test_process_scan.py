@@ -25,6 +25,9 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
 from tests.cli_drive import drive
+from tests.test_analysis_store import contained as contained  # noqa: PLC0414
+from tests.test_analysis_store import rclone_on_path as rclone_on_path  # noqa: PLC0414
+from tests.test_analysis_store import volume as volume  # noqa: PLC0414
 from tests.test_doctor import configured as configured  # noqa: PLC0414
 from tests.test_doctor import find, probes
 from tests.test_doctor import library as library  # noqa: PLC0414
@@ -495,7 +498,11 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     assert refused["run_id"] == run_id
     command = refused["cause"]["detail"]["continue"]
     assert command == f"crate --run {run_id} sync pair {ACCOUNT} --rekordbox {w.rekordbox_id}"
-    assert command in refused["cause"]["remediation"]["steps"][0]
+    steps = refused["cause"]["remediation"]["steps"]
+    assert command in steps[0]
+    assert steps[0].startswith("wait a moment for the process to finish exiting")
+    # No step tells the person to start again, which would lose the answers.
+    assert not any("run it again" in step for step in steps), steps
     assert "process 300" in refused["cause"]["message"]
     # Nothing was written on either side and the snapshot did not move.
     assert "5" in w.held() and "4" not in w.held()
@@ -559,3 +566,65 @@ def test_doctor_still_fails_a_running_rekordbox_beside_an_unreadable_process(con
     closed = find(report, "rekordbox.closed")
     assert closed.status is doctor.Status.FAIL, closed
     assert closed.remedy is Remedy.QUIT_REKORDBOX
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round one's fixes: one answer from both mechanisms, the backup's files
+# portion, and a continue step that does not say to start again
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize(
+    "read",
+    [(), (rekordbox(),), (agent(),), (rekordbox(), agent())],
+    ids=["none", "rekordbox", "agent", "both"],
+)
+def test_both_mechanisms_agree_beside_a_live_unreadable_process(real_probes, table, read):
+    """The writer asks one name at a time, and still answers what the scan read."""
+    table(FakeProcess(300, raises=DYING), finder(), *read)
+    try:
+        from_scan = processes.rekordbox_processes_running()
+    except processes.AbsenceUnconfirmed:
+        from_scan = None
+    try:
+        from_writer = rb_writer.rekordbox_processes_running()
+    except processes.AbsenceUnconfirmed:
+        from_writer = None
+    if not read:
+        assert from_scan is None and from_writer is None
+    else:
+        assert from_scan == tuple(one._name for one in read)
+        assert from_writer == ", ".join(from_scan)
+
+
+def test_the_writer_refuses_a_read_agent_as_running_not_as_unconfirmed(real_probes, table):
+    """The agent settling after a quit is running; waiting for a dying process will not clear it."""
+    table(FakeProcess(300, raises=DYING), agent())
+    with pytest.raises(rb_writer.RekordboxRunning) as caught:
+        rb_writer.assert_rekordbox_closed("committing")
+    assert caught.value.cause.reason == "rekordbox-running"
+    assert "rekordboxAgent" in caught.value.cause.message
+
+
+def test_a_backup_refuses_the_database_portion_alone_and_still_mirrors(
+    contained, rclone_on_path, table
+):
+    """The files portion runs; the database portion names the unreadable pid."""
+    from cratekit.core import backup_facts, config
+    from cratekit.modules.tools import backup
+
+    database = config.state_path("rekordbox_db", contained)
+    database.parent.mkdir(parents=True, exist_ok=True)
+    database.write_bytes(b"SQLite format 3\x00")
+    table(FakeProcess(300, raises=DYING), finder())
+    plan = backup.plan_backup(
+        contained, process_lister=processes.running_process_names, settings_dirs=()
+    )
+
+    database = plan.portion(backup_facts.Portion.DATABASE)
+    assert database.refusal is backup.Refusal.REKORDBOX_ABSENCE_UNCONFIRMED
+    assert "process 300" in database.detail
+    assert "no snapshot of the database was taken" in database.detail
+    files = [one for one in plan.portions if one.portion is not backup_facts.Portion.DATABASE]
+    assert files, "the plan has no portion but the database"
+    assert all(one.will_run for one in files), [(one.portion, one.refusal) for one in files]
