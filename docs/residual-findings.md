@@ -43778,3 +43778,109 @@ by row through `list_playlist_readable`, queue the readable tracks and name
 each unread one. Earns an issue under the board bar's (c): a workflow a DJ
 needs, bringing an account playlist into intake, cannot finish for that
 playlist.
+
+---
+
+## R-1290. A session log path under a regular file reads as no log at all, where U214's probe read it as unlisted
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `session._listed` answers `None` for a log path whose
+parent is a file (`NotADirectoryError` with nothing at the path), so
+`scan_log` answers no record and nothing unread, and every gate reads a
+library with no session. U214's probe in the rotation, which R-1255 replaced
+with the scan's own, answered it as unlisted, so the rotation's warning on
+that shape is lost. The choice is pinned by
+`test_a_log_under_a_file_is_not_there`.
+
+**Measured cost.** Driven on the branch: the four readers answer as for an
+absent log. No verb puts a file at the state root, so it is reachable only by
+hand, and nobody was found to pay for it.
+
+**Closes when:** a state root replaced by a file is decided to be a refusal
+of its own, upstream of the session log, or the trade stays as recorded.
+
+---
+
+## R-1291. A refusal over a session log this account cannot list tells a person to report a defect, where the fix is a permission
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** Every refusal over an unlisted session log, the gate's in
+`assert_no_unresolved_session` and the reporting reader's in
+`session.records`, carries `Remedy.REPORT_DEFECT`, so the human rendering
+says "fix: this is a defect; report it with the cause identifier below". The
+message itself names the directory and the account, and the project has
+`path-permission-denied` with its grant access remedy for this shape.
+
+**Measured cost.** Driven in round two as a second account over a chmod 000
+log: `crate restore list`, `restore run` and `session release` each print the
+defect remedy beside a sentence naming the permission. A label, not a wrong
+sentence; nobody is sent to change anything wrong.
+
+**Closes when:** the refusals over an unlisted log carry the access remedy,
+decided once for the gate and the reader together, with the rendering pinned.
+
+---
+
+## R-1292. Session release clears the stale lock before it reads the log again, so a listing refused in between reports a refusal over a lock already cleared
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `crate session release` reads the session log through
+`session.records` before its question, and again after `release_stale_lock`
+has cleared the lock, to abandon orphans and list what is kept. Since R-1255
+that reader refuses an unlisted log, so a log that becomes unlisted between
+the question and the answer ends the run refused with the lock already gone.
+
+**Measured cost.** Not driven. Nothing in the tool changes the log's mode
+inside the verb; it needs a person or another account to do it in that
+window. The lock cleared is the one the person asked to clear.
+
+**Closes when:** the release reads the log once more before clearing the
+lock, or the envelope says the lock was cleared when the later read refuses.
+
+---
+
+## R-1293. The scan's readers that drop its unread half by their own policy drop an unlisted log with it, unsaid
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `account_mirror.landed_tracks`, `pair_cli`, the set
+export, `set_playlist._landed` and `account_playlists.mirrored` and
+`pending_names` read `session.scan_log` and keep only the parsed half, a
+policy each chose for one damaged record. An unlisted log arrives in that half
+and is dropped too, so each reads it as a log with no record and says
+nothing. `unread_clause` also words a regular file standing at the log path
+as a log "this account cannot list", whose remedy is a permission, where the
+file needs replacing.
+
+**Measured cost.** Not driven. Every one of these that feeds a write runs
+inside `assert_gates`, which refuses an unlisted log first since R-1255, so
+the cost is a report or a plan that is quiet about a log nobody read.
+
+**Closes when:** each reader that reports says the log could not be listed,
+as the rotation, the refill and the check do since R-1255, and the clause
+names a file at the log path as one.
+
+---
+
+## R-1294. The snapshot pruner reads the session log through a glob of its own, so an unlisted log protects no snapshot
+
+**Found:** at the build of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `rb_writer.read_run_state_records` globs the run state
+directory and `default_protected_snapshot_paths` builds on it, so a log this
+account cannot list yields no record and protects no capture from
+`rb_writer.prune_snapshots` or from `restore.retention_plan`'s default
+provider. R-1255 moved `session.scan_log` off its glob and left this second
+reader of the same directory on one. `restore.prune` with no owning session
+refuses first since R-1255, through the reporting reader; with one named it
+does not read the log and reaches the provider.
+
+**Measured cost.** Not driven. Neither `rb_writer.prune_snapshots` nor
+`restore.prune` has a caller in `src`, so no person pays for it today.
+
+**Closes when:** the pruner reads the log through `session.scan_log` and
+refuses on an unlisted one, before any verb prunes with the default
+protection.
