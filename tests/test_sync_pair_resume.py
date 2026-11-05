@@ -214,6 +214,9 @@ def test_a_stop_between_making_a_playlist_and_filling_it_fills_it_and_makes_no_s
     assert code == int(ExitCode.OK), (between, done)
     assert world.account.created == ["GIG READY Opener"], "a second playlist was made"
     assert world.in_folder("GIG READY") == {"GIG READY Opener": made}, between
+    # Moved once: by the stopped command, or by the continue when the stop
+    # came before the move, never by both.
+    assert len(world.account.moves) == 1, (between, world.account.moves)
     assert world.account.playlists[made] == ["t1", "t2", "t3"]
     held = pairs.PairStore(cfg).get(made)
     assert held is not None and held.rekordbox_id == opener
@@ -354,3 +357,17 @@ def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):
     fill = pair_calls.listing_calls(0) + 1 + 1
     others = 4 * (pair_calls.MAKE_PLAYLIST + 1 + 1)
     assert stopped["cause"]["detail"]["expected"] == check + fill + others
+
+
+def test_a_pair_the_stopped_command_finished_is_not_read_again_by_the_continue(made_world):
+    """A list the write is done with is the author's again: changed, it stops nothing."""
+    world, _playlists = made_world
+    run_id, _first = to_the_write(VERB)
+    assert write(run_id, VERB, 10)[0] == CEILING
+    first = world.in_folder("GIG READY")["GIG READY Set 1"]
+    world.account.playlists[first].append("t9")
+
+    code, done = write(run_id, VERB, 100)
+    assert code == int(ExitCode.OK), done
+    assert world.account.playlists[first] == ["t1", "t9"], "the finished pair was written again"
+    assert len(world.account.created) == 5
