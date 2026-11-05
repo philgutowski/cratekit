@@ -15,10 +15,12 @@ the model objects make on their own, ends in that object's ``request`` method.
 :meth:`Gate.attach` replaces that one method on the instance, so the gate sees
 the raw status and the ``Retry-After`` header before the client turns them into
 its own exception and before any caller above can swallow them. The product
-builds a client at exactly two sites, the catalogue and account opener in
-``acquire/provider_session.py`` and the vendored downloader's own session in
-``acquire/vendored.py``, and both attach here; a test walks the package and
-refuses a third.
+builds a client of that library at exactly two sites, the catalogue and
+account opener in ``acquire/provider_session.py`` and the vendored
+downloader's own session in ``acquire/vendored.py``, and both attach here; a
+test walks the package and refuses a third. The app credentials' catalogue
+client (U205) keeps its transport under the same name, is built beside the
+account opener and nowhere else, and attaches here the same way.
 
 FOUR PROPERTIES, EACH ONE OF THE THREE FAILURES ABOVE OR THE ONE THAT WOULD
 FOLLOW FROM FIXING THEM ALONE:
@@ -63,6 +65,18 @@ command, never per day, so the next run starts fresh. Outside any scope nothing
 is capped, which only a library caller or a test is, since every verb passes
 the dispatcher. A job's detached child is a fresh process: a ceiling raised for
 the run reaches it through :data:`CALLS_ENV`, set only while the scope is open.
+
+TWO IDENTITIES, ONE ALLOWANCE (U205). A call is made either under the
+person's account session or under Cratekit's own app credentials, which the
+catalogue client ``acquire.catalogue_api`` holds, and :meth:`Gate.attach`
+names which when it wraps a client's transport. Every property above covers
+both unchanged: one interval, one breaker, one cooldown, one ceiling. What
+differs is the count. The state file keeps each identity's calls and rate
+limit answers under ``identities`` beside the totals, and a file written
+before U205, which has no such entry, loads with every call it counted on the
+account, since until then every call was the account's. A version before U205
+that rewrites the file keeps the totals and drops the entry, so the history it
+held is read as the account's again; the totals stay true either way.
 
 WHAT IT DOES NOT COVER. The vendored downloader fetches media segments through
 its own session against a content delivery host. Those are not calls to the
@@ -124,12 +138,31 @@ CEILING = "provider-call-ceiling"
 #: is open and restored when it closes, so the next run reads the configuration.
 CALLS_ENV = "CRATEKIT_PROVIDER_CALLS"
 
+#: The two identities a call is made under (U205): the person's account
+#: session, and Cratekit's own app credentials, which only the catalogue
+#: client holds.
+ACCOUNT = "account"
+APP = "app"
+IDENTITIES = (ACCOUNT, APP)
+
 #: This process's own spend, across every gate it built. The dispatcher reads
 #: the difference over one verb and reports it as the run's, which is true of
 #: this process alone: another process spending the same account writes the
 #: shared file, and that is what the file's totals are for.
 _PROCESS_CALLS = 0
 _PROCESS_RATE_LIMITED = 0
+#: The share of the two above made under the app credentials (U205). The
+#: account's share is the difference, so the totals the ceiling reads stay
+#: the one count they were.
+_PROCESS_APP_CALLS = 0
+_PROCESS_APP_RATE_LIMITED = 0
+
+#: The app values this process found recorded in the installation's index and
+#: missing from the keychain, so its catalogue lookups went to the account
+#: (U205's review, round two). Read by the dispatcher's spend line, so a run
+#: that fell back says why none of its calls went under the app; cleared when
+#: a command's scope opens, so one verb's finding is not the next one's.
+_APP_LOST: list[str] = []
 
 
 @dataclass(frozen=True, slots=True)
@@ -169,16 +202,34 @@ class GateSettings:
 
 @dataclass(frozen=True, slots=True)
 class Spend:
-    """Calls made and rate limit answers received, as running totals."""
+    """Calls made and rate limit answers received, as running totals.
+
+    ``calls`` and ``rate_limited`` are every identity's together, and the
+    ``app_`` pair is the share made under the app credentials (U205), so the
+    account's share is the difference and the two can never sum to more than
+    the totals.
+    """
 
     calls: int = 0
     rate_limited: int = 0
+    app_calls: int = 0
+    app_rate_limited: int = 0
+
+    @property
+    def account_calls(self) -> int:
+        return max(0, self.calls - self.app_calls)
+
+    @property
+    def account_rate_limited(self) -> int:
+        return max(0, self.rate_limited - self.app_rate_limited)
 
     def since(self, earlier: Spend) -> Spend:
         """What was spent between ``earlier`` and this snapshot."""
         return Spend(
             calls=max(0, self.calls - earlier.calls),
             rate_limited=max(0, self.rate_limited - earlier.rate_limited),
+            app_calls=max(0, self.app_calls - earlier.app_calls),
+            app_rate_limited=max(0, self.app_rate_limited - earlier.app_rate_limited),
         )
 
 
@@ -195,6 +246,9 @@ class _State:
     calls: int = 0
     rate_limited: int = 0
     trips: int = 0
+    #: The share of ``calls`` and ``rate_limited`` the app credentials made.
+    app_calls: int = 0
+    app_rate_limited: int = 0
 
     def cooling(self, now: float) -> bool:
         return self.lifts_at is not None and now < self.lifts_at
@@ -209,6 +263,13 @@ class _State:
             "calls": self.calls,
             "rate_limited": self.rate_limited,
             "trips": self.trips,
+            "identities": {
+                ACCOUNT: {
+                    "calls": max(0, self.calls - self.app_calls),
+                    "rate_limited": max(0, self.rate_limited - self.app_rate_limited),
+                },
+                APP: {"calls": self.app_calls, "rate_limited": self.app_rate_limited},
+            },
         }
 
     @classmethod
@@ -223,6 +284,15 @@ class _State:
         for name in ("tripped_at", "lifts_at"):
             value = data.get(name)
             setattr(state, name, None if value is None else _as_float(value, None))
+        # NO ``identities`` IS A FILE WRITTEN BEFORE U205, every call in it the
+        # account's, so the app's share is nothing. A share above the total it
+        # is a share of is clamped to it, since the totals are what the ceiling
+        # and every report before this unit read.
+        identities = data.get("identities")
+        app = identities.get(APP) if isinstance(identities, dict) else None
+        if isinstance(app, dict):
+            state.app_calls = min(_as_int(app.get("calls")), state.calls)
+            state.app_rate_limited = min(_as_int(app.get("rate_limited")), state.rate_limited)
         return state
 
 
@@ -280,6 +350,7 @@ def command(calls: int | None = None) -> Iterator[Command]:
         yield _COMMAND
         return
     raised = calls if calls is not None else _raised_from_env()
+    _APP_LOST.clear()
     previous = os.environ.get(CALLS_ENV)
     if calls is not None:
         os.environ[CALLS_ENV] = str(calls)
@@ -461,7 +532,12 @@ class Gate:
     def spend(self) -> Spend:
         """The running totals across every process, off the state file."""
         state = self._read()
-        return Spend(calls=state.calls, rate_limited=state.rate_limited)
+        return Spend(
+            calls=state.calls,
+            rate_limited=state.rate_limited,
+            app_calls=state.app_calls,
+            app_rate_limited=state.app_rate_limited,
+        )
 
     # ── the lock ──────────────────────────────────────────────────────────
 
@@ -646,10 +722,12 @@ class Gate:
             raise self._last_park
         self.assert_open()
 
-    def call(self, send: Callable[[], Any]) -> Any:
+    def call(self, send: Callable[[], Any], *, identity: str = ACCOUNT) -> Any:
         """Make one provider call under the lock, paced, counted and watched.
 
         ``send`` returns the transport's response; the status is read off it.
+        ``identity`` is whose call it is, counted under that identity as well as
+        in the totals; the interval, the breaker and the ceiling read the totals.
         An exception out of ``send`` is the caller's to classify and is not a
         rate limit answer, so it neither counts as one nor breaks a run of them.
 
@@ -660,6 +738,10 @@ class Gate:
         than one request and one interval, which is what the lock wait limit
         stands on.
         """
+        if identity not in IDENTITIES:
+            # Asked here as well as at ``attach``, so a caller that names an
+            # identity to the call directly cannot count calls nobody sees.
+            raise ValueError(f"no provider identity is named {identity!r}")
         while True:
             with self._held():
                 state = self._read()
@@ -680,12 +762,15 @@ class Gate:
                 if due - now > self.settings.min_interval_s:
                     long_wait = due - now
                 else:
-                    return self._send_now(send, state, now, due)
+                    return self._send_now(send, state, now, due, identity)
             self._sleep(long_wait)
 
-    def _send_now(self, send: Callable[[], Any], state: _State, now: float, due: float) -> Any:
+    def _send_now(
+        self, send: Callable[[], Any], state: _State, now: float, due: float, identity: str
+    ) -> Any:
         """The call itself, under the lock, with at most one interval's wait."""
-        global _PROCESS_CALLS, _PROCESS_RATE_LIMITED
+        global _PROCESS_CALLS, _PROCESS_RATE_LIMITED, _PROCESS_APP_CALLS, _PROCESS_APP_RATE_LIMITED
+        app = identity == APP
         if due > now:
             self._sleep(due - now)
             now = max(self._clock(), due)
@@ -693,6 +778,9 @@ class Gate:
         state.calls += 1
         self.calls += 1
         _PROCESS_CALLS += 1
+        if app:
+            state.app_calls += 1
+            _PROCESS_APP_CALLS += 1
         self._write(state)
 
         response = send()
@@ -702,6 +790,9 @@ class Gate:
             self.rate_limited += 1
             _PROCESS_RATE_LIMITED += 1
             state.rate_limited += 1
+            if app:
+                state.app_rate_limited += 1
+                _PROCESS_APP_RATE_LIMITED += 1
             state.consecutive += 1
             retry_after = _retry_after_of(response, now)
             if retry_after > 0:
@@ -722,8 +813,13 @@ class Gate:
         self._write(state)
         return response
 
-    def attach(self, client: Any) -> bool:
+    def attach(self, client: Any, *, identity: str = ACCOUNT) -> bool:
         """Route every request the client's transport makes through this gate.
+
+        ``identity`` names whose calls they are, :data:`ACCOUNT` for the
+        provider library's clients and :data:`APP` for the catalogue client
+        (U205). Any other name is refused before anything is wrapped, since a
+        call counted under a name the reports do not know is a call nobody sees.
 
         The transport is the ``requests.Session`` the provider's library keeps as
         ``request_session``; its ``request`` method is replaced ON THE INSTANCE,
@@ -734,13 +830,15 @@ class Gate:
         a method level fake in the suite is; the two build sites in the product
         always hand over a real one, and a test walks the package for a third.
         """
+        if identity not in IDENTITIES:
+            raise ValueError(f"no provider identity is named {identity!r}")
         transport = getattr(client, "request_session", None)
         if transport is None or not callable(getattr(transport, "request", None)):
             return False
         original = getattr(transport, "_cratekit_unpaced_request", None) or transport.request
 
         def gated(method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
-            return self.call(lambda: original(method, url, *args, **kwargs))
+            return self.call(lambda: original(method, url, *args, **kwargs), identity=identity)
 
         transport._cratekit_unpaced_request = original
         transport._cratekit_gate = self
@@ -755,19 +853,70 @@ def spend(path: Path | None = None) -> Spend:
 
 def process_spend() -> Spend:
     """What THIS process has spent, across every gate it built."""
-    return Spend(calls=_PROCESS_CALLS, rate_limited=_PROCESS_RATE_LIMITED)
+    return Spend(
+        calls=_PROCESS_CALLS,
+        rate_limited=_PROCESS_RATE_LIMITED,
+        app_calls=_PROCESS_APP_CALLS,
+        app_rate_limited=_PROCESS_APP_RATE_LIMITED,
+    )
+
+
+def note_app_lost(name: str) -> None:
+    """Say that a recorded app value was missing from the keychain this run."""
+    if name not in _APP_LOST:
+        _APP_LOST.append(name)
+
+
+def app_lost() -> tuple[str, ...]:
+    """The app values this run found recorded and missing, in the order found."""
+    return tuple(_APP_LOST)
+
+
+def read_spend(path: Path | None = None) -> Spend | None:
+    """The running totals off the state file, or None when it cannot be read.
+
+    FOR A REPORT, NOT FOR THE GATE. The gate reads a file it cannot parse as
+    fresh, because a corrupt counter must not lock the provider out; a report
+    that did the same would show zero calls over a file it never read, so this
+    answers None and the report says so. A file that does not exist yet is an
+    installation that has made no call, and is answered as nothing spent.
+    """
+    target = path if path is not None else config.state_path(STATE_KEY)
+    try:
+        text = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return Spend()
+    except OSError:
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    state = _State.from_json(data)
+    return Spend(
+        calls=state.calls,
+        rate_limited=state.rate_limited,
+        app_calls=state.app_calls,
+        app_rate_limited=state.app_rate_limited,
+    )
 
 
 __all__ = [
+    "ACCOUNT",
+    "APP",
     "CALLS_ENV",
     "CEILING",
     "COOLDOWN",
     "HELD",
+    "IDENTITIES",
     "LOCK_KEY",
     "LOCK_POLL_S",
     "LOCK_WAIT_S",
     "RATE_LIMIT_STATUS",
     "STATE_KEY",
+    "app_lost",
     "TRIP_AFTER",
     "Command",
     "Gate",
@@ -777,7 +926,9 @@ __all__ = [
     "command",
     "command_spent",
     "header_value",
+    "note_app_lost",
     "process_spend",
+    "read_spend",
     "retry_after_seconds",
     "spend",
 ]

@@ -42,6 +42,14 @@ argues, and raises at item scope. The job engine then fails that one item and
 claims the next, rather than converting a foreign exception into an internal
 error.
 
+**CATALOGUE LOOKUPS GO UNDER THE APP WHEN IT IS SET UP (U205).** The ISRC
+lookup and the exact track read in ``match_track`` ask ``catalogue`` when the
+opener built one, the client ``acquire.provider_session.catalogue_client``
+holds under Cratekit's own app credentials, and the account session only when
+it did not. Every write, and every read of the account's own things (its
+hearts, playlists and folders), goes to the account session and to nothing
+else, so the app client is never handed a write: it has none.
+
 **ONE RETRY ON A WRITE, NO MORE**, through ``listing.fetch_with_retry``. A rate
 limit on a write is real, and a ladder of five would hold a sweep for a minute
 per item against a provider that is refusing it. Creating a playlist is not
@@ -63,7 +71,7 @@ from urllib.parse import urlsplit
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi  # noqa: F401
 
-from cratekit.acquire import listing, match, provider_session
+from cratekit.acquire import catalogue_api, listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -298,8 +306,12 @@ class TidalAccount:
         *,
         sleep: Callable[[float], None] | None = None,
         cfg: Any = None,
+        catalogue: Any = None,
     ) -> None:
         self._session = session
+        #: Where catalogue lookups go: the app client when the opener built
+        #: one (U205), else the account session, exactly as before.
+        self._lookups = catalogue if catalogue is not None else session
         #: The configuration whose outbound ledger says which playlists the
         #: product made (R-836). None refuses every removal, since a ledger
         #: that cannot be named cannot say yes.
@@ -333,6 +345,11 @@ class TidalAccount:
             return listing.fetch_with_retry(
                 attempt, limit=0, offset=0, max_retries=retries, sleep=self._sleep
             )
+        except catalogue_api.AppCredentialsRejected as exc:
+            # THE APP'S CREDENTIAL, NOT THE ACCOUNT'S. Read by the account's
+            # translation it would be a wait, and the held account would not be
+            # the thing to forget.
+            raise catalogue_api.rejected(exc, doing) from exc
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             raise account.provider_failure(exc, doing) from exc
 
@@ -382,6 +399,10 @@ class TidalAccount:
         :func:`track_reference`. Never a text search over title and artist:
         ``title`` and ``artist`` choose among tracks the ISRC already named and
         are never sent to the provider.
+
+        BOTH READS ARE CATALOGUE QUESTIONS and go to the app client when one is
+        open (U205). The favourites :meth:`_among` asks are the account's own
+        and stay on the account session.
         """
         key = str(identity)
         self._reasons.pop(key, None)
@@ -390,7 +411,7 @@ class TidalAccount:
         if wanted:
             found = self._call(
                 f"look up the ISRC {wanted}",
-                lambda: self._session.get_tracks_by_isrc(wanted),
+                lambda: self._lookups.get_tracks_by_isrc(wanted),
             )
             if found is not _ABSENT:
                 tracks = {
@@ -417,7 +438,7 @@ class TidalAccount:
         if reference is None:
             return None
         track = self._call(
-            f"look up the track {reference}", lambda: self._session.track(reference)
+            f"look up the track {reference}", lambda: self._lookups.track(reference)
         )
         if track is _ABSENT or track is None:
             return None
@@ -1415,7 +1436,10 @@ def open_account(cfg: Any = None) -> TidalAccount:
     gate = provider_gate.Gate(
         provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
     )
-    return TidalAccount(provider_session.client_session(gate=gate), cfg=cfg)
+    client = provider_session.client_session(gate=gate)
+    return TidalAccount(
+        client, cfg=cfg, catalogue=provider_session.catalogue_client(client, gate=gate)
+    )
 
 
 __all__ = [

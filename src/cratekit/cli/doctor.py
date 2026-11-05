@@ -98,6 +98,7 @@ from typing import TYPE_CHECKING, Any
 import cratekit
 from cratekit import acquire
 from cratekit.acquire import adapter as adapter_contract
+from cratekit.acquire import catalogue_api
 from cratekit.analysis import vocals as vocal_scoring
 from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope
@@ -109,6 +110,7 @@ from cratekit.core import (
     preflight,
     processes,
     profiles,
+    provider_gate,
     rb_writer,
     secrets,
     session,
@@ -700,6 +702,10 @@ class Probes:
     #: with no such place (U185). A seam so a test describes an install, a push
     #: and its age without the app.
     deadca7_home: Callable[[], Path | None] = _deadca7_home
+    #: Every call the provider gate has counted, per identity, off its state
+    #: file, or None when the file could not be read (U205). A seam so a test
+    #: describes an installation's history without writing the real file.
+    provider_spend: Callable[[], provider_gate.Spend | None] = provider_gate.read_spend
 
 
 # ---------------------------------------------------------------------------
@@ -1882,6 +1888,10 @@ CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProx
         # spend it refuse naming the login step, and ``_SPENT_WHEN_ASKED``
         # says which verbs those are rather than that none needs it.
         "credential.bandcamp": (secrets.Credential.BANDCAMP_SESSION,),
+        # U205. Declared by no verb either, so it reports and never fails:
+        # without it every catalogue lookup goes to the account as it always
+        # did, and the finding says so and how to move them.
+        "credential.catalogue": catalogue_api.CREDENTIALS,
         "credential.provider": (secrets.Credential.PROVIDER_SESSION,),
         "credential.recognition": (
             secrets.Credential.IDENTIFY_KEY,
@@ -1897,6 +1907,7 @@ CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProx
 _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
     {
         "credential.bandcamp": Remedy.AUTHENTICATE_PROVIDER,
+        "credential.catalogue": Remedy.SET_CREDENTIAL,
         "credential.provider": Remedy.AUTHENTICATE_PROVIDER,
         "credential.recognition": Remedy.SET_CREDENTIAL,
     }
@@ -1926,7 +1937,81 @@ def _required_credentials(inputs: _Inputs) -> tuple[str, ...]:
     )
 
 
+def _gate_counts(inputs: _Inputs) -> str:
+    """What the provider gate has counted under each identity, as one clause.
+
+    A STATE FILE THAT COULD NOT BE READ IS SAID, never shown as nothing spent:
+    the gate itself reads such a file as fresh, which is right for a counter
+    that must not lock the provider out and wrong for a report.
+    """
+    spent = inputs.probes.provider_spend()
+    if spent is None:
+        return (
+            "the provider gate's state file could not be read, so how many calls "
+            "each identity made is not known"
+        )
+    limited = (
+        f", of which {spent.account_rate_limited} and {spent.app_rate_limited} were "
+        f"answered with a rate limit"
+        if spent.rate_limited
+        else ""
+    )
+    return (
+        f"the provider gate has counted {spent.account_calls} calls on the account and "
+        f"{spent.app_calls} under Cratekit's app credentials{limited}"
+    )
+
+
+def _check_catalogue(key: str, inputs: _Inputs) -> Finding:
+    """Where catalogue lookups go, and what each identity has spent (U205).
+
+    NEVER A FAILURE, since no verb needs the app: without it every lookup goes
+    to the account exactly as before. ONE VALUE OF TWO IS NOT HALF SET UP, it is
+    not set up, because the identifier alone cannot ask for a token, and the
+    finding names the one that is missing.
+    """
+    names = CREDENTIALS_BY_CHECK[key]
+    title = "credentials for the catalogue app"
+    missing = [str(n) for n in names if not inputs.probes.credential_recorded(str(n))]
+    counts = _gate_counts(inputs)
+    if not missing:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.OK,
+            detail=(
+                # WHAT THE INDEX CAN SAY AND NO MORE (round two): doctor never
+                # reads a value, so a value deleted from the keychain still reads
+                # as recorded here. A run that finds one missing says so in its
+                # spend line and asks the account.
+                f"recorded in this installation: {', '.join(str(n) for n in names)}. "
+                f"ISRC lookups and track reads go under Cratekit's app credentials "
+                f"whenever the keychain gives both values, and a run that finds one "
+                f"missing says so and asks the account; the label crawl and every "
+                f"read or write of the account's own things stay on the account "
+                f"session; {counts}"
+            ),
+        )
+    return Finding(
+        key=key,
+        title=title,
+        status=Status.INFO,
+        detail=(
+            f"not recorded ({', '.join(missing)}), so catalogue lookups go to the "
+            f"account session, beside its playlists, hearts and downloads"
+            + (
+                ", since one value without the other cannot ask for a token"
+                if len(missing) < len(names)
+                else ""
+            )
+            + f"; {counts}. To move them: {catalogue_api.LOGIN_STEPS}"
+        ),
+    )
+
+
 def _check_credential(key: str, inputs: _Inputs) -> Finding:
+    if key == "credential.catalogue":
+        return _check_catalogue(key, inputs)
     names = CREDENTIALS_BY_CHECK[key]
     title = f"credentials for {key.split('.', 1)[1]}"
     missing = [str(n) for n in names if not inputs.probes.credential_recorded(str(n))]
