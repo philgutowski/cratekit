@@ -42119,3 +42119,97 @@ and taken out in rekordbox too, comes off the account. By design, said in
 
 **Closes when:** every pair has had one whole sync since the landing. Ledger
 only.
+
+---
+
+## R-1215. An ISRC lookup on the app client reads the first page of the answer and never its next link, as the account's lookup did
+
+**Found:** at the build of #495, U205, 2026-11-05.
+
+**The mechanism.** `AppCatalogue.get_tracks_by_isrc` in
+`acquire/catalogue_api.py` reads `data` off one answer and ignores
+`links.next`, as tidalapi 0.8.11's `Session.get_tracks_by_isrc` does on the
+account. A code the catalogue files under more releases than one page holds is
+answered with the first page's tracks only, so `_among` chooses among fewer
+candidates than exist: a hearted release on the second page is not seen, and
+one agreeing release can read as the only one.
+
+**Measured cost.** Not driven: no fixture or live answer this container could
+reach carries a second page, and the page size of the filter endpoint is
+unmeasured. The behaviour is unchanged from before U205.
+
+**Closes when:** #497 (U207) probes the endpoint's page size and batching, and
+a lookup either follows `links.next` inside `acquire.listing`'s ladder or
+refuses an answer with a next link rather than choosing over part of it.
+Ledger only: unmeasured, and no worse than before.
+
+---
+
+## R-1216. Doctor says the app credentials are recorded off the presence index, so a value deleted through the keychain reads as set while lookups go to the account
+
+**Found:** at the review of #495, U205, 2026-11-05.
+
+**The mechanism.** `credential.catalogue` in `cli/doctor.py` asks
+`secrets.exists`, the installation's index of names it wrote, never the
+keychain, on the rule `core/secrets.exists` gives (a retrieval can raise an
+authorisation prompt). After round one of U205's review, the opener reads a
+value the keychain no longer holds as absent and sends the lookups to the
+account, so in that state doctor says the lookups go under the app while they
+go to the account.
+
+**Measured cost.** Driven by the review: a value deleted with
+`keyring.delete_password`, doctor OK. The run's own spend line says
+"none under Cratekit's app credentials", so the person is told the truth on
+every run that reached the provider; only doctor's sentence is wrong.
+
+**Closes when:** the product gains a way to un-record a credential that clears
+the index with it, or doctor's sentence names that it read the index. Ledger
+only: no data lost, and the verbs report where their calls went.
+
+---
+
+## R-1217. The label crawl still reads the catalogue under the account session after U205, since the official API pages by cursor and the crawl's listings page by offset to a declared count
+
+**Found:** at the plan of #495, U205, 2026-11-05.
+
+**The mechanism.** U205 moved ISRC lookups and exact track reads to the app
+client. Every read of the label crawl in `label/tidal_catalogue.py` (the name
+search, an artist by identifier and its release listings, an album and its
+tracks, the copyright re read, the label check, the track search) still goes to
+the account session. Each listing pages through `acquire.listing` by limit and
+offset and stops on a count the provider declares; the official catalogue API
+pages its relationships by cursor. A mapping between the two written without a
+live probe of the official API's paging is the short page read as the end
+defect this package has paid for four times, so the brief's requirement to
+move the label reads was taken as far as its own carve out allows and no
+further. The module docstring names each read that stays and why.
+
+**Measured cost.** None to a DJ: the crawl works as before and its calls are
+counted under the account, where the spend line and doctor show them. What the
+person pays is the account carrying a label sweep's calls, about 3,000 for a
+full label build (U193), which the card set out to remove.
+
+**Closes when:** a unit opens with one read only probe of the official API's
+artist albums, album items and search relationships on the app client, records
+their paging in `docs/solutions/`, and moves the crawl's reads behind an
+adapter that walks the cursor inside `acquire.listing`. Asked of Phillip on the
+card's plan; ledger only until he answers, since an account carrying calls is
+none of the board bar's four costs.
+
+---
+
+## R-1218. A process that opens both the outbound account and the label catalogue builds two app clients and asks the token service twice
+
+**Found:** at the review of #495, U205, 2026-11-05.
+
+**The mechanism.** `tidal_account.open_account` and `tidal_catalogue.open_catalogue`
+each call `provider_session.catalogue_client`, which builds its own
+`AppCatalogue` with its own token. A verb that opens both in one process
+fetches the app's token twice, one gated call more than it needs.
+
+**Measured cost.** Driven by the review with both values recorded: two token
+requests for two reads, one extra paced call per process that opens both. No
+wrong answer.
+
+**Closes when:** the token, or the client, is held once per process and the
+second opener reuses it. Ledger only.
