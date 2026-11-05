@@ -1157,7 +1157,8 @@ def abandon_orphaned_sessions(
     invocations, and binding the answer to the first one's list is R-648.
 
     ABANDONING IS THE UNGATED CLOSE, which is what keeps it reachable whatever
-    state the library is in. A record that recorded a commit still says so after
+    state the library's records are in, short of a log this account cannot
+    list, which :func:`records` refuses (R-1255). A record that recorded a commit still says so after
     this, so a restore still reads it as work it would discard.
     """
     here = current_holder()

@@ -385,3 +385,20 @@ def test_restore_run_refuses_naming_the_listing_not_an_unrecorded_session(cfg, m
     assert code != int(ExitCode.OK), refused
     assert "cannot be listed by this account" in refused["cause"]["message"]
     assert "is recorded under" not in refused["cause"]["message"]
+
+
+def test_the_native_landing_lookups_refuse_a_log_they_cannot_list(cfg, monkeypatch):
+    """Review round two: both answered no landing, and sync mark sent a person to land again."""
+    _record(cfg, session.SessionState.CLOSED, detail={native.PASS_KEY: "2026-10-20 sync"})
+    assert native.landed_passes(cfg) == ("2026-10-20 sync",)
+    assert native.landings_of_pass(cfg, "2026-10-20 sync") == ("s-1",)
+    _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
+
+    for lookup in (
+        lambda: native.landed_passes(cfg),
+        lambda: native.landings_of_pass(cfg, "2026-10-20 sync"),
+    ):
+        with pytest.raises(CratekitError) as refused:
+            lookup()
+        assert "cannot be listed by this account" in refused.value.cause.message
+

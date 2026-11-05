@@ -305,6 +305,10 @@ def _landed(
     A session is the same proof for one landing named by its id.
     """
     records, unreadable = session.scan_log(cfg)
+    if session.log_unlisted(unreadable, cfg):
+        # NO LANDING CAN BE READ, so the caller refuses naming the listing
+        # rather than the pass lookup refusing in words of its own.
+        return (), len(unreadable), True
     if pass_name is not None:
         wanted = set(native.landings_of_pass(cfg, pass_name))
     else:
@@ -319,7 +323,7 @@ def _landed(
     return (
         tuple(record for record in records if record.session_id in wanted),
         len(unreadable),
-        session.log_unlisted(unreadable, cfg),
+        False,
     )
 
 

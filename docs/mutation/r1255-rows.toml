@@ -194,14 +194,14 @@ new = '''                        if False'''
 
 [[rows]]
 id = "C1_check_landed_unlisted"
-description = "_landed: never report the listing, so the unknown landing refusal counts a record"
+description = "_landed: never stop on the listing, so the pass lookup refuses in words of its own"
 file = "src/cratekit/analysis/rekordbox_check.py"
 surface = "user"
 tests = ["tests/test_session_log_unlisted.py", "tests/test_analyze_check.py"]
-old = '''        session.log_unlisted(unreadable, cfg),
-    )'''
-new = '''        False,
-    )'''
+old = '''    if session.log_unlisted(unreadable, cfg):
+        # NO LANDING CAN BE READ'''
+new = '''    if False:
+        # NO LANDING CAN BE READ'''
 
 [[rows]]
 id = "D1_doctor_branches_on_the_scan"
@@ -224,3 +224,40 @@ old = '''    if session.log_unlisted(unreadable, cfg):
         # A LOG NOBODY COULD LIST IS SAID'''
 new = '''    if False:
         # A LOG NOBODY COULD LIST IS SAID'''
+
+[[rows]]
+id = "D3_status_guard_precise"
+description = "status _source_findings: name any unread entry as an unlisted log, so one damaged record hides every source"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if session.log_unlisted(unreadable, cfg):
+        # A LOG NOBODY COULD LIST IS SAID'''
+new = '''    if unreadable:
+        # A LOG NOBODY COULD LIST IS SAID'''
+
+[[rows]]
+id = "N1_landings_of_pass_refuses"
+description = "native.landings_of_pass: drop the unread half again, so sync mark says a recorded landing never committed"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_sync_mark.py"]
+old = '''    land the pass again.
+    """
+    records = session.records(cfg)'''
+new = '''    land the pass again.
+    """
+    records = session.scan_log(cfg)[0]'''
+
+[[rows]]
+id = "N2_landed_passes_refuses"
+description = "native.landed_passes: drop the unread half again, so organize plans no native pass over a log it could not list"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_sync_mark.py"]
+old = '''    cannot list refuses rather than reading as no landing (R-1255).
+    """
+    records = session.records(cfg)'''
+new = '''    cannot list refuses rather than reading as no landing (R-1255).
+    """
+    records = session.scan_log(cfg)[0]'''

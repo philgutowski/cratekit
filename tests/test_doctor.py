@@ -2410,6 +2410,29 @@ def test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest(
     assert f"the session log directory {log} exists and cannot be listed" in named["detail"]
 
 
+def test_status_reads_one_damaged_record_as_a_record_not_as_an_unlisted_log(configured):
+    """Review round two: the listing's finding is for the listing alone.
+
+    A damaged record beside a readable one is skipped by the status as it was,
+    the readable one still reported; broadening the guard to any unread entry
+    would call one bad file a log nobody could list.
+    """
+    record = session.SessionRecord(
+        session_id="s-2",
+        workflow="sync.labels",
+        started="2026-08-02T00:00:00+00:00",
+        sources={"labels": str(session.SourceState.REFUSED)},
+    )
+    session.write_record(record, configured)
+    (Path(session.log_dir(configured)) / "s-0-dead.json").write_text("{not json")
+
+    code, out, err = drive(["--output", "json", "status"])
+
+    assert code == int(ExitCode.OK), err
+    keys = {check["key"] for check in json.loads(out)["data"]["checks"]}
+    assert "source.labels" in keys
+    assert "source.session-log" not in keys
+
 def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(
     configured, monkeypatch
 ):

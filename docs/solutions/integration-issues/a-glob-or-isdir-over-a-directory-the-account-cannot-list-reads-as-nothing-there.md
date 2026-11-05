@@ -44,11 +44,16 @@ stats the folder and answers None, not False, on any refusal other than not
 found. The reason then says which read was refused and that it may hold what
 would recognise the playlist. `scan_log`'s own empty answer for its other
 consumers was a residual filed by U214, R-1255, closed by its own card:
-`scan_log` now asks `os.listdir` once (`session.unlisted_log`) and returns a
-log that is there and refused as the one entry of its unread half, so every
-gate refuses on it and every report warns with no change of its own.
-`session.log_unlisted` names the case for a consumer that words it, and the
-rotation and `crate doctor` ask the same probe rather than their own.
+`scan_log` now asks `os.listdir` once (`session._listed`) and returns a log
+that is there and refused as the one entry of its unread half, so every gate
+refuses on it. A consumer that drops that half by its own policy drops the log
+with it, so the case is said where it is read: `session.records`, the
+reporting reader, refuses an unlisted log for every caller (restore list and
+run, session release, the native landing lookups behind sync mark), and
+`session.log_unlisted` names it for a consumer that words it instead (the
+rotation, the refill, the check's refusal, and doctor and status, which branch
+on their one scan). Grep the scan's callers for one that keeps only the parsed
+half before trusting an empty answer.
 
 ## How to test it here
 
