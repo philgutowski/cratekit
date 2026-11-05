@@ -32,7 +32,9 @@ from tests.test_config import valid_data
 
 ONE = "QZAAA2600001"
 TWO = "QZAAA2600002"
-DAY = isrc_cache.DAY_S
+#: A day in seconds, written out rather than read off the module, so a
+#: wrong day in the module is a failure here and not the same wrong day twice.
+DAY = 86_400
 SRC_ROOT = Path(isrc_cache.__file__).resolve().parents[2]
 
 
@@ -326,6 +328,15 @@ def test_an_answer_stamped_later_than_now_is_asked_again(clock):
     account(client, made).match_track(identity="1", isrc=ONE)
 
     assert client.asked == [ONE, ONE]
+
+
+def test_answers_kept_before_the_cache_was_turned_off_answer_nothing(clock):
+    account(Client({ONE: single()}), cache(clock)).match_track(identity="1", isrc=ONE)
+    off = Client({ONE: single()})
+
+    account(off, cache(clock, days=0)).match_track(identity="1", isrc=ONE)
+
+    assert off.asked == [ONE]
 
 
 def test_zero_days_asks_every_time_and_writes_nothing(clock, monkeypatch):

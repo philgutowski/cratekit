@@ -1,5 +1,5 @@
 ---
-title: The ISRC lookup's per attempt reset of its not found flag kills no test and guards a state the account cannot reach
+title: The per attempt reset of what an ISRC lookup said kills no test at either seam and guards a state neither can reach
 found: at the second review of #496, U206, 2026-11-05.
 issue: no
 ---
@@ -11,9 +11,14 @@ past is not read as the settling answer. But `_call` returns `_ABSENT` on the
 same attempt for every failure `isrc_cache.said_not_found` accepts, so no
 attempt that set the flag is ever retried past.
 
-**Measured cost.** None. Removing the reset passed all 57 tests in
-`tests/test_isrc_cache.py` (Fable round two), and row M15 of
-`docs/mutation/u206.md` measures the same zero.
+The catalogue's `answered.clear()` in `TidalCatalogue.tracks_for_isrc`
+(`src/cratekit/label/tidal_catalogue.py`) is the same shape: a not found returns
+the empty answer on the attempt that raised it, so no retried attempt follows
+one that appended.
 
-**Closes when:** the reset is removed with a comment saying why, or the account
+**Measured cost.** None. Removing the account's reset passed all 57 tests in
+`tests/test_isrc_cache.py` (Fable round two), and rows M15 and M19 of
+`docs/mutation/u206.md` measure zero over the full suite for both seams.
+
+**Closes when:** both resets are removed with a comment saying why, or a seam
 starts retrying past a said not found and a test drives it. Ledger only.
