@@ -111,12 +111,16 @@ def inside_a_refusal(later: Callable[[], Exception]) -> Exception:
     """``later``'s failure, raised while a rejected session's refusal is being handled.
 
     The shape ``core.cause._chain`` refuses to read context over: a handler
-    that caught a refusal and then met an unrelated failure.
+    that caught a refusal and then met an unrelated failure. The refusal is
+    raised from the 401 as the adapter's ``_call`` raises it, so the 401 is
+    reachable under it and only the walk's refusal limit keeps it out (round
+    one's review: raised bare, the limit could be removed with this green).
     """
-    refusal = account.provider_failure(client_failure(401, HTML), "heart the track 8")
+    rejected = client_failure(401, HTML)
+    refusal = account.provider_failure(rejected, "heart the track 8")
     assert refusal.cause.reason == "credential-missing"
     try:
-        raise refusal
+        raise refusal from rejected
     except CratekitError:
         return later()
 
@@ -306,4 +310,48 @@ def test_a_login_authentication_error_reached_only_as_context_is_a_wait(monkeypa
     login_with(monkeypatch, auth_error_as_context())
 
     with pytest.raises(provider_session.ProviderUnavailable):
+        provider_session.client_session()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. The walk itself
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_walk_reaches_every_link_once_with_the_declared_chain_first():
+    """Declared causes first and marked so; then context, and causes off it, once each."""
+    deepest = ValueError("deepest, the cause of a context")
+    handled = ValueError("handled, a context")
+    handled.__cause__ = deepest
+    inner = ValueError("inner, declared")
+    inner.__context__ = handled
+    outer = ValueError("outer, the failure")
+    outer.__cause__ = inner
+    outer.__context__ = inner
+
+    walked = list(provider_session.failure_links(outer))
+
+    assert [(str(link), declared) for link, declared in walked] == [
+        ("outer, the failure", True),
+        ("inner, declared", True),
+        ("handled, a context", False),
+        ("deepest, the cause of a context", False),
+    ]
+
+
+@pytest.mark.parametrize(("status", "body"), [pytest.param(401, HTML, id="401-html")])
+def test_a_rejection_whose_body_is_not_json_rewrapped_by_the_client_still_asks_for_a_login(
+    monkeypatch, status, body
+):
+    """The context to follow can hang off a declared cause, not only the failure itself."""
+    try:
+        raise RuntimeError("the client's own error") from client_failure(status, body)
+    except RuntimeError as exc:
+        wrapped = exc
+
+    assert account.provider_failure(wrapped, "heart the track 8").cause.reason == (
+        "credential-missing"
+    )
+    login_with(monkeypatch, wrapped)
+    with pytest.raises(provider_session.AdapterAuthFailed):
         provider_session.client_session()
