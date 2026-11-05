@@ -130,9 +130,9 @@ description = "cmd_plan: drop the refusal of a range crossing a version tag"
 file = "scripts/release.py"
 surface = "user"
 tests = ["tests/test_release.py"]
-old = '''        refuse_a_crossed_tag(runner, asked_since, tip)
+old = '''        tip_tag = refuse_a_crossed_tag(runner, asked_since, tip)
 '''
-new = '''        pass
+new = '''        tip_tag = None
 '''
 
 [[rows]]
@@ -141,9 +141,9 @@ description = "refuse_a_crossed_tag: count the tag at the tip as crossed, so eve
 file = "scripts/release.py"
 surface = "user"
 tests = ["tests/test_release.py"]
-old = '''        if parse_tag(name) and git(runner, "rev-parse", f"{name}^{{commit}}") != tip_sha:
+old = '''        if git(runner, "rev-parse", f"{name}^{{commit}}") != tip_sha:
 '''
-new = '''        if parse_tag(name):
+new = '''        if True:
 '''
 
 [[rows]]
@@ -183,11 +183,33 @@ new = '''    if getattr(args, "notes", False):
 
 [[rows]]
 id = "M17_notes_title_from_tip"
-description = "cmd_plan: title the notes with the proposed version even when --tip is a version tag"
+description = "cmd_plan: title the notes with the proposed version even when a version tag is at the tip"
 file = "scripts/release.py"
 surface = "user"
 tests = ["tests/test_release.py"]
-old = '''        tag = tip if parse_tag(tip) else f"v{nxt}"
+old = '''        tag = tip_tag or f"v{nxt}"
 '''
 new = '''        tag = f"v{nxt}"
+'''
+
+[[rows]]
+id = "M18_reversed_range"
+description = "refuse_a_crossed_tag: drop the refusal of a --since that is not behind --tip, so a reversed range reads as empty"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''    if runner(["git", "merge-base", "--is-ancestor", since, tip]).returncode != 0:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M19_claim_filter_lands"
+description = "landings_since: claim only landing subject takers, so a second merge on the line under GitHub's default subject is listed again"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        claimed.update(sha for sha in taking if lands(sha))
+'''
+new = '''        claimed.update(sha for sha in taking if LANDING_RE.match(by_sha[sha][0]))
 '''
