@@ -36,7 +36,7 @@ from typing import Any
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi
 
-from cratekit.acquire import listing, provider_session
+from cratekit.acquire import isrc_cache, listing, provider_session
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
@@ -245,10 +245,12 @@ def _credited_ids(release: Any) -> tuple[str, ...]:
 class TidalCatalogue:
     """The seven provider reads the ``Catalogue`` seam declares, over one logged in client."""
 
-    def __init__(self, session: Any) -> None:
+    def __init__(self, session: Any, *, cache: isrc_cache.Cache | None = None) -> None:
         self._session = session
         #: The count the last hearts listing published, None when it published none.
         self.hearts_declared: int | None = None
+        #: What the provider already answered for an ISRC (U206).
+        self._cache = cache if cache is not None else isrc_cache.Cache()
 
     def _artist_named(self, name: str) -> Any | None:
         """The one artist whose name folds to exactly ``name``, or ``None``.
@@ -629,6 +631,11 @@ class TidalCatalogue:
         and a rejected session among them, so reading it as "no track" would
         read an outage as an answer. A malformed code is the caller's to keep
         from asking, and ``intake.missing_cli`` checks the shape first.
+
+        AN ANSWER IS ASKED ONCE (U206). A track list, or the not found above,
+        is kept in the ISRC cache, and a later lookup of the same code in the
+        same country is answered from it with no call. Nothing the ladder
+        re-raises is kept.
         """
         wanted = str(isrc or "").strip()
         if not wanted:
@@ -638,17 +645,31 @@ class TidalCatalogue:
             # A client without the method cannot be asked, and waiting on the
             # ladder cannot grow one.
             raise LookupError("the provider client exposes no ISRC lookup")
+        country = isrc_cache.country_of(self._session)
+        held = self._cache.recall(wanted, country)
+        if held is not None:
+            return held
+        answered: list[tuple[Any, ...]] = []
 
         def attempt(limit: int, offset: int) -> tuple[Any, ...]:
             del limit, offset
+            answered.clear()
             try:
-                return tuple(lookup(wanted) or ())
+                found = lookup(wanted)
             except Exception as exc:
                 if _gone(exc):
+                    answered.append(())
                     return ()
                 raise
+            if isinstance(found, (list, tuple)):
+                answered.append(tuple(found))
+            return tuple(found or ())
 
-        return listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
+        isrc_cache.asked()
+        result = listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
+        if answered:
+            self._cache.remember(wanted, country, answered[-1])
+        return result
 
     def search_tracks(self, artist: str, title: str, offset: int = 0) -> tuple[Any, ...]:
         """One page of a track search for ``artist`` and ``title``, on the one retry ladder.
@@ -698,7 +719,10 @@ def open_catalogue(cfg: Any = None) -> TidalCatalogue:
     gate = provider_gate.Gate(
         provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
     )
-    return TidalCatalogue(provider_session.client_session(gate=gate))
+    return TidalCatalogue(
+        provider_session.client_session(gate=gate),
+        cache=isrc_cache.Cache.from_config(cfg),
+    )
 
 
 __all__ = [

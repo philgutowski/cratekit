@@ -409,3 +409,52 @@ def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(
     assert envelope["cause"]["reason"] == "intake-list-unusable"
     assert envelope["cause"]["detail"]["unlisted_tracks"][0]["artist"] == "Kite - Harbor"
     assert not lists_dir(library).exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U206: the shipped catalogue keeps an ISRC answer, so a second run asks nothing
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _CountingClient:
+    """A provider client the SHIPPED catalogue adapter asks, counting every ISRC."""
+
+    country_code = "GB"
+
+    def __init__(self, answers: dict[str, list[FakeTrack]]) -> None:
+        self.answers = answers
+        self.asked: list[str] = []
+
+    def get_tracks_by_isrc(self, code: str) -> list[FakeTrack]:
+        from tidalapi.exceptions import ObjectNotFound
+
+        self.asked.append(code)
+        if code not in self.answers:
+            raise ObjectNotFound()
+        return list(self.answers[code])
+
+
+def test_a_second_run_over_the_same_set_asks_the_provider_no_isrc_again(
+    cfg, library, recognised, monkeypatch  # noqa: F811
+):
+    from cratekit.cli import ISRC_LOOKUPS
+    from cratekit.label import tidal_catalogue
+
+    job_id = finished_set(library, recognised, monkeypatch, *three())
+    client = _CountingClient({ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]})
+    monkeypatch.setattr(
+        catalogue,
+        "resolve",
+        lambda cfg: tidal_catalogue.TidalCatalogue(client),
+    )
+    first = missing(job_id)
+    assert first[0] == int(ExitCode.OK), first[1]
+    assert sorted(client.asked) == [ONE, TWO]
+
+    again = missing(job_id)
+
+    assert again[0] == int(ExitCode.OK), again[1]
+    assert sorted(client.asked) == [ONE, TWO], "the second run asked the provider again"
+    assert again[1]["data"]["summary"] == first[1]["data"]["summary"]
+    said = [w["message"] for w in again[1]["warnings"] if w["code"] == ISRC_LOOKUPS]
+    assert said == ["2 ISRC lookups answered from the cache, 0 asked of the streaming provider"]
