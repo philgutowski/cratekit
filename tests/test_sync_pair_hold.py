@@ -464,3 +464,33 @@ def test_old_held_plans_are_pruned_and_the_new_one_kept(cfg):
     assert not held_plan.path("run-old").exists()
     assert held_plan.path("run-young").exists()
     assert held_plan.path("run-new").exists()
+
+
+def test_a_rekordbox_playlist_deleted_before_the_write_refuses_stale(world):
+    w = world(account=("1",), rekordbox=("1", "2"))
+    run_id = _to_the_write(w)
+    import sqlite3
+
+    conn = sqlite3.connect(w.cfg.library.db_path)
+    conn.execute("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", (w.rekordbox_id,))
+    conn.commit()
+    conn.close()
+    code, refused = drive(["--run", run_id, *w.args()])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert refused["cause"]["detail"]["moved"][0]["why"] == "is no longer a live plain playlist"
+    assert w.on_account() == ["t1"]
+
+
+def test_a_held_plan_older_than_it_is_kept_is_planned_again(world):
+    import os
+    import time
+
+    w = world(account=("1",), rekordbox=("1", "2"))
+    code, first = drive(w.args())
+    run_id = first["run_id"]
+    long_ago = time.time() - held_plan.KEEP.total_seconds() - 60
+    os.utime(held_plan.path(run_id), (long_ago, long_ago))
+    drive(["run", "decide", run_id, _gate(first), *APPLY])
+    code, second = drive(["--run", run_id, *w.args()])
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    assert "older than 30 days" in second["cause"]["detail"]["shown"]["planned again"]

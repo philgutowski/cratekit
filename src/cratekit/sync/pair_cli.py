@@ -2483,7 +2483,10 @@ class Moved:
         where = "the account playlist" if self.side == ACCOUNT_SIDE else "the rekordbox playlist"
         if self.side == "account-folder":
             where = "the account folder"
-        return f"{where} {self.name!r} ({self.playlist_id}) {self.why}"
+        named = f"{where} {self.name!r} ({self.playlist_id})" if self.playlist_id else (
+            f"{where} {self.name!r}"
+        )
+        return f"{named} {self.why}"
 
 
 def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
@@ -2493,8 +2496,12 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
     write this reads only the lists the write is merged from: each pair's
     rekordbox playlist membership in the database against what the plan read,
     each pair's account listing against what the plan read, its shortfall
-    included, and the folder a made account side goes in for a playlist of its
-    title. EVERY PAIR, whichever gate applied, because each side's writes were
+    included, the rows a pair adds still live, the folder a made account side
+    goes in still there and free of a playlist of its title, a made rekordbox
+    side's home still free (``pair_reverse.recheck``, read here so it stops
+    the sync before any pair is written), and a playlist the product pairs by
+    itself still where a pair is kept, or still not where a pair it let go
+    for that is kept. EVERY PAIR, whichever gate applied, because each side's writes were
     merged from both sides. It never matches a track and asks the provider
     nothing about one. Anything moved refuses ``decision-stale`` naming every
     list that moved, and nothing is written.
@@ -2553,6 +2560,18 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
             place = one.place
             assert place is not None
             if place.folder_id:
+                if root is None:
+                    root = dict(remote.folders())
+                if place.folder_id not in root:
+                    moved.append(
+                        Moved(
+                            "account-folder",
+                            place.folder_id,
+                            place.folder,
+                            "is no longer a root folder on the account",
+                        )
+                    )
+                    continue
                 if place.folder_id not in inside:
                     inside[place.folder_id] = dict(remote.folder_playlists(place.folder_id))
                 if place.title in inside[place.folder_id].values():
@@ -2576,12 +2595,31 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
                             "is now a root folder on the account, which the plan was to make",
                         )
                     )
+    from cratekit.core import active_taxonomy
+    from cratekit.favorites import placement
+    from cratekit.modules.outbound import pairs
+    from cratekit.sync import pair_discover, pair_reverse
+
+    favorites = placement.source_name(active_taxonomy.load(cfg))
+    skip = cfg.outbound.pair_skip_folders
+    document = pairs.PairStore(cfg)._document()
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
         for one in planned.pairs:
             if one.target.rekordbox_new:
+                # U202. THE HOME IT IS MADE AT, read now rather than at its
+                # turn in the write, so a name taken or a row gone since the
+                # plan stops the sync before any pair is written.
+                try:
+                    pair_reverse.recheck(db, one.home, one.change.order)
+                except CratekitError as exc:
+                    if exc.cause.reason != "decision-stale":
+                        raise
+                    moved.append(
+                        Moved(REKORDBOX_SIDE, "", one.home.where, _reworded(exc.cause.message))
+                    )
                 continue
             there = playlist_pair.read_playlist(db, one.target.rekordbox_id)
             if there is None or there.removed or not there.plain:
@@ -2593,7 +2631,8 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
                         "is no longer a live plain playlist",
                     )
                 )
-            elif there.memberships() != tuple(tuple(row) for row in one.rekordbox_before):
+                continue
+            if there.memberships() != tuple(tuple(row) for row in one.rekordbox_before):
                 moved.append(
                     Moved(
                         REKORDBOX_SIDE,
@@ -2604,6 +2643,52 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
                             [content for content, _row in there.memberships()],
                             rows=True,
                         ),
+                    )
+                )
+                continue
+            held = document.pairs.get(one.target.account_id)
+            if one.place is not None or (held is not None and held.made):
+                # A PLAYLIST THE PRODUCT PAIRS BY ITSELF IS KEPT ONLY WHERE
+                # DISCOVERY WOULD FIND IT (U198), which the plan read as so:
+                # one dragged under ARCHIVE since is let go by a plan made
+                # now, never written.
+                why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
+                if why:
+                    moved.append(
+                        Moved(
+                            REKORDBOX_SIDE,
+                            one.target.rekordbox_id,
+                            one.rekordbox_name,
+                            f"was moved since the plan and is now {why}",
+                        )
+                    )
+                    continue
+            gone = sorted(set(one.change.adds) - set(playlist_pair.content(db, one.change.adds)))
+            if gone:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,
+                        one.rekordbox_name,
+                        f"would gain {len(gone)} row(s) that are no longer live rows of the "
+                        f"collection",
+                    )
+                )
+        for lost in planned.unpaired:
+            if lost.gone != REKORDBOX_SIDE:
+                continue
+            # A MADE PAIR LET GO FOR ITS REKORDBOX SIDE is let go only while
+            # that side is still gone or still where no pair is kept.
+            there = playlist_pair.read_playlist(db, lost.rekordbox_id)
+            if there is None or there.removed or not there.plain:
+                continue
+            if not pair_discover.left_behind(db, there, favorites=favorites, skip=skip):
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        lost.rekordbox_id,
+                        lost.rekordbox_name or there.name,
+                        "is back where its pair is kept since the plan, which unpaired it",
                     )
                 )
     finally:
@@ -2620,6 +2705,12 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
             detail={"moved": [one.shown() for one in moved]},
         )
     return listed
+
+
+def _reworded(message: str) -> str:
+    """A recheck's refusal as a line of the check's own, without its closing advice."""
+    head = message.split("; sync the pairs again", 1)[0]
+    return head.replace(", so nothing was made", "")
 
 
 def _differs(before: Sequence[str], now: Sequence[str], *, rows: bool = False) -> str:
