@@ -1459,7 +1459,9 @@ store), never in the config file, and `crate doctor` reports which are recorded.
   tracks carry an ISRC, a track by its identifier) go under the app rather than
   under your account, so the account carries only its own playlists, hearts and
   downloads; the label crawl still reads through the account. With either one
-  missing, every lookup goes to the account as before. Register the app on the
+  missing, every lookup goes to the account as before; one recorded here and
+  since deleted from the keychain does the same, and the run's spend line says
+  so. Register the app on the
   developer platform, put each value in its own file only you can read, and run
   `crate login catalogue-app-id --from-file PATH` and
   `crate login catalogue-app-key --from-file PATH`. `crate doctor` says where

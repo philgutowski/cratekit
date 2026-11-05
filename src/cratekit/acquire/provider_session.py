@@ -341,8 +341,10 @@ def catalogue_client(account: Any, *, gate: provider_gate.Gate) -> Any | None:
     without the app (U205's review, round one). Refusing there would lock the
     person out of every verb that opens the account, and the product has no
     way to un-record a value, so the refusal would have no remedy short of
-    registering the app again. The run's spend line says where the lookups
-    went, so the fallback is never silent. A keychain that could not be READ
+    registering the app again. THE FALLBACK IS NEVER SILENT (round two): the
+    lost name is noted with ``provider_gate.note_app_lost``, and the run's spend
+    line says the value is recorded and missing, that the lookups went to the
+    account, and how to record it again. A keychain that could not be READ
     at all is still refused, see ``catalogue_api.unreadable``: that is a
     broken machine, not an absent value.
 
@@ -362,7 +364,8 @@ def catalogue_client(account: Any, *, gate: provider_gate.Gate) -> Any | None:
         return None
     try:
         client_id, client_key = (secrets.get(name) for name in names)
-    except secrets.CredentialMissing:
+    except secrets.CredentialMissing as exc:
+        provider_gate.note_app_lost(str(getattr(exc, "name", "") or names[0]))
         return None
     except secrets.CredentialError as exc:
         raise catalogue_api.unreadable(exc) from exc

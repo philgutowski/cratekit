@@ -1980,10 +1980,16 @@ def _check_catalogue(key: str, inputs: _Inputs) -> Finding:
             title=title,
             status=Status.OK,
             detail=(
-                f"recorded: {', '.join(str(n) for n in names)}. ISRC lookups and "
-                f"track reads go under Cratekit's app credentials, and the label "
-                f"crawl and every read or write of the account's own things stay "
-                f"on the account session; {counts}"
+                # WHAT THE INDEX CAN SAY AND NO MORE (round two): doctor never
+                # reads a value, so a value deleted from the keychain still reads
+                # as recorded here. A run that finds one missing says so in its
+                # spend line and asks the account.
+                f"recorded in this installation: {', '.join(str(n) for n in names)}. "
+                f"ISRC lookups and track reads go under Cratekit's app credentials "
+                f"whenever the keychain gives both values, and a run that finds one "
+                f"missing says so and asks the account; the label crawl and every "
+                f"read or write of the account's own things stay on the account "
+                f"session; {counts}"
             ),
         )
     return Finding(

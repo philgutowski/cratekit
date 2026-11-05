@@ -482,12 +482,21 @@ def _with_provider_spend(envelope: Envelope, before: provider_gate.Spend) -> Env
         else f"{spent.rate_limited} answered with a rate limit"
     )
     app = "none" if spent.app_calls == 0 else str(spent.app_calls)
+    lost = provider_gate.app_lost()
+    why = (
+        f". {' and '.join(lost)} {'is' if len(lost) == 1 else 'are'} recorded in this "
+        f"installation and missing from the keychain, so the catalogue lookups went "
+        f"to the account; record {'it' if len(lost) == 1 else 'them'} again with "
+        f"crate login NAME --from-file PATH"
+        if lost
+        else ""
+    )
     entry = {
         "code": PROVIDER_SPEND,
         "message": (
             f"{calls} to the streaming provider this run, {limited}; "
             f"{spent.account_calls} on the account and {app} under Cratekit's app "
-            f"credentials"
+            f"credentials{why}"
         ),
     }
     return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))

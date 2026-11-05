@@ -514,8 +514,15 @@ def unreadable(exc: secrets.CredentialError) -> CratekitError:
         f"Cratekit's app credentials are recorded and could not be read from the "
         f"keychain ({exc}), so the catalogue lookups that would go under them were "
         f"not asked of the account instead",
-        remedy=Remedy.SET_CREDENTIAL,
-        steps=(f"record them again: {LOGIN_STEPS}",),
+        # THE KEYCHAIN'S OWN REMEDY (round two): a backend that cannot be
+        # reached refuses a write as it refused this read, so recording the
+        # values again is the act only for a failure that says so.
+        remedy=Remedy(str(exc.remedy)),
+        steps=(
+            (f"record them again: {LOGIN_STEPS}",)
+            if exc.remedy is secrets.Remedy.SET_CREDENTIAL
+            else ()
+        ),
         scope=Scope.RUN,
         origin=("acquire", "catalogue_api"),
         detail={"credential": str(getattr(exc, "name", "") or CREDENTIALS[0])},

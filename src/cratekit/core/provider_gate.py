@@ -157,6 +157,13 @@ _PROCESS_RATE_LIMITED = 0
 _PROCESS_APP_CALLS = 0
 _PROCESS_APP_RATE_LIMITED = 0
 
+#: The app values this process found recorded in the installation's index and
+#: missing from the keychain, so its catalogue lookups went to the account
+#: (U205's review, round two). Read by the dispatcher's spend line, so a run
+#: that fell back says why none of its calls went under the app; cleared when
+#: a command's scope opens, so one verb's finding is not the next one's.
+_APP_LOST: list[str] = []
+
 
 @dataclass(frozen=True, slots=True)
 class GateSettings:
@@ -343,6 +350,7 @@ def command(calls: int | None = None) -> Iterator[Command]:
         yield _COMMAND
         return
     raised = calls if calls is not None else _raised_from_env()
+    _APP_LOST.clear()
     previous = os.environ.get(CALLS_ENV)
     if calls is not None:
         os.environ[CALLS_ENV] = str(calls)
@@ -853,6 +861,17 @@ def process_spend() -> Spend:
     )
 
 
+def note_app_lost(name: str) -> None:
+    """Say that a recorded app value was missing from the keychain this run."""
+    if name not in _APP_LOST:
+        _APP_LOST.append(name)
+
+
+def app_lost() -> tuple[str, ...]:
+    """The app values this run found recorded and missing, in the order found."""
+    return tuple(_APP_LOST)
+
+
 def read_spend(path: Path | None = None) -> Spend | None:
     """The running totals off the state file, or None when it cannot be read.
 
@@ -897,6 +916,7 @@ __all__ = [
     "LOCK_WAIT_S",
     "RATE_LIMIT_STATUS",
     "STATE_KEY",
+    "app_lost",
     "TRIP_AFTER",
     "Command",
     "Gate",
@@ -906,6 +926,7 @@ __all__ = [
     "command",
     "command_spent",
     "header_value",
+    "note_app_lost",
     "process_spend",
     "read_spend",
     "retry_after_seconds",

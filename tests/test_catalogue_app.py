@@ -225,6 +225,15 @@ def no_ladder_sleep(monkeypatch):
     monkeypatch.setattr(tidal_catalogue, "_pause", lambda seconds: None)
 
 
+@pytest.fixture(autouse=True)
+def no_lost_app_value_left_over():
+    """A lost value noted outside a command scope stays for the process, which
+    is one run in the product and many tests here, so each test starts clear."""
+    provider_gate._APP_LOST.clear()
+    yield
+    provider_gate._APP_LOST.clear()
+
+
 def record_app(*names: str) -> None:
     for name in names or [str(one) for one in catalogue_api.CREDENTIALS]:
         secrets.set(name, APP_ID if name.endswith("id") else APP_KEY)
@@ -511,7 +520,9 @@ def test_a_value_the_index_records_and_the_keychain_lost_is_absent_and_asks_the_
     monkeypatch.setattr(secrets, "get", lost)
 
     assert secrets.exists("catalogue-app-key") is True
-    assert provider_session.catalogue_client(account, gate=gate) is None
+    with provider_gate.command():
+        assert provider_session.catalogue_client(account, gate=gate) is None
+        assert provider_gate.app_lost() == ("catalogue-app-key",)
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=None)
     assert adapter_.match_track(identity="row-1", isrc=ISRC) == "101"
     assert transport.sent == []
@@ -532,7 +543,35 @@ def test_a_keychain_that_could_not_be_read_for_the_app_is_refused_not_read_as_ab
     with pytest.raises(CratekitError) as caught:
         provider_session.catalogue_client(AccountClient(), gate=gate)
     assert caught.value.cause.reason == "credential-missing"
-    assert caught.value.cause.remediation.remedy is Remedy.SET_CREDENTIAL
+    # The keychain's own remedy: recording again would meet the same backend.
+    assert caught.value.cause.remediation.remedy is Remedy.INSTALL_KEYCHAIN_BACKEND
+    assert not any("record them again" in step for step in caught.value.cause.remediation.steps)
+
+
+def test_a_lost_app_value_is_named_in_the_runs_spend_line(monkeypatch):
+    """Round two: the fallback to the account over a recorded value says so."""
+    spends = iter([Spend(), Spend(calls=3)])
+    monkeypatch.setattr(cli_package, "_provider_spend", lambda: next(spends))
+    envelope = Envelope(
+        schema="diagnostic/1", verb="doctor", run_id="r", outcome=Outcome.OK,
+        exit_code=ExitCode.OK, started="s", ended="e",
+    )
+    with provider_gate.command():
+        before = cli_package._provider_spend()
+        provider_gate.note_app_lost("catalogue-app-key")
+        provider_gate.note_app_lost("catalogue-app-key")
+        shown = cli_package._with_provider_spend(envelope, before)
+
+    message = shown.warnings[-1]["message"]
+    assert message.startswith(
+        "3 calls to the streaming provider this run, none answered with a rate limit; "
+        "3 on the account and none under Cratekit's app credentials. catalogue-app-key "
+        "is recorded in this installation and missing from the keychain, so the "
+        "catalogue lookups went to the account"
+    )
+    assert "crate login NAME --from-file PATH" in message
+    with provider_gate.command():
+        assert provider_gate.app_lost() == ()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -903,7 +942,8 @@ def test_doctor_with_both_recorded_shows_both_counts():
     )
 
     assert finding.status is doctor.Status.OK
-    assert "go under Cratekit's app credentials" in finding.detail
+    assert "recorded in this installation" in finding.detail
+    assert "whenever the keychain gives both values" in finding.detail
     assert "10 calls on the account and 20 under Cratekit's app credentials" in finding.detail
     assert "of which 2 and 1 were answered with a rate limit" in finding.detail
 
@@ -964,15 +1004,18 @@ def test_a_short_lived_token_keeps_half_its_life_rather_than_none(monkeypatch, g
     account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[token(lifetime)]))
     app._clock = clock
 
+    def tokens() -> int:
+        return sum(1 for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL)
+
     for _ in range(3):
         app.get_tracks_by_isrc(ISRC)
+    assert tokens() == 1
     clock.now += lifetime / 2 - 1
     app.get_tracks_by_isrc(ISRC)
+    assert tokens() == 1
     clock.now += 2
     app.get_tracks_by_isrc(ISRC)
-
-    tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
-    assert len(tokens) == 2
+    assert tokens() == 2
 
 
 def test_a_lifetime_that_is_a_flag_is_not_read_as_one_second(monkeypatch, gate, clock):
