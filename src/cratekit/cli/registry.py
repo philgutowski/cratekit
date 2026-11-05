@@ -1605,7 +1605,21 @@ ENTRIES: tuple[Entry, ...] = (
             "rekordbox.pins",
             "library.paths_resolved",
         ),
-        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
+        gates=(
+            GateSpec(
+                name="route.resort.apply",
+                options=("apply", "abort"),
+                prompt="Add these tracks to the routing tree?",
+                #: U219. EXPLICIT, for ``tag.retag.confirm``'s reason: the verb
+                #: queues, so the confirmed work runs in a detached child that
+                #: names the run the answer was recorded against. The plan is
+                #: every add, so the rehearsal rule has a digest to hold the
+                #: live run to, which sitting 61 found it did not have.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
     ),
     Entry(
         name="audit.coverage",

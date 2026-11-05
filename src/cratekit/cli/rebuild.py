@@ -240,7 +240,12 @@ def rebuild(ctx) -> Envelope:
                 remedy=Remedy.COMPLETE_PENDING_ACTION,
                 steps=("cut this tree over before rebuilding it",),
             )
-        items = tree_items(entries, tree_id)
+        declared = active_taxonomy.load(cfg)
+        if tree_id is not None:
+            # REFUSED AT THE QUEUE, NOT IN THE WORKER (U219). The engine refuses
+            # this tree too; saying so here queues nothing that can only fail.
+            engine.assert_derivable(declared, tree_id)
+        items = tuple(t for t in tree_items(entries, tree_id) if engine.derivable(declared, t))
         if not items:
             # NOT A REFUSAL. A library that has never flipped a tree is the state
             # every library is in until its first cutover, and nothing about it
@@ -248,14 +253,18 @@ def rebuild(ctx) -> Envelope:
             # claim: the driver walks it in one empty pass and transitions it
             # straight to succeeded, so the queue would carry a rebuild that
             # reports as done over a library nothing read.
+            native = tree_items(entries, None)
             return ctx.envelope(
                 data=_no_op(
-                    "no-native-tree",
+                    # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE
+                    # (U219), so the count is read and the state says which zero.
+                    "no-derivable-tree" if native else "no-native-tree",
                     trees=len(entries.tree_ids()),
-                    native=0,
+                    native=len(native),
                 ),
                 outcome=Outcome.NO_OP,
                 code=ExitCode.OK,
+                warnings=_left_alone(entries, declared, items),
             )
         job = jobs.enqueue(
             store,
@@ -264,7 +273,37 @@ def rebuild(ctx) -> Envelope:
             item_ids=items,
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job), outcome=Outcome.OK, code=ExitCode.OK)
+        return ctx.envelope(
+            data=_reported(store, job),
+            outcome=Outcome.OK,
+            code=ExitCode.OK,
+            warnings=_left_alone(entries, declared, items),
+        )
+
+
+def _left_alone(
+    entries: tree_registry.Registry, declared: Any, items: tuple[str, ...]
+) -> list[dict[str, str]]:
+    """The native trees this rebuild left alone because the taxonomy does not derive them (U219).
+
+    The intake tree is native on a library whose landings write it, and a
+    rebuild of it wrote the routing tree's genre folders under INBOX (R-789).
+    Named rather than dropped in silence, so a person reads that it was left
+    alone on purpose.
+    """
+    others = engine.other_declared_trees(declared)
+    skipped = [t for t in tree_items(entries, None) if t not in items and t in others]
+    if not skipped:
+        return []
+    named = ", ".join(f"{others[t]} ({t})" for t in skipped)
+    return [
+        {
+            "code": "tree-not-derived",
+            "message": f"left alone: {named}, which holds what the verbs that write "
+            f"it put there and not anything a tag decides, so no rebuild can "
+            f"reproduce it",
+        }
+    ]
 
 
 def handle(job, item, cfg) -> None:
