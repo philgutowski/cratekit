@@ -28,6 +28,15 @@ digests other than the digest held beside it. The caller compares that
 digest with the offers its run recorded and plans again on any reason, so a
 plan that cannot be held costs a plan, never a write the person did not see.
 
+**AND THE WRITE'S STEPS, AS EACH LANDS (U210).** A write over a hundred
+playlists can stop part way, on the call ceiling or anything else that parks
+it. :class:`Steps` records each step of each item the moment it lands, in a
+sibling file bound to the held plan's digest, so a continue of the run starts
+each item at its first unfinished step under the plan and the answers already
+given. Steps that cannot be read are no steps, and the reason is said: the
+continue then reads every list as the plan read it, so anything already
+written refuses stale rather than being written twice.
+
 Layer: core.
 """
 
@@ -223,11 +232,12 @@ def load(
 
 
 def release(run_id: str) -> None:
-    """Let go of a run's held plan, once the run has written or stopped."""
-    try:
-        path(run_id).unlink(missing_ok=True)
-    except OSError:
-        pass
+    """Let go of a run's held plan and its write's steps (U210), once the run has written or stopped."""
+    for one in (path(run_id), steps_path(run_id)):
+        try:
+            one.unlink(missing_ok=True)
+        except OSError:
+            pass
 
 
 def prune(*, keep: str = "", now: float | None = None) -> int:
@@ -240,7 +250,8 @@ def prune(*, keep: str = "", now: float | None = None) -> int:
     except OSError:
         return 0
     for one in found:
-        if one.stem == keep:
+        # A RUN'S STEPS ARE ITS PLAN'S (U210), so ``keep`` keeps both.
+        if one.name.split(".", 1)[0] == keep:
             continue
         try:
             if one.stat().st_mtime < cutoff:
@@ -251,16 +262,123 @@ def prune(*, keep: str = "", now: float | None = None) -> int:
     return removed
 
 
+# ---------------------------------------------------------------------------
+# The write's steps, recorded as each one lands (U210)
+# ---------------------------------------------------------------------------
+
+#: What a run's steps file is named by, beside its held plan.
+STEPS_SUFFIX = ".steps.json"
+
+#: The steps document's own schema version.
+STEPS_VERSION = 1
+
+
+def steps_path(run_id: str) -> Path:
+    """One run's steps, a sibling of its held plan."""
+    return config.state_path(STATE_KEY) / f"{run_id}{STEPS_SUFFIX}"
+
+
+class Steps:
+    """The steps one run's write has finished, by item and step (U210).
+
+    WHY. A write over a hundred playlists can stop part way, on the call
+    ceiling or anything else that parks it, and a continue of the run must
+    start each item at its first unfinished step rather than plan again. So
+    each step is recorded the moment it lands and before the next starts,
+    written whole and atomically, and a step whose record could not be
+    written stops the write: a step done and not recorded is read by the
+    continue as not done, which the check before the write refuses stale
+    rather than doing it twice.
+
+    ``digest`` is the held plan's, so steps recorded against one plan are
+    never read for another.
+    """
+
+    def __init__(
+        self, run_id: str, digest: str, done: Mapping[str, Mapping[str, Any]] | None = None
+    ) -> None:
+        self.run_id = run_id
+        self.digest = digest
+        self.done: dict[str, dict[str, Any]] = {
+            str(key): dict(value) for key, value in (done or {}).items()
+        }
+
+    def has(self, key: str, step: str) -> bool:
+        return step in self.done.get(key, {})
+
+    def get(self, key: str, step: str, default: Any = None) -> Any:
+        return self.done.get(key, {}).get(step, default)
+
+    def started(self) -> bool:
+        """Whether any step of any item was recorded."""
+        return any(self.done.values())
+
+    def keys_with(self, step: str) -> list[str]:
+        return sorted(key for key, value in self.done.items() if step in value)
+
+    def mark(self, key: str, step: str, value: Any = True) -> None:
+        """Record one step of one item. An ``OSError`` writing it is the caller's to refuse."""
+        self.done.setdefault(str(key), {})[step] = value
+        self._write()
+
+    def begin(self) -> None:
+        """Write the record before the first write, so an unwritable one refuses first."""
+        self._write()
+
+    def _write(self) -> None:
+        document = {
+            "version": STEPS_VERSION,
+            "run_id": self.run_id,
+            "digest": self.digest,
+            "steps": self.done,
+        }
+        payload = json.dumps(document, sort_keys=True, allow_nan=False).encode() + b"\n"
+        config.atomic_write_bytes(payload, steps_path(self.run_id))
+
+
+def load_steps(run_id: str, digest: str) -> tuple[Steps, str]:
+    """The steps recorded for ``run_id`` against the plan of ``digest``, and why none when unusable.
+
+    No file is no step yet, and says nothing. A file that cannot be read, of
+    another version or run, or recorded against another plan answers no steps
+    AND the reason, which the caller says: the continue then reads every list
+    as the plan read it, so anything already written refuses stale rather
+    than being written again.
+    """
+    fresh = Steps(run_id, digest)
+    where = steps_path(run_id)
+    try:
+        raw = json.loads(where.read_text())
+    except FileNotFoundError:
+        return fresh, ""
+    except (OSError, ValueError) as exc:
+        return fresh, f"the run's steps could not be read ({type(exc).__name__}: {exc})"
+    if not isinstance(raw, dict):
+        return fresh, "the run's steps are not a JSON object"
+    for key, wanted in (("version", STEPS_VERSION), ("run_id", run_id), ("digest", digest)):
+        if raw.get(key) != wanted:
+            return fresh, f"the run's steps record {key} {raw.get(key)!r}, not {wanted!r}"
+    done = raw.get("steps")
+    if not isinstance(done, dict) or not all(isinstance(one, dict) for one in done.values()):
+        return fresh, "the run's steps are not one record per item"
+    return Steps(run_id, digest, done), ""
+
+
 __all__ = [
     "KEEP",
     "STATE_KEY",
+    "STEPS_SUFFIX",
+    "STEPS_VERSION",
+    "Steps",
     "Unheld",
     "VERSION",
     "decode",
     "encode",
     "hold",
     "load",
+    "load_steps",
     "path",
     "prune",
     "release",
+    "steps_path",
 ]
