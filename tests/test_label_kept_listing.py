@@ -624,3 +624,24 @@ def test_a_search_that_fails_on_a_continue_is_counted_so_the_line_stays_true(ent
     roster = adapter(client).artist_for(entry)
     assert roster.kept.asked == 1
     assert "no listing call" not in roster.kept.said()
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "said"),
+    [("version", 2, "version 2"), ("label_id", "another-label", "another-label")],
+)
+def test_a_kept_listing_valid_but_for_its_version_or_label_refuses(entry, clock, field, value, said):
+    """The mutation table's zero rows K7 and K8: each check alone, on a document
+    that every other check accepts, since a document wrong twice hid either."""
+    budget = Budget()
+    adapter(roster_client(budget)).artist_for(entry)
+    path = kept_listing.path_for(entry.label_id)
+    document = json.loads(path.read_text())
+    document[field] = value
+    path.write_text(json.dumps(document))
+    spent = budget.calls
+    with pytest.raises(CratekitError) as refused:
+        adapter(roster_client(budget)).artist_for(entry)
+    assert refused.value.cause.reason == kept_listing.UNUSABLE
+    assert said in refused.value.cause.message
+    assert budget.calls == spent
