@@ -693,9 +693,12 @@ The account tracks a mirrored playlist held when `crate organize`'s account mirr
 last finished it, kept per playlist in the outbound ledger under `agreed` (U201).
 It is what tells an edit a person made on the account (held there now, not in the
 snapshot, or the reverse) from a change made in rekordbox, so the mirror holds the
-first and the rekordbox area's `mirror-edits` step takes it into the library. A
-playlist with no snapshot has never been agreed, and every difference on it is
-read as rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
+first and the rekordbox area's `mirror-edits` step takes it into the library,
+for a genre playlist (U201), the Favorites folder and an INBOX batch (U204). A
+track added on the account that the library lacks and no snapshot ever held is
+queued for download by the `mirror-downloads` step instead. A playlist with no
+snapshot has never been agreed, and every difference on it is read as
+rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
 side of a pair the author made.
 
 ### Rotation
