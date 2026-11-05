@@ -1250,6 +1250,87 @@ def test_a_row_naming_no_artist_is_the_readers_own_refusal(cfg, monkeypatch):
     assert "names no artist" in envelope["cause"]["message"]
 
 
+def test_a_row_titled_wholly_in_brackets_is_queued_under_its_words(cfg, library, monkeypatch):
+    """U213. ``[Premade Sandwiches]`` read as no title and refused the playlist."""
+    bind_playlist(
+        monkeypatch,
+        "pl-1",
+        [Track("101", "Aurora Bloom", "Sun Path"), Track("105", "Glass Animals", "[Premade Sandwiches]")],
+    )
+    code, queued = drive(["intake", "playlist", "pl-1"])
+    assert code == int(ExitCode.OK), queued
+    code, envelope = drive(["job", "show", queued["data"]["job_id"]])
+    assert [(row["item"], row["title"]) for row in envelope["data"]["progress"][cli_jobs.TRACKS_FIELD]] == [
+        ("101", "Sun Path"),
+        ("105", "Premade Sandwiches"),
+    ]
+
+
+def test_the_single_playlist_verb_still_refuses_a_row_naming_no_title(cfg, monkeypatch):
+    """U213. Where the playlist is all the verb was asked, the refusal is the answer."""
+    bind_playlist(monkeypatch, "pl-1", [Track("101", "Aurora Bloom", "Sun Path"), Track("102", "Nova Reef", "")])
+    code, envelope = drive(["intake", "playlist", "pl-1"])
+    assert envelope["cause"]["reason"] == "intake-list-unusable", envelope
+    assert "track 2 names no title" in envelope["cause"]["message"]
+    with jobs.open_store() as store:
+        assert jobs.list_jobs(store) == ()
+
+
+def _readable(tracks, *, declared=None):
+    fake = FakeCatalogue(playlists={"pl-1": FakePagedPlaylist(tracks, declared=declared)})
+    return intake_cli.list_playlist_readable(fake, "pl-1")
+
+
+def test_the_readable_listing_of_a_clean_playlist_is_the_declared_one():
+    tracks = [Track("101", "Aurora Bloom", "Sun Path", isrc="X1"), Track("102", "Nova Reef", "Tide")]
+    fake = FakeCatalogue(playlists={"pl-1": FakePagedPlaylist(tracks, declared=3)})
+    declared, short = intake_cli.list_playlist_declared(fake, "pl-1")
+    listing = _readable(tracks, declared=3)
+    assert listing.tracks == declared
+    assert listing.short == short and short is not None
+    assert listing.unread == {}
+    assert listing.order == ("101", "102")
+
+
+def test_the_readable_listing_sets_aside_a_refused_row_by_id_in_its_place():
+    listing = _readable(
+        [
+            Track("101", "Aurora Bloom", "Sun Path"),
+            Track("102", "Nova Reef", "", isrc="X2"),
+            Track("103", "", "Glass Hour"),
+            Track("101", "Aurora Bloom", "Sun Path"),
+            Track("102", "Nova Reef", ""),
+        ]
+    )
+    assert list(listing.tracks) == ["101"]
+    assert listing.order == ("101", "102", "103")
+    assert listing.unread == {
+        "102": intake_cli.Unreadable(
+            ref="102", artist="Nova Reef", title="", isrc="X2",
+            why="the account lists it with no title",
+        ),
+        "103": intake_cli.Unreadable(
+            ref="103", artist="", title="Glass Hour", isrc="",
+            why="the account lists it with no artist",
+        ),
+    }
+    assert listing.unread["102"].said() == {"artist": "Nova Reef", "title": "", "isrc": "X2"}
+
+
+def test_a_track_one_row_of_which_reads_is_read_and_not_set_aside():
+    listing = _readable([Track("102", "Nova Reef", ""), Track("102", "Nova Reef", "Tide")])
+    assert listing.tracks["102"]["title"] == "Tide"
+    assert listing.unread == {}
+    assert listing.order == ("102",)
+
+
+def test_the_readable_listing_still_refuses_a_row_carrying_no_id_by_position():
+    with pytest.raises(CratekitError) as refused:
+        _readable([Track("101", "Aurora Bloom", "Sun Path"), Track("", "Nova Reef", ""), Track("", "", "X")])
+    assert refused.value.cause.reason == "intake-list-unusable"
+    assert refused.value.cause.detail["positions"] == [2, 3]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # U70: the reserved reference ``favorites`` lists the account's hearts
 # ═══════════════════════════════════════════════════════════════════════════
