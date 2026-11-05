@@ -1140,7 +1140,10 @@ gives every downloaded set on the account its INSPIRATION playlist: each
 `DOWNLOADED` playlist in a `Downloaded Sets <year>` folder with no INSPIRATION
 playlist of its name (the account name without `DOWNLOADED `) gets one, holding
 the library tracks its account tracks match, in the set's order, with every
-track it could not match named under the set. Nothing is downloaded, a set with
+track it could not match named under the set. A track Tidal lists with no
+title or no artist does not hold its set back: it is named among the misses,
+by its id and why, and the set's other tracks are matched; a set none of whose
+tracks can be read is shown unread. Nothing is downloaded, a set with
 no match gets no playlist, and a set already in INSPIRATION is skipped, so a
 second run plans nothing. That write needs rekordbox closed. The account
 area builds a folder for every followed label that lacks one or a year, marks
