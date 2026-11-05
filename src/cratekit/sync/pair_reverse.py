@@ -110,8 +110,9 @@ def create(
     """Make the playlist at ``home`` holding ``rows`` in order, in one guarded commit.
 
     ``source`` is the stable identifier the session records the commit under.
-    ``on_commit`` is told the new playlist's identifier the moment the commit
-    lands, so a caller can pair it even when a later step fails. The playlist
+    ``on_commit`` is told the new playlist's identifier once the commit has
+    landed, whether ``commit_guarded`` returned or raised after the witness
+    saw it land, so a caller can pair it even when a later step fails. The playlist
     is read back after the commit; the caller checks it.
     """
     watched = [Path(root) for root in analysis_roots]
@@ -156,6 +157,11 @@ def create(
                 trees._rollback_quietly(db)
                 if witness.landed:
                     _record_commit(record, source, created=len(added) + 1, cfg=cfg)
+                    # A COMMIT THAT LANDED AND THEN RAISED still made the
+                    # playlist (U202, from the second review), so the caller
+                    # is told, as the session record is, by the witness.
+                    if on_commit is not None and playlist_id:
+                        on_commit(playlist_id)
                 raise
         _record_commit(record, source, created=len(added) + 1, cfg=cfg)
         convergence.record_fingerprint(cfg, db)

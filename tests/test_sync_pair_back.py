@@ -450,8 +450,10 @@ def test_a_failure_after_the_commit_still_pairs_the_playlist_made(world, cfg, gi
         raise OSError("the fingerprint could not be recorded")
 
     monkeypatch.setattr(convergence, "record_fingerprint", broken)
-    code, _envelope = sync()
+    code, envelope = sync()
     assert code != int(ExitCode.OK)
+    # The failure that happened is the one reported, raised once the pair is.
+    assert "the fingerprint could not be recorded" in envelope["cause"]["message"]
     made = in_rekordbox(world, gig)["Closer"]
     held = pairs.PairStore(cfg).get(closer)
     assert held is not None and held.rekordbox_id == made and held.made
@@ -565,3 +567,27 @@ def test_the_write_refuses_a_parent_gone_or_a_row_gone_since_the_plan(world, cfg
 def test_home_of_refuses_the_twins_folder(world):
     world.folder("Custom Playlists 2026")
     assert "twins" in _home(world, "Custom Playlists 2026", "Custom Playlists 2026 X")
+
+
+def test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist(world, cfg, gig, monkeypatch):
+    """From the second review: the binding's commit lands its SQL, then its own save raises."""
+    closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    real = rb_writer.commit_guarded
+
+    def lands_then_raises(db, *args, **kwargs):
+        real(db, *args, **kwargs)
+        raise IsADirectoryError("the legacy playlist file could not be saved")
+
+    monkeypatch.setattr(rb_writer, "commit_guarded", lands_then_raises)
+    code, envelope = sync()
+    assert code != int(ExitCode.OK)
+    assert "legacy playlist file" in envelope["cause"]["message"]
+    made = in_rekordbox(world, gig)["Closer"]
+    held = pairs.PairStore(cfg).get(closer)
+    assert held is not None and held.rekordbox_id == made and held.made
+    monkeypatch.setattr(rb_writer, "commit_guarded", real)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert list(in_rekordbox(world, gig)).count("Closer") == 1
+    assert not _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
+    assert not _items(envelope["data"], "discovery", pair_discover.TAKEN)
