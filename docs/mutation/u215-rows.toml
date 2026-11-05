@@ -1,0 +1,215 @@
+name = "u215"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_whole_range"
+description = "landings_since: walk only the first parent line, the defect U215 repairs"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''    commits = range_commits(runner, since, tip)
+'''
+new = '''    commits = range_commits(runner, since, tip, first_parent=True)
+'''
+
+[[rows]]
+id = "M2_main_sync_never_lands"
+description = "lands: drop the refusal of a merge of main into a local main, so a local pull is listed as a landing"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        if MAIN_SYNC_RE.match(subject):
+            return False
+'''
+new = '''        if False:
+            return False
+'''
+
+[[rows]]
+id = "M3_off_line_landing_subject"
+description = "lands: list only first parent merges, so a unit merge behind a local pull is dropped"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        return sha in first_line or bool(LANDING_RE.match(subject))
+'''
+new = '''        return sha in first_line
+'''
+
+[[rows]]
+id = "M4_off_line_any_merge"
+description = "lands: list every off line merge, so branch syncs are counted as landings"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        return sha in first_line or bool(LANDING_RE.match(subject))
+'''
+new = '''        return True
+'''
+
+[[rows]]
+id = "M5_head_in_range"
+description = "landings_since: consult the head's takers whether or not the head is in the range, round one's first BLOCKING finding"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''            if head_sha in by_sha
+            else []
+'''
+new = '''            if True
+            else []
+'''
+
+[[rows]]
+id = "M6_landing_taker_first"
+description = "landings_since: invert the taker preference, so a branch sync is chosen over the landing merge"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''                key=lambda sha: (not lands(sha), order[sha]),
+'''
+new = '''                key=lambda sha: (lands(sha), order[sha]),
+'''
+
+[[rows]]
+id = "M7_claim_every_landing_taker"
+description = "landings_since: claim only the commit a pull request landed at, so a local merge of the same head is listed again"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        claimed.update(sha for sha in taking if lands(sha))
+'''
+new = '''        claimed.update(())
+'''
+
+[[rows]]
+id = "M8_fast_forward_head"
+description = "landings_since: drop the fast forward fallback, so a pull request fast forwarded onto main is unlisted"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        elif head_sha in by_sha:
+            landed_at = head_sha
+'''
+new = '''        elif False:
+            landed_at = head_sha
+'''
+
+[[rows]]
+id = "M9_landing_re_residual"
+description = "LANDING_RE: drop the residual alternation, so merge(r-N) behind a local pull is dropped"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''LANDING_RE = re.compile(r"^merge\((?:u\d+|r-?\d+)[a-z0-9-]*\):", re.IGNORECASE)'''
+new = '''LANDING_RE = re.compile(r"^merge\((?:u\d+)[a-z0-9-]*\):", re.IGNORECASE)'''
+
+[[rows]]
+id = "M10_main_sync_re_bare"
+description = "MAIN_SYNC_RE: drop the bare Merge origin/main alternative"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''    r"|(?:[\w.-]+/)?main)(?: into main)?$"'''
+new = '''    r")(?: into main)?$"'''
+
+[[rows]]
+id = "M11_version_at_since"
+description = "cmd_plan: read the base version from the checkout, not from --since, round one's second BLOCKING finding"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        current = version_at(runner, asked_since)
+'''
+new = '''        current = read_versions(ROOT)[0]
+'''
+
+[[rows]]
+id = "M12_crossed_tag"
+description = "cmd_plan: drop the refusal of a range crossing a version tag"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        tip_tag = refuse_a_crossed_tag(runner, asked_since, tip)
+'''
+new = '''        tip_tag = None
+'''
+
+[[rows]]
+id = "M13_crossed_tag_tip_excluded"
+description = "refuse_a_crossed_tag: count the tag at the tip as crossed, so every rerun of a past release is refused"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        if git(runner, "rev-parse", f"{name}^{{commit}}") != tip_sha:
+'''
+new = '''        if True:
+'''
+
+[[rows]]
+id = "M14_tip_needs_since"
+description = "cmd_plan: drop the refusal of --tip without --since"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''    if tip and not asked_since:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M15_ref_names_a_commit"
+description = "gather: drop the check that --since and --tip name commits"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        if found.returncode != 0:
+            raise ReleaseError(f"{ref!r} names no commit here'''
+new = '''        if False:
+            raise ReleaseError(f"{ref!r} names no commit here'''
+
+[[rows]]
+id = "M16_notes_empty_range"
+description = "cmd_plan: print notes over an empty range instead of refusing"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''    if getattr(args, "notes", False):
+        if bump is None:
+'''
+new = '''    if getattr(args, "notes", False):
+        if False:
+'''
+
+[[rows]]
+id = "M17_notes_title_from_tip"
+description = "cmd_plan: title the notes with the proposed version even when a version tag is at the tip"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        tag = tip_tag or f"v{nxt}"
+'''
+new = '''        tag = f"v{nxt}"
+'''
+
+[[rows]]
+id = "M18_reversed_range"
+description = "refuse_a_crossed_tag: drop the refusal of a --since that is not behind --tip, so a reversed range reads as empty"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''    if runner(["git", "merge-base", "--is-ancestor", since, tip]).returncode != 0:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M19_claim_filter_lands"
+description = "landings_since: claim only landing subject takers, so a second merge on the line under GitHub's default subject is listed again"
+file = "scripts/release.py"
+surface = "user"
+tests = ["tests/test_release.py"]
+old = '''        claimed.update(sha for sha in taking if lands(sha))
+'''
+new = '''        claimed.update(sha for sha in taking if LANDING_RE.match(by_sha[sha][0]))
+'''

@@ -43192,3 +43192,178 @@ row as the twins backfill reads it (`intake_cli.list_playlist_readable`), a
 track the reader refuses kept by its id. Earns an issue under the board bar's
 (c): `crate sync pair` is the workflow that keeps every twin one list, and one
 track stops it for every pair.
+
+---
+
+## R-1265. A file an earlier pass staged lands under the later pass's name, so that pass's heart months and gate are not its own
+
+**Found:** at the build of #506, U212, 2026-11-05.
+
+**The mechanism.** `crate sync land` lands everything a landing would take
+from the download staging folder, with `--pass` naming the pass that ran it.
+Since U212 a later pass skips the tracks an unlanded earlier pass staged and
+lands them over that folder under its own pass name. The heart month filing
+(`account_playlists.hearted`) reads only the landing pass's hearts, so a
+staged file the earlier pass's hearts asked for, and the later pass's did not,
+is given no heart month there. The earlier pass's landing gate, never
+answered, is now stale: its folder changed.
+
+**Measured cost.** Not driven. The landing of every file staged was already
+the behaviour before this unit for any landing over that folder; U212 makes
+the path the normal one when an earlier gate is left open. Landing or
+abandoning old open gates is out of the card's scope.
+
+**Closes when:** a landing over a staging folder holding another pass's files
+names that pass's hearts too, or the old gate is answered or abandoned first.
+Ledger only.
+
+---
+
+## R-1266. A staged track is known by its ISRC alone, so a staged file with no ISRC tag is downloaded again
+
+**Found:** at the build of #506, U212, 2026-11-05.
+
+**The mechanism.** `intake missing` subtracts a missing row from the download
+list when a file in the download staging folder carries the row's ISRC, read
+by the index reader (`missing_cli._staged`). A row with no ISRC, or a staged
+file whose ISRC tag is absent, malformed or unreadable, matches nothing, so the
+track is listed and downloaded again, and at the name step `name apply` cannot
+call the collision a second copy either (`naming_cli.second_copy` reads the
+same tag). The provider id is not read: not in a staged file's name, which the
+downloader writes as `{track_id}` until `name apply` renames it, and not in the
+`URL` tag the vendored downloader writes when `metadata_write_url` is on.
+
+**Measured cost.** Not driven live. The downloader writes the Vorbis `isrc`
+comment on every file it delivers (R-355's note in `core/tags.py`), so the
+miss needs a provider row with no ISRC. In sitting 55 both copies carried one.
+
+**Closes when:** a sitting meets a staged file with no ISRC that a pass lists
+again, then the staged set also reads an identifier stem and the URL tag.
+Ledger only: the cost is the collision the unit started from, now with a
+plainer message.
+
+---
+
+## R-1267. A branch sync titled in the landing form off the first parent line is listed as a release landing
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `landings_since` in `scripts/release.py` lists a merge no
+pull request claimed when it is off the first parent line and its subject
+matches `LANDING_RE`, `merge(uN): ...` or `merge(r-N): ...`. A session that
+titled a merge of `main` into its own branch in that form, as three did before
+v0.2.0 (`merge(u52): main into relay/70 ...`, `merge(u132): main at e686759
+into the branch ...`, `merge(u142): U140 from main at cdd42fd ...`), has it
+counted as a unit landing.
+
+**Measured cost.** Driven by Fable over the real history: `plan --since
+<root> --tip v0.2.0` lists the three as minor landings. Zero such merges in any
+range since v0.2.0, so no range a release would cut again carries one, and the
+cloud unit pipeline titles its syncs with git's default or `merge: main into
+the branch`, which do not match. Notes and the bump are wrong only for a range
+nobody will cut.
+
+**Closes when:** the off line rule stops trusting the subject alone, for
+instance by following each local merge of `main`'s second parent first parent
+line instead. Ledger only.
+
+---
+
+## R-1268. A landing behind a local merge of main whose subject is not in the landing form, and that no pull request claims, is left out of a release
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** Off the first parent line, `landings_since` lists an
+unclaimed merge only under a `merge(uN): ...` or `merge(r-N): ...` subject,
+since every other off line merge in the history is a branch sync. A merge that
+reached `origin/main` under another subject, with no pull request whose merge
+commit or head claims it, and then went behind a local `Merge branch 'main' of
+...`, is not listed.
+
+**Measured cost.** Not produced. Over all of `origin/main`, the three local
+syncs ever made are on the first parent line, every landing since U158 has a
+pull request record whose merge commit is in the history (79 of 79), and the
+over a hundred off line merges without a landing subject are branch syncs.
+
+**Closes when:** the off line walk follows each local sync's second parent
+first parent line and reads it as a stretch of `main`, so a landing there is
+judged as one on the line is. Ledger only.
+
+---
+
+## R-1269. A version shaped tag on a side branch inside a release pair refuses plan over that pair, with advice that drops part of it
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `refuse_a_crossed_tag` in `scripts/release.py` refuses any
+`v*` tag reachable from `--tip` and not from `--since` that is not at the tip,
+including one on a side branch merged into the range. Its advice, `--since`
+that tag, would start the range at the branch point and drop what came before.
+
+**Measured cost.** Driven by the round two reviewer in a throwaway repository,
+v0.2.5 tagged on a feature branch commit then merged: `plan --since v0.2.0
+--tip v0.3.0` is refused. Not produced on the real repository, where all six
+tags sit on `main`'s release commits.
+
+**Closes when:** the scan counts only tags on the first parent line of the
+range, or the refusal names the side branch. Ledger only.
+
+---
+
+## R-1270. The order a release plan lists its landings in is not pinned by any test
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `range_commits` in `scripts/release.py` passes
+`--date-order`, so landings from both sides of a local merge of `main` come out
+in the order they were committed rather than one side after the other. Reverting
+it to git's default order kills no test in `tests/test_release.py`.
+
+**Measured cost.** None measured: the default order and `--date-order` agree
+over v0.6.0 to v0.7.0 and over the root to v0.2.0, so no real release lists
+differently. A future range whose clocks disagree could list out of merge order
+in its notes, which is cosmetic.
+
+**Closes when:** a test builds two landings on either side of a local merge
+with commit dates that differ from their topological order. Ledger only.
+
+---
+
+## R-1271. The release plan's default range starts at the highest version tag whatever line of history it is on
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `gather` in `scripts/release.py`, with no `--since`, takes
+the highest `vX.Y.Z` among every tag, and `plan` and `cut` read the range from
+it. U215 added a crossed tag and reversed range refusal on the `--since` path
+only. A version tag on a commit `main` never reached starts the default range
+there.
+
+**Measured cost.** Driven by the round two reviewer in a throwaway repository,
+v0.9.0 tagged on an abandoned branch: `plan` prints `current version 0.2.0,
+last tag v0.9.0`, lists one of two units on `main` and proposes a version
+below an existing tag, with no refusal. Not produced on the real repository:
+`cut` refuses off `main`, and origin carries six tags, every one on a `main`
+release commit.
+
+**Closes when:** the default range takes the highest version tag merged into
+`HEAD` (`git tag --merged HEAD`), or refuses one that is not. Ledger only.
+
+---
+
+## R-1272. No test tells the version written at a release plan's --since from the version its tag name spells
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `cmd_plan --since` reads the base version with `version_at`,
+the `pyproject.toml` version at that commit. Reading it from the tag's name
+instead, `dotted(parse_tag(since))`, passes all of `tests/test_release.py`,
+because every fixture tag, like every real one, names the version written at
+its commit.
+
+**Measured cost.** None: the two readings agree on all six real tags, so no
+range produces a difference. Sharper mutations of `version_at` die. The test
+that names this behaviour cannot tell the two apart.
+
+**Closes when:** a test tags a commit whose `pyproject.toml` version differs
+from the tag name, if that shape is ever wanted. Ledger only.

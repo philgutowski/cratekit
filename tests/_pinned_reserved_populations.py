@@ -638,6 +638,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'config-unusable',
         'decision-required',
         'internal-error',
+        # 2026-11-05, U212: the name step's refusal it reads for a second copy.
+        'rename-incomplete',
         'source-missing',
     ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
@@ -2203,6 +2205,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     'cli/tail.py': [
         'backup-acknowledgment-missing',
         'decision-required',
+        'rename-incomplete',  # 2026-11-05, U212: read for a second copy.
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
@@ -2301,6 +2304,7 @@ PINNED_NAMED_WITH_OWN = {
     'cli/tail.py': [
         'backup-acknowledgment-missing',
         'decision-required',
+        'rename-incomplete',  # 2026-11-05, U212: read for a second copy.
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
@@ -2517,6 +2521,7 @@ PINNED_LITERAL_HOLDERS = {
         'config-unusable',
         'decision-required',
         'internal-error',
+        'rename-incomplete',  # 2026-11-05, U212: read for a second copy.
         'source-missing',
     ],
     'acquire/adapter.py': [
