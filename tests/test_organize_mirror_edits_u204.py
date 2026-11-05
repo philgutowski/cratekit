@@ -903,3 +903,39 @@ def test_a_finished_download_that_never_lands_is_never_said_to_await_one(
         assert "awaiting" not in named["why"]
     assert len(_queued(world.cfg)) == 1
     assert world.held("Tech House Med") == ["r3"]
+
+
+def test_a_playlist_of_another_name_in_the_favorites_folder_is_mirrored_one_way(world):
+    """Mutation row O1: only All Favorites and a filing playlist are read as edits."""
+    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
+    try:
+        handle.create_playlist("Warmup", parent=handle.get_playlist(ID=world.favorites))
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    world.run_all()
+    world.put_in("Favorites Warmup", "r2")
+
+    _area, step, _queue = world.run_all()
+
+    assert step.state == NOTHING and step.items == []
+    assert world.held("Favorites Warmup") == []
+
+
+def test_a_month_the_placement_did_not_make_is_refused_at_the_read_back(world, monkeypatch):
+    """Mutation row O8: the favourite's month is read back as well as All Favorites."""
+    from cratekit.favorites import placement
+
+    real = placement.place
+
+    def no_month(db, home, pairs, **kwargs):
+        return real(db, home, [(content_id, None) for content_id, _month in pairs], **kwargs)
+
+    monkeypatch.setattr(placement, "place", no_month)
+    world.put_in(SOURCE, "r2", at="2026-09-14T10:00:00+00:00")
+    _area, step, _queue, _shared = world.plan_all()
+
+    with pytest.raises(CratekitError) as caught:
+        step.apply()
+
+    assert caught.value.cause.reason == "session-committed-unverified"

@@ -620,3 +620,17 @@ def test_a_month_move_leaves_the_month_it_was_taken_off():
         ("Favorites", "Favorites 2026-10", False),
         ("Favorites", "Favorites 2026-11", True),
     }
+
+
+def test_an_unfavourite_rekordbox_made_in_all_favorites_alone_is_still_carried():
+    """Mutation row P7: rekordbox took it off All Favorites and kept its month, so not agreed."""
+    one = only(
+        edits.decide(
+            [
+                held(AF, agreed=("t1",)),
+                held(OCT, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            ],
+            OWNED,
+        )
+    )
+    assert one.outcome == edits.UNFAVOURITE
