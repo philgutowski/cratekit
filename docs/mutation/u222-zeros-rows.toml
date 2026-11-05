@@ -1,0 +1,39 @@
+name = "u222-zeros"
+pass_kind = "light"
+
+[[rows]]
+id = "M4_freeze_recorded_after"
+description = "_record: freeze the ledger after the gate's own plan time record, not the snapshot the plan read"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            recorded=reading.recorded,'''
+new = '''            recorded=ledger.mirror_folders(cfg),'''
+
+[[rows]]
+id = "M5_agreed_none_lost"
+description = "_agreed_json: freeze a never agreed snapshot as an empty one"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            title: [one.remote_id, None if one.agreed is None else sorted(one.agreed)]'''
+new = '''            title: [one.remote_id, sorted(one.agreed or ())]'''
+
+[[rows]]
+id = "M18_label_no_folder"
+description = "_label: read no folder line, so a folder that moved is never named"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''    for key in ("playlist", "folder"):'''
+new = '''    for key in ("playlist",):'''
+
+[[rows]]
+id = "M24_cli_any_code_reworded"
+description = "_ask: reword any refusal of a decided area, whatever its code"
+file = "src/cratekit/organize/cli.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''        if exc.cause.code != ExitCode.DECISION_STALE or not area.stale:'''
+new = '''        if not area.stale:'''
+

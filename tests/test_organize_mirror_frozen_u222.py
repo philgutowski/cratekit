@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import json
 
+from cratekit.cli.output import digest_of
 from cratekit.core import active_taxonomy, config, rb_writer, tree_registry
 from cratekit.modules.outbound import ledger
 from cratekit.organize import account_mirror, mirror_edits, mirror_frozen
@@ -276,6 +277,29 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
     ]
 
 
+def test_a_label_step_that_moved_is_named_by_its_folder_line():
+    """A label step's gate line carries a folder and no playlist; it is named by it."""
+
+    class One:
+        def __init__(self, items):
+            self.key, self.title, self.items = "label:Ilian Tape", "sync the label Ilian Tape", items
+
+        def identity(self):
+            return [self.key, "planned", digest_of(self.items)]
+
+    then = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2024"]}])
+    frozen = mirror_frozen.Frozen(
+        library=None,
+        matches={},
+        steps={then.key: mirror_frozen.Shown(**mirror_frozen._shown_json(then))},
+    )
+    now = One([{"label": "Ilian Tape", "folder": "Ilian Tape: Labels", "year playlists": ["2025"]}])
+
+    assert mirror_frozen.moved([now], frozen) == [
+        "sync the label Ilian Tape, in 'Ilian Tape: Labels'"
+    ]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. The frozen snapshot itself
 # ═══════════════════════════════════════════════════════════════════════════
@@ -328,6 +352,28 @@ def test_a_playlist_made_again_between_the_acts_reads_its_snapshot_now():
     assert mirror_frozen.overlay(recorded, frozen)["INBOX"].playlists["kept"].agreed is None
     # Every other field is the ledger's now.
     assert read["INBOX"].playlists["kept"].remote_id == "p1"
+
+
+def test_a_never_agreed_snapshot_is_frozen_and_read_back_as_never_agreed(world):
+    """None is no snapshot yet and an empty set is one agreed empty; the file keeps them apart."""
+    _gate(world)
+    gated, _said = mirror_frozen.load(world.cfg, GATE)
+    recorded = {
+        "INBOX": ledger.MirrorFolder(
+            name="INBOX",
+            playlists={
+                "new": ledger.MirrorPlaylist(name="new", remote_id="p4", agreed=None),
+                "emptied": ledger.MirrorPlaylist(name="emptied", remote_id="p5", agreed=frozenset()),
+            },
+        )
+    }
+    other = "2026-11-05T20:30:00Z-0001"
+    mirror_frozen.freeze(world.cfg, other, gated.library, gated.matches, recorded=recorded)
+    frozen, said = mirror_frozen.load(world.cfg, other)
+
+    assert frozen is not None, said
+    assert frozen.agreed["INBOX"]["new"] == ("p4", None)
+    assert frozen.agreed["INBOX"]["emptied"] == ("p5", frozenset())
 
 
 def test_a_version_5_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(world):
