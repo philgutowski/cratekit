@@ -809,11 +809,12 @@ def rekordbox_processes_running() -> str:
         except processes.AbsenceUnconfirmed as exc:
             unconfirmed = unconfirmed or exc
     if unconfirmed is not None:
-        # ONE ANSWER WITH ``core.processes`` (U211, from the review). A probe
-        # that could not confirm its own name still reports what the scan did
-        # read, so a rekordbox process read beside an unreadable one is
-        # running, which is established, and only a scan that read none of
-        # them leaves the absence unknown.
+        # ONE ANSWER WITH ``core.processes`` (U211, from the review). Each
+        # probe is asked in its own try, so a name another probe read is
+        # still answered as running, which is established, and only a scan
+        # that read none of them leaves the absence unknown. The names in
+        # ``read`` are a second source for the one case the suite cannot
+        # produce, pyrekordbox answering no for a name the careful scan read.
         read = {processes.executable_stem(found) for _pid, found in unconfirmed.read}
         running = [name for name in processes.REKORDBOX_PROCESSES if name in running or name in read]
         if not running:

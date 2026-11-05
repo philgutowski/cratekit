@@ -7,12 +7,13 @@ issue: no
 **The mechanism.** `session/restore_cli._absence_unconfirmed` ends the scan's
 refusal on the rerun step every database half failure carries ("remove
 master.db and any companion if one is there"), and the dispatcher keeps the
-run and puts the continue command first. A process that turns unreadable
-between the session's own scan and the database half shows four steps, two of
-which say how to go on.
+run and puts the continue command in place of the scan's first step. A
+process that turns unreadable between the session's own scan and the database
+half shows three steps, two of which say how to go on.
 
 **Measured cost.** Driven by the round one review: mirror landed, database not
-attempted, detail `half=database, completed_halves=[mirror]`, four steps.
+attempted, detail `half=database, completed_halves=[mirror]`, four steps on the head
+round one read, three after the fix round, as round two measured.
 Nothing is false, since the remove step is conditional and nothing landed; the
 list is longer than it needs to be.
 

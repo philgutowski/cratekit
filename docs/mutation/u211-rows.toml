@@ -181,8 +181,10 @@ description = "dispatcher: a refusal under the unconfirmed cause is not kept, so
 file = "src/cratekit/cli/__init__.py"
 surface = "user"
 tests = ["tests/test_process_scan.py", "tests/test_cli_contract.py", "tests/test_job_outcome.py", "tests/test_run_decide_continue.py"]
-old = '''        kept = cause.reason in gates.KEPT_RUN_REASONS and not parked'''
-new = '''        kept = False'''
+old = '''            isinstance(exc, processes.AbsenceUnconfirmed)
+            and cause.reason in gates.KEPT_RUN_REASONS'''
+new = '''            False
+            and cause.reason in gates.KEPT_RUN_REASONS'''
 
 [[rows]]
 id = "D2_continue_step_named"
@@ -229,15 +231,15 @@ new = '''    except LookupError as exc:
         # NO COPY OVER AN ABSENCE NOBODY CONFIRMED (U211), said as unknown and'''
 
 [[rows]]
-id = "S1_setup_notes_it"
-description = "setup prefix map: let the unconfirmed refusal escape the wizard instead of noting it"
-file = "src/cratekit/cli/setup.py"
+id = "D4_only_the_scans_own_refusal_is_kept"
+description = "dispatcher: keep the run of any refusal carrying the reason, a backup job's summary included, so its printed continue command refuses forever"
+file = "src/cratekit/cli/__init__.py"
 surface = "user"
-tests = ["tests/test_paths_resolved.py", "tests/test_setup.py"]
-old = '''    except processes.AbsenceUnconfirmed as exc:
-        # U211, the same answer as rekordbox running, said as unknown.'''
-new = '''    except LookupError as exc:
-        # U211, the same answer as rekordbox running, said as unknown.'''
+tests = ["tests/test_process_scan.py", "tests/test_process_scan_jobs.py", "tests/test_backup_cli.py"]
+old = '''            isinstance(exc, processes.AbsenceUnconfirmed)
+            and cause.reason in gates.KEPT_RUN_REASONS'''
+new = '''            True
+            and cause.reason in gates.KEPT_RUN_REASONS'''
 
 [[rows]]
 id = "R1_restore_says_what_the_mirror_left"
@@ -251,13 +253,15 @@ old = '''                        raise _absence_unconfirmed(
 new = '''                        raise'''
 
 [[rows]]
-id = "W7_writer_reads_what_the_scan_read"
-description = "rekordbox_processes_running in the writer: a probe that could not confirm drops the names the scan did read, so a read agent beside an unreadable process is refused as unconfirmed"
+id = "W7_writer_unconfirmed_with_nothing_read"
+description = "rekordbox_processes_running in the writer: a probe that could not confirm, with no rekordbox process read at all, answers clear instead of refusing"
 file = "src/cratekit/core/rb_writer.py"
 surface = "user"
 tests = ["tests/test_process_scan.py", "tests/test_process_guard.py", "tests/test_rb_writer_guard.py"]
-old = '''        running = [name for name in processes.REKORDBOX_PROCESSES if name in running or name in read]'''
-new = '''        running = [name for name in processes.REKORDBOX_PROCESSES if name in running]'''
+old = '''        if not running:
+            raise unconfirmed'''
+new = '''        if False:
+            raise unconfirmed'''
 
 [[rows]]
 id = "B1_backup_database_portion_refuses_alone"
@@ -284,3 +288,8 @@ reason = "ranked below the cap after the fix round added W7 and B1: maintainer f
 id = "W6_probe_put_back"
 description = "_binding_probe: leave the wrapper installed on the binding after the block"
 reason = "ranked below the cap: maintainer facing, and test_the_binding_probe_is_put_back_after_a_refusal pins it directly"
+
+[[dropped]]
+id = "S1_setup_notes_it"
+description = "setup prefix map: let the unconfirmed refusal escape the wizard instead of noting it"
+reason = "ranked below the cap after fix round two added D4: the same catch shape as C2, which is measured, and round one's review killed it on a scratch copy (its row m13)"

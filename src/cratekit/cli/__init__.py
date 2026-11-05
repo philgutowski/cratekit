@@ -47,7 +47,7 @@ from cratekit import __version__
 from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.registry import Entry
-from cratekit.core import config, profiles, provider_gate
+from cratekit.core import config, processes, profiles, provider_gate
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -806,8 +806,16 @@ def _dispatched_in_scope(
         parked = isinstance(exc, JobBlocked) or ceiling_stop
         # A REFUSAL THAT KEEPS ITS RUN (U211). Raised before the step it
         # guards and clearing on its own, so the run is saved with its answers
-        # and the cause names the command that continues it.
-        kept = cause.reason in gates.KEPT_RUN_REASONS and not parked
+        # and the cause names the command that continues it. ONLY THE SCAN'S
+        # OWN REFUSAL, by its type (from review round two): a job that records
+        # the same reason on a failed item and summarises it on the job's
+        # cause cannot be continued by running the verb again, so that keeps
+        # the job's own verdict and its honest step.
+        kept = (
+            isinstance(exc, processes.AbsenceUnconfirmed)
+            and cause.reason in gates.KEPT_RUN_REASONS
+            and not parked
+        )
         if kept and state is not None:
             cause = _with_run_continue(cause, state)
         resumable = (cause.code in gates.GATE_CODES or kept) and not parked
