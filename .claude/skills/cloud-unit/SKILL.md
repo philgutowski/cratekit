@@ -28,8 +28,10 @@ record it as a residual file, and keep going.
 - GitHub GraphQL is refused here. `gh issue`, `gh repo`, `gh project` and
   `gh api --paginate` all fail; `gh api` on `repos/<owner>/<repo>/...` works
   for reads, comments, issue creation and body edits, and the GitHub MCP tools
-  work for issues and comments. Deleting a remote branch is refused, so a
-  pushed `cloud/` branch stays after its merge; that is expected.
+  work for issues and comments. Deleting a remote branch is refused, so the
+  repository's "Automatically delete head branches" setting removes a merged
+  pull request's branch; one that survives its merge is listed in the record
+  for Phillip's next local session.
 - `scripts/board.py cloud` is the queue, `board.py show N` the brief,
   `board.py closing --since origin/main` the closing check,
   `board.py residuals --land` the numbering, and `board.py audit --labels-only`
@@ -147,8 +149,8 @@ action `set`, `url` the page above, `collection` `decisions`, `doc_id`
 The recommendation is the option at index `recommended`, and the page shows
 it first and marked. Give two to four options; the page adds its own
 "something else". Write the context so the question can be answered without
-opening the card. Then end the card's comment with a line linking the page,
-and if the `PushNotification` tool is available, send one short notification
+opening the card. The filing project then ends a comment on the card with a
+line linking the page, and if the `PushNotification` tool is available, send one short notification
 naming the card and that a decision waits on the page. Never mark a document
 answered or relayed yourself.
 
@@ -159,8 +161,8 @@ decisions page answers to cards", called the relay thread here, every hour
 at 34 minutes past. It posts each answered document on its card under
 `Answer from Phillip`, or sends it to the document's `asked_session` when it
 names no card, sets the document's `status` to `relayed` with `relayed_at`
-and `relayed_note`, and tells the coordinator, which starts a thread on the
-card. `board.py cloud` reads that heading as his reply whoever posts it, and
+and `relayed_note`, and tells the building project's coordinator, which
+starts a thread on the card if none of its threads is still building it. `board.py cloud` reads that heading as his reply whoever posts it, and
 offers the card as `answered`. The coordinator's own hourly wake fills free
 lanes only and never reads the page.
 
@@ -170,8 +172,9 @@ and no project session can watch one. So while any answer is saved but not
 relayed, the page shows a "Pass on your answers" box holding a ready prompt
 that lists each one (card, question, answer, note and decision id), with a
 button that copies the prompt and opens the Cratekit project chat in a new
-window, and a button that only copies it. Phillip pastes it into the chat,
-the coordinator messages the relay thread, and the thread relays at once.
+window, and a button that only copies it. Phillip pastes it into that
+project's chat, its Claude messages the relay thread, and the thread relays
+at once.
 Without the paste an answer waits for the hourly check.
 
 ## 1. Orient
@@ -184,8 +187,12 @@ cloud's lanes are held (five by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
 as long as the queue lists it as takeable; the coordinator chose it so that
 parallel threads never pick the same card. Otherwise take the one the queue
-names, passing over any card held on a `grok/` branch, which belongs to
-another builder (METHOD's Sharing the board section). If every lane is held, or nothing is takeable, say so in one line,
+names, passing over any card held by the `grok/` builder, which belongs to
+another builder (METHOD's Sharing the board section). `board.py cloud` cannot
+see that builder's hold, since its comments carry no session footer, so
+before posting `Started` look for a `grok/` branch naming the card's number
+(`git ls-remote --heads origin 'grok/*'`) and a comment of that builder's on
+the card. If every lane is held, or nothing is takeable, say so in one line,
 tell the coordinator (above), and stop.
 
 **Post `Started` on the card at once**, before reading anything else, so the
@@ -196,8 +203,11 @@ held first, and if yours is not among them, post `Withdrawn` on your card and
 stop. A `Brainstorm` or `Needs the machine` posted later replaces the hold.
 Take the card in its state:
 
-- `answered`: Phillip replied to a brainstorm or a question. Fold his answer
-  into the brief (step 2's brainstorm paragraph) and go to step 3.
+- `answered`: Phillip replied to a brainstorm or a question. A question does
+  not stop its thread, so if a `Progress` comment or a pushed `cloud/N-...`
+  commit is newer than the question and under eight hours old, the card is
+  still that thread's: pass over it. Otherwise fold his answer into the brief
+  (step 2's brainstorm paragraph) and go to step 3.
 - `resume`: a session holding it died. Post `Resumed` rather than
   `Started`, then check out `origin/cloud/N-...` if it exists and read its
   log against the card's comments to see how far it got; otherwise start
@@ -229,8 +239,9 @@ verification, or reads as an idea rather than a specification, or carries the
 name what already does part of the job, give two or three approaches each
 with its cost and main risk, recommend one, and ask at most four questions,
 each a multiple choice with your recommendation first, so Phillip can answer
-in a word each. Put the same questions on the decisions page, as "Asking
-Phillip" below says. Then take the next card. When the card comes back
+in a word each, in the form "Asking Phillip" below gives. The thread never
+writes the decisions page; the filing project copies the questions there.
+Then take the next card. When the card comes back
 `answered`, rewrite the brief with his answers folded in
 (`gh api -X PATCH repos/<owner>/<repo>/issues/N -F body=@brief.md`), keeping
 the `**Depends on:**` line first and every field the brief form has.
@@ -441,7 +452,7 @@ For each live check the record's OWED paragraph names (a run on the live
 library, the account, rekordbox, or the macOS battery), file one attended card
 for Phillip's Mac, titled `A<N>: <the check>` with N one past the highest `A`
 title on the board, read just before filing because parallel threads file
-them (two A93 cards exist, #525 and #528), labelled `attended` and nothing else, with a body opening
+them, labelled `attended` and nothing else, with a body opening
 `**Depends on:** #<the release card or this card>` and saying what to run and
 when it is done. The attended work section of `docs/METHOD-local.md` is the
 form.

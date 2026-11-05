@@ -13,8 +13,13 @@ the build: the thread makes the conservative call and keeps going, posting
 the queue prints one lane fewer held than there are threads building, and a
 session reading the queue alone would start a thread the cap has no room for.
 
-**Measured cost.** Read from the code, not driven on the board. No user of
-the shipped verbs pays: the building project's coordinator counts lanes by
+**Measured cost.** Driven on the live board on 2026-11-05: four threads
+held #526, #532, #533 and #536, #533 having posted a question while it kept
+building, and `board.py cloud` printed `Held, 3 of 5` and offered #537. The
+same reader also reads such a card `answered` once Phillip's answer lands,
+while its thread is still building, and step 1 of the cloud-unit skill would
+hand it to a second thread; the skill now says to pass over an `answered`
+card whose thread is still writing. No user of the shipped verbs pays: the building project's coordinator counts lanes by
 its own running threads (METHOD's cloud lane section, written by U218), and
 `CLOUD_LANES` is five against the building project's cap of four, so one
 uncounted question still leaves the cap within the lane count.
