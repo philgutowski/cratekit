@@ -309,7 +309,7 @@ def test_a_heading_whose_words_differ_is_still_a_hold(board):
     node = _node(board, _issue(1, "U1: a"))
     for first_line in (
         "**Brainstorms**", "**Brainstorm notes**", "**Brainstorms.**", "Brainstorm notes.",
-        "**Brainstorm**s", "Question.", "**Pre brainstorm.**",
+        "**Brainstorm**s", "Question.", "**Pre brainstorm.**", "Not **Withdrawn**, held",
     ):
         assert board.comment_heading(first_line) not in _known_headings(board), first_line
         assert board.cloud_state(node, [_mine_as_written(first_line, 1)])[0] == "underway", first_line
