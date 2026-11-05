@@ -251,6 +251,11 @@ class _Member:
         self._object: Any = None
         self._read: Callable[[str], Any] | None = read
 
+    @property
+    def read_yet(self) -> bool:
+        """Whether the provider object was read, or never needs to be."""
+        return self._read is None
+
     def provider_object(self) -> Any | None:
         """The provider's artist, read now if it was not yet, ``None`` once it is gone."""
         if self._read is not None:
@@ -475,7 +480,14 @@ class TidalCatalogue:
             held = kept.listed(identity, method)
             if held is not None:
                 return list(held)
-        target = artist.provider_object() if isinstance(artist, _Member) else artist
+        if isinstance(artist, _Member):
+            if not artist.read_yet:
+                # THE READ OF THE OBJECT IS A CALL, and counted, so a line that
+                # says no call was made is true (U217 review round one).
+                kept.asked_unkept()
+            target = artist.provider_object()
+        else:
+            target = artist
         if target is None:
             # A KEPT ARTIST THE PROVIDER NO LONGER HAS. Its listing cannot be
             # read, and a roster missing it is not the whole label, so it is

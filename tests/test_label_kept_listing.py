@@ -356,6 +356,17 @@ def test_an_artist_with_no_identifier_is_listed_and_not_kept(entry, clock):
                 "asked_for": {},
                 "named": {},
                 "identified": {},
+                "searched": {"q": {"read_at": "2026-11-05T12:00:00", "value": []}},
+                "listed": {},
+            }
+        ),
+        json.dumps(
+            {
+                "version": 1,
+                "label_id": "kept-recordings",
+                "asked_for": {},
+                "named": {},
+                "identified": {},
                 "searched": {"q": {"read_at": "yesterday", "value": []}},
                 "listed": {},
             }
@@ -494,3 +505,101 @@ def test_a_catalogue_that_keeps_no_listing_says_nothing_about_one(entry, cfg):  
     listed = sweep.listed_releases(cfg, entry, fake)
     assert listed.kept is None
     assert "listing" not in playlists_cli.estimate(cfg, entry, listed).shown()
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Review round one: the guards nothing killed, pinned
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _forget(entry, section: str, key: str) -> None:
+    """Drop one answer from the kept document, as a stop before it would leave it."""
+    path = kept_listing.path_for(entry.label_id)
+    document = json.loads(path.read_text())
+    del document[section][key]
+    path.write_text(json.dumps(document))
+
+
+def test_a_listing_the_client_does_not_expose_stays_unread_on_every_run(entry, clock):
+    """A missing method is not an answer: kept as empty, the second run would
+    report the label whole over a listing nobody read."""
+    budget = Budget()
+
+    class AlbumsOnly:
+        def __init__(self) -> None:
+            self.name = LABEL
+            self.id = "9"
+
+        def get_albums(self, limit=None, offset=0):
+            budget.tick(f"albums 9 {offset}")
+            return [label_release("901", by="9")][offset : offset + (limit or 100)]
+
+    own = AlbumsOnly()
+    client = CountedClient(budget, artists=[own], albums_by_query={})
+    first = adapter(client).artist_for(entry)
+    assert [one.listing for one in first.unread] == ["get_ep_singles"]
+    spent = budget.calls
+    second = adapter(client).artist_for(entry)
+    assert [one.listing for one in second.unread] == ["get_ep_singles"]
+    # THE OBJECT WAS READ AGAIN TO ASK FOR IT, and the line does not say none was.
+    assert budget.calls > spent
+    assert second.kept.asked > 0
+    assert "no provider call" not in second.kept.said()
+
+
+def test_a_kept_seed_the_provider_no_longer_has_is_unread_not_empty(entry, clock):
+    budget = Budget()
+    client = roster_client(budget)
+    seeded = labels.LabelEntry(label_id=entry.label_id, name=LABEL, seed_artists=("id:2",))
+    adapter(client).artist_for(seeded)
+    _forget(seeded, "listed", "2 get_albums")
+    client.artists = [one for one in client.artists if one.id != "2"]
+    roster = adapter(client).artist_for(seeded)
+    assert any(
+        one.listing == "get_albums" and "no longer has" in one.reason for one in roster.unread
+    )
+
+
+def test_a_failed_artist_read_in_discovery_still_refuses_rather_than_skipping(entry, clock):
+    """The object of a kept artist whose listing is not kept is read outside the
+    listing's skip, so a provider failure there raises as it always did."""
+    budget = Budget()
+    client = roster_client(budget)
+    adapter(client).artist_for(entry)
+    _forget(entry, "listed", "3 get_albums")
+    real = client.artist
+
+    def failing(artist_id=None):
+        if str(artist_id) == "3":
+            raise RuntimeError("the provider failed")
+        return real(artist_id)
+
+    client.artist = failing
+    with pytest.raises(RuntimeError):
+        adapter(client).artist_for(entry)
+
+
+def test_the_listing_line_names_the_age_of_what_it_reused(entry, clock):
+    budget = Budget()
+    adapter(roster_client(budget)).artist_for(entry)
+    clock[0] = NOW + timedelta(days=2)
+    roster = adapter(roster_client(budget)).artist_for(entry)
+    assert "2 day(s) old" in roster.kept.said()
+
+
+def test_a_continue_stopped_inside_an_artist_listing_still_costs_less_than_fresh(entry, clock):
+    """Stopped inside a listing, the continue pays that listing's pages and the
+    artist's read again, never the searches or the listings it finished."""
+    whole, ids = fresh_calls(entry)
+    budget = Budget()
+    budget.ceiling = whole - 3
+    with pytest.raises(jobs.Parked):
+        adapter(roster_client(budget)).artist_for(entry)
+    stopped_at = budget.calls
+    assert budget.asked[-1].startswith(("albums ", "singles ", "artist "))
+    budget.ceiling = None
+    roster = adapter(roster_client(budget)).artist_for(entry)
+    assert listed_ids(roster) == ids
+    assert budget.calls - stopped_at < whole // 4
+    assert not [one for one in budget.asked[stopped_at:] if one.startswith("search ")]

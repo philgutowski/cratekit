@@ -328,7 +328,9 @@ class KeptListing:
         self._asked_now: set[tuple[str, str]] = set()
         self._reused: set[tuple[str, str]] = set()
         self._stale: set[tuple[str, str]] = set()
-        #: Provider calls this run made for the listing, kept or not.
+        #: Provider answers this run asked for the listing, kept or not. A
+        #: listing of many pages is one answer, so this is not a call count;
+        #: the gate's spend line is. Zero means no call was made.
         self.asked = 0
         self.oldest: datetime | None = None
         self.unkept = ""
