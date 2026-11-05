@@ -43595,3 +43595,113 @@ title before it is built, and its record is named for that number. METHOD's
 Sharing the board section, written by U218, now says a number is read just
 before filing; a check in `board.py audit` that refuses two open cards with
 one number would close the class. Ledger only: maintainer facing.
+
+---
+
+## R-1282. The scheduled label sweep answers from a kept listing up to seven days old, and its report does not say the listing's age
+
+**Found:** at the build and review of #533, U217, 2026-11-05.
+
+**The mechanism.** U217 keeps a label's listing for seven days in
+`label/kept_listing.py`, and every caller of `TidalCatalogue.artist_for`
+reads it, the scheduled sweep (`label.cli.handle` through
+`sweep.LabelSource`) included. `label sync --next`, the walk and `label
+playlists` print where the listing came from and how old it is; the sweep's
+job report records only `beyond` and says nothing about the listing's age.
+Phillip answered the card's question on 2026-11-05 (decision
+`533-listing-age-1`): seven days for every verb, the sweep included, as built.
+What remains is that the sweep alone does not say the age.
+
+**Measured cost.** Read, not driven, on the sweep: a release the label put out
+after its listing was kept is absent from a sweep for up to seven days, and
+the sweep's report does not say so. Nothing false is said; the age is
+unstated there.
+
+**Closes when:** the sweep's report carries the listing line the two verbs
+print. Ledger only: the life is Phillip's choice, and nothing false is said.
+
+---
+
+## R-1283. Two processes listing one label each write the kept listing whole, and the last write wins
+
+**Found:** at the review of #533, U217, 2026-11-05.
+
+**The mechanism.** `KeptListing.flush` writes every answer one process holds,
+atomically, over the label's `listing.json`. A `label sync --next` run beside
+a sweep job listing the same label each load the document once and flush
+their own view, so the answers only the earlier writer asked are dropped.
+R-1091's reads store has the same shape.
+
+**Measured cost.** Read, not driven. Provider calls only: the next run asks
+again what was dropped. Nothing kept is wrong, since each answer carries its
+own instant.
+
+**Closes when:** a flush merges the document on disk under a lock before it
+writes, for both stores. Ledger only.
+
+---
+
+## R-1284. A continue pays again the artist read and the pages of the one listing a ceiling stopped inside, and a dropped seed discovery credits is read twice
+
+**Found:** at the review of #533, U217, rounds one and two, 2026-11-05.
+
+**The mechanism.** The kept listing keeps whole answers, and an artist's
+listing is one answer however many pages it is, and the provider object of a
+kept artist is not kept. So a ceiling that stops inside an artist's paged
+listing loses that listing's pages, and the continue reads the artist again by
+identifier and pages that one listing from the start. Separately, a kept seed
+that the provider dropped and that discovery also credits is read once by
+discovery and once more lazily by the roster.
+
+**Measured cost.** Driven by the review over a 101 call fresh listing: a stop
+anywhere in the searches continues for exactly the remainder (101 in all), a
+stop inside an artist's listing for 102 or 103 in all. The dropped seed costs
+one extra call per run. Every count the listing line shows stays true.
+
+**Closes when:** a listing's pages are kept as they arrive, which needs the
+paging wrapper in `acquire/listing.py` to hand pages out, and the identified
+answer is consulted before a lazy read. Ledger only, calls only.
+
+---
+
+## R-1285. Verifying a kept release with no copyright line reads its album again, which the listing line does not count
+
+**Found:** at the review of #533, U217, round two, 2026-11-05.
+
+**The mechanism.** `TidalCatalogue.search_release` reads a release's album
+again when the listed object carries no copyright line. A kept release keeps
+the line it was listed with, so one listed bare is read again on every run,
+and that read is verification's, outside the listing's count. Round two found
+the listing line said "with no provider call" over it; the fix round reworded
+it to "with no listing call to the provider", which is true.
+
+**Measured cost.** Driven by the review on the suite's stand in client, whose
+listed albums carried no copyright line: two album reads on the second run.
+The same reads happen on `main`. Whether a live listing ever omits the line was
+not driven.
+
+**Closes when:** the album's answer is kept with the release, or the verb's
+line also counts verification's reads. Ledger only.
+
+---
+
+## R-1286. Seven guards of the kept label listing kill no test, each costing provider calls or a line's wording at most
+
+**Found:** at the review of #533, U217, rounds one and two, 2026-11-05.
+
+**The mechanism.** The review reverted each guard of the branch alone and
+these left the label suites green: the two counts of an answer about an artist
+with no identifier (`_member_named` and `_listed`), which cover each other;
+`_Member` reading its provider object once; a kept name answer holding at most
+one artist; `KeptListing.has_listing`'s age check; discovery's kept "no such
+artist" answer skipping the read; `release_row`'s fallback from `copyright` to
+`label`; and `_year` keeping an integer year.
+
+**Measured cost.** Driven by the reviewer on the fake client for each: an
+extra provider call or two per run, or the same line with a stale count; no
+false report, lost row or wrong release reached a person. The id less pair is
+reachable only on a client whose artists carry no identifier, which the live
+provider's do.
+
+**Closes when:** a test pins each, one per guard. Ledger only, a maintainer
+facing gap.
