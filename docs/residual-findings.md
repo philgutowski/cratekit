@@ -41749,3 +41749,77 @@ than a defect.
 **Measured cost.** Driven by the review: both gates skipped, and the document then held the miss. No user facing cost: a miss is a fact about a row and the provider, the mirror records its own the same way (R-1031), and nothing in either playlist is written. A rehearsal reading the document as untouched would be wrong.
 
 **Closes when:** the misses ride the run and are recorded only once a gate is applied, or the rule is accepted as the mirror's. Ledger only.
+
+---
+
+## R-1198. A bare Question heading on a card reads as a hold, then a resume, while it waits on Phillip
+
+**Found:** at the plan of #493, U203, 2026-11-05.
+
+**The mechanism.** `scripts/board.py` knows the question heading only as
+`Question for Phillip` (`HEAD_QUESTION`). The Sharing the board section of
+`docs/METHOD.md`, on the branch that carries it, and the coordinator's prompt
+to its build threads both tell a thread to ask "under a `Brainstorm` or
+`Question` heading". A thread that writes `**Question**` or `## Question.`
+leaves a heading the reader does not know, so `cloud_state` reads the card as
+underway, then after `STALE_HOURS` as resume, and the next thread may retake
+it before Phillip answers. It is the shape U203 fixed for punctuation, in
+spelling, which U203's brief put out of scope.
+
+**Measured cost.** Not driven on the live board: of the 1,126 comments on the
+repository on 2026-11-05, no session comment opens with a bare `Question`
+heading, so no card has paid for it yet. Reading `comment_heading("**Question.**")`
+returns `question`, which no constant matches; pinned as unknown by
+`test_a_heading_whose_words_differ_is_still_a_hold`.
+
+**Closes when:** either the two texts say `Question for Phillip`, or the reader
+takes `question` as a second spelling of `HEAD_QUESTION` with a test beside the
+U203 ones. Ledger only: maintainer facing, the board bar's four costs are a DJ's.
+
+---
+
+## R-1199. A first line that opens with a known heading word and then contradicts it moves a held card to that heading's state
+
+**Found:** at the Fable review of #493, U203, 2026-11-05.
+
+**The mechanism.** `comment_heading` in `scripts/board.py` reads the opening
+emphasised span, or the text up to the first colon, comma or sentence end, as
+the heading. So a session comment whose first line is
+`**Withdrawn**? No, I still hold this card` reads `withdrawn` and releases the
+card as ready, `Needs the machine? No, it does not.` sets it aside, and
+`Landed? No, CI is red.` reads landed-open. Before U203 these three read as a
+hold, though the same class already existed for a colon or a comma
+(`**Withdrawn**, no` read ready on `main`): U203 widens its surface.
+
+**Measured cost.** Driven through `cloud_state` by the review: a held card
+offered to a second session, or a card retired until a hand edit. The producer
+was not driven: of the 1,126 comments on the repository on 2026-11-05 and every
+template in the cloud skill, none opens this way. Reachability unmeasured.
+
+**Closes when:** the heading is read only when the first line is the heading
+alone or the heading followed by a colon, or the skill's comment forms put the
+heading on a line of its own and the reader refuses a first line that carries
+more. Ledger only: maintainer facing.
+
+---
+
+## R-1200. A bold heading closed hard against the next word, with no space, is still a hold and then a resume
+
+**Found:** at the Fable review of #493, U203, 2026-11-05.
+
+**The mechanism.** `_OPENING_EMPHASIS` in `scripts/board.py` takes an opening
+span only when its closer is followed by the line's end, whitespace or
+punctuation, so `**Brainstorms**` stays a word the reader does not know. The
+same rule leaves `**Brainstorm.**One question waits` and
+`**Question for Phillip.**One of A or B` unread: they give
+`brainstorm.**one question waits`, a hold, then a resume after `STALE_HOURS`,
+under the old reader and the new one alike.
+
+**Measured cost.** A question card retaken before Phillip answers, the cost
+U203 was filed for, driven through `cloud_state` by the review. The producer
+was not driven: none of the 1,126 comments on the repository on 2026-11-05
+opens this way. Not a regression, and inside the brief's stated contract.
+
+**Closes when:** a closer followed by a capital letter after a stop inside the
+span is also read as a span, with a test that `**Brainstorm**s` stays unknown.
+Ledger only: maintainer facing.
