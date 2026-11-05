@@ -18,7 +18,10 @@ sweep, when a playlist intake job for it is still open, or when the listing
 says it holds no tracks. Everything else is listed track by track and queued. A
 playlist whose tracks come back empty is reported empty rather than queued, and
 a playlist that cannot be read is reported unreadable rather than skipped in
-silence.
+silence. A track the account lists with no title or no artist is set aside and
+named, and the playlist's other tracks are queued (R-1289); a playlist so
+queued is recorded once its job succeeds, as a short listing is, so the named
+track is not offered by a later pass.
 
 **THE DEBRIS RULE IS THE SOURCE SYSTEM'S, SUFFIX AND CASE (R-361).** Its label
 batch builds one `<label> LIBRARY` playlist per run and leaves it on the
@@ -361,6 +364,10 @@ class Sweep:
     #: Playlists that listed short of the count the provider declares, as
     #: ``ListingShortfall.block`` carries it (R-515). Queued all the same.
     short: dict[str, dict[str, int]] = field(default_factory=dict)
+    #: Each track the reader set aside, by playlist identifier then track
+    #: identifier, as the account names it and why (R-1289). The playlist's
+    #: other tracks are queued all the same.
+    unread: dict[str, dict[str, dict[str, str]]] = field(default_factory=dict)
     recorded_now: tuple[str, ...] = ()
     #: THE WHOLE CURSOR after this pass reconciled, not only what it added. It
     #: is what :func:`mark_swept` marks from, for the reason that function
@@ -447,17 +454,35 @@ def plan(
             sweep.excluded[playlist.playlist_id] = reason
             continue
         try:
-            tracks, short = intake_cli.list_playlist_declared(found, playlist.playlist_id)
+            # ROW BY ROW (R-1289), as ``sync twins`` and ``sync pair`` read: a
+            # track the account lists with no title or no artist is set aside
+            # and named, and every other track of the playlist is queued. A row
+            # with no provider id still refuses the listing, per playlist.
+            listing = intake_cli.list_playlist_readable(found, playlist.playlist_id)
         except CratekitError as exc:
             if exc.cause.reason not in PER_PLAYLIST_REASONS:
                 raise
             sweep.excluded[playlist.playlist_id] = Excluded.UNREADABLE
             sweep.unreadable[playlist.playlist_id] = exc.cause.message
             continue
-        if short is not None:
+        tracks = listing.tracks
+        if listing.short is not None:
             # SAID, NEVER REFUSED (R-515): the rows served are queued, and the
             # summary carries how many the provider counted and withheld.
-            sweep.short[playlist.playlist_id] = short.block()
+            sweep.short[playlist.playlist_id] = listing.short.block()
+        if listing.unread:
+            sweep.unread[playlist.playlist_id] = {
+                ref: {**one.said(), "why": one.why} for ref, one in listing.unread.items()
+            }
+            if not tracks:
+                # EVERY TRACK UNREAD is a playlist that could not be read, not
+                # an empty one, and it is offered again as an unreadable one is.
+                sweep.excluded[playlist.playlist_id] = Excluded.UNREADABLE
+                sweep.unreadable[playlist.playlist_id] = (
+                    "no track on it could be queued: "
+                    + ", ".join(f"{ref} ({one.why})" for ref, one in listing.unread.items())
+                )
+                continue
         if not tracks:
             # THE COUNT WAS UNKNOWN OR STALE, and the listing is what answers.
             sweep.excluded[playlist.playlist_id] = Excluded.EMPTY
@@ -667,6 +692,10 @@ def report(
         "withheld": {
             identity: {**block, "name": names.get(identity, "")}
             for identity, block in sweep.short.items()
+        },
+        "unread": {
+            identity: {"name": names.get(identity, ""), "tracks": dict(tracks)}
+            for identity, tracks in sweep.unread.items()
         },
         "recorded_now": list(sweep.recorded_now),
         "swept_means": SWEPT_MEANS,

@@ -1450,9 +1450,10 @@ def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[
     carries one shape wherever a bound provider was asked about a playlist
     and could not answer. What is this verb's is the reading of the rows.
 
-    PUBLIC because ``crate sync all`` lists each account playlist it sweeps
-    through exactly this path, so a row this verb refuses is refused there too.
-    An empty mapping is a playlist the provider listed with nothing in it.
+    PUBLIC for a caller that reads one playlist whole. ``crate sync all`` read
+    each playlist it sweeps here until R-1289, and now reads them through
+    :func:`list_playlist_readable`, so one unreadable row no longer leaves the
+    whole playlist out of the sweep. An empty mapping is a playlist the provider listed with nothing in it.
 
     A PLAYLIST ONLY. The reserved reference is :func:`list_favorites`, which
     carries a count this shape has nowhere to put.
@@ -1522,7 +1523,9 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
     anywhere could be made. Here that track is named where it stood and every
     other track reads as it always did. ``crate sync pair`` reads each pair's
     account side here too (R-1264), so a twin made over such a playlist syncs
-    the tracks it can read. A single playlist verb keeps
+    the tracks it can read, and so do ``crate sync all``'s sweep and ``crate
+    organize``'s mirror downloads (R-1289), which queue the tracks it can read
+    and name the others. A single playlist verb keeps
     :func:`list_playlist_declared`, whose refusal is the answer when that
     playlist is all it was asked.
 
