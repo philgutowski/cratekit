@@ -105,8 +105,10 @@ rules, and `docs/history/` has how they ran.
 **People install tagged releases, never raw `main`.** A release is cut when
 Phillip asks, in any session, by the `release` skill in the repository's
 Claude Code skills directory: `scripts/release.py plan` lists the pull
-requests (and, before U158, the merges) since the last `vX.Y.Z` tag and
-proposes a semantic version bump with a reason for each; the session judges
+requests (and, before U158, the merges) since the last `vX.Y.Z` tag, read
+over the whole range and not only its first parent line, so a landing behind
+a local `Merge branch 'main' of ...` is counted (U215), and proposes a
+semantic version bump with a reason for each; the session judges
 it; `scripts/release.py cut --bump <kind>` refuses off a clean `main` equal
 to `origin/main` and without a clean battery on that commit, then writes the
 version into `pyproject.toml` and `src/cratekit/__init__.py` together, commits
