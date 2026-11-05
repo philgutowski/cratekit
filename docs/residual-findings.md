@@ -43884,3 +43884,78 @@ does not read the log and reaches the provider.
 **Closes when:** the pruner reads the log through `session.scan_log` and
 refuses on an unlisted one, before any verb prunes with the default
 protection.
+
+---
+
+## R-1295. crate organize leaves a downloaded set out of INSPIRATION when one of its tracks names no title or no artist
+
+**Found:** at the review of #547, R-1289, 2026-11-05.
+
+**The mechanism.** `organize/inspiration.py` `_read` lists a downloaded set's
+account playlist through `label_cli.playlist_listing_or_refuse` and reads the
+rows whole with `match.read_tidal_tracks`, which raises `UnreadableList` when
+one row names no title or no artist. `plan` catches it and files the whole set
+as unread with the reader's message, so none of its tracks is matched and no
+INSPIRATION playlist is written for it. `crate sync twins` (U213), `crate sync
+pair` (R-1264), `crate sync all`'s sweep and the mirror's downloads (R-1289)
+now read row by row through `intake_cli.list_playlist_readable`; this is the
+class one file over.
+
+**Measured cost.** Driven by the review's round one on a fake catalogue:
+`inspiration._read` over a set listing tracks 101, 102 and an untitled 103
+raised "track 3 names no title". The set is named unread with that message,
+so the report is not silent, but its readable tracks never reach INSPIRATION
+while the provider lists the one row that way. Live reachability is the
+ledger's unmeasured one for R-1264.
+
+**Closes when:** `_read` reads the set row by row, matches the readable tracks
+and names each unread one beside the set's misses. Earns an issue under the
+board bar's (c): a workflow a DJ needs, bringing a downloaded set into
+INSPIRATION, cannot finish for that set.
+
+---
+
+## R-1296. crate intake missing over a sync all pass says nothing of a track the pass named unread
+
+**Found:** at the review of #547, R-1289, 2026-11-05.
+
+**The mechanism.** Since R-1289 `crate sync all` queues a swept playlist's
+readable tracks and names a track the account lists with no title or no
+artist in its summary and the `sync-playlists-unread` warning. The job it
+queues holds no item for that track, and `crate intake missing --run` reads
+jobs only, so its list and its summary carry no word of it.
+
+**Measured cost.** Driven by the review's round one: `sync all` over a
+playlist of 101 and an untitled 103, the job resumed to success, then
+`intake missing --run RUN`: exit 0, no warning, and `103` absent from the
+whole envelope. The GUIDE calls that verb the one that lists the whole pass at
+once, so a person who reads only its list sees a clean pass. The pass's own
+warning named the track one verb earlier.
+
+**Closes when:** Phillip answers the question on #547 about a playlist that
+left a track unread. Its third option, carrying the unread tracks on the job
+so the missing report lists them, closes this; the first, the build's
+conservative call, leaves it as recorded. Ledger only until that answer.
+
+---
+
+## R-1297. crate organize's mirror downloads reads an expired provider session as one playlist that could not be listed
+
+**Found:** at the review of #547, R-1289, 2026-11-05.
+
+**The mechanism.** `organize/mirror_downloads.py` `plan` catches every
+`CratekitError` from its listing, so a refusal that is not about one playlist,
+an expired session (`credential-missing`), names each wanted track "the
+provider could not list the playlist: ..." and plans the rest, where `crate
+sync all`'s sweep re raises any reason outside `PER_PLAYLIST_REASONS` and
+stops. The catch is the same on `main`; R-1289 changed only the reader.
+
+**Measured cost.** Driven by the review's round one: `listed` raising
+`credential-missing` left the queue empty and named both wanted tracks with
+the session's message. The step reports nothing planned with the tracks named
+and the reason given, so the report is not clean, but it is not the refusal
+that would send a person to log in again.
+
+**Closes when:** the step re raises a refusal outside the per playlist reasons,
+as the sweep does, so the step refuses with the session's own cause. Ledger
+only: the words a person reads carry the true reason.

@@ -2280,3 +2280,206 @@ def test_a_sweep_of_full_playlists_carries_no_shortfall(slim, monkeypatch):
     assert code == int(ExitCode.OK), passed
     assert passed["data"]["summary"]["playlists"]["withheld"] == {}
     assert "sync-playlists-withheld" not in {w["code"] for w in passed["warnings"]}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1289: the sweep reads each playlist row by row, so one track the account
+# lists with no title or no artist never leaves the whole playlist out
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _unread_warning(passed) -> str:
+    (warning,) = [w for w in passed["warnings"] if w["code"] == "sync-playlists-unread"]
+    return warning["message"]
+
+
+@pytest.mark.parametrize(
+    ("untitled", "absent"),
+    [
+        (Track("103", "Artist 103", ""), "title"),
+        (Track("103", "", "Title 103"), "artist"),
+    ],
+)
+def test_a_track_with_no_title_or_artist_is_named_and_its_playlist_still_queues(
+    slim, monkeypatch, untitled, absent
+):
+    """The brief's first two scenarios: two readable tracks queue, the third is named."""
+    del slim
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), [*_tracks("101", "102"), untitled]),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+
+    queued = {job.payload[intake_cli.SOURCE]: job for job in _playlist_jobs()}
+    assert set(queued) == {"pl-a", "pl-b"}
+    assert _items(queued["pl-a"].job_id) == ["101", "102"]
+    block = passed["data"]["summary"]["playlists"]
+    assert "pl-a" not in block["excluded"] and block["unreadable"] == {}
+    assert block["unread"] == {
+        "pl-a": {
+            "name": "Warmup",
+            "tracks": {
+                "103": {
+                    "artist": untitled.artist["name"],
+                    "title": untitled.name,
+                    "isrc": "",
+                    "why": f"the account lists it with no {absent}",
+                }
+            },
+        }
+    }
+    message = _unread_warning(passed)
+    assert f"Warmup: 103 (the account lists it with no {absent})" in message
+    assert "Peak" not in message
+    # TRUE OF WHAT HAPPENS NEXT: the playlist is recorded once its job
+    # succeeds, as a short listing is, so no later sync offers it again.
+    assert "no later sync offers" in message
+    assert "sync-playlists-unreadable" not in {w["code"] for w in passed["warnings"]}
+
+
+def test_a_queued_playlist_that_left_a_track_unread_is_recorded_when_its_job_succeeds(
+    slim, monkeypatch
+):
+    """The warning's promise, driven: the job succeeds, the next pass records it."""
+    del slim
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), [*_tracks("101"), Track("103", "Artist 103", "")]),
+    )
+    code, first = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), first
+    (job,) = _playlist_jobs()
+    code, resumed = drive(cli_jobs.argv_for(job))
+    assert code == int(ExitCode.OK), resumed
+    assert resumed["data"]["state"] == str(jobs.JobState.SUCCEEDED), resumed
+
+    code, second = drive(["sync", "all"])
+    block = second["data"]["summary"]["playlists"]
+    assert block["recorded_now"] == ["pl-a"]
+    assert block["excluded"]["pl-a"]["reason"] == "recorded"
+    assert block["unread"] == {}
+    assert len(_playlist_jobs()) == 1
+
+
+def test_a_row_with_no_provider_id_still_leaves_its_playlist_out_by_name(slim, monkeypatch):
+    """The brief's third scenario: a track with no id cannot be named or set aside."""
+    del slim
+    bind_playlists(
+        monkeypatch,
+        (_playlist("pl-a", "Warmup"), [*_tracks("101"), Track("", "Artist", "Title")]),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-b"]
+    block = passed["data"]["summary"]["playlists"]
+    assert block["excluded"]["pl-a"] == {"reason": "unreadable", "name": "Warmup"}
+    assert "pl-a" in block["unreadable"]
+    assert block["unread"] == {}
+    assert "sync-playlists-unreadable" in {w["code"] for w in passed["warnings"]}
+
+
+def test_a_refusal_not_about_one_playlist_still_stops_the_sweep(slim, monkeypatch):
+    """The brief's fourth scenario: an expired session is the source's, not a playlist's."""
+    del slim
+    from cratekit.core.cause import refuse
+
+    class Expired(FakeCatalogue):
+        def playlist_for(self, reference):
+            if reference == "pl-b":
+                raise refuse(
+                    "credential-missing", "the provider session expired", origin=("test",)
+                )
+            return super().playlist_for(reference)
+
+    fake = Expired(
+        playlists={
+            "pl-a": FakePagedPlaylist([*_tracks("101"), Track("103", "Artist 103", "")]),
+            "pl-b": FakePagedPlaylist(_tracks("201")),
+        },
+        account=[_playlist("pl-a", "Warmup"), _playlist("pl-b", "Peak")],
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    code, refused = drive(["sync", "all"])
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["reason"] == "credential-missing"
+    assert _jobs() == []
+
+
+def test_a_playlist_whose_every_track_is_unread_is_unreadable_not_empty(slim, monkeypatch):
+    del slim
+    bind_playlists(
+        monkeypatch,
+        (
+            _playlist("pl-a", "Warmup"),
+            [Track("103", "Artist 103", ""), Track("104", "", "Title 104")],
+        ),
+        (_playlist("pl-b", "Peak"), _tracks("201")),
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert [job.payload[intake_cli.SOURCE] for job in _playlist_jobs()] == ["pl-b"]
+    block = passed["data"]["summary"]["playlists"]
+    assert block["excluded"]["pl-a"] == {"reason": "unreadable", "name": "Warmup"}
+    assert block["unreadable"]["pl-a"] == (
+        "no track on it could be queued: 103 (the account lists it with no title), "
+        "104 (the account lists it with no artist)"
+    )
+    assert set(block["unread"]["pl-a"]["tracks"]) == {"103", "104"}
+    codes = {w["code"] for w in passed["warnings"]}
+    # OFFERED AGAIN, as any unreadable playlist is, so the unread warning's
+    # words about a playlist recorded with its other tracks are not said of it.
+    assert "sync-playlists-unreadable" in codes
+    assert "sync-playlists-unread" not in codes
+    assert _swept(config.load()) is None
+
+
+def test_a_pass_whose_only_playlist_left_every_track_unread_says_so_on_the_check(
+    slim, monkeypatch
+):
+    del slim
+    bind_playlists(
+        monkeypatch, (_playlist("pl-a", "Warmup"), [Track("103", "Artist 103", "")])
+    )
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert passed["outcome"] == "no_op"
+    (check,) = passed["data"]["checks"]
+    assert "1 unreadable" in check["detail"]
+
+
+def test_a_fully_readable_sweep_names_nothing_unread(slim, monkeypatch):
+    del slim
+    bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101", "102")))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    (job,) = _playlist_jobs()
+    assert _items(job.job_id) == ["101", "102"]
+    assert passed["data"]["summary"]["playlists"]["unread"] == {}
+    assert "sync-playlists-unread" not in {w["code"] for w in passed["warnings"]}
+
+
+def test_a_short_listing_with_an_unread_track_carries_both(slim, monkeypatch):
+    """The declared count check the sweep had stays: the shortfall rides beside."""
+    del slim
+    fake = FakeCatalogue(
+        playlists={
+            "pl-a": FakePagedPlaylist(
+                [*_tracks("101"), Track("103", "Artist 103", "")], declared=4
+            ),
+        },
+        account=[_playlist("pl-a", "Warmup")],
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    (job,) = _playlist_jobs()
+    assert _items(job.job_id) == ["101"]
+    block = passed["data"]["summary"]["playlists"]
+    assert block["withheld"]["pl-a"] == {
+        "declared": 4, "listed": 2, "withheld": 2, "name": "Warmup"
+    }
+    assert set(block["unread"]["pl-a"]["tracks"]) == {"103"}
