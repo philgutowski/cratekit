@@ -669,3 +669,138 @@ def test_a_profile_without_the_export_module_lists_the_step(machine, account, mo
 
     assert step["state"] == "listed" and "export module is off" in step["detail"]
     assert account.found.playlists_asked_for == []
+
+
+# ---------------------------------------------------------------------------
+# R-1295: a set is read row by row, so one track the account lists with no
+# title or no artist is named and the set's other tracks still reach
+# INSPIRATION
+# ---------------------------------------------------------------------------
+
+
+def _unread_line(position: int, artist: str, title: str, half: str, track: str) -> str:
+    return (
+        f"{position}. {artist} - {title}: the account lists it with no {half} "
+        f"(track {track}), so it was not asked of the library"
+    )
+
+
+def test_a_track_with_no_title_is_named_and_the_sets_other_tracks_are_written(
+    machine, account, silence
+):
+    rows = {title: _owned(machine, silence, title) for title in ("Cut 01", "Cut 02")}
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 02", ""))
+
+    envelope = _report()
+    step = _step(envelope)
+
+    assert step["state"] == "planned"
+    planned = _by_set(step)[FEMME]
+    assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
+    assert planned["misses"] == [
+        _unread_line(3, "Probe", "no title", "title", f"{playlist_id}-3")
+    ]
+    assert step["counts"]["tracks matched"] == 2 and step["counts"]["tracks missed"] == 1
+    assert not [w for w in envelope["warnings"] if w["code"] == "organize-inspiration-unread"]
+
+    code, done, _refused = _approved()
+
+    assert code == int(ExitCode.OK), done
+    under = _playlists_under(machine, _inspiration_id(machine))
+    assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
+    assert _step(done)["applied"]["read back"] == {FEMME: 2}
+
+
+def test_a_track_with_no_artist_is_named_and_the_sets_other_tracks_are_written(
+    machine, account, silence
+):
+    rows = {title: _owned(machine, silence, title) for title in ("Cut 01", "Cut 02")}
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 03", "Cut 02"))
+    account.found.playlists[playlist_id]._tracks[1].artist = {"name": ""}
+
+    step = _step(_report())
+
+    planned = _by_set(step)[FEMME]
+    assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
+    assert planned["misses"] == [
+        _unread_line(2, "no artist", "Cut 03", "artist", f"{playlist_id}-2")
+    ]
+
+    code, done, _refused = _approved()
+
+    assert code == int(ExitCode.OK), done
+    under = _playlists_under(machine, _inspiration_id(machine))
+    assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
+
+
+def test_an_unread_track_keeps_the_sets_positions_for_every_other_miss(
+    machine, account, silence
+):
+    _owned(machine, silence, "Cut 01")
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("", "Cut 01", "Absent Harbor"))
+
+    planned = _by_set(_step(_report()))[FEMME]
+
+    # IN THE SET'S ORDER, each at the place the account lists it.
+    assert planned["misses"] == [
+        _unread_line(1, "Probe", "no title", "title", f"{playlist_id}-1"),
+        f"3. Probe - Absent Harbor: {set_playlist.NOT_HELD}",
+    ]
+
+
+def test_a_set_whose_unread_track_carries_no_provider_id_is_still_filed_unread(
+    machine, account, silence
+):
+    _owned(machine, silence, "Cut 01")
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", ""))
+    account.found.playlists[playlist_id]._tracks[1].id = ""
+
+    envelope = _report()
+    step = _step(envelope)
+
+    unread = _by_set(step)[FEMME]
+    assert unread["action"] == inspiration.UNREAD
+    assert "track 2 names no title" in unread["reason"]
+    assert step["state"] == "nothing"
+    assert any(
+        w["code"] == "organize-inspiration-unread" and FEMME in w["message"]
+        for w in envelope["warnings"]
+    )
+
+
+def test_a_readable_track_with_no_provider_id_is_matched_as_before(
+    machine, account, silence
+):
+    rows = {title: _owned(machine, silence, title) for title in ("Cut 01", "Cut 02")}
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Cut 01", "Cut 02"))
+    account.found.playlists[playlist_id]._tracks[1].id = ""
+
+    planned = _by_set(_step(_report()))[FEMME]
+
+    assert planned["action"] == inspiration.CREATE and planned["tracks"] == 2
+    assert planned["misses"] == []
+    code, done, _refused = _approved()
+    assert code == int(ExitCode.OK), done
+    under = _playlists_under(machine, _inspiration_id(machine))
+    assert _members(machine, under[FEMME]) == [rows["Cut 01"], rows["Cut 02"]]
+
+
+def test_a_set_no_track_of_which_reads_is_filed_unread_naming_each(machine, account, silence):
+    _owned(machine, silence, "Cut 01")
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("", ""))
+
+    envelope = _report()
+    step = _step(envelope)
+
+    unread = _by_set(step)[FEMME]
+    assert unread["action"] == inspiration.UNREAD
+    assert unread["reason"] == (
+        f"no track of the set could be read: {playlist_id}-1 (the account lists it "
+        f"with no title), {playlist_id}-2 (the account lists it with no title)"
+    )
+    assert step["state"] == "nothing" and step["counts"]["unread"] == 1
+    assert step["counts"]["no match"] == 0
+    assert any(
+        w["code"] == "organize-inspiration-unread" and FEMME in w["message"]
+        for w in envelope["warnings"]
+    )
