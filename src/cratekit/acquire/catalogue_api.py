@@ -386,12 +386,23 @@ class AppCatalogue:
         # token serves the calls of the next minute and is then asked for again
         # rather than kept until the API refuses it.
         self._token = token
-        self._expires_at = now + max(seconds - TOKEN_MARGIN_S, 0.0) if seconds else now + TOKEN_MARGIN_S
+        # A SHORT LIFETIME KEEPS HALF OF ITSELF rather than none: a token living
+        # a minute or less, with the margin taken whole, would be asked for
+        # again before every read and double the app's calls.
+        self._expires_at = (
+            now + max(seconds - TOKEN_MARGIN_S, seconds / 2) if seconds > 0 else now + TOKEN_MARGIN_S
+        )
         return token
 
     # ── the reads ─────────────────────────────────────────────────────────
 
-    def _get(self, path: str, params: Mapping[str, str], what: str) -> Mapping[str, Any]:
+    def _get(
+        self, path: str, params: Mapping[str, str], what: str, *, absence: bool = True
+    ) -> Mapping[str, Any]:
+        """One read. ``absence`` says whether a 404 on this route is the API's
+        answer about a resource (a track by its identifier) or about the
+        address itself (a collection, which answers a filter matching nothing
+        with an empty list), in which case it is an outage and never no track."""
         token = self._access_token()
         response = self._send(
             "GET",
@@ -400,7 +411,7 @@ class AppCatalogue:
             headers={"Authorization": f"Bearer {token}", "Accept": JSON_API},
         )
         status = getattr(response, "status_code", None)
-        if status == NOT_FOUND_STATUS:
+        if status == NOT_FOUND_STATUS and absence:
             raise CatalogueNotFound(
                 f"the catalogue API holds no such resource for this {what}", status=status
             )
@@ -430,10 +441,16 @@ class AppCatalogue:
         The provider library's method of the same name, answered in one request
         with the names included. An ISRC the catalogue files nothing under is
         answered as an empty list; the library raises its not found for that,
-        and both callers read the two alike.
+        and both callers read the two alike. A 404 HERE IS NOT THAT ANSWER: the
+        collection answers a code matching nothing with an empty list, so a
+        404 says the address moved or the filter's name changed, and read as
+        no track it would be remembered by ``sync pair`` as a miss for every
+        row it asked about (U205's review, round one).
         """
         what = "ISRC lookup"
-        body = self._get("tracks", {"filter[isrc]": str(isrc), "include": INCLUDE}, what)
+        body = self._get(
+            "tracks", {"filter[isrc]": str(isrc), "include": INCLUDE}, what, absence=False
+        )
         data = body.get("data")
         if not isinstance(data, list):
             raise CatalogueUnavailable(
@@ -485,11 +502,12 @@ def rejected(exc: AppCredentialsRejected, doing: str) -> CratekitError:
 
 
 def unreadable(exc: secrets.CredentialError) -> CratekitError:
-    """App credentials the presence index records and the keychain would not give.
+    """App credentials the presence index records and the keychain could not be read for.
 
-    REFUSED, NOT READ AS ABSENT. The person recorded them to move the catalogue
-    off the account, so a keychain that lost one is not a reason to put every
-    lookup back on it without a word.
+    REFUSED, NOT READ AS ABSENT. A keychain that answered "not there" is an
+    absence, and the opener reads it as one; a keychain that could not answer
+    at all is a broken machine, and reading it as no app would put every
+    lookup back on the account over a question nobody answered.
     """
     return refuse(
         REJECTED_REASON,

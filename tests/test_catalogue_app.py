@@ -491,16 +491,43 @@ def test_an_account_that_names_no_country_gets_no_app_client(monkeypatch, gate):
     assert transport.sent == []
 
 
-def test_recorded_values_the_keychain_will_not_give_are_refused_not_read_as_absent(
+def test_a_value_the_index_records_and_the_keychain_lost_is_absent_and_asks_the_account(
+    monkeypatch, gate
+):
+    """U205's review, round one: a value deleted through the operating
+    system's own keychain is not there, and refusing over it would lock every
+    verb that opens the account with no way back short of registering again."""
+    record_app()
+    transport = use_transport(monkeypatch, AppTransport())
+    account = AccountClient(isrcs={ISRC: ["101"]})
+    gate.attach(account)
+    real_get = secrets.get
+
+    def lost(name: str) -> str:
+        if name == "catalogue-app-key":
+            raise secrets.CredentialMissing(f"no credential recorded for {name!r}", name=name)
+        return real_get(name)
+
+    monkeypatch.setattr(secrets, "get", lost)
+
+    assert secrets.exists("catalogue-app-key") is True
+    assert provider_session.catalogue_client(account, gate=gate) is None
+    adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=None)
+    assert adapter_.match_track(identity="row-1", isrc=ISRC) == "101"
+    assert transport.sent == []
+    assert gate.spend().account_calls == 1
+
+
+def test_a_keychain_that_could_not_be_read_for_the_app_is_refused_not_read_as_absent(
     monkeypatch, gate
 ):
     record_app()
     use_transport(monkeypatch, AppTransport())
 
-    def lost(name: str) -> str:
-        raise secrets.CredentialMissing(f"no credential recorded for {name!r}", name=name)
+    def broken(name: str) -> str:
+        raise secrets.CredentialBackendUnavailable("no keychain backend could be reached", name=name)
 
-    monkeypatch.setattr(secrets, "get", lost)
+    monkeypatch.setattr(secrets, "get", broken)
 
     with pytest.raises(CratekitError) as caught:
         provider_session.catalogue_client(AccountClient(), gate=gate)
@@ -513,15 +540,30 @@ def test_recorded_values_the_keychain_will_not_give_are_refused_not_read_as_abse
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_a_404_is_no_track_and_is_asked_once(monkeypatch, gate):
+def test_a_404_on_a_track_read_is_no_track_and_is_asked_once(monkeypatch, gate):
+    record_app()
+    account, app, transport = opened(monkeypatch, gate, AppTransport([Answer(404, {})]))
+    adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
+
+    assert adapter_.match_track(identity="https://tidal.com/browse/track/555") is None
+    assert len(transport.reads_sent()) == 1
+
+
+def test_a_404_on_the_isrc_collection_is_an_outage_and_never_no_track(monkeypatch, gate):
+    """The collection answers a code matching nothing with an empty list, so a
+    404 there says the address moved; read as no track, ``sync pair`` would
+    remember a miss for every row (U205's review, round one)."""
     record_app()
     account, app, transport = opened(monkeypatch, gate, AppTransport([Answer(404, {})]))
     adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=app)
     catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=app)
 
-    assert adapter_.match_track(identity="row-1", isrc=ISRC) is None
-    assert catalogue.tracks_for_isrc(ISRC) == ()
-    assert len(transport.reads_sent()) == 2
+    with pytest.raises(CratekitError) as caught:
+        adapter_.match_track(identity="row-1", isrc=ISRC)
+    assert caught.value.cause.reason == "unavailable-transient"
+    with pytest.raises(catalogue_api.CatalogueUnavailable) as raised:
+        catalogue.tracks_for_isrc(ISRC)
+    assert adapter.classify_unavailable(raised.value) is adapter.TrackOutcome.UNAVAILABLE_TRANSIENT
 
 
 def test_an_isrc_the_catalogue_files_nothing_under_is_the_empty_answer(monkeypatch, gate):
@@ -909,3 +951,80 @@ def test_the_live_catalogue_transport_is_refused_in_every_test(monkeypatch, gate
     record_app()
     with pytest.raises(AssertionError, match="live catalogue transport"):
         provider_session.catalogue_client(AccountClient(), gate=gate)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The guards round one found killing nothing
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("lifetime", [60, 30])
+def test_a_short_lived_token_keeps_half_its_life_rather_than_none(monkeypatch, gate, clock, lifetime):
+    record_app()
+    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[token(lifetime)]))
+    app._clock = clock
+
+    for _ in range(3):
+        app.get_tracks_by_isrc(ISRC)
+    clock.now += lifetime / 2 - 1
+    app.get_tracks_by_isrc(ISRC)
+    clock.now += 2
+    app.get_tracks_by_isrc(ISRC)
+
+    tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
+    assert len(tokens) == 2
+
+
+def test_a_lifetime_that_is_a_flag_is_not_read_as_one_second(monkeypatch, gate, clock):
+    record_app()
+    account, app, transport = opened(monkeypatch, gate, AppTransport(tokens=[token(True)]))
+    app._clock = clock
+
+    app.get_tracks_by_isrc(ISRC)
+    clock.now += 2
+    app.get_tracks_by_isrc(ISRC)
+
+    tokens = [one for one in transport.sent if one["url"] == catalogue_api.TOKEN_URL]
+    assert len(tokens) == 1
+
+
+def test_a_resource_in_the_answer_that_is_not_a_track_is_not_a_candidate(monkeypatch, gate):
+    record_app()
+    stray = {"id": "9", "type": "albums", "attributes": {"title": "Sun Path"}}
+    account, app, transport = opened(
+        monkeypatch, gate, AppTransport([answer_with(resource("101", "Sun Path"), stray)])
+    )
+
+    assert [one.id for one in app.get_tracks_by_isrc(ISRC)] == ["101"]
+
+
+def test_an_included_resource_is_matched_by_its_kind_and_identifier_both(monkeypatch, gate):
+    """An album sharing an artist's identifier is not that artist, and an
+    included entry with no kind names nothing."""
+    record_app()
+    included = [
+        {"id": "a1", "type": "albums", "attributes": {"name": "Wrong Kind", "title": "Wrong Kind"}},
+        {"id": "a1", "attributes": {"name": "No Kind"}},
+        {"id": "r1", "type": "albums", "attributes": {"title": "Sun Path"}},
+    ]
+    track = resource("101", "Sun Path")
+    track["relationships"]["artists"]["data"].append({"id": "a1"})
+    account, app, transport = opened(
+        monkeypatch, gate, AppTransport([answer_with(track, included=included)])
+    )
+
+    (found,) = app.get_tracks_by_isrc(ISRC)
+    assert found.artists == ()
+    assert found.album.name == "Sun Path"
+
+
+def test_the_report_reader_says_when_the_file_could_not_be_opened(tmp_path):
+    folder = tmp_path / "provider_gate.json"
+    folder.mkdir()
+    assert provider_gate.read_spend(folder) is None
+
+
+def test_a_call_named_for_no_identity_is_refused(gate):
+    with pytest.raises(ValueError):
+        gate.call(lambda: Answer(200), identity="App")
+    assert gate.spend() == Spend()

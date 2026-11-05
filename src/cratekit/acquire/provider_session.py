@@ -332,9 +332,19 @@ def catalogue_client(account: Any, *, gate: provider_gate.Gate) -> Any | None:
     NONE MEANS ASK THE ACCOUNT, EXACTLY AS BEFORE THIS UNIT, and is answered
     when either value is not recorded, so an installation that never set the
     app up behaves as it always did. Presence is asked of the index first, so
-    an installation with no app makes no keychain read for it. Recorded values
-    the keychain will not give are refused rather than read as absent, see
-    ``catalogue_api.unreadable``.
+    an installation with no app makes no keychain read for it.
+
+    THE KEYCHAIN IS THE EFFECTIVE VALUE, AND THE INDEX ONLY WHAT WAS WRITTEN.
+    A value the index records and the keychain answers is not there for, which
+    is what deleting it through the operating system's own keychain does, is
+    NOT recorded, and the lookups go to the account as for any installation
+    without the app (U205's review, round one). Refusing there would lock the
+    person out of every verb that opens the account, and the product has no
+    way to un-record a value, so the refusal would have no remedy short of
+    registering the app again. The run's spend line says where the lookups
+    went, so the fallback is never silent. A keychain that could not be READ
+    at all is still refused, see ``catalogue_api.unreadable``: that is a
+    broken machine, not an absent value.
 
     THE COUNTRY IS THE ACCOUNT'S OWN, read off the account client the login
     filled, so an availability answer is the one the account would get. An
@@ -352,6 +362,8 @@ def catalogue_client(account: Any, *, gate: provider_gate.Gate) -> Any | None:
         return None
     try:
         client_id, client_key = (secrets.get(name) for name in names)
+    except secrets.CredentialMissing:
+        return None
     except secrets.CredentialError as exc:
         raise catalogue_api.unreadable(exc) from exc
     client = catalogue_api.AppCatalogue(

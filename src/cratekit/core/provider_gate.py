@@ -730,6 +730,10 @@ class Gate:
         than one request and one interval, which is what the lock wait limit
         stands on.
         """
+        if identity not in IDENTITIES:
+            # Asked here as well as at ``attach``, so a caller that names an
+            # identity to the call directly cannot count calls nobody sees.
+            raise ValueError(f"no provider identity is named {identity!r}")
         while True:
             with self._held():
                 state = self._read()
