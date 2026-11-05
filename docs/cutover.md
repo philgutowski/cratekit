@@ -1885,6 +1885,17 @@ From v0.7.0, no job running, rekordbox closed. Every provider call went on the a
 
 **A67 (#438) is met**: the kinds overlap from 0.89 to 1.22, leaning to Normal keeps the cut above 1.22, so **the cut stays 1.5** and R-1136 is closed on its entry. **A81 (#476)**: the stop at exactly 500 with its printed continue is met; the continue started again rather than from kept reads, which is #533 (U217). **A76 (#459)**: the listing's call count and the resume that asks only the rest are met; the build gate's `release reads` line was not reached. **A58 (#418)**: the one label report and its time are read; the second run's zero calls failed, filed as #533. The macOS battery is sitting 59's on `d4232416`.
 
+
+## Sitting 61, 2026-11-05, the attended session on v0.7.0: A69 (#440), the Rominimal genre sub, stopped at the rehearsal
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Hand edit | the library's `coupled/taxonomy.toml`, a copy kept first in the session's scratch folder | `schema_version` 4 to 5, `"Rominimal"` added to Minimal / Deep Tech's `aliases`, and the `[[bucket.genre_sub]]` table (`id = "rominimal"`, `display = "Rominimal"`, `sources = ["Rominimal"]`), as the shipped template has it. `crate doctor`: `taxonomy.active` and `taxonomy.schema` ok. | done, then undone |
+| Rehearsal | `crate route resort` on the hand copy (`scratch/copyrun`, refreshed after the edit), run `2026-11-05T14:13:39Z-d3ca`, then its job `2026-11-05T14:13:39Z-725e` driven, 1m42s | The verb queued a job and the job applied with **no gate**. Read from the copy's database: **`BY GENRE + ENERGY / Minimal / Deep Tech / Rominimal` made with the 96 rows tagged Rominimal** beside the bands, as the brief expects. **It also made a folder `INBOX / Minimal / Deep Tech`** (row 112869439, under INBOX 2705010179) with High Energy 119, Low Energy 129, Med Energy 178, Rominimal 96 and with vox 8. The live INBOX holds no genre folder. The job also warned that 448 memberships the declaration does not place stay in the tree, and that `genre_energy` still differs in 452 places. | stopped |
+| Undo | the kept copy put back over `coupled/taxonomy.toml` | `diff` empty; doctor reads schema 4 again. Nothing live was written: the live resort was not run. | done |
+
+**A69 (#440) is not met** and depends on #537 (U218), filed with this finding. The edited taxonomy is kept in the session scratch folder as `taxonomy.toml.2026-11-05-with-rominimal` for whoever retakes the card; the shipped template's text is the same edit.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
