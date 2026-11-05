@@ -401,7 +401,8 @@ def test_a_track_the_library_lacks_added_on_the_account_is_held_there(machine):
 
     assert step.state == NOTHING
     (named,) = step.items
-    assert named["outcome"] == edits.HELD and "U204" in named["why"]
+    assert named["outcome"] == edits.HELD and named["acquire"] is True
+    assert "queued for download" in named["why"]
     assert machine.held("Tech House Med") == ["r9"]
 
 
@@ -554,9 +555,11 @@ def test_a_genre_folder_places_only_what_routing_files_into():
             mirror.Source(name=f"Deep House {one}")
             for one in ("Low", "Unsorted", "with vox", "Favorites", "Candy")
         ),
-        genre=True,
+        edits=edits.GENRE,
     )
-    found = mirror_edits.places(declared, [folder, mirror.Folder(name="Not A Genre", genre=True)])
+    found = mirror_edits.places(
+        declared, [folder, mirror.Folder(name="Not A Genre", edits=edits.GENRE)]
+    )
     assert {title: place.primary for title, place in found.items()} == {
         "Deep House Low": True,
         "Deep House Unsorted": True,
@@ -565,7 +568,7 @@ def test_a_genre_folder_places_only_what_routing_files_into():
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# 6. Favorites and INBOX keep their one way mirror until U204
+# 6. A folder no edit rule reads is mirrored one way
 # ═══════════════════════════════════════════════════════════════════════════
 
 

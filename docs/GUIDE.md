@@ -1077,8 +1077,28 @@ you put it and named, never taken off. The rekordbox step is `mirror-edits`,
 on the rekordbox area's gate, each track named with its genre, energy and
 playlists from and to. The first organize after this arrives changes nothing in
 your library: it reads every difference as rekordbox's and remembers each
-playlist from then on. The Favorites folder and INBOX still mirror one way
-until U204 brings them, and a track the library lacks with them. Approve one area and abort the other
+playlist from then on.
+
+The Favorites folder and INBOX follow your edits the same way. Put a track in
+`All Favorites` on Tidal and the next organize favourites it as a heart is:
+into All Favorites and the month you added it in (`Undated` when Tidal gives no
+time, and no month when it already sits in one), coloured Pink when it carries
+no colour. Put it in a month playlist and it goes into that month and All
+Favorites. Take it off `All Favorites` and it leaves All Favorites and every
+month playlist in rekordbox; its colour is left, and it stays hearted on Tidal,
+so the next sync places it back unless you un-heart it there too, the same two
+steps as before. Taking a track off a month playlist alone, or adding it to two
+months at once, is listed and not carried. In INBOX, a track you add on Tidal
+to a batch joins that batch in rekordbox and one you take off leaves it; Old is
+never touched: when the rotation moves an edited batch into Old in the same
+run, the step writes nothing that run and the next organize takes the other
+edits again, while the edit to that batch goes with its retired playlist. A track you add on Tidal to any mirrored
+playlist that your library does not have is queued for download once, by the
+rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one; it
+stays on Tidal meanwhile, and once it lands the next organize files it where
+you put it. A track whose recording you already own as another release is not
+queued, and one the download found you own, or could not fetch, is named as
+such and left on Tidal as you put it. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
@@ -1095,7 +1115,7 @@ crate organize --report --only file
 crate organize --only file
 ```
 
-The kinds are `adopt`, `rotate`, `record-labels`, `inspiration` and `mirror-edits` on the rekordbox side,
+The kinds are `adopt`, `rotate`, `record-labels`, `inspiration`, `mirror-edits` and `mirror-downloads` on the rekordbox side,
 `labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the

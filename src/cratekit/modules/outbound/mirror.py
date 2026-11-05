@@ -49,11 +49,12 @@ never one per call as ``export playlist`` adds them. Removals run last, so a
 track moving from one band to another is on its new playlist before it leaves
 its old one.
 
-AN EDIT MADE ON THE ACCOUNT IS NOT UNDONE (U201). Each mirrored playlist keeps
-its snapshot, the account tracks both sides held when a refresh last finished
-it, recorded by the apply, or by the plan for a playlist with nothing to write.
-The caller reads each genre playlist three ways (:mod:`mirror_edits`) and hands
-in a HOLD per playlist: a track whose edit on the account the library takes, or
+AN EDIT MADE ON THE ACCOUNT IS NOT UNDONE (U201, U204). Each mirrored playlist
+keeps its snapshot, the account tracks both sides held when a refresh last
+finished it, recorded by the apply, or by the plan for a playlist with nothing
+to write. The caller reads each playlist of a genre folder, the Favorites
+folder and INBOX three ways (:mod:`mirror_edits`) and hands in a HOLD per
+playlist: a track whose edit on the account the library takes, or
 one held, is never taken off nor added back here. A playlist whose listing came
 back short keeps its snapshot's word on every track it did not list.
 
@@ -168,9 +169,11 @@ class Folder:
     playlists: tuple[Source, ...] = ()
     retire: bool = False
     present: frozenset[str] = frozenset()
-    #: A genre folder of the routing tree, whose edits on the account the
-    #: library takes (U201); the Favorites folder and INBOX are not, yet.
-    genre: bool = False
+    #: Which edit rule reads this folder, so an edit made on the account to it
+    #: is held and taken into the library: ``mirror_edits.GENRE`` for a genre
+    #: folder of the routing tree (U201), ``FAVORITES`` and ``INBOX`` since
+    #: U204, ``""`` for a folder mirrored one way.
+    edits: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -298,6 +301,21 @@ class Matcher:
         if remote and self._links.get(row.content_id) != (remote, isrc):
             self.fresh[row.content_id] = (remote, isrc)
         return remote, reason
+
+    def adopt(self, content_id: str, remote: str) -> None:
+        """Answer one row as the account track a mirror download fetched it as (U204).
+
+        The row a download's landing made is that very track, as a label
+        landing's ``known`` track is, so it is answered and linked as it even
+        where the provider broke a tie between releases toward another one;
+        otherwise the mirror would swap the track a person added for another
+        release of it. Called once every row is matched and before any plan
+        reads them, so every plan of the run reads the one answer.
+        """
+        _remote, isrc, _reason = self._seen.get(str(content_id), ("", "", ""))
+        self._seen[str(content_id)] = (str(remote), isrc, "")
+        if self._links.get(str(content_id)) != (str(remote), isrc):
+            self.fresh[str(content_id)] = (str(remote), isrc)
 
     def under(self, row: Row) -> tuple[str, ...]:
         """What a miss of this row is remembered under, and reused while it holds."""
