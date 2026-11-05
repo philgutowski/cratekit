@@ -598,10 +598,19 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
             owner.setdefault(remote, set()).add(content_id)
     # A TRACK A MIRROR DOWNLOAD QUEUED IS OWNED BY THE ROW OF ITS ISRC once it
     # lands (U204), even where the matcher broke a tie between releases toward
-    # another one, so the addition it was queued for is read and filed.
+    # another one, so the addition it was queued for is read and filed, and the
+    # row is answered as that track so the mirror never swaps it for another
+    # release. Two rows of the code are two owners, which holds the edit.
     for remote, rows in mirror_downloads.landed(cfg, seen).items():
-        if remote not in owner:
-            owner[remote] = set(rows)
+        if remote in owner:
+            continue
+        if len(rows) == 1:
+            (content_id,) = rows
+            was = seen.get(content_id, ("", "", ""))[0]
+            if was and was in owner:
+                owner[was].discard(content_id)
+            matcher.adopt(content_id, remote)
+        owner[remote] = set(rows)
     read: list[edits.Mirrored] = []
     for folder in edited:
         held = reading.recorded.get(folder.name)

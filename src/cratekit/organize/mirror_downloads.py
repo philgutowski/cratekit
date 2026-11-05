@@ -169,7 +169,12 @@ def plan(cfg: config.Config, reading: Any, *, listed: Any = None) -> Planned:
         return Planned()
     already = queued(cfg)
     grouped: dict[str, tuple[str, list[str]]] = {}
+    taken: set[str] = set()
     for decision in wanted:
+        # ONE TRACK, ONE QUEUE: a track added to two playlists, or read by two
+        # trees, is queued with the first, and lands once.
+        if decision.track in taken:
+            continue
         if decision.track in already:
             named.append(
                 {
@@ -194,6 +199,7 @@ def plan(cfg: config.Config, reading: Any, *, listed: Any = None) -> Planned:
             )
             continue
         grouped.setdefault(pid, (place.title, []))[1].append(decision.track)
+        taken.add(decision.track)
     if listed is None:
         listed = _catalogue_listing(cfg)
     queue: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}

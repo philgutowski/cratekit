@@ -300,6 +300,21 @@ class Matcher:
             self.fresh[row.content_id] = (remote, isrc)
         return remote, reason
 
+    def adopt(self, content_id: str, remote: str) -> None:
+        """Answer one row as the account track a mirror download fetched it as (U204).
+
+        The row a download's landing made is that very track, as a label
+        landing's ``known`` track is, so it is answered and linked as it even
+        where the provider broke a tie between releases toward another one;
+        otherwise the mirror would swap the track a person added for another
+        release of it. Called once every row is matched and before any plan
+        reads them, so every plan of the run reads the one answer.
+        """
+        _remote, isrc, _reason = self._seen.get(str(content_id), ("", "", ""))
+        self._seen[str(content_id)] = (str(remote), isrc, "")
+        if self._links.get(str(content_id)) != (str(remote), isrc):
+            self.fresh[str(content_id)] = (str(remote), isrc)
+
     def under(self, row: Row) -> tuple[str, ...]:
         """What a miss of this row is remembered under, and reused while it holds."""
         return (
