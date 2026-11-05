@@ -202,6 +202,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     # 2026-10-10, U130: the four sync pair causes joined.
     'sync-pair-conflict',
     'sync-pair-out-of-scope',
+    'sync-pair-steps-unwritten',  # 2026-11-05, U210: a write step it could not record.
     'sync-pair-store-unusable',
     'sync-pair-unknown',
     'sync-source-lookups-failed',
@@ -232,7 +233,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
 })
 
 # Reserved table size. Moves only when a reservation is added or removed.
-PINNED_RESERVED_CAUSE_COUNT = 28
+# 2026-11-05, U211: rekordbox-absence-unconfirmed joined the backup reservations.
+PINNED_RESERVED_CAUSE_COUNT = 29
 
 # Kebab-shaped string literals per module. A card that adds literals edits only its own module's entry. The package-wide distinct counts are derived below.
 PINNED_KEBAB_LITERALS_BY_MODULE = {
@@ -518,6 +520,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-snapshot-available',
         'output-exists',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'repair-backup-facts',
@@ -848,6 +851,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'recovery-target-refused',
         'refill-playlist-outside-inbox',
         'refused-by-policy',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'removal-sequence-unreadable',
@@ -901,6 +905,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         # 2026-10-10, U130: the four sync pair causes joined.
         'sync-pair-conflict',
         'sync-pair-out-of-scope',
+        'sync-pair-steps-unwritten',  # 2026-11-05, U210.
         'sync-pair-store-unusable',
         'sync-pair-unknown',
         'sync-source-lookups-failed',
@@ -1016,6 +1021,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/naming.py': ['utf-8'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],
     'core/rb_writer.py': [
@@ -1704,6 +1711,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'prune-archive',
         'prune-archive-folder',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-database',
@@ -1822,7 +1830,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # and the two listing refusals a brought playlist is listed for.
     # 2026-11-05, U209: the check before the write's stale refusal, its moved
     # folder side, the side a made rekordbox playlist's home is named on,
-    # and the warning a run planned again carries.
+    # and the warning a run planned again carries. 2026-11-05, U210: a
+    # continued run's warning, its steps unread, and the refusal a step it
+    # could not record stops the write with.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
@@ -1841,7 +1851,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-out-of-scope',
         'sync-pair-released',
         'sync-pair-replanned',
+        'sync-pair-resumed',
         'sync-pair-skipped',
+        'sync-pair-steps-unread',
+        'sync-pair-steps-unwritten',
         'sync-pair-time-unknown',
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
@@ -2193,6 +2206,10 @@ PINNED_NAMED_WITHOUT_OWN = {
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
+    # 2026-11-05, U210: the refusal a write step it could not record stops it with.
+    'sync/pair_cli.py': ['sync-pair-steps-unwritten'],
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
@@ -2227,6 +2244,7 @@ PINNED_NAMED_WITHOUT_OWN = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -2271,6 +2289,8 @@ PINNED_NAMED_WITH_OWN = {
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten', 'not-downloadable'],
     # 2026-11-05, U205: a rejected or unreadable app credential.
     'acquire/catalogue_api.py': ['credential-missing'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
@@ -2284,6 +2304,8 @@ PINNED_NAMED_WITH_OWN = {
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
+    # 2026-11-05, U210: the refusal a write step it could not record stops it with.
+    'sync/pair_cli.py': ['sync-pair-steps-unwritten'],
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
@@ -2412,6 +2434,7 @@ PINNED_NAMED_WITH_OWN = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -2673,6 +2696,8 @@ PINNED_LITERAL_HOLDERS = {
         'no-evidence',
         'unavailable-transient',
     ],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
     'core/rb_writer.py': [
@@ -2986,6 +3011,7 @@ PINNED_LITERAL_HOLDERS = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -3039,11 +3065,13 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-10-10, U130: the sync pair verb joined.
     # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
     # 2026-11-05, U209: the check before the write refuses stale.
+    # 2026-11-05, U210: a write step it could not record stops the write.
     'sync/pair_cli.py': [
         'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
         'sync-pair-out-of-scope',
+        'sync-pair-steps-unwritten',
         'sync-pair-unknown',
     ],
     # 2026-11-04, U202: the rekordbox side of a pair made from the account.

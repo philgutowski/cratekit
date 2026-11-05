@@ -1006,6 +1006,18 @@ playlist that moved, and you run `crate sync pair` again to see the plan as it
 is now. The answer says how many provider calls the plan, that check and the
 write each took.
 
+A long sync can stop part way through its write: the provider's call ceiling
+for one command, a cooldown, or anything else that parks it. What it wrote is
+kept and each step is recorded under its run, so the stop's answer names the
+run and the command that finishes it, `crate --calls N --run RUN sync pair`
+for a ceiling stop. That continue writes only what is left, with no new plan
+and no new answers: a playlist the stop left made and empty is filled, never
+made twice. If you changed a playlist the write had not finished with, by hand
+on Tidal or in rekordbox, it refuses as stale and names it, and a fresh
+`crate sync pair` is the way on. Before you answer, the gates show how many
+provider calls the write is expected to make, and when that is more than one
+command may make, the `--calls` value that lets it finish in one go.
+
 ### Publish a playlist
 
 ```bash
@@ -1086,7 +1098,11 @@ account: every genre folder of BY GENRE + ENERGY, the Favorites folder and
 INBOX each become one root folder of the same name, holding one private
 playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
 Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
-live batches, the playlists `inbox rotate` moves, never Old. A label batch,
+live batches, the playlists `inbox rotate` moves, never Old, and its step
+names every other playlist or folder directly under INBOX that it leaves off
+the account, with the reason and, for a plain playlist, its row count, so a
+playlist no rule reads as a batch is named rather than missing; `inbox rotate`
+names the same ones the same way. A label batch,
 which no account playlist holds, fills from the provider track each file was
 downloaded as. A track whose ISRC names several releases that all agree with
 it, a single and its album cut, goes onto the mirror as one of them and stays
@@ -1540,6 +1556,7 @@ treated like any other.
 | A job that never moves | `crate job show JOB_ID`. Queued work needs `crate job resume`. |
 | A blocked job | `job show` carries the cause, usually a review decision or a credential. |
 | "provider-call-ceiling" | The command made as many calls to the streaming provider as one command may, 500 unless `[provider] calls_per_command` says otherwise, and stopped with what it did kept. The refusal prints the exact command that continues, with `--calls N` raising the ceiling for that one run; a job continues with `crate --calls N job resume JOB_ID`. The next run is back at the configured ceiling. |
+| "rekordbox-absence-unconfirmed" | A process the check for rekordbox could not read, named by its pid, so whether rekordbox is closed was not established and the step that needed it closed did not run. It is usually a process that is still exiting: wait a moment, then continue the run with the command the refusal prints, `crate --run RUN_ID` and the verb's own words, which keeps every gate already answered. A process that has finished exiting, a zombie, is skipped and never refuses. If it refuses again, look at the pid with `ps -p PID -o pid,stat,comm`. `crate doctor` shows the same thing as a note under `rekordbox.closed`. |
 | A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
 | `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
 | A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |

@@ -626,9 +626,11 @@ def test_the_rotation_never_takes_analyze_for_a_batch_whatever_a_record_says():
     from types import SimpleNamespace
 
     row = SimpleNamespace(ID="q", Name=native.ANALYZE, Attribute=0, rb_local_deleted=0)
+    # A handle holding no membership, since a left playlist is counted (U214).
+    empty = SimpleNamespace(get_playlist_songs=lambda **_where: [])
     found = rotate._classify(
         None,
-        None,
+        empty,
         row,
         place="INBOX",
         in_old=False,

@@ -35704,6 +35704,12 @@ Phillip's standard of 2026-10-27, so `KeyID` is never written. The rekordbox
 visit and `docs/GUIDE.md` drop Reload Tags. The live proof is owed to the
 next attended landing.
 
+**Live proof, sitting 55 (2026-11-05), A50 (#386).** The 14 rows landed by
+pass `2026-11-05T022315Z-910b_synced` showed artist and genre on every row in
+rekordbox before any Reload Tags, and one row read in the Info panel showed
+its album and year (Jamie Cullum, `Twentysomething (Special Edition)`, 2004);
+the database read the same four columns on all 14.
+
 ---
 
 ## R-922. A native landing's digest names the database file, so no copy rehearsal can match it
@@ -42773,3 +42779,327 @@ between the gate and the write, and none was found that does.
 
 **Closes when:** a producer is found for one, then the check reads it. Ledger
 only.
+
+---
+
+## R-1247. A continued sync pair answers only what it wrote itself, not what the stopped command made or queued
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop is a park, and a parked envelope carries no
+totals. The continue's OK envelope counts only its own command's writes
+(`created_playlists`, `queued_jobs` and the rest in `sync_pair`,
+`sync/pair_cli.py`), so the playlists the stopped command made and the jobs it
+queued appear in no answer's totals. The continue's message says how many
+pairs finished earlier in the run, and `totals.finished_before` counts them.
+
+**Measured cost.** Driven at round one (S7): a job queued before the stop was
+in `crate job list` and not in the continue's `queued_jobs`. Nothing is lost;
+the report is incomplete.
+
+**Closes when:** each pair's done step records what it made and queued, and the
+continue's totals add the earlier commands' to its own. Ledger only.
+
+---
+
+## R-1248. A second copy of a track put on a paired account playlist reads as no change to the check before the write
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** The check before the write (U209's `check`, and U210's
+reading of a part written playlist in `_beyond`, `sync/pair_cli.py`) compares
+the account listing after `pair_merge.distinct`, and the listing seam freezes
+rows by track identifier, so a track the author put on the playlist a second
+time between the gate and the write, or between a stop and its continue, is
+the same list to both. The write goes on and the snapshot records the list
+distinct.
+
+**Measured cost.** Driven at round one (S12): the continue answered OK and the
+account kept the track twice, which is what the author did; nothing was lost
+or written over. The cost is that the check does not name the change it saw.
+
+**Closes when:** the listing the check reads keeps each copy, and a count
+that differs from the plan's refuses stale as a reorder does. Ledger only: no
+data is lost and the author's copy stands.
+
+---
+
+## R-1249. A made account playlist moved out of its folder between a stop and its continue is moved back
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop between making a discovered playlist's
+account side and putting it in its folder leaves it at the account root. The
+continue (`_made` with `resumed`, `sync/pair_cli.py`) moves it into the folder
+the plan named, since the move asks for one fixed place, and does not read
+where the playlist is now. A playlist the author moved elsewhere in that
+window, into Archive say, is moved back.
+
+**Measured cost.** Driven at round one (S2): the continue moved it back and
+answered OK. The playlist is empty in that window (it is filled after the
+move), nothing is lost, and moving it again lets the archive rule release it.
+
+**Closes when:** the continue reads the made playlist's folder first and
+refuses stale when it sits in a folder other than the root or its own. Ledger
+only.
+
+---
+
+## R-1250. The sync pair write's call forecast is held to the account adapter over a fake client and unmeasured live
+
+**Found:** at the build of #500, U210, 2026-11-05.
+
+**The mechanism.** `sync/pair_calls.py` counts a write's provider calls from
+the account adapter's shape: a playlist opened and read a page at a time,
+made with three calls, added to a hundred a request, taken off fifty a
+request with a read back each, ordered one move and read back a track. The
+check's folder reads are counted at one call each. The gates show the sum,
+and a ceiling stop names a `--calls` with a quarter's margin, rounded up to a
+hundred.
+
+**Measured cost.** Held exactly to the shipped adapter over a counting fake
+client (`tests/test_sync_pair_calls.py`), never to the live provider. A folder
+of more than fifty playlists costs the check more than one read, and a
+provider that pages differently would move every count.
+
+**Closes when:** the next attended `crate sync pair` records its answer's
+`totals.calls_expected` against `totals.calls`. Ledger only.
+
+---
+
+## R-1251. A mirrored INBOX playlist still in INBOX but no longer read as a batch is named twice on the step, and counted twice in its left count
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `mirror.plan` names a playlist the ledger records as
+mirrored, whose title is still present in INBOX but no longer reads as a
+batch, with its "still in INBOX but no longer read as one to mirror" line.
+Since U214 the same node is also one of `Folder.unmirrored`, so the step
+carries two left lines for it and its `left` count counts it twice: "2 left as
+they are; 1 node(s) in INBOX not mirrored".
+
+**Measured cost.** Both lines are true. A person reconciling the left count
+against INBOX reads one too many. Driven on the account side through the
+organize step's fake account; the library side producer, a batch folder
+removed after the batch was mirrored, was not driven end to end.
+
+**Closes when:** the step names such a node once, the recorded line folded
+into its unmirrored line, or the count counts nodes rather than lines. Ledger
+only: a wording and count fix, nothing false.
+
+---
+
+## R-1252. An INBOX step refused for two batches of one title shows the refusal only, and none of the nodes it would leave off
+
+**Found:** at the plan and the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `account_mirror._inbox` returns the `_twice` refusal when
+two live batches take one account title, before the unmirrored lines are
+built, so the refused INBOX step names neither the batches it would mirror
+nor the nodes it would leave off.
+
+**Measured cost.** The brief's "never dropped without a line" does not hold
+while the step is refused. Nothing is mirrored and nothing is skipped
+silently: the refusal names the title to fix, and once it is fixed the next
+refresh names every node. Driven on a disposable database with two
+`2026-09-23 Tidal playlists` batches and a label playlist beside them. The
+author's call at the plan, the conservative one, since the refusal stops the
+step whole.
+
+**Closes when:** the refusal's detail carries the unmirrored lines too.
+Ledger only.
+
+---
+
+## R-1253. Two live folders named Old under INBOX are both named the Old folder by the mirror, while the rotation refuses the tree
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `plan_rotation` refuses `intake-old-undeclared` when INBOX
+holds two live folders of the declared Old's name, since a rotation that
+targets the folder by name cannot tell them apart. `live_batches` refuses
+nothing there and the mirror's INBOX step names both as "the Old folder".
+
+**Measured cost.** Nothing false: neither folder is mirrored and both are
+named. The mirror and the rotation disagree on whether INBOX is readable, and
+only the rotation's refusal says why. Driven on a disposable database.
+
+**Closes when:** the mirror's line for a second Old says the rotation refuses
+the pair. Ledger only.
+
+---
+
+## R-1254. The Old check in the rotation's classifier carries a guard that kills no test, because a name is never None
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `rotate._classify` tests `old_display is not None and name
+== old_display`. A node's name is always text, so the first clause decides
+nothing the second does not already decide.
+
+**Measured cost.** None. Removed in a mutation run, every test passed. It
+documents the undeclared case and costs nothing.
+
+**Closes when:** the clause is dropped or kept on purpose. Ledger only,
+maintainer facing.
+
+---
+
+## R-1255. The session scan reads a log directory it cannot list as no record and no unreadable one, for every consumer but the rotation's classifier
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `session.scan_log` globs the log directory, and a glob over
+a directory the account cannot list yields nothing rather than raising, so it
+returns `(), ()`: no record read and none unreadable. U214 made the rotation's
+classifier ask the listing itself (`rotate.Landings.unlisted`), so its
+unrecognised reason says the log could not be listed. Every other consumer of
+`scan_log` still reads the unlistable log as empty, the gates included, and the
+rotation's own `rotate-records-unreadable` warning does not fire on it, so a
+batch recognised by its name rather than its record is aged from its playlist's
+creation date with no warning.
+
+**Measured cost.** Driven at the review as an unprivileged account with the
+log directory's mode set to none: the scan answered no record and no unreadable
+one, and nothing warned. The producer was a permission change made outside the
+tool, so the natural producer is unmeasured; the repository treats a directory
+it cannot list as a reachable class. A gate that reads the log through the
+scan fails open on it, which the scan's own docstring names as the shape it
+exists to prevent.
+
+**Closes when:** `scan_log` asks the listing and reports an unlistable log as
+unread, each gate consumer refuses on it, and the rotation warns on it as it
+warns on an unreadable record. Earns an issue under the board bar's (b) and
+(d): a clean report over state it could not read, and a guard on a gated path
+that reads unread as none.
+
+---
+
+## R-1256. A landing record whose start is not a date is read as readable and then skipped, so its batch reads as named by no record with no warning
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `SessionRecord.from_json` keeps a `started` that is not a
+date as text, so the record counts as read, and `rotate.landings` skips it when
+`_local_date` returns nothing. The batch it names then reads "no landing record
+names it" and `unreadable_records` stays at 0.
+
+**Measured cost.** A false reason with no warning on the rotation's plan and
+the mirror's INBOX step. Driven with a hand edited record; the writer always
+writes an ISO date, so no Cratekit verb was found to produce it (1 candidate
+driven).
+
+**Closes when:** `landings` counts such a record as unreadable. Ledger only.
+
+---
+
+## R-1257. A batch with no record and no creation date is said to have no landing record while a session record could not be read
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `rotate._classify` names a recognised batch with nothing to
+age it from "no landing record and no creation date to age it from", without
+the unread clause U214 gave the unrecognised reason. The gate's
+`rotate-records-unreadable` warning still fires beside it.
+
+**Measured cost.** A reason that overclaims, with a true warning beside it.
+Driven with the playlist's creation column set empty in SQL; rekordbox always
+fills it, so the producer is synthetic (1 candidate driven).
+
+**Closes when:** the reason carries `Landings.unread()` as the unrecognised one
+does. Ledger only.
+
+---
+
+## R-1258. A backup job whose database item met an unconfirmed rekordbox absence cannot be resumed, only queued again
+
+**Found:** at the review of #505, U211, 2026-11-05.
+
+**The mechanism.** `backup/cli._engine_refusal` rebuilds a portion refusal
+from the reservation table, with no `retryable`, so the database item a job
+recorded under `rekordbox-absence-unconfirmed` is permanent. The scan's own
+refusal said `retryable=True`, and that is lost on the way. Since review round
+two the dispatcher answers the job's verdict as it is, failed and not
+resumable with the job's own step, rather than as a kept run.
+
+**Measured cost.** Driven by review round two and by
+`tests/test_process_scan_jobs.py`: `crate job resume` refuses the job with
+`job-not-retryable`, and a fresh `crate backup run` once the process has
+exited takes the snapshot. The files portion mirrored on the first run either
+way. The person runs the backup again rather than resuming it.
+
+**Closes when:** the engine refusal for this slug is retryable, so `job
+resume` retakes the database item once the scan reads clean. Ledger only: the
+workflow finishes with a fresh run, and nothing is lost or misreported.
+
+---
+
+## R-1259. A first sync of a pair refused at its write is continued stale, because approving marked the pair and the digest covers the mark
+
+**Found:** at the build of #505, U211, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.apply_pair` marks a pair in the pairs
+document before it writes either side, and `PairPlan.identity` puts `marked`
+in the digest both gates bind to. So when a pair's first sync, or a pair the
+sync makes, is refused at its rekordbox write (by U211's unconfirmed absence,
+or by any refusal there), the run U211 keeps is continued with `--run` into a
+plan whose digest moved, and each gate refuses `DECISION_STALE` in turn and is
+answered again, both of them. A pair already marked, which is every pair in a sync of every
+pair and the case Sitting 54 met, digests the same and continues straight
+through, as `tests/test_process_scan.py` drives.
+
+**Measured cost.** Driven on the disposable library while building U211: the
+continued run of a new pair's first sync answered `DECISION_STALE`. The round
+one review drove it to the end: stale on `sync.pair.rekordbox`, answered,
+stale on `sync.pair.account`, answered, then written with nothing lost. That
+`marked` is the field that moved is read from the identity, not isolated. Nothing is written under a stale answer, so the
+cost is both gates answered again and two more plans, each of which asks
+the provider again.
+
+**Closes when:** a refused first sync continues without asking again, by
+marking the pair only once a side is written, or by leaving `marked` out of
+the digest of a pair the same run marked. Ledger only: nothing is lost or
+misreported, and the workflow finishes.
+
+---
+
+## R-1260. A gated write refused because rekordbox opened ends failed, though its answers are kept and --run continues it
+
+**Found:** at the build of #505, U211, 2026-11-05.
+
+**The mechanism.** U211 keeps the run of a refusal under
+`rekordbox-absence-unconfirmed` (`cli.gates.KEPT_RUN_REASONS`): resumable,
+blocked, and naming `crate --run RUN ...`. A refusal under `rekordbox-running`
+at the same guard, a person launching rekordbox between the gates and the
+write, is left as it was: outcome failed, `resumable` false, no continue
+step. The answers given with `crate run decide` are on the run's record
+either way, so `--run` does continue it; only the envelope does not say so.
+
+**Measured cost.** Not driven against a person. `tests/test_process_scan.py`
+pins the narrow set, so widening it is a decision rather than a drift.
+
+**Closes when:** Phillip decides whether a refusal for a running rekordbox at
+a gated write should keep its run the way an unconfirmed absence does, and
+the set is widened or left. Ledger only.
+
+---
+
+## R-1261. The restore session's unconfirmed absence at its database half carries both the continue step and the conditional remove step
+
+**Found:** at the review of #505, U211, 2026-11-05.
+
+**The mechanism.** `session/restore_cli._absence_unconfirmed` ends the scan's
+refusal on the rerun step every database half failure carries ("remove
+master.db and any companion if one is there"), and the dispatcher keeps the
+run and puts the continue command in place of the scan's first step. A
+process that turns unreadable between the session's own scan and the database
+half shows three steps, two of which say how to go on.
+
+**Measured cost.** Driven by the round one review: mirror landed, database not
+attempted, detail `half=database, completed_halves=[mirror]`, four steps on the head
+round one read, three after the fix round, as round two measured.
+Nothing is false, since the remove step is conditional and nothing landed; the
+list is longer than it needs to be.
+
+**Closes when:** a kept refusal at the database half carries only the
+continue step, or the two are made one sentence. Ledger only.

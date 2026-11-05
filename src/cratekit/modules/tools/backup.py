@@ -80,6 +80,7 @@ from pathlib import Path
 from cratekit.core import analysis_store, backup_facts, binaries, config, preflight, session
 from cratekit.core.processes import (
     REKORDBOX_PROCESSES,
+    AbsenceUnconfirmed,
     ProcessLister,
     rekordbox_processes_running,
     running_process_names,
@@ -264,6 +265,11 @@ class Refusal(StrEnum):
     DESTINATION_NOT_CONFIGURED = "destination-not-configured"
     LIBRARY_ROOT_ABSENT = "library-root-absent"
     REKORDBOX_RUNNING = "rekordbox-running"
+    # U211. The process scan met a live process it could not read, so whether
+    # rekordbox is closed was not established. Its own member because "quit
+    # rekordbox" would be false, and the database portion refuses alone so the
+    # file mirror still runs.
+    REKORDBOX_ABSENCE_UNCONFIRMED = "rekordbox-absence-unconfirmed"
     DATABASE_ABSENT = "database-absent"
     RESTORE_NOT_CONFIRMED = "restore-not-confirmed"
     RESTORE_TARGET_ABSENT = "restore-target-absent"
@@ -841,7 +847,18 @@ def _plan_database(
     settings_dirs: Sequence[Path] | None,
 ) -> PortionPlan:
     uncovered = absent_analysis_share(cfg)
-    running = rekordbox_processes_running(lister=process_lister)
+    try:
+        running = rekordbox_processes_running(lister=process_lister)
+    except AbsenceUnconfirmed as exc:
+        return PortionPlan(
+            portion=backup_facts.Portion.DATABASE,
+            refusal=Refusal.REKORDBOX_ABSENCE_UNCONFIRMED,
+            detail=(
+                f"{exc.cause.message}, so no snapshot of the database was taken. "
+                f"Previous dated snapshots remain the backstop."
+            ),
+            warnings=uncovered,
+        )
     if running:
         return PortionPlan(
             portion=backup_facts.Portion.DATABASE,

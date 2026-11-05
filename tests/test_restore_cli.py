@@ -44,7 +44,7 @@ import pytest
 from cratekit import cli
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli import registry
-from cratekit.core import config, jobs, preflight, rb_writer, restore, session, snapshot
+from cratekit.core import config, jobs, preflight, processes, rb_writer, restore, session, snapshot
 from cratekit.core.cause import CratekitError, Outcome
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules.tools import backup
@@ -3010,3 +3010,42 @@ def test_a_recovery_with_no_rclone_installed_refuses_by_name_and_writes_nothing(
 
     assert excinfo.value.cause.reason == "rclone-missing"
     assert list(target.iterdir()) == []
+
+
+def test_an_unconfirmed_absence_at_the_database_half_says_what_the_mirror_left(
+    cfg, tmp_path, monkeypatch
+):
+    """U211. The scan's refusal, named, with the half it stopped at and the rerun step.
+
+    rclone is the product's own stand in on its one seam, so the test reads the
+    same on a machine without rclone; the transfers are the fake remote's.
+    """
+    _fake_rclone(cfg, monkeypatch)
+    target = _replacement(tmp_path)
+    remote = _Remote(cfg)
+
+    def scans():
+        yield ()
+        raise processes._unconfirmed([(300, "SystemError: proc_cmdline")])
+
+    answers = scans()
+
+    with pytest.raises(processes.AbsenceUnconfirmed) as excinfo:
+        restore_cli.recover_under_bare_metal_session(
+            cfg,
+            target=target,
+            accepted=True,
+            runner=remote,
+            **_gone(cfg, process_lister=lambda: next(answers)),
+        )
+
+    cause = excinfo.value.cause
+    assert cause.reason == processes.UNCONFIRMED
+    assert "process 300" in cause.message
+    assert "mirror half completed" in cause.message
+    assert cause.detail["half"] == restore_cli.DATABASE_HALF
+    assert cause.detail["completed_halves"] == [restore_cli.MIRROR_HALF]
+    assert cause.detail["pids"] == [300]
+    assert "remove master.db and any companion" in cause.remediation.steps[-1]
+    assert [c.label for c in remote.transfers] == [backup.RESTORE_MIRROR]
+    assert not list(target.rglob("master.db*"))

@@ -2004,3 +2004,49 @@ def test_the_continue_command_for_a_job_resumes_that_job():
     assert continue_command(HARVEST, entry, cause) == (
         "crate --calls 1000 job resume 2026-11-02T00:00:00Z-ab12"
     )
+
+
+def test_the_continue_command_names_the_run_a_stopped_write_recorded_its_steps_under():
+    """U210. A cause naming its run continues THAT run, once, whatever the command line held."""
+    from cratekit.cli import continue_command  # noqa: PLC0415
+    from cratekit.cli.registry import landed_entries  # noqa: PLC0415
+    from cratekit.core.cause import Cause, Remediation  # noqa: PLC0415
+
+    entry = next(one for one in landed_entries() if one.name == "sync.pair")
+    cause = Cause(
+        reason=CEILING,
+        message="stopped",
+        remediation=Remediation(remedy=jobs.Remedy.FIX_COMMAND_LINE),
+        detail={"ceiling": 5000, "higher": 6000, "run_id": "run-7"},
+    )
+
+    assert continue_command(["sync", "pair"], entry, cause) == (
+        "crate --run run-7 --calls 6000 sync pair"
+    )
+    assert continue_command(["--run", "run-7", "sync", "pair"], entry, cause) == (
+        "crate --run run-7 --calls 6000 sync pair"
+    )
+    assert continue_command(["--run=run-7", "--calls", "10", "sync", "pair"], entry, cause) == (
+        "crate --run=run-7 --calls 6000 sync pair"
+    )
+
+
+def test_the_continue_command_of_a_run_that_cannot_be_continued_starts_a_new_one():
+    """U210. A write that recorded no steps is named without its run."""
+    from cratekit.cli import continue_command  # noqa: PLC0415
+    from cratekit.cli.registry import landed_entries  # noqa: PLC0415
+    from cratekit.core.cause import Cause, Remediation  # noqa: PLC0415
+
+    entry = next(one for one in landed_entries() if one.name == "sync.pair")
+    cause = Cause(
+        reason=CEILING,
+        message="stopped",
+        remediation=Remediation(remedy=jobs.Remedy.FIX_COMMAND_LINE),
+        detail={"ceiling": 5000, "higher": 10000, "fresh": True},
+    )
+    assert continue_command(["--run", "run-7", "sync", "pair"], entry, cause) == (
+        "crate --calls 10000 sync pair"
+    )
+    assert continue_command(["--run=run-7", "sync", "pair"], entry, cause) == (
+        "crate --calls 10000 sync pair"
+    )

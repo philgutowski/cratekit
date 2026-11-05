@@ -674,11 +674,32 @@ def assert_app_version(*, force: bool = False, cfg: config.Config | None = None)
 # ---------------------------------------------------------------------------
 
 
+def _asked_or_scanned(name: str, ask: Callable[[], int]) -> int:
+    """pyrekordbox's answer for one process, or the careful scan's when it raises (U211).
+
+    pyrekordbox's ``get_process_id`` walks every process and catches only
+    ``AccessDenied`` and ``NoSuchProcess``, so a process that raises anything
+    else as it dies, the ``SystemError`` Sitting 54 met, ends its walk and
+    escaped this guard as ``INTERNAL``. The careful scan in ``core.processes``
+    reads each process in its own try, skips one that is gone or a zombie, and
+    refuses by name over a live one it cannot read, so that is the answer
+    whenever pyrekordbox raises. An ``ImportError`` is not a scan that failed,
+    and is left to say what it says.
+    """
+    try:
+        return ask()
+    except ImportError:
+        raise
+    except Exception as exc:  # noqa: BLE001 - every escape from its walk is the scan's to judge
+        logger.debug("pyrekordbox could not scan for %s, so the careful scan answers: %s", name, exc)
+        return processes.rekordbox_pid(name)
+
+
 def rekordbox_running() -> bool:
     """True when the rekordbox application itself is running."""
     from pyrekordbox.utils import get_rekordbox_pid
 
-    return bool(get_rekordbox_pid())
+    return bool(_asked_or_scanned("rekordbox", get_rekordbox_pid))
 
 
 def rekordbox_agent_running() -> bool:
@@ -691,7 +712,50 @@ def rekordbox_agent_running() -> bool:
     """
     from pyrekordbox.utils import get_rekordbox_agent_pid
 
-    return bool(get_rekordbox_agent_pid())
+    return bool(_asked_or_scanned("rekordboxAgent", get_rekordbox_agent_pid))
+
+
+@contextmanager
+def _binding_probe(*, strict: bool) -> Iterator[None]:
+    """The binding's own rekordbox probe, answered carefully for the block's length (U211).
+
+    The binding asks ``get_rekordbox_pid`` itself, once as it constructs, where
+    the answer only decides whether it logs a warning, and once inside
+    ``commit``, where a running rekordbox raises before anything is written. Its
+    walk is the one above, so the same dying process escapes it: as
+    ``database-open-failed`` at construction, which names a damaged library,
+    and as ``INTERNAL`` at commit. For this block the name the binding calls is
+    a wrapper that asks the binding's own function first, so a test's fake or
+    a clean machine answers exactly as before, and the careful scan only when
+    that raises.
+
+    ``strict`` is the commit's: the careful scan's refusal stands. Off, at
+    construction, a scan that cannot confirm answers zero, since all it costs
+    is a log line and the writer's own guard has already asked. The binding's
+    name is put back when the block ends, however it ends.
+    """
+    from pyrekordbox.db6 import database as binding
+
+    asked = binding.get_rekordbox_pid
+    if getattr(asked, "_cratekit_careful", False):
+        yield
+        return
+
+    def careful(*args: Any, **kwargs: Any) -> int:
+        try:
+            return _asked_or_scanned("rekordbox", partial(asked, *args, **kwargs))
+        except processes.AbsenceUnconfirmed:
+            if strict:
+                raise
+            return 0
+
+    careful._cratekit_careful = True  # type: ignore[attr-defined]
+    binding.get_rekordbox_pid = careful
+    try:
+        yield
+    finally:
+        if binding.get_rekordbox_pid is careful:
+            binding.get_rekordbox_pid = asked
 
 
 #: The probe that answers for each name in the shared process list.
@@ -729,6 +793,7 @@ def rekordbox_processes_running() -> str:
     have stopped.
     """
     running = []
+    unconfirmed: processes.AbsenceUnconfirmed | None = None
     for name in processes.REKORDBOX_PROCESSES:
         probe_name = _PROCESS_PROBES.get(name)
         if probe_name is None:
@@ -738,8 +803,22 @@ def rekordbox_processes_running() -> str:
                 f"can be declared safe",
                 detail={"process": name},
             )
-        if globals()[probe_name]():
-            running.append(name)
+        try:
+            if globals()[probe_name]():
+                running.append(name)
+        except processes.AbsenceUnconfirmed as exc:
+            unconfirmed = unconfirmed or exc
+    if unconfirmed is not None:
+        # ONE ANSWER WITH ``core.processes`` (U211, from the review). Each
+        # probe is asked in its own try, so a name another probe read is
+        # still answered as running, which is established, and only a scan
+        # that read none of them leaves the absence unknown. The names in
+        # ``read`` are a second source for the one case the suite cannot
+        # produce, pyrekordbox answering no for a name the careful scan read.
+        read = {processes.executable_stem(found) for _pid, found in unconfirmed.read}
+        running = [name for name in processes.REKORDBOX_PROCESSES if name in running or name in read]
+        if not running:
+            raise unconfirmed
     return ", ".join(running)
 
 
@@ -1168,7 +1247,8 @@ def open_db(
         unlock = unlock_needed(target)
 
     try:
-        db = Rekordbox6Database(path=str(target), unlock=unlock)
+        with _binding_probe(strict=False):
+            db = Rekordbox6Database(path=str(target), unlock=unlock)
     except Exception as exc:  # noqa: BLE001 - every open failure is one refusal
         # The same hand-off the canary makes, at the other half of the same
         # connection, and MEASURED TO KILL NOTHING TODAY, which is recorded in
@@ -1379,7 +1459,8 @@ def _copy_tables(copied: Path) -> set[str] | None:
     from sqlalchemy import text
 
     try:
-        db = Rekordbox6Database(path=str(copied), unlock=unlock_needed(copied))
+        with _binding_probe(strict=False):
+            db = Rekordbox6Database(path=str(copied), unlock=unlock_needed(copied))
     except Exception:  # noqa: BLE001 - an unlistable file keeps the canary's refusal
         return None
     try:
@@ -3727,7 +3808,8 @@ def commit_guarded(
     previous = reconciliation_logger.level
     reconciliation_logger.setLevel(logging.ERROR)
     try:
-        db.commit()
+        with _binding_probe(strict=True):
+            db.commit()
     finally:
         reconciliation_logger.setLevel(previous)
 
