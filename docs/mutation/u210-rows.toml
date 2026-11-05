@@ -1,0 +1,227 @@
+name = "u210"
+pass_kind = "full"
+
+[[rows]]
+id = "R1_made_step_read"
+description = "apply_pair: never read a made side recorded by an earlier command, so a continue makes it again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''        if isinstance(made, str) and made:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R2_resumed_move"
+description = "_made: move only a playlist this call made, so a stop between the make and the move leaves it at the root"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    if made or (resumed and _made_here(store.get(account_id), one)):'''
+new = '''    if made:'''
+
+[[rows]]
+id = "R3_made_here_folder"
+description = "_made_here: read a reservation in any folder as made here"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''        and held.folder == place.folder'''
+new = '''        and True'''
+
+[[rows]]
+id = "R4_rekordbox_landed"
+description = "apply_pair: write rekordbox again on a continue whose commit already landed"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''        if isinstance(landed, dict):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R5_queue_once"
+description = "_queue_once: queue again a job an earlier command of the run queued"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    if steps.has(STEP_QUEUED):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R6_account_step"
+description = "apply_pair: record no account step before the account writes, so a continue reads a part written playlist exactly"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''        steps.mark(STEP_ACCOUNT)'''
+new = '''        pass'''
+
+[[rows]]
+id = "R7_ordering_step"
+description = "apply_pair: record no ordering step, so a continue after a stop between moves reads the order"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''            steps.mark(STEP_ORDERING)'''
+new = '''            pass'''
+
+[[rows]]
+id = "R8_done_step"
+description = "apply_pair: record no done step, so a continue redoes a finished pair"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    steps.mark(STEP_DONE, done.account_id or one.target.key)'''
+new = '''    pass'''
+
+[[rows]]
+id = "R9_skip_done"
+description = "sync_pair: write a pair an earlier command finished"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''                    if _steps_of(steps, one).has(STEP_DONE):'''
+new = '''                    if False:'''
+
+[[rows]]
+id = "R10_check_todo"
+description = "check: read every pair, a finished one included"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    todo = [one for one in planned.pairs if not of(one).has(STEP_DONE)]'''
+new = '''    todo = list(planned.pairs)'''
+
+[[rows]]
+id = "R11_part_written"
+description = "check: read a part written existing pair exactly, as one not started"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''            if one.target.new or of(one).has(STEP_ACCOUNT):'''
+new = '''            if one.target.new:'''
+
+[[rows]]
+id = "R12_our_folders"
+description = "check: read a folder this run made as not there for the pairs still to make in it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''            folder_id = place.folder_id or our_folders.get(place.folder, "")'''
+new = '''            folder_id = place.folder_id'''
+
+[[rows]]
+id = "R13_discovery_ours"
+description = "check: let discovery exclude the pairs this run made"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''                        if pair.account_id not in set(ours.values())'''
+new = '''                        if True'''
+
+[[rows]]
+id = "R14_asked_before"
+description = "_asked_before: compare what is asked now unchanged, so a continue after the run's own marks plans again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    return {**dict(asked), "targets": targets}'''
+new = '''    return dict(asked)'''
+
+[[rows]]
+id = "R15_steps_unwritten"
+description = "PairSteps.mark: let an OSError out raw rather than the steps refusal"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''            raise steps_unwritten(self.steps.run_id, exc) from None'''
+new = '''            raise'''
+
+[[rows]]
+id = "R16_forecast_line"
+description = "sync_pair: warn of the ceiling only at ten times over"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''        if writing > line:'''
+new = '''        if writing > line * 10:'''
+
+[[rows]]
+id = "R17_stopped_unheld"
+description = "_stopped: promise a continue of a run whose plan was not held"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    if steps is None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R18_beyond_order"
+description = "_beyond: read no order on a part written playlist"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    if not parts and not ordering:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R19_beyond_gained"
+description = "_beyond: read no track gained"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    gained = held - before - added'''
+new = '''    gained = set()'''
+
+[[rows]]
+id = "R20_beyond_lost"
+description = "_beyond: read no track lost"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    lost = (before - set(one.account_removes)) - held'''
+new = '''    lost = set()'''
+
+[[rows]]
+id = "R21_check_queued"
+description = "check: read the run's own queued job as another sync's"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''    asking = [one for one in todo if one.acquire and not of(one).has(STEP_QUEUED)]'''
+new = '''    asking = [one for one in todo if one.acquire]'''
+
+[[rows]]
+id = "R22_landed_read"
+description = "check: read no rekordbox playlist this run's commit landed"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''                _landed_moved(db, one, landed, moved)'''
+new = '''                pass'''
+
+[[rows]]
+id = "R23_margin"
+description = "pair_calls.named: carry no margin over the estimate"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''MARGIN = 1.25'''
+new = '''MARGIN = 1.0'''
+
+[[rows]]
+id = "R24_continue_run"
+description = "continue_command: never add the run a cause names"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py", "tests/test_sync_pair_resume.py"]
+old = '''    run = ["--run", str(run_id)] if run_id and not named else []'''
+new = '''    run = []'''
+
+[[rows]]
+id = "R25_stop_higher"
+description = "_stopped: name no --calls sized from what is left, so the dispatcher doubles the ceiling"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py"]
+old = '''        detail.update({"higher": higher, "expected": check_calls + write_calls})'''
+new = '''        detail.update({"expected": check_calls + write_calls})'''
