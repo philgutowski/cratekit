@@ -104,7 +104,7 @@ REJECTED_REASON = "credential-missing"
 
 #: The two stored values, the identifier first. Both or neither: one without
 #: the other cannot ask for a token.
-CREDENTIALS = (secrets.Credential.CATALOGUE_CLIENT_ID, secrets.Credential.CATALOGUE_CLIENT_KEY)
+CREDENTIALS = (secrets.Credential.CATALOGUE_APP_ID, secrets.Credential.CATALOGUE_APP_KEY)
 
 #: How a person records them, named by every refusal and by doctor.
 LOGIN_STEPS = (

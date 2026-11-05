@@ -49,8 +49,8 @@ from cratekit.modules.outbound import service, tidal_account
 SRC_ROOT = Path(__file__).resolve().parents[1] / "src"
 
 ISRC = "GBAAA2400001"
-CLIENT_ID = "FAKE-app-identifier"
-CLIENT_KEY = "FAKE-app-value"
+APP_ID = "FAKE-app-identifier"
+APP_KEY = "FAKE-app-value"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -227,7 +227,7 @@ def no_ladder_sleep(monkeypatch):
 
 def record_app(*names: str) -> None:
     for name in names or [str(one) for one in catalogue_api.CREDENTIALS]:
-        secrets.set(name, CLIENT_ID if name.endswith("id") else CLIENT_KEY)
+        secrets.set(name, APP_ID if name.endswith("id") else APP_KEY)
 
 
 def use_transport(monkeypatch, transport: AppTransport) -> AppTransport:
@@ -290,7 +290,7 @@ def test_the_lookup_asks_the_isrc_in_the_accounts_own_country_with_the_names_inc
     assert read["params"] == {"filter[isrc]": ISRC, "include": "artists,albums", "countryCode": "NL"}
     assert read["headers"]["Authorization"] == "Bearer FAKE-token"
     posted = transport.sent[0]
-    assert posted["auth"] == (CLIENT_ID, CLIENT_KEY)
+    assert posted["auth"] == (APP_ID, APP_KEY)
     assert posted["data"] == {"grant_type": "client_credentials"}
 
 
@@ -435,7 +435,7 @@ def test_a_track_identifier_that_is_not_a_number_is_never_put_in_a_path(monkeypa
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-@pytest.mark.parametrize("recorded", [(), ("catalogue-client-id",), ("catalogue-client-key",)])
+@pytest.mark.parametrize("recorded", [(), ("catalogue-app-id",), ("catalogue-app-key",)])
 def test_without_both_values_the_opener_builds_no_app_client(monkeypatch, gate, recorded):
     for name in recorded:
         record_app(name)
@@ -571,7 +571,7 @@ def test_a_rejected_app_token_climbs_the_ladder_then_refuses_naming_the_app(
     assert cause.reason == "credential-missing"
     assert cause.remediation.remedy is Remedy.SET_CREDENTIAL
     assert cause.scope is Scope.RUN
-    assert cause.detail["credential"] == "catalogue-client-id"
+    assert cause.detail["credential"] == "catalogue-app-id"
     assert "app credentials" in cause.message
     # Each attempt asked for a fresh token, since an expired one is the
     # ordinary reason for the refusal.
@@ -840,23 +840,23 @@ def test_doctor_names_missing_app_credentials_where_lookups_go_and_how_to_move_t
     finding = _catalogue_finding(set(), Spend(calls=10, app_calls=0))
 
     assert finding.status is doctor.Status.INFO
-    assert "not recorded (catalogue-client-id, catalogue-client-key)" in finding.detail
+    assert "not recorded (catalogue-app-id, catalogue-app-key)" in finding.detail
     assert "catalogue lookups go to the account session" in finding.detail
-    assert "crate login catalogue-client-id --from-file PATH" in finding.detail
+    assert "crate login catalogue-app-id --from-file PATH" in finding.detail
     assert "10 calls on the account and 0 under Cratekit's app credentials" in finding.detail
 
 
 def test_doctor_names_the_one_value_of_two_that_is_missing():
-    finding = _catalogue_finding({"catalogue-client-id"}, Spend())
+    finding = _catalogue_finding({"catalogue-app-id"}, Spend())
 
     assert finding.status is doctor.Status.INFO
-    assert "not recorded (catalogue-client-key)" in finding.detail
+    assert "not recorded (catalogue-app-key)" in finding.detail
     assert "one value without the other cannot ask for a token" in finding.detail
 
 
 def test_doctor_with_both_recorded_shows_both_counts():
     finding = _catalogue_finding(
-        {"catalogue-client-id", "catalogue-client-key"},
+        {"catalogue-app-id", "catalogue-app-key"},
         Spend(calls=30, rate_limited=3, app_calls=20, app_rate_limited=1),
     )
 
@@ -876,7 +876,7 @@ def test_doctor_says_when_the_gates_file_could_not_be_read_rather_than_showing_n
 def test_the_app_credentials_are_recordable_by_the_login_verb():
     from cratekit.cli.verbs import login
 
-    assert {"catalogue-client-id", "catalogue-client-key"} <= set(login.CREDENTIAL_NAMES)
+    assert {"catalogue-app-id", "catalogue-app-key"} <= set(login.CREDENTIAL_NAMES)
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -105,8 +105,8 @@ class Credential(StrEnum):
     #: the app's identifier and the key it is issued beside it, exchanged for a
     #: token under the client credentials flow. Catalogue lookups go under them
     #: when both are recorded, and under the account session when either is not.
-    CATALOGUE_CLIENT_ID = "catalogue-client-id"
-    CATALOGUE_CLIENT_KEY = "catalogue-client-key"
+    CATALOGUE_APP_ID = "catalogue-app-id"
+    CATALOGUE_APP_KEY = "catalogue-app-key"
 
 
 class Remedy(StrEnum):

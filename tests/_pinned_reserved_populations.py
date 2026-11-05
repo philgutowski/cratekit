@@ -1088,8 +1088,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'core/routing.py': ['not-judged'],
     'core/secrets.py': [
         'bandcamp-session',  # 2026-10-28, U176
-        'catalogue-client-id',  # 2026-11-05, U205
-        'catalogue-client-key',  # 2026-11-05, U205
+        'catalogue-app-id',  # 2026-11-05, U205
+        'catalogue-app-key',  # 2026-11-05, U205
         'credential-index-unreadable',
         'identify-key',
         'identify-signing-key',
