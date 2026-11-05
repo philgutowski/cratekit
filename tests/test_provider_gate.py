@@ -1627,6 +1627,22 @@ def test_a_command_stops_before_the_call_past_its_ceiling_with_the_count_at_the_
     assert gate.spend().calls == 3, "the refused call was counted"
 
 
+def test_the_ceiling_never_says_kept_over_work_a_continue_does_again(paths, clock):
+    """U217: the stop is said by every command, and not every command keeps what
+    it read, so it claims nothing kept; a label listing read again from the
+    start under "what it did is kept" is what the card was filed for."""
+    gate = ceiling_gate(paths, clock, 1)
+    transport = Transport()
+    with provider_gate.command():
+        send_through(gate, transport)
+        with pytest.raises(jobs.Parked) as caught:
+            send_through(gate, transport)
+    message = caught.value.cause.message
+    assert "is kept" not in message
+    assert "remaining items stay queued" in message
+    assert "read and did not keep is read again when it continues" in message
+
+
 def test_the_stop_is_remembered_so_a_swallowing_tool_still_parks(paths, clock):
     """The vendored downloader catches every exception inside its calls, so
     the ceiling must come out of ``raise_if_parked`` like a trip does."""

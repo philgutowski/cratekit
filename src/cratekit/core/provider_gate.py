@@ -647,13 +647,18 @@ class Gate:
             else "the ceiling for one command, [provider] calls_per_command"
         )
         higher = line * 2
+        # NEVER "WHAT IT DID IS KEPT" (U217). Said by every command, it was
+        # false for each that read and did not keep, and a label listing paid
+        # its whole cost again on every continue under those words. What a
+        # command keeps is said by the command.
         return Cause(
             reason=CEILING,
             message=(
                 f"this command made {spent} {'call' if spent == 1 else 'calls'} to the "
                 f"streaming provider, "
-                f"{where}, so it stopped before the next one; what it did is kept "
-                f"and the remaining items stay queued"
+                f"{where}, so it stopped before the next one and the remaining items "
+                f"stay queued; what it read and did not keep is read again when it "
+                f"continues"
             ),
             remediation=Remediation(
                 remedy=Remedy.FIX_COMMAND_LINE,
