@@ -41941,3 +41941,181 @@ after the table, measured by hand.
 the reviewers. A later change that removed one would stay green.
 
 **Closes when:** a test drives each, the reviewers' S14 and S2 sequences first.
+
+---
+
+## R-1206. An account playlist the provider cannot list is filed under the taken kind on the gate
+
+**Found:** at the second review of #490, U202, 2026-11-05.
+
+**The mechanism.** `pair_cli.plan` lists a brought playlist whose listing the
+provider refuses under `pair_discover.TAKEN`, the kind whose counted words
+are "the account already holds its folder or title for something else". The
+`sync-pair-not-brought` warning carries the provider's own message, so only
+the item's kind is wrong. And with no pair held, a provider that answers
+nothing lists every brought playlist this way and the sync ends as a no op
+with that warning, where with a pair held the same provider refuses the sync.
+
+**Measured cost.** Driven by the second review: the gate item's `action` reads
+`taken` for a transient provider error. Nothing is written either way.
+
+**Closes when:** a listing failure has its own kind, and a refusal about the
+whole account refuses whether or not a pair is held. Ledger only.
+
+---
+
+## R-1207. A sync of every pair that fails part way says nothing of the pairs it already wrote
+
+**Found:** at the second review of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync_pair` applies the pairs in one comprehension, so a
+failure on one pair raises out of it and the envelope carries the failure
+alone. A rekordbox playlist made and paired before the failure, and the pairs
+written before it, are in no item and no warning.
+
+**Measured cost.** Driven by the second review with three account playlists
+brought over and the second failing: the first fully synced, the second
+paired with no snapshot, the third not made, and the envelope reported none of
+it. Nothing false is said and nothing is lost; the next sync converges.
+
+**Closes when:** the verb answers a failure with the pairs it wrote before
+it. Ledger only.
+
+---
+
+## R-1208. A pair made from the account records its first commit under the account playlist's id and every later one under the rekordbox playlist's
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync/pair_reverse.create` records the commit that makes a
+rekordbox playlist for an account playlist under `playlist-pair:<account id>`,
+since the rekordbox playlist has no identifier until that commit. Every later
+sync of the same pair writes through `write/playlist_pair.apply`, which
+records under `playlist-pair:<rekordbox id>`.
+
+**Measured cost.** Read from the diff, not driven. A pair's session history is
+split across two source keys, so a reader of one key misses the commit that
+made the playlist.
+
+**Closes when:** the first commit records under the rekordbox id, or both
+writers record under the pair's account id. Ledger only.
+
+---
+
+## R-1209. A pairs document that fails to write after a playlist is made from the account leaves that playlist unpaired
+
+**Found:** at the second review of #490, U202, 2026-11-05.
+
+**The mechanism.** `PairStore.reserve_made_rekordbox` takes the lock, runs the
+create, which commits the rekordbox playlist, and then writes the document.
+The lock proves the document's directory is writable before anything is made;
+it does not prove the write after will succeed. A write that fails there, a
+full disk for one, leaves the playlist in rekordbox with no pair, and the next
+sync names the account playlist taken because its rekordbox folder holds the
+name. U198's `reserve_made` has the same shape on the account side.
+
+**Measured cost.** The second review made `PairStore._write` raise a disk full
+error: the verb exited 1, the playlist was live and unpaired. The producer was
+simulated, not driven. One account playlist then needs a hand pair, which the
+warning says how to do.
+
+**Closes when:** the pair is written before the create under a reserved
+marker, or a playlist the product made is recognised by a record written
+before its commit. Ledger only.
+
+---
+
+## R-1210. An account playlist whose rekordbox top folder is gone is listed rather than made in a new folder
+
+**Found:** at the build of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync/pair_discover.home_of` places an account playlist
+only in a live rekordbox top folder of its root folder's name. When rekordbox
+holds none, because the folder was deleted or renamed there, the playlist is
+listed under `sync-pair-not-brought` and nothing is made, the conservative
+call: a folder deleted in rekordbox may have been deleted on purpose.
+
+**Measured cost.** Driven by `test_home_of_refuses_each_place_it_cannot_decide`.
+A playlist made on the account in that folder waits until the folder is made
+in rekordbox by hand.
+
+**Closes when:** Phillip says whether a missing top folder is made. Ledger
+only; the question is on the card.
+
+---
+
+## R-1211. The another app's folder half of home_of is reached by no test
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync/pair_discover.home_of` refuses a top folder that is a
+Cratekit tree root or another app's folder in one condition. The tree root
+half is pinned by `test_home_of_refuses_each_place_it_cannot_decide`; the
+other app's half is reached by no test, so a mutation of it kills nothing.
+
+**Measured cost.** Maintainer facing. U198's discovery never records an
+account root folder for another app's folder, so the input needs a person to
+rename a recorded rekordbox folder into another app's shape.
+
+**Closes when:** a test drives `home_of` on another app's top folder. Ledger
+only.
+
+---
+
+## R-1212. The account's added date of a track a playlist lists twice is its first mention's
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** `intake.cli.list_playlist_dated` keeps the first mention's
+date for a track a playlist lists twice, as the frozen rows keep the first
+mention. The provider dates each item, so a second copy added later never
+moves the track's date and never reads as the track put back on the account.
+
+**Measured cost.** Not measurable in the harness, whose fake account dates
+per track; a mutation to the last mention killed nothing. A duplicate added
+later reads as unchanged, so a rekordbox removal of the track is applied as
+before U202 rather than weighed against the addition.
+
+**Closes when:** a pair reads the latest date among a track's items, with a
+test whose fake dates each item. Ledger only.
+
+---
+
+## R-1213. The account's added date of a playlist track was read off the client's parse, never off a live listing
+
+**Found:** at the build of #490, U202, 2026-11-05.
+
+**The mechanism.** U202 reads when the account says each playlist track was
+added from the `date_added` the provider's client copies off a playlist item's
+`dateAdded`, as its own comment says playlist items carry. No live listing of
+the author's playlists was read from the container, so whether the tracks
+endpoint the listing walks serves the date, and whether reordering a playlist
+on the account moves it, were not observed.
+
+**Measured cost.** Not driven. With no date, every call is unknown and keeps
+the track, named on the gate, which is the rule before U202. If a reorder
+moved the date, a track reordered on the account and taken out in rekordbox
+since the last sync would be kept and named rather than taken off.
+
+**Closes when:** the attended sitting lists one paired playlist live, reads a
+date on every track, reorders one track on the account and lists it again.
+Ledger only.
+
+---
+
+## R-1214. The first sync of each pair after U202 lands reads its snapshot without the account's dates
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** A snapshot recorded before U202 holds no account added
+dates, and a track is read as put back on the account only against a date the
+base recorded. So each pair's first whole sync after the landing applies
+R-990's old rule once, and records the dates for the sync after.
+
+**Measured cost.** Driven by the branch's own test of a snapshot without
+dates: a track taken out and put back on the account in that one interval,
+and taken out in rekordbox too, comes off the account. By design, said in
+`modules/outbound/pairs.py`.
+
+**Closes when:** every pair has had one whole sync since the landing. Ledger
+only.
