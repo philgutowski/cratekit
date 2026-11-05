@@ -174,6 +174,10 @@ class Folder:
     #: folder of the routing tree (U201), ``FAVORITES`` and ``INBOX`` since
     #: U204, ``""`` for a folder mirrored one way.
     edits: str = ""
+    #: Each node the rekordbox folder holds that is not mirrored, as
+    #: ``(label, reason)`` (U214): INBOX names every direct child that is not
+    #: a live batch, so one skipped by rule reads apart from one missed.
+    unmirrored: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -497,7 +501,8 @@ class FolderPlan:
     folder_id: str = ""
     stale_folder: str = ""
     playlists: tuple[PlaylistPlan, ...] = ()
-    #: Mirrored playlists the folder no longer declares, named and left.
+    #: Mirrored playlists the folder no longer declares, and each node of the
+    #: rekordbox folder that is not mirrored (U214), named and left.
     left: tuple[str, ...] = ()
     #: The links this folder's rows used that the ledger does not hold yet.
     links: Mapping[str, tuple[str, str]] = field(default_factory=dict)
@@ -723,7 +728,9 @@ def plan(
             )
         )
     declared = {source.name for source in folder.playlists}
-    left: list[str] = []
+    # EVERY NODE THE FOLDER LEAVES OFF IS NAMED (U214), so a batch skipped by
+    # rule reads apart from one missed, and the step's ``left`` count holds it.
+    left: list[str] = [f"{label}: not mirrored, {reason}" for label, reason in folder.unmirrored]
     retire: list[tuple[str, str]] = []
     for name, entry in sorted(made.items()):
         if name in declared:

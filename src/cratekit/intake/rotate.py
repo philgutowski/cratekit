@@ -51,8 +51,11 @@ later is theirs. The LATEST proven landing of a name wins: a landing takes a
 name only while INBOX and the pending intake files do not hold it, so the
 newest record naming it is the one that made the playlist INBOX shows now.
 
-EVERYTHING ELSE IS LEFT ALONE AND LISTED: a folder, a smart playlist, and an
-ordinary playlist no rule recognises. A dated name with no batch folder is a
+EVERYTHING ELSE IS LEFT ALONE AND LISTED: the Old folder itself, a folder, a
+smart playlist, INBOX / Analyze, and an ordinary playlist no rule recognises,
+each with its kind, its reason and, for a plain playlist, its live row count.
+The account mirror lists the same nodes under INBOX the same way (U214), since
+both read this one classifier. A dated name with no batch folder is a
 playlist somebody named that way, and the folder test is what keeps it out.
 
 A BATCH'S AGE is its landing date from the run record when one names it, by
@@ -110,6 +113,23 @@ BY_RECORDED_NAME = "recorded name"
 AGED_FROM_RECORD = "run record"
 AGED_FROM_CREATED = "playlist created"
 
+#: Each kind of node left alone, and how a line names it (U214). The kind is
+#: what the plan carries; the label is what a person reads beside its name.
+LEFT_OLD = "old"
+LEFT_FOLDER = "folder"
+LEFT_SMART = "smart playlist"
+LEFT_ANALYZE = "analyze"
+LEFT_UNRECOGNISED = "playlist"
+LEFT_UNDATED = "batch"
+LEFT_SHOWN: Mapping[str, str] = {
+    LEFT_OLD: "the Old folder",
+    LEFT_FOLDER: "a folder",
+    LEFT_SMART: "a smart playlist",
+    LEFT_ANALYZE: "the Analyze playlist",
+    LEFT_UNRECOGNISED: "not recognised as a batch",
+    LEFT_UNDATED: "a batch with no age",
+}
+
 #: The suffix a batch named for its run carried before U110.
 INBOXED_SUFFIX = "_inboxed"
 
@@ -157,8 +177,16 @@ class Left:
     place: str
     kind: str
     reason: str
+    #: The live rows a plain playlist holds (U214), ``None`` for a folder or a
+    #: smart playlist, which hold no membership to count.
+    tracks: int | None = None
 
-    def to_json(self) -> dict[str, Any]:
+    def identity(self) -> dict[str, Any]:
+        """What the digest takes: everything but the row count, which nothing writes.
+
+        A person adding a track to their own playlist between the gate and
+        the write changes nothing the rotation does, so it does not stale it.
+        """
         return {
             "id": self.playlist_id,
             "playlist": self.name,
@@ -166,6 +194,17 @@ class Left:
             "kind": self.kind,
             "reason": self.reason,
         }
+
+    def to_json(self) -> dict[str, Any]:
+        shown = self.identity()
+        if self.tracks is not None:
+            shown["tracks"] = self.tracks
+        return shown
+
+    def label(self) -> str:
+        """The node as one line names it: ``2026-10-08 Labels (36 row(s)), not recognised as a batch``."""
+        rows = f" ({self.tracks} row(s))" if self.tracks is not None else ""
+        return f"{self.name}{rows}, {LEFT_SHOWN.get(self.kind, self.kind)}"
 
 
 @dataclass(frozen=True, slots=True)
@@ -216,7 +255,8 @@ class Rotated:
 
 
 def identity(plan: RotationPlan) -> dict[str, Any]:
-    """What the digest covers: every fact the screen shows and the write acts on."""
+    """What the digest covers: every fact the screen shows and the write acts on,
+    but a left node's row count, which nothing writes (U214)."""
     return {
         "kind": "inbox-rotate",
         "tree": plan.tree_id,
@@ -228,7 +268,7 @@ def identity(plan: RotationPlan) -> dict[str, Any]:
         "moves": [batch.to_json() for batch in plan.moves],
         "removals": [batch.to_json() for batch in plan.removals],
         "kept": [batch.to_json() for batch in plan.kept],
-        "left": [node.to_json() for node in plan.left],
+        "left": [node.identity() for node in plan.left],
     }
 
 
@@ -430,22 +470,41 @@ def _classify(
     stale_days: int,
     expired_days: int,
     named: Mapping[str, tuple[date, str]] | None = None,
+    old_display: str | None = None,
 ) -> Batch | Left:
+    """One node as a batch, or as left alone with its kind and reason.
+
+    ``old_display`` is the declared Old folder's name, so the folder of that
+    name directly under INBOX is named as Old rather than as any folder
+    (U214); ``None`` when no Old is declared, which reads it as a folder.
+    """
     playlist_id, name = str(row.ID), str(getattr(row, "Name", "") or "")
 
-    def left(kind: str, reason: str) -> Left:
-        return Left(playlist_id, name, place, kind, reason)
+    def left(kind: str, reason: str, *, counted: bool = True) -> Left:
+        tracks = _track_count(db, row) if counted else None
+        return Left(playlist_id, name, place, kind, reason, tracks)
 
     if rb_writer.is_folder(row):
-        return left("folder", "a folder is never a batch, and nothing inside it is rotated")
+        if not in_old and old_display is not None and name == old_display:
+            return left(
+                LEFT_OLD,
+                "the folder a stale batch moves into is never a batch, and a batch "
+                "in it has left INBOX",
+                counted=False,
+            )
+        return left(
+            LEFT_FOLDER,
+            "a folder is never a batch, and nothing inside it is rotated",
+            counted=False,
+        )
     if int(getattr(row, "Attribute", -1)) != 0:
-        return left("smart playlist", "a smart playlist is never a batch")
+        return left(LEFT_SMART, "a smart playlist is never a batch", counted=False)
     # INBOX / ANALYZE IS NEVER A BATCH (U166), whatever a record from before
     # its name was reserved says of it: it holds the rows waiting for analysis,
     # and moving it into Old would take them out of the visit.
     if not in_old and name == native.ANALYZE:
         return left(
-            "analyze",
+            LEFT_ANALYZE,
             "the playlist every landing fills with the rows awaiting analysis is "
             "never a batch; crate inbox analyzed takes out what rekordbox analysed",
         )
@@ -453,7 +512,7 @@ def _classify(
     recognised_by = _recognised(cfg, row, recorded, named)
     if recognised_by is None:
         return left(
-            "playlist",
+            LEFT_UNRECOGNISED,
             "no landing record names it, its name does not end _inboxed, and no "
             "batch folder under the music folder carries its name",
         )
@@ -464,10 +523,10 @@ def _classify(
     else:
         landed, aged_from = _created_date(row), AGED_FROM_CREATED
     if landed is None:
-        return left("batch", "no landing record and no creation date to age it from")
+        return left(LEFT_UNDATED, "no landing record and no creation date to age it from")
     if landed > today:
         return left(
-            "batch", f"dated {landed.isoformat()}, after {today.isoformat()}, so its age is unknown"
+            LEFT_UNDATED, f"dated {landed.isoformat()}, after {today.isoformat()}, so its age is unknown"
         )
     age = (today - landed).days
     if in_old:
@@ -526,8 +585,9 @@ def plan_rotation(
         )
     old_row = olds[0] if olds else None
     # WHERE A ROW SITS IS READ OFF THE TREE, never off the two taxonomy ids,
-    # which a hand edited template could make equal.
-    nodes = [(row, tree_id, False) for row in children if row is not old_row]
+    # which a hand edited template could make equal. Old itself is classified
+    # with the rest, so the plan names it left as the mirror does (U214).
+    nodes = [(row, tree_id, False) for row in children]
     if old_row is not None:
         nodes += [(row, old.id, True) for row in _live_children(db, str(old_row.ID))]
 
@@ -547,6 +607,7 @@ def plan_rotation(
             stale_days=stale_days,
             expired_days=expired_days,
             named=found.by_name,
+            old_display=old.display,
         )
         (batches if isinstance(classified, Batch) else left).append(classified)
 
@@ -590,6 +651,10 @@ class Live:
     #: included, so a mirror can tell a batch that LEFT INBOX from one that
     #: is still there and only no longer reads as a batch.
     present: frozenset[str]
+    #: Every live node directly under INBOX that is not a live batch, with the
+    #: classifier's kind and reason (U214), ordered by name then id, so a
+    #: mirror names each one it leaves off rather than dropping it unsaid.
+    left: tuple[Left, ...] = ()
 
 
 def live_batches(
@@ -611,7 +676,9 @@ def live_batches(
     is one the rotation leaves in INBOX. The cost, a stale batch mirrored by
     the same organize run that moves it and removed at the next, is a
     residual. Old and everything in it is not live, and neither is a folder,
-    a smart playlist, INBOX / Analyze or a playlist no rule recognises.
+    a smart playlist, INBOX / Analyze or a playlist no rule recognises: each
+    direct child of INBOX among them is in ``left`` with its reason (U214).
+    Old is named as Old only when ``[intake_old]`` is declared.
 
     Reads, writes nothing, needs no ``[intake_old]`` declared. Refuses as
     :func:`anchored_root` refuses, by name, on an intake tree that is not
@@ -622,7 +689,9 @@ def live_batches(
     root = db.get_playlist(ID=root_id)
     found = landings(cfg)
     children = _live_children(db, root_id)
+    old_display = declared.intake_old.display if declared.intake_old is not None else None
     batches: list[tuple[str, str]] = []
+    left: list[Left] = []
     for row in children:
         classified = _classify(
             cfg,
@@ -635,14 +704,18 @@ def live_batches(
             stale_days=cfg.reports.intake_stale_days,
             expired_days=cfg.reports.intake_expired_days,
             named=found.by_name,
+            old_display=old_display,
         )
-        if isinstance(classified, Batch) or classified.kind == "batch":
+        if isinstance(classified, Batch) or classified.kind == LEFT_UNDATED:
             batches.append((classified.playlist_id, classified.name))
+        else:
+            left.append(classified)
     return Live(
         root_id=str(root_id),
         root_name=str(getattr(root, "Name", "") or ""),
         batches=tuple(sorted(batches, key=lambda one: (one[1], one[0]))),
         present=frozenset(str(getattr(row, "Name", "") or "") for row in children),
+        left=tuple(sorted(left, key=lambda node: (node.name, node.playlist_id))),
     )
 
 
@@ -851,6 +924,13 @@ __all__ = [
     "BY_SUFFIX",
     "INBOXED_SUFFIX",
     "KEEP",
+    "LEFT_ANALYZE",
+    "LEFT_FOLDER",
+    "LEFT_OLD",
+    "LEFT_SHOWN",
+    "LEFT_SMART",
+    "LEFT_UNDATED",
+    "LEFT_UNRECOGNISED",
     "MOVE",
     "REMOVALS",
     "REMOVE",

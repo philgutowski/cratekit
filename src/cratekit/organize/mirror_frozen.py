@@ -49,7 +49,9 @@ from cratekit.modules.outbound import mirror
 #: version 2 record is planned afresh rather than read as a tree with no genre.
 #: 4 since U204, which names each folder's edit rule rather than a genre flag,
 #: so the Favorites folder and INBOX are read as edited by the run that applies.
-VERSION = 4
+#: 5 since U214, which froze each node INBOX leaves off, so a version 4 record
+#: is planned afresh rather than rebuilt with those lines lost.
+VERSION = 5
 
 #: How long a frozen plan is kept once another is written.
 KEPT_DAYS = 7
@@ -90,6 +92,7 @@ def _library_json(library: Any) -> dict[str, Any]:
                 "retire": folder.retire,
                 "present": sorted(folder.present),
                 "edits": folder.edits,
+                "unmirrored": [list(one) for one in folder.unmirrored],
             }
             for folder in library.folders
         ],
@@ -126,6 +129,7 @@ def _library_of(data: Mapping[str, Any]) -> Any:
                 retire=_flag(folder["retire"]),
                 present=_titles(folder["present"]),
                 edits=_rule(folder["edits"]),
+                unmirrored=_unmirrored(folder["unmirrored"]),
             )
             for folder in data["folders"]
         ),
@@ -140,6 +144,16 @@ def _titles(value: Any) -> frozenset[str]:
     if not isinstance(value, list) or not all(isinstance(one, str) for one in value):
         raise ValueError(f"a folder's present titles are {value!r}, not a list of text")
     return frozenset(value)
+
+
+def _unmirrored(value: Any) -> tuple[tuple[str, str], ...]:
+    """Frozen unmirrored nodes (U214), refused as unreadable unless pairs of text."""
+    if not isinstance(value, list) or not all(
+        isinstance(one, list) and len(one) == 2 and all(isinstance(part, str) for part in one)
+        for one in value
+    ):
+        raise ValueError(f"a folder's unmirrored nodes are {value!r}, not pairs of text")
+    return tuple((label, reason) for label, reason in value)
 
 
 def _rule(value: Any) -> str:
