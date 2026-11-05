@@ -2381,6 +2381,35 @@ def test_status_reports_open_runs_sessions_and_trees(configured):
     assert data["summary"]["open_runs"] == 1
 
 
+def test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest(
+    configured, monkeypatch
+):
+    """R-1255, review round one: a log nobody could list is said, not read as no source.
+
+    The status reports runs, sources and trees, and only the sources are in
+    the log, so the log is one failing finding of its own and the report goes
+    on; a source refused in it is not lost behind an empty read.
+    """
+    record = session.SessionRecord(
+        session_id="s-2",
+        workflow="sync.labels",
+        started="2026-08-02T00:00:00+00:00",
+        sources={"labels": str(session.SourceState.REFUSED)},
+    )
+    session.write_record(record, configured)
+    log = Path(session.log_dir(configured))
+    _refuse_listing(monkeypatch, log)
+
+    code, out, err = drive(["--output", "json", "status"])
+
+    assert code == int(ExitCode.OK), err
+    checks = {check["key"]: check for check in json.loads(out)["data"]["checks"]}
+    assert "source.labels" not in checks
+    named = checks["source.session-log"]
+    assert named["status"] == "fail"
+    assert f"the session log directory {log} exists and cannot be listed" in named["detail"]
+
+
 def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(
     configured, monkeypatch
 ):
