@@ -103,6 +103,16 @@ ACQUISITION through the intake path, ``intake.playlist`` exactly as
 file. A track an earlier sync queued is not queued again and is named as
 awaiting.
 
+**A TWIN'S MISSING TRACKS WAIT FOR THE AUTHOR'S CHOICE (U221).** Decided by
+Phillip on 2026-11-05: a track a custom playlist twin was made without is
+never queued on its own, as a label's releases are never downloaded on their
+own. ``crate sync twins`` records those tracks on the twin's pair, and here
+each is named on the gate as on hold, counted per twin, and left out of the
+queue (:func:`held_for_choice`), until ``crate sync release`` empties that
+twin's hold. A track put on the playlist by hand after the twin was made is
+not held, and a twin paired before U221, which recorded no hold, is read by
+the account's added dates against the pair's mark.
+
 **TWO GATES, BOTH ASKED BEFORE ANYTHING IS WRITTEN.** ``sync.pair.rekordbox``
 and ``sync.pair.account`` each show the whole plan, every addition and every
 removal on both sides by artist and title, and each answers for its own side.
@@ -241,6 +251,10 @@ WRITTEN = "sync-pair-written"
 UNPAIRED = "sync-pair-twin-unpaired"
 #: R-1264. Account tracks listed with no title or no artist, kept by their id.
 UNREAD = "sync-pair-unread"
+#: U221. A twin's tracks held for the author's choice, counted per twin.
+ON_HOLD = "sync-pair-on-hold"
+#: U221. The gate's item for one of them.
+ON_HOLD_ACTION = "on-hold"
 
 #: The refusals that are about one pair's own playlists, which a sync of every
 #: pair names and passes over rather than stopping at. R-1264: and an account
@@ -461,6 +475,9 @@ class PairPlan:
     acquire: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: Account tracks an earlier sync of this pair already queued.
     awaiting: tuple[Named, ...] = ()
+    #: U221. Account tracks the library lacks that a twin holds for the
+    #: author's choice, named and never queued until ``sync release``.
+    on_hold: tuple[Named, ...] = ()
     #: Account tracks two live library rows carry, so no row is chosen.
     ambiguous: tuple[Named, ...] = ()
     #: U208. Rekordbox rows matched as one of several releases that all agree.
@@ -519,6 +536,12 @@ class PairPlan:
             # digests as it did.
             **(
                 {"unread": [named.remote_id for named in self.unread]} if self.unread else {}
+            ),
+            # U221, ONLY WHEN ANY, so a pair holding nothing digests as it did.
+            **(
+                {"on_hold": sorted(named.remote_id for named in self.on_hold)}
+                if self.on_hold
+                else {}
             ),
         }
 
@@ -1182,6 +1205,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     adds: list[str] = []
     acquire: dict[str, dict[str, Any]] = {}
     awaiting: list[Named] = []
+    on_hold: list[Named] = []
     ambiguous: list[Named] = []
     lacking = [
         remote_of(key) for key in merged.add_rekordbox if remote_of(key) not in known
@@ -1226,6 +1250,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             continue
         if remote_id in queued_before:
             awaiting.append(names[key])
+        elif held_for_choice(held, remote_id, dates):
+            # U221. A TWIN'S MISSING TRACK WAITS FOR THE AUTHOR'S CHOICE, named
+            # and never queued, until ``sync release`` lets its twin's go.
+            on_hold.append(names[key])
         else:
             acquire[remote_id] = dict(tracks[remote_id])
     order = tuple(
@@ -1289,6 +1317,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         unmatched=tuple(unmatched),
         acquire=acquire,
         awaiting=tuple(awaiting),
+        on_hold=tuple(on_hold),
         ambiguous=tuple(ambiguous),
         tied=tuple(tied),
         siblings=siblings,
@@ -1472,6 +1501,28 @@ def _owned(
             if landed.get(codes[remote_id]):
                 found[remote_id] = landed[codes[remote_id]]
     return found
+
+
+def held_for_choice(pair: Any, remote_id: str, dates: Mapping[str, str]) -> bool:
+    """Whether an account track the library lacks waits for the author's choice (U221).
+
+    Only a custom playlist twin's pair holds. One whose hold is recorded holds
+    exactly the tracks recorded, the ones its twin was made without. One paired
+    before U221 recorded none, so it is read by time: a track is held unless
+    the account dates its addition after the pair was marked, so a track put on
+    the playlist by hand since the twin was made is queued as any pair's is,
+    and one the account dates nowhere, or a mark that does not read, is held.
+    """
+    if pair is None or not getattr(pair, "twin", False):
+        return False
+    recorded = getattr(pair, "on_hold", None)
+    if recorded is not None:
+        return remote_id in recorded
+    marked = placeholders.parse_hearted(getattr(pair, "marked", ""))
+    added = placeholders.parse_hearted(dates.get(remote_id))
+    if marked is None or added is None:
+        return True
+    return not added > marked
 
 
 def _queued(reader: _Reader, account_id: str) -> frozenset[str]:
@@ -2026,6 +2077,8 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
         items.append(row("library", "acquire", by_remote.get(remote_id)))
     for named in one.awaiting:
         items.append(row("library", "awaiting", named))
+    for named in one.on_hold:
+        items.append(row("library", ON_HOLD_ACTION, named))
     for named in one.unmatched:
         items.append(row("account", "unmatched", named))
     for named in one.ambiguous:
@@ -2096,6 +2149,8 @@ def payload(planned: Plan) -> dict[str, Any]:
             "account_removes": count("account", "remove"),
             "acquire": count("library", "acquire"),
             "awaiting": count("library", "awaiting"),
+            # U221. A twin's tracks held for the author's choice.
+            "on_hold": count("library", ON_HOLD_ACTION),
             "unmatched": count("account", "unmatched"),
             "ambiguous": count("rekordbox", "ambiguous"),
             "unpaired": count("pairs", "unpair"),
@@ -2697,6 +2752,24 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                 "message": (
                     f"{len(awaiting)} account track(s) were queued for acquisition by "
                     f"an earlier sync and are not in the library yet: {listed(awaiting)}"
+                ),
+            }
+        )
+    holding = [one for one in planned.pairs if one.on_hold]
+    if holding:
+        said.append(
+            {
+                "code": ON_HOLD,
+                "message": (
+                    f"{sum(len(one.on_hold) for one in holding)} account track(s) the "
+                    f"library lacks are held for your choice and were not queued, each "
+                    f"named on the gate: "
+                    + "; ".join(
+                        f"{one.name}: {len(one.on_hold)} (crate sync release "
+                        f"{one.target.account_id})"
+                        for one in holding
+                    )
+                    + "; crate sync release --all lets every twin's go"
                 ),
             }
         )
@@ -3949,6 +4022,8 @@ __all__ = [
     "NEW",
     "NOT_BROUGHT",
     "NOT_DISCOVERED",
+    "ON_HOLD",
+    "ON_HOLD_ACTION",
     "RELEASED",
     "TIME_UNKNOWN",
     "Done",
@@ -3964,6 +4039,7 @@ __all__ = [
     "facts",
     "file_identity",
     "generated_tops",
+    "held_for_choice",
     "landed_inbox_playlists",
     "landed_isrcs",
     "payload",
