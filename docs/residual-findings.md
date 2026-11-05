@@ -43103,3 +43103,92 @@ list is longer than it needs to be.
 
 **Closes when:** a kept refusal at the database half carries only the
 continue step, or the two are made one sentence. Ledger only.
+
+---
+
+## R-1262. A title that is only a bracketed credit reads as the title, and a set aside track shows its own spelling beside the word no title
+
+**Found:** at the review of #507, U213, 2026-11-05.
+
+**The mechanism.** U213 made a leading bracketed group the title unless its
+last word names a version (`acquire/match.py` `split_version` and
+`_names_a_version`), so `[Premade Sandwiches]` reads while `(Original Mix)`,
+`(Live)` and `(Extended)` are still refused as naming no title, as on `main`.
+A group that is a credit or a qualifier ending on some other word takes the
+title: a row titled only `(feat. Mira)` reads as the title `feat. Mira`, and
+`(Live at Wembley)` as `Live at Wembley`, where `main` refused both. An
+exception for credits was built in round one and taken out in round two,
+because the credit prefixes include `with ` and `[With You]` and
+`(With Or Without You)` are titles. Separately, a track `crate sync twins`
+sets aside is named on the gate by the title its row spells, so a row titled
+`[]` shows as `Nova Reef - [] (the account lists it with no title, ...)`.
+
+**Measured cost.** Driven on the reader: each of those spellings reads as
+described. No provider row titled only by a credit was found or driven, so
+the reachability is unmeasured. Where one exists it is queued and matched
+under those words as its title rather than refused, a narrower cost than the
+whole playlist refusal it replaced. The gate line is wording; nothing false
+is written.
+
+**Closes when:** a live listing shows such a row, and the rule is narrowed to
+the guest credit prefixes that cannot begin a title (`feat`, `ft`,
+`featuring`) with a test per prefix. Ledger only.
+
+---
+
+## R-1263. The twins backfill keeps a left playlist's provider words out of its digest on a producer nobody drove
+
+**Found:** at the review of #507, U213, 2026-11-05.
+
+**The mechanism.** `crate sync twins` leaves a playlist whose listing is
+refused, with the provider's message as its reason. U213's round one drove a
+fixture whose message varied per call and found the approved run refusing
+`decision-stale`, since the reason rode in `Backfill.digest`; the fix puts
+the refusal's reason code in the digest (`Twin.refused`) and keeps the words
+for the gate.
+
+**Measured cost.** None on a real producer: a real `requests` connection
+failure run twice gave identical words, and the provider client carries no
+request id in its errors. Round two read five other plans that carry a
+refusal's message (prune, pair, the mirror's downloads, account playlists,
+inspiration) and none compares a message that can move between the ask and
+the write; inspiration holds one in its digest but never lists the account
+again before the write.
+
+**Closes when:** a provider error whose text varies between calls is seen
+live, at which point every plan carrying a refusal's message in its digest
+takes the reason code instead. Ledger only.
+
+---
+
+## R-1264. crate sync pair refuses every pair when one paired account playlist lists a track with no title or no artist
+
+**Found:** at the build of #507, U213, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.py` plans each pair's account side through
+`intake_cli.list_playlist_dated`, whose reader refuses the whole playlist with
+`intake-list-unusable` when one row names no title or no artist. A sync of
+every pair passes over a pair only for the two refusals in
+`PER_PAIR_REASONS` (`sync-pair-unknown`, `sync-pair-out-of-scope`), so that
+refusal stops the run at that pair and no other pair syncs. The account
+playlists a synced folder brings take it per playlist (`BROUGHT_REASONS`);
+the pairs already made do not.
+
+**Measured cost.** Driven on the twins suite's disposable database: a
+backfilled twin whose account playlist lists one track with an empty title,
+then `crate sync pair` with no argument, refuses `intake-list-unusable`
+("track 3 names no title") and syncs nothing; named alone, the pair refuses
+the same way. U213 made this more reachable: before it, `crate sync twins`
+refused on such a playlist and paired nothing, and now it makes the twin and
+names the track, so the next pair sync stops. A pair made by hand over such a
+playlist met it before U213 too. The live case that opened U213, a title
+written wholly in brackets, now reads, so on the live account the producer
+left is a row with an empty title or no artist, whose reachability is
+unmeasured.
+
+**Closes when:** a sync of every pair names a pair whose account listing the
+reader refuses and syncs the others, or the pair's account side is read row by
+row as the twins backfill reads it (`intake_cli.list_playlist_readable`), a
+track the reader refuses kept by its id. Earns an issue under the board bar's
+(c): `crate sync pair` is the workflow that keeps every twin one list, and one
+track stops it for every pair.
