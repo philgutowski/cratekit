@@ -1987,6 +1987,89 @@ Made and reversed through the product's account client, as Phillip answered at s
 
 The macOS battery these cards owe is sitting 59's on `d4232416`.
 
+
+## Sitting 68, 2026-11-05, the attended session on v0.8.0, no desktop control: the macOS battery, and A57 (#415) owing its DEADCA7 push
+
+A sub session of the attended run with no desktop control, so it took only steps that need no screen. No job running, rekordbox and rekordboxAgent not running before every verb, both backup ages two days and the acknowledgment of sitting 59 valid (none was needed).
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| macOS battery | `main` at `3c0b3722` (carries every merge to U219, so U172, U178, U185, U191, U192 and R-1056 are all in it) | `ruff` clean; **16,841 tests collected, `pytest` exit 0** in 7m49s, run twice (the second only to keep its log; this repository's `addopts` already carries `-q`, so the session's own `-q` silenced the count line, and the count is from `--collect-only`); `scan_repo.py` clean; `config.toml` unchanged after each. | clean |
+| A57, what a push needs | `crate doctor`; `/Applications`; `~/Library/Application Support` | `deadca7.push`: "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox". `DEADCA7.app` is in `/Applications`, but its support folder `~/Library/Application Support/deadca7` does not exist, so the app has never run on this account, and its bundle holds only the GUI binary and its `deadcatalog` resource, no command line. | read |
+
+**A57 (#415) owes its screen step**: the DEADCA7 push into a library copy is made in DEADCA7's own window, which this session cannot drive, and every other step of the card (the report naming the DEADCA7 folder once, the full `organize`, `converge`, the byte for byte read back, `deadca7.push` and the two times) reads that push, so none of them could run without it. The battery it owes is above. Next: an attended session with desktop control launches DEADCA7 once, points its push at a disposable copy with library state redirected, and takes the card from the report on.
+
+
+## Sitting 69, 2026-11-05, the attended session on v0.8.0, no desktop control: A55 (#412), a PULS batch tagged Rominimal by its label
+
+No PULS batch was staged (sitting 46's 96 landed into `Music/2026-10-27 PULS`, and no new Bandcamp purchase was fetched), so the batch is six copies of those landed files in the session's scratch folder, outside the library: the genre taken off five, and the sixth given `Deep Tech` so a file with its own genre is in the sweep. Every copy carries its cover art, no label tag and no ISRC, as the Bandcamp downloads did.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Register | `crate label registry set PULS --genre Rominimal` | Refused `PRECONDITION`, `label-unknown`: PULS was never registered (sitting 46 built its label folder by hand). | refused |
+| Register | `crate label registry add PULS --genre Rominimal`, run `2026-11-05T21:35:26Z-f578` | **`labels.puls: puls, genre Rominimal, genre Rominimal routes to Minimal / Deep Tech by the taxonomy's keyword rule 'minimal'`.** No `--bandcamp` was set, since the brief names only the genre. | live |
+| Sweep | `crate tag folder a55-puls-staging --label PULS`, job `2026-11-05T21:35:37Z-a55f`, 1.5 s | `succeeded`, 6 of 6 settled. The job's summary (`--output json ... --job`): **`tagged` 5, `tagged_by` `label-genre` 5 and every catalogue 0, `label_genres` `{"PULS": 5}`**, `skipped` `has-genre` 1, `off_taxonomy` empty, every catalogue's answers all 0 (none asked, not even `not-asked`), `art_fetch` `present` 6, `art_repair` `ok` 6. Each item's record reads `source: label-genre`, `label: PULS`, `answers: []`. | live |
+| Read back | the six files, by mutagen | Five carry `Rominimal`; the sixth still carries `Deep Tech`; one picture each, no label tag written. | read |
+| Calls | `crate doctor`'s provider gate count, before and after | 507,057 before and after: **no provider call**, and no catalogue call. | read |
+
+**A55 (#412) is met**, on copies of a landed PULS batch rather than a newly staged one; the sweep reads files only, so where they sit does not change what it does. The battery it owes is sitting 68's. **PULS is now a followed label**, so a `crate label sync` sweep asks the account about it.
+
+
+## Sitting 70, 2026-11-05, the attended session on v0.8.0, no desktop control: A54 (#409), the Defected 2026 playlist from the sync's releases
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Plan | `crate --calls 200 label playlists defected --releases`, run `2026-11-05T21:36:52Z-2f9e`, 6 s | **16 calls.** Gate `label.playlists.confirm`, digest `df874830fdb5d2b4`, count 2: folder `Defected`, "use the one already on the account"; `Defected 2026`, "use the one already in the folder, add 12 of 12"; "catalogue: only the 3 release(s) a label sync took were read, and none of the rest of the catalogue"; releases read **Sorley `Phreaky`, Sam Divine `Paradise`, Yours `What's Mine Is YOURS (Live At Abbey Road)`**; "removes: nothing, ever". No listing, no crawl gate. | gate |
+| Against the brief | read | The brief expects two releases and 10 tracks; the plan reads three and 12, the third being Sorley `Phreaky` (two tracks), which a later label sync go took. Both Sorley tracks are owned (`Processed_Tracks/2026/10_08_26 Labels`), as are the other ten, so the add was approved as `session`. | decided |
+| Apply | `run decide --actor session --continue ... label.playlists.confirm apply` | `ok`, **20 calls for the run**. | live |
+| Read back | the product's account client, read only, folder `e8ce5b95` | The year playlist is **`DOWNLOADED Defected 2026`** (`35e42d16`, made 2026-07-08, so the plan's "Defected 2026" is the marked playlist adopted by its built name), **66 tracks, the last 12 the twelve planned**: Phreaky and its Extended Mix, Paradise and its Extended Mix, and the eight Yours tracks. The other year playlists hold 1 (2005, 2008, 2010, 2015, 2018), 2 (2019, 2022, 2024) and 18 (2025), all made 2026-07-08; the plan named only 2026, and the verb never removes. | read |
+| Again | the same command, run `2026-11-05T21:37:18Z-fcf7` | **13 calls**; "Defected 2026: use the one already built, add 0 of 12", **"nothing to write: the account already holds every year and track planned"**, digest `2fa1e0d458bbfa67`. It still opened its gate, answered `abort`. | met |
+
+**A54 (#409) is met**: 90 provider calls in all across the plan, the apply, the second run and the read back, against about 24,700 for a full build. The full build was not started. Two small findings, no card: a plan with nothing to write still asks its gate, and the adopted playlist's account name `DOWNLOADED Defected 2026` is shown by its built name only.
+
+
+## Sitting 71, 2026-11-05, the attended session on v0.8.0, no desktop control: A79 (#470), the genre guess on sitting 47's untagged tracks, and Discogs
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Report | `crate --calls 500 --output json tag guess "Music/2026-10-27 Tidal playlists and Favorites" --pass 2026-10-27T190706Z-21c7_synced --report`, 7 s | `no_op`, digest `e682ff4957c2c4c4`, **no provider call** (the gate count did not move). 116 files: **87 have a genre, 29 do not**, which are sitting 47's 29. Playlists voting: `Lisa_10_27_26`, `Idris precise beats`, `The LIVING room`. | read |
+| How many a guess would tag | the same report | **28 of 29 guessed, 1 with no votes.** Totals `before` 87, `after` 115. | read |
+| Bands | the same report | This build names its bands `high`, `medium`, `split`, `low` (the brief's `strong` and `good` are `high` and `medium`): **high 0, medium 1, split 2, low 25.** The medium one is Youandewan `Be Good To Me Poly` (Deep House, 9.05 against 2.0, four library tracks by the artist). Twenty of the low ones carry nothing but the `Idris precise beats` playlist's mix (Deep House 1.09, House / Funky House / Disco 0.85), so each is guessed Deep House on the playlist alone. Where the artist's library tracks vote `Electronica` higher than anything else (Kelly Lee Owens, Shire T, Romare 2.0; O'Flynn 4.0) the guess takes the second word (Deep House, or Dance / Pop for O'Flynn). | read |
+| Splits | `tag-guess-split` | Maajo `Maajo` and Voilaaa, Ayuune Sule `Fighting Slowly`: R&B and Rock tied at 0.75 from `The LIVING room`, written as R&B. | read |
+| Off taxonomy | `tag-guess-off-taxonomy` | One word: **`Latin Electronic`**, on Quantic `Atlantic Oscillations` (a file with a genre). | read |
+| Without a guess | `tag-guess-no-votes` | **Y traxx `Mystery land`** only. | read |
+| Discogs | the Discogs API's database search by artist and track, no token (the site's search page refuses a fetch with 403) | **Y-Traxx `Mystery Land`: 43 releases, all Electronic, style Trance on 40** (Techno 7, Progressive Trance 5), the 1998 master Electronic / Trance; the taxonomy has a `Trance` genre, so Discogs would have tagged it. For the two splits: Maajo is Electronic with House and Deep House (`Maajo Remixes`, 2017) or Afrobeat, Disco, Deep House (`Tropic Of Tulli`, 2016); Voilaaa `Voiciii` (2021) is Funk / Soul with Disco and Afrobeat. Neither is R&B by Discogs. | read |
+
+**A79 (#470) is met** by its done line: the counts, the bands and the Discogs findings. Small findings for the record, no card: the two split ties were broken to R&B where Discogs reads house and disco; and twenty low guesses rest on one playlist's mix alone. The battery is sitting 68's. Its "next sync pass's report read for the guess's before and after" waits for the next `crate sync land` pass, which needs a rekordbox visit.
+
+
+## Sitting 72, 2026-11-05, the attended session on v0.8.0, no desktop control: A60 (#423), tag folder, analyze run and analyze restamp in one command each, and a Ctrl-C
+
+The installed v0.8.0 carries U192. Two staging folders in the session's scratch folder, outside the library, of copies from `Music/2026-10-27 Tidal playlists and Favorites` with the key and tempo head taken off each name (the head is `analyze run`'s skip marker) and the genre taken off: `a60-x` with two tracks, `a60-y` with five. The interrupt was sent by a small wrapper that starts the command in its own process group and sends SIGINT to the group, as a terminal's Ctrl-C does, since a background command in a non interactive shell starts with SIGINT ignored.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Tag | `crate tag folder a60-x`, typed once | **`job: 2026-11-05T21:40:59Z-3381, succeeded`, `items: 2 of 2 settled`, no `drive it with` line**; Traxsource and Bandcamp blocked, as every sitting since 32. | met |
+| Analyse | `crate analyze run a60-x`, typed once, 1m03s | **`job: 2026-11-05T21:53:27Z-75a0, succeeded`, `items: 2 of 2 settled`**, no `drive it with` line; both renamed to their heads (`01A - 122 - ...`, `01B - 89 - ...`). | met |
+| Restamp | `crate analyze restamp a60-x`, typed once, 9 s | **`job: 2026-11-05T21:54:33Z-c879, succeeded`, `items: 2 of 2 settled`**, no `drive it with` line; the `db-metadata-not-written` warning as always. | met |
+| Interrupt | `crate analyze run a60-y`, SIGINT to its group after 45 s | **`analyze.run: cancelled (INTERRUPTED)`**, "job 2026-11-05T21:54:46Z-8e37 was cancelled at stage 'items'", **`resume it with: crate analyze run .../a60-y --job 2026-11-05T21:54:46Z-8e37`**, "the job is queued again with 2 of 5 items settled, and the resume does not redo them". On disk three files carried a head, not two. | as briefed |
+| Job | `crate job show 2026-11-05T21:54:46Z-8e37` | **queued**; done 2, pending 3. | as briefed |
+| Resume | the printed command, typed, 39 s | Analysed the two untouched tracks and did not analyse the two settled ones again, then **failed `PRECONDITION`, `source-missing`**: "Roman Flügel - Parade D'Amour.flac is no longer a file ... every failure is permanent so resuming this job cannot succeed". That track was the one in flight at the signal: on disk as `08A - 123 - Roman Flügel - Parade D'Amour.flac`, its staged report `0002.json` reading `analyzed` with `renamed_to` set, and **no rename intent** in its staging directory. | failed |
+| Why | `src/cratekit/analysis/cli.py` `handle_run`, `src/cratekit/analysis/artifacts.py` | `handle_run` records the rename intent, renames, then returns `artifacts.produced`, whose `staged_path` removes the item's staging directory, the intent with it, in the same attempt. An interrupt after that and before the engine flips the row to done leaves a pending row under the old name and nothing that names the new one, so `_finalized_twin` finds nothing. | traced |
+| Queue only | `crate tag folder a60-y --queue-only` | **`job: 2026-11-05T21:56:38Z-7a1e, queued`, `drive it with: crate tag folder .../a60-y --job 2026-11-05T21:56:38Z-7a1e`, `items: 0 of 5 settled`**, as before U192. Driven with that command so nothing was left queued: succeeded, 5 of 5. | met |
+
+**A60 (#423) is not met** and depends on **#555 (U223)**, filed with this finding at P1: the printed resume must finish a job whose interrupt landed between a rename and its row's commit. Every other line of the brief read as written. No provider call. The battery is sitting 68's.
+
+
+## Sitting 73, 2026-11-05, the attended session on v0.8.0, no desktop control: A71 (#445), held for a native label landing
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| What can be marked | the 78 landing session records under the library's `history/sessions` | **None carries a `labels` entry**: no batch has been landed natively with label filing yet. A45 (#369), the card that lands one, is open. | read |
+| The nearest pass | `crate label mark Defected --pass 2026-11-05T022315Z-910b_synced` (sitting 55's landing, which carried the ten Defected tracks), run `2026-11-05T21:41:50Z-5d69` | Gate `label.mark.confirm`, digest `94599ea8fbc7f182`: **"pass: 2026-11-05T022315Z-910b_synced, landed on the database native 'inbox' tree"**, "renamed on the account: none", left alone **"Defected 2026: the landed batch filed no track of this year under the label"**, `undone by: crate sync unmark --pass ...`. The item's `name` reads empty, since the account already calls the playlist `DOWNLOADED Defected 2026`. Answered `abort`; no provider call. | read |
+
+**A71 (#445) is held** and now depends on **#369 (A45)** as well: the proof needs a label batch landed natively with `--label`, and a label batch is downloaded only on Phillip's go per label. The gate's reading of a native pass with nothing filed under the label is recorded above for the retake.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
