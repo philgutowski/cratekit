@@ -16,6 +16,7 @@ the fixture built, never from the code under test.
 
 from __future__ import annotations
 
+import dataclasses
 import io
 import json
 import sqlite3
@@ -351,6 +352,34 @@ def test_a_library_that_moved_after_the_gate_refuses_before_writing(both_native,
     assert _below(cfg, both_native["genre"]) == {}, (
         "the worker wrote a plan nobody approved"
     )
+
+
+def test_an_answer_over_one_database_file_does_not_approve_another(both_native):
+    """The rehearsal rule's hazard: an apply recorded over a disposable copy.
+
+    The copy holds the same rows, so the plan and its digest are the same, and
+    only the pin on the file the plan read tells the two apart (U161). The run
+    answered over the copy must refuse over the live file rather than queue.
+    """
+    cfg = config.load()
+    live = Path(cfg.library.db_path)
+    copy = live.with_name("rehearsal.db")
+    copy.write_bytes(live.read_bytes())
+    config.save(dataclasses.replace(cfg, library=dataclasses.replace(cfg.library, db_path=copy)))
+    config.reset_cache()
+    refused = _offered()
+    run_id = refused["run_id"]
+    _decide(run_id, "apply")
+
+    config.save(cfg)
+    config.reset_cache()
+    assert _offered()["cause"]["detail"]["shown"]["digest"] == (
+        refused["cause"]["detail"]["shown"]["digest"]
+    ), "the copy and the live file planned differently, so this test proves nothing"
+    code, acted = _drive(["--run", run_id, "route", "resort"])
+    assert code != int(ExitCode.OK), acted
+    assert acted["cause"]["reason"] == "decision-stale", acted
+    assert _below(cfg, both_native["genre"]) == {}
 
 
 def test_the_resume_argv_names_the_gate_run():
