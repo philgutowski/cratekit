@@ -3633,6 +3633,9 @@ def _check_release(inputs: _Inputs) -> Finding:
 #: a sitting is answered within hours, and sitting 51 left two runs blocked
 #: that nobody went back to.
 OPEN_GATES_CHECK = "runs.open-gates"
+
+#: The key of doctor's note on the ISRC cache (U206).
+ISRC_CACHE_CHECK = "provider.isrc-cache"
 OPEN_GATE_NOTE_AGE = timedelta(days=1)
 
 
@@ -3697,6 +3700,46 @@ def _check_open_gates(inputs: _Inputs) -> Finding:
     return Finding(key=OPEN_GATES_CHECK, title="runs at a gate", status=Status.INFO, detail=detail)
 
 
+def _check_isrc_cache(inputs: _Inputs) -> Finding:
+    """What the ISRC cache holds, and every file it set aside (U206).
+
+    A NOTE AND NEVER A FAILURE: the cache is a saving, and a file it could not
+    parse costs calls and no data. Doctor names a set aside file so a person
+    knows why the provider was asked again, and may remove it. The module is
+    imported here, so a doctor run loads the matcher it keys by only to answer
+    this note.
+    """
+    from cratekit.acquire import isrc_cache  # noqa: PLC0415 - see the docstring
+
+    cache = isrc_cache.Cache.from_config(inputs.cfg)
+    if not cache.enabled:
+        detail = "off: [provider] isrc_cache_days is 0, so every ISRC lookup asks the provider"
+    else:
+        held = cache.count()
+        if held == isrc_cache.UNREADABLE:
+            detail = (
+                f"{cache.path} could not be read, so every ISRC lookup asks the provider "
+                f"until it can be"
+            )
+        elif held == isrc_cache.UNPARSED:
+            detail = (
+                f"{cache.path} does not parse; the next ISRC lookup sets it aside and "
+                f"starts a fresh one, so there is nothing to do"
+            )
+        else:
+            answers = "answer" if held == 1 else "answers"
+            detail = f"{held} ISRC {answers} kept for up to {cache.days} days in {cache.path}"
+    aside = cache.set_aside()
+    if aside:
+        files = "file" if len(aside) == 1 else "files"
+        detail += (
+            f"; {len(aside)} {files} that could not be parsed were set aside and the "
+            f"cache rebuilt: {', '.join(str(one) for one in aside)}. Nothing reads them; "
+            f"they may be removed"
+        )
+    return Finding(key=ISRC_CACHE_CHECK, title="ISRC answers kept", status=Status.INFO, detail=detail)
+
+
 @dataclass(frozen=True, slots=True)
 class Check:
     """One named question and the function that answers it."""
@@ -3751,6 +3794,9 @@ CHECKS: tuple[Check, ...] = (
     # U186. Beside the session check: both are this installation's own runs
     # left waiting, and a note here never fails the report.
     Check(OPEN_GATES_CHECK, _check_open_gates),
+    # U206. Beside the open gates, another note about this installation's own
+    # state that never fails the report.
+    Check(ISRC_CACHE_CHECK, _check_isrc_cache),
     # R-235. Beside the session check because both report this product's own
     # library state, and after the taxonomy check, which it lists trees from.
     Check("tree.registry", _check_tree_registry),
@@ -4189,6 +4235,7 @@ __all__ = [
     "CREDENTIALS_BY_CHECK",
     "Check",
     "Finding",
+    "ISRC_CACHE_CHECK",
     "OPEN_GATES_CHECK",
     "Probes",
     "Report",

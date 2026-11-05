@@ -214,6 +214,15 @@ def template_name_is_usable(value: object) -> bool:
 ENV_CONFIG_DIR = "CRATEKIT_CONFIG_DIR"
 ENV_STATE_DIR = "CRATEKIT_STATE_DIR"
 ENV_LIBRARY_ROOT = "CRATEKIT_LIBRARY_ROOT"
+
+#: The directory the ISRC cache and its lock live in, when set (U206). Unset,
+#: they are installation state like any other. A copy run redirects
+#: ``CRATEKIT_STATE_DIR`` so nothing it does marks live state, and the ISRC
+#: answers it pays for are the one thing it should keep: they are facts about
+#: the provider's catalogue, so the copy run points this at the live state
+#: directory and its lookups are not paid for twice. ``core.rehearsal`` does
+#: that for every rehearsal it redirects.
+ENV_ISRC_CACHE_DIR = "CRATEKIT_ISRC_CACHE_DIR"
 ENV_DOWNLOAD_STAGING = "CRATEKIT_DOWNLOAD_STAGING"
 
 _APP_NAME = "cratekit"
@@ -814,6 +823,35 @@ STATE_FILES: tuple[StateFile, ...] = (
             "flight together. It follows its file to the same root by necessity: "
             "a lock under a different root than the state it protects is a lock "
             "two processes can each hold while both pace off the same account."
+        ),
+    ),
+    StateFile(
+        key="isrc_cache",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="isrc_cache.json",
+        why=(
+            "What the streaming provider answered for an ISRC, by ISRC and "
+            "country, and when it was asked (U206). A fact about the provider's "
+            "CATALOGUE, not about a library, so it sits beside the pacing state "
+            "and a copy run that redirects the library's state shares it with "
+            "the live run. Losing it costs calls and no data: the next lookup "
+            "asks again."
+        ),
+    ),
+    StateFile(
+        key="isrc_cache_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="isrc_cache.lock",
+        why=(
+            "A sibling lock serializing the read, merge and replace of the ISRC "
+            "cache beside it, so two processes never lose each other's answers. "
+            "It follows its file to the same root by necessity: a lock under a "
+            "different root than the thing it protects is a lock two processes "
+            "can each hold while both edit the same file."
         ),
     ),
     StateFile(
@@ -3009,6 +3047,14 @@ DEFAULT_PROVIDER_COOLDOWN_S = 900
 #: here. Named here as well as on the field for the reason the intake ages give.
 DEFAULT_PROVIDER_CALLS_PER_COMMAND = 500
 
+#: How many days an answer the streaming provider gave for an ISRC is reused
+#: before it is asked again (U206). Thirty, because a catalogue's filing of a
+#: recording moves rarely and a rehearsal and its live run are hours apart. A
+#: not found is kept a week at most, in ``acquire.isrc_cache``. Zero turns the
+#: cache off. Named here as well as on the field for the reason the intake ages
+#: give.
+DEFAULT_PROVIDER_ISRC_CACHE_DAYS = 30
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderConfig:
@@ -3028,11 +3074,17 @@ class ProviderConfig:
     command may make before the gate stops it the way a trip does. It is a
     line per command and never per day, Phillip's answer, so the next run
     starts fresh. There is no value that switches it off either.
+
+    ``isrc_cache_days`` is how long an ISRC the provider answered is not asked
+    again (U206), by any verb, in a rehearsal or a live run. Zero turns the
+    cache off and every lookup asks; that saves nothing and costs nothing but
+    calls.
     """
 
     min_interval_s: float = DEFAULT_PROVIDER_MIN_INTERVAL_S
     cooldown_s: int = DEFAULT_PROVIDER_COOLDOWN_S
     calls_per_command: int = DEFAULT_PROVIDER_CALLS_PER_COMMAND
+    isrc_cache_days: int = DEFAULT_PROVIDER_ISRC_CACHE_DAYS
 
 
 #: How many releases one sweep of one favourite label may offer for review,
@@ -3463,7 +3515,8 @@ def _validate_labels(data: Mapping) -> list[str]:
 
 
 def _validate_provider(data: Mapping) -> list[str]:
-    """The pacing interval, the breaker's cooldown (R-705) and the call ceiling (U193).
+    """The pacing interval, the breaker's cooldown (R-705), the call ceiling (U193)
+    and how long an ISRC answer is kept (U206).
 
     Checked here for the reason the recognition bound is: a wrong value in a
     file is a problem with a key name attached, and a wrong interval reaching
@@ -3503,6 +3556,13 @@ def _validate_provider(data: Mapping) -> list[str]:
             f"{key} must be a positive whole number of calls one command may make to "
             f"the streaming provider before it stops, found {ceiling!r}. There is no "
             f"value that switches the ceiling off; raise it for one run with --calls."
+        )
+    key = "provider.isrc_cache_days"
+    days = _dig(data, key)
+    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or days < 0):
+        problems.append(
+            f"{key} must be a whole number of days an answer the streaming provider "
+            f"gave for an ISRC is reused, found {days!r}. Zero turns the cache off."
         )
     return problems
 

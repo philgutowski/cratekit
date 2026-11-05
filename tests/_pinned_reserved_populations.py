@@ -315,6 +315,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unavailable-permanent',
         'unavailable-transient',
     ],
+    # 2026-11-05, U206: the ISRC cache joined, reading and writing its file as text.
+    'acquire/isrc_cache.py': ['utf-8'],
     'acquire/listdoc.py': ['utf-8'],
     'acquire/match.py': [
         'candidate-gone',
@@ -461,6 +463,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-required',
         'decision-unknown-gate',
         'internal-error',
+        # 2026-11-05, U206: the warning a run that looked an ISRC up carries.
+        'isrc-lookups',
         'module-extras-missing',
         'provider-spend',
     ],

@@ -42528,3 +42528,113 @@ mutation table, `docs/mutation/u204.md`, is the author's measure of the rest.
 **Measured cost.** Not driven. Nothing today is affected, since the field is still documented and the app is not registered yet. On removal, a heart or a pair could land on a release nobody can play wherever it is the one release that agrees.
 
 **Closes when:** a live probe reads `usageRules` values and `_available` reads them when `availability` is absent. Ledger only.
+
+---
+
+## R-1236. The ISRC cache's re-read under the lock before a set aside kills no test
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** `Cache._set_aside_held` in `src/cratekit/acquire/isrc_cache.py`
+reads the file again under the lock and renames it aside only if it still does
+not parse, so a good file another process wrote between this process's read and
+its lock is never set aside on an old reading. Replacing it with a rename that
+skips the re-read killed none of 153 tests (Fable round one, in process).
+
+**Measured cost.** None driven. The race it covers, a second writer landing a
+good file inside that window, was not produced. If it happened without the
+guard, the cost is calls, never data: the good file is set aside and rebuilt.
+
+**Closes when:** a two process test lands a good file between the read and the
+lock and shows it kept. Ledger only.
+
+---
+
+## R-1237. An ISRC spelled lower case or hyphenated is asked of the provider on every run and never kept
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** The ISRC cache keeps and recalls only a spelling that is
+already its own fold (`_key` in `src/cratekit/acquire/isrc_cache.py`), because
+the provider may answer another spelling differently and that answer must not
+stand for the folded code. Four callers of `match_track` fold through
+`match.isrc_token` first. `export set` (`src/cratekit/export/set_cli.py`) hands
+over a list document's own `Wanted.isrc`, stripped but not folded.
+
+**Measured cost.** Driven at the seam: `qzaaa2600001` and `QZ-AAA-26-00001`
+asked twice each, four calls, nothing written. `export set` was not driven end
+to end. A set exported from a list carrying such spellings pays every lookup on
+every run, as it did before U206; nothing is wrong, only unsaved.
+
+**Closes when:** `export set` folds the code before asking, as the other
+callers do, and a test shows its second run asks nothing. Ledger only.
+
+---
+
+## R-1238. A copy run made by hand saves its ISRC lookups only if it exports CRATEKIT_ISRC_CACHE_DIR, and the sitting steps do not say so yet
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** Every copy run since sitting 39 copies the installation
+state and redirects `CRATEKIT_STATE_DIR`, which puts the ISRC cache in the
+scratch area. `core.rehearsal.redirected` keeps it live by itself; a copy run
+by hand keeps it live only by exporting `CRATEKIT_ISRC_CACHE_DIR` to the live
+state folder first. `docs/GUIDE.md` and the solutions entry on it say so;
+`docs/cutover.md`'s sitting steps and the `crate-sync` skill do not.
+
+**Measured cost.** Driven in process: without the variable a redirected copy
+run asks again, with it the copy run asks nothing. Whether the next sitting
+exports it is not measurable here. A hand rehearsal of `sync pair` that follows
+the old steps pays its lookups twice, the cost #496 was filed for.
+
+**Closes when:** the next attended sitting that rehearses a lookup heavy verb by
+hand exports the variable and records its live run's `isrc-lookups` line, and
+the sitting steps carry it. Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1239. The per attempt reset of what an ISRC lookup said kills no test at either seam and guards a state neither can reach
+
+**Found:** at the second review of #496, U206, 2026-11-05.
+
+**The mechanism.** `TidalAccount._isrc_tracks` in
+`src/cratekit/modules/outbound/tidal_account.py` resets `last["said_not_found"]`
+at the start of every attempt, so a not found on an attempt the ladder retried
+past is not read as the settling answer. But `_call` returns `_ABSENT` on the
+same attempt for every failure `isrc_cache.said_not_found` accepts, so no
+attempt that set the flag is ever retried past.
+
+The catalogue's `answered.clear()` in `TidalCatalogue.tracks_for_isrc`
+(`src/cratekit/label/tidal_catalogue.py`) is the same shape: a not found returns
+the empty answer on the attempt that raised it, so no retried attempt follows
+one that appended.
+
+**Measured cost.** None. Removing the account's reset passed all 57 tests in
+`tests/test_isrc_cache.py` (Fable round two), and rows M15 and M19 of
+`docs/mutation/u206.md` measure zero over the full suite for both seams.
+
+**Closes when:** both resets are removed with a comment saying why, or a seam
+starts retrying past a said not found and a test drives it. Ledger only.
+
+---
+
+## R-1240. Doctor says a cache file that does not parse needs nothing done, also when the lock cannot be opened and no lookup will set it aside
+
+**Found:** at the second review of #496, U206, 2026-11-05.
+
+**The mechanism.** The `provider.isrc-cache` note in `src/cratekit/cli/doctor.py`
+says of a cache file that does not parse that the next lookup sets it aside and
+starts afresh, so there is nothing to do. The set aside needs the sibling lock.
+When the lock file cannot be opened, `Cache._locked` yields not held, nothing is
+set aside, and every lookup asks the provider while the note still says there
+is nothing to do.
+
+**Measured cost.** Driven with a hand made producer, a directory at the lock
+path: three lookups asked three times and the note unchanged. The realistic
+producer, a state directory this account cannot write, could not be driven on
+a container that runs as root, so reachability is unmeasured. The cost is calls
+and a note that reads clean over them, never data.
+
+**Closes when:** the note asks whether the lock can be taken and, when it
+cannot, says every lookup asks the provider until the folder is writable.
+Ledger only.
