@@ -246,6 +246,8 @@ def test_a_featured_credit_is_a_performer_and_never_a_version():
         ("Song (Remix)", ("Song", "Remix")),
         ("Song [Remix] (Edit)", ("Song", "Remix Edit")),
         ("[]", ("", "")),
+        ("(feat. Mira)", ("", "")),
+        ("[ft. Mira] (Live)", ("", "Live")),
     ],
 )
 def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
@@ -254,7 +256,8 @@ def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
     Glass Animals' ``[Premade Sandwiches]`` walked off whole like a qualifier,
     so the row named no title and refused every playlist ``crate sync twins``
     planned. An empty group is still nothing, and a group after a title is
-    still the version it always was.
+    still the version it always was, and a credit still comes off: it names
+    a performer, never the record.
     """
     assert match.split_version(spelled) == expected
     assert match.split_title(spelled) == expected
@@ -266,8 +269,11 @@ def test_a_provider_row_titled_wholly_in_brackets_reads_rather_than_refuses():
     )
     assert (read.artist, read.title, read.version) == ("Glass Animals", "Premade Sandwiches", "")
     assert read.spelled == "[Premade Sandwiches]"
-    with pytest.raises(match.UnreadableList, match="names no title"):
-        match.read_tidal_tracks([{"id": "6", "name": "[]", "artist": {"name": "Glass Animals"}}])
+    for nothing in ("[]", "(feat. Mira)"):
+        with pytest.raises(match.UnreadableList, match="names no title"):
+            match.read_tidal_tracks(
+                [{"id": "6", "name": nothing, "artist": {"name": "Glass Animals"}}]
+            )
 
 
 def test_listed_names_reads_a_row_the_reader_refuses():

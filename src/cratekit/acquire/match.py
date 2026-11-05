@@ -516,9 +516,11 @@ def split_version(title: str) -> tuple[str, str]:
     nothing: the provider row then read as naming no title and refused the
     whole ``crate sync twins`` run, and a library file tagged that way indexed
     under an empty title no row could reach. A qualifier needs a title to
-    qualify, so the group that stands first is never one. Read here, in the
-    one function every reader and the library index start from, so the two
-    sides still fold one recording to one token.
+    qualify, so the group that stands first is never one. A CREDIT STILL
+    COMES OFF, so a row titled only ``(feat. Mira)`` reads as naming no title
+    and is refused as before: a credit names a performer, never the record.
+    Read here, in the one function every reader and the library index start
+    from, so the two sides still fold one recording to one token.
     """
     remaining = str(title).strip()
     qualifiers: list[str] = []
@@ -527,7 +529,7 @@ def split_version(title: str) -> tuple[str, str]:
         if found is None:
             break
         inside = found.group(1).strip()
-        if inside and found.start() == 0:
+        if found.start() == 0 and not _is_a_credit(inside):
             remaining = inside
             break
         remaining = remaining[: found.start()].strip()

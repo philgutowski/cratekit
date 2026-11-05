@@ -634,6 +634,28 @@ def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made
     assert world.held(world.twin("Broken 10-1-26")) == ["4", "5"]
 
 
+class Flaky(RuntimeError):
+    """A provider failure whose words differ every time they are read, as a request id does."""
+
+    calls = 0
+
+    def __str__(self) -> str:
+        Flaky.calls += 1
+        return f"the provider timed out, request {Flaky.calls}"
+
+
+def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(world, cfg):
+    """From the review: the provider's own words varied between the gate and the write."""
+    _phil(world)
+    world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
+    world.broken[BROKEN] = Flaky()
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+    (left,) = [one for one in envelope["data"]["items"] if one.get("account_id") == BROKEN]
+    assert left["action"] == twins.LEFT and "request" in left["why"]
+
+
 def test_a_playlist_whose_row_carries_no_id_is_left_and_the_other_is_planned(world, cfg):
     _phil(world)
     world.playlist(BROKEN, BROKEN_NAME, ["t4", ""])

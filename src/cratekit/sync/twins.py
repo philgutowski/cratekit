@@ -212,6 +212,10 @@ class Twin:
     whole: bool = True
     #: Why it is not made, when ``action`` is :data:`LEFT`.
     why: str = ""
+    #: The refusal that left it, when its listing was refused (U213). The plan's
+    #: digest carries this and not ``why``, whose words are the provider's own
+    #: and may differ between the run that asked and the run that writes.
+    refused: str = ""
 
     def identity(self) -> dict[str, Any]:
         return {
@@ -225,7 +229,7 @@ class Twin:
             "account": list(self.account),
             "misses": [one.identity() for one in self.misses],
             "whole": self.whole,
-            "why": self.why,
+            "why": self.refused or self.why,
         }
 
 
@@ -470,6 +474,7 @@ def plan_backfill(
                     folder=folder,
                     action=LEFT,
                     why=f"the account playlist could not be read: {exc.cause.message}",
+                    refused=exc.cause.reason,
                 )
             )
             continue

@@ -1317,6 +1317,18 @@ def test_the_readable_listing_sets_aside_a_refused_row_by_id_in_its_place():
     assert listing.unread["102"].said() == {"artist": "Nova Reef", "title": "", "isrc": "X2"}
 
 
+def test_a_set_aside_track_names_the_half_the_reader_names():
+    """The gate's word and the single playlist verb's word are one word."""
+    listing = _readable([Track("104", "", "()"), Track("105", "Nova Reef", "(feat. Mira)")])
+    assert {ref: one.why for ref, one in listing.unread.items()} == {
+        "104": "the account lists it with no title",
+        "105": "the account lists it with no title",
+    }
+    for track in (Track("104", "", "()"), Track("105", "Nova Reef", "(feat. Mira)")):
+        with pytest.raises(match.UnreadableList, match="names no title"):
+            match.read_row(track, origin=match.TIDAL, position=1)
+
+
 def test_a_track_one_row_of_which_reads_is_read_and_not_set_aside():
     listing = _readable([Track("102", "Nova Reef", ""), Track("102", "Nova Reef", "Tide")])
     assert listing.tracks["102"]["title"] == "Tide"

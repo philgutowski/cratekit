@@ -1505,6 +1505,11 @@ class Readable:
     order: tuple[str, ...]
 
 
+def _absent(title: str) -> str:
+    """The half a refused row names nothing for, read as the reader reads it."""
+    return "artist" if match.split_title(title)[0] else "title"
+
+
 def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readable:
     """:func:`list_playlist_declared`, with a row the reader refuses set aside, not fatal (U213).
 
@@ -1541,7 +1546,9 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
                     artist=artist,
                     title=title,
                     isrc=str(code).strip() if code else "",
-                    why=f"the account lists it with no {'artist' if not artist else 'title'}",
+                    # THE READER'S OWN RULE for which half it names, so the
+                    # gate and a single playlist verb say the same word.
+                    why=f"the account lists it with no {_absent(title)}",
                 )
     _refuse_unidentified(nameless)
     tracks = frozen_rows(tuple(read))
