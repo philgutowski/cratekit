@@ -79,7 +79,11 @@ stays in rekordbox. A row whose ISRC names several releases that all agree with
 it is matched as one of them, as the mirror matches it (U208, decided by
 Phillip at Sitting 54, reversing U198's keeping of R-572's refusal): the one
 the account hearts, else the lowest numbered after the file's album narrowed
-them, linked like any match, and counted on the gate. An account track with
+them, linked like any match, and counted on the gate; when the account
+already holds several releases of it, the lowest numbered of those, so no
+third is added. Every release linked to one row is that row's one key in the
+merge, so removing the row takes each of them off the account, and taking one
+off the account while another stays changes nothing. An account track with
 no link is looked for in the library: a live row carrying its ISRC, a row of
 this playlist whose file carries it (U208), a row an intake job this pair
 queued resolved it to, or a row of the INBOX playlist a landing made for this
@@ -397,6 +401,9 @@ class PairPlan:
     ambiguous: tuple[Named, ...] = ()
     #: U208. Rekordbox rows matched as one of several releases that all agree.
     tied: tuple[Named, ...] = ()
+    #: U208. Account tracks read as another release's key, by remote id, so
+    #: each is named on the screen by its own words.
+    siblings: dict[str, Named] = field(default_factory=dict)
     #: Links this plan made, remote id to content id.
     links: dict[str, str] = field(default_factory=dict)
     #: Every key's words, for the screen.
@@ -781,7 +788,17 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
 
     # ── rekordbox now, as keys ──────────────────────────────────────────────
     template = None
-    by_row = {row: remote for remote, row in links.items()}
+    # ONE ROW, ONE KEY, HOWEVER MANY RELEASES ARE LINKED TO IT (U208). A tie
+    # links one release and a person may add another of the same recording on
+    # the account, which the library lookup links to the same row. Every
+    # release linked to a row is read as that row's one key, the lowest
+    # numbered release's, so the merge sees one track on each side: a removal
+    # on either side takes every release of it, and a release taken off the
+    # account while another stays changes nothing.
+    by_row: dict[str, str] = {}
+    for remote, row in links.items():
+        if row not in by_row or _lower(remote, by_row[row]):
+            by_row[row] = remote
     seen_remote: dict[str, str] = {}
     rekordbox_keys: list[str] = []
     names: dict[str, Named] = {}
@@ -819,6 +836,12 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             held_there = [one for one in on_account.get(isrc, ()) if one not in linked]
             if isrc and len(held_there) == 1:
                 remote_id = held_there[0]
+            elif isrc and held_there:
+                # SEVERAL RELEASES OF IT ON THE ACCOUNT ALREADY (U208): one of
+                # those, the lowest numbered, and never a release the provider
+                # names that the account does not hold, which would be a third.
+                remote_id = min(held_there, key=_order_of)
+                broke = True
             elif not isrc:
                 reason = NO_ISRC
             else:
@@ -858,20 +881,30 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         elif broke:
             tied.append(names[key])
     known = {**links, **made}
+    canon = {**by_row, **{row: remote for remote, row in made.items()}}
+
+    def alias(remote_id: str) -> str:
+        """The key an account track is read as: its row's one key when linked."""
+        row = known.get(remote_id)
+        return remote_key(canon[row]) if row in canon else remote_key(remote_id)
 
     # ── the account now, as keys ────────────────────────────────────────────
-    account_keys = [remote_key(remote_id) for remote_id in account_now]
+    account_keys = list(pair_merge.distinct(alias(remote_id) for remote_id in account_now))
+    siblings: dict[str, Named] = {}
     for remote_id in account_now:
-        key = remote_key(remote_id)
+        key = alias(remote_id)
         said = tracks[remote_id]
+        shown = Named(
+            key=key,
+            artist=str(said.get("artist") or ""),
+            title=str(said.get("title") or ""),
+            remote_id=remote_id,
+            content_id=known.get(remote_id, ""),
+        )
+        if key != remote_key(remote_id):
+            siblings[remote_id] = shown
         if key not in names:
-            names[key] = Named(
-                key=key,
-                artist=str(said.get("artist") or ""),
-                title=str(said.get("title") or ""),
-                remote_id=remote_id,
-                content_id=known.get(remote_id, ""),
-            )
+            names[key] = shown
 
     # ── the bases ───────────────────────────────────────────────────────────
     base: pair_merge.Base | None = None
@@ -879,22 +912,22 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     unseen: set[str] = set()
     # U202. THE MOMENTS EACH SIDE CAN GIVE, read only where a base exists,
     # since a first sync adds only and decides nothing by time.
-    account_added = {
-        remote_key(remote_id): moment
-        for remote_id, said in dates.items()
-        if (moment := placeholders.parse_hearted(said)) is not None
-    }
+    # A row held as two releases was added on the account when the later was.
+    account_added: dict[str, Any] = {}
+    for remote_id, said in dates.items():
+        moment = placeholders.parse_hearted(said)
+        key = alias(remote_id)
+        if moment is not None and (key not in account_added or moment > account_added[key]):
+            account_added[key] = moment
     account_readded: set[str] = set()
     rekordbox_added: dict[str, Any] = {}
     rekordbox_removed: dict[str, Any] = {}
-    row_to_remote = {**by_row, **{row: remote for remote, row in made.items()}}
-
     def as_key(content_id: str) -> str:
-        remote_id = row_to_remote.get(content_id, "")
+        remote_id = canon.get(content_id, "")
         return remote_key(remote_id) if remote_id else row_key(content_id)
 
     if held is not None and not held.first:
-        base_account = tuple(remote_key(one) for one in held.account or ())
+        base_account = pair_merge.distinct(alias(one) for one in held.account or ())
         if short is not None:
             # A WITHHELD TRACK IS NOT A REMOVED ONE. Which tracks the provider
             # left out is not known, so no track the base held is read as gone,
@@ -924,7 +957,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         # was done since. A track the base dated nowhere is never read so.
         if synced is not None:
             for remote_id in account_now:
-                key = remote_key(remote_id)
+                key = alias(remote_id)
                 was = placeholders.parse_hearted(held.account_added.get(remote_id))
                 now = account_added.get(key)
                 if (
@@ -1047,14 +1080,25 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     account_removes: tuple[str, ...] = ()
     account_order: tuple[str, ...] | None = None
     if short is None:
-        account_removes = tuple(remote_of(key) for key in merged.remove_account)
-        after = pair_merge.appended(account_now, account_removes, account_adds)
-        wanted = tuple(
-            remote_of(key)
-            for key in pair_merge.as_held(merged.order, {remote_key(one) for one in after})
+        # EVERY RELEASE OF A REMOVED TRACK GOES (U208), the one a tie linked
+        # and any other of it the account holds.
+        account_removes = tuple(
+            dict.fromkeys(
+                one
+                for key in merged.remove_account
+                for one in (
+                    [held for held in account_now if alias(held) == key] or [remote_of(key)]
+                )
+            )
         )
-        if wanted != after:
-            account_order = wanted
+        after = pair_merge.appended(account_now, account_removes, account_adds)
+        firsts = pair_merge.distinct(alias(one) for one in after)
+        wanted_keys = pair_merge.as_held(merged.order, set(firsts))
+        if wanted_keys != firsts:
+            # A ROW'S RELEASES MOVE TOGETHER, in the order the account holds them.
+            account_order = tuple(
+                one for key in wanted_keys for one in after if alias(one) == key
+            )
 
     return PairPlan(
         target=target,
@@ -1073,6 +1117,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         awaiting=tuple(awaiting),
         ambiguous=tuple(ambiguous),
         tied=tuple(tied),
+        siblings=siblings,
         links=made,
         names=names,
         content_of=content_of,
@@ -1080,6 +1125,15 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         home=home,
         account_dates=dict(dates),
     )
+
+
+def _order_of(remote_id: str) -> tuple[int, str]:
+    """A provider identifier's place, numbers by value, as a tie's ``_lowest`` orders them."""
+    return (len(remote_id), remote_id)
+
+
+def _lower(one: str, other: str) -> bool:
+    return _order_of(one) < _order_of(other)
 
 
 def _ask(
@@ -1619,6 +1673,7 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
     """Every change one pair's sync makes, by name, both sides, in the order it is written."""
     by_content = {content_id: one.names.get(key) for key, content_id in one.content_of.items()}
     by_remote = {named.remote_id: named for named in one.names.values() if named.remote_id}
+    by_remote.update(one.siblings)
 
     def row(side: str, action: str, named: Named | None, **extra: Any) -> dict[str, Any]:
         return {

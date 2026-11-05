@@ -1894,3 +1894,17 @@ def test_a_refused_tie_is_never_said_to_be_broken():
     client = releases(*_alike("101", "202", "Sun Path", "Nova Reef"), Track("303", "", None, ()))
     found = adapter(client)
     assert any_release(found) is None and found.tie_broken("7") is False
+
+
+def test_two_hearts_and_an_album_naming_one_of_them_is_a_broken_tie():
+    """Without ``any_agreeing`` two hearts refuse whatever the album says, so this broke one."""
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+        on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Night Drives"),
+    )
+    client.user.favorites.hearts = ["303", "202"]
+    found = adapter(client)
+    assert any_release(found, album="Tidal Lines") == "202"
+    assert found.tie_broken("7") is True
+    assert match_row(found, "Sun Path") is None

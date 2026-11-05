@@ -313,3 +313,96 @@ def test_a_sibling_release_added_on_the_account_finds_the_row_and_is_not_queued(
     assert w.on_account() == ["101", "202"]
     assert _pair(cfg).links.get("202") == TIED
     _quiet(w)
+
+
+def _rows_of_playlist(cfg, playlist_id: str) -> list[tuple[str, str]]:
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        return [
+            (str(one[0]), str(one[1]))
+            for one in conn.execute(
+                "SELECT ID, ContentID FROM djmdSongPlaylist WHERE PlaylistID = ? "
+                "AND COALESCE(rb_local_deleted, 0) = 0 ORDER BY ID",
+                (playlist_id,),
+            ).fetchall()
+        ]
+    finally:
+        conn.close()
+
+
+@pytest.mark.parametrize("on_file", [False, True], ids=["database-isrc", "file-isrc"])
+def test_a_row_removed_in_rekordbox_takes_every_release_of_it_off_the_account(
+    tied, cfg, tmp_path, on_file
+):
+    """The review's round one, row 1: two releases linked to one row were two keys."""
+    w = tied([release("202"), release("101")], rekordbox=(TIED, "2"))
+    if on_file:
+        _untagged_row(cfg, TIED, tmp_path, file_isrc=isrc(TIED))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _sibling_added(w)
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    assert w.on_account() == ["101", "92", "202"]
+    w.rekordbox_remove(TIED)
+
+    code, envelope = sync([*VERB, ACCOUNT])
+
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["2"]
+    assert w.on_account() == ["92"]
+    _quiet(w)
+    assert w.held() == ["2"]
+
+
+@pytest.mark.parametrize("on_file", [False, True], ids=["database-isrc", "file-isrc"])
+def test_one_release_taken_off_the_account_while_another_stays_changes_nothing(
+    tied, cfg, tmp_path, on_file
+):
+    """The review's round one, row 2: the row was rewritten in rekordbox and the release put back."""
+    w = tied([release("202"), release("101")], rekordbox=(TIED, "2", "3"))
+    if on_file:
+        _untagged_row(cfg, TIED, tmp_path, file_isrc=isrc(TIED))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _sibling_added(w)
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    memberships = _rows_of_playlist(cfg, w.rekordbox_id)
+    w.account.playlists[ACCOUNT].remove("202")
+
+    code, envelope = sync([*VERB, ACCOUNT])
+
+    assert code == int(ExitCode.OK), envelope
+    assert _rows_of_playlist(cfg, w.rekordbox_id) == memberships
+    assert w.on_account() == ["101", "92", "93"]
+    _quiet(w)
+    assert w.on_account() == ["101", "92", "93"]
+
+
+def test_both_releases_taken_off_the_account_take_the_row_out_of_rekordbox(tied):
+    w = tied([release("202"), release("101")], rekordbox=(TIED, "2"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _sibling_added(w)
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    w.account.playlists[ACCOUNT][:] = ["92"]
+
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+
+    assert w.held() == ["2"]
+    _quiet(w)
+
+
+def test_two_releases_already_on_the_account_take_the_lower_and_add_no_third(tied, cfg):
+    """The review's round one, row 3: the provider's lowest release was added beside both."""
+    w = tied(
+        [release("101"), release("202"), release("303")],
+        account=(),
+    )
+    w.account.playlists[ACCOUNT][:] = ["303", "202"]
+
+    code, envelope = sync(w.args())
+
+    assert code == int(ExitCode.OK), envelope
+    assert w.on_account() == ["303", "202"]
+    assert w.held() == [TIED]
+    assert _pair(cfg).links.get("202") == TIED
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert isrc(TIED) not in w.account.client.isrc_asked
+    _quiet(w)

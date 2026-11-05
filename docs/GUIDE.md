@@ -942,7 +942,9 @@ the account that all agree with it, a single and its album cut, is paired as
 one of them: the one you heart, else the lowest numbered after the file's
 album has narrowed them, as the mirror chooses, and it stays on that one; the
 gate counts how many rows were paired that way. A release of it you add on the
-account by hand is read as the same track, never queued for download. A
+account by hand is read as the same track, never queued for download: take
+one release off the account and the track stays while the other is there,
+take the track out in rekordbox and every release of it leaves the account. A
 track the account cannot carry stays in rekordbox, counted on the gate, and is
 not asked about again until its ISRC changes. Another app's
 folder is never paired either. Two playlists that would take one account title refuse that title
