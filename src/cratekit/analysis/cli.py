@@ -489,9 +489,44 @@ def _finalized_twin(cfg: config.Config, job, item) -> Path | None:
     file whose stripped stem equalled the item, which reported a deleted
     source as analysed when an older twin of it sat in the folder, and found
     nothing when the template had deduped or truncated the stem.
+
+    WHEN THE INTENT IS GONE, THE ITEM'S OWN STAGED REPORT (U223). The shipped
+    ``staged_path`` removed the intent in the same attempt that renamed the
+    file, so every job interrupted between the staged report and the commit
+    carries a report naming the rename and no intent. The report is this
+    item's record too, never the folder's.
     """
     target = artifacts.rename_intent(cfg, job, item)
+    if target is None:
+        target = _staged_twin(cfg, job, item)
     if target is None or not target.is_file():
+        return None
+    return target
+
+
+def _staged_twin(cfg: config.Config, job, item) -> Path | None:
+    """The renamed file an uncommitted staged report of this item names, if any.
+
+    Only a report that says it renamed: an ``analyzed`` report whose
+    ``renamed_to`` is its own path's name, or a resume's report that says it
+    found the item after a rename. The path must sit in the item's own
+    folder, where ``_finalize`` renames to and nowhere else.
+    """
+    report = artifacts.staged_report(cfg, job, item)
+    if report is None:
+        return None
+    recorded = report.get("path")
+    if not isinstance(recorded, str) or not recorded:
+        return None
+    target = Path(recorded)
+    status = report.get("status")
+    if status == "analyzed":
+        if not report.get("renamed_to") or report.get("renamed_to") != target.name:
+            return None
+    elif status != "skipped-prefixed" or report.get("resumed_after_rename") is not True:
+        return None
+    _, source = _folder_and_path(job, item)
+    if target.parent != source.parent or target == source:
         return None
     return target
 
@@ -636,6 +671,10 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
         return path
     artifacts.record_rename_intent(cfg, job, item, target)
     if not naming.claim_target(target):
+        # THE RENAME WILL NOT LAND, so the intent naming the file that holds
+        # the name is false, and a retry after the source is deleted would
+        # read that unrelated file as this item's twin (U223).
+        artifacts.discard_rename_intent(cfg, job, item)
         raise refuse(
             "analysis-write-failed",
             f"{path.name} could not be renamed to {rendered.filename}: that name "
@@ -648,6 +687,7 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
         path.rename(target)
     except OSError as exc:
         target.unlink(missing_ok=True)
+        artifacts.discard_rename_intent(cfg, job, item)
         raise refuse(
             "analysis-write-failed",
             f"{path.name} could not be renamed to {rendered.filename}: {exc}",
@@ -689,6 +729,10 @@ def handle_run(job, item, cfg) -> jobs.Produced:
                 "resumed_after_rename": True,
             },
         )
+    # THE SOURCE IS STILL A FILE, so an intent an earlier attempt left names a
+    # rename that did not land, and nothing reads it as evidence from here on:
+    # this attempt starts clean and records its own if it renames (U223).
+    artifacts.discard_rename_intent(cfg, job, item)
     if carries_head(path, cfg):
         return artifacts.produced(
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": "skipped-prefixed"}

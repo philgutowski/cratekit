@@ -595,9 +595,14 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
     assert code == int(ExitCode.INTERRUPTED), again
     assert hits == ["a.flac"]
 
-    code, resumed = drive(_interrupted(again))
-    assert code == int(ExitCode.OK), resumed
+    # THE ``--job`` PATH LEAVES ITS JOB CANCELLED, which ``crate job resume``
+    # re-arms before it drives; the arming is taken by hand here so the drive
+    # stays in this process where the scoring is bound.
     job = analysis_job("analyze.run")
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+    code, resumed = drive(argv)
+    assert code == int(ExitCode.OK), resumed
     report = artifacts.committed(cfg, job.job_id)[0]
     assert report["resumed_after_rename"] is True
     assert report["path"] == str(folder / "08A - 124 - a.flac")

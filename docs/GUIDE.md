@@ -56,7 +56,8 @@ Four words carry most of the rest.
   without repeating finished work. Three verbs of the acquisition tail, `tag
   folder`, `analyze run` and `analyze restamp`, queue their job and then work
   through it before they return, so each step is one command. Stop one with
-  Ctrl-C and its answer names the `--job` command that finishes the rest; pass
+  Ctrl-C at any moment and its answer names the `--job` command that finishes
+  the rest, a track `analyze run` had already renamed included; pass
   `--queue-only` to have it queue and return like the others. An intake job
   names the playlist it was made for in both `job list` and `job show`. An
   open intake job holds its playlist out of every sync pass, so an old one
