@@ -85,12 +85,39 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
 from typing import Sequence
 
 log = logging.getLogger(__name__)
+
+
+_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
+
+
+def fold_isrc(value: object) -> str:
+    """An ISRC spelling with its whitespace and hyphens dropped, upper cased.
+
+    THE ONE FOLD, called by the outbound source, the missing verb, the index
+    and the naming verb (U212, which moved it here from the match engine), so a
+    hyphenated spelling on one side and a bare one on the other are one
+    string. Not validated: a verb that has to say a value was malformed rather
+    than absent reads this and then asks :func:`isrc_token`.
+    """
+    return re.sub(r"[\s-]", "", str(value or "")).upper()
+
+
+def isrc_token(value: object) -> str:
+    """The folded ISRC as an identity, or ``""`` when the value is not one.
+
+    A value that does not read as an ISRC once folded, a catalogue number or a
+    stray label, is NOT an identity and folds to empty rather than to a key
+    nothing else could share by accident.
+    """
+    folded = fold_isrc(value)
+    return folded if _ISRC.fullmatch(folded) else ""
 
 
 class Dialect(Enum):

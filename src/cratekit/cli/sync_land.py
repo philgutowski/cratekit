@@ -32,6 +32,14 @@ mends it; ``go`` takes the pass on without vocal scores. Sitting 51
 landed nineteen rows with no voxlevel from a copy installed without the
 vocals extra, and found out from one clause of the landing plan.
 
+A TRACK AN UNLANDED PASS STAGED IS NOT DOWNLOADED AGAIN (U212). The listing
+counts a missing track a staged file already carries as staged, and the pass
+says how many on its missing step. A pass with nothing to download and
+something staged skips the download and runs the tail and the landing over
+the staging folder, which takes the staged files, rather than ending with
+nothing landed. Sitting 55 downloaded two such tracks again, and the copies
+stopped the name step on names already taken.
+
 A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
 a lossy only track above all, leaves the job failed with every other item
 durable. The pass names each refused track and goes on with the ones that
@@ -114,7 +122,7 @@ STEPS: tuple[str, ...] = (
 
 #: The verbs the pass runs that are not the tail's.
 SYNC_VERB = "sync.all"
-DOWNLOAD_VERB = "acquire.download"
+DOWNLOAD_VERB = tail.DOWNLOAD_VERB
 BACKUP_VERB = "backup.run"
 
 #: Why the favourites write half queues nothing in a pass this verb runs: no
@@ -744,8 +752,11 @@ def _intake(report: _Pass, run_id: str, cfg: config.Config) -> bool:
 
 @dataclasses.dataclass(frozen=True)
 class _Listed:
-    path: Path
+    #: The list to download, or None when every missing track is staged (U212).
+    path: Path | None
     land_name: str
+    #: How many missing tracks a staged file already carries.
+    staged: int = 0
 
 
 def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> _Listed:
@@ -763,7 +774,8 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
     summary = _summary_of(envelope)
     listed = summary.get("list")
     land_name = str(summary.get("land_name") or "")
-    if envelope.get("outcome") == str(Outcome.NO_OP) or not listed:
+    staged = int(summary.get("staged") or 0)
+    if (envelope.get("outcome") == str(Outcome.NO_OP) or not listed) and not staged:
         unlisted = int(summary.get("unlisted") or 0)
         report.check(
             MISSING,
@@ -773,15 +785,37 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
             f"{unlisted}), so nothing is downloaded or landed",
         )
         raise _Done(MISSING)
-    report.summary["list"] = str(listed)
+    report.summary["staged"] = staged
     report.summary["land_name"] = land_name
+    # SAID ON THE STEP THAT DECIDED IT (U212), so a person reading the pass
+    # sees why fewer tracks were downloaded than the playlists asked for.
+    held = (
+        "staged already by a download not landed yet, not downloaded again, and "
+        "the landing over the staging folder lands them"
+    )
+    if not listed:
+        report.check(
+            MISSING,
+            "ok",
+            f"nothing to download: {staged} missing track(s) are {held}",
+        )
+        return _Listed(path=None, land_name=land_name, staged=staged)
+    report.summary["list"] = str(listed)
     report.check(
         MISSING,
         "ok",
         f"{summary.get('written', summary.get('missing', 0))} missing track(s) "
-        f"listed as one at {listed}",
+        f"listed as one at {listed}"
+        + (f"; {staged} more {held}" if staged else ""),
     )
-    return _Listed(path=Path(str(listed)), land_name=land_name)
+    return _Listed(path=Path(str(listed)), land_name=land_name, staged=staged)
+
+
+def _staged_on(listed: _Listed) -> str:
+    """The clause a download that landed nothing adds when the pass staged tracks (U212)."""
+    if not listed.staged:
+        return ""
+    return f"; the {listed.staged} staged track(s) are landed without it"
 
 
 def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> jobs.Job | None:
@@ -808,9 +842,16 @@ def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> job
 
 
 def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
-    """Download the list, skip what was refused for good, and return how many landed."""
+    """Download the list, skip what was refused for good, and return how many landed.
+
+    A pass whose every missing track is staged has no list, and the tail and
+    the landing go on over what is staged (U212).
+    """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's reading
 
+    if listed.path is None:
+        report.check(DOWNLOAD, "info", "nothing downloaded: every missing track is staged already")
+        return 0
     with jobs.open_store() as store:
         job = _download_job(store, listed.path, cfg)
         if (
@@ -824,8 +865,12 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
         envelope = tail.required(report, DOWNLOAD, ["acquire", "download", str(listed.path)])
         job_id = str((envelope.get("data") or {}).get("job_id") or "")
         if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
-            report.check(DOWNLOAD, "info", "the list held no track to download")
-            raise _Done(DOWNLOAD)
+            report.check(
+                DOWNLOAD, "info", "the list held no track to download" + _staged_on(listed)
+            )
+            if not listed.staged:
+                raise _Done(DOWNLOAD)
+            return 0
         with jobs.open_store() as store:
             job = jobs.get(store, job_id)
     job = tail.settle(report, DOWNLOAD, job)
@@ -860,9 +905,15 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
             DOWNLOAD,
             "fail" if refused else "info",
             f"download job {job.job_id} landed no track"
-            + (f"; {len(refused)} refused" if refused else ""),
+            + (f"; {len(refused)} refused" if refused else "")
+            + _staged_on(listed),
         )
-        raise _Done(DOWNLOAD)
+        # WHAT IS STAGED STILL LANDS (review round one, F1): a download that
+        # landed nothing ends the pass only when nothing was staged either,
+        # since the missing step already told the person the landing takes it.
+        if not listed.staged:
+            raise _Done(DOWNLOAD)
+        return 0
     report.check(
         DOWNLOAD,
         "ok",
@@ -890,7 +941,15 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     said = tail.attended(report, stop, after=after)
     summary = "the pass " + said.summary
     if stop.step == LAND:
-        summary = "the pass is downloaded, tagged, analysed and named; " + summary
+        # WHAT THE DOWNLOAD DID, said first (review round two, finding 5): a
+        # pass that landed only what was staged downloaded nothing.
+        if report.summary.get("downloaded") == 0:
+            summary = (
+                "the pass downloaded nothing and is tagged, analysed and named over "
+                "what is staged; " + summary
+            )
+        else:
+            summary = "the pass is downloaded, tagged, analysed and named; " + summary
     pending = PendingHumanAction(
         kind=said.kind,
         id=f"sync-land-{report.summary['pass_run'] or ctx.run.run_id}",
@@ -994,7 +1053,7 @@ def sync_land(ctx: Context) -> Envelope:
             raise _Done(SYNC)
         without = _intake(report, run_id, cfg)
         listed = _missing(report, run_id, without_cancelled=without)
-        _download(report, listed, cfg)
+        report.summary["downloaded"] = _download(report, listed, cfg)
         staging = cfg.paths.download_staging.expanduser().absolute()
         tail.run(report, staging, cfg, ["--pass", listed.land_name], listed.land_name)
     except _Done as done:
