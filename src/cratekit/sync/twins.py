@@ -910,13 +910,19 @@ def pair_backfilled(cfg: config.Config, planned: Backfill, written: Written) -> 
     for made in written.twins:
         one = by_account[made.account_id]
         # U221. EVERY TRACK THE TWIN WAS MADE WITHOUT IS HELD for the author's
-        # choice, recorded with the mark, so no sync queues it on its own.
+        # choice, recorded with the mark, so no sync queues it on its own. A
+        # SHORT LISTING RECORDS NO HOLD: a track the account withheld from it
+        # is in no miss, so the pair is read by time instead, as one paired
+        # before U221, which holds every track listed before the mark (the
+        # review's round one).
         store.mark(
             one.account_id,
             made.playlist_id,
             name=one.account_name,
             twin=True,
-            on_hold={miss.remote_id: miss.held_as() for miss in one.misses},
+            on_hold=(
+                {miss.remote_id: miss.held_as() for miss in one.misses} if one.whole else None
+            ),
         )
         marked += 1
         store.record(

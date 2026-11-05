@@ -9,8 +9,11 @@ choice: it empties the hold of each twin named, or of every twin with
 ``--all``, behind one explicit gate, so the next ``crate sync pair`` queues
 what that twin lacks through the intake path as it queues any pair's.
 
-**WHAT A TWIN HOLDS.** A twin made since U221 holds exactly the tracks its
-backfill named missing. A twin paired before U221 recorded no hold, so ``sync
+**WHAT A TWIN HOLDS.** A twin made since U221 from a whole listing holds
+exactly the tracks its backfill named missing, less any the pair has linked to a
+library row since, which the next sync adds rather than queues. A twin paired
+before U221, or made from a listing the account served short, recorded no
+hold, so ``sync
 pair`` reads it by time: a track the library lacks is held unless the account
 dates its addition after the pair was marked. This verb cannot count that one
 without listing the account, so it names it as holding what the account listed
@@ -165,7 +168,13 @@ def plan(cfg: config.Config, named: Sequence[str], *, every: bool) -> tuple[Plan
             account_id=one.account_id,
             rekordbox_id=one.rekordbox_id,
             name=one.name,
-            held=None if one.on_hold is None else dict(one.on_hold),
+            # A HELD TRACK THE PAIR HAS LINKED SINCE is in the library, so the
+            # next sync adds it rather than queueing it, and it is not counted.
+            held=(
+                None
+                if one.on_hold is None
+                else {k: v for k, v in one.on_hold.items() if k not in one.links}
+            ),
         )
         for one in sorted(chosen, key=lambda pair: (pair.name, pair.account_id))
     )

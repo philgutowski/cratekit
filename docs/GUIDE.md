@@ -978,7 +978,8 @@ crate sync release --all          # every twin's
 once you approve, the next `crate sync pair` queues what that twin lacks; a
 second twin you did not name stays held. A track you put on the account
 playlist by hand after its twin was made is not held and is queued as usual. A
-twin made before this hold existed recorded no list, so `crate sync pair`
+twin made before this hold existed, or from a listing the account served
+short, recorded no list, so `crate sync pair`
 holds every track the account added to it before the twin was made, and one
 the account gives no date for, and `crate sync release` names that twin as
 holding those. A twin a landing makes holds nothing: the sweep that landed it

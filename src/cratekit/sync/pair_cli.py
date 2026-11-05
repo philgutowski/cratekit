@@ -110,8 +110,8 @@ own. ``crate sync twins`` records those tracks on the twin's pair, and here
 each is named on the gate as on hold, counted per twin, and left out of the
 queue (:func:`held_for_choice`), until ``crate sync release`` empties that
 twin's hold. A track put on the playlist by hand after the twin was made is
-not held, and a twin paired before U221, which recorded no hold, is read by
-the account's added dates against the pair's mark.
+not held, and a twin paired before U221 or made from a short listing, which
+recorded no hold, is read by the account's added dates against the pair's mark.
 
 **TWO GATES, BOTH ASKED BEFORE ANYTHING IS WRITTEN.** ``sync.pair.rekordbox``
 and ``sync.pair.account`` each show the whole plan, every addition and every

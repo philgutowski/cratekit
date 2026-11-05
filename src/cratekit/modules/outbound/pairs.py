@@ -138,8 +138,8 @@ class Pair:
     #: U221. The account tracks a twin was made without, held for the author's
     #: choice and never queued, remote identifier to the words a person reads.
     #: Empty for a twin holding nothing, a landing's or one released. None when
-    #: the pair recorded no hold: no twin, or a twin paired before U221, which
-    #: ``sync pair`` reads by time.
+    #: the pair recorded no hold: no twin, a twin paired before U221, or one
+    #: made from a short listing, which ``sync pair`` reads by time.
     on_hold: Mapping[str, str] | None = None
 
     @property

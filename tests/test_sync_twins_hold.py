@@ -203,7 +203,9 @@ def test_a_twin_paired_before_u221_is_released_by_name_and_counted_by_time(world
     _as_before_u221(cfg)
     code, refused = drive([*RELEASE, PHIL])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["shown"]["twins"] == f"{PHIL_NAME}: {release_cli.BY_TIME}"
+    shown = refused["cause"]["detail"]["shown"]["twins"]
+    assert shown.startswith(f"{PHIL_NAME}: every track the library lacks that its account")
+    assert "listed before the twin was made" in shown
     code, envelope = release(PHIL)
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["by_time"] == 1
@@ -342,3 +344,84 @@ def test_a_pair_that_is_no_twin_never_holds(cfg):
     assert pair_cli.held_for_choice(held, "t1", {})
     assert not pair_cli.held_for_choice(held, "t2", {})
     assert not pair_cli.held_for_choice(None, "t1", {})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The review's round one
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_short_listings_twin_records_no_hold_and_holds_a_track_served_later(world, cfg):
+    """A track the account withheld from the backfill is held by time once it is served."""
+    world.playlist(PHIL, PHIL_NAME, ["t3", "t20", "t1"])
+    world.short.add(PHIL)
+    assert backfill()[0] == int(ExitCode.OK)
+    assert pairs.PairStore(cfg).get(PHIL).on_hold is None
+    world.short.clear()
+    world.account.playlists[PHIL].append("t22")
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert sorted(remote for _pair, remote in _on_hold(envelope)) == ["t20", "t22"]
+
+
+def test_a_held_track_the_library_gained_is_not_counted_on_the_release_gate(world, cfg):
+    _three_missing(world)
+    assert backfill()[0] == int(ExitCode.OK)
+    store = pairs.PairStore(cfg)
+    store.record(PHIL, links={"t20": "9"})
+    code, refused = drive([*RELEASE, PHIL])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert refused["cause"]["detail"]["shown"]["twins"] == f"{PHIL_NAME}: 2 track(s)"
+    code, envelope = release(PHIL, answer="abort")
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["tracks"] == 2
+    held = [one["remote_id"] for one in envelope["data"]["items"] if one["action"] == "held"]
+    assert held == ["t21", "t22"]
+
+
+def test_release_hold_passes_over_a_pair_that_is_no_twin_and_one_holding_nothing(cfg):
+    store = pairs.PairStore(cfg)
+    store.mark("plain", "1", name="x")
+    store.mark("empty", "2", name="y", twin=True, on_hold={})
+    before = store.path.read_bytes()
+    assert store.release_hold({"plain": "1", "empty": "2", "gone": "3"}) == {}
+    assert store.path.read_bytes() == before
+    assert store.get("plain").on_hold is None
+
+
+def test_the_plans_digest_moves_with_the_hold():
+    target = pair_cli.Target(account_id="a", rekordbox_id="1", marked=True)
+    named = pair_cli.Named(key="r:t1", artist="A", title="B", remote_id="t1")
+    from cratekit.sync import pair_merge
+    from cratekit.write import playlist_pair
+
+    def plan(on_hold):
+        return pair_cli.PairPlan(
+            target=target,
+            name="x",
+            rekordbox_name="x",
+            first=False,
+            merged=pair_merge.merge(None, pair_merge.Side(()), pair_merge.Side(())),
+            account_now=(),
+            rekordbox_before=(),
+            change=playlist_pair.Change(playlist_id="1", before=(), adds=(), removes=(), order=()),
+            on_hold=on_hold,
+        )
+
+    assert "on_hold" not in plan(()).identity()
+    assert plan((named,)).identity()["on_hold"] == ["t1"]
+    assert plan((named,)).identity() != plan(()).identity()
+
+
+def test_a_track_dated_at_the_very_mark_is_held():
+    held = pairs.Pair(
+        account_id="a",
+        rekordbox_id="1",
+        name="x",
+        marked="2026-11-05T10:00:00+00:00",
+        twin=True,
+    )
+    assert pair_cli.held_for_choice(held, "t1", {"t1": "2026-11-05T12:00:00+02:00"})
+    assert not pair_cli.held_for_choice(held, "t1", {"t1": "2026-11-05T10:00:01+00:00"})
+    assert pair_cli.held_for_choice(held, "t1", {"t1": "2026-11-05T09:59:59+00:00"})
