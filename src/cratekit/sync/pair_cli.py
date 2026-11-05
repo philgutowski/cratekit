@@ -2092,6 +2092,10 @@ class Done:
     created: str = ""
     #: U202. The rekordbox playlist made for an account playlist.
     created_in_rekordbox: str = ""
+    #: U220. Why the account order of this pair did not finish, or None.
+    order_refused: Any = None
+    #: U220. The pair's name, said when its order did not finish.
+    name: str = ""
 
     @property
     def wrote(self) -> bool:
@@ -2294,7 +2298,15 @@ STEP_REKORDBOX = "rekordbox"
 STEP_QUEUED = "queued"
 STEP_ACCOUNT = "account"
 STEP_ORDERING = "ordering"
+#: U220. The pair's account order was refused part way, its message the value.
+STEP_ORDER_REFUSED = "order-refused"
 STEP_DONE = "done"
+
+#: U220. The refusals an account order may end in that stop that pair alone:
+#: a read back or a reading the adapter would not trust, and the provider
+#: failing a move or a read. A park, a rejected session and anything else
+#: still stop the whole write, since every later pair would meet it too.
+ORDER_REFUSALS = frozenset({"outbound-remove-refused", "unavailable-transient"})
 
 #: U210. The refusal a write stops with when a step it took cannot be recorded.
 STEPS_UNWRITTEN = "sync-pair-steps-unwritten"
@@ -2515,7 +2527,30 @@ def apply_pair(
         if one.account_order:
             # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
             steps.mark(STEP_ORDERING)
-            account_after = tuple(remote.order_tracks(playlist_id, one.account_order))
+            # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
+            # the adapter's reading agrees with the check's own listing of it.
+            expect = (
+                tuple(account_listed)
+                if steps.has(STEP_ORDER_REFUSED) and account_listed is not None
+                else None
+            )
+            try:
+                account_after = tuple(
+                    remote.order_tracks(playlist_id, one.account_order, expect=expect)
+                )
+            except jobs.Parked:
+                raise
+            except CratekitError as exc:
+                if exc.cause.reason not in ORDER_REFUSALS:
+                    raise
+                # U220. THIS PAIR ALONE STOPS. Its adds and removals landed and
+                # its rekordbox side is written; it is left unfinished, its
+                # snapshot unmoved, for a continue of the run to put in order,
+                # and the write goes on to every other pair.
+                steps.mark(STEP_ORDER_REFUSED, exc.cause.message)
+                done.order_refused = exc.cause
+                done.name = one.name
+                return done
             done.account_ordered = True
         elif account_listed is not None and not (one.account_removes or one.account_adds):
             account_after = tuple(account_listed)
@@ -2969,6 +3004,9 @@ def check(
                             "withholds a different number of tracks than the plan read",
                         )
                     )
+                else:
+                    # U220. The listing a refused order is checked against.
+                    listed[account_id] = now
             elif now != tuple(one.account_now):
                 moved.append(
                     Moved(ACCOUNT_SIDE, account_id, one.name, _differs(one.account_now, now))
@@ -3471,6 +3509,57 @@ def _stopped(
     return dataclasses.replace(cause, message=f"{cause.message}{said}", detail=detail)
 
 
+def _unordered(
+    unordered: Sequence[Done],
+    planned: Plan,
+    steps: Any,
+    *,
+    run_id: str,
+    argv: Sequence[str] | None,
+) -> Any:
+    """The stop a write ends in when a pair's account order did not finish (U220).
+
+    Built on the first refusal's own cause, so its reason and remedy stand,
+    and said with how far the run got: every pair it finished, each pair whose
+    order did not finish and why, and the command that continues the run.
+    """
+    import dataclasses
+
+    first = unordered[0].order_refused
+    named = "; ".join(
+        f"{one.name or one.account_id} ({one.order_refused.message})" for one in unordered
+    )
+    said = (
+        f"the account order of {len(unordered)} pair(s) did not finish, so their "
+        f"tracks are all on the account and not yet in rekordbox's order: {named}"
+    )
+    detail: dict[str, Any] = {
+        **dict(first.detail or {}),
+        "unordered": [
+            {"account_id": one.account_id, "name": one.name, "why": one.order_refused.message}
+            for one in unordered
+        ],
+    }
+    if steps is None:
+        said += (
+            "; every other pair was written, and this run's plan could not be held, "
+            "so it cannot be continued: run crate sync pair again and answer both "
+            "gates over the plan it shows"
+        )
+        detail["fresh"] = True
+    else:
+        finished = sum(1 for one in planned.pairs if _steps_of(steps, one).has(STEP_DONE))
+        said += (
+            f"; run {run_id} finished {finished} of {len(planned.pairs)} pair(s), wrote "
+            f"every other write of these, and recorded each step it took, so "
+            f"continuing the run puts these in order with no new plan and no new "
+            f"answer, once each reads in the provider's own player as it should: "
+            + shlex.join(["crate", "--run", run_id, *(argv or VERB_PATH)])
+        )
+        detail.update({"run_id": run_id, "finished": finished})
+    return dataclasses.replace(first, message=said, detail=detail)
+
+
 def sync_pair(ctx) -> Envelope:
     """Plan every asked pair once, ask both gates, check the lists, then write each side approved.
 
@@ -3665,6 +3754,13 @@ def sync_pair(ctx) -> Envelope:
             raise jobs.Parked(
                 _stopped(exc.cause, planned, steps, run_id=run_id, argv=ctx.run.argv, cfg=cfg)
             ) from None
+    unordered = [one for one in done if one.order_refused is not None]
+    if unordered:
+        # U220. EVERY OTHER PAIR WAS WRITTEN, and the run stops here, held, so
+        # a continue of it puts the unfinished pairs in order.
+        raise CratekitError(
+            _unordered(unordered, planned, steps, run_id=run_id, argv=ctx.run.argv)
+        )
     forgotten = [
         one
         for one in planned.unpaired
@@ -3776,6 +3872,8 @@ __all__ = [
     "STEP_MADE",
     "STEP_MAKING",
     "STEP_ORDERING",
+    "STEP_ORDER_REFUSED",
+    "ORDER_REFUSALS",
     "STEP_QUEUED",
     "STEP_REKORDBOX",
     "PairSteps",
