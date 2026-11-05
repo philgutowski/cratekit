@@ -142,13 +142,13 @@ old = '''            on_hold=None if on_hold is None else MappingProxyType(dict(
 new = '''            on_hold=None,'''
 
 [[rows]]
-id = "R14_release_counts_linked"
-description = "release plan: count a held track the pair has linked since, so the gate names one the next sync will add, not queue"
-file = "src/cratekit/sync/release_cli.py"
-surface = "user"
-tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
-old = '''                else {k: v for k, v in one.on_hold.items() if k not in one.links}'''
-new = '''                else dict(one.on_hold)'''
+id = "R14_hold_unvalidated"
+description = "PairStore._pair: accept a hold that is not ids to words, so a damaged document is read rather than refused"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair.py"]
+old = '''        if on_hold is not None and not ('''
+new = '''        if False and not ('''
 
 [[rows]]
 id = "R15_mark_drops_the_hold"

@@ -10,8 +10,8 @@ choice: it empties the hold of each twin named, or of every twin with
 what that twin lacks through the intake path as it queues any pair's.
 
 **WHAT A TWIN HOLDS.** A twin made since U221 from a whole listing holds
-exactly the tracks its backfill named missing, less any the pair has linked to a
-library row since, which the next sync adds rather than queues. A twin paired
+exactly the tracks its backfill named missing; one the library has gained since
+is still counted, and the next sync adds it rather than queues it. A twin paired
 before U221, or made from a listing the account served short, recorded no
 hold, so ``sync
 pair`` reads it by time: a track the library lacks is held unless the account
@@ -168,13 +168,11 @@ def plan(cfg: config.Config, named: Sequence[str], *, every: bool) -> tuple[Plan
             account_id=one.account_id,
             rekordbox_id=one.rekordbox_id,
             name=one.name,
-            # A HELD TRACK THE PAIR HAS LINKED SINCE is in the library, so the
-            # next sync adds it rather than queueing it, and it is not counted.
-            held=(
-                None
-                if one.on_hold is None
-                else {k: v for k, v in one.on_hold.items() if k not in one.links}
-            ),
+            # EVERY RECORDED ID IS COUNTED, one the library has gained since
+            # included: a pair's links are not filtered by live rows here, so
+            # leaving a linked one out could hide a track whose row has since
+            # gone, which the next sync would queue (the review's round two).
+            held=None if one.on_hold is None else dict(one.on_hold),
         )
         for one in sorted(chosen, key=lambda pair: (pair.name, pair.account_id))
     )
@@ -226,7 +224,10 @@ def facts(planned: Sequence[Planned]) -> dict[str, Any]:
     releasing = [one for one in planned if one.action == RELEASE]
     return {
         "twins": "; ".join(f"{one.name}: {one.said()}" for one in releasing) or "none",
-        "next": "the next crate sync pair queues what each twin lacks",
+        "next": (
+            "the next crate sync pair queues what each twin lacks, and adds any the "
+            "library holds by then"
+        ),
     }
 
 

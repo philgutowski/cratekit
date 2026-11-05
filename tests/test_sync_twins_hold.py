@@ -365,19 +365,39 @@ def test_a_short_listings_twin_records_no_hold_and_holds_a_track_served_later(wo
     assert sorted(remote for _pair, remote in _on_hold(envelope)) == ["t20", "t22"]
 
 
-def test_a_held_track_the_library_gained_is_not_counted_on_the_release_gate(world, cfg):
-    _three_missing(world)
+def test_a_held_track_whose_linked_row_left_the_library_is_still_counted_and_released(
+    world, cfg
+):
+    """A link the pairs document keeps to a row since removed never hides a held track."""
+    world.playlist(PHIL, PHIL_NAME, ["t3", "t20", "t1"])
     assert backfill()[0] == int(ExitCode.OK)
-    store = pairs.PairStore(cfg)
-    store.record(PHIL, links={"t20": "9"})
+    # The link names a row the collection no longer holds.
+    pairs.PairStore(cfg).record(PHIL, links={"t20": "777"})
+    assert world.sql("SELECT ID FROM djmdContent WHERE ID = '777'") == []
     code, refused = drive([*RELEASE, PHIL])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["shown"]["twins"] == f"{PHIL_NAME}: 2 track(s)"
-    code, envelope = release(PHIL, answer="abort")
+    assert refused["cause"]["detail"]["shown"]["twins"] == f"{PHIL_NAME}: 1 track(s)"
+    code, envelope = release(PHIL)
     assert code == int(ExitCode.OK), envelope
-    assert envelope["data"]["totals"]["tracks"] == 2
-    held = [one["remote_id"] for one in envelope["data"]["items"] if one["action"] == "held"]
-    assert held == ["t21", "t22"]
+    assert envelope["data"]["totals"]["released"] == 1
+    assert [one["remote_id"] for one in envelope["data"]["items"] if one["action"] == "held"] == [
+        "t20"
+    ]
+
+
+def test_a_track_an_earlier_sync_queued_is_awaiting_not_on_hold(world, cfg):
+    """A twin read by time again, as a copy that drops the hold leaves it, names its queued track awaiting."""
+    _three_missing(world)
+    assert backfill()[0] == int(ExitCode.OK)
+    assert release(PHIL)[0] == int(ExitCode.OK)
+    code, synced = sync_pair()
+    assert code == int(ExitCode.OK), synced
+    assert _queued(synced) == ["t20", "t21", "t22"]
+    _as_before_u221(cfg)
+    code, again = sync_pair()
+    assert code == int(ExitCode.OK), again
+    assert _on_hold(again) == []
+    assert again["data"]["totals"]["awaiting"] == 3
 
 
 def test_release_hold_passes_over_a_pair_that_is_no_twin_and_one_holding_nothing(cfg):
