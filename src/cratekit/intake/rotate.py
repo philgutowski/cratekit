@@ -76,6 +76,7 @@ Layer: modules. It opens no database of its own: the verb hands it a handle.
 from __future__ import annotations
 
 import os
+import stat
 from dataclasses import dataclass, replace
 from datetime import date, datetime
 from pathlib import Path
@@ -371,6 +372,46 @@ class Landings:
     by_name: dict[str, tuple[date, str]]
     #: How many records could not be read.
     unreadable: int
+    #: The session log exists and could not be listed (U214), so no record in
+    #: it was read at all, which is not the same as none being there.
+    unlisted: bool = False
+
+    def unread(self) -> str:
+        """Why a record may name a playlist none read names, ``""`` when every one was read."""
+        if self.unlisted:
+            return "the session log could not be listed, and a record in it may"
+        if self.unreadable:
+            return f"{self.unreadable} session record(s) could not be read, and one of them may"
+        return ""
+
+
+def _unlisted(path: Path) -> bool:
+    """True when the directory is there and cannot be listed, False when listed or absent.
+
+    The scan reads a glob, which answers an unlistable directory with nothing
+    at all, so the listing is asked once here where it says so.
+    """
+    try:
+        os.listdir(path)
+    except FileNotFoundError:
+        return False
+    except OSError:
+        return True
+    return False
+
+
+def _batch_folder(path: str) -> bool | None:
+    """Whether a batch folder is there: ``None`` when the music folder cannot be read (U214).
+
+    ``os.path.isdir`` answers a folder it is refused as absent, which would
+    name a batch whose folder is there as no batch at all.
+    """
+    try:
+        return stat.S_ISDIR(os.stat(path).st_mode)
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError:
+        return None
 
 
 def landings(cfg: config.Config) -> Landings:
@@ -384,6 +425,7 @@ def landings(cfg: config.Config) -> Landings:
     reason the module gives.
     """
     records, unreadable = session.scan_log(cfg)
+    unlisted = _unlisted(session.log_dir(cfg))
     by_id: dict[str, date] = {}
     by_name: dict[str, tuple[date, str]] = {}
     for record in records:
@@ -404,7 +446,9 @@ def landings(cfg: config.Config) -> Landings:
         for key in ids:
             if key not in by_id or landed < by_id[key]:
                 by_id[key] = landed
-    return Landings(by_id=by_id, by_name=by_name, unreadable=len(unreadable))
+    return Landings(
+        by_id=by_id, by_name=by_name, unreadable=len(unreadable), unlisted=unlisted
+    )
 
 
 def _live_children(db: Any, parent_id: str) -> list[Any]:
@@ -428,17 +472,30 @@ def _recognised(
     row: Any,
     recorded: Mapping[str, date],
     named: Mapping[str, tuple[date, str]],
-) -> str | None:
+) -> tuple[str | None, bool]:
+    """How the row is recognised as a batch, and whether a batch folder could not be read.
+
+    The second half is True when a rule that asks for a batch folder was
+    refused the music folder (U214), so an unrecognised playlist is never
+    said to have no batch folder while one may be there.
+    """
     name = str(getattr(row, "Name", "") or "")
     if str(row.ID) in recorded:
-        return BY_RECORD
-    if name in named and os.path.isdir(landing.target_dir(cfg, named[name][1])):
-        return BY_RECORDED_NAME
+        return BY_RECORD, False
+    unread = False
+    if name in named:
+        found = _batch_folder(landing.target_dir(cfg, named[name][1]))
+        if found:
+            return BY_RECORDED_NAME, False
+        unread = unread or found is None
     if name.endswith(INBOXED_SUFFIX):
-        return BY_SUFFIX
-    if batch_name.is_default_shape(name) and os.path.isdir(landing.target_dir(cfg, name)):
-        return BY_NAME
-    return None
+        return BY_SUFFIX, False
+    if batch_name.is_default_shape(name):
+        found = _batch_folder(landing.target_dir(cfg, name))
+        if found:
+            return BY_NAME, False
+        unread = unread or found is None
+    return None, unread
 
 
 def _created_date(row: Any) -> date | None:
@@ -471,16 +528,17 @@ def _classify(
     expired_days: int,
     named: Mapping[str, tuple[date, str]] | None = None,
     old_display: str | None = None,
-    unreadable: int = 0,
+    unread: str = "",
 ) -> Batch | Left:
     """One node as a batch, or as left alone with its kind and reason.
 
     ``old_display`` is the declared Old folder's name, so the folder of that
     name directly under INBOX is named as Old rather than as any folder
     (U214); ``None`` when no Old is declared, which reads it as a folder.
-    ``unreadable`` is how many session records could not be read, so a
-    playlist no rule recognises is never said to have no record naming it
-    while one that might could not be read.
+    ``unread`` is :meth:`Landings.unread`, why a record none read names may
+    name it, so a playlist no rule recognises is never said to have no record
+    naming it while one that might could not be read, nor no batch folder
+    while the music folder could not be read.
     """
     playlist_id, name = str(row.ID), str(getattr(row, "Name", "") or "")
 
@@ -513,19 +571,24 @@ def _classify(
             "never a batch; crate inbox analyzed takes out what rekordbox analysed",
         )
     named = named or {}
-    recognised_by = _recognised(cfg, row, recorded, named)
+    recognised_by, folder_unread = _recognised(cfg, row, recorded, named)
     if recognised_by is None:
-        # UNREAD IS NOT NONE: a record that could not be read may name it.
+        # UNREAD IS NOT NONE: a record that could not be read, or a music
+        # folder that could not be read, may hold what would recognise it.
         records = (
-            f"no readable landing record names it ({unreadable} session record(s) "
-            f"could not be read, and one of them may)"
-            if unreadable
+            f"no readable landing record names it ({unread})"
+            if unread
             else "no landing record names it"
+        )
+        folders = (
+            "and the music folder could not be read to look for a batch folder of "
+            "its name, which may be there"
+            if folder_unread
+            else "and no batch folder under the music folder carries its name"
         )
         return left(
             LEFT_UNRECOGNISED,
-            f"{records}, its name does not end _inboxed, and no batch folder under "
-            f"the music folder carries its name",
+            f"{records}, its name does not end _inboxed, {folders}",
         )
     if playlist_id in recorded:
         landed, aged_from = recorded[playlist_id], AGED_FROM_RECORD
@@ -619,7 +682,7 @@ def plan_rotation(
             expired_days=expired_days,
             named=found.by_name,
             old_display=old.display,
-            unreadable=unreadable,
+            unread=found.unread(),
         )
         (batches if isinstance(classified, Batch) else left).append(classified)
 
@@ -717,7 +780,7 @@ def live_batches(
             expired_days=cfg.reports.intake_expired_days,
             named=found.by_name,
             old_display=old_display,
-            unreadable=found.unreadable,
+            unread=found.unread(),
         )
         if isinstance(classified, Batch) or classified.kind == LEFT_UNDATED:
             batches.append((classified.playlist_id, classified.name))

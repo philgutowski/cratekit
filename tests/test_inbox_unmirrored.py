@@ -18,8 +18,10 @@ D1 applies. Nothing here names a real account, a real person or a real track.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import replace
 from datetime import timedelta
+from pathlib import Path
 
 import pytest
 
@@ -199,6 +201,84 @@ def test_a_playlist_whose_record_cannot_be_read_is_never_said_to_have_none(nativ
     assert planned.unreadable_records == 1
     assert [(one.name, one.reason) for one in planned.left] == [(node.name, node.reason)]
     assert dict(_inbox(cfg).unmirrored)[node.label()] == node.reason
+
+
+def _refuse_under(monkeypatch, call: str, under: Path) -> None:
+    """Refuse one os call for every path at or under ``under``, as an account the
+    directory is closed to is refused; the container runs as root, which no mode bars."""
+    real = getattr(os, call)
+
+    def refused(path, *args, **kwargs):
+        if Path(path) == under or under in Path(path).parents:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(os, call, refused)
+
+
+def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_library, monkeypatch):
+    """The scan's glob answers an unlistable log with nothing; nothing is not none."""
+    cfg, root_id = native_library
+    batch = _node(cfg, "2026-09-20 Defected", under=root_id, age=13, tracks=("t1", "t2"))
+    _record_landing(cfg, batch, "2026-09-20 Defected", TODAY - timedelta(days=13))
+    assert [name for _id, name in _live(cfg).batches] == ["2026-09-20 Defected"]
+    log = Path(session.log_dir(cfg))
+    _refuse_under(monkeypatch, "listdir", log)
+    monkeypatch.setattr(session, "scan_log", lambda _cfg: ((), ()))
+
+    (node,) = _live(cfg).left
+
+    assert rotate.landings(cfg).unlisted is True
+    assert node.kind == rotate.LEFT_UNRECOGNISED
+    assert node.reason.startswith(
+        "no readable landing record names it (the session log could not be listed, "
+        "and a record in it may)"
+    )
+    assert [(one.name, one.reason) for one in _rotation(cfg).left] == [(node.name, node.reason)]
+
+
+def test_an_absent_session_log_is_no_record_at_all(native_library):
+    """A library nothing ever landed in has no log, and that is read as none."""
+    cfg, _root = native_library
+    log = Path(session.log_dir(cfg))
+    if log.exists():
+        for entry in log.iterdir():
+            entry.unlink()
+        log.rmdir()
+
+    assert rotate.landings(cfg).unlisted is False
+    assert rotate.landings(cfg).unread() == ""
+
+
+def test_a_music_folder_that_cannot_be_read_is_never_read_as_no_batch_folder(
+    native_library, monkeypatch
+):
+    cfg, root_id = native_library
+    _node(cfg, BATCH, under=root_id, age=10, tracks=("t1",), batch_folder=True)
+    assert [name for _id, name in _live(cfg).batches] == [BATCH]
+    _refuse_under(monkeypatch, "stat", Path(cfg.library.root) / cfg.library.music_dir)
+
+    (node,) = _live(cfg).left
+
+    assert node.kind == rotate.LEFT_UNRECOGNISED
+    assert node.reason.endswith(
+        "and the music folder could not be read to look for a batch folder of its "
+        "name, which may be there"
+    )
+    assert "no batch folder under the music folder carries its name" not in node.reason
+
+
+def test_a_dated_playlist_with_no_batch_folder_still_says_so(native_library):
+    """The readable case keeps its plain wording."""
+    cfg, root_id = native_library
+    _node(cfg, LABELS, under=root_id, age=5, tracks=("t3",))
+
+    (node,) = _live(cfg).left
+
+    assert node.reason == (
+        "no landing record names it, its name does not end _inboxed, and no batch "
+        "folder under the music folder carries its name"
+    )
 
 
 def test_a_folder_named_old_inside_old_is_a_folder_and_listed_as_yours(brief):
