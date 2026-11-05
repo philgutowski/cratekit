@@ -57,7 +57,7 @@ from typing import Any
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi
 
-from cratekit.acquire import catalogue_api, isrc_screen, listing, provider_session
+from cratekit.acquire import catalogue_api, isrc_cache, isrc_screen, listing, provider_session
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
@@ -266,7 +266,9 @@ def _credited_ids(release: Any) -> tuple[str, ...]:
 class TidalCatalogue:
     """The seven provider reads the ``Catalogue`` seam declares, over one logged in client."""
 
-    def __init__(self, session: Any, *, catalogue: Any = None) -> None:
+    def __init__(
+        self, session: Any, *, catalogue: Any = None, cache: isrc_cache.Cache | None = None
+    ) -> None:
         self._session = session
         #: Where ISRC lookups go: the app client when the opener built one
         #: (U205), else the account session, exactly as before.
@@ -275,6 +277,8 @@ class TidalCatalogue:
         self._screen = isrc_screen.Screen()
         #: The count the last hearts listing published, None when it published none.
         self.hearts_declared: int | None = None
+        #: What the provider already answered for an ISRC (U206).
+        self._cache = cache if cache is not None else isrc_cache.Cache()
 
     def _artist_named(self, name: str) -> Any | None:
         """The one artist whose name folds to exactly ``name``, or ``None``.
@@ -654,7 +658,14 @@ class TidalCatalogue:
         seen as several. Only the app client is asked, see
         ``acquire.isrc_screen``. Returns the requests made.
         """
-        return self._screen.screen(self._lookups, codes)
+        # A CODE THE ISRC CACHE ANSWERS IS NOT SCREENED (U206): its lookup
+        # makes no request, so a batch about it would be the one request a
+        # second run over the same codes still paid.
+        country = isrc_cache.country_of(self._lookups)
+        return self._screen.screen(
+            self._lookups,
+            [code for code in codes if not self._cache.holds(str(code or ""), country)],
+        )
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         """The provider's tracks for one ISRC, on the one retry ladder.
@@ -667,6 +678,13 @@ class TidalCatalogue:
         and a rejected session among them, so reading it as "no track" would
         read an outage as an answer. A malformed code is the caller's to keep
         from asking, and ``intake.missing_cli`` checks the shape first.
+
+        AN ANSWER IS ASKED ONCE (U206). A track list, or the not found above,
+        is kept in the ISRC cache, and a later lookup of the same code in the
+        same country is answered from it with no call. Nothing the ladder
+        re-raises is kept, and the app client's own not found, which this
+        route never raises for a code with nothing filed, is answered empty
+        and not kept: only ``isrc_cache.said_not_found`` keeps a not found.
 
         UNDER THE APP CREDENTIALS WHEN THEY ARE SET UP (U205). The app client
         answers a code it files nothing under with an empty list and a missing
@@ -688,20 +706,41 @@ class TidalCatalogue:
             # A client without the method cannot be asked, and waiting on the
             # ladder cannot grow one.
             raise LookupError("the provider client exposes no ISRC lookup")
+        # The country the client that is ASKED asks in (U205's app client
+        # carries the account's own).
+        country = isrc_cache.country_of(self._lookups)
+        held = self._cache.recall(wanted, country)
+        if held is not None:
+            return held
+        answered: list[tuple[Any, ...]] = []
 
         def attempt(limit: int, offset: int) -> tuple[Any, ...]:
             del limit, offset
+            answered.clear()
             try:
-                return tuple(lookup(wanted) or ())
+                found = lookup(wanted)
             except Exception as exc:
                 if _gone(exc):
+                    # Answered as gone as it always was, and KEPT only when the
+                    # client said so in so many words: ``_gone`` reads any class
+                    # named for a not found, and a file or module one raised
+                    # inside the lookup is not the provider's answer.
+                    if isrc_cache.said_not_found(exc):
+                        answered.append(())
                     return ()
                 raise
+            if isinstance(found, (list, tuple)):
+                answered.append(tuple(found))
+            return tuple(found or ())
 
+        isrc_cache.asked()
         try:
-            return listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
+            result = listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
         except catalogue_api.AppCredentialsRejected as exc:
             raise catalogue_api.rejected(exc, f"look up the ISRC {wanted}") from exc
+        if answered:
+            self._cache.remember(wanted, country, answered[-1])
+        return result
 
     def search_tracks(self, artist: str, title: str, offset: int = 0) -> tuple[Any, ...]:
         """One page of a track search for ``artist`` and ``title``, on the one retry ladder.
@@ -752,7 +791,11 @@ def open_catalogue(cfg: Any = None) -> TidalCatalogue:
         provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
     )
     client = provider_session.client_session(gate=gate)
-    return TidalCatalogue(client, catalogue=provider_session.catalogue_client(client, gate=gate))
+    return TidalCatalogue(
+        client,
+        catalogue=provider_session.catalogue_client(client, gate=gate),
+        cache=isrc_cache.Cache.from_config(cfg),
+    )
 
 
 __all__ = [

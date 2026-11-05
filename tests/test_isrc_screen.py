@@ -35,7 +35,7 @@ from typing import Any
 
 import pytest
 
-from cratekit.acquire import catalogue_api, isrc_screen, match
+from cratekit.acquire import catalogue_api, isrc_cache, isrc_screen, match
 from cratekit.core.cause import CratekitError, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.provider_gate import APP, Gate, GateSettings
@@ -177,7 +177,12 @@ def app_on(gate: Gate, api: Api) -> catalogue_api.AppCatalogue:
 
 
 def adapter(gate: Gate, api: Api) -> tidal_account.TidalAccount:
-    return tidal_account.TidalAccount(Account(), sleep=no_sleep, catalogue=app_on(gate, api))
+    """The account over the app client, with the ISRC cache off (U206): this
+    file counts what the SCREEN saves, and a lookup the cache answered from an
+    earlier pass in the same test would be counted as the screen's saving."""
+    return tidal_account.TidalAccount(
+        Account(), sleep=no_sleep, catalogue=app_on(gate, api), cache=isrc_cache.Cache(days=0)
+    )
 
 
 def app_reads(gate: Gate) -> int:

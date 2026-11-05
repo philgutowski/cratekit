@@ -230,6 +230,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "deadca7.push",
         "session.unresolved",
         "runs.open-gates",
+        "provider.isrc-cache",
         "tree.registry",
         "repo.commit_hook",
         "install.extras",

@@ -24,7 +24,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.acquire import listing, provider_session
+from cratekit.acquire import isrc_cache, listing, provider_session
 from cratekit.core import config, jobs, locations, secrets, tags
 from cratekit.core.cause import CratekitError, Scope
 from cratekit.core.exit_codes import ExitCode
@@ -277,6 +277,13 @@ def no_sleep(seconds: float) -> None:
 
 def adapter(client: FakeClient) -> tidal_account.TidalAccount:
     return tidal_account.TidalAccount(client, sleep=no_sleep)
+
+
+def another_catalogue(client: FakeClient) -> tidal_account.TidalAccount:
+    """An adapter over a catalogue that files the test's one ISRC differently
+    from the one before it in the same test (U206). A different catalogue, not
+    the same one asked again, so it shares no remembered ISRC answer."""
+    return tidal_account.TidalAccount(client, sleep=no_sleep, cache=isrc_cache.Cache(days=0))
 
 
 @pytest.fixture
@@ -616,7 +623,7 @@ def test_a_title_that_reads_two_ways_agrees_under_either_and_still_needs_one():
         Track("101", "Sun Path", "Live", ("Nova Reef",)),
         Track("202", "Sun Path - Live", None, ("Nova Reef",)),
     )
-    assert match_row(adapter(both), "Sun Path - Live") is None
+    assert match_row(another_catalogue(both), "Sun Path - Live") is None
 
 
 def test_a_reason_does_not_outlive_the_match_it_was_about():
@@ -1767,10 +1774,10 @@ def any_release(found: tidal_account.TidalAccount, album: str = "", title: str =
 
 def test_a_tie_with_any_agreeing_takes_the_lowest_identifier_whatever_the_listing_order():
     for listed in (("202", "101"), ("101", "202")):
-        found = adapter(releases(*_alike(*listed, "Sun Path", "Nova Reef")))
+        found = another_catalogue(releases(*_alike(*listed, "Sun Path", "Nova Reef")))
         assert any_release(found) == "101", listed
         assert found.unmatched_reason("7") == ""
-    found = adapter(releases(*_alike("100", "99", "Sun Path", "Nova Reef")))
+    found = another_catalogue(releases(*_alike("100", "99", "Sun Path", "Nova Reef")))
     assert any_release(found) == "99", "numeric order, not the order of the characters"
 
 
@@ -1818,7 +1825,7 @@ def test_a_release_that_does_not_agree_is_never_taken():
         Track("101", "Sun Path", "Radio Edit", ("Nova Reef",)),
         Track("202", "Sun Path", "Extended Mix", ("Nova Reef",)),
     )
-    found = adapter(client)
+    found = another_catalogue(client)
     assert any_release(found) is None
     assert "none of them agrees" in found.unmatched_reason("7")
 
@@ -1869,9 +1876,9 @@ def test_a_lone_release_a_lone_heart_or_a_lone_album_is_never_a_broken_tie():
     assert any_release(found) == "101" and found.tie_broken("7") is False
     client = single_and_album_cut()
     client.user.favorites.hearts = ["202"]
-    found = adapter(client)
+    found = another_catalogue(client)
     assert any_release(found) == "202" and found.tie_broken("7") is False
-    found = adapter(single_and_album_cut())
+    found = another_catalogue(single_and_album_cut())
     assert any_release(found, album="Tidal Lines") == "202"
     assert found.tie_broken("7") is False, "the album rule chose, as it does without the flag"
 
@@ -1886,7 +1893,7 @@ def test_two_hearts_or_an_album_naming_two_is_a_broken_tie():
         on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
         on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
     )
-    found = adapter(client)
+    found = another_catalogue(client)
     assert any_release(found, album="Tidal Lines") == "202" and found.tie_broken("7") is True
 
 

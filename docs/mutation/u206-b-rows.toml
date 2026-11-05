@@ -1,0 +1,27 @@
+name = "u206-b"
+pass_kind = "light"
+
+# The two zero rows of docs/mutation/u206.md that a test change could answer,
+# measured again after the change: M10 once the tests stopped reading the day
+# off the module, and M2 as a composite with the layer that held it.
+
+[[rows]]
+id = "M10b_day_coefficient_halved"
+description = "DAY_S halved, measured again once the tests write a day out as 86 400 seconds"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''DAY_S = 86_400'''
+new = '''DAY_S = 43_200'''
+
+[[rows]]
+id = "M2b_disabled_recall_composite"
+description = "Composite: drop recall's days 0 guard AND give every entry at least a day's life, so answers kept before the cache was turned off still answer"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        global _PROCESS_HITS
+        if not self.enabled:
+            return None'''
+new = '''        global _PROCESS_HITS
+        self.days = max(self.days, 1)'''
