@@ -159,9 +159,14 @@ def test_a_track_turning_unreadable_between_the_plan_and_the_write_refuses_stale
     # Another track the account cannot read joins after the plan was shown.
     world.account.playlists[PHIL].append("t5")
     world.names["t5"] = ""
-    gate = envelope["cause"]["detail"]["gate"]
-    decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
-    assert decided == int(ExitCode.OK), said
-    code, stale = drive(["--run", run_id, "sync", "pair"])
+    for _ in range(2):
+        gate = envelope["cause"]["detail"]["gate"]
+        decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
+        assert decided == int(ExitCode.OK), said
+        code, envelope = drive(["--run", run_id, "sync", "pair"])
+        if code != int(ExitCode.DECISION_REQUIRED):
+            break
+    stale = envelope
     assert stale["cause"]["reason"] == "decision-stale", stale
+    assert "tracks it cannot read" in stale["cause"]["message"], stale
     assert world.held(twin_id) == ["3", "1", "2"]
