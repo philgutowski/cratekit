@@ -217,3 +217,28 @@ def _refusing_name(tail, cause: Cause):
         return tail(argv)
 
     return refusing
+
+
+def test_a_download_that_lands_nothing_still_lands_what_is_staged(machine, monkeypatch, tail):
+    """Review round one, F1. Every listed track refused for good, a lossy
+    only offer, while another missing track is staged: the download lands
+    nothing and the pass still goes on to land what is staged, as its missing
+    row says."""
+    cfg, script = machine
+    _first_pass(monkeypatch, script, cfg)
+    script.landings["103"] = Landing(kind="lossy")
+    landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
+
+    code, second = _second_pass(monkeypatch, "101", "103")
+
+    assert code == int(ExitCode.PENDING_HUMAN), second
+    summary = _summary(second)
+    assert summary["staged"] == 1
+    assert [row["item_id"] for row in summary["download_refused"]] == ["103"]
+    said = _check(second, "download")
+    assert said["status"] == "fail"
+    assert said["detail"].endswith(
+        "landed no track; 1 refused; the 1 staged track(s) are landed without it"
+    )
+    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings + 1
+    assert summary["stopped_at"] == sync_land.LAND_GATE

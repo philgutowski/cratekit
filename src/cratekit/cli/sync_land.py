@@ -811,6 +811,13 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
     return _Listed(path=Path(str(listed)), land_name=land_name, staged=staged)
 
 
+def _staged_on(listed: _Listed) -> str:
+    """The clause a download that landed nothing adds when the pass staged tracks (U212)."""
+    if not listed.staged:
+        return ""
+    return f"; the {listed.staged} staged track(s) are landed without it"
+
+
 def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> jobs.Job | None:
     """The download job already queued over this list, newest first, or None.
 
@@ -858,8 +865,12 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
         envelope = tail.required(report, DOWNLOAD, ["acquire", "download", str(listed.path)])
         job_id = str((envelope.get("data") or {}).get("job_id") or "")
         if envelope.get("outcome") == str(Outcome.NO_OP) or not job_id:
-            report.check(DOWNLOAD, "info", "the list held no track to download")
-            raise _Done(DOWNLOAD)
+            report.check(
+                DOWNLOAD, "info", "the list held no track to download" + _staged_on(listed)
+            )
+            if not listed.staged:
+                raise _Done(DOWNLOAD)
+            return 0
         with jobs.open_store() as store:
             job = jobs.get(store, job_id)
     job = tail.settle(report, DOWNLOAD, job)
@@ -894,9 +905,15 @@ def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
             DOWNLOAD,
             "fail" if refused else "info",
             f"download job {job.job_id} landed no track"
-            + (f"; {len(refused)} refused" if refused else ""),
+            + (f"; {len(refused)} refused" if refused else "")
+            + _staged_on(listed),
         )
-        raise _Done(DOWNLOAD)
+        # WHAT IS STAGED STILL LANDS (review round one, F1): a download that
+        # landed nothing ends the pass only when nothing was staged either,
+        # since the missing step already told the person the landing takes it.
+        if not listed.staged:
+            raise _Done(DOWNLOAD)
+        return 0
     report.check(
         DOWNLOAD,
         "ok",
