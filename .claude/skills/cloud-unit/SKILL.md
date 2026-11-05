@@ -133,7 +133,8 @@ make the conservative call, record it, and keep going. Phillip's other
 project, which files the cards, copies the question onto the page in the form
 below and posts his answer back.
 
-**The page's form**, for the project that writes it. One document per question into the page's `decisions` collection with
+**The page's form**, for the filing project, which writes it; a build
+thread never does. One document per question into the page's `decisions` collection with
 the `ArtifactData` tool (load it with ToolSearch, `select:ArtifactData`),
 action `set`, `url` the page above, `collection` `decisions`, `doc_id`
 `<card>-<short slug>-<n>`, and this body:
@@ -143,16 +144,17 @@ action `set`, `url` the page above, `collection` `decisions`, `doc_id`
      "context": "two or three sentences a reader needs, and the cost of each way",
      "options": [{"label": "...", "detail": "one line"}, ...],
      "recommended": 0, "status": "open", "answer": null,
-     "asked_by": "the lane worker on #N", "asked_session": "<your session id>",
+     "asked_by": "the lane worker on #N", "asked_session": "<the asking thread's session id>",
      "asked_at": "<now, ISO 8601 UTC>"}
 
 The recommendation is the option at index `recommended`, and the page shows
 it first and marked. Give two to four options; the page adds its own
 "something else". Write the context so the question can be answered without
 opening the card. The filing project then ends a comment on the card with a
-line linking the page, and if the `PushNotification` tool is available, send one short notification
-naming the card and that a decision waits on the page. Never mark a document
-answered or relayed yourself.
+line linking the page and, where it has the `PushNotification` tool, sends
+one short notification naming the card and that a decision waits on the
+page. A document is marked answered by the page and relayed by the relay
+thread, never by the writer.
 
 **How his answer reaches the card.** Phillip presses Answer on the page,
 which saves his choice in the document and sets its `status` to `answered`.

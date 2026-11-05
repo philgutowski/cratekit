@@ -12,7 +12,11 @@ prints no branch names. Driven at review on comments shaped like #310's.
 
 **Measured cost.** No card pays today: the two `grok/` branches on the remote
 belong to #309 and #310, both closed. A grok held card offered to a build
-thread would put two builders on one card. The cloud-unit skill now tells a
+thread would put two builders on one card. The same reader takes a comment
+of that builder's posted after a cloud thread's `Brainstorm` or `Question for
+Phillip` as Phillip's reply (driven at review on a synthetic pair: `answered,
+Phillip replied`), so a thread could fold another builder's words into a
+brief as his answer; no open card carries that input today. The cloud-unit skill now tells a
 thread to look for a `grok/` branch naming the card and that builder's
 comment before it posts `Started`.
 

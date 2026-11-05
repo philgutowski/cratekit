@@ -140,7 +140,7 @@ a green suite cannot see, as METHOD lists.
   green**, decided by U158, replacing the old no pull requests rule. Feature
   branch per unit, open a pull request against `main`, merge it through the
   API as `merge(uN): ...` ending with the closing trailer once every check on
-  its head is green, delete the branch. Never a pull request that waits on a
+  its head is green, and the merge takes the branch. Never a pull request that waits on a
   person, and never a closing keyword in its body. CI reads the card a merge
   will close off a `cloud/N-slug` head only; a local unit's pull request is
   judged on its range, and its close on the push to `main`. **A cloud session merges
