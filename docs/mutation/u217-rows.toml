@@ -1,0 +1,249 @@
+name = "u217"
+pass_kind = "full"
+
+# U217: a label's listing is kept. Rows target the store (kept_listing.py),
+# the adapter's reads through it (tidal_catalogue.py), what the sweep and the
+# two verbs say, and the ceiling message. 25 rows, METHOD's cap for a unit
+# that writes.
+
+[[rows]]
+id = "K1_life_boundary"
+description = "_young: keep an answer exactly the kept life old, so a seven day old listing still answers"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''    return timedelta(0) <= _now() - held.read_at < kept_for()'''
+new = '''    return timedelta(0) <= _now() - held.read_at <= kept_for()'''
+
+[[rows]]
+id = "K2_future_is_fresh"
+description = "_young: drop the lower bound, so an answer from the future is fresh"
+file = "src/cratekit/label/kept_listing.py"
+surface = "maintainer"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''    return timedelta(0) <= _now() - held.read_at < kept_for()'''
+new = '''    return _now() - held.read_at < kept_for()'''
+
+[[rows]]
+id = "K3_life_coefficient"
+description = "kept_for: double the kept life, the one number shared with R-1091"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''    return kept_reads.KEPT_FOR'''
+new = '''    return kept_reads.KEPT_FOR * 2'''
+
+[[rows]]
+id = "K4_changed_entry"
+description = "load: read a document kept for another name, match or seeds as this label's listing"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''        if dict(raw["asked_for"]) != asked:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "K5_seeds_not_asked_for"
+description = "asked_for: leave the seeds out, so a changed seed list reuses the old roster"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''        "seeds": [str(seed) for seed in entry.seed_artists],'''
+new = '''        "seeds": [],'''
+
+[[rows]]
+id = "K6_match_not_asked_for"
+description = "asked_for: leave the match out, so discovery's answers for another needle are reused"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''        "match": str(entry.match or ""),'''
+new = '''        "match": "",'''
+
+[[rows]]
+id = "K7_version_check"
+description = "load: accept a document of any version"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''        if version != VERSION:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "K8_label_check"
+description = "load: accept a document naming another label"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''        if raw.get("label_id") != label_id:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "K9_release_shape"
+description = "_valid: accept any list as a kept listing, whatever its releases hold"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''    return isinstance(value, list) and all(_valid_release(one) for one in value)'''
+new = '''    return isinstance(value, list)'''
+
+[[rows]]
+id = "K10_naive_instant"
+description = "_instant: accept an instant with no zone"
+file = "src/cratekit/label/kept_listing.py"
+surface = "maintainer"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''    return moment if moment.tzinfo is not None else None'''
+new = '''    return moment'''
+
+[[rows]]
+id = "K11_asked_now_counted_as_reused"
+description = "_fresh: drop the short circuit for an answer this run asked, so it counts as reused"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''        if (section, key) in self._asked_now:
+            return held
+'''
+new = ''
+
+[[rows]]
+id = "K12_flush_batch"
+description = "_keep: flush at twice the batch, a coefficient"
+file = "src/cratekit/label/kept_listing.py"
+surface = "maintainer"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''        if self._since >= FLUSH_EVERY:'''
+new = '''        if self._since >= FLUSH_EVERY * 2:'''
+
+[[rows]]
+id = "K13_unkept_said"
+description = "flush: swallow a refused write without saying it"
+file = "src/cratekit/label/kept_listing.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py"]
+old = '''            self.unkept = f"{type(exc).__name__}: {exc}"'''
+new = '''            self.unkept = ""'''
+
+[[rows]]
+id = "A1_flush_on_the_way_out"
+description = "artist_for: drop the flush in the finally, so a ceiling stop before a batch keeps nothing"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        finally:
+            kept.flush()'''
+new = '''        finally:
+            pass'''
+
+[[rows]]
+id = "A2_roster_lists_now"
+description = "_roster: hand the roster no lister, so every member is paged again after discovery"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''            lister=lambda artist, method, missing: self._listed(kept, artist, method, missing),'''
+new = '''            lister=None,'''
+
+[[rows]]
+id = "A3_listing_not_kept"
+description = "_listed: never keep a listing it asked"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''            kept.keep_listed(identity, method, rows)'''
+new = '''            kept.asked_unkept()'''
+
+[[rows]]
+id = "A4_search_not_kept"
+description = "_credited_by: never keep a discovery album search"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        kept.keep_searched(query, credited)'''
+new = '''        kept.asked_unkept()'''
+
+[[rows]]
+id = "A5_name_not_kept"
+description = "_member_named: never keep an exact name found"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''            kept.keep_named(name, ((identity, str(getattr(artist, "name", "") or "")),))'''
+new = '''            kept.asked_unkept()'''
+
+[[rows]]
+id = "A6_need_object"
+description = "_discover: never read a kept artist's object before its listing's skip"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''                need_object=not all('''
+new = '''                need_object=False and not all('''
+
+[[rows]]
+id = "A7_missing_method_kept"
+description = "_listed: keep a listing the client does not expose, as empty"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if skipped:
+            return rows
+'''
+new = ''
+
+[[rows]]
+id = "A8_member_read_uncounted"
+description = "_listed: do not count the read of a kept artist's object, so the line can say no call over one"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_tidal_catalogue.py"]
+old = '''            if not artist.read_yet:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "S1_summary_dropped"
+description = "kept_of: never carry the roster's summary onto the sweep's listing"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_sync.py"]
+old = '''    return held if isinstance(held, kept_listing.Summary) else None'''
+new = '''    return None'''
+
+[[rows]]
+id = "S2_next_line"
+description = "_listing_checks: say nothing about where the listing came from"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_sync.py"]
+old = '''    return [_check(f"listing.{entry.label_id}", "info", f"{entry.name}: {kept.said()}")]'''
+new = '''    return []'''
+
+[[rows]]
+id = "S3_playlists_line"
+description = "estimate: carry no listing sentence to the crawl gate"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_kept_listing.py", "tests/test_label_playlists_releases.py"]
+old = '''        listing=listed.kept.said() if listed.kept is not None else "",'''
+new = '''        listing="",'''
+
+[[rows]]
+id = "G1_ceiling_says_kept"
+description = "_ceiling_cause: say what it did is kept again, the words the card was filed over"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate.py"]
+old = '''                f"stay queued; what it read and did not keep is read again when it "
+                f"continues"'''
+new = '''                f"stay queued; what it did is kept"'''
+
+[[dropped]]
+id = "K14_copyright_label_fallback"
+description = "release_row: drop the label attribute fallback for the copyright line"
+reason = "ranked below the cap: the provider's album carries copyright, the fallback mirrors harvest's reader; round one measured it at zero and it is a residual"
+
+[[dropped]]
+id = "K15_year_int_branch"
+description = "_year: keep only a string year"
+reason = "ranked below the cap: sweep and the adapter read release_date when year is absent, so a lost int year is masked; round one measured it at zero"

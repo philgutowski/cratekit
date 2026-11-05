@@ -1861,6 +1861,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``label-sync-unusable``'s rule. PRECONDITION: the file is this
         # installation's to repair, and deleting it costs only provider calls.
         "label-playlists-reads-unusable": ExitCode.PRECONDITION,
+        # U217. The listing a label's roster keeps could not be read: not JSON,
+        # another version, another label, or an answer of the wrong shape.
+        # Refused before any provider call, never read as empty, on R-1091's
+        # rule; deleting the file costs only provider calls.
+        "label-listing-kept-unusable": ExitCode.PRECONDITION,
         # The account holds two root folders named as the label, so which one is
         # the label's is not something a name decides. Its own slug rather than
         # ``export-playlist-ambiguous``, since the remedy is on the account and
