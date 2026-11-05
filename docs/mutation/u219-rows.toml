@@ -1,0 +1,282 @@
+name = "u219"
+pass_kind = "light"
+
+# The guards U219 added, one at a time. Subsets are derived from imports and a
+# zero is promoted to the full suite by the driver.
+
+[[rows]]
+id = "D1_derivable_guard"
+description = "assert_derivable: return for every tree, so the intake tree is derived from the taxonomy again (R-789, sitting 61)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    others = other_declared_trees(declared)
+    if tree_id not in others:
+        return
+    raise refuse(
+        "rebuild-tree-not-derivable",'''
+new = '''    others = other_declared_trees(declared)
+    if True:
+        return
+    raise refuse(
+        "rebuild-tree-not-derivable",'''
+
+[[rows]]
+id = "D2_derivation_asks"
+description = "declared_membership: drop its call of assert_derivable, so the derivation takes the source alone as it did"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    assert_derivable(declared, tree_id)
+    derive = None if source is None else DERIVATIONS.get(source)'''
+new = '''    derive = None if source is None else DERIVATIONS.get(source)'''
+
+[[rows]]
+id = "D4_derivable_answer"
+description = "derivable: answer True for every tree, so every sweep files the intake tree again"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    return tree_id not in other_declared_trees(declared)'''
+new = '''    return True'''
+
+[[rows]]
+id = "A1_approved_equality"
+description = "assert_as_approved: return whatever the before check would add, so a library that moved after the gate is written"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    if planned == wanted:
+        return'''
+new = '''    if True:
+        return'''
+
+[[rows]]
+id = "A2_approved_checked"
+description = "rebuild_tree: skip the approved check, so the worker never compares its adds with the frozen plan"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    if approved is not None:
+        assert_as_approved(before, approved)'''
+new = ''''''
+
+[[rows]]
+id = "A3_approved_passed_down"
+description = "rebuild_governed_tree: hand the engine no approved plan, so a resort runs as a rebuild"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''            workflow=workflow,
+            approved=approved,
+        )'''
+new = '''            workflow=workflow,
+            approved=None,
+        )'''
+
+[[rows]]
+id = "A4_additions_rows"
+description = "additions: report nothing missing, so the gate shows no add and the resort queues nothing"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        for entry in report.missing
+    ]'''
+new = '''        for entry in report.missing[:0]
+    ]'''
+
+[[rows]]
+id = "F1_favourites_held"
+description = "rebuild_tree: the second pass writes every favourite again, shown or not (round one's first hold)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        favorites = tuple(
+            entry for entry in favorites if (entry.location, entry.bucket, entry.sub) in shown
+        )'''
+new = ''''''
+
+[[rows]]
+id = "K1_accept_routing_refused"
+description = "accept_as_it_stands: accept the routing tree too, so a disposition can stand in for its rebuild"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''    if derivable(declared, tree_id):
+        # No surface asks this for a routing tree; one that did is a defect.'''
+new = '''    if False:
+        # No surface asks this for a routing tree; one that did is a defect.'''
+
+[[rows]]
+id = "K2_accept_actor"
+description = "rebuild accept: record the command line's actor string rather than who answered the gate (R34)"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''        cfg, declared, tree_id, actor=ctx.gate.state.decisions[spec.name].actor
+    )'''
+new = '''        cfg, declared, tree_id, actor=ctx.args.actor
+    )'''
+
+[[rows]]
+id = "K3_accept_declined"
+description = "rebuild accept: an abort records the disposition anyway"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''    if option != "accept":'''
+new = '''    if option == "never":'''
+
+[[rows]]
+id = "C1_rebuild_items_filtered"
+description = "crate rebuild: queue every native tree again, the intake tree included"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''        items = tuple(t for t in tree_items(entries, tree_id) if engine.derivable(declared, t))'''
+new = '''        items = tuple(t for t in tree_items(entries, tree_id))'''
+
+[[rows]]
+id = "C2_rebuild_named_intake"
+description = "crate rebuild --tree inbox: queue it rather than asking the acceptance gate"
+file = "src/cratekit/cli/rebuild.py"
+surface = "user"
+old = '''        if tree_id is not None and not engine.derivable(declared, tree_id):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "R1_routed_trees"
+description = "_routed_trees: every native tree, so the resort queues the intake tree again"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    return tuple(t for t in _native_trees(entries) if rebuild.derivable(declared, t))'''
+new = '''    return _native_trees(entries)'''
+
+[[rows]]
+id = "R2_inbox_routed_only"
+description = "plan_inbox: file the intake folder into every native tree, INBOX included"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    native = _routed_trees(entries, declared)'''
+new = '''    native = _native_trees(entries)'''
+
+[[rows]]
+id = "R3_left_alone_named"
+description = "_passed_over: name no tree the resort left alone"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    skipped = [t for t in _native_trees(entries) if t in others]
+    if not skipped:
+        return []
+    named = ", ".join(f"{others[t]} ({t})" for t in skipped)
+    return [
+        {
+            "code": TREE_NOT_DERIVED,'''
+new = '''    skipped = [t for t in _native_trees(entries) if t in others]
+    if skipped:
+        return []
+    named = ", ".join(f"{others[t]} ({t})" for t in skipped)
+    return [
+        {
+            "code": TREE_NOT_DERIVED,'''
+
+[[rows]]
+id = "G1_resort_abort"
+description = "route resort: an abort at the gate queues the resort anyway"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if option != "apply":
+        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP, warnings=warnings)'''
+new = '''    if option == "never":
+        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP, warnings=warnings)'''
+
+[[rows]]
+id = "G2_nothing_to_add"
+description = "route resort: queue a job over a plan with nothing to add"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    if not adds:
+        return ctx.envelope('''
+new = '''    if False:
+        return ctx.envelope('''
+
+[[rows]]
+id = "G3_adds_frozen"
+description = "route resort: freeze an empty plan in the job, so the worker holds its write to nothing the gate showed"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''                RESORT_ADDS_KEY: adds,'''
+new = '''                RESORT_ADDS_KEY: [],'''
+
+[[rows]]
+id = "G4_worker_own_tree"
+description = "handle_resort: hand the engine every tree's approved adds, not its own tree's"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''            if row.get("tree") == tree_id'''
+new = '''            if row.get("tree") is not None'''
+
+[[rows]]
+id = "G5_resume_run"
+description = "resort_argv: drop --run, so the spawned child meets the explicit gate with nothing recorded"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, "route", "resort", "--job", job.job_id]'''
+new = '''    resume = []
+    return [*resume, "route", "resort", "--job", job.job_id]'''
+
+[[rows]]
+id = "G6_answer_pinned"
+description = "_resort_pin: pin the answer to no database file, so an answer over a copy satisfies the live run"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''    return {RESORT_DATABASE_KEY: str(opened)} if opened else None'''
+new = '''    return None'''
+
+
+[[rows]]
+id = "M1_accept_fingerprint"
+description = "accept_as_it_stands: record no fingerprint, so an accepted INBOX still meets the restore latch (round two's first hold)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+old = '''        convergence.record_fingerprint(cfg, handle)
+    finally:
+        rb_writer.close_db(handle)
+
+
+def declared_membership('''
+new = '''    finally:
+        rb_writer.close_db(handle)
+
+
+def declared_membership('''
+
+[[rows]]
+id = "M2_disposition_cleared"
+description = "mark_unconverged: a second restore of the same reason leaves a disposed tree's acceptance standing (round two's second hold)"
+file = "src/cratekit/core/convergence.py"
+surface = "user"
+old = '''            if current.unconverged and current.reason == reason and current.disposition is None:'''
+new = '''            if current.unconverged and current.reason == reason:'''
+
+[[rows]]
+id = "M3_due_again_said"
+description = "_due_again_warnings: count nothing due, so a resort that left a favourite for later reports a clean success (round two's third hold)"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+old = '''        count = int(report.get("due_again") or 0)'''
+new = '''        count = 0'''
+
+[[dropped]]
+id = "X1_old_job_refusal"
+description = "_resume: the refusal of a resort job that froze no plan"
+reason = "the review measured it at zero; the worker's approved check refuses an empty plan behind it, so it is a maintainer facing duplicate, recorded in the residual on unpinned guards"
+
+[[dropped]]
+id = "X2_pop_routing_id"
+description = "other_declared_trees: the pop of the routing tree's own id"
+reason = "it matters only for a template whose routing tree shares an id with another node"
+
+[[dropped]]
+id = "X3_nodes_found"
+description = "other_declared_trees: look for another type than Node"
+reason = "D4 makes every tree derivable at the one answer every caller reads, which is the same cost one call up"
+
+[[dropped]]
+id = "X4_accept_needs_a_mark"
+description = "rebuild accept: the verb's not blocking pre check"
+reason = "the review measured it at zero, covered by clear_unconverged's own refusal; recorded in the residual on unpinned guards"
+
+[[dropped]]
+id = "X5_resume_gate"
+description = "_resume: the resume's answer of the gate from the frozen plan"
+reason = "the review measured it at zero; a job exists only after its gate was answered; recorded in the residual on unpinned guards"

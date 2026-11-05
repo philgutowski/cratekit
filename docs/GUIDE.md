@@ -1103,7 +1103,10 @@ crate converge
 `route unplaced` lists tracks no tree files, and `audit coverage` asks the same
 question from an export. `audit duplicates` never deletes. Run `route resort`
 after a genre or energy change, and `converge` to check that each tree matches
-the database. `route resort` also fills a genre sub, a playlist beside a genre
+the database. `route resort` first shows every track it will add at the
+explicit gate `route.resort.apply`, answered with `crate run decide`, and files
+only the routing tree: INBOX and the other places the taxonomy names are left
+alone. It also fills a genre sub, a playlist beside a genre
 folder's energy bands for one genre: in the shipped taxonomy, every track
 tagged exactly `Rominimal` sits in its Minimal / Deep Tech band and in
 `Minimal / Deep Tech / Rominimal` too. A library whose taxonomy copy predates
@@ -1119,7 +1122,9 @@ you accept or reject each one with `crate review resolve`. Nothing is inferred.
 behind a confirm gate, and never one the rekordbox collection references, since
 that would strand the row. It does not re-point rows or rewrite an export. `converge` reports and never repairs. If a tree has fallen
 out of step, `crate rebuild --tree TREE_ID --actor YOUR_NAME` is the only way to
-clear it.
+clear it. INBOX is the exception: no rebuild can reproduce its batches, so
+naming it asks the explicit gate `rebuild.accept`, and accepting records you
+as having taken it as it stands after a restore.
 
 To tidy everything the product's rules govern in one pass, on both sides:
 

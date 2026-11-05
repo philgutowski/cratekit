@@ -33,7 +33,7 @@ from typing import Any
 
 from cratekit.cli import registry
 from cratekit.cli.output import Envelope
-from cratekit.core import active_taxonomy, config, jobs, tree_registry
+from cratekit.core import active_taxonomy, config, convergence, jobs, tree_registry
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli
@@ -240,7 +240,13 @@ def rebuild(ctx) -> Envelope:
                 remedy=Remedy.COMPLETE_PENDING_ACTION,
                 steps=("cut this tree over before rebuilding it",),
             )
-        items = tree_items(entries, tree_id)
+        declared = active_taxonomy.load(cfg)
+        if tree_id is not None and not engine.derivable(declared, tree_id):
+            # NEVER QUEUED (U219). The engine refuses this tree too; deciding it
+            # here queues nothing that can only fail, and a tree a restore
+            # marked is answered by a person rather than by a derivation.
+            return _accept_as_it_stands(ctx, cfg, declared, tree_id)
+        items = tuple(t for t in tree_items(entries, tree_id) if engine.derivable(declared, t))
         if not items:
             # NOT A REFUSAL. A library that has never flipped a tree is the state
             # every library is in until its first cutover, and nothing about it
@@ -248,14 +254,18 @@ def rebuild(ctx) -> Envelope:
             # claim: the driver walks it in one empty pass and transitions it
             # straight to succeeded, so the queue would carry a rebuild that
             # reports as done over a library nothing read.
+            native = tree_items(entries, None)
             return ctx.envelope(
                 data=_no_op(
-                    "no-native-tree",
+                    # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE
+                    # (U219), so the count is read and the state says which zero.
+                    "no-derivable-tree" if native else "no-native-tree",
                     trees=len(entries.tree_ids()),
-                    native=0,
+                    native=len(native),
                 ),
                 outcome=Outcome.NO_OP,
                 code=ExitCode.OK,
+                warnings=_left_alone(entries, declared, items),
             )
         job = jobs.enqueue(
             store,
@@ -264,7 +274,105 @@ def rebuild(ctx) -> Envelope:
             item_ids=items,
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job), outcome=Outcome.OK, code=ExitCode.OK)
+        return ctx.envelope(
+            data=_reported(store, job),
+            outcome=Outcome.OK,
+            code=ExitCode.OK,
+            # Only a sweep names what it left alone (U219): a rebuild of one
+            # named tree skipped nothing.
+            warnings=_left_alone(entries, declared, items) if tree_id is None else [],
+        )
+
+
+#: The gate a person answers to accept, as it stands, a tree no rebuild can
+#: reproduce that a restore marked unconverged (U219).
+ACCEPT_GATE = "rebuild.accept"
+
+
+def _accept_as_it_stands(ctx, cfg: config.Config, declared: Any, tree_id: str) -> Envelope:
+    """Let a named person accept a marked tree no rebuild can reproduce (U219).
+
+    THE INTAKE TREE AFTER A RESTORE. The restore detection marks every native
+    tree, and every write to a marked tree refuses with this verb as its
+    remedy. For the routing tree the rebuild derives the whole membership and
+    clears the flag on the evidence of a check. For INBOX nothing derives its
+    batches, and the rebuild that used to run there wrote the routing tree's
+    genre folders under it and then cleared the flag over that (R-789). What is
+    left is what the convergence model already names for a difference nothing
+    can derive: a named person disposing of it, for this tree alone, recorded
+    as a :class:`cratekit.core.convergence.Disposition`. The flag stays set,
+    so a report still says the tree is unconverged, and the refusal is
+    answered. A later restore clears the disposition and marks it again.
+
+    THE ACTOR IS THE ONE WHO ANSWERED THE GATE. The gate is explicit, so the
+    answer is a separate act recorded with its actor (R34), and that recorded
+    actor, not the ``--actor`` string on this command line, is who the
+    disposition names.
+
+    A TREE THAT IS NOT REFUSING HAS NOTHING TO ACCEPT, and is refused as a
+    tree no rebuild can reproduce, before any gate is asked.
+    """
+    if tree_registry.read(cfg).is_database_native(tree_id):
+        # THE DETECTION FIRST, so the record the gate shows is the one the
+        # database now warrants and not one a later restore has overtaken.
+        engine.detect_restore(cfg)
+    record = convergence.read(cfg).tree(tree_id)
+    if record is None or not record.blocking:
+        engine.assert_derivable(declared, tree_id)
+    others = engine.other_declared_trees(declared)
+    spec = next(gate for gate in ctx.entry.gates if gate.name == ACCEPT_GATE)
+    option = ctx.gate.require(
+        spec,
+        context={
+            "tree": f"{others.get(tree_id, tree_id)} ({tree_id})",
+            "unconverged since": record.since,
+            "reason": record.reason,
+            "what accepting means": (
+                "no rebuild can reproduce this tree, so its writes stop refusing "
+                "over the restore and the tree is reported unconverged, accepted "
+                "by you, until it is next marked"
+            ),
+        },
+        # THE ANSWER IS PINNED TO THE MARK IT WAS GIVEN OVER (U161's rule): a
+        # restore detected between the ask and the answer is a mark nobody
+        # was shown, and the answer recorded over the first is refused stale.
+        pinned={"since": str(record.since or ""), "reason": str(record.reason or "")},
+    )
+    if option != "accept":
+        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP, code=ExitCode.OK)
+    engine.accept_as_it_stands(
+        cfg, declared, tree_id, actor=ctx.gate.state.decisions[spec.name].actor
+    )
+    return ctx.envelope(
+        data=_no_op("accepted", tree=tree_id),
+        outcome=Outcome.OK,
+        code=ExitCode.OK,
+    )
+
+
+def _left_alone(
+    entries: tree_registry.Registry, declared: Any, items: tuple[str, ...]
+) -> list[dict[str, str]]:
+    """The native trees this rebuild left alone because the taxonomy does not derive them (U219).
+
+    The intake tree is native on a library whose landings write it, and a
+    rebuild of it wrote the routing tree's genre folders under INBOX (R-789).
+    Named rather than dropped in silence, so a person reads that it was left
+    alone on purpose.
+    """
+    others = engine.other_declared_trees(declared)
+    skipped = [t for t in tree_items(entries, None) if t not in items and t in others]
+    if not skipped:
+        return []
+    named = ", ".join(f"{others[t]} ({t})" for t in skipped)
+    return [
+        {
+            "code": "tree-not-derived",
+            "message": f"left alone: {named}, which holds what the verbs that write "
+            f"it put there and not anything a tag decides, so no rebuild can "
+            f"reproduce it",
+        }
+    ]
 
 
 def handle(job, item, cfg) -> None:

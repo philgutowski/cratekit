@@ -156,6 +156,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'rebuild-actor-required',
     'rebuild-derivation-empty',
     'rebuild-derivation-incomplete',
+    'rebuild-tree-not-derivable',  # 2026-11-05, U219: the intake tree is not derived.
     'rebuild-tree-not-native',
     'recovery-target-refused',
     'refused-by-policy',
@@ -164,6 +165,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'removal-sequence-unreadable',
     'rename-incomplete',
     'report-as-of-invalid',
+    'resort-plan-stale',  # 2026-11-05, U219: a resort's adds moved after its gate.
     'restore-discards-committed-work',
     'restore-flag-needs-pull',
     'restore-reconciliation-outstanding',
@@ -566,9 +568,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'config-unusable',
         'internal-error',
         'job-unknown',
+        'no-derivable-tree',  # 2026-11-05, U219
         'no-native-tree',
         'rebuild-actor-required',
         'rebuild-tree-not-native',
+        'tree-not-derived',  # 2026-11-05, U219
     ],
     'cli/registry.py': [
         'dj-analyze-validate',
@@ -852,6 +856,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'rebuild-actor-required',
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
+        'rebuild-tree-not-derivable',  # 2026-11-05, U219
         'rebuild-tree-not-native',
         'recovery-target-refused',
         'refill-playlist-outside-inbox',
@@ -862,6 +867,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'removal-sequence-unreadable',
         'rename-incomplete',
         'report-as-of-invalid',
+        'resort-plan-stale',  # 2026-11-05, U219
         'restore-discards-committed-work',
         'restore-flag-needs-pull',
         'restore-not-confirmed',
@@ -2116,6 +2122,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'membership-left-behind',
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
+        'rebuild-tree-not-derivable',  # 2026-11-05, U219
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-plan-stale',  # 2026-11-05, U219
         'routing-destination-renamed',
         'tree-rebuild',
         'tree-unconverged',
@@ -2132,10 +2141,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'job-unknown',
         'library-export-unusable',
         'library-volume-unmounted',
+        'no-derivable-tree',  # 2026-11-05, U219
         'no-native-tree',
+        'nothing-to-add',  # 2026-11-05, U219
         'nothing-to-route',
         'rating-not-landable',
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-again',  # 2026-11-05, U219
         'resort-artifacts',
+        'resort-plan-stale',  # 2026-11-05, U219
         'resort-staging',
         'route-blocked',
         'route-inbox',
@@ -2144,6 +2158,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'routing-not-landable',
         'track-file-unreadable',
         'track-row-absent',
+        'tree-not-derived',  # 2026-11-05, U219
         'tree-unconverged',
         'unplaced-export',
     ],
@@ -3153,6 +3168,9 @@ PINNED_LITERAL_HOLDERS = {
     'write/rebuild.py': [
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
+        'rebuild-tree-not-derivable',  # 2026-11-05, U219
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-plan-stale',  # 2026-11-05, U219
         'routing-destination-renamed',
         'tree-unconverged',
     ],
@@ -3164,6 +3182,8 @@ PINNED_LITERAL_HOLDERS = {
         'job-unknown',
         'library-export-unusable',
         'library-volume-unmounted',
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-plan-stale',  # 2026-11-05, U219
         'tree-unconverged',
     ],
     'write/routing_pass.py': [

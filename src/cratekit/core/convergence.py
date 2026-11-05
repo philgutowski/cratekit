@@ -913,8 +913,12 @@ def mark_unconverged(
         state = read(cfg)
         for tree_id in tree_ids:
             current = state.tree(tree_id) or TreeConvergence(tree_id=tree_id)
-            if current.unconverged and current.reason == reason:
+            if current.unconverged and current.reason == reason and current.disposition is None:
                 continue
+            # A DISPOSED TREE MARKED AGAIN IS A NEW REFUSAL, whatever its reason
+            # (U219). The restore detection has two reason strings, so a second
+            # restore of the same kind used to fall into the line above and leave
+            # a named person's acceptance of the first one standing over it.
             state = state.with_tree(
                 replace(
                     current,

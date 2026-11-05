@@ -1,0 +1,16 @@
+name = "u219-composites"
+pass_kind = "light"
+
+# The one row u219-rows.toml measured zero. G6 is reachable: an apply
+# recorded over a disposable copy plans the same rows and the same digest, and
+# only the pin tells the two files apart. It is measured again over the test
+# written to kill it.
+
+[[rows]]
+id = "G6_answer_pinned"
+description = "_resort_pin: pin the answer to no database file, so an answer over a copy satisfies the live run"
+file = "src/cratekit/write/routing_cli.py"
+surface = "user"
+tests = ["tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '''    return {RESORT_DATABASE_KEY: str(opened)} if opened else None'''
+new = '''    return None'''

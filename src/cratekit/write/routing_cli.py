@@ -78,6 +78,21 @@ from cratekit.write import metadata_cli, rbxml, rebuild, routing_pass, trees
 INBOX_WORKFLOW = "route-inbox"
 RESORT_WORKFLOW = "route-resort"
 
+#: Where a resort's job freezes the adds its gate showed and a person approved
+#: (U219), and the database file that answer was pinned to (U161). Spelled
+#: once, because the enqueue writes them and the resume and the worker read
+#: them, and a key one side spells differently is a plan nobody can match.
+RESORT_ADDS_KEY = "adds"
+RESORT_DATABASE_KEY = "database"
+RESORT_FACTS_KEY = "facts"
+
+#: The digest source of the resort's gate, found by it and never by position.
+RESORT_PLAN = "plan"
+
+#: The warning a sweep over every native tree carries for a tree it left
+#: alone because the taxonomy does not derive it (U219).
+TREE_NOT_DERIVED = "tree-not-derived"
+
 #: Where each resorted tree's report is committed, under the queue root beside
 #: the job's lock and log (R-312). ONE REPORT PER ITEM, MADE DURABLE BY THE
 #: DRIVER before the item flips to done, so what the engine measured survives a
@@ -144,6 +159,42 @@ def _plan(items: list[dict[str, str]], *, kind: str, **totals: Any) -> dict:
 def _native_trees(entries: tree_registry.Registry) -> tuple[str, ...]:
     """Every tree that has cut over, in a stable order. The items of a resort."""
     return tuple(sorted(t for t in entries.tree_ids() if entries.is_database_native(t)))
+
+
+def _routed_trees(
+    entries: tree_registry.Registry, declared: taxonomy.Taxonomy
+) -> tuple[str, ...]:
+    """Every native tree the taxonomy derivation describes, in a stable order (U219).
+
+    THE ITEMS OF A RESORT AND THE TREES AN INBOX FILES INTO. A native tree the
+    declaration names as something else, the intake flow above all, is left
+    out: its membership is what the verbs that write it put there, and the
+    derivation refuses it by name (:func:`cratekit.write.rebuild.assert_derivable`).
+    """
+    return tuple(t for t in _native_trees(entries) if rebuild.derivable(declared, t))
+
+
+def _passed_over(
+    entries: tree_registry.Registry, declared: taxonomy.Taxonomy
+) -> list[dict[str, str]]:
+    """The warning naming each native tree a sweep left alone, and why (U219).
+
+    Said rather than silent, so a person whose intake tree has cut over reads
+    that the resort did not touch it on purpose, and not that it forgot.
+    """
+    others = rebuild.other_declared_trees(declared)
+    skipped = [t for t in _native_trees(entries) if t in others]
+    if not skipped:
+        return []
+    named = ", ".join(f"{others[t]} ({t})" for t in skipped)
+    return [
+        {
+            "code": TREE_NOT_DERIVED,
+            "message": f"left alone: {named}, which holds what the verbs that "
+            f"write it put there and not anything a tag decides, so the "
+            f"taxonomy derives nothing for it",
+        }
+    ]
 
 
 def _no_op(state: str, **progress: Any) -> dict[str, Any]:
@@ -228,7 +279,12 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
     folder = Path(cfg.library.root) / declared.intake.display
     files = _inbox_files(folder)
     entries = tree_registry.read(cfg)
-    native = _native_trees(entries)
+    # THE ROUTED TREES, NOT EVERY NATIVE ONE (U219). The intake tree is native
+    # on a library whose landings write it, and filing the intake folder into
+    # it put the routing tree's genre folders under INBOX, the shape sitting
+    # 61 found through the resort. The derivation refuses that tree by name;
+    # this is where the verb stops asking it to.
+    native = _routed_trees(entries, declared)
     placements: dict[str, tuple[rebuild.DeclaredPlacement, ...]] = {
         tree_id: () for tree_id in native
     }
@@ -249,6 +305,7 @@ def plan_inbox(cfg: config.Config, declared: taxonomy.Taxonomy) -> InboxPlan:
                 derived[source] = rebuild.declared_membership(
                     cfg,
                     declared,
+                    tree_id=tree_id,
                     source=source,
                     vocal_threshold=threshold,
                     truth=readings,
@@ -528,7 +585,18 @@ def build_pending(parser, entry) -> None:
 
 
 def resort_argv(job) -> list[str]:
-    return ["route", "resort", "--job", job.job_id]
+    """The command line that continues one queued resort.
+
+    IT CARRIES ``--run`` (U219). The resort's gate is explicit, so the child
+    the job engine spawns has to name the run the answer was recorded against,
+    or it meets the gate with nothing recorded and stalls for ever, which is
+    the shape ``tests/test_queued_resume_contract.py`` guards. The flag goes
+    before the verb path because ``--run`` belongs to the root parser. A job
+    an older build queued carries no gate run and resumes without it.
+    """
+    gate_run = (job.payload or {}).get(jobs.GATE_RUN_KEY)
+    resume = ["--run", str(gate_run)] if gate_run else []
+    return [*resume, "route", "resort", "--job", job.job_id]
 
 
 #: The warning a confirmed apply carries for the files it could not file. The
@@ -1906,6 +1974,33 @@ def _resume(ctx, store, job_id: str) -> Envelope:
             origin=("routing_cli",),
             detail={"job_id": job.job_id, "handler": job.handler_key},
         )
+    # THE GATE IS ANSWERED FROM THE FROZEN PLAN (U219), the rows the answer was
+    # recorded against and the file it was pinned to, never from a fresh read:
+    # by now the first tree may already hold its adds, so a fresh plan would
+    # digest differently from the one approved and stall every respawn.
+    payload = job.payload or {}
+    if job.is_open() and RESORT_ADDS_KEY not in payload:
+        raise refuse(
+            "resort-plan-stale",
+            f"job {job.job_id} was queued by a build that showed no plan before "
+            f"it, so there is nothing a person approved for it to write",
+            remedy=Remedy.REPLAN_THEN_DECIDE,
+            steps=(
+                f"cancel it with: crate job cancel {job.job_id}",
+                "then run the resort again, read its plan, and answer its gate",
+            ),
+            origin=("routing_cli",),
+            detail={"job_id": job.job_id},
+        )
+    adds = [dict(row) for row in payload.get(RESORT_ADDS_KEY) or ()]
+    option = ctx.gate.require(
+        _resort_gate(ctx),
+        plan=_plan(adds, kind="resort"),
+        context=_resort_facts(adds, payload.get(RESORT_FACTS_KEY) or {}),
+        pinned=_resort_pin(payload),
+    )
+    if option != "apply":
+        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP)
     warnings: tuple[dict[str, str], ...] = ()
     frozen: config.Config | None = None
     try:
@@ -1952,6 +2047,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 # The rebuild's engine, so the rebuild's skipped step (U132).
                 *rebuild.favorites_skipped_warnings(declared, driven),
                 *rebuild.left_behind_warnings(records, listed_in=listed_in),
+                *_due_again_warnings(frozen, job.job_id),
             )
         jobs.raise_for_state(job)
     except CratekitError as failed:
@@ -1963,35 +2059,137 @@ def _resume(ctx, store, job_id: str) -> Envelope:
     return ctx.envelope(data=_reported(store, job), warnings=warnings)
 
 
+def _resort_gate(ctx):
+    """The resort's declared gate over its plan, found by digest source (U219).
+
+    Refuses rather than defaulting when there is none: a resort whose entry
+    lost its gate would queue writes nobody was shown, and the conformance
+    suite reads the registry, so it would call the verb clean.
+    """
+    for spec in ctx.entry.gates:
+        if spec.digest_source == RESORT_PLAN:
+            return spec
+    raise refuse(
+        "refused-by-policy",
+        "route resort writes the routing tree and its registry entry declares no "
+        "decision made against its plan, so there is nothing for a person to approve",
+        remedy=Remedy.REPORT_DEFECT,
+        origin=("routing_cli",),
+        detail={"verb": ctx.entry.name},
+    )
+
+
+def _resort_pin(payload: dict[str, Any]) -> dict[str, str] | None:
+    """The database file the answer is pinned to, when the plan read one."""
+    opened = payload.get(RESORT_DATABASE_KEY)
+    return {RESORT_DATABASE_KEY: str(opened)} if opened else None
+
+
+def _resort_facts(adds: list[dict[str, str]], facts: dict[str, Any]) -> dict[str, Any]:
+    """What the gate shows in front of the adds, counted off them (R-691's rule).
+
+    The trees the adds go into, how many, and the memberships the resort will
+    leave where they are, since it is additive and a person approving it
+    should know what it will not take away.
+    """
+    return {
+        "trees": sorted({row["tree"] for row in adds}) or list(facts.get("trees") or ()),
+        "adds": len(adds),
+        "left behind": int(facts.get("left_behind") or 0),
+        "not derived": list(facts.get("not_derived") or ()),
+        "left alone": list(facts.get("left_alone") or ()),
+    }
+
+
 def route_resort(ctx) -> Envelope:
-    """Queue a resort. Long work is a job, never an inline sweep.
+    """Show every add, ask, then queue the resort. Long work is a job, never an inline sweep.
 
-    ONE TREE IS ONE ITEM, and until U53 this queued none. A job with nothing to
-    claim is walked by the driver in a single empty pass and transitioned to
-    succeeded, so the queue reported a resort that swept a library nothing read.
+    THE GATE FIRST (U219). Sitting 61 rehearsed a resort on a disposable copy
+    and it ran as a job with nothing to compare, so the rehearsal rule had no
+    digest to hold the live run to. Now the verb reads the library without
+    writing, runs the same derivation and check the rebuild runs before its
+    write, and shows every add, by tree, folder, playlist and file, with the
+    count it will leave where it is. The answer is pinned to the database file
+    the plan read (U161), the adds are frozen in the job, and the worker
+    refuses before writing if what it would add has moved.
 
-    A LIBRARY WITH NOTHING NATIVE FILES NO JOB AT ALL, and that is not a refusal:
-    a library that has never flipped a tree has nothing to re-place, which is
-    ordinary rather than wrong.
+    ONLY THE ROUTED TREES. A native tree the declaration names as something
+    else, the intake flow above all, is left alone and named in a warning:
+    its rebuild derived the routing tree's placements and wrote
+    ``INBOX / Minimal / Deep Tech`` at sitting 61 (R-789).
+
+    AN EMPTY PLAN STILL ASKS, then queues nothing, which is the rule
+    ``tag retag`` argues: every declared gate fires, and a job with no work
+    would be walked to SUCCEEDED over a library nothing changed. A library
+    with no routed native tree reads nothing and asks over nothing.
     """
     cfg = _load()
-    with jobs.open_store() as store:
-        if ctx.args.job:
+    if ctx.args.job:
+        with jobs.open_store() as store:
             return _resume(ctx, store, ctx.args.job)
-        items = _native_trees(tree_registry.read(cfg))
-        if not items:
-            return ctx.envelope(
-                data=_no_op("no-native-tree", native=0),
-                outcome=Outcome.NO_OP,
-            )
+    declared = active_taxonomy.load(cfg)
+    entries = tree_registry.read(cfg)
+    routed = _routed_trees(entries, declared)
+    warnings = _passed_over(entries, declared)
+    adds: list[dict[str, str]] = []
+    facts: dict[str, Any] = {"trees": list(routed)}
+    opened: str | None = None
+    if routed:
+        threshold = metadata_cli.load_vocal_threshold(cfg)
+        reports, opened = rebuild.preview_governed_trees(
+            cfg, tree_ids=routed, vocal_threshold=threshold
+        )
+        for report in reports:
+            adds.extend(rebuild.additions(report))
+        facts["left_behind"] = sum(len(report.unexpected) for report in reports)
+        facts["not_derived"] = sorted(
+            {gap for report in reports for gap in report.not_compared}
+        )
+    facts["left_alone"] = [row["message"] for row in warnings]
+    payload: dict[str, Any] = {RESORT_DATABASE_KEY: opened} if opened else {}
+    option = ctx.gate.require(
+        _resort_gate(ctx),
+        plan=_plan(adds, kind="resort"),
+        context=_resort_facts(adds, facts),
+        pinned=_resort_pin(payload),
+    )
+    if option != "apply":
+        return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP, warnings=warnings)
+    if not routed:
+        native = _native_trees(entries)
+        return ctx.envelope(
+            # A NATIVE TREE THE TAXONOMY DOES NOT DERIVE IS STILL NATIVE, so the
+            # count is read and the state says which zero.
+            data=_no_op("no-derivable-tree" if native else "no-native-tree", native=len(native)),
+            outcome=Outcome.NO_OP,
+            warnings=warnings,
+        )
+    if not adds:
+        return ctx.envelope(
+            data=_no_op("nothing-to-add", trees=len(routed)),
+            outcome=Outcome.NO_OP,
+            warnings=warnings,
+        )
+    with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
             handler_key=ctx.entry.handler_key,
-            payload={},
-            item_ids=items,
+            payload={
+                **payload,
+                # THE APPROVED ADDS, FROZEN, which the resume answers its gate
+                # from and the worker holds its write to.
+                RESORT_ADDS_KEY: adds,
+                # And what the screen said in front of them, so the resume
+                # shows the same facts over the same rows.
+                RESORT_FACTS_KEY: facts,
+                # THE GATE RUN, so the respawned child names it. See resort_argv.
+                jobs.GATE_RUN_KEY: ctx.run.run_id,
+            },
+            # ONE TREE IS ONE ITEM, and only a tree with something to add.
+            item_ids=tuple(sorted({row["tree"] for row in adds})),
             cfg=cfg,
         )
-        return ctx.envelope(data=_reported(store, job))
+        return ctx.envelope(data=_reported(store, job), warnings=warnings)
 
 
 def handle_resort(job, item, cfg) -> None:
@@ -2017,13 +2215,21 @@ def handle_resort(job, item, cfg) -> None:
     ``cfg`` is the configuration this job was FROZEN against (KTD9). Nothing here
     loads one.
     """
+    tree_id = str(item.item_id)
     report = rebuild.rebuild_governed_tree(
         cfg,
-        tree_id=str(item.item_id),
+        tree_id=tree_id,
         workflow=RESORT_WORKFLOW,
         # THE CALIBRATED CUT, through the one loader, at the path the frozen
         # configuration names. None on a library never calibrated (U89, D7).
         vocal_threshold=metadata_cli.load_vocal_threshold(cfg),
+        # THIS TREE'S APPROVED ADDS (U219). The engine refuses before writing
+        # if its own before check would add anything else.
+        approved=[
+            dict(row)
+            for row in (job.payload or {}).get(RESORT_ADDS_KEY) or ()
+            if row.get("tree") == tree_id
+        ],
     )
     left = rebuild.left_behind(report.after, active_taxonomy.load(cfg))
     return artifacts.produced(
@@ -2034,6 +2240,10 @@ def handle_resort(job, item, cfg) -> None:
         {
             "tree_id": str(item.item_id),
             "left_behind": [rebuild.left_behind_record(entry) for entry in left],
+            # WHAT CAME DUE ONLY FROM THIS RESORT'S OWN WRITES (U219, round
+            # two): a favourite whose track it filed into a new folder, which
+            # no plan before the write could show and so it did not write.
+            "due_again": len(report.after.missing),
         },
     )
 
@@ -2050,6 +2260,43 @@ def _left_behind(cfg: config.Config, job_id: str) -> tuple[list[dict[str, Any]],
         for entry in report.get("left_behind") or ()
     ]
     return records, str(jobs.store_dir(cfg) / RESORT_ARTIFACTS.final / job_id)
+
+
+#: The warning a resort carries when its own writes made adds due that its
+#: plan could not show (U219).
+DUE_AGAIN = "resort-again"
+
+
+def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]:
+    """Say that a second resort has more to show, and what stands until it runs.
+
+    A RESORT WRITES ONLY WHAT ITS GATE SHOWED, so a favourite whose track this
+    run filed into a new folder is left for the next resort's plan. Said here
+    rather than only logged, because the tree still differs after a run that
+    succeeded: on a tree a restore marked, its flag stays set and its writes
+    keep refusing until the next resort files the rest.
+    """
+    due: dict[str, int] = {}
+    for report in artifacts.committed(RESORT_ARTIFACTS, cfg, job_id):
+        count = int(report.get("due_again") or 0)
+        if count:
+            due[str(report.get("tree_id"))] = due.get(str(report.get("tree_id")), 0) + count
+    if not due:
+        return []
+    recorded = convergence.read(cfg)
+    held = sorted(
+        tree for tree in due if (record := recorded.tree(tree)) is not None and record.blocking
+    )
+    message = (
+        f"{sum(due.values())} add(s) came due only from this resort's own writes, "
+        f"a favourite whose track it filed into a new folder, so they were not on "
+        f"its plan and were not written; run the resort again to see and file them"
+    )
+    if held:
+        message += (
+            f". Until then {', '.join(held)} stays unconverged and its writes refuse"
+        )
+    return [{"code": DUE_AGAIN, "message": message}]
 
 
 def _with_left_behind(error: CratekitError, cfg: config.Config, job_id: str) -> CratekitError:

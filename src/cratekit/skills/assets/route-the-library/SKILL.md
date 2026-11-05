@@ -147,16 +147,44 @@ playlist root and is the one thing its file can land, and the import it names
 is that playlist alone. Once that import lands, the next run over a fresh
 export owes nothing.
 
-## Resort queues rather than sweeps
+## Resort shows its plan, then queues rather than sweeps
 
 Changing a genre assignment or an energy band changes where already-filed
-tracks belong. Sweeping the back catalogue is long work, so this verb queues
+tracks belong. Before anything is queued, the resort reads the library without
+writing and stops at the explicit gate `route.resort.apply`, showing every
+track it will add by tree, folder, playlist and file, how many memberships it
+will leave where they are, and which native trees it leaves alone. The gate is
+answered by a separate recorded act, never inline, and the run is named again
+to queue:
+
+```bash
+crate route resort
+crate run decide RUN_ID route.resort.apply apply --actor NAME
+crate --run RUN_ID route resort
+```
+
+A plan with nothing to add still asks, and then queues nothing. The answer is
+pinned to the database file the plan read, so a rehearsal on a disposable copy
+and the live run are compared by their digests. The approved adds are frozen
+in the job: if the library or the taxonomy moves before the job is driven and
+the resort would add anything else, it refuses with `resort-plan-stale` and
+writes nothing, and the answer is to run it again and read the new plan.
+A favourite whose track the resort itself files into a new genre folder only
+becomes due after that write, so no plan could show it; the resort leaves it,
+says so with a `resort-again` warning, and the next resort shows and files it.
+
+The resort files only the routing tree. A native tree the taxonomy names as
+something else, the intake flow above all, holds what the verbs that write it
+put there, so the resort leaves it alone and says so with a
+`tree-not-derived` warning; `crate rebuild` does the same, and refuses that
+tree when it is named.
+
+Sweeping the back catalogue is long work, so once approved this verb queues
 a job and hands back its identifier instead of running the sweep inline. That
 is the point rather than a limitation: an inline sweep that dies halfway leaves
 no record of how far it got, and a job does.
 
 ```bash
-crate route resort
 crate job show JOB_ID
 crate job resume JOB_ID
 ```
