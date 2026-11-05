@@ -35,6 +35,20 @@ what each row is now, and ``answered_*`` says how many got there by an answer.
 A rejected row makes the job's list longer than an earlier copy of the same
 name, which the emitter refuses, and the refusal says so.
 
+A TRACK ALREADY STAGED IS NOT LISTED AGAIN (U212). Sitting 55 downloaded two
+tracks a pass five days earlier had downloaded, tagged and named in the staging
+folder, its landing gate never answered, and the copies stopped ``name apply``
+on names already taken. Each row still missing is asked of the files a landing
+would take from the staging folder, :func:`cratekit.intake.landing.listing`,
+by the ISRC the downloader writes on every file, read through the index reader
+the landing files a manifest by. A row a staged file carries is counted under
+``staged``, named with that file, and not listed; the landing over the folder
+lands it. A file whose ISRC is absent, malformed or unreadable matches nothing,
+and a row with no ISRC asks nothing, so the track stays listed. A row this
+list's own earlier copy already names is never subtracted, so a continued pass
+whose own downloads are now staged writes the same bytes again. A staging
+folder that cannot be read is said on a failing row, never read as empty.
+
 A PARTIAL LIST THAT READS AS COMPLETE IS THE DEFECT THIS FILE IS SHAPED
 AGAINST. A job that is still open, failed or was cancelled has not resolved
 every track, so it is refused rather than listed. A succeeded job is listed only
@@ -107,7 +121,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import artifacts, jobs, review
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.intake import candidates, land_cli
+from cratekit.intake import candidates, land_cli, landing
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 
@@ -735,6 +749,77 @@ def _asked_again(
     return now
 
 
+@dataclass(frozen=True, slots=True)
+class _Staged:
+    """What the staging folder holds of the rows asked (U212).
+
+    ``found`` pairs each staged row's position with the file that carries it,
+    and ``unread`` says why the folder could not be read, empty when it was.
+    """
+
+    folder: Path
+    found: tuple[tuple[int, Path], ...] = ()
+    unread: str = ""
+
+
+def _own_rows(out: Path, name: str) -> tuple[frozenset[str], frozenset[str]]:
+    """The provider ids and ISRCs this list's own earlier copy names, or nothing.
+
+    THE EARLIER FILE IS THE WITNESS, as :func:`_changed_since` reads it. A row it
+    names is this list's, and a continued pass finds that row's download in
+    the staging folder because this list asked for it, so it is never counted
+    as an earlier pass's. A copy that cannot be read claims nothing, and a list
+    then written shorter is refused over it by the emitter, loudly.
+    """
+    try:
+        body = json.loads((out / f"{name}{listdoc.LIST_SUFFIX}").read_text(encoding="utf-8"))
+        tracks = list(body["tracks"])
+        ids = frozenset(str(track["id"]).strip() for track in tracks)
+        isrcs = frozenset(match.isrc_token(track.get("isrc")) for track in tracks)
+    except (OSError, ValueError, KeyError, TypeError, AttributeError):
+        return frozenset(), frozenset()
+    return ids - {""}, isrcs - {""}
+
+
+def _staged(wanted: list[match.Wanted], *, out: Path, name: str) -> _Staged:
+    """Which of ``wanted`` a file in the download staging folder already carries (U212).
+
+    BY THE ISRC THE DOWNLOADER WRITES, read from each file a landing would take
+    from the folder through the index reader the landing files a manifest by,
+    so a file renamed by ``name apply`` is found as well as one still named for
+    its provider id. ABSENCE OF A READ IS NOT A MATCH: a row with no ISRC asks
+    nothing, and a file whose tag is absent, malformed or unreadable holds no
+    identity, so the row stays listed and the worst case is the download it
+    always was. A folder that is not there holds nothing; one that is there
+    and cannot be read is said by the caller, never read as empty.
+    """
+    cfg = intake_cli._load()
+    folder = Path(cfg.paths.download_staging).expanduser().absolute()
+    asked = [(n, match.isrc_token(one.isrc)) for n, one in enumerate(wanted)]
+    asked = [(n, token) for n, token in asked if token]
+    if not asked:
+        return _Staged(folder)
+    try:
+        if not folder.exists():
+            return _Staged(folder)
+        files = landing.listing(folder)
+    except OSError as exc:
+        return _Staged(folder, unread=str(exc.strerror or exc))
+    if not files:
+        return _Staged(folder)
+    ids, isrcs = _own_rows(out, name)
+    index = match.index_paths(files, template=match_cli.library_template(cfg))
+    found: list[tuple[int, Path]] = []
+    for n, token in asked:
+        ref = provider_ref(wanted[n])
+        if (ref and ref in ids) or token in isrcs:
+            continue
+        held = index.held_by_isrc(token)
+        if held:
+            found.append((n, held[0].path))
+    return _Staged(folder, tuple(found))
+
+
 def _listed(
     ctx,
     found: list[tuple[jobs.Job, tuple[dict[str, Any], ...]]],
@@ -780,6 +865,8 @@ def _listed(
     since = dict.fromkeys(_SINCE.values(), 0)
     now_answered = dict.fromkeys(_ANSWERED.values(), 0)
     out: Path | None = None
+    staged: _Staged | None = None
+    staged_rows: list[tuple[match.Wanted, Path]] = []
     if missing:
         # THE FOLDER BEFORE THE LIBRARY WALK AND THE PROVIDER, so a bad --out
         # spends neither.
@@ -800,6 +887,13 @@ def _listed(
                 kept.append(n)
         missing = [missing[n] for n in kept]
         origins = [origins[n] for n in kept]
+        # STAGED AFTER THE LIBRARY IS ASKED (U212): a row the library holds now
+        # is owned, whatever the staging folder also holds.
+        staged = _staged(missing, out=out, name=name)
+        gone = {n for n, _path in staged.found}
+        staged_rows = [(missing[n], path) for n, path in staged.found]
+        missing = [one for n, one in enumerate(missing) if n not in gone]
+        origins = [job for n, job in enumerate(origins) if n not in gone]
         counts["missing"] = len(missing)
     gained = sum(since.values())
     if missing:
@@ -853,7 +947,7 @@ def _listed(
             ],
             **subject,
         )
-    if left_out and not listed and not unlisted:
+    if left_out and not listed and not unlisted and not staged_rows:
         # NOTHING LISTED WITH JOBS LEFT OUT IS NOT A PASS WITH NOTHING MISSING.
         # The skipped jobs' tracks were never resolved, and a no-op would tell a
         # person and a script that the pass needs no download.
@@ -885,6 +979,12 @@ def _listed(
         said = (
             f"nothing listed for download: the missing tracks were handed on to "
             f"{written.unlisted_path}; next: {handed_command}"
+        )
+    elif staged_rows:
+        said = (
+            f"nothing listed for download: the {len(staged_rows)} missing track(s) "
+            f"are staged already in {staged.folder if staged else ''}, and the landing "
+            f"over that folder lands them"
         )
     elif gained:
         said = (
@@ -920,6 +1020,7 @@ def _listed(
             f"deleted on purpose since, {since['offered_since']} held in another version "
             f"since and offered for review",
         ),
+        _staged_check(staged, staged_rows),
         _check(
             "isrc",
             "info",
@@ -958,6 +1059,18 @@ def _listed(
         **since,
         **now_answered,
         "by_isrc": by_isrc,
+        "staged": len(staged_rows),
+        "staging": str(staged.folder) if staged is not None else None,
+        "staged_tracks": [
+            {
+                "artist": wanted.artist,
+                "title": wanted.title,
+                "isrc": match.isrc_token(wanted.isrc),
+                "ref": provider_ref(wanted),
+                "file": str(path),
+            }
+            for wanted, path in staged_rows
+        ],
         "unlisted": unlisted,
         "unlisted_list": (
             str(written.unlisted_path) if written.unlisted_path is not None else None
@@ -977,7 +1090,36 @@ def _listed(
     }
     return ctx.envelope(
         data={"checks": checks, "summary": summary},
-        outcome=Outcome.OK if listed or unlisted else Outcome.NO_OP,
+        # EVERY ROW STAGED IS SOMETHING TO LAND (U212), and a no-op would end a
+        # pass before the landing that takes them.
+        outcome=Outcome.OK if listed or unlisted or staged_rows else Outcome.NO_OP,
+    )
+
+
+def _staged_check(
+    staged: _Staged | None, rows: list[tuple[match.Wanted, Path]]
+) -> dict[str, Any]:
+    """The row that says what the staging folder held of the missing tracks (U212)."""
+    if staged is not None and staged.unread:
+        return _check(
+            "staged",
+            "fail",
+            f"the download staging folder {staged.folder} could not be read "
+            f"({staged.unread}), so no missing track was checked against what is "
+            f"staged there, and one staged already is listed and downloaded again",
+        )
+    if rows:
+        return _check(
+            "staged",
+            "info",
+            f"{len(rows)} missing track(s) are staged already in "
+            f"{staged.folder if staged else ''} by a download not landed yet, so they "
+            f"are not listed or downloaded again, and the landing over that folder "
+            f"lands them: "
+            + "; ".join(f"{one.artist} - {one.title} as {path.name}" for one, path in rows),
+        )
+    return _check(
+        "staged", "info", "no missing track is staged already in the download staging folder"
     )
 
 

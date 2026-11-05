@@ -13,6 +13,7 @@ Every expected value is a literal from the fixture rows. A staged file is a
 real container carrying real tags, since the identity is read from the file.
 """
 
+# ruff: noqa: F811, the fixtures below are imported from the missing list suite by name
 from __future__ import annotations
 
 import json

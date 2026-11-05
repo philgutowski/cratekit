@@ -773,29 +773,11 @@ def key_token(key: str | None) -> str:
     return "" if parsed is None else f"{parsed[0]:02d}{parsed[1]}"
 
 
-_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
-
-
-def fold_isrc(value: object) -> str:
-    """An ISRC spelling with its whitespace and hyphens dropped, upper cased.
-
-    THE ONE FOLD, called by the outbound source, the missing verb and the index,
-    so a hyphenated spelling on one side and a bare one on the other are one
-    string. Not validated: a verb that has to say a value was malformed rather
-    than absent reads this and then asks :func:`isrc_token`.
-    """
-    return re.sub(r"[\s-]", "", str(value or "")).upper()
-
-
-def isrc_token(value: object) -> str:
-    """The folded ISRC as an identity, or ``""`` when the value is not one.
-
-    A value that does not read as an ISRC once folded, a catalogue number or a
-    stray label, is NOT an identity and folds to empty rather than to a key
-    nothing else could share by accident.
-    """
-    folded = fold_isrc(value)
-    return folded if _ISRC.fullmatch(folded) else ""
+# THE ONE FOLD AND THE ONE IDENTITY live with the tag reader since U212, so
+# the write layer reads a file's ISRC through them too. Named here as well,
+# because every caller above the tag reader has always asked this module.
+fold_isrc = tags.fold_isrc
+isrc_token = tags.isrc_token
 
 
 def credited_members(artist: str) -> tuple[str, ...]:
