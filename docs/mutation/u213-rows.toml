@@ -1,0 +1,214 @@
+name = "u213"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_first_group_is_the_title"
+description = "split_version: drop the first group rule, so a title written wholly in brackets walks off whole and the row names no title"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''        if found.start() == 0:
+            remaining = inside
+            break'''
+new = '''        if False:
+            remaining = inside
+            break'''
+
+[[rows]]
+id = "M2_backfill_refused_reason"
+description = "plan_backfill: record no refusal reason on a left playlist, so its digest carries the provider's words"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''                    refused=exc.cause.reason,'''
+new = '''                    refused="",'''
+
+[[rows]]
+id = "M3_first_group_position"
+description = "split_version: take any group as the title, not only the one standing first, so Song (Remix) reads as Remix"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''        if found.start() == 0:'''
+new = '''        if found.start() >= 0:'''
+
+[[rows]]
+id = "M4_first_group_keeps_brackets"
+description = "split_version: keep the brackets on a title written wholly in them"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''            remaining = inside
+            break'''
+new = '''            remaining = found.group(0).strip()
+            break'''
+
+[[rows]]
+id = "M5_listed_names_artist"
+description = "listed_names: read no artist off a refused row"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''    return str(_field(row, "id", "")).strip(), _artist_of(row), _raw_title(row)'''
+new = '''    return str(_field(row, "id", "")).strip(), "", _raw_title(row)'''
+
+[[rows]]
+id = "M6_readable_refuses_nameless"
+description = "list_playlist_readable: drop the refusal of a row carrying no provider id, so it is silently dropped from the listing"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''    _refuse_unidentified(nameless)
+    tracks = frozen_rows(tuple(read))'''
+new = '''    tracks = frozen_rows(tuple(read))'''
+
+[[rows]]
+id = "M7_readable_first_refused_row"
+description = "list_playlist_readable: let a later refused row of one track overwrite the first"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''            if ref not in refused:
+                code = match.row_isrc(row)'''
+new = '''            if True:
+                code = match.row_isrc(row)'''
+
+[[rows]]
+id = "M8_readable_unread_excludes_read"
+description = "list_playlist_readable: keep a track as unread even when another row of it read"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''    unread = {ref: one for ref, one in refused.items() if ref not in tracks}'''
+new = '''    unread = dict(refused)'''
+
+[[rows]]
+id = "M9_readable_order_holds_unread"
+description = "list_playlist_readable: order only the tracks that read, so a twin's snapshot drops the unread track"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''        order.setdefault(ref, None)
+        try:
+            read.append(match.read_row(row, origin=match.TIDAL, position=position))'''
+new = '''        try:
+            read.append(match.read_row(row, origin=match.TIDAL, position=position))
+            order.setdefault(ref, None)'''
+
+[[rows]]
+id = "M10_readable_isrc"
+description = "list_playlist_readable: carry no ISRC on a set aside track, so an untitled track the library holds cannot be found"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''                    isrc=str(code).strip() if code else "",'''
+new = '''                    isrc="",'''
+
+[[rows]]
+id = "M11_unreadable_said_isrc"
+description = "Unreadable.said: name the track with no ISRC, so the backfill cannot find it by its code"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''        return {"artist": self.artist, "title": self.title, "isrc": self.isrc}'''
+new = '''        return {"artist": self.artist, "title": self.title, "isrc": ""}'''
+
+[[rows]]
+id = "M12_absent_rule"
+description = "_absent: name the missing half by the artist alone, the rule the review replaced, so a row with neither says no artist"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''    return "artist" if match.split_title(title)[0] else "title"'''
+new = '''    return "artist" if title else "title"'''
+
+[[rows]]
+id = "M13_unidentified_any"
+description = "_refuse_unidentified: refuse only when more than one row carries no id"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/intake/test_workers.py", "tests/test_sync_twins.py"]
+old = '''    if missing:
+        raise _unusable('''
+new = '''    if len(missing) > 1:
+        raise _unusable('''
+
+[[rows]]
+id = "M14_backfill_reason_check"
+description = "plan_backfill: leave a playlist for any refusal, so an expired session leaves every playlist instead of naming its act"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''            if exc.cause.reason not in PER_PLAYLIST_REASONS:
+                raise
+            twins.append('''
+new = '''            if False:
+                raise
+            twins.append('''
+
+[[rows]]
+id = "M15_backfill_left_action"
+description = "plan_backfill: plan a playlist whose listing was refused as a twin to make, with no rows"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''                    action=LEFT,
+                    why=f"the account playlist could not be read: {exc.cause.message}",'''
+new = '''                    action=CREATE,
+                    why=f"the account playlist could not be read: {exc.cause.message}",'''
+
+[[rows]]
+id = "M16_backfill_digest_reason"
+description = "Twin.identity: put the provider's words in the digest again, so a varying message makes the approved run stale"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''            "why": self.refused or self.why,'''
+new = '''            "why": self.why,'''
+
+[[rows]]
+id = "M17_backfill_unread_tracks"
+description = "plan_backfill: plan from the read tracks alone, so an unread track is in neither the twin's misses nor its snapshot"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''            ref: listing.tracks[ref] if ref in listing.tracks else listing.unread[ref].said()
+            for ref in listing.order'''
+new = '''            ref: listing.tracks[ref]
+            for ref in listing.order
+            if ref in listing.tracks'''
+
+[[rows]]
+id = "M18_backfill_unread_reasons"
+description = "plan_backfill: hand matched no unread reasons, so an unread track the library lacks reads as merely not owned"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''            {ref: one.why for ref, one in listing.unread.items()},'''
+new = '''            {},'''
+
+[[rows]]
+id = "M19_matched_ambiguous_first"
+description = "matched: say an unread track two rows carry is unreadable rather than ambiguous"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''                    AMBIGUOUS
+                    if found
+                    else f"{unread[remote_id]}, {UNREAD_NOT_FOUND}"
+                    if remote_id in unread
+                    else NOT_OWNED'''
+new = '''                    f"{unread[remote_id]}, {UNREAD_NOT_FOUND}"
+                    if remote_id in unread
+                    else AMBIGUOUS
+                    if found
+                    else NOT_OWNED'''
+
+[[rows]]
+id = "M20_backfill_whole"
+description = "plan_backfill: read every listing as whole, so a short one is paired with a snapshot it does not have"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''                whole=listing.short is None,'''
+new = '''                whole=True,'''
