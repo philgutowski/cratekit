@@ -1838,7 +1838,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # folder side, the side a made rekordbox playlist's home is named on,
     # and the warning a run planned again carries. 2026-11-05, U210: a
     # continued run's warning, its steps unread, and the refusal a step it
-    # could not record stops the write with.
+    # could not record stops the write with. 2026-11-05, R-1264: the warning
+    # naming account tracks listed with no title or no artist.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
@@ -1865,6 +1866,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
+        'sync-pair-unread',
         'sync-pair-withheld',
         'sync-pair-written',
     ],

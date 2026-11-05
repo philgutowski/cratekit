@@ -43,13 +43,13 @@ class Counted:
         self.writes = w.account._writes
         self.listings = 0
         self.reads = 0
-        real = intake_cli.list_playlist_dated
+        real = intake_cli.list_playlist_readable
 
         def listing(found, reference):
             self.listings += 1
             return real(found, reference)
 
-        monkeypatch.setattr(pair_cli.intake_cli, "list_playlist_dated", listing)
+        monkeypatch.setattr(pair_cli.intake_cli, "list_playlist_readable", listing)
         tracks = w.account.playlist_tracks
 
         def read(playlist_id):
