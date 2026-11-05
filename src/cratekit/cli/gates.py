@@ -45,7 +45,7 @@ from typing import Any, Mapping
 from cratekit.cli import output
 from cratekit.cli.registry import DB_WRITE_SURFACES, Entry, GateSpec
 from cratekit.cli.registry import entry as declared_entry
-from cratekit.core import config
+from cratekit.core import config, processes
 from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
 from cratekit.core.exit_codes import ExitCode, Remedy
 
@@ -1042,9 +1042,21 @@ def writes_the_database(verb: str) -> bool:
 #: Codes this module raises, listed so the dispatcher's mapping is checkable.
 GATE_CODES: tuple[ExitCode, ...] = (ExitCode.DECISION_REQUIRED, ExitCode.DECISION_STALE)
 
+#: Refusals outside the gates that keep their run (U211): the dispatcher saves
+#: the run with every answer it holds, answers ``resumable`` and ``blocked``,
+#: and names the command that continues it. Only a refusal whose cause clears
+#: on its own and that is raised before the step it guards belongs here. A
+#: process the scan could not read is that: the step that needed rekordbox
+#: closed was not run, and Sitting 54 spent a whole fresh run, three plans and
+#: about 15 minutes, recovering from one. Every gate is digest bound, so a
+#: continued run whose plan moved is asked again rather than applied to a
+#: different plan.
+KEPT_RUN_REASONS: tuple[str, ...] = (processes.UNCONFIRMED,)
+
 
 __all__ = [
     "GATE_CODES",
+    "KEPT_RUN_REASONS",
     "RETIRE_OPTION",
     "RUN_SCHEMA_VERSION",
     "SIBLING_RUN",

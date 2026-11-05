@@ -16,6 +16,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import jobs, rb_writer, session, taxonomy
+from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
@@ -52,9 +53,9 @@ def remote(index: str) -> str:
 class Listed:
     """A provider track in the shape the playlist reader reads."""
 
-    def __init__(self, track_id: str, code: str) -> None:
+    def __init__(self, track_id: str, code: str, name: str | None = None) -> None:
         self.id = track_id
-        self.name = f"Title {track_id}"
+        self.name = f"Title {track_id}" if name is None else name
         self.artist = {"name": f"Artist {track_id}"}
         self.isrc = code
 
@@ -75,10 +76,12 @@ class LivePlaylist:
         return None
 
     def tracks(self, limit=None, offset=0):
+        if self.playlist_id in self.world.broken:
+            raise self.world.broken[self.playlist_id]
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists[self.playlist_id]
         return [
-            Listed(one, self.world.codes.get(one, ""))
+            Listed(one, self.world.codes.get(one, ""), self.world.names.get(one))
             for one in members[offset : offset + size]
         ]
 
@@ -95,6 +98,10 @@ class World:
         #: Account tracks the library lacks, with ISRCs no row carries.
         self.codes.update({"t20": "USZZZ2600020", "t21": "USZZZ2600021"})
         self.short: set[str] = set()
+        #: A title the account lists a track under, by id, in place of ``Title <id>``.
+        self.names: dict[str, str] = {}
+        #: What listing a playlist raises, by id, for one the provider cannot list.
+        self.broken: dict[str, Exception] = {}
         self.catalogue = FakeCatalogue(playlists={}, account=[])
         self.account.folder_names[YEAR_FOLDER] = "2026"
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.catalogue))
@@ -533,6 +540,154 @@ def test_with_no_acknowledgment_the_verb_refuses_before_the_gate(world, cfg):
     code, refused = drive(VERB)
     assert code == int(ExitCode.ACK_REQUIRED), refused
     assert "gate" not in (refused.get("cause") or {}).get("detail", {})
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U213: one track, or one playlist, never refuses the whole backfill
+# ═══════════════════════════════════════════════════════════════════════════
+
+BROKEN = "acc-broken"
+BROKEN_NAME = "DOWNLOADED Broken 10-1-26"
+
+
+def test_a_title_written_wholly_in_brackets_reads_and_its_twin_is_made(world, cfg):
+    """The live case: Glass Animals' ``[Premade Sandwiches]`` refused the whole verb."""
+    _phil(world)
+    world.names["t1"] = "[Premade Sandwiches]"
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+    missing = [one for one in envelope["data"]["items"] if one["action"] == "missing"]
+    assert [one["remote_id"] for one in missing] == ["t20"]
+
+
+def test_a_track_listed_with_no_title_is_named_in_its_twin_and_the_rest_are_planned(world, cfg):
+    _phil(world)
+    world.names["t20"] = ""
+    world.names["t3"] = "()"
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["twins"] == "Custom Playlists 2026 / Phil 9-30-26: 3 track(s), 1 missing"
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    missing = [one for one in envelope["data"]["items"] if one["action"] == "missing"]
+    assert [(one["remote_id"], one["position"], one["artist"], one["title"]) for one in missing] == [
+        ("t20", 3, "Artist t20", "")
+    ]
+    assert missing[0]["why"] == (
+        f"the account lists it with no title, {twins.UNREAD_NOT_FOUND}"
+    ), missing
+    # THE UNTITLED TRACK THE LIBRARY HOLDS IS HELD, found by its ISRC, which
+    # never needed a title, and the snapshot is the whole listing.
+    twin_id = world.twin("Phil 9-30-26")
+    assert world.held(twin_id) == ["3", "1", "2"]
+    held = pairs.PairStore(cfg).get(PHIL)
+    assert held is not None and held.account == ("t3", "t1", "t20", "t2")
+    assert dict(held.links) == {"t3": "3", "t1": "1", "t2": "2"}
+    assert twins_cli.MISSING in _codes(envelope)
+
+
+def test_an_untitled_track_two_library_rows_carry_is_ambiguous_not_unreadable(world, cfg):
+    _phil(world)
+    world.names["t3"] = ""
+    conn = sqlite3.connect(cfg.library.db_path)
+    try:
+        conn.execute(
+            "INSERT INTO djmdContent (ID, Title, ISRC, rb_local_deleted, created_at, updated_at) "
+            "VALUES ('30', 'Twin of three', ?, 0, '2026-01-01', '2026-01-01')",
+            (isrc("3"),),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    code, envelope = backfill("abort")
+    assert code == int(ExitCode.OK), envelope
+    missing = [one for one in envelope["data"]["items"] if one["action"] == "missing"]
+    assert [(one["remote_id"], one["why"]) for one in missing] == [
+        ("t3", twins.AMBIGUOUS),
+        ("t20", twins.NOT_OWNED),
+    ]
+
+
+def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made(world, cfg):
+    _phil(world)
+    world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
+    world.broken[BROKEN] = RuntimeError("the provider timed out")
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    left = refused["cause"]["detail"]["shown"]["left"]
+    assert left.startswith(f"{BROKEN_NAME}: the account playlist could not be read: "), left
+    assert "the provider timed out" in left
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+    items = {one["account_id"]: one for one in envelope["data"]["items"] if "folder" in one}
+    assert items[BROKEN]["action"] == twins.LEFT
+    assert items[PHIL]["action"] == twins.CREATE
+    assert twins_cli.LEFT in _codes(envelope)
+    assert pairs.PairStore(cfg).get(BROKEN) is None
+    # THE NEXT RUN READS IT AGAIN, and makes its twin once it lists.
+    del world.broken[BROKEN]
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(world.twin("Broken 10-1-26")) == ["4", "5"]
+
+
+class Flaky(RuntimeError):
+    """A provider failure whose words differ every time they are read, as a request id does."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
+
+    def __str__(self) -> str:
+        self.calls += 1
+        return f"the provider timed out, request {self.calls}"
+
+
+def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(world, cfg):
+    """From the review: the provider's own words varied between the gate and the write."""
+    _phil(world)
+    world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
+    world.broken[BROKEN] = Flaky()
+    code, envelope = backfill()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
+    (left,) = [one for one in envelope["data"]["items"] if one.get("account_id") == BROKEN]
+    assert left["action"] == twins.LEFT and "request" in left["why"]
+
+
+def test_a_playlist_whose_row_carries_no_id_is_left_and_the_other_is_planned(world, cfg):
+    _phil(world)
+    world.playlist(BROKEN, BROKEN_NAME, ["t4", ""])
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["twins"] == "Custom Playlists 2026 / Phil 9-30-26: 3 track(s), 1 missing"
+    assert "carry no provider identifier" in shown["left"], shown
+
+
+def test_every_playlist_left_writes_nothing_and_opens_no_gate(world, cfg):
+    world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
+    world.broken[BROKEN] = RuntimeError("the provider timed out")
+    code, envelope = drive(VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op", envelope
+    assert {twins_cli.LEFT, twins_cli.NOTHING} <= _codes(envelope)
+    assert not world.folder()
+
+
+def test_a_refusal_that_is_not_about_one_playlist_still_stops_the_run(world, cfg):
+    """An expired session is the account's, not the playlist's, and names an act."""
+    _phil(world)
+    world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
+    world.broken[BROKEN] = refuse(
+        "credential-missing", "the provider session expired", origin=("tests",)
+    )
+    code, envelope = drive(VERB)
+    assert envelope["cause"]["reason"] == "credential-missing", envelope
+    assert not world.folder()
 
 
 # ═══════════════════════════════════════════════════════════════════════════

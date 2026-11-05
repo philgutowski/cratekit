@@ -1,0 +1,197 @@
+name = "u214"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_old_named_as_old"
+description = "_classify: never name the declared Old as Old, so it reads as any folder"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        if not in_old and old_display is not None and name == old_display:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M2_left_row_count"
+description = "_classify: count no rows for a left playlist, so the unrecognised label playlist is named without its 36 rows"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        tracks = _track_count(db, row) if counted else None'''
+new = '''        tracks = None'''
+
+[[rows]]
+id = "M3_live_left_collected"
+description = "live_batches: collect no left node, so the mirror drops them unsaid again"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        else:
+            left.append(classified)
+    return Live('''
+new = '''        else:
+            pass
+    return Live('''
+
+[[rows]]
+id = "M4_digest_without_count"
+description = "identity: digest each left node with its row count, so adding a track to a person's playlist stales the rotation gate"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        "left": [node.identity() for node in plan.left],'''
+new = '''        "left": [node.to_json() for node in plan.left],'''
+
+[[rows]]
+id = "M5_rotation_old_display"
+description = "plan_rotation: pass no Old display, so the rotation plan names Old as a folder and the mirror as Old"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''            old_display=old.display,'''
+new = '''            old_display=None,'''
+
+[[rows]]
+id = "M6_live_old_display"
+description = "live_batches: read no Old display, so the mirror names Old as a plain folder"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''    old_display = declared.intake_old.display if declared.intake_old is not None else None'''
+new = '''    old_display = None'''
+
+[[rows]]
+id = "M7_label_rows"
+description = "Left.label: leave the row count out of the line a person reads"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        rows = f" ({self.tracks} row(s))" if self.tracks is not None else ""'''
+new = '''        rows = ""'''
+
+[[rows]]
+id = "M8_plan_left_lines"
+description = "mirror.plan: start left empty, so no unmirrored node reaches the step's plan or left count"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''    left: list[str] = [f"{label}: not mirrored, {reason}" for label, reason in folder.unmirrored]'''
+new = '''    left: list[str] = []'''
+
+[[rows]]
+id = "M9_inbox_unmirrored"
+description = "_inbox: hand the folder no unmirrored node"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        unmirrored=tuple((node.label(), node.reason) for node in live.left),'''
+new = '''        unmirrored=(),'''
+
+[[rows]]
+id = "M10_detail_names"
+description = "_detail: never name the unmirrored nodes on the step's line, so the report shows only a count"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''    if folder is not None and folder.unmirrored:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M11_frozen_carries"
+description = "mirror_frozen: rebuild every folder with no unmirrored node, so the run that applies loses the lines"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''                unmirrored=_unmirrored(folder["unmirrored"]),'''
+new = '''                unmirrored=(),'''
+
+[[rows]]
+id = "M12_frozen_pairs"
+description = "_unmirrored: accept a frozen node of any length"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        isinstance(one, list) and len(one) == 2 and all(isinstance(part, str) for part in one)'''
+new = '''        isinstance(one, list) and all(isinstance(part, str) for part in one)'''
+
+[[rows]]
+id = "M13_frozen_version"
+description = "VERSION: stay at 4, so a version 4 record with no lines is rebuilt"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''VERSION = 5'''
+new = '''VERSION = 4'''
+
+[[rows]]
+id = "M15_unread_is_not_none"
+description = "_classify: say no landing record names an unrecognised playlist even while a session record could not be read"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''            if unread
+            else'''
+new = '''            if False
+            else'''
+
+[[rows]]
+id = "M17_log_unlisted"
+description = "_unlisted: read a log the account cannot list as listed, so its batches are said to have no record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''    except OSError:
+        return True
+    return False'''
+new = '''    except OSError:
+        return False
+    return False'''
+
+[[rows]]
+id = "M18_folder_unknown"
+description = "_batch_folder: read a refused batch folder as absent, so a batch is said to have none"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''    except OSError:
+        return None'''
+new = '''    except OSError:
+        return False'''
+
+[[rows]]
+id = "M19_folder_unread_reason"
+description = "_classify: say no batch folder carries the name even while the music folder could not be read"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''            if folder_unread
+'''
+new = '''            if False
+'''
+
+[[rows]]
+id = "M20_unread_unlisted"
+description = "Landings.unread: say nothing of a log that could not be listed"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        if self.unlisted:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M16_old_only_under_inbox"
+description = "_classify: read a folder named Old inside Old as the Old folder too"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        if not in_old and old_display is not None and name == old_display:'''
+new = '''        if old_display is not None and name == old_display:'''
+
+[[rows]]
+id = "M14_old_not_yours"
+description = "organize rotation step: list Old as the author's own again"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        if node.kind == rotate.LEFT_OLD:'''
+new = '''        if False:'''
+
