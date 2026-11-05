@@ -1664,13 +1664,41 @@ CLOUD_TAKE = ("answered", "resume", "ready")
 CLOUD_SKIP = ("underway", "waiting-on-phillip", "set-aside", "landed-open", "blocked", "attended")
 
 
+# A first line that opens with an emphasised span, `**Brainstorm.** One
+# question waits`, is headed by the span: the closing marker must repeat the
+# opening one and be followed by the line's end, whitespace or punctuation, so
+# `**Brainstorm**s` is no span and stays a word the reader does not know.
+_OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1(?=$|[\s.,:;?!\u2026])")
+# Where a heading ends on a line without a span: a colon, a comma, or a sentence
+# end followed by whitespace, so `v0.6.0` is never cut at its dots.
+_HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")
+# What may trail a heading and is never part of its words, stripped together
+# with emphasis until neither is left, in whatever order they were typed.
+_TRAILING = ".?!;\u2026# \t"
+
+
 def comment_heading(body: str) -> str:
-    """The first line of a comment, as a heading: markdown and emphasis stripped,
-    anything after a colon or comma dropped, lower case."""
+    """The first line of a comment, as a heading, lower case.
+
+    Markdown and emphasis are stripped, an opening emphasised span is the
+    heading, a line without one is cut at a colon, a comma or a sentence end,
+    and trailing punctuation goes, so `**Brainstorm.**`, `## Brainstorm?` and
+    `**Brainstorm.** One question waits` all read `brainstorm` (U203, after
+    #489 read as a hold while its question waited). Only punctuation is
+    widened: a heading whose words differ is still one the reader does not know.
+    """
     for line in (body or "").splitlines():
-        text = line.strip().lstrip("#").strip().strip("*_").strip()
-        if text:
-            return re.split(r"[:,]", text, maxsplit=1)[0].strip().strip("*_").lower()
+        text = line.strip().lstrip("#").strip()
+        if not text.strip("*_").strip():
+            continue
+        span = _OPENING_EMPHASIS.match(text)
+        text = span.group(2) if span else text.strip("*_")
+        text = _HEADING_END.split(text, maxsplit=1)[0]
+        settled = None
+        while text != settled:
+            settled = text
+            text = text.strip().strip("*_").rstrip(_TRAILING)
+        return text.lower()
     return ""
 
 
