@@ -92,3 +92,45 @@ def test_a_held_back_copy_with_no_isrc_is_never_called_the_same_recording(config
     _copies(folder, earlier=ISRC, newer=None)
     (item,) = _plan(folder)["items"]
     assert "isrc" not in item and "ISRC" not in item["why"]
+
+
+def test_two_movers_sharing_a_target_a_copy_holds_carry_no_isrc(configured):
+    """Review round one, F3: the reason is the two movers', so the item carries
+    no ISRC that would describe the file on disk instead."""
+    folder = _folder(configured)
+    _copies(folder, earlier=ISRC, newer=ISRC)
+    third = _track(folder, "102.flac")
+    assert tags.write_tags(third, {"artist": "Artist 101", "title": "Title 101", "isrc": ISRC})
+
+    plan = _plan(folder)
+
+    held = [item for item in plan["items"] if item["action"] == "collides"]
+    assert {item["from"] for item in held} == {"101.flac", "102.flac"}
+    for item in held:
+        assert "render to the same name" in item["why"] or "renders to the same name" in item["why"]
+        assert "isrc" not in item
+
+
+def test_a_copy_that_takes_the_name_after_the_plan_is_said_a_second_copy(configured):
+    """Review round one, F8, the claim after the gate. ``lead`` renders onto the
+    name ``marked`` holds while ``marked`` is itself moving, so the plan leaves
+    it promised (R-172) and the claim finds the name taken by a file carrying
+    the same ISRC."""
+    folder = _folder(configured)
+    marker = configured.naming.lossy_marker
+    lead = _track(
+        folder, "01A - 120 - Alpha - Artist - Alpha.flac", title="01A - 120 - Alpha", key="01A"
+    )
+    marked = _track(
+        folder, "01A - 120 - Alpha - Artist.flac", title=f"01A - 120 - Alpha {marker}", key="01A"
+    )
+    for path in (lead, marked):
+        assert tags.write_tags(path, {"isrc": ISRC})
+    assert _actions(_plan(folder)) == {lead.name: "rename", marked.name: "rename"}
+
+    code, envelope = _answer(folder)
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    (owed,) = envelope["cause"]["detail"]["incomplete"]
+    assert (owed["from"], owed["isrc"]) == (lead.name, ISRC)
+    assert f"the same ISRC {ISRC}, a second copy of one recording" in owed["why"]

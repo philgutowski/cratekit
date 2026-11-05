@@ -511,7 +511,9 @@ def _taken(path: Path, target: Path, *, fallback: str) -> tuple[str, str]:
     return fallback, ""
 
 
-def _collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
+def _collisions(
+    movers: list[tuple[Path, str]], seconds: dict[str, str] | None = None
+) -> dict[str, str]:
     """Each mover that must not be renamed, mapped to why, keyed by path.
 
     THE PLAN PASS OWNS A COLLISION (R-172). Two files rendering to one name left
@@ -574,7 +576,7 @@ def _collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
                     f"is renamed"
                 )
             elif _key(str(target)) not in sources and target.exists():
-                found[str(path)], _same = _taken(
+                found[str(path)], same = _taken(
                     path,
                     target,
                     fallback=(
@@ -582,6 +584,11 @@ def _collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
                         f"nothing here is renaming"
                     ),
                 )
+                # THE ISRC ONLY FOR THIS COLLISION (review round one, F3), the
+                # one whose reason names the file on disk, so an item's ISRC
+                # and its reason always describe one collision.
+                if same and seconds is not None:
+                    seconds[str(path)] = same
         if not found:
             return held
         held.update(found)
@@ -638,7 +645,10 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
     decided = [
         (path, filename, _is_referenced(path, referenced)) for path, filename in candidates
     ]
-    collides = _collisions([(path, filename) for path, filename, ref in decided if not ref])
+    seconds: dict[str, str] = {}
+    collides = _collisions(
+        [(path, filename) for path, filename, ref in decided if not ref], seconds
+    )
     items: list[dict[str, str]] = []
     held = 0
     unnamed: list[dict[str, str]] = []
@@ -664,13 +674,10 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
                 "path": str(path),
                 "why": collides[str(path)],
             }
-            # THE ISRC ON THE ITEM (U212), read again here rather than threaded
-            # out of the fixpoint, for the one collision that names a file on
-            # disk: a target another mover renders to is no second copy.
-            target = path.with_name(filename)
-            same = second_copy(path, target) if target.exists() else ""
-            if same:
-                item["isrc"] = same
+            # THE ISRC ON THE ITEM (U212), for the one collision that names a
+            # file on disk, as the fixpoint read it.
+            if str(path) in seconds:
+                item["isrc"] = seconds[str(path)]
             items.append(item)
         else:
             items.append(

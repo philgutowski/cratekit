@@ -754,12 +754,15 @@ class _Staged:
     """What the staging folder holds of the rows asked (U212).
 
     ``found`` pairs each staged row's position with the file that carries it,
-    and ``unread`` says why the folder could not be read, empty when it was.
+    ``unread`` says why the folder could not be read, empty when it was, and
+    ``unasked`` says why nothing was compared with it, empty when something was
+    (review round one, F2), so the row never reads as a look it did not take.
     """
 
     folder: Path
     found: tuple[tuple[int, Path], ...] = ()
     unread: str = ""
+    unasked: str = ""
 
 
 def _own_rows(out: Path, name: str) -> tuple[frozenset[str], frozenset[str]]:
@@ -798,15 +801,27 @@ def _staged(wanted: list[match.Wanted], *, out: Path, name: str) -> _Staged:
     asked = [(n, match.isrc_token(one.isrc)) for n, one in enumerate(wanted)]
     asked = [(n, token) for n, token in asked if token]
     if not asked:
-        return _Staged(folder)
+        return _Staged(
+            folder,
+            unasked="no missing track carries an ISRC, so none was compared with the "
+            "download staging folder",
+        )
     try:
         if not folder.exists():
-            return _Staged(folder)
+            return _Staged(
+                folder,
+                unasked=f"the download staging folder {folder} is not there, so "
+                f"nothing is staged",
+            )
         files = landing.listing(folder)
     except OSError as exc:
         return _Staged(folder, unread=str(exc.strerror or exc))
     if not files:
-        return _Staged(folder)
+        return _Staged(
+            folder,
+            unasked=f"the download staging folder {folder} holds no file a landing "
+            f"would take, so nothing is staged",
+        )
     ids, isrcs = _own_rows(out, name)
     index = match.index_paths(files, template=match_cli.library_template(cfg))
     found: list[tuple[int, Path]] = []
@@ -1118,9 +1133,11 @@ def _staged_check(
             f"lands them: "
             + "; ".join(f"{one.artist} - {one.title} as {path.name}" for one, path in rows),
         )
-    return _check(
-        "staged", "info", "no missing track is staged already in the download staging folder"
-    )
+    if staged is None:
+        return _check("staged", "info", "no track is missing, so none was asked whether it is staged")
+    if staged.unasked:
+        return _check("staged", "info", staged.unasked)
+    return _check("staged", "info", f"no missing track is staged already in {staged.folder}")
 
 
 def provider_ref(wanted: match.Wanted) -> str:

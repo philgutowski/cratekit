@@ -101,7 +101,7 @@ def test_a_staged_file_carrying_another_isrc_changes_nothing(cfg, library, tmp_p
     assert listed_ids(summary) == ["204", "205"]
     assert (summary["staged"], summary["staged_tracks"]) == (0, [])
     assert check(envelope, "staged")["detail"] == (
-        "no missing track is staged already in the download staging folder"
+        f"no missing track is staged already in {staging(library)}"
     )
 
 
@@ -136,6 +136,11 @@ def test_a_track_with_no_isrc_is_never_matched_to_a_staged_file_with_none(
     assert code == int(ExitCode.OK), envelope
     assert listed_ids(envelope["data"]["summary"]) == ["205"]
     assert envelope["data"]["summary"]["staged"] == 0
+    # REVIEW ROUND ONE, F2: the folder was not compared, and the row says so.
+    assert check(envelope, "staged")["detail"] == (
+        "no missing track carries an ISRC, so none was compared with the download "
+        "staging folder"
+    )
 
 
 def test_every_missing_track_staged_is_something_to_land_not_a_no_op(
@@ -168,6 +173,13 @@ def test_a_track_this_lists_own_earlier_copy_names_stays_listed_once_staged(
     job_id = finished(monkeypatch, rows())
     code, first = missing(job_id)
     assert code == int(ExitCode.OK), first
+    # REVIEW ROUND ONE, F4: no staging folder yet is nothing staged, said.
+    assert check(first, "staged") == {
+        **check(first, "staged"),
+        "status": "info",
+        "detail": f"the download staging folder {staging(library)} is not there, so "
+        f"nothing is staged",
+    }
     path = Path(first["data"]["summary"]["list"])
     before = path.read_bytes()
     staged(tmp_path, library, "204.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
@@ -210,3 +222,45 @@ def test_a_staged_file_counts_under_its_provider_name_or_its_given_name(
     _code, envelope = missing(job_id)
 
     assert envelope["data"]["summary"]["staged"] == 1
+
+
+def _wanted(ref: str, isrc: str):
+    from cratekit.acquire import match
+
+    return match.read_row(
+        {"id": ref, "artist": "Lumen Drift", "title": "Salt Road", "isrc": isrc},
+        origin=match.TIDAL,
+        position=1,
+    )
+
+
+def _earlier(out: Path, name: str, track: dict) -> None:
+    out.mkdir(parents=True, exist_ok=True)
+    body = {"list": 1, "origin": "tidal", "tracks": [track]}
+    (out / f"{name}.list.json").write_text(json.dumps(body), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("earlier", "kept"),
+    [
+        ({"id": "204", "artist": "a", "title": "t"}, True),
+        ({"id": "999", "artist": "a", "title": "t", "isrc": SALT}, True),
+        ({"id": "999", "artist": "a", "title": "t"}, False),
+    ],
+    ids=["by-provider-id", "by-isrc", "neither"],
+)
+def test_each_half_of_the_own_rows_rule_keeps_a_row_alone(
+    cfg, library, tmp_path, earlier, kept
+):
+    """Review round one, F5: the earlier copy claims a row by its provider id,
+    or by its ISRC when the ids differ (a set row named by ISRC), and a copy
+    naming neither claims nothing."""
+    from cratekit.intake import missing_cli
+
+    staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
+    out = lists_dir(library)
+    _earlier(out, "own", earlier)
+
+    found = missing_cli._staged([_wanted("204", SALT)], out=out, name="own")
+
+    assert (found.found == ()) is kept, found

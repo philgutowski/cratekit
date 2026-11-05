@@ -15,6 +15,7 @@ missing list and the download are real; the tail and the landing stand in.
 # ruff: noqa: F811, the fixtures below are imported from the sync land suite by name
 from __future__ import annotations
 
+import dataclasses
 import json
 from pathlib import Path
 
@@ -242,3 +243,76 @@ def test_a_download_that_lands_nothing_still_lands_what_is_staged(machine, monke
     )
     assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings + 1
     assert summary["stopped_at"] == sync_land.LAND_GATE
+
+
+def _download_job(cfg, list_name: str, isrc: str, *, finish: bool) -> str:
+    """A download job over ``<list_name>.list.json`` freezing one track of ``isrc``."""
+    from cratekit.acquire import cli as acquire_cli
+    from cratekit.cli import registry
+    from cratekit.core import jobs
+
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=registry.entry(tail_chain.DOWNLOAD_VERB).handler_key,
+            payload={
+                acquire_cli.LIST: f"/lists/{list_name}.list.json",
+                acquire_cli.TRACKS: {"7": {"artist": "a", "title": "t", "isrc": isrc}},
+            },
+            cfg=cfg,
+            item_ids=("7",),
+        )
+
+        def work(_job, _item):
+            if not finish:
+                raise RuntimeError("never acquired")
+
+        try:
+            jobs.drive(store, job.job_id, work)
+        except Exception:  # noqa: BLE001 - the queue records the failed item
+            pass
+    return job.job_id
+
+
+def test_the_passes_named_are_this_librarys_finished_downloads_earliest_first(machine):
+    """Review round one, F7: the order, the finished item and the library are
+    each read, and a job that froze the track and never acquired it, or one
+    another library queued, is never named as its source."""
+    from tests.test_sync_land import dataclasses_replace_library
+
+    cfg, _script = machine
+    earliest = _download_job(cfg, "pass-a", ISRC["101"], finish=True)
+    _download_job(cfg, "pass-unfinished", ISRC["101"], finish=False)
+    _download_job(dataclasses_replace_library(cfg), "pass-elsewhere", ISRC["101"], finish=True)
+    _download_job(cfg, "pass-other-recording", ISRC["102"], finish=True)
+    latest = _download_job(cfg, "pass-b", ISRC["101"], finish=True)
+
+    said = tail_chain._downloaded_by(ISRC["101"], "101.wav", cfg)
+
+    assert said == (
+        f"ISRC {ISRC['101']}, carried by 101.wav and by the file whose name it would "
+        f"take, was downloaded by: pass-a (job {earliest}), pass-b (job {latest}); keep "
+        f"one copy, move the other out of the folder, and continue the pass"
+    )
+
+
+def test_a_stop_that_is_not_rename_incomplete_or_cannot_read_the_queue_is_unchanged(
+    machine, monkeypatch
+):
+    """Review round one, F7: only the naming verb's own answer is read, and a
+    queue that cannot be read leaves its refusal as it was."""
+    from cratekit.core import jobs
+    from cratekit.core.cause import CratekitError
+
+    cfg, _script = machine
+    _download_job(cfg, "pass-a", ISRC["101"], finish=True)
+    other = dataclasses.replace(_rename_incomplete(ISRC["101"]), reason="internal-error")
+    stop = tail_chain.Stop.of(sync_land.NAME, other)
+    assert tail_chain.second_copies(stop, cfg) is stop
+
+    def unreadable():
+        raise CratekitError(_rename_incomplete(ISRC["101"]))
+
+    monkeypatch.setattr(jobs, "open_store", unreadable)
+    held = tail_chain.Stop.of(sync_land.NAME, _rename_incomplete(ISRC["101"]))
+    assert tail_chain.second_copies(held, cfg) is held
