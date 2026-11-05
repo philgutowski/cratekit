@@ -1068,6 +1068,18 @@ def _nothing_check(entry: labels.LabelEntry, listed: _Listed) -> dict[str, Any]:
     return _check(f"label.{entry.label_id}", "ok", detail)
 
 
+def _listing_checks(entry: labels.LabelEntry, listed: _Listed) -> list[dict[str, Any]]:
+    """Where the label's listing came from, kept or asked and why (U217), or nothing.
+
+    Said only for a listing this run made: a saved question printed again
+    made none, and a catalogue that keeps no listing has nothing to say.
+    """
+    kept = listed.listing.kept if listed.listing is not None else None
+    if kept is None:
+        return []
+    return [_check(f"listing.{entry.label_id}", "info", f"{entry.name}: {kept.said()}")]
+
+
 def _skipped_check(entry: labels.LabelEntry, why: str) -> dict[str, Any]:
     return _check(f"label.{entry.label_id}", "fail", f"{entry.name}: not asked; {why}")
 
@@ -1155,16 +1167,19 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
                 listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))
                 if listed.skipped is not None:
                     checks.append(_skipped_check(entry, listed.skipped))
+                    checks.extend(_listing_checks(entry, listed))
                     seen.append({"label_id": entry.label_id, "state": "skipped"})
                     continue
                 if listed.question is None:
                     checks.append(_nothing_check(entry, listed))
+                    checks.extend(_listing_checks(entry, listed))
                     withheld += listed.withheld
                     nothing.append(entry.name)
                     seen.append({"label_id": entry.label_id, "state": "nothing-new"})
                     continue
                 question = listed.question
                 _save_pending(cfg, question)
+                checks.extend(_listing_checks(entry, listed))
             seen.append({"label_id": entry.label_id, "state": "asked"})
             checks.extend(
                 _question_checks(
@@ -1328,7 +1343,9 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
 
     EVERY LABEL IS LISTED AFRESH, a saved question included, since the walk
     is the one path that can wait for a person, and what it asks should be
-    what the catalogue holds now. A run that stops, by ``quit`` or by a
+    what the catalogue holds now. Afresh means through the roster, which
+    answers from the label's kept listing inside its life (U217), and the
+    label's listing line says how old that is. A run that stops, by ``quit`` or by a
     prompt nobody can answer, has saved every answer given before it, so the
     next run asks about the first label still unanswered.
     """
@@ -1345,13 +1362,16 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
             listed = _question_for(tools, store, entry, asked_releases(document, entry.label_id))
             if listed.skipped is not None:
                 checks.append(_skipped_check(entry, listed.skipped))
+                checks.extend(_listing_checks(entry, listed))
                 seen.append({"label_id": entry.label_id, "state": "skipped"})
                 continue
             if listed.question is None:
                 checks.append(_nothing_check(entry, listed))
+                checks.extend(_listing_checks(entry, listed))
                 withheld += listed.withheld
                 seen.append({"label_id": entry.label_id, "state": "nothing-new"})
                 continue
+            checks.extend(_listing_checks(entry, listed))
             _save_pending(cfg, listed.question)
             try:
                 answer, picks = _ask(prompter, listed.question)

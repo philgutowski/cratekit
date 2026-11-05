@@ -1,0 +1,263 @@
+name = "r1255"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_scan_unlisted_as_empty"
+description = "scan_log: answer a log it is refused as no record and none unread, the defect itself"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_intake_shelve.py", "tests/test_tree_registry.py", "tests/test_doctor.py", "tests/test_restore.py", "tests/test_write_session.py"]
+old = '''        logger.debug("session log %s could not be listed: %s", directory, exc)
+        return (), (directory,)'''
+new = '''        logger.debug("session log %s could not be listed: %s", directory, exc)
+        return (), ()'''
+
+[[rows]]
+id = "S2_absent_log_unread"
+description = "_listed: read a log that is not there as refused, so a library with no session refuses every write"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_intake_shelve.py", "tests/test_tree_registry.py", "tests/test_doctor.py", "tests/test_restore.py", "tests/test_write_session.py"]
+old = '''        return os.listdir(directory)
+    except FileNotFoundError:
+        return None'''
+new = '''        return os.listdir(directory)
+    except FileNotFoundError:
+        raise'''
+
+[[rows]]
+id = "S3_log_file_absent"
+description = "_listed: read a log path that is itself a file as not there, so it is no record"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_doctor.py"]
+old = '''        if os.path.lexists(directory):
+            raise
+        return None'''
+new = '''        return None'''
+
+[[rows]]
+id = "S4_under_a_file_unread"
+description = "_listed: read a log under a file as there and refused, rather than not there"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_doctor.py"]
+old = '''        if os.path.lexists(directory):
+            raise
+        return None'''
+new = '''        raise'''
+
+[[rows]]
+id = "S5_json_filter"
+description = "scan_log: read every name in the log as a record, so a stray file reads as an unreadable record"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_intake_shelve.py", "tests/test_tree_registry.py", "tests/test_doctor.py", "tests/test_restore.py", "tests/test_write_session.py"]
+old = '''    entries = sorted(directory / name for name in names if fnmatch.fnmatchcase(name, "*.json"))'''
+new = '''    entries = sorted(directory / name for name in names)'''
+
+[[rows]]
+id = "S6_records_refuses_unlisted"
+description = "records: answer an unlisted log as no session again, so restore list, restore run and session release read it as empty"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_session_cli.py", "tests/test_restore.py", "tests/test_doctor.py"]
+old = '''    if log_unlisted(unreadable, cfg):
+        raise refuse('''
+new = '''    if False:
+        raise refuse('''
+
+[[rows]]
+id = "S7_log_unlisted_predicate"
+description = "log_unlisted: never name the unread half as the log, so every refusal counts it as one entry"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_intake_shelve.py", "tests/test_tree_registry.py"]
+old = '''    return log_dir(cfg) in unreadable'''
+new = '''    return False'''
+
+[[rows]]
+id = "S8_clause_listing_wording"
+description = "unread_clause: word an unlisted log as the count of entries, so a gate sends a person to a damaged file"
+file = "src/cratekit/core/session.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_intake_shelve.py", "tests/test_tree_registry.py"]
+old = '''        return "the session log exists and cannot be listed by this account"'''
+new = '''        return "the session log holds 1 entry this build cannot read"'''
+
+[[rows]]
+id = "S9_gate_unlisted_detail"
+description = "assert_no_unresolved_session: drop the unlisted flag from the refusal's detail"
+file = "src/cratekit/core/session.py"
+surface = "maintainer"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_restore.py", "tests/test_write_session.py"]
+old = '''                "unreadable": [str(path) for path in unreadable],
+                "unlisted": log_unlisted(unreadable, cfg),
+            },
+        )
+
+
+def resolve_unverified_session('''
+new = '''                "unreadable": [str(path) for path in unreadable],
+            },
+        )
+
+
+def resolve_unverified_session('''
+
+[[rows]]
+id = "B1_batch_name_clause"
+description = "batch_name._records: word the refusal with the old count, not the clause"
+file = "src/cratekit/intake/batch_name.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_intake_shelve.py", "tests/test_inbox_rotate.py"]
+old = '''            f"{session.unread_clause(unreadable, cfg)}, so no batch name can be called "'''
+new = '''            f"the session log holds {len(unreadable)} entries this build cannot read, so no batch name can be called "'''
+
+[[rows]]
+id = "T1_tree_registry_clause"
+description = "tree_registry._whole_log: word the refusal with the old count, not the clause"
+file = "src/cratekit/core/tree_registry.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_tree_registry.py", "tests/test_cutover_precheck.py"]
+old = '''            f"{session.unread_clause(unreadable, cfg)}, so {so}; refusing rather than "'''
+new = '''            f"the session log holds {len(unreadable)} entries this build cannot read, so {so}; refusing rather than "'''
+
+[[rows]]
+id = "R1_rotation_unlisted_from_scan"
+description = "landings: never read the listing off the scan, so the classifier's reason counts one record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '''    unlisted = session.log_unlisted(unreadable, cfg)'''
+new = '''    unlisted = False'''
+
+[[rows]]
+id = "R2_plan_carries_unlisted"
+description = "plan_rotation: leave the plan's log_unlisted at its default, so the warning counts a record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '''        log_unlisted=found.unlisted,'''
+new = '''        log_unlisted=False,'''
+
+[[rows]]
+id = "R3_rotation_warning_gate"
+description = "records_warnings: never warn, so the rotation ages a batch from its playlist's date unsaid"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '''    if not plan.unreadable_records:
+        return []
+    unread = ('''
+new = '''    if True:
+        return []
+    unread = ('''
+
+[[rows]]
+id = "R4_rotation_warning_wording"
+description = "records_warnings: word an unlisted log as a count of records"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '''        if plan.log_unlisted
+        else f"{plan.unreadable_records} session record(s) could not be read, so a "'''
+new = '''        if False
+        else f"{plan.unreadable_records} session record(s) could not be read, so a "'''
+
+[[rows]]
+id = "R5_organize_rotation_warns"
+description = "organize _rotation: drop the shared warning, so crate organize ages a batch unsaid"
+file = "src/cratekit/organize/rekordbox.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py"]
+old = '''    step.warnings.extend(rotate_cli.records_warnings(plan))'''
+new = '''    pass'''
+
+[[rows]]
+id = "F1_refill_plan_unlisted"
+description = "plan_refill: leave the plan's log_unlisted at its default, so the warning counts a record"
+file = "src/cratekit/intake/refill.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_refill.py"]
+old = '''        log_unlisted=session.log_unlisted(unreadable, cfg),'''
+new = '''        log_unlisted=False,'''
+
+[[rows]]
+id = "F2_refill_warning_wording"
+description = "warnings_of: word an unlisted log as a count of records"
+file = "src/cratekit/intake/refill_cli.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_inbox_refill.py"]
+old = '''                        if plan.log_unlisted'''
+new = '''                        if False'''
+
+[[rows]]
+id = "C1_check_landed_unlisted"
+description = "_landed: never stop on the listing, so the pass lookup refuses in words of its own"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_analyze_check.py"]
+old = '''    if session.log_unlisted(unreadable, cfg):
+        # NO LANDING CAN BE READ'''
+new = '''    if False:
+        # NO LANDING CAN BE READ'''
+
+[[rows]]
+id = "D1_doctor_branches_on_the_scan"
+description = "doctor _check_unresolved_session: never branch on the listing, so the log directory is named as an unreadable record"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_session_log_unlisted.py"]
+old = '''    if session.log_unlisted(unreadable, inputs.cfg):
+        unreadable_directory = session.log_dir(inputs.cfg)'''
+new = '''    if False:
+        unreadable_directory = session.log_dir(inputs.cfg)'''
+
+[[rows]]
+id = "D2_status_names_the_log"
+description = "status _source_findings: never name an unlisted log, so a refused source reads as none in flight"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if session.log_unlisted(unreadable, cfg):
+        # A LOG NOBODY COULD LIST IS SAID'''
+new = '''    if False:
+        # A LOG NOBODY COULD LIST IS SAID'''
+
+[[rows]]
+id = "D3_status_guard_precise"
+description = "status _source_findings: name any unread entry as an unlisted log, so one damaged record hides every source"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if session.log_unlisted(unreadable, cfg):
+        # A LOG NOBODY COULD LIST IS SAID'''
+new = '''    if unreadable:
+        # A LOG NOBODY COULD LIST IS SAID'''
+
+[[rows]]
+id = "N1_landings_of_pass_refuses"
+description = "native.landings_of_pass: drop the unread half again, so sync mark says a recorded landing never committed"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_sync_mark.py"]
+old = '''    land the pass again.
+    """
+    records = session.records(cfg)'''
+new = '''    land the pass again.
+    """
+    records = session.scan_log(cfg)[0]'''
+
+[[rows]]
+id = "N2_landed_passes_refuses"
+description = "native.landed_passes: drop the unread half again, so organize plans no native pass over a log it could not list"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_session_log_unlisted.py", "tests/test_sync_mark.py"]
+old = '''    cannot list refuses rather than reading as no landing (R-1255).
+    """
+    records = session.records(cfg)'''
+new = '''    cannot list refuses rather than reading as no landing (R-1255).
+    """
+    records = session.scan_log(cfg)[0]'''

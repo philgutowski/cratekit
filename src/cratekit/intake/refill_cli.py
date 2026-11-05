@@ -168,9 +168,13 @@ def warnings_of(plan: refill.RefillPlan) -> list[dict[str, str]]:
             {
                 "code": RECORDS_UNREADABLE,
                 "message": (
-                    f"{plan.unreadable} session record(s) could not be read, so no "
-                    f"account playlist without a readable landing record was found by "
-                    f"its name"
+                    (
+                        "the session log could not be listed"
+                        if plan.log_unlisted
+                        else f"{plan.unreadable} session record(s) could not be read"
+                    )
+                    + ", so no account playlist without a readable landing record was "
+                    "found by its name"
                 ),
             }
         )

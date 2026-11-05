@@ -102,6 +102,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'label-intent-unusable',
     'label-list-unusable',
     'label-name-invalid',
+    # 2026-11-05, U217: the kept label listing a roster cannot read.
+    'label-listing-kept-unusable',
     'label-new-playlists-no-folder',
     'label-playlist-unreadable',
     'label-playlists-ambiguous',
@@ -796,6 +798,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-heard-not-product-made',
         'label-intent-unusable',
         'label-list-unusable',
+        'label-listing-kept-unusable',  # 2026-11-05, U217.
         'label-name-invalid',
         'label-new-playlists-no-folder',
         'label-playlist-unreadable',
@@ -1576,6 +1579,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unavailable-transient',
     ],
     # 2026-11-01, R-1091: the kept release reads and their refusal.
+    'label/kept_listing.py': ['label-listing-kept-unusable', 'utf-8'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable', 'utf-8'],
     'label/mark_cli.py': [
         'internal-error',
@@ -1808,10 +1812,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'skills/cli.py': ['path-permission-denied'],
     'sync/artifacts.py': ['sync-artifacts-unusable', 'utf-8'],
+    # 2026-11-05, R-1289: the sweep's warning naming each unread track.
     'sync/cli.py': [
         'config-unusable',
         'not-built',
         'nothing-new',
+        'sync-playlists-unread',
         'sync-playlists-unreadable',
         'sync-playlists-withheld',
         'sync-source-not-queued',
@@ -1840,7 +1846,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # folder side, the side a made rekordbox playlist's home is named on,
     # and the warning a run planned again carries. 2026-11-05, U210: a
     # continued run's warning, its steps unread, and the refusal a step it
-    # could not record stops the write with.
+    # could not record stops the write with. 2026-11-05, R-1264: the warning
+    # naming account tracks listed with no title or no artist.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
@@ -1867,6 +1874,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
+        'sync-pair-unread',
         'sync-pair-withheld',
         'sync-pair-written',
     ],
@@ -2255,6 +2263,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
     # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
@@ -2446,6 +2455,7 @@ PINNED_NAMED_WITH_OWN = {
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
     # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
@@ -2514,6 +2524,7 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
     'core/review.py',
     'core/session.py',
     'deletion/candidates.py',
+    'label/kept_listing.py',  # 2026-11-05, U217.
     'label/kept_reads.py',  # 2026-11-01, R-1091: its version and flush count.
     'modules/tools/mastering.py',
     'tagging/searchers.py',
@@ -2981,6 +2992,7 @@ PINNED_LITERAL_HOLDERS = {
         'unavailable-transient',
     ],
     # 2026-11-01, R-1091: the kept reads' refusal.
+    'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'label/marks.py': ['label-watermark-unusable'],
@@ -3228,6 +3240,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'intake/imported_cli.py',
     'intake/land_cli.py',  # 2026-10-31, U162: the rehearsal's counts joined.
     'label/catalogue.py',
+    'label/kept_listing.py',  # 2026-11-05, U217.
     'label/kept_reads.py',  # 2026-11-01, R-1091.
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',

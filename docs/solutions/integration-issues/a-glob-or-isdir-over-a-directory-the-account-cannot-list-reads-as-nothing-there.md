@@ -43,11 +43,24 @@ same as a folder that is not there. Absence was read as evidence of absence.
 stats the folder and answers None, not False, on any refusal other than not
 found. The reason then says which read was refused and that it may hold what
 would recognise the playlist. `scan_log`'s own empty answer for its other
-consumers is a residual filed by U214.
+consumers was a residual filed by U214, R-1255, closed by its own card:
+`scan_log` now asks `os.listdir` once (`session._listed`) and returns a log
+that is there and refused as the one entry of its unread half, so every gate
+refuses on it. A consumer that drops that half by its own policy drops the log
+with it, so the case is said where it is read: `session.records`, the
+reporting reader, refuses an unlisted log for every caller (restore list and
+run, session release, the native landing lookups behind sync mark), and
+`session.log_unlisted` names it for a consumer that words it instead (the
+rotation, the refill, the check's refusal, and doctor and status, which branch
+on their one scan). Grep the scan's callers for one that keeps only the parsed
+half before trusting an empty answer.
 
 ## How to test it here
 
 The cloud container runs as root, which no file mode bars, so a chmod proves
 nothing there. Refuse the one OS call for the one path in the test
 (`tests/test_inbox_unmirrored.py`, `_refuse_under`), and keep a readable case
-beside it so the plain wording is still pinned.
+beside it so the plain wording is still pinned. Refuse every call that lists:
+a glob lists through `os.scandir` and the scan through `os.listdir`, so a test
+that refuses only one of them proves nothing about the other
+(`tests/test_session_log_unlisted.py`, `_refuse_listing`).

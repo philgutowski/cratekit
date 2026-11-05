@@ -53,10 +53,12 @@ def remote(index: str) -> str:
 class Listed:
     """A provider track in the shape the playlist reader reads."""
 
-    def __init__(self, track_id: str, code: str, name: str | None = None) -> None:
+    def __init__(
+        self, track_id: str, code: str, name: str | None = None, artist: str | None = None
+    ) -> None:
         self.id = track_id
         self.name = f"Title {track_id}" if name is None else name
-        self.artist = {"name": f"Artist {track_id}"}
+        self.artist = {"name": f"Artist {track_id}" if artist is None else artist}
         self.isrc = code
 
 
@@ -81,7 +83,12 @@ class LivePlaylist:
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists[self.playlist_id]
         return [
-            Listed(one, self.world.codes.get(one, ""), self.world.names.get(one))
+            Listed(
+                one,
+                self.world.codes.get(one, ""),
+                self.world.names.get(one),
+                self.world.artists.get(one),
+            )
             for one in members[offset : offset + size]
         ]
 
@@ -100,6 +107,8 @@ class World:
         self.short: set[str] = set()
         #: A title the account lists a track under, by id, in place of ``Title <id>``.
         self.names: dict[str, str] = {}
+        #: An artist the account lists a track under, by id, in place of ``Artist <id>``.
+        self.artists: dict[str, str] = {}
         #: What listing a playlist raises, by id, for one the provider cannot list.
         self.broken: dict[str, Exception] = {}
         self.catalogue = FakeCatalogue(playlists={}, account=[])
@@ -176,6 +185,16 @@ class World:
             )
             handle.session.commit()
             return str(made.ID)
+        finally:
+            rb_writer.close_db(handle)
+
+    def rekordbox_add(self, playlist_id: str, *content_ids: str) -> None:
+        handle = self.open()
+        try:
+            row = handle.get_playlist(ID=playlist_id)
+            for content_id in content_ids:
+                handle.add_to_playlist(row, content_id)
+            handle.session.commit()
         finally:
             rb_writer.close_db(handle)
 

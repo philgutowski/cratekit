@@ -5,11 +5,11 @@ mirror reads each mirrored playlist three ways and
 :mod:`cratekit.modules.outbound.mirror_edits` decides what a person changed on
 the account. A track added there that the library owns no row for, and that
 no snapshot ever held, is held on the account with ``acquire`` set. This step
-queues each one for download, AS ``sync pair`` QUEUES ONE: frozen through
-``intake_cli.list_playlist_declared``, the reading a playlist job is queued
-from, and queued with ``intake_cli.queue_playlist`` under the ``intake
-playlist`` job, one job per account playlist, carrying this step's own source
-identifier.
+queues each one for download, AS ``sync pair`` QUEUES ONE: read row by row
+through ``intake_cli.list_playlist_readable`` (R-1289), whose tracks are what
+a playlist job is queued from, and queued with ``intake_cli.queue_playlist``
+under the ``intake playlist`` job, one job per account playlist, carrying this
+step's own source identifier.
 
 ONCE. A track any mirror job still holds, open, done or landed, is named as
 awaiting its landing and never queued again; only a job that failed or was
@@ -26,7 +26,9 @@ froze for it.
 
 A PLAYLIST THE PROVIDER WILL NOT LIST, or that lists short of the track, queues
 nothing for it and says why, since a track the reading cannot freeze is a
-track the job cannot be asked about; every other playlist is planned.
+track the job cannot be asked about; every other playlist is planned. A track
+the account lists with no title or no artist is named the same way, and the
+playlist's other tracks are planned (R-1289).
 
 ANOTHER RELEASE OF A RECORDING THE LIBRARY HOLDS IS NEVER QUEUED. A track the
 account matched no library row to may still carry the ISRC of a row the
@@ -207,9 +209,10 @@ def plan(
 ) -> Planned:
     """Every wanted track as it would be queued. Reads the queue, the provider and the library.
 
-    ``listed`` lists one account playlist frozen as a playlist job is queued,
-    ``(tracks, shortfall)``, the catalogue's by default; a playlist it cannot
-    list is named and the rest are planned. ``owned`` answers each ISRC the
+    ``listed`` reads one account playlist row by row, an
+    ``intake_cli.Readable``, the catalogue's by default; a playlist it cannot
+    list is named and the rest are planned, and a track it set aside is named
+    and the playlist's others are planned (R-1289). ``owned`` answers each ISRC the
     library already holds with its rows, the database's and the mirror's
     matches by default. Raises the queue's refusal.
     """
@@ -261,7 +264,7 @@ def plan(
     queue: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}
     for pid, (title, tracks) in sorted(grouped.items()):
         try:
-            frozen, _short = listed(pid)
+            listing = listed(pid)
         except CratekitError as exc:
             named.extend(
                 {
@@ -273,10 +276,25 @@ def plan(
                 for track in sorted(set(tracks))
             )
             continue
+        frozen, unread = listing.tracks, listing.unread
         took: dict[str, dict[str, Any]] = {}
         for track in sorted(set(tracks)):
             rows = owned(frozen[track].get("isrc")) if track in frozen else ()
-            if rows:
+            if track in unread:
+                # R-1289: the reader set this one track aside, and the playlist's
+                # other tracks are planned as they always were.
+                named.append(
+                    {
+                        "track": track,
+                        "playlist": title,
+                        "outcome": "not queued",
+                        "why": (
+                            f"added on the account, but {unread[track].why}, so the "
+                            f"download has nothing to ask the provider about"
+                        ),
+                    }
+                )
+            elif rows:
                 # ANOTHER RELEASE OF A RECORDING THE LIBRARY HOLDS: nothing is
                 # downloaded, and no landing is awaited that nothing will make.
                 named.append(
@@ -343,16 +361,21 @@ def _owned(cfg: config.Config, reading: Any) -> Any:
 
 
 def _catalogue_listing(cfg: config.Config) -> Any:
-    """One account playlist frozen as ``sync pair`` freezes it, the catalogue resolved once."""
+    """One account playlist read row by row as ``sync pair`` reads it, the catalogue resolved once.
+
+    Through ``intake_cli.list_playlist_readable`` (R-1289), so one track the
+    account lists with no title or no artist is set aside and named, never a
+    refusal that names every track the playlist was asked for.
+    """
     from cratekit.intake import cli as intake_cli
     from cratekit.label import catalogue
 
     found: list[Any] = []
 
-    def listed(playlist_id: str) -> tuple[dict[str, dict[str, Any]], Any]:
+    def listed(playlist_id: str) -> Any:
         if not found:
             found.append(catalogue.resolve(cfg))
-        return intake_cli.list_playlist_declared(found[0], playlist_id)
+        return intake_cli.list_playlist_readable(found[0], playlist_id)
 
     return listed
 
