@@ -1722,7 +1722,7 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
         )
 
     root = reader.root_folders
-    held = set(document.pairs)
+    paired_ids = set(document.pairs)
     released = document.released.account
     favorites = placement.source_name(active_taxonomy.load(cfg))
     wanted: list[tuple[str, str, str, Any]] = []
@@ -1742,9 +1742,12 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
             if unrecorded
             else None
         )
-        paired_titles = [title for account_id, title in inside.items() if account_id in held]
+        paired_titles = [
+            title for account_id, title in inside.items() if account_id in paired_ids
+        ]
+        fresh: list[tuple[str, str]] = []
         for account_id, title in sorted(inside.items(), key=lambda one: (one[1], one[0])):
-            if account_id in held:
+            if account_id in paired_ids:
                 continue
             if account_id in released:
                 left(
@@ -1774,17 +1777,26 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
             if before:
                 left(account_id, title, folder, pair_discover.BEFORE, before)
                 continue
-            # AND A DOWNLOADED COPY of a playlist a pair in this folder holds is
+            fresh.append((account_id, title))
+        for account_id, title in fresh:
+            # AND A DOWNLOADED COPY of a playlist a pair in this folder holds, or
+            # of one this sync brings in beside it (U216, from the review), is
             # that playlist again, so making it would put it in rekordbox twice.
-            copied = pair_discover.downloaded_copy(folder, title, paired_titles)
+            beside = [other for other_id, other in fresh if other_id != account_id]
+            copied = pair_discover.downloaded_copy(folder, title, [*paired_titles, *beside])
             if copied:
+                whose = (
+                    "a pair in the same folder already holds"
+                    if copied in paired_titles
+                    else "this sync brings in from the same folder"
+                )
                 left(
                     account_id,
                     title,
                     folder,
                     pair_discover.COPY,
-                    f"it is a DOWNLOADED copy of {copied!r}, which a pair in the same folder "
-                    f"already holds, so it is not made in rekordbox; {pair_discover.BY_HAND}",
+                    f"it is a DOWNLOADED copy of {copied!r}, which {whose}, so it is not "
+                    f"made in rekordbox; {pair_discover.BY_HAND}",
                 )
                 continue
             try:

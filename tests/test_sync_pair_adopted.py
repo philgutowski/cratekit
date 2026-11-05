@@ -160,6 +160,51 @@ def test_a_downloaded_playlist_no_pair_names_still_comes_in(world, trivia):
     assert world.held(in_rekordbox(world, rekordbox)["DOWNLOADED Disco"]) == ["5"]
 
 
+def test_a_playlist_and_its_downloaded_copy_made_in_one_sync_bring_in_the_one(world, trivia):
+    """From the review: the copy check also reads what this sync brings in beside it."""
+    rekordbox, _copies = trivia
+    plain = on_account(world, f"{FOLDER} Disco", FOLDER, "t5")
+    copy = on_account(world, "DOWNLOADED Disco", FOLDER, "t5")
+    plan = plan_only()
+    (made,) = _items(plan, "rekordbox", "create")
+    assert made["account_id"] == plain
+    (named,) = _items(plan, "account-discovery", pair_discover.COPY)
+    assert named["account_id"] == copy
+    assert "this sync brings in" in named["why"]
+    assert sync()[0] == int(ExitCode.OK)
+    assert set(in_rekordbox(world, rekordbox)) == {"Techno", "House", "Disco"}
+
+
+def test_a_downloaded_copy_of_a_playlist_no_pair_holds_comes_in(world, cfg, trivia):
+    """Only a paired or a brought playlist is copied: the folder's own old one is neither."""
+    rekordbox, _copies = trivia
+    old = world.account.create_playlist(f"{FOLDER} Disco")
+    folder_id = next(fid for fid, name in world.account.folders().items() if name == FOLDER)
+    world.account.move_to_folder(old, folder_id)
+    path = config.state_path("playlist_pairs", cfg)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    raw["folders"][FOLDER]["held"] = sorted([*raw["folders"][FOLDER]["held"], old])
+    path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    copy = on_account(world, "DOWNLOADED Disco", FOLDER, "t5")
+    plan = plan_only()
+    assert f"{FOLDER} Disco" in left(plan, pair_discover.BEFORE)
+    assert not _items(plan, "account-discovery", pair_discover.COPY)
+    (made,) = _items(plan, "rekordbox", "create")
+    assert made["account_id"] == copy
+    assert sync()[0] == int(ExitCode.OK)
+    assert "DOWNLOADED Disco" in in_rekordbox(world, rekordbox)
+
+
+def test_every_reason_names_the_rekordbox_playlist_to_pair_by_hand(world, trivia):
+    """From the review: the step says the rekordbox side is the person's to make first."""
+    on_account(world, "DOWNLOADED Techno", FOLDER, "t1")
+    plan = plan_only()
+    for kind in (pair_discover.BEFORE, pair_discover.COPY):
+        for item in _items(plan, "account-discovery", kind):
+            assert "--rekordbox PLAYLIST_ID" in item["why"]
+            assert "make or choose its rekordbox playlist" in item["why"]
+
+
 def test_a_downloaded_copy_in_a_created_folder_is_named_a_copy(world):
     gig = world.folder("GIG READY")
     world.playlist("Opener", "1", under=gig)

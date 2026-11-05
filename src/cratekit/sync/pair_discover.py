@@ -526,8 +526,12 @@ def home_of(
 # U216: what an account folder held before a sync, and the DOWNLOADED copies
 # ---------------------------------------------------------------------------
 
-#: The pair it gives a person who wants a playlist left out here synced anyway.
-BY_HAND = "pair it by hand with crate sync pair to sync it"
+#: The step it gives a person who wants a playlist left out here synced anyway:
+#: the rekordbox side is theirs to make or choose first (U216, from the review).
+BY_HAND = (
+    "to sync it anyway, make or choose its rekordbox playlist and pair the two by hand "
+    "with crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID"
+)
 
 
 def adoption_moment(marks: Iterable[str]) -> datetime | None:
