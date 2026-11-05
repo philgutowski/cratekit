@@ -608,3 +608,227 @@ def test_without_a_reading_the_downloads_step_is_listed(acknowledged):
     )
     (step,) = area.steps
     assert step.state == LISTED and step.key == rekordbox.MIRROR_DOWNLOADS
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. Review round one (Fable): driven, then pinned
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _second_month(world) -> str:
+    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
+    try:
+        made = handle.create_playlist("2026-09", parent=handle.get_playlist(ID=world.favorites))
+        handle.session.commit()
+        pid = str(made.ID)
+    finally:
+        rb_writer.close_db(handle)
+    world.run_all()
+    return pid
+
+
+def test_a_track_moved_between_months_leaves_the_old_month(world):
+    """Finding 1: a month move was carried as a second month and listed for ever."""
+    september = _second_month(world)
+    world.take_off(f"Favorites {MONTH}", "r1")
+    world.put_in("Favorites 2026-09", "r1")
+
+    _area, step, _queue = world.run_all()
+
+    (change,) = _items(step)
+    assert change["edit"] == edits.FAVOURITE
+    assert change["joins"] == ["Favorites / 2026-09"]
+    assert change["leaves"] == [f"Favorites / {MONTH}"]
+    assert world.members(september) == {"1"}
+    assert world.members(world.month) == set()
+    assert world.members(world.source) == {"1"}
+    assert world.held(f"Favorites {MONTH}") == []
+    _area, step, queue, shared = world.plan_all()
+    assert step.state == NOTHING and queue.state == NOTHING
+    assert shared.reading().decided.decisions == ()
+
+
+def test_another_release_of_an_owned_recording_is_never_queued_nor_swapped(world):
+    """Finding 2: r9 carries row 1's ISRC; nothing is queued, row 1 keeps its track."""
+    world.codes["r9"] = "ISRC00000001"
+    world.put_in("Tech House Med", "r9")
+
+    for _ in range(2):
+        _area, _step, queue = world.run_all()
+        assert queue.state == NOTHING
+        (named,) = queue.items
+        assert named["outcome"] == "not queued" and "already holds its recording" in named["why"]
+    assert _queued(world.cfg) == []
+    assert ledger.mirror_links(world.cfg)["1"][0] == "r1"
+    assert world.held("Deep House Low") == ["r1"]
+    assert world.held(SOURCE) == ["r1"]
+    assert world.held("Tech House Med") == ["r9"]
+
+
+def test_a_recording_the_library_holds_in_no_playlist_is_never_queued(world):
+    """Finding 3: a row in no mirrored playlist is found by the database's code."""
+    conn = sqlite3.connect(world.db)
+    try:
+        conn.execute(
+            f"INSERT INTO djmdContent (ID, Title, {rb_writer.ISRC_COLUMN}, rb_local_deleted) "
+            f"VALUES ('4', 'Track 4', 'ISRC00000004', 0)"
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    world.codes["r4"] = "ISRC00000004"
+    world.put_in("Tech House Med", "r4")
+
+    _area, _step, queue = world.run_all()
+
+    assert queue.state == NOTHING
+    assert "row 4" in queue.items[0]["why"]
+    assert _queued(world.cfg) == []
+
+
+def test_an_inbox_edit_over_a_latched_intake_tree_writes_nothing(world, monkeypatch):
+    from cratekit.core import convergence
+    from cratekit.core.cause import refuse
+
+    asked: list[str] = []
+
+    def latched(_cfg, _db, tree_id, _registry, **_kwargs):
+        asked.append(tree_id)
+        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
+
+    monkeypatch.setattr(convergence, "assert_tree_writable", latched)
+    world.put_in(f"INBOX {BATCH_A}", "r2")
+    _area, step, _queue, _shared = world.plan_all()
+
+    with pytest.raises(CratekitError) as caught:
+        step.apply()
+
+    assert caught.value.cause.reason == "tree-unconverged"
+    assert asked == [DECLARED.intake.id]
+    assert world.members(world.batch_a) == {"1"}
+
+
+def test_a_favourites_only_write_detects_an_out_of_band_restore_and_asks_no_tree_latch(
+    world, monkeypatch
+):
+    from cratekit.core import convergence
+
+    detected: list[str] = []
+    real = convergence.detect_out_of_band_restore
+
+    def watched(cfg, db, registry, **kwargs):
+        detected.append("asked")
+        return real(cfg, db, registry, **kwargs)
+
+    def never(*_args, **_kwargs):
+        raise AssertionError("no tree is written by a favourite")
+
+    monkeypatch.setattr(convergence, "detect_out_of_band_restore", watched)
+    monkeypatch.setattr(convergence, "assert_tree_writable", never)
+    world.put_in(SOURCE, "r2")
+
+    world.run_all()
+
+    assert detected == ["asked"]
+    assert world.members(world.source) == {"1", "2"}
+
+
+def test_a_favourite_the_placement_did_not_write_is_refused_at_the_read_back(world, monkeypatch):
+    from cratekit.favorites import placement
+
+    real = placement.place
+
+    def short(db, home, pairs, **kwargs):
+        return real(db, home, [], **kwargs)
+
+    monkeypatch.setattr(placement, "place", short)
+    world.put_in(f"Favorites {MONTH}", "r2")
+    _area, step, _queue, _shared = world.plan_all()
+
+    with pytest.raises(CratekitError) as caught:
+        step.apply()
+
+    assert caught.value.cause.reason == "session-committed-unverified"
+
+
+def test_a_track_put_in_a_quarter_is_named_and_not_filed(world):
+    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
+    try:
+        handle.create_playlist("2026-Q3", parent=handle.get_playlist(ID=world.favorites))
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    world.run_all()
+    world.put_in("Favorites 2026-Q3", "r2")
+
+    _area, step, _queue = world.run_all()
+
+    assert step.state == NOTHING
+    (named,) = _named(step)
+    assert named["outcome"] == "not taken" and "quarter" in named["why"]
+    assert world.members(world.source) == {"1"}
+
+
+def test_two_plans_approved_one_after_the_other_queue_a_track_once(world):
+    world.put_in("Tech House Med", "r3")
+    _area, _step, first, _shared = world.plan_all()
+    _area, _step, second, _shared = world.plan_all()
+
+    first.apply()
+    second.apply()
+
+    assert len(_queued(world.cfg)) == 1
+
+
+def test_a_failed_download_frees_its_track_to_be_queued_again(world):
+    world.put_in("Tech House Med", "r3")
+    world.run_all()
+    (job,) = _queued(world.cfg)
+    with jobs.open_store() as store:
+        store.conn.execute(
+            "UPDATE jobs SET state = ? WHERE job_id = ?", (str(jobs.JobState.FAILED), job.job_id)
+        )
+        store.conn.commit()
+
+    _area, _step, queue = world.run_all()
+
+    assert queue.state == PLANNED
+    assert len(_queued(world.cfg)) == 2
+
+
+def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
+    from types import SimpleNamespace
+
+    from cratekit.core.cause import refuse
+
+    one = edits.Place("Tech House Med", "Tech House", "Med", True)
+    two = edits.Place("Deep House Low", "Deep House", "Low", True)
+    decided = edits.decide(
+        [
+            edits.Mirrored(place=one, account=frozenset({"r7"}), agreed=frozenset()),
+            edits.Mirrored(place=two, account=frozenset({"r8"}), agreed=frozenset()),
+        ],
+        {},
+    )
+    recorded = {
+        folder: SimpleNamespace(playlists={title: SimpleNamespace(remote_id=pid)})
+        for folder, title, pid in (
+            ("Tech House", "Tech House Med", "p1"),
+            ("Deep House", "Deep House Low", "p2"),
+        )
+    }
+    reading = SimpleNamespace(decided=decided, recorded=recorded)
+
+    def listed(pid):
+        if pid == "p1":
+            raise refuse("label-playlist-unreadable", "down", origin=("test",))
+        return {"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}}, None
+
+    cfg = SimpleNamespace(library=SimpleNamespace(volume_id="v"))
+    from unittest import mock
+
+    with mock.patch.object(mirror_downloads, "queued", return_value={}):
+        planned = mirror_downloads.plan(cfg, reading, listed=listed, owned=lambda _code: ())
+
+    assert list(planned.queue) == ["p2"]
+    assert [one["track"] for one in planned.named] == ["r7"]

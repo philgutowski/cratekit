@@ -1062,8 +1062,9 @@ so the next sync places it back unless you un-heart it there too, the same two
 steps as before. Taking a track off a month playlist alone, or adding it to two
 months at once, is listed and not carried. In INBOX, a track you add on Tidal
 to a batch joins that batch in rekordbox and one you take off leaves it; Old is
-never touched, and a batch the rotation moves into Old in the same run is left
-alone and planned again next time. A track you add on Tidal to any mirrored
+never touched: when the rotation moves an edited batch into Old in the same
+run, the step writes nothing that run and the next organize takes the other
+edits again, while the edit to that batch goes with its retired playlist. A track you add on Tidal to any mirrored
 playlist that your library does not have is queued for download once, by the
 rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one; it
 stays on Tidal meanwhile, and once it lands the next organize files it where

@@ -209,6 +209,8 @@ class Decision:
     #: filing playlist already on either side, which gives it none.
     when: str = ""
     filed: bool = False
+    #: A FAVOURITE moved between months (U204): the months it leaves.
+    away: tuple[Place, ...] = ()
 
     def item(self) -> dict[str, object]:
         shown: dict[str, object] = {
@@ -610,6 +612,12 @@ def _decide_favorites(
         elif added_m:
             ((to),) = added_m
             kind, why = FAVOURITE, f"put in {to.title} on the account"
+            if removed_m:
+                # A MOVE BETWEEN MONTHS: the month it was taken off is left too,
+                # so the library matches the account rather than holding the
+                # track in both and listing the old month on every run.
+                extra = {"away": tuple(sorted(removed_m, key=lambda one: one.title))}
+                why = f"{why}, taken off {', '.join(_titles(removed_m))}"
         elif added_s:
             to = source
             kind, why = FAVOURITE, f"put in {to.title} on the account"
@@ -652,7 +660,8 @@ def _decide_favorites(
                     continue
             else:
                 assert to is not None
-                if there_s and (to.primary or to in there_m):
+                away = frozenset(extra.get("away", ()))
+                if there_s and (to.primary or to in there_m) and not there_m & away:
                     decisions.append(
                         Decision(
                             track, AGREED, f"{why}, and rekordbox made the same change",
@@ -676,7 +685,7 @@ def _decide_favorites(
         for one in playlists:
             if one.short:
                 continue
-            if kind == UNFAVOURITE:
+            if kind == UNFAVOURITE or one.place in extra.get("away", ()):
                 held_after = False
             else:
                 held_after = track in one.rekordbox or one.place.primary or one.place == to
@@ -797,10 +806,14 @@ def _holds(playlists: Sequence[Mirrored], decisions: Iterable[Decision]) -> dict
     held: dict[str, set[str]] = {}
     for one in decisions:
         if one.outcome in CARRIED or one.outcome == HELD:
-            held.setdefault(one.tree, set()).add(one.track)
+            # AN INBOX EDIT IS ONE BATCH'S, so it holds that batch alone and
+            # every other batch is mirrored as rekordbox has it.
+            key = one.to.title if one.tree == INBOX and one.to is not None else one.tree
+            held.setdefault(key, set()).add(one.track)
     holds: dict[str, Hold] = {}
     for one in playlists:
-        mine = held.get(one.place.tree, set())
+        key = one.place.title if one.place.tree == INBOX else one.place.tree
+        mine = held.get(key, set())
         keep = frozenset(track for track in mine if track in one.account and track not in one.rekordbox)
         skip = frozenset(track for track in mine if track in one.rekordbox and track not in one.account)
         if keep or skip:

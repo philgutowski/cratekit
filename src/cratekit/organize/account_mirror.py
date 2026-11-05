@@ -602,7 +602,12 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
     # row is answered as that track so the mirror never swaps it for another
     # release. Two rows of the code are two owners, which holds the edit.
     for remote, rows in mirror_downloads.landed(cfg, seen).items():
-        if remote in owner:
+        # A ROW THE LEDGER LINKS TO ANOTHER TRACK was the library's before the
+        # download, so it is never relinked: that would swap its release on
+        # every playlist it sits in.
+        if remote in owner or any(
+            links.get(one, ("", ""))[0] not in ("", remote) for one in rows
+        ):
             continue
         if len(rows) == 1:
             (content_id,) = rows

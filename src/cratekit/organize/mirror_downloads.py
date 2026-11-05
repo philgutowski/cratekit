@@ -26,7 +26,13 @@ froze for it.
 
 A PLAYLIST THE PROVIDER WILL NOT LIST, or that lists short of the track, queues
 nothing for it and says why, since a track the reading cannot freeze is a
-track the job cannot be asked about.
+track the job cannot be asked about; every other playlist is planned.
+
+ANOTHER RELEASE OF A RECORDING THE LIBRARY HOLDS IS NEVER QUEUED. A track the
+account matched no library row to may still carry the ISRC of a row the
+library owns, linked to another release or in no mirrored playlist at all:
+the job would resolve it owned and land nothing, so it is named and left on
+the account as it is, never downloaded and never awaited.
 
 Layer: modules.
 """
@@ -156,12 +162,16 @@ def _remote_of(recorded: Mapping[str, Any], folder: str, title: str) -> str:
     return entry.remote_id if entry is not None else ""
 
 
-def plan(cfg: config.Config, reading: Any, *, listed: Any = None) -> Planned:
-    """Every wanted track as it would be queued. Reads the queue and the provider, writes nothing.
+def plan(
+    cfg: config.Config, reading: Any, *, listed: Any = None, owned: Any = None
+) -> Planned:
+    """Every wanted track as it would be queued. Reads the queue, the provider and the library.
 
     ``listed`` lists one account playlist frozen as a playlist job is queued,
-    ``(tracks, shortfall)``, the catalogue's by default. Raises the queue's or
-    the catalogue's refusal.
+    ``(tracks, shortfall)``, the catalogue's by default; a playlist it cannot
+    list is named and the rest are planned. ``owned`` answers each ISRC the
+    library already holds with its rows, the database's and the mirror's
+    matches by default. Raises the queue's refusal.
     """
     wanted: Sequence[Any] = reading.decided.wanted
     named: list[dict[str, Any]] = []
@@ -202,12 +212,43 @@ def plan(cfg: config.Config, reading: Any, *, listed: Any = None) -> Planned:
         taken.add(decision.track)
     if listed is None:
         listed = _catalogue_listing(cfg)
+    if owned is None:
+        owned = _owned(cfg, reading)
     queue: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}
     for pid, (title, tracks) in sorted(grouped.items()):
-        frozen, _short = listed(pid)
+        try:
+            frozen, _short = listed(pid)
+        except CratekitError as exc:
+            named.extend(
+                {
+                    "track": track,
+                    "playlist": title,
+                    "outcome": "not queued",
+                    "why": f"the provider could not list the playlist: {exc.cause.message}",
+                }
+                for track in sorted(set(tracks))
+            )
+            continue
         took: dict[str, dict[str, Any]] = {}
         for track in sorted(set(tracks)):
-            if track in frozen:
+            rows = owned(frozen[track].get("isrc")) if track in frozen else ()
+            if rows:
+                # ANOTHER RELEASE OF A RECORDING THE LIBRARY HOLDS: nothing is
+                # downloaded, and no landing is awaited that nothing will make.
+                named.append(
+                    {
+                        "track": track,
+                        "playlist": title,
+                        "outcome": "not queued",
+                        "why": (
+                            f"added on the account, and the library already holds its "
+                            f"recording (row {', '.join(rows)}) as another release than "
+                            f"this one, so nothing is downloaded and it stays on the "
+                            f"account as it is"
+                        ),
+                    }
+                )
+            elif track in frozen:
                 took[track] = dict(frozen[track])
             else:
                 named.append(
@@ -224,6 +265,37 @@ def plan(cfg: config.Config, reading: Any, *, listed: Any = None) -> Planned:
         if took:
             queue[pid] = (title, took)
     return Planned(queue=queue, named=tuple(named))
+
+
+def _owned(cfg: config.Config, reading: Any) -> Any:
+    """Each ISRC to the library rows that carry it: the database's codes, and the mirror's.
+
+    The mirror's matches carry a code read off a file the database holds none
+    for, and the database carries a row in no mirrored playlist. Read once, on
+    a read handle closed before the plan goes on.
+    """
+    from cratekit.acquire import match
+    from cratekit.core import rb_writer
+    from cratekit.write import playlist_pair
+
+    found: dict[str, set[str]] = {}
+    for content_id, (_remote, code, _reason) in reading.matcher.seen.items():
+        token = match.isrc_token(code)
+        if token:
+            found.setdefault(token, set()).add(str(content_id))
+    db = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        for token, rows in playlist_pair.rows_by_isrc(db, match.isrc_token).items():
+            found.setdefault(token, set()).update(rows)
+    finally:
+        rb_writer.close_db(db)
+
+    def owned(code: Any) -> tuple[str, ...]:
+        return tuple(sorted(found.get(match.isrc_token(code), ())))
+
+    return owned
 
 
 def _catalogue_listing(cfg: config.Config) -> Any:

@@ -571,7 +571,7 @@ def test_a_hold_in_one_tree_is_never_a_hold_in_another():
     assert decided.hold("All Favorites") == edits.Hold()
 
 
-def test_an_addition_the_library_lacks_is_queued_in_every_tree_and_a_known_one_never():
+def test_an_addition_the_library_lacks_is_queued_in_favorites_and_inbox_and_a_known_one_never():
     decided = edits.decide(
         [
             held(AF, account=("t9",)),
@@ -590,3 +590,33 @@ def test_an_addition_the_library_lacks_is_queued_in_every_tree_and_a_known_one_n
     # collection, and is held, never fetched again.
     gone = next(one for one in decided.decisions if one.track == "t8")
     assert gone.outcome == edits.HELD and not gone.acquire
+
+
+def test_an_inbox_edit_holds_its_own_batch_and_no_other():
+    """Review round one, finding 6: a join on A no longer holds rekordbox's addition to B."""
+    decided = edits.decide(
+        [held(BA, account=("t1",), agreed=()), held(BB, rekordbox=("t1",), agreed=())], OWNED
+    )
+    assert only(decided).outcome == edits.JOIN
+    assert decided.hold("INBOX A").keep == {"t1"}
+    assert decided.hold("INBOX B") == edits.Hold()
+
+
+def test_a_month_move_leaves_the_month_it_was_taken_off():
+    """Review round one, finding 1."""
+    one = only(
+        edits.decide(
+            [
+                held(AF, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+                held(OCT, rekordbox=("t1",), agreed=("t1",)),
+                held(NOV, account=("t1",)),
+            ],
+            OWNED,
+        )
+    )
+    assert (one.outcome, one.to, one.away) == (edits.FAVOURITE, NOV, (OCT,))
+    assert set(one.settle) == {
+        ("Favorites", "All Favorites", True),
+        ("Favorites", "Favorites 2026-10", False),
+        ("Favorites", "Favorites 2026-11", True),
+    }

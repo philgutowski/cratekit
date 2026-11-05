@@ -677,8 +677,18 @@ def _plan_favourites(
         elif month_id:
             join.append((month_id, folder, month))
         takes = bool(pink) and decision.content_id in colour.sort_rows(db, pink, [decision.content_id]).to_colour
+        # A MOVE BETWEEN MONTHS leaves each month it was taken off.
+        away = {one.playlist for one in decision.away}
+        leave = tuple((pid, folder, name) for name, pid in filing if name in away and pid in held)
         changes.append(
-            Change(**base, join=tuple(join), month=month, month_id=month_id, colour=takes)
+            Change(
+                **base,
+                join=tuple(join),
+                leave=leave,
+                month=month,
+                month_id=month_id,
+                colour=takes,
+            )
         )
     return changes
 
@@ -881,12 +891,13 @@ def write(
                 ]
             favourites = [one for one in taken if one.outcome == edits.FAVOURITE]
             for change in taken:
-                if change.outcome == edits.FAVOURITE:
-                    continue
                 for pid, _folder, _playlist in change.leave:
                     done.left += len(
                         rb_writer.remove_memberships(db, db.get_playlist(ID=pid), [change.content_id])
                     )
+                # A FAVOURITE JOINS THROUGH THE PLACEMENT below, never here.
+                if change.outcome == edits.FAVOURITE:
+                    continue
                 for pid, _folder, _playlist in change.join:
                     done.joined += len(
                         rb_writer.add_memberships(db, db.get_playlist(ID=pid), [change.content_id])
