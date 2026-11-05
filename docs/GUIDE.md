@@ -948,8 +948,8 @@ comes off both, and a track the library lacks is queued once.
 
 A track the account lists with no title or no artist never stops `crate sync
 pair`. It is left where it is on both sides and named on the gate, and every
-other track of that playlist syncs both ways, removals included. While one is
-listed that way, that account playlist keeps its own order. When a playlist's
+other track of that playlist syncs both ways, removals and order included; a
+reorder keeps such a track behind the one listed before it. When a playlist's
 listing cannot be used at all, a row with no track id, a sync of every pair
 leaves that pair out, names it and syncs the others; named alone, it refuses.
 

@@ -17,6 +17,10 @@ residual's own driver.
 
 from __future__ import annotations
 
+import sqlite3
+
+import pytest
+
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
@@ -27,7 +31,16 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
-from tests.test_sync_twins import BROKEN, BROKEN_NAME, PHIL, _codes, _phil, backfill, sync_pair
+from tests.test_sync_twins import (
+    BROKEN,
+    BROKEN_NAME,
+    PHIL,
+    _codes,
+    _phil,
+    backfill,
+    isrc,
+    sync_pair,
+)
 from tests.test_sync_twins import db as db  # noqa: PLC0414
 from tests.test_sync_twins import world as world  # noqa: PLC0414
 
@@ -243,3 +256,75 @@ def test_unread_tracks_trading_places_after_the_plan_is_not_stale(world, cfg):
             break
     assert code == int(ExitCode.OK), envelope
     assert pairs.PairStore(cfg).get(PHIL).account == ("t3", "t1", "t2", "t20", "t4")
+
+
+def _rekordbox_move_last(world, twin_id: str, content_id: str) -> None:
+    conn = sqlite3.connect(world.cfg.library.db_path)
+    try:
+        (top,) = conn.execute(
+            "SELECT MAX(TrackNo) FROM djmdSongPlaylist WHERE PlaylistID = ?", (twin_id,)
+        ).fetchone()
+        conn.execute(
+            "UPDATE djmdSongPlaylist SET TrackNo = ?, updated_at = '2026-11-05 12:00:00' "
+            "WHERE PlaylistID = ? AND ContentID = ?",
+            (int(top) + 1, twin_id, content_id),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_rekordbox_reorder_while_a_track_is_unread_reaches_the_account_and_stands(world, cfg):
+    """From the review's round two: a withheld account order let the next sync undo it."""
+    twin_id = _backfilled(world, untitled="t20")
+    _rekordbox_move_last(world, twin_id, "1")
+    assert world.held(twin_id) == ["3", "2", "1"]
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    # THE ORDER IS WRITTEN WHOLE, the unread track behind the one listed before it.
+    assert world.account.playlists[PHIL] == ["t3", "t2", "t1", "t20"]
+    assert world.held(twin_id) == ["3", "2", "1"]
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+        assert world.held(twin_id) == ["3", "2", "1"]
+        assert world.account.playlists[PHIL] == ["t3", "t2", "t1", "t20"]
+
+
+def _siblings(world, listing: list[str]) -> str:
+    """Phil's twin with t4 and t24 both releases of row four, settled by three syncs."""
+    _phil(world)
+    world.codes["t24"] = isrc("4")
+    world.account.playlists[PHIL] = list(listing)
+    assert backfill()[0] == int(ExitCode.OK)
+    twin_id = world.twin("Phil 9-30-26")
+    for _ in range(3):
+        assert sync_pair()[0] == int(ExitCode.OK)
+    return twin_id
+
+
+@pytest.mark.parametrize(
+    ("listing", "unread"),
+    [
+        (["t3", "t4", "t1", "t20", "t2", "t24"], "t4"),
+        (["t3", "t24", "t1", "t20", "t2", "t4"], "t24"),
+    ],
+)
+def test_a_release_turning_unread_beside_a_readable_one_moves_nothing(world, cfg, listing, unread):
+    """From the review's round two: the row's key sat at the readable release's place."""
+    twin_id = _siblings(world, listing)
+    held = world.held(twin_id)
+    account = list(world.account.playlists[PHIL])
+    world.names[unread] = ""
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+        assert world.held(twin_id) == held
+        assert world.account.playlists[PHIL] == account
+    # And a person's rekordbox reorder then stands.
+    _rekordbox_move_last(world, twin_id, "1")
+    moved = world.held(twin_id)
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+        assert world.held(twin_id) == moved
