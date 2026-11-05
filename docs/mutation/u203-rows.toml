@@ -1,0 +1,94 @@
+name = "u203"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_opening_span"
+description = "comment_heading: never take an opening emphasised span, so **Brainstorm.** One question waits reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''        span = _OPENING_EMPHASIS.match(text)'''
+new = '''        span = None'''
+
+[[rows]]
+id = "M2_span_closer_any_follower"
+description = "_OPENING_EMPHASIS: accept a closer followed by a letter, so **Brainstorm**s reads as a brainstorm"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''_OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1(?=$|[\s.,:;?!\u2026])")'''
+new = '''_OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1")'''
+
+[[rows]]
+id = "M3_no_sentence_cut"
+description = "_HEADING_END: cut only at a colon or comma, so Needs the machine. The card needs rekordbox is a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''_HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")'''
+new = '''_HEADING_END = re.compile(r"[:,]")'''
+
+[[rows]]
+id = "M4_sentence_cut_anywhere"
+description = "_HEADING_END: cut at any stop, whitespace after it or not, so Landed v0.6.0 today is cut inside the version"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''_HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")'''
+new = '''_HEADING_END = re.compile(r"[:,]|[.?!;\u2026]")'''
+
+[[rows]]
+id = "M5_no_trailing_strip"
+description = "comment_heading: strip emphasis but no trailing punctuation, so ## Brainstorm. reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''            text = text.strip().strip("*_").rstrip(_TRAILING)'''
+new = '''            text = text.strip().strip("*_")'''
+
+[[rows]]
+id = "M6_one_pass"
+description = "comment_heading: strip once instead of to a fixed point, so emphasis left behind a full stop survives"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''        while text != settled:'''
+new = '''        for _ in (1,):'''
+
+[[rows]]
+id = "M7_rule_line_is_a_heading"
+description = "comment_heading: read a line of emphasis markers alone as the heading, so a rule above Started reads as empty"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''        if not text.strip("*_").strip():
+            continue'''
+new = '''        if not text:
+            continue'''
+
+[[rows]]
+id = "M8_ellipsis_not_trailing"
+description = "_TRAILING: leave the ellipsis character out, so Brainstorm followed by one reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''_TRAILING = ".?!;\u2026# \t"'''
+new = '''_TRAILING = ".?!;# \t"'''
+
+[[rows]]
+id = "M9_no_comma_cut"
+description = "_HEADING_END: drop the comma cut, so Started, 2026-10-13. reads as a hold"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''_HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")'''
+new = '''_HEADING_END = re.compile(r"[:]|[.?!;\u2026](?=\s)")'''
+
+[[rows]]
+id = "M10_span_searched_anywhere"
+description = "comment_heading: take an emphasised span anywhere on the line, so Not **Withdrawn**, held releases a held card"
+file = "scripts/board.py"
+surface = "maintainer"
+tests = ["tests/test_board_cloud.py"]
+old = '''        span = _OPENING_EMPHASIS.match(text)'''
+new = '''        span = _OPENING_EMPHASIS.search(text)'''
