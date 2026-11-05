@@ -1808,6 +1808,21 @@ From the installed v0.6.0 (`install.release` reads it as the latest), run by the
 
 **For the file-card skill:** (a) a pass downloads again a track already staged by an earlier pass that never landed, and then stops at the name step on the collision; the missing list should count staged files. (b) The dyn row's 129 BPM against 97 in its title is worth a look by whoever reads the check's key and tempo agreement. The two duplicates in `Downloads_duplicates_2026-11-05` and the rehearsal copies `copyrun-492` and `.cratekit-copyrun` on the volume are Phillip's to delete; a safety check stopped the session removing folders at the volume's top level.
 
+A68 (#439) is met in part by the same pass: the gate's `dyn My Tag` line read 1 of 14 (10 files with no drift reading, no tag), the visit ran Normal on all 14 and Dynamic on the one `dyn` row, and `crate analyze check` read 13 single tempo grids and the one variable grid on the `dyn` row. Owed: whether that row (`What A Difference A Day Made`, a jazz ballad titled 97 that rekordbox reads 129.20) was the right call by ear, which is Phillip's; and the `rows-await-analysis` warning named the one playlist and its count of 14, not two selections.
+
+## Sitting 56, 2026-11-05, the attended session, A73 (#449) and A46 (#370): the Favorites folder newest first
+
+From v0.6.0. Backup ages one day, no job running, rekordbox closed.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Rehearsal | `crate favorites order` on the hand copy (`copyrun-492`, `.cratekit-copyrun`, refreshed from the live state after sitting 55), run `2026-11-05T02:43:50Z-aaf2` | **digest `c4d701c06309c598`, count 23, 20 playlists to move.** Order now: All Favorites, 2026-11 (made by sitting 55's landing directly under All Favorites), then 2024-06 up to 2026-10, Undated. Order after: All Favorites, the months 2026-11 down to 2024-06, Undated. Approved on the copy; read back in that order, no membership changed. | rehearsed |
+| Live | run `2026-11-05T02:44:03Z-4615`, `crate run decide --actor session --continue ... favorites.order.approve approve` | digest `c4d701c06309c598`, equal; **20 moved**, read back from the database in the order above, no membership changed. | live |
+| Second run | `crate favorites order` | `no_op`, `favorites-in-order`, no gate. | checked |
+| In rekordbox | opened, Favorites expanded, quit, both processes gone in 10 s | All Favorites (289), 2026-11 (7), 2026-10 (71), 2026-09 (37), 2026-08, 2026-07, 2026-06, 2026-05, 2026-04, 2026-02, 2026-01, 2025-09, 2025-08, 2025-07 and on down, as the verb read back. The new month from a landing sits directly under All Favorites. | read |
+
+**A73 (#449) and A46 (#370) are met.** The macOS battery is cited from the v0.6.0 cut on 40a501d8.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
