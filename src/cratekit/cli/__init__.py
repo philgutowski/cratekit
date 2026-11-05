@@ -47,7 +47,7 @@ from cratekit import __version__
 from cratekit.cli import gates, output, registry, render
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.cli.registry import Entry
-from cratekit.core import config, profiles, provider_gate
+from cratekit.core import config, processes, profiles, provider_gate
 from cratekit.core.cause import (
     Cause,
     CratekitError,
@@ -714,6 +714,39 @@ def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:
     )
 
 
+def run_continue_command(state: gates.RunState) -> str:
+    """The command that continues a kept run with every answer it holds (U211).
+
+    The verb's own command line as its first invocation gave it, under
+    ``--run``, which is what ``run decide --continue`` dispatches. A run
+    recorded before U168 keeps no command line, so the verb's words stand
+    with an ellipsis for its arguments, as ``run decide`` says it then.
+    """
+    if state.argv is not None:
+        return shlex.join(["crate", "--run", state.run_id, *state.argv])
+    return f"crate --run {state.run_id} {state.verb.replace('.', ' ')} ..."
+
+
+def _with_run_continue(cause: Cause, state: gates.RunState) -> Cause:
+    """A kept refusal's cause with its first step naming the command that continues the run.
+
+    The step REPLACES the cause's first one, as the call ceiling's does,
+    because that one says to run it again, and a person who follows it
+    literally starts a fresh run and loses the answers this run keeps.
+    """
+    command = run_continue_command(state)
+    steps = (
+        f"wait a moment for the process to finish exiting, then continue this "
+        f"run with its answers: {command}",
+        *cause.remediation.steps[1:],
+    )
+    return dataclasses.replace(
+        cause,
+        remediation=dataclasses.replace(cause.remediation, steps=steps),
+        detail={**dict(cause.detail or {}), "continue": command, "run_id": state.run_id},
+    )
+
+
 def _dispatched(
     args: argparse.Namespace, argv: Sequence[str], entry: Entry, *, as_json: bool, stderr
 ) -> Envelope:
@@ -797,7 +830,21 @@ def _dispatched_in_scope(
         # out of a verb that drives no job. What the run did is kept, so it is
         # blocked at a line the person set and not failed.
         parked = isinstance(exc, JobBlocked) or ceiling_stop
-        resumable = cause.code in gates.GATE_CODES and not parked
+        # A REFUSAL THAT KEEPS ITS RUN (U211). Raised before the step it
+        # guards and clearing on its own, so the run is saved with its answers
+        # and the cause names the command that continues it. ONLY THE SCAN'S
+        # OWN REFUSAL, by its type (from review round two): a job that records
+        # the same reason on a failed item and summarises it on the job's
+        # cause cannot be continued by running the verb again, so that keeps
+        # the job's own verdict and its honest step.
+        kept = (
+            isinstance(exc, processes.AbsenceUnconfirmed)
+            and cause.reason in gates.KEPT_RUN_REASONS
+            and not parked
+        )
+        if kept and state is not None:
+            cause = _with_run_continue(cause, state)
+        resumable = (cause.code in gates.GATE_CODES or kept) and not parked
         if state is not None and resumable:
             gates.save(state)
         if resumable or parked:

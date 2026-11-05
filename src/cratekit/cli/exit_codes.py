@@ -30,8 +30,8 @@ suite forbids any third file in the package from mapping a reserved cause to a
 code at all.
 
 That check compares SPELLING and not meaning, which is a real limit and is
-written down rather than implied. Today the identical spelling is one slug,
-``rekordbox-running``. Two more conditions are spelled twice: this table's
+written down rather than implied. Today the identical spelling is two slugs,
+``rekordbox-running`` and, since U211, ``rekordbox-absence-unconfirmed``. Two more conditions are spelled twice: this table's
 ``library-root-absent`` is the registry's ``library-directory-missing``, and this
 table's ``database-absent`` is its ``library-database-missing``. Both pairs
 happen to agree on 22 and a test asserts that pair by pair, but the overlap check
@@ -331,10 +331,22 @@ RESERVATIONS: tuple[Reservation, ...] = (
         code=ExitCode.REKORDBOX_OPEN,
         remedy=Remedy.QUIT_REKORDBOX,
         note=(
-            "the one slug this table shares with the closed reason registry, "
+            "a slug this table shares with the closed reason registry, "
             "and it reserves the identical code there. A copy taken under a "
             "live application opens cleanly and is silently missing whatever "
             "was mid-write, which is worse than no copy"
+        ),
+    ),
+    Reservation(
+        cause="rekordbox-absence-unconfirmed",
+        code=ExitCode.REKORDBOX_OPEN,
+        remedy=Remedy.RETRY_LATER,
+        note=(
+            "U211. A live process the scan could not read, so whether rekordbox "
+            "is closed was not established; shared with the closed reason "
+            "registry at the identical code. The database portion refuses "
+            "alone and the files still mirror, as with rekordbox running, and "
+            "the remedy is waiting for the process to finish exiting"
         ),
     ),
     Reservation(

@@ -734,6 +734,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # "wait for the holder", and what is held is the account.
         "provider-gate-held": ExitCode.LIBRARY_BUSY,
         "rekordbox-running": ExitCode.REKORDBOX_OPEN,
+        # U211. The process scan met a live process it could not read, so
+        # rekordbox's absence was not established. On rekordbox's code because
+        # a caller branching on it is asking whether rekordbox's state stops
+        # the write, and it does. Its own slug because nothing established that
+        # rekordbox is running, so "quit rekordbox" would be false, and the act
+        # that helps is waiting for a process to finish exiting. The one
+        # refusal outside the gates that keeps its run (``cli.gates``).
+        "rekordbox-absence-unconfirmed": ExitCode.REKORDBOX_OPEN,
         "library-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
         # U27. Some directory on the way to the configured library root cannot be
         # opened by this account, so which volume the library sits on was not
