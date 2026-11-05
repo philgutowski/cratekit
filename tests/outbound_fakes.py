@@ -36,6 +36,8 @@ PROTOCOL_METHODS = frozenset(
     {
         "match_track",
         "unmatched_reason",
+        # U208. Whether the last match broke a tie between agreeing releases.
+        "tie_broken",
         "add_heart",
         "has_heart",
         "create_playlist",
@@ -120,6 +122,8 @@ class FakeAccount:
         self.any_agreeing: list[str] = []
         #: What this account says about a row it does not match, by identity.
         self.reasons: dict[str, str] = {}
+        #: The identities whose match this account says broke a tie (U208).
+        self.ties: set[str] = set()
         #: Each ``(playlist, track)``'s added time for ``playlist_listing`` (U201).
         self.added_at: dict[tuple[str, str], str] = {}
         #: Tracks a playlist holds that its listing leaves out, by playlist.
@@ -182,6 +186,9 @@ class FakeAccount:
 
     def unmatched_reason(self, identity: str) -> str:
         return self.reasons.get(identity, "")
+
+    def tie_broken(self, identity: str) -> bool:
+        return identity in self.ties and bool(self.catalog.get(identity))
 
     def add_heart(self, remote_id: str) -> None:
         self._bump(remote_id)

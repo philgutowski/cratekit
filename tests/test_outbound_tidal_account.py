@@ -1851,3 +1851,60 @@ def test_a_file_with_no_album_tag_never_narrows_to_releases_with_no_album_name()
 def test_the_files_album_narrows_a_tie_under_the_products_own_fold():
     """Case and spacing on the tag do not stop it naming the album cut over the lower single."""
     assert any_release(adapter(single_and_album_cut()), album=" tidal LINES ") == "202"
+
+
+# ── U208: the adapter says when ``any_agreeing`` broke a tie ───────────────
+
+
+def test_a_tie_broken_by_any_agreeing_is_said_and_no_other_match_is():
+    found = adapter(releases(*_alike("202", "101", "Sun Path", "Nova Reef")))
+    assert any_release(found) == "101"
+    assert found.tie_broken("7") is True
+    assert match_row(found, "Sun Path") is None, "without any_agreeing the tie refuses"
+    assert found.tie_broken("7") is False, "a miss clears what the last match said"
+
+
+def test_a_lone_release_a_lone_heart_or_a_lone_album_is_never_a_broken_tie():
+    found = adapter(releases(Track("101", "Sun Path", None, ("Nova Reef",))))
+    assert any_release(found) == "101" and found.tie_broken("7") is False
+    client = single_and_album_cut()
+    client.user.favorites.hearts = ["202"]
+    found = adapter(client)
+    assert any_release(found) == "202" and found.tie_broken("7") is False
+    found = adapter(single_and_album_cut())
+    assert any_release(found, album="Tidal Lines") == "202"
+    assert found.tie_broken("7") is False, "the album rule chose, as it does without the flag"
+
+
+def test_two_hearts_or_an_album_naming_two_is_a_broken_tie():
+    client = releases(*_alike("101", "202", "Sun Path", "Nova Reef"))
+    client.user.favorites.hearts = ["202", "101"]
+    found = adapter(client)
+    assert any_release(found) == "101" and found.tie_broken("7") is True
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+    )
+    found = adapter(client)
+    assert any_release(found, album="Tidal Lines") == "202" and found.tie_broken("7") is True
+
+
+def test_a_refused_tie_is_never_said_to_be_broken():
+    client = releases(*_alike("101", "202", "Sun Path", "Nova Reef"), Track("303", "", None, ()))
+    found = adapter(client)
+    assert any_release(found) is None and found.tie_broken("7") is False
+
+
+def test_two_hearts_and_an_album_naming_one_of_them_is_a_broken_tie():
+    """Without ``any_agreeing`` two hearts refuse whatever the album says, so this broke one."""
+    client = releases(
+        on_album(Track("101", "Sun Path", None, ("Nova Reef",)), "Sun Path"),
+        on_album(Track("202", "Sun Path", None, ("Nova Reef",)), "Tidal Lines"),
+        on_album(Track("303", "Sun Path", None, ("Nova Reef",)), "Night Drives"),
+    )
+    client.user.favorites.hearts = ["303", "202"]
+    found = adapter(client)
+    assert any_release(found, album="Tidal Lines") == "202"
+    assert found.tie_broken("7") is True
+    assert match_row(found, "Sun Path") is None

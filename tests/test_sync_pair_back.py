@@ -28,6 +28,7 @@ from tests.test_sync_pair_discover import (
     _codes,
     _items,
     _said,
+    isrc,
     plan_only,
     sync,
 )
@@ -665,3 +666,23 @@ def test_reserving_an_account_playlist_a_pair_holds_answers_that_pair_and_makes_
     got = store.reserve_made_rekordbox(opener, name="Opener", folder="GIG READY", create=create)
     assert got == (held.rekordbox_id, False)
     assert store.get(opener) == held
+
+
+def test_a_row_held_as_two_releases_is_put_back_when_its_later_release_was(world, cfg, gig):
+    """U208. A row held on the account as two releases was added there when the later was."""
+    playlist, account_id = _paired_on_both(world, gig)
+    world.account.playlists[account_id].append("t5b")
+    world.codes["t5b"] = isrc("5")
+    world.dates["t5b"] = LONG_AGO + timedelta(days=1)
+    assert sync()[0] == int(ExitCode.OK)
+    assert pairs.PairStore(cfg).get(account_id).links.get("t5b") == "5"
+    _rekordbox_removed(world, playlist, "5", soon(1))
+    world.dates["t5b"] = soon(2)
+
+    code, envelope = sync()
+
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(playlist) == ["4", "5"]
+    assert world.account.playlists[account_id] == ["t4", "t5", "t5b"]
+    (call,) = _items(envelope["data"], "merge", pair_merge.ADDITION_LATER)
+    assert call["added_on"] == "account"
