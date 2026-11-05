@@ -7,7 +7,7 @@ description = "split_version: drop the first group rule, so a title written whol
 file = "src/cratekit/acquire/match.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
-old = '''        if found.start() == 0:
+old = '''        if found.start() == 0 and not _names_a_version(inside):
             remaining = inside
             break'''
 new = '''        if False:
@@ -29,8 +29,8 @@ description = "split_version: take any group as the title, not only the one stan
 file = "src/cratekit/acquire/match.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_workers.py", "tests/test_sync_twins.py"]
-old = '''        if found.start() == 0:'''
-new = '''        if found.start() >= 0:'''
+old = '''        if found.start() == 0 and not _names_a_version(inside):'''
+new = '''        if found.start() >= 0 and not _names_a_version(inside):'''
 
 [[rows]]
 id = "M4_first_group_keeps_brackets"
@@ -212,3 +212,21 @@ surface = "user"
 tests = ["tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
 old = '''                whole=listing.short is None,'''
 new = '''                whole=True,'''
+
+[[rows]]
+id = "M21_first_group_version_check"
+description = "split_version: drop the version check from the first group rule, so a row titled only (Extended) reads as the title Extended and the emitter writes it"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_listdoc.py", "tests/intake/test_workers.py"]
+old = '''        if found.start() == 0 and not _names_a_version(inside):'''
+new = '''        if found.start() == 0:'''
+
+[[rows]]
+id = "M22_names_a_version_last_word"
+description = "_names_a_version: read the group's first word rather than its last"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_listdoc.py", "tests/intake/test_workers.py"]
+old = '''    return bool(words) and words[-1] in _DASH_VERSIONS'''
+new = '''    return bool(words) and words[0] in _DASH_VERSIONS'''
