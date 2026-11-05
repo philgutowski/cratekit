@@ -1,0 +1,240 @@
+name = "u205"
+pass_kind = "light"
+
+[[rows]]
+id = "G1_app_call_not_counted"
+description = "gate: a call under the app identity is counted in the totals and not under the app, so every report reads it as the account's"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''        if app:
+            state.app_calls += 1
+            _PROCESS_APP_CALLS += 1'''
+new = '''        if False:
+            state.app_calls += 1
+            _PROCESS_APP_CALLS += 1'''
+
+[[rows]]
+id = "G2_app_rate_limit_not_counted"
+description = "gate: a rate limit answer to the app is counted as the account's"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''            if app:
+                state.app_rate_limited += 1'''
+new = '''            if False:
+                state.app_rate_limited += 1'''
+
+[[rows]]
+id = "G3_attach_drops_identity"
+description = "gate attach: the wrapped transport counts every call under the account whatever identity it was attached under"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''            return self.call(lambda: original(method, url, *args, **kwargs), identity=identity)'''
+new = '''            return self.call(lambda: original(method, url, *args, **kwargs), identity=ACCOUNT)'''
+
+[[rows]]
+id = "C11_collection_404_read_as_absence"
+description = "app client: a 404 on the ISRC collection, which says the address moved, is read as no track and remembered by sync pair as a miss"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''            "tracks", {"filter[isrc]": str(isrc), "include": INCLUDE}, what, absence=False'''
+new = '''            "tracks", {"filter[isrc]": str(isrc), "include": INCLUDE}, what, absence=True'''
+
+[[rows]]
+id = "G5_app_share_unclamped"
+description = "gate state load: an app share above the total is kept, so the account's share reads negative and is shown as zero"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''            state.app_calls = min(_as_int(app.get("calls")), state.calls)'''
+new = '''            state.app_calls = _as_int(app.get("calls"))'''
+
+[[rows]]
+id = "G6_file_account_share_is_the_total"
+description = "gate state write: the account's entry under identities is written as the total, the app's calls in it"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''                    "calls": max(0, self.calls - self.app_calls),'''
+new = '''                    "calls": self.calls,'''
+
+[[rows]]
+id = "G7_process_spend_drops_app"
+description = "process spend: the app's share of this process's calls is not reported, so the spend line says every call was the account's"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''        app_calls=_PROCESS_APP_CALLS,'''
+new = '''        app_calls=0,'''
+
+[[rows]]
+id = "G8_since_keeps_earlier_app_calls"
+description = "spend since: the app's share is not differenced, so a run is charged the app calls made before it"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''            app_calls=max(0, self.app_calls - earlier.app_calls),'''
+new = '''            app_calls=self.app_calls,'''
+
+[[rows]]
+id = "O1_one_value_opens_the_app"
+description = "opener: one of the two app values recorded is taken as the app set up, so the second keychain read refuses every verb"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    if not all(secrets.exists(name) for name in names):'''
+new = '''    if not any(secrets.exists(name) for name in names):'''
+
+[[rows]]
+id = "O2_no_country_still_opens"
+description = "opener: an account naming no country still gets an app client, asked in no country"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    if country is None:
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "O3_unreadable_values_read_as_absent"
+description = "opener: recorded app values the keychain will not give are read as absent, putting every lookup back on the account without a word"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        raise catalogue_api.unreadable(exc) from exc'''
+new = '''        return None'''
+
+[[rows]]
+id = "O4_app_attached_as_account"
+description = "opener: the app client is attached under the account identity, so its calls are reported as the account's"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    if not gate.attach(client, identity=provider_gate.APP):'''
+new = '''    if not gate.attach(client, identity=provider_gate.ACCOUNT):'''
+
+[[rows]]
+id = "C1_park_wrapped_as_outage"
+description = "app client: the gate's park raised inside the transport is wrapped as an outage and retried into the cooldown"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''        except CratekitError:
+            raise
+        except Exception as exc:  # noqa: BLE001 - classified, never swallowed'''
+new = '''        except Exception as exc:  # noqa: BLE001 - classified, never swallowed'''
+
+[[rows]]
+id = "C2_token_never_reused"
+description = "app client: a token is asked for before every read, doubling the app's calls"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''        if self._token is not None and now < self._expires_at:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C3_no_expiry_margin"
+description = "app client: a token is kept to the last second of its life and refused on the way"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''max(seconds - TOKEN_MARGIN_S, seconds / 2)'''
+new = '''max(seconds, seconds / 2)'''
+
+[[rows]]
+id = "C4_rejected_token_kept"
+description = "app client: a token the API refused is sent again on every rung of the ladder, so an expired token refuses the run"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''            self._token = None
+            raise AppCredentialsRejected('''
+new = '''            raise AppCredentialsRejected('''
+
+[[rows]]
+id = "C5_server_error_read_as_absence"
+description = "app client: a 500 is raised as the not found, so an outage reads as no track and sync pair remembers a miss"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''        if status == NOT_FOUND_STATUS and absence:'''
+new = '''        if (status == NOT_FOUND_STATUS and absence) or status == 500:'''
+
+[[rows]]
+id = "C6_message_spells_404"
+description = "app client: a token service 404 is spelled with its digits, which the classifier reads as an absence"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''        return "a status saying the address does not exist"'''
+new = '''        return "status 404"'''
+
+[[rows]]
+id = "C7_transport_text_in_message"
+description = "app client: a transport failure's text, which quotes the URL and the ISRC, is put in the message, so an ISRC holding 404 reads as no track"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''                f"the catalogue API could not be reached ({type(exc).__name__})"'''
+new = '''                f"the catalogue API could not be reached ({exc})"'''
+
+[[rows]]
+id = "C8_availability_ignored"
+description = "app client: a track the answer says does not stream is read as streaming, so _among offers it as a candidate"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''    return any(str(mode).strip().upper() == "STREAM" for mode in said)'''
+new = '''    return True'''
+
+[[rows]]
+id = "C9_names_not_included"
+description = "app client: the reads do not ask for the names, so every release of several reads as unreadable"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''INCLUDE = "artists,albums"'''
+new = '''INCLUDE = "albums"'''
+
+[[rows]]
+id = "C10_country_not_sent"
+description = "app client: reads are asked in no country, so availability answers are not the account's"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py"]
+old = '''            params={**params, "countryCode": self.country_code},'''
+new = '''            params={**params},'''
+
+[[rows]]
+id = "S1_account_lookup_ignores_app"
+description = "outbound account: ISRC lookups go to the account session whatever the opener built"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_outbound_tidal_account.py"]
+old = '''        self._lookups = catalogue if catalogue is not None else session'''
+new = '''        self._lookups = session'''
+
+[[rows]]
+id = "S2_account_rejection_read_as_wait"
+description = "outbound account: a rejected app credential is translated as the account's failure, a wait, never naming the app"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_outbound_tidal_account.py"]
+old = '''        except catalogue_api.AppCredentialsRejected as exc:
+            # THE APP'S CREDENTIAL, NOT THE ACCOUNT'S.'''
+new = '''        except ZeroDivisionError as exc:
+            # THE APP'S CREDENTIAL, NOT THE ACCOUNT'S.'''
+
+[[rows]]
+id = "S3_catalogue_lookup_ignores_app"
+description = "label catalogue: tracks_for_isrc goes to the account session whatever the opener built, and intake missing with it"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_catalogue_app.py", "tests/test_label_tidal_catalogue.py", "tests/test_intake_missing_isrc.py"]
+old = '''        self._lookups = catalogue if catalogue is not None else session'''
+new = '''        self._lookups = session'''

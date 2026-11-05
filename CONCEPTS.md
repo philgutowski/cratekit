@@ -445,6 +445,14 @@ each send, so a command at its ceiling stops before the call that would pass
 it, parked like a trip, with what it did kept and the exact command that
 continues in the refusal. It is a line per command and never per day.
 
+The gate counts each call under one of two **identities** (U205): `account`,
+the person's own session, which every provider library client and the
+downloader use, and `app`, Cratekit's own app credentials, which only the
+catalogue client in `acquire/catalogue_api.py` holds. Both run under the one
+interval, breaker, cooldown and ceiling; the state file keeps each identity's
+calls and rate limit answers under `identities` beside the totals, and a file
+with no such entry is read as every call the account's.
+
 ### Active taxonomy
 The copy of a taxonomy template that setup puts beside the database, under
 `.cratekit/coupled/taxonomy.toml` on the library volume, and the one declaration

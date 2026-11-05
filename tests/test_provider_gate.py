@@ -1312,7 +1312,8 @@ def test_a_run_that_reached_the_provider_reports_its_calls(installed, monkeypatc
 
     assert code != int(ExitCode.OK), "the fake client cannot serve a playlist"
     assert _spend_warnings(envelope) == [
-        "1 call to the streaming provider this run, none answered with a rate limit"
+        "1 call to the streaming provider this run, none answered with a rate limit; "
+        "1 on the account and none under Cratekit's app credentials"
     ]
 
 
@@ -1352,7 +1353,8 @@ def test_rate_limit_answers_are_named_in_the_spend_line(installed, monkeypatch):
     _, envelope = drive(["label", "harvest", "https://example.invalid/playlist/harvest"])
 
     assert _spend_warnings(envelope) == [
-        "3 calls to the streaming provider this run, 1 answered with a rate limit"
+        "3 calls to the streaming provider this run, 1 answered with a rate limit; "
+        "3 on the account and none under Cratekit's app credentials"
     ]
 
 
@@ -1374,7 +1376,8 @@ def test_the_spend_line_survives_a_refusal(installed, monkeypatch):
 
     assert envelope["cause"]["reason"] == COOLDOWN
     assert _spend_warnings(envelope) == [
-        "1 call to the streaming provider this run, 1 answered with a rate limit"
+        "1 call to the streaming provider this run, 1 answered with a rate limit; "
+        "1 on the account and none under Cratekit's app credentials"
     ]
 
 
@@ -1576,7 +1579,8 @@ def test_calls_another_process_made_are_not_reported_as_this_runs(installed, mon
     _, envelope = drive(["label", "harvest", "https://example.invalid/playlist/harvest"])
 
     assert _spend_warnings(envelope) == [
-        "1 call to the streaming provider this run, none answered with a rate limit"
+        "1 call to the streaming provider this run, none answered with a rate limit; "
+        "1 on the account and none under Cratekit's app credentials"
     ]
 
 
