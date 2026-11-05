@@ -77,7 +77,12 @@ class LivePlaylist:
     def tracks(self, limit=None, offset=0):
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists[self.playlist_id][offset : offset + size]
-        return [Listed(one, self.world.codes.get(one, "")) for one in members]
+        listed = [Listed(one, self.world.codes.get(one, "")) for one in members]
+        for one in listed:
+            if one.id in self.world.untitled:
+                # R-1289: a row the account lists with no title.
+                one.name = ""
+        return listed
 
 
 class World(Machine):
@@ -87,6 +92,8 @@ class World(Machine):
         super().__init__(cfg, scratch)
         self.scratch = scratch
         self.codes = {"r1": "ISRC00000001", "r2": "ISRC00000002", "r3": "ISRC00000003"}
+        #: Account tracks the catalogue lists with no title (R-1289).
+        self.untitled: set[str] = set()
         handle = rb_writer.open_db(self.db, unlock=False, cfg=cfg)
         try:
             from pyrekordbox.db6 import tables
@@ -794,6 +801,24 @@ def test_a_failed_download_frees_its_track_to_be_queued_again(world):
 
     assert queue.state == PLANNED
     assert len(_queued(world.cfg)) == 2
+
+
+def test_an_untitled_track_on_a_mirrored_playlist_is_named_and_the_others_queue(world):
+    """R-1289: one row the account lists with no title no longer stops the playlist."""
+    world.codes["r9"] = "ISRC00000009"
+    world.untitled.add("r9")
+    world.put_in("Tech House Med", "r9")
+    world.put_in("Tech House Med", "r3")
+
+    _area, _step, queue = world.run_all()
+
+    assert queue.state == PLANNED
+    (job,) = _queued(world.cfg)
+    assert list(job.payload[intake_cli.TRACKS]) == ["r3"]
+    (named,) = [one for one in queue.items if one.get("track") == "r9"]
+    assert named["outcome"] == "not queued"
+    assert "the account lists it with no title" in named["why"]
+    assert named["playlist"] == "Tech House Med"
 
 
 def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
