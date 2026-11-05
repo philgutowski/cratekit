@@ -45,6 +45,12 @@ exception's text, an ISRC or a track identifier can hold the digits 404, and
 the outbound seam asks that classifier whether a failure is an absence. An
 outage read as an absence is a track reported as one the provider lacks.
 
+SEVERAL CODES IN ONE REQUEST ANSWER PRESENCE ONLY (U207). The API takes up to
+:data:`ISRC_BATCH` codes in one filter and then answers one track per code,
+a release it picked, so :meth:`AppCatalogue.isrcs_held` reads from such an
+answer which codes are held and nothing else; ``acquire.isrc_screen`` is its
+one caller.
+
 WHAT IT DOES NOT DO. It does not page. An ISRC answer is read as the one page
 the API returns, as the provider library's own ISRC lookup reads it; a code
 filed under more releases than one page holds is a residual of this unit. It

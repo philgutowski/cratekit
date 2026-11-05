@@ -1507,6 +1507,12 @@ store), never in the config file, and `crate doctor` reports which are recorded.
   `crate login catalogue-app-key --from-file PATH`. `crate doctor` says where
   lookups are going and how many calls the account and the app have each made,
   and every verb that reached the provider says the same of its own run.
+  Under the app, `crate sync pair`, the account mirror and `intake missing`
+  first ask up to twenty ISRCs in one request which of them the provider
+  files anything under, so a code it lacks costs no request of its own; every
+  code it holds is still looked up alone, since one ISRC is often a single, an
+  album cut and several compilations, and the batch answer names only one of
+  them.
 
 `crate login NAME --from-file PATH` records one. It refuses a value on the
 command line, since that would sit in your shell history and in the process list
