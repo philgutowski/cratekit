@@ -187,7 +187,7 @@ class Summary:
         if self.reused and not self.asked:
             text = (
                 f"the label's listing was answered from the one kept by an earlier "
-                f"run, {self.age} old, with no provider call; it is read again once "
+                f"run, {self.age} old, with no listing call to the provider; it is read again once "
                 f"it is {life} old, or after {self.path} is deleted"
             )
         elif self.reused:

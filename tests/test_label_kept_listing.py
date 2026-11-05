@@ -155,7 +155,7 @@ def test_a_second_listing_of_the_same_label_asks_the_provider_nothing(entry, clo
     assert budget.calls == spent, budget.asked[spent:]
     assert listed_ids(second) == listed_ids(first)
     assert second.kept.asked == 0 and second.kept.reused > 0
-    assert "no provider call" in second.kept.said()
+    assert "no listing call" in second.kept.said()
 
 
 def test_a_kept_release_reads_as_the_provider_object_did(entry, clock):
@@ -484,7 +484,7 @@ def test_a_second_label_sync_next_of_the_label_makes_no_provider_call(clock, cfg
     (line,) = [
         one for one in envelope["data"]["checks"] if one["key"].endswith("listing.kept-recordings")
     ]
-    assert "no provider call" in line["detail"]
+    assert "no listing call" in line["detail"]
     assert "old" in line["detail"]
 
 
@@ -494,7 +494,7 @@ def test_the_playlists_crawl_gate_says_the_listing_was_kept(entry, clock, cfg): 
     found = adapter(roster_client(Budget()))
     sweep.listed_releases(cfg, entry, found)
     counted = playlists_cli.estimate(cfg, entry, sweep.listed_releases(cfg, entry, found))
-    assert "no provider call" in counted.shown()["listing"]
+    assert "no listing call" in counted.shown()["listing"]
 
 
 def test_a_catalogue_that_keeps_no_listing_says_nothing_about_one(entry, cfg):  # noqa: F811
@@ -545,7 +545,7 @@ def test_a_listing_the_client_does_not_expose_stays_unread_on_every_run(entry, c
     # THE OBJECT WAS READ AGAIN TO ASK FOR IT, and the line does not say none was.
     assert budget.calls > spent
     assert second.kept.asked > 0
-    assert "no provider call" not in second.kept.said()
+    assert "no listing call" not in second.kept.said()
 
 
 def test_a_kept_seed_the_provider_no_longer_has_is_unread_not_empty(entry, clock):
@@ -603,3 +603,24 @@ def test_a_continue_stopped_inside_an_artist_listing_still_costs_less_than_fresh
     assert listed_ids(roster) == ids
     assert budget.calls - stopped_at < whole // 4
     assert not [one for one in budget.asked[stopped_at:] if one.startswith("search ")]
+
+
+def test_a_search_that_fails_on_a_continue_is_counted_so_the_line_stays_true(entry, clock):
+    """Review round two: a failed discovery search is a call whose answer is not
+    kept, so the line must not say the listing made no call."""
+    budget = Budget()
+    client = roster_client(budget)
+    adapter(client).artist_for(entry)
+    _forget(entry, "searched", f"{LABEL} 042")
+    real = client.search
+
+    def failing(query, models=None, limit=50, offset=0):
+        if query == f"{LABEL} 042":
+            budget.tick(f"search {query}")
+            raise RuntimeError("the provider failed")
+        return real(query, models=models, limit=limit, offset=offset)
+
+    client.search = failing
+    roster = adapter(client).artist_for(entry)
+    assert roster.kept.asked == 1
+    assert "no listing call" not in roster.kept.said()
