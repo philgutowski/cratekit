@@ -66,7 +66,7 @@ Layer: modules.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -186,6 +186,11 @@ class Identity:
     agree: bool = False
 
 
+#: Members that return the requests they made, counted by that number rather
+#: than as one call (U207).
+SCREENS = frozenset({"screen_isrcs"})
+
+
 class Counted:
     """The account seam with every call counted, the request count a run reports.
 
@@ -207,6 +212,13 @@ class Counted:
             return member
 
         def counted(*args: Any, **kwargs: Any) -> Any:
+            if name in SCREENS:
+                # A SCREEN SAYS WHAT IT SPENT (U207): none without a batch form,
+                # one per batch with one, never one per call.
+                made = member(*args, **kwargs)
+                self.requests += int(made or 0)
+                self.by_member[name] = self.by_member.get(name, 0) + int(made or 0)
+                return made
             self.requests += 1
             self.by_member[name] = self.by_member.get(name, 0) + 1
             return member(*args, **kwargs)
@@ -280,6 +292,8 @@ class Matcher:
         self.missed: dict[str, tuple[str, tuple[str, ...]]] = {}
         #: How many rows a remembered miss answered, never asked of the provider.
         self.remembered = 0
+        #: Each content row's identity, read once (U207).
+        self._identities: dict[str, Identity] = {}
 
     @property
     def seen(self) -> dict[str, tuple[str, str, str]]:
@@ -307,20 +321,58 @@ class Matcher:
             "" if row.isrc else self._signature(row),
         )
 
-    def _match(self, row: Row) -> tuple[str, str, str]:
+    def _settled(self, row: Row) -> tuple[str, tuple[str, str, str]] | None:
+        """How a row is answered with no request, ``(kind, answer)``, or None.
+
+        Reads only, so the screen asks it of a row before any match and
+        :meth:`_match` asks it again: the rows the screen leaves out are
+        exactly the rows the match never asks the provider about (U207).
+        """
+        if row.content_id in self._seen:
+            return "seen", self._seen[row.content_id]
         linked = self._links.get(row.content_id)
         if linked is not None and (not row.isrc or row.isrc == linked[1]):
-            return linked[0], linked[1], ""
+            return "linked", (linked[0], linked[1], "")
         own = self._known.get(row.content_id)
         if own:
-            self.known += 1
-            return own, row.isrc, ""
-        under = self.under(row)
+            return "known", (own, row.isrc, "")
         missed = self._misses.get(row.content_id)
-        if missed is not None and tuple(missed[1]) == under and TIED not in missed[0]:
-            self.remembered += 1
-            return "", "", missed[0]
-        said = self._identify(row)
+        if missed is not None and tuple(missed[1]) == self.under(row) and TIED not in missed[0]:
+            return "remembered", ("", "", missed[0])
+        return None
+
+    def _identity(self, row: Row) -> Identity:
+        """What the row is matched by, read once per content row, a file's tag included."""
+        held = self._identities.get(row.content_id)
+        if held is None:
+            held = self._identities[row.content_id] = self._identify(row)
+        return held
+
+    def screen(self, rows: Iterable[Row]) -> int:
+        """Screen every code these rows will ask the provider, before any is asked (U207).
+
+        Only a row :meth:`_settled` cannot answer and whose identity carries a
+        code is screened, so a link, a recorded track, a remembered miss and a
+        frozen plan's answer cost nothing here. Returns the requests made.
+        """
+        codes = [
+            said.isrc
+            for row in rows
+            if self._settled(row) is None and (said := self._identity(row)).isrc
+        ]
+        return self._account.screen_isrcs(codes) if codes else 0
+
+    def _match(self, row: Row) -> tuple[str, str, str]:
+        settled = self._settled(row)
+        if settled is not None:
+            kind, answer = settled
+            if kind == "known":
+                self.known += 1
+            elif kind == "remembered":
+                self.remembered += 1
+            return answer
+        under = self.under(row)
+        said = self._identity(row)
         if not said.isrc:
             return self._missed(row, under, NO_ISRC)
         remote = self._account.match_track(

@@ -791,6 +791,32 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         if code:
             on_account.setdefault(code, []).append(remote_id)
     linked = set(links)
+    # U207. EACH UNLINKED ROW'S CODE AND ALBUM, read once, a file's tag
+    # included, so the codes the provider will be asked are known before the
+    # first is asked and screened in batches: a code the catalogue files
+    # nothing under is then answered with no request of its own.
+    identities: dict[str, tuple[str, str]] = {}
+    for row in rows.values():
+        if by_row.get(row.content_id, ""):
+            continue
+        code = match.isrc_token(row.isrc)
+        album = ""
+        if not code:
+            code, album = file_identity(cfg, row.path)
+        identities[row.content_id] = (code, album)
+
+    def held_on_account(code: str) -> list[str]:
+        return [one for one in on_account.get(code, ()) if one not in linked]
+
+    asked = [
+        code
+        for content_id, (code, _album) in identities.items()
+        if code
+        and len(held_on_account(code)) != 1
+        and _remembered_miss(reader, content_id, code) is None
+    ]
+    if asked:
+        reader.remote.screen_isrcs(asked)
     for row in rows.values():
         remote_id = by_row.get(row.content_id, "")
         reason = ""
@@ -800,11 +826,8 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
 
             if template is None:
                 template = source.name_template(cfg)
-            isrc = match.isrc_token(row.isrc)
-            album = ""
-            if not isrc:
-                isrc, album = file_identity(cfg, row.path)
-            held_there = [one for one in on_account.get(isrc, ()) if one not in linked]
+            isrc, album = identities[row.content_id]
+            held_there = held_on_account(isrc)
             if isrc and len(held_there) == 1:
                 remote_id = held_there[0]
             elif not isrc:
@@ -1056,6 +1079,23 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     )
 
 
+def _remembered_miss(reader: _Reader, content_id: str, isrc: str) -> Any:
+    """The miss remembered for this row under this ISRC that a plan reuses, or None.
+
+    The one test :func:`_ask` reuses a miss by, and the one the screen before
+    it leaves a row out by (U207), so the two cannot drift: a row whose miss
+    is reused is never asked, and is never screened either. A TIE IS ASKED
+    AGAIN (R-1032's rule, one file over): releases that agree today may be
+    told apart tomorrow, so a tie is never remembered as an answer.
+    """
+    from cratekit.modules.outbound.service import AGREEING_RELEASES
+
+    held = reader.misses.get(content_id)
+    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:
+        return held
+    return None
+
+
 def _ask(reader: _Reader, row: Any, *, isrc: str, title: str, album: str) -> tuple[str, str]:
     """The account track for one unlinked row, or why there is none: asked once per ISRC.
 
@@ -1070,10 +1110,9 @@ def _ask(reader: _Reader, row: Any, *, isrc: str, title: str, album: str) -> tup
     from cratekit.modules.outbound.service import AGREEING_RELEASES, UNREADABLE_CANDIDATE
 
     held = reader.misses.get(row.content_id)
-    # A TIE IS ASKED AGAIN (R-1032's rule, one file over): releases that agree
-    # today may be told apart tomorrow, so a tie is never remembered as an answer.
-    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:
-        return "", held.reason
+    reused = _remembered_miss(reader, row.content_id, isrc)
+    if reused is not None:
+        return "", reused.reason
     remote = reader.remote
     remote_id = str(
         remote.match_track(

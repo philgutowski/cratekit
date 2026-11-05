@@ -534,6 +534,13 @@ def read(cfg: config.Config, account_of: Callable[[], Any], run: Run | None = No
         seen=frozen.matches if frozen is not None else None,
         known=known,
     )
+    # U207. EVERY CODE THE PLANS WILL ASK, screened in batches before the
+    # first is asked, so a code the catalogue files nothing under costs no
+    # request of its own. A frozen plan's rows are answered already and
+    # screen nothing.
+    matcher.screen(
+        row for folder in library.folders for source in folder.playlists for row in source.rows
+    )
     reading = Reading(
         library=library,
         recorded=recorded,

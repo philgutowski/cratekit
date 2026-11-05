@@ -480,6 +480,11 @@ def _named_by_isrc(
     answers: dict[str, tuple[str, ...] | _Unnamed] = {}
     if askable:
         found = (resolve or _catalogue_once())()
+        # THE CODES THE CATALOGUE FILES NOTHING UNDER, asked in batches first
+        # (U207), so each is answered with no request of its own below. Every
+        # other code is still asked alone, since a batch names one release a
+        # code and the row is listed only when the code names exactly one.
+        found.screen_isrcs(askable)
         for code in askable:
             try:
                 tracks = tuple(found.tracks_for_isrc(code))
