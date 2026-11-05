@@ -45,6 +45,8 @@ PROTOCOL_METHODS = frozenset(
         "release_artist",
         "tracks_for_isrc",
         "search_tracks",
+        # U207. Reads only: which codes intake missing will ask the provider files nothing under.
+        "screen_isrcs",
     }
 )
 
@@ -239,6 +241,8 @@ class FakeCatalogue:
         #: failure; :class:`UnreadableCatalogue` is the failure.
         self.isrcs = dict(isrcs or {})
         self.isrcs_asked_for: list[str] = []
+        #: Every ``screen_isrcs`` call, its codes in the order given (U207).
+        self.screened: list[tuple[str, ...]] = []
         #: The provider's hits for each search, keyed by the artist and the title
         #: exactly as the seam was handed them, in the provider's order. A search
         #: absent here is one the provider answers with nothing.
@@ -311,6 +315,11 @@ class FakeCatalogue:
         except KeyError as exc:
             # The seam's own exception, as ``release_tracks`` raises it.
             raise ReleaseUnresolvable(f"no catalogue release {release_id!r}") from exc
+
+    def screen_isrcs(self, codes) -> int:
+        """Recorded, and asks nothing: this catalogue has no batch form (U207)."""
+        self.screened.append(tuple(codes))
+        return 0
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         self.isrcs_asked_for.append(isrc)

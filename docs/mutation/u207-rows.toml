@@ -1,0 +1,223 @@
+name = "u207"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_any_client_screened"
+description = "screen: ask any client with an isrcs_held member, not only the app catalogue, so a stand in that answers an empty set marks every code absent"
+file = "src/cratekit/acquire/isrc_screen.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''        if self._stopped or not isinstance(client, catalogue_api.AppCatalogue):
+            return 0'''
+new = '''        if self._stopped or not callable(getattr(client, "isrcs_held", None)):
+            return 0'''
+
+[[rows]]
+id = "S2_lone_code_screened"
+description = "screen: a batch of one code is screened, paying a request its own lookup would have answered"
+file = "src/cratekit/acquire/isrc_screen.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''MIN_BATCH = 2'''
+new = '''MIN_BATCH = 1'''
+
+[[rows]]
+id = "S3_unfolded_spelling_screened"
+description = "screen: a spelling that is not its own fold enters a batch, so a lowercase code is screened under its fold"
+file = "src/cratekit/acquire/isrc_screen.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''            if code and code == match.isrc_token(code) and code not in self._asked'''
+new = '''            if code and match.isrc_token(code) and code not in self._asked'''
+
+[[rows]]
+id = "S4_rate_limit_keeps_screening"
+description = "screen: a rate limit or a rejected app credential on a batch leaves the screening running, so every later batch is sent into it"
+file = "src/cratekit/acquire/isrc_screen.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''            except (catalogue_api.CatalogueRateLimited, catalogue_api.AppCredentialsRejected):
+                self._stopped = True
+                break'''
+new = '''            except (catalogue_api.CatalogueRateLimited, catalogue_api.AppCredentialsRejected):
+                continue'''
+
+[[rows]]
+id = "S5_refused_form_keeps_screening"
+description = "screen: a 4xx refusal of the request form does not stop the screening"
+file = "src/cratekit/acquire/isrc_screen.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''                if exc.status is not None and 400 <= exc.status < 500:'''
+new = '''                if exc.status is not None and 400 <= exc.status < 400:'''
+
+[[rows]]
+id = "S6_failed_batch_read_as_empty"
+description = "screen: a batch the API could not answer is read as an empty answer, so every code in it is answered not found"
+file = "src/cratekit/acquire/isrc_screen.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''                continue
+            self._absent.update(code for code in batch if code not in held)'''
+new = '''                held = frozenset()
+            self._absent.update(code for code in batch if code not in held)'''
+
+[[rows]]
+id = "S7_failed_batch_sent_again"
+description = "screen: a batch's codes are marked asked only once it answered, so a failed batch is sent again by the next plan"
+file = "src/cratekit/acquire/isrc_screen.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''            self._asked.update(batch)
+            made += 1'''
+new = '''            made += 1'''
+
+[[rows]]
+id = "C1_no_isrc_track_skipped"
+description = "isrcs_held: a track with no readable ISRC is skipped rather than refusing the answer, so the code it answered is read as absent"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''            if not code:
+                raise CatalogueUnavailable(
+                    f"the catalogue API's answer to this {what} holds a track with no "'''
+new = '''            if not code:
+                continue
+                raise CatalogueUnavailable(
+                    f"the catalogue API's answer to this {what} holds a track with no "'''
+
+[[rows]]
+id = "C2_code_not_asked_accepted"
+description = "isrcs_held: an answer naming a code nobody asked is accepted, so the code asked is read as absent"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''        if not named <= set(asked):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C3_paged_answer_accepted"
+description = "isrcs_held: an answer with a next link is read whole, so a code on the page not read is absent"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''        if isinstance(links, Mapping) and _text(links.get("next")):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C4_non_resource_skipped"
+description = "isrcs_held: an entry that is not a resource is skipped rather than refusing the answer"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''            if not isinstance(resource, Mapping):
+                raise CatalogueUnavailable('''
+new = '''            if not isinstance(resource, Mapping):
+                continue
+                raise CatalogueUnavailable('''
+
+[[rows]]
+id = "C5_batch_ceiling_raised"
+description = "catalogue: the batch ceiling is fifty, past the API's documented twenty"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''ISRC_BATCH = 20'''
+new = '''ISRC_BATCH = 50'''
+
+[[rows]]
+id = "C6_batch_shape_unchecked"
+description = "isrcs_held: a batch of duplicate, unfolded or malformed codes is sent as given"
+file = "src/cratekit/acquire/catalogue_api.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_catalogue_app.py"]
+old = '''        if len(set(asked)) != len(asked) or any(code != match.isrc_token(code) for code in asked):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "A1_account_ignores_screen"
+description = "TidalAccount.match_track: a code the screen answered absent is asked again, so the screen saves nothing"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_outbound_tidal_account.py"]
+old = '''                if self._screen.absent(wanted)'''
+new = '''                if False'''
+
+[[rows]]
+id = "A2_catalogue_ignores_screen"
+description = "TidalCatalogue.tracks_for_isrc: a code the screen answered absent is asked again"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if self._screen.absent(wanted):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P1_pair_screens_remembered_miss"
+description = "sync pair: a remembered miss's code is screened though it is never asked"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_isrc_screen.py"]
+old = '''        and _remembered_miss(reader, content_id, code) is None
+'''
+new = '''
+'''
+
+[[rows]]
+id = "P2_pair_never_screens"
+description = "sync pair: the plan never screens, so every code is asked alone"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_isrc_screen.py"]
+old = '''    if asked:
+        reader.remote.screen_isrcs(asked)'''
+new = '''    if False:
+        reader.remote.screen_isrcs(asked)'''
+
+[[rows]]
+id = "P3_pair_screens_held_on_account"
+description = "sync pair: a code the account playlist already holds is screened though it is never asked"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_isrc_screen.py"]
+old = '''        and not held_on_account(code)
+'''
+new = ''''''
+
+[[rows]]
+id = "M1_mirror_screens_settled_rows"
+description = "mirror: the matcher screens every row with a code, a link, a recorded track and a remembered miss included"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_tie.py"]
+old = '''            if self._settled(row) is None and (said := self._identity(row)).isrc'''
+new = '''            if (said := self._identity(row)).isrc'''
+
+[[rows]]
+id = "M2_mirror_counts_a_screen_as_one"
+description = "mirror: Counted counts a screen as one request whatever it spent"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_tie.py"]
+old = '''            if name in SCREENS:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M3_mirror_read_never_screens"
+description = "account mirror read: the plans' rows are never screened"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_tie.py"]
+old = '''    matcher.screen('''
+new = '''    (lambda rows: 0)('''
+
+[[rows]]
+id = "I1_missing_never_screens"
+description = "intake missing: the askable codes are never screened"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+tests = ["tests/test_isrc_screen.py", "tests/test_intake_missing_isrc.py"]
+old = '''        found.screen_isrcs(askable)
+'''
+new = '''
+'''

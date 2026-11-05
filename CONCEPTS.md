@@ -703,9 +703,12 @@ The account tracks a mirrored playlist held when `crate organize`'s account mirr
 last finished it, kept per playlist in the outbound ledger under `agreed` (U201).
 It is what tells an edit a person made on the account (held there now, not in the
 snapshot, or the reverse) from a change made in rekordbox, so the mirror holds the
-first and the rekordbox area's `mirror-edits` step takes it into the library. A
-playlist with no snapshot has never been agreed, and every difference on it is
-read as rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
+first and the rekordbox area's `mirror-edits` step takes it into the library,
+for a genre playlist (U201), the Favorites folder and an INBOX batch (U204). A
+track added on the account that the library lacks and no snapshot ever held is
+queued for download by the `mirror-downloads` step instead. A playlist with no
+snapshot has never been agreed, and every difference on it is read as
+rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
 side of a pair the author made.
 
 ### Rotation
@@ -2245,6 +2248,19 @@ is not an answer about the row.
 
 *Avoid:* reading it as a refusal recorded on a mirrored playlist (`refused`
 under `mirrors`), which is a track the provider would not ADD, already matched.
+
+### ISRC screen
+A batch question asked before a plan's ISRC lookups, built by U207: up to
+twenty codes in one request to the provider's catalogue API, under the app
+credentials only, asking which of them it files anything under. A code the
+answer leaves out is answered not found with no lookup of its own; every code
+it names is still looked up alone, because given several codes the API answers
+one release per code, and which release a row means is decided from every
+release. `sync pair`, the account mirror and `intake missing` screen. A batch
+that fails, or an answer that cannot be attributed whole, marks nothing.
+
+*Avoid:* reading it as a batched lookup, or as the ISRC cache, which keeps
+answers across runs.
 
 ### Frozen mirror plan
 The library and the matches the account mirror's plan read on the organize run

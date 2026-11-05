@@ -436,6 +436,22 @@ class Cache:
             _PROCESS_HITS += 1
         return held
 
+    def holds(self, isrc: str, country: str) -> bool:
+        """Whether :meth:`recall` would answer this code now, counting nothing.
+
+        For a caller deciding what is worth asking about at all, U207's batch
+        screen among them: a code the cache answers needs no batch either.
+        """
+        if not self.enabled:
+            return False
+        key = _key(isrc, country)
+        if key is None:
+            return False
+        entries = self._entries()
+        if not entries:
+            return False
+        return self._fresh(entries.get(key), self.clock()) is not None
+
     # ── writing ────────────────────────────────────────────────────────────
 
     @contextmanager

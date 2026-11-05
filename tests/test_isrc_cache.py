@@ -822,3 +822,27 @@ def test_doctor_tells_a_file_that_does_not_parse_from_one_that_cannot_be_read(mo
         scoped.setattr(Path, "read_text", refused)
         unreadable = _doctor_note()
     assert "could not be read" in unreadable.detail
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U207's batch screen is not asked about a code the cache answers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("seam", ["account", "catalogue"])
+def test_the_batch_screen_is_handed_only_codes_the_cache_cannot_answer(clock, monkeypatch, seam):
+    from cratekit.acquire import isrc_screen
+
+    handed: list[list[str]] = []
+    monkeypatch.setattr(
+        isrc_screen.Screen, "screen", lambda self, client, codes: handed.append(list(codes)) or 0
+    )
+    made = cache(clock)
+    account(Client({ONE: single()}), made).match_track(identity="1", isrc=ONE)
+    client = Client({})
+    adapter_ = account(client, made) if seam == "account" else catalogue(client, made, monkeypatch)
+
+    adapter_.screen_isrcs([ONE, TWO, "QZAAA2600003"])
+
+    assert handed == [[TWO, "QZAAA2600003"]]
+    assert client.asked == []
