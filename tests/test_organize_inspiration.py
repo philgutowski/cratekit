@@ -760,7 +760,8 @@ def test_a_set_whose_unread_track_carries_no_provider_id_is_still_filed_unread(
 
     unread = _by_set(step)[FEMME]
     assert unread["action"] == inspiration.UNREAD
-    assert "track 2 names no title" in unread["reason"]
+    assert unread["reason"].startswith("track 2 names no title")
+    assert "it carries no provider id either" in unread["reason"]
     assert step["state"] == "nothing"
     assert any(
         w["code"] == "organize-inspiration-unread" and FEMME in w["message"]
@@ -803,4 +804,38 @@ def test_a_set_no_track_of_which_reads_is_filed_unread_naming_each(machine, acco
     assert any(
         w["code"] == "organize-inspiration-unread" and FEMME in w["message"]
         for w in envelope["warnings"]
+    )
+
+
+def test_a_miss_the_library_lacks_ahead_of_an_unread_track_keeps_set_order(
+    machine, account, silence
+):
+    _owned(machine, silence, "Cut 01")
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("Absent Harbor", "", "Cut 01"))
+
+    planned = _by_set(_step(_report()))[FEMME]
+
+    assert planned["tracks"] == 1
+    assert planned["misses"] == [
+        f"1. Probe - Absent Harbor: {set_playlist.NOT_HELD}",
+        _unread_line(2, "Probe", "no title", "title", f"{playlist_id}-2"),
+    ]
+
+
+def test_a_set_no_track_of_which_reads_names_five_counts_the_rest_and_the_withheld(
+    machine, account, silence
+):
+    playlist_id = account.add_set(f"DOWNLOADED {FEMME}", ("",) * 7, declared=10)
+
+    unread = _by_set(_step(_report()))[FEMME]
+
+    assert inspiration.NAMED_UNREAD == 5
+    assert unread["action"] == inspiration.UNREAD
+    assert unread["reason"] == (
+        "no track of the set could be read: "
+        + ", ".join(
+            f"{playlist_id}-{place} (the account lists it with no title)" for place in range(1, 6)
+        )
+        + ", and 2 more the same way; the provider also counts 3 track(s) on the "
+        "playlist it would not list"
     )

@@ -367,12 +367,37 @@ def _read(found: Any, playlist_id: str) -> _Listed:
     for position, row in enumerate(rows, start=1):
         try:
             wanted.append((position, match.read_row(row, origin=match.TIDAL, position=position)))
-        except match.UnreadableList:
+        except match.UnreadableList as exc:
             one = intake_cli.set_aside(row)
             if not one.ref:
-                raise
+                # NOTHING WOULD NAME IT among the misses, so the set stays
+                # unread, and the reason says the id is what held it back.
+                raise match.UnreadableList(
+                    f"{exc}; it carries no provider id either, so it cannot be named "
+                    f"among the set's misses and the set is not written",
+                    line=position,
+                ) from exc
             unread.append((position, one))
     return _Listed(tuple(wanted), tuple(unread), short.withheld if short is not None else 0)
+
+
+#: How many unread tracks a set's reason names before it counts the rest.
+NAMED_UNREAD = 5
+
+
+def _none_read(listing: _Listed) -> str:
+    """Why a set no track of which reads is shown unread: the first tracks, a count, the withheld."""
+    shown = ", ".join(f"{one.ref} ({one.why})" for _place, one in listing.unread[:NAMED_UNREAD])
+    rest = len(listing.unread) - NAMED_UNREAD
+    said = f"no track of the set could be read: {shown}"
+    if rest > 0:
+        said += f", and {rest} more the same way"
+    if listing.withheld:
+        said += (
+            f"; the provider also counts {listing.withheld} track(s) on the playlist "
+            f"it would not list"
+        )
+    return said
 
 
 def _unread_miss(position: int, one: Any) -> Miss:
@@ -511,8 +536,8 @@ def plan(
                     playlist_id,
                     folder,
                     UNREAD,
-                    why="no track of the set could be read: "
-                    + ", ".join(f"{one.ref} ({one.why})" for _place, one in listing.unread),
+                    withheld=listing.withheld,
+                    why=_none_read(listing),
                 )
             )
             continue
@@ -750,6 +775,7 @@ __all__ = [
     "CREATE",
     "EMPTY",
     "FOLDER_UNREAD",
+    "NAMED_UNREAD",
     "PREFIX",
     "RECORD_KEY",
     "SKIP",
