@@ -494,3 +494,22 @@ def test_a_held_plan_older_than_it_is_kept_is_planned_again(world):
     code, second = drive(["--run", run_id, *w.args()])
     assert code == int(ExitCode.DECISION_REQUIRED), second
     assert "older than 30 days" in second["cause"]["detail"]["shown"]["planned again"]
+
+
+def test_tracks_another_sync_queued_before_the_write_refuse_stale_not_twice(world):
+    from cratekit.core import jobs
+
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    w.account.playlists[ACCOUNT].append("t77")
+    first = _to_the_write(w)
+    second = _to_the_write(w)
+    code, done = drive(["--run", first, *w.args()])
+    assert code == int(ExitCode.OK), done
+    assert len(done["data"]["totals"]["queued_jobs"]) == 1
+    code, refused = drive(["--run", second, *w.args()])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    moved = refused["cause"]["detail"]["moved"]
+    assert [(one["side"], one["playlist_id"]) for one in moved] == [("library", ACCOUNT)]
+    with jobs.open_store() as store:
+        assert len(pair_cli.pair_jobs(w.cfg, store)) == 1

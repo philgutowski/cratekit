@@ -18,6 +18,8 @@ from tests.test_rebuild import _release_process_locks as _release_process_locks 
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
 from tests.test_rebuild import gates_pass as gates_pass  # noqa: PLC0414
 from tests.test_rebuild import library as library  # noqa: PLC0414
+from tests.test_sync_pair_back import gig as gig  # noqa: PLC0414
+from tests.test_sync_pair_back import in_rekordbox, on_account
 from tests.test_sync_pair_discover import VERB, sync
 from tests.test_sync_pair_discover import db as db  # noqa: PLC0414
 from tests.test_sync_pair_discover import world as world  # noqa: PLC0414
@@ -218,3 +220,92 @@ def test_a_root_folder_to_make_is_named_without_an_empty_identifier(world):
     assert code == int(ExitCode.DECISION_STALE), refused
     assert "the account folder 'GIG READY' is now a root folder" in refused["cause"]["message"]
     assert "()" not in refused["cause"]["message"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round two: a self paired playlist's whole place, read as the plan read it
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _moved_to(world, parent: str):
+    """Discover GIG READY / Opener, answer both gates, then drag it under ``parent``."""
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", under=gig)
+    run_id = _to_the_write()
+    target = parent if parent != "root" else "root"
+    if parent == "subfolder":
+        target = world.folder("Halloween", under=gig)
+    world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", target, opener)
+    return run_id, opener
+
+
+def test_a_discovered_playlist_moved_to_another_folder_before_the_write_refuses_stale(world):
+    warmup = world.folder("WARMUP")
+    run_id, opener = _moved_to(world, warmup)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    moved = refused["cause"]["detail"]["moved"]
+    assert [one["playlist_id"] for one in moved] == [opener]
+    assert "would now be made as 'WARMUP Opener' in 'WARMUP'" in moved[0]["why"]
+    assert world.account.created == []
+
+
+def test_a_discovered_playlist_moved_to_the_root_before_the_write_refuses_stale(world):
+    run_id, _opener = _moved_to(world, "root")
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert world.account.created == []
+
+
+def test_a_discovered_playlist_moved_into_a_subfolder_before_the_write_refuses_stale(world):
+    run_id, _opener = _moved_to(world, "subfolder")
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert "GIG READY Halloween Opener" in refused["cause"]["message"]
+    assert world.account.created == []
+
+
+def test_a_discovered_playlist_moved_where_discovery_never_pairs_refuses_stale(world):
+    favourites_like = world.folder("ARCHIVE")
+    run_id, _opener = _moved_to(world, favourites_like)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert "no longer one a sync of every pair would make" in refused["cause"]["message"]
+    assert world.account.created == []
+
+
+def test_a_brought_playlist_taken_out_of_its_account_folder_before_the_write_refuses_stale(
+    world, gig
+):
+    closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    run_id = _to_the_write()
+    world.account.placed.pop(closer)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    moved = refused["cause"]["detail"]["moved"]
+    assert [(one["side"], one["playlist_id"]) for one in moved] == [("account", closer)]
+    assert "Closer" not in in_rekordbox(world, gig)
+
+
+def test_a_brought_playlists_rekordbox_folder_archived_before_the_write_refuses_stale(world, gig):
+    on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    run_id = _to_the_write()
+    archive = world.folder("ARCHIVE")
+    world.sql("UPDATE djmdPlaylist SET ParentID = ? WHERE ID = ?", archive, gig)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    homes = [one for one in refused["cause"]["detail"]["moved"] if one["side"] == "rekordbox-home"]
+    assert [one["name"] for one in homes] == ["GIG READY / Closer"]
+    assert "Closer" not in in_rekordbox(world, gig)
+
+
+def test_a_brought_playlists_folder_gone_reads_as_one_sentence(world, gig):
+    on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    run_id = _to_the_write()
+    world.sql("UPDATE djmdPlaylist SET rb_local_deleted = 1 WHERE ID = ?", gig)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert (
+        "the rekordbox playlist to be made at 'GIG READY / Closer': the rekordbox folder "
+        "'GIG READY' the plan named is no longer a live folder"
+    ) in refused["cause"]["message"]

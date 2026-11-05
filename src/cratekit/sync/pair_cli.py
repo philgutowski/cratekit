@@ -628,14 +628,7 @@ class _Reader:
     @cached_property
     def pair_jobs(self) -> tuple[jobs.Job, ...]:
         """Every intake job this verb queued on this library that did not fail, newest first."""
-        return tuple(
-            job
-            for job in jobs.list_jobs(self.store)
-            if job.handler_key == INTAKE_HANDLER
-            and job.library_id == self.cfg.library.volume_id
-            and (job.payload or {}).get("source_id") == PAIR_SOURCE
-            and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
-        )
+        return pair_jobs(self.cfg, self.store)
 
     @cached_property
     def mirrors(self) -> dict[str, frozenset[str]]:
@@ -648,6 +641,18 @@ class _Reader:
             for job in self.pair_jobs
             if str((job.payload or {}).get(intake_cli.SOURCE) or "") == account_id
         )
+
+
+def pair_jobs(cfg: config.Config, store) -> tuple[jobs.Job, ...]:
+    """Every intake job this verb queued on this library that did not fail, newest first."""
+    return tuple(
+        job
+        for job in jobs.list_jobs(store)
+        if job.handler_key == INTAKE_HANDLER
+        and job.library_id == cfg.library.volume_id
+        and (job.payload or {}).get("source_id") == PAIR_SOURCE
+        and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
+    )
 
 
 def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
@@ -2462,6 +2467,10 @@ def _release(run_id: str) -> None:
     held_plan.release(run_id)
 
 
+#: The side a made rekordbox playlist's home is named on when it moved.
+HOME_SIDE = "rekordbox-home"
+
+
 @dataclass(frozen=True, slots=True)
 class Moved:
     """One list the check before the write found other than the plan read it (U209)."""
@@ -2480,16 +2489,20 @@ class Moved:
         }
 
     def said(self) -> str:
+        if self.side == HOME_SIDE:
+            return f"the rekordbox playlist to be made at {self.name!r}: {self.why}"
         where = "the account playlist" if self.side == ACCOUNT_SIDE else "the rekordbox playlist"
         if self.side == "account-folder":
             where = "the account folder"
+        if self.side == "library":
+            where = "the acquisitions queued for"
         named = f"{where} {self.name!r} ({self.playlist_id})" if self.playlist_id else (
             f"{where} {self.name!r}"
         )
         return f"{named} {self.why}"
 
 
-def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
+def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, ...]]:
     """Refuse a write whose lists moved since the plan the gates showed, before anything is written.
 
     U209. A plan held across its gates is not made again, so before the first
@@ -2511,7 +2524,10 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
     snapshot without listing it again.
     """
     from cratekit.label import catalogue
+    from cratekit.modules.outbound import pairs
 
+    # THE PAIRS DOCUMENT AS THE WRITE WILL FIND IT, read once.
+    document = pairs.PairStore(cfg)._document()
     moved: list[Moved] = []
     listed: dict[str, tuple[str, ...]] = {}
     on_account = [one for one in planned.pairs if not one.target.new]
@@ -2549,7 +2565,57 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
                 )
             else:
                 listed[one.target.account_id] = now
+    brought = [one for one in planned.pairs if one.target.rekordbox_new and one.home is not None]
+    folders = document.folders
     made = [one for one in planned.pairs if one.target.new and one.place is not None]
+    if brought:
+        from cratekit.modules.outbound import account as outbound_account
+
+        remote = outbound_account.resolve(cfg)
+        seen: dict[str, dict[str, str]] = {}
+        for one in brought:
+            recorded = folders.get(one.target.folder)
+            listing: dict[str, str] = {}
+            if recorded is not None:
+                if recorded.folder_id not in seen:
+                    seen[recorded.folder_id] = dict(remote.folder_playlists(recorded.folder_id))
+                listing = seen[recorded.folder_id]
+            if listing.get(one.target.account_id) != one.target.title:
+                # TAKEN OUT OF THE SYNCED FOLDER, or retitled, since the plan:
+                # a plan made now would bring it nowhere, or somewhere else.
+                moved.append(
+                    Moved(
+                        ACCOUNT_SIDE,
+                        one.target.account_id,
+                        one.name,
+                        f"is no longer titled {one.target.title!r} in the account folder "
+                        f"{one.target.folder!r}",
+                    )
+                )
+    if any(one.acquire for one in planned.pairs):
+        queued = pair_jobs(cfg, store)
+        for one in planned.pairs:
+            if not one.acquire:
+                continue
+            owner = one.target.account_id
+            now = {
+                str(item)
+                for job in queued
+                if str((job.payload or {}).get(intake_cli.SOURCE) or "") == owner
+                for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
+            }
+            again = sorted(set(one.acquire) & now)
+            if again:
+                # ANOTHER SYNC QUEUED THEM SINCE THE PLAN, which a plan made now
+                # would name as awaiting rather than queue twice.
+                moved.append(
+                    Moved(
+                        "library",
+                        owner,
+                        one.name,
+                        f"include {len(again)} track(s) another sync queued since the plan",
+                    )
+                )
     if made:
         from cratekit.modules.outbound import account as outbound_account
 
@@ -2595,18 +2661,31 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
                             "is now a root folder on the account, which the plan was to make",
                         )
                     )
-    from cratekit.core import active_taxonomy
+    from cratekit.core import active_taxonomy, tree_registry
     from cratekit.favorites import placement
-    from cratekit.modules.outbound import pairs
     from cratekit.sync import pair_discover, pair_reverse
 
-    favorites = placement.source_name(active_taxonomy.load(cfg))
+    taxonomy = active_taxonomy.load(cfg)
+    favorites = placement.source_name(taxonomy)
     skip = cfg.outbound.pair_skip_folders
-    document = pairs.PairStore(cfg)._document()
+    tops = generated_tops(taxonomy, tree_registry.read(cfg))
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
+        discovered: dict[str, Any] = {}
+        if any(one.place is not None for one in planned.pairs):
+            discovered = {
+                found.rekordbox_id: found
+                for found in pair_discover.discover(
+                    db,
+                    tops=tops,
+                    favorites=favorites,
+                    skip=skip,
+                    paired=(pair.rekordbox_id for pair in document.pairs.values()),
+                    released=document.released.rekordbox,
+                ).found
+            }
         for one in planned.pairs:
             if one.target.rekordbox_new:
                 # U202. THE HOME IT IS MADE AT, read now rather than at its
@@ -2617,8 +2696,20 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
                 except CratekitError as exc:
                     if exc.cause.reason != "decision-stale":
                         raise
+                    moved.append(Moved(HOME_SIDE, "", one.home.where, _reworded(exc.cause.message)))
+                    continue
+                now = pair_discover.home_of(
+                    db, one.target.folder, one.target.title, tops=tops, favorites=favorites, skip=skip
+                )
+                if now != one.home:
                     moved.append(
-                        Moved(REKORDBOX_SIDE, "", one.home.where, _reworded(exc.cause.message))
+                        Moved(
+                            HOME_SIDE,
+                            "",
+                            one.home.where,
+                            "its place moved since the plan"
+                            + (f" ({now})" if isinstance(now, str) else f", it now goes at {now.where!r}"),
+                        )
                     )
                 continue
             there = playlist_pair.read_playlist(db, one.target.rekordbox_id)
@@ -2646,8 +2737,34 @@ def check(cfg: config.Config, planned: Plan) -> dict[str, tuple[str, ...]]:
                     )
                 )
                 continue
+            if one.place is not None:
+                # A DISCOVERED PLAYLIST IS READ AS DISCOVERY READS IT NOW: still
+                # found, under the same account folder and title. Moved to
+                # another folder, the root, a subfolder or anywhere discovery
+                # lists rather than finds, a plan made now would make another
+                # account playlist or none.
+                now_found = discovered.get(one.target.rekordbox_id)
+                if now_found is None or (now_found.folder, now_found.title) != (
+                    one.place.folder,
+                    one.place.title,
+                ):
+                    moved.append(
+                        Moved(
+                            REKORDBOX_SIDE,
+                            one.target.rekordbox_id,
+                            one.rekordbox_name,
+                            "was moved since the plan, and "
+                            + (
+                                f"would now be made as {now_found.title!r} in "
+                                f"{now_found.folder!r}"
+                                if now_found is not None
+                                else "is no longer one a sync of every pair would make"
+                            ),
+                        )
+                    )
+                    continue
             held = document.pairs.get(one.target.account_id)
-            if one.place is not None or (held is not None and held.made):
+            if held is not None and held.made:
                 # A PLAYLIST THE PRODUCT PAIRS BY ITSELF IS KEPT ONLY WHERE
                 # DISCOVERY WOULD FIND IT (U198), which the plan read as so:
                 # one dragged under ARCHIVE since is let go by a plan made
@@ -2848,7 +2965,7 @@ def sync_pair(ctx) -> Envelope:
         if held:
             before = _spent()
             try:
-                listed = check(cfg, planned)
+                listed = check(cfg, planned, store=store)
             finally:
                 calls["check"] = _spent() - before
         before = _spent()
