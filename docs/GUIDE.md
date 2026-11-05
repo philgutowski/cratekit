@@ -989,6 +989,28 @@ removed. The account keeps no time for a removal, and rekordbox often keeps
 none either, so where either time is unknown the track stays on both and the
 gate names it.
 
+A sync plans once. The first command reads both sides and shows the rekordbox
+gate; answering it, and then the account gate, reuses that plan rather than
+reading every playlist and asking the provider about every track again, even
+when you answer a day later. Just before writing, Cratekit reads each paired
+playlist on both sides once more, and only to see that it is as the plan read
+it: if you changed one in between, nothing is written, the answer names each
+playlist that moved, and you run `crate sync pair` again to see the plan as it
+is now. The answer says how many provider calls the plan, that check and the
+write each took.
+
+A long sync can stop part way through its write: the provider's call ceiling
+for one command, a cooldown, or anything else that parks it. What it wrote is
+kept and each step is recorded under its run, so the stop's answer names the
+run and the command that finishes it, `crate --calls N --run RUN sync pair`
+for a ceiling stop. That continue writes only what is left, with no new plan
+and no new answers: a playlist the stop left made and empty is filled, never
+made twice. If you changed a playlist the write had not finished with, by hand
+on Tidal or in rekordbox, it refuses as stale and names it, and a fresh
+`crate sync pair` is the way on. Before you answer, the gates show how many
+provider calls the write is expected to make, and when that is more than one
+command may make, the `--calls` value that lets it finish in one go.
+
 ### Publish a playlist
 
 ```bash

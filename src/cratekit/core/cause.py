@@ -1929,6 +1929,10 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # The playlist pairs document could not be read or locked, so what each
         # pair held at its last sync is unknown. Nothing was written.
         "sync-pair-store-unusable": ExitCode.PRECONDITION,
+        # U210. A sync pair write took a step it could not record under its run,
+        # so it stopped rather than go on with nothing to continue it from.
+        # What it wrote before that is kept.
+        "sync-pair-steps-unwritten": ExitCode.PRECONDITION,
         # ``sync pair`` was given an account playlist that is not marked and no
         # rekordbox playlist to pair it with, or a playlist either side does not
         # hold. Nothing was written.

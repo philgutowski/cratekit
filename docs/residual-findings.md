@@ -42638,3 +42638,223 @@ and a note that reads clean over them, never data.
 **Closes when:** the note asks whether the lock can be taken and, when it
 cannot, says every lookup asks the provider until the folder is writable.
 Ledger only.
+
+---
+
+## R-1241. A made pair released because its account playlist was not listed is released at the write even when the account lists it again
+
+**Found:** at round two of the review of #499, U209, 2026-11-05.
+
+**The mechanism.** U209's check reads again, before the write, that a made
+pair let go for its rekordbox side is still let go, and skips an unpaired
+pair whose gone side is the account (`if lost.gone != REKORDBOX_SIDE:
+continue`). A made pair the plan unpaired because the account did not list
+its playlist is released at the write, its rekordbox side recorded as
+released for good, even when the account lists the playlist again by then.
+A custom playlist twin takes the same path and is forgotten.
+
+**Measured cost.** Round two drove it in the fake by removing the playlist
+and restoring it under the same identifier between the plan and the write:
+the pair was released and the next sync said its account playlist was
+deleted while the account listed it. Whether the real account can list a
+playlist absent at the plan and present at the write is unmeasured, so no
+live producer is known.
+
+**Closes when:** the check lists the author's playlists once when the plan
+unpairs any for a gone account side, and refuses stale naming one that is
+back. Ledger only until a live producer is found.
+
+---
+
+## R-1242. A sync pair with nothing to change still lists every account playlist once more to check it and record its snapshot
+
+**Found:** at the build of #499, U209, 2026-11-05.
+
+**The mechanism.** With both gates applied, U209's check lists each paired
+account playlist once before the write, and a pair with nothing to write
+records that listing as its snapshot. So a no change sync of every pair costs
+one plan plus one listing per pair, against three plans plus one listing per
+pair before. Skipping the check and the write when the plan writes nothing
+would save the listings, but the snapshot and its sync moment would then stay
+where they were, and a pair whose first sync never completed would stay
+first, so a later removal on one side would be added back from the other.
+Kept as the conservative call.
+
+**Measured cost.** One listing per pair per no change sync, about one to two
+provider calls each at a hundred tracks a page; not measured live.
+
+**Closes when:** Phillip asks for a no change sync to stop after its plan, and
+the skip excludes any pair that is first or unmarked. Ledger only.
+
+---
+
+## R-1243. A run planned again under its own run reports only the last plan's provider calls
+
+**Found:** at the review of #499, U209, 2026-11-05.
+
+**The mechanism.** `sync_pair` holds the plan with the calls its plan took,
+and the write reports that count under `totals.calls.plan`. When a later
+command of the run cannot use the held plan (unreadable, older than thirty
+days, made for other pairs) it plans again and holds the new plan with the
+new count, so the first plan's calls are in no answer. The reason for the
+replan is on that command's gate screen, under `planned again`, and not on
+the write's answer when the write was a later command still.
+
+**Measured cost.** Round one drove it with a held file made unreadable before
+the second command: the fake counted four plan calls across the run and the
+answer said two. The live producer at the person's level, another playlist
+named under the same run, was not driven.
+
+**Closes when:** the held document carries the run's running plan count, added
+to by each command that plans again. Ledger only: a count in an answer, no
+write.
+
+---
+
+## R-1244. A rekordbox row whose ISRC matches a track another row of the playlist already holds is asked about on every sync
+
+**Found:** while recording U209's no change cost, #499, 2026-11-05.
+
+**The mechanism.** `plan_pair` asks the account about an unlinked row
+(`_ask`) before it checks whether the track the answer names is already the
+match of another row of the same playlist (`seen_remote`). The second row is
+then named unmatched with "another row of this playlist ... is already the
+account track it matches", is neither linked nor remembered as a miss, and the
+next plan asks again. A row whose answer named an unreadable candidate is
+likewise never remembered, by R-988's own rule.
+
+**Measured cost.** Read from the code, not driven live. One lookup per such
+row per sync; since U209 a sync plans once, so it is one per sync rather than
+three. How many such rows Sitting 54's library holds is unmeasured.
+
+**Closes when:** a row matching a track another row holds is checked against
+the held remote ids before the account is asked, or remembered with that
+reason until either row changes. Ledger only.
+
+---
+
+## R-1245. The check before a sync pair write does not read again that an unpaired twin's account playlist is still gone
+
+**Found:** at the build of #499, U209, 2026-11-05.
+
+**The mechanism.** U209's `check` reads, before the write, every list the
+held plan's writes are merged from, and that a made pair let go for its
+rekordbox side is still let go. A twin or made pair the plan unpaired because
+its account playlist was gone is forgotten at the write without reading the
+account's playlists again, which would cost the catalogue's listing of every
+playlist of the author's.
+
+**Measured cost.** Not driven. A playlist deleted on the account does not
+come back under its identifier, so no producer is known; the write touches
+only the pairs document, no list.
+
+**Closes when:** a producer is found, then the check lists the author's
+playlists once when the plan unpairs any for a gone account side. Ledger only.
+
+---
+
+## R-1246. The check before a held sync pair plan writes reads the lists, places and queued jobs, and not every premise the plan read
+
+**Found:** at the build and round two of #499, U209, 2026-11-05.
+
+**The mechanism.** A plan held across its gates is not made again, so what
+it read can move before the write. The check reads the premises a write is
+made from: each pair's two lists, the rows it adds, a self paired playlist's
+place as discovery and `home_of` read it now, a made side's account folder,
+a brought playlist's folder and title on the account, and the jobs queued
+for its acquisitions. It does not read again whether an account playlist is
+still one a pair may hold (a label, set or mirrored playlist since), the
+pairs document's released sets, or whether two account playlists now take
+one rekordbox name, each of which the plan reads and a plan made now could
+decide differently.
+
+**Measured cost.** Not driven: each needs another verb or a hand edit to move
+between the gate and the write, and none was found that does.
+
+**Closes when:** a producer is found for one, then the check reads it. Ledger
+only.
+
+---
+
+## R-1247. A continued sync pair answers only what it wrote itself, not what the stopped command made or queued
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop is a park, and a parked envelope carries no
+totals. The continue's OK envelope counts only its own command's writes
+(`created_playlists`, `queued_jobs` and the rest in `sync_pair`,
+`sync/pair_cli.py`), so the playlists the stopped command made and the jobs it
+queued appear in no answer's totals. The continue's message says how many
+pairs finished earlier in the run, and `totals.finished_before` counts them.
+
+**Measured cost.** Driven at round one (S7): a job queued before the stop was
+in `crate job list` and not in the continue's `queued_jobs`. Nothing is lost;
+the report is incomplete.
+
+**Closes when:** each pair's done step records what it made and queued, and the
+continue's totals add the earlier commands' to its own. Ledger only.
+
+---
+
+## R-1248. A second copy of a track put on a paired account playlist reads as no change to the check before the write
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** The check before the write (U209's `check`, and U210's
+reading of a part written playlist in `_beyond`, `sync/pair_cli.py`) compares
+the account listing after `pair_merge.distinct`, and the listing seam freezes
+rows by track identifier, so a track the author put on the playlist a second
+time between the gate and the write, or between a stop and its continue, is
+the same list to both. The write goes on and the snapshot records the list
+distinct.
+
+**Measured cost.** Driven at round one (S12): the continue answered OK and the
+account kept the track twice, which is what the author did; nothing was lost
+or written over. The cost is that the check does not name the change it saw.
+
+**Closes when:** the listing the check reads keeps each copy, and a count
+that differs from the plan's refuses stale as a reorder does. Ledger only: no
+data is lost and the author's copy stands.
+
+---
+
+## R-1249. A made account playlist moved out of its folder between a stop and its continue is moved back
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop between making a discovered playlist's
+account side and putting it in its folder leaves it at the account root. The
+continue (`_made` with `resumed`, `sync/pair_cli.py`) moves it into the folder
+the plan named, since the move asks for one fixed place, and does not read
+where the playlist is now. A playlist the author moved elsewhere in that
+window, into Archive say, is moved back.
+
+**Measured cost.** Driven at round one (S2): the continue moved it back and
+answered OK. The playlist is empty in that window (it is filled after the
+move), nothing is lost, and moving it again lets the archive rule release it.
+
+**Closes when:** the continue reads the made playlist's folder first and
+refuses stale when it sits in a folder other than the root or its own. Ledger
+only.
+
+---
+
+## R-1250. The sync pair write's call forecast is held to the account adapter over a fake client and unmeasured live
+
+**Found:** at the build of #500, U210, 2026-11-05.
+
+**The mechanism.** `sync/pair_calls.py` counts a write's provider calls from
+the account adapter's shape: a playlist opened and read a page at a time,
+made with three calls, added to a hundred a request, taken off fifty a
+request with a read back each, ordered one move and read back a track. The
+check's folder reads are counted at one call each. The gates show the sum,
+and a ceiling stop names a `--calls` with a quarter's margin, rounded up to a
+hundred.
+
+**Measured cost.** Held exactly to the shipped adapter over a counting fake
+client (`tests/test_sync_pair_calls.py`), never to the live provider. A folder
+of more than fifty playlists costs the check more than one read, and a
+provider that pages differently would move every count.
+
+**Closes when:** the next attended `crate sync pair` records its answer's
+`totals.calls_expected` against `totals.calls`. Ledger only.
