@@ -36,6 +36,8 @@ PROTOCOL_METHODS = frozenset(
     {
         "match_track",
         "unmatched_reason",
+        # U207. Reads only: which codes a plan will ask the provider files nothing under.
+        "screen_isrcs",
         "add_heart",
         "has_heart",
         "create_playlist",
@@ -120,6 +122,8 @@ class FakeAccount:
         self.any_agreeing: list[str] = []
         #: What this account says about a row it does not match, by identity.
         self.reasons: dict[str, str] = {}
+        #: Every ``screen_isrcs`` call, its codes in the order given (U207).
+        self.screened: list[tuple[str, ...]] = []
         #: Each ``(playlist, track)``'s added time for ``playlist_listing`` (U201).
         self.added_at: dict[tuple[str, str], str] = {}
         #: Tracks a playlist holds that its listing leaves out, by playlist.
@@ -182,6 +186,11 @@ class FakeAccount:
 
     def unmatched_reason(self, identity: str) -> str:
         return self.reasons.get(identity, "")
+
+    def screen_isrcs(self, codes) -> int:
+        """Recorded, and asks nothing: this account has no batch form (U207)."""
+        self.screened.append(tuple(codes))
+        return 0
 
     def add_heart(self, remote_id: str) -> None:
         self._bump(remote_id)

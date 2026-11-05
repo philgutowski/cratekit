@@ -50,14 +50,14 @@ from __future__ import annotations
 import re
 import time
 from collections import deque
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 # Imported at module top rather than deferred, because ``catalogue.bound`` asks
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi
 
-from cratekit.acquire import catalogue_api, listing, provider_session
+from cratekit.acquire import catalogue_api, isrc_screen, listing, provider_session
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
@@ -271,6 +271,8 @@ class TidalCatalogue:
         #: Where ISRC lookups go: the app client when the opener built one
         #: (U205), else the account session, exactly as before.
         self._lookups = catalogue if catalogue is not None else session
+        #: The codes a batch answered as filed under nothing (U207).
+        self._screen = isrc_screen.Screen()
         #: The count the last hearts listing published, None when it published none.
         self.hearts_declared: int | None = None
 
@@ -642,6 +644,18 @@ class TidalCatalogue:
         """
         return artist_name(self._album(release_id))
 
+    def screen_isrcs(self, codes: Iterable[str]) -> int:
+        """Ask the catalogue which of ``codes`` it files anything under, in batches.
+
+        BEFORE THE LOOKUPS, NEVER INSTEAD OF THEM (U207). A code a batch
+        answered as filed under nothing is answered as the empty tuple by
+        :meth:`tracks_for_isrc` with no request; every other code is asked
+        alone there as before, so a code filed under several releases is still
+        seen as several. Only the app client is asked, see
+        ``acquire.isrc_screen``. Returns the requests made.
+        """
+        return self._screen.screen(self._lookups, codes)
+
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:
         """The provider's tracks for one ISRC, on the one retry ladder.
 
@@ -665,6 +679,10 @@ class TidalCatalogue:
         wanted = str(isrc or "").strip()
         if not wanted:
             raise ValueError("no ISRC was given to look up")
+        if self._screen.absent(wanted):
+            # A batch already answered this exact spelling as filed under
+            # nothing (U207), the answer this lookup would give.
+            return ()
         lookup = getattr(self._lookups, "get_tracks_by_isrc", None)
         if not callable(lookup):
             # A client without the method cannot be asked, and waiting on the
