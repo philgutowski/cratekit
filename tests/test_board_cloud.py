@@ -227,11 +227,10 @@ def _mine_as_written(first_line: str, hours_ago: float, body: str = "") -> dict:
 
 
 def _known_headings(board):
-    return (
-        board.HEAD_STARTED, board.HEAD_RESUMED, board.HEAD_PLAN, board.HEAD_PROGRESS,
-        board.HEAD_BRAINSTORM, board.HEAD_QUESTION, board.HEAD_MACHINE,
-        board.HEAD_LANDED, board.HEAD_WITHDRAWN, board.HEAD_ANSWER,
-    )
+    """Every heading the reader knows, read off the module, so a new one is in."""
+    found = tuple(value for name, value in vars(board).items() if name.startswith("HEAD_"))
+    assert len(found) >= 10 and all(isinstance(v, str) and v for v in found)
+    return found
 
 
 def _spellings(words: str) -> list[str]:
@@ -316,6 +315,18 @@ def test_a_heading_whose_words_differ_is_still_a_hold(board):
         assert board.cloud_state(node, [_mine_as_written(first_line, 1)])[0] == "underway", first_line
         stale = [_mine_as_written(first_line, board.STALE_HOURS + 2)]
         assert board.cloud_state(node, stale)[0] == "resume", first_line
+
+
+def test_each_cut_and_strip_is_needed_on_its_own(board):
+    # A comma outside any span is still a cut, as it was before U203.
+    assert board.comment_heading("Started, 2026-10-13.") == board.HEAD_STARTED
+    assert board.comment_heading("**Brainstorm, round 2.**") == board.HEAD_BRAINSTORM
+    # Emphasis left behind a stop, with no span to take, needs a second pass.
+    assert board.comment_heading("Brainstorm**.") == board.HEAD_BRAINSTORM
+    assert board.comment_heading("Landed_!") == board.HEAD_LANDED
+    # A span closed by punctuation with no space after it is still the heading.
+    assert board.comment_heading("**Brainstorm**.One question waits") == board.HEAD_BRAINSTORM
+    assert board.comment_heading("**Question for Phillip**?Which") == board.HEAD_QUESTION
 
 
 def test_the_old_readings_stand(board):

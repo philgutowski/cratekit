@@ -1669,8 +1669,9 @@ CLOUD_SKIP = ("underway", "waiting-on-phillip", "set-aside", "landed-open", "blo
 # opening one and be followed by the line's end, whitespace or punctuation, so
 # `**Brainstorm**s` is no span and stays a word the reader does not know.
 _OPENING_EMPHASIS = re.compile(r"([*_]+)(.+?)\1(?=$|[\s.,:;?!\u2026])")
-# Where a heading ends on a line without a span: a colon, a comma, or a sentence
-# end followed by whitespace, so `v0.6.0` is never cut at its dots.
+# Where a heading ends, inside a span or on a line without one: a colon, a
+# comma, or a sentence end followed by whitespace, so `**Started: cloud/1-a**`
+# reads `started` and `v0.6.0` is never cut at its dots.
 _HEADING_END = re.compile(r"[:,]|[.?!;\u2026](?=\s)")
 # What may trail a heading and is never part of its words, stripped together
 # with emphasis until neither is left, in whatever order they were typed.
@@ -1680,9 +1681,9 @@ _TRAILING = ".?!;\u2026# \t"
 def comment_heading(body: str) -> str:
     """The first line of a comment, as a heading, lower case.
 
-    Markdown and emphasis are stripped, an opening emphasised span is the
-    heading, a line without one is cut at a colon, a comma or a sentence end,
-    and trailing punctuation goes, so `**Brainstorm.**`, `## Brainstorm?` and
+    Markdown and emphasis are stripped, an opening emphasised span is taken
+    alone, the text is then cut at a colon, a comma or a sentence end, inside
+    the span as well as on a line without one, and trailing punctuation goes, so `**Brainstorm.**`, `## Brainstorm?` and
     `**Brainstorm.** One question waits` all read `brainstorm` (U203, after
     #489 read as a hold while its question waited). Only punctuation is
     widened: a heading whose words differ is still one the reader does not know.
