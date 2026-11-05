@@ -1466,6 +1466,33 @@ def list_playlist_declared(
     return frozen_rows(_read_rows(rows, reference)), short
 
 
+def list_playlist_dated(
+    found: catalogue.Catalogue, reference: str
+) -> tuple[
+    dict[str, dict[str, Any]], catalogue.ListingShortfall | None, dict[str, str]
+]:
+    """:func:`list_playlist_declared`, and when the account says each track was added (U202).
+
+    The dates come off the same rows, so no request is added: the provider's
+    client copies a playlist item's ``dateAdded`` onto the track it serves,
+    which :func:`hearted_on` reads for a heart. ISO 8601 UTC text by item
+    identifier, the first mention's for a track listed twice; a track the
+    account dates nowhere is missing, never guessed. The frozen rows are
+    exactly :func:`list_playlist_declared`'s, so a job queued from them is the
+    job it always was.
+    """
+    rows, short = label_cli.playlist_listing_or_refuse(found, reference)
+    frozen = frozen_rows(_read_rows(rows, reference))
+    dates: dict[str, str] = {}
+    for row in rows:
+        key = str(getattr(row, "id", "") if not isinstance(row, Mapping) else row.get("id", ""))
+        if key in frozen and key not in dates:
+            moment = hearted_on(row)
+            if moment:
+                dates[key] = moment
+    return frozen, short, dates
+
+
 def list_favorites(
     found: catalogue.Catalogue,
 ) -> tuple[dict[str, dict[str, Any]], catalogue.HeartsShortfall | None]:

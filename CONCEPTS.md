@@ -445,6 +445,14 @@ each send, so a command at its ceiling stops before the call that would pass
 it, parked like a trip, with what it did kept and the exact command that
 continues in the refusal. It is a line per command and never per day.
 
+The gate counts each call under one of two **identities** (U205): `account`,
+the person's own session, which every provider library client and the
+downloader use, and `app`, Cratekit's own app credentials, which only the
+catalogue client in `acquire/catalogue_api.py` holds. Both run under the one
+interval, breaker, cooldown and ceiling; the state file keeps each identity's
+calls and rate limit answers under `identities` beside the totals, and a file
+with no such entry is read as every call the account's.
+
 ### Active taxonomy
 The copy of a taxonomy template that setup puts beside the database, under
 `.cratekit/coupled/taxonomy.toml` on the library volume, and the one declaration
@@ -668,8 +676,10 @@ same list on both sides (U130). Named by both identifiers and never by a name
 a set's playlist, the source system's debris or placeholders, a rekordbox
 folder or smart playlist, or anything under one of Cratekit's own trees. Each
 sync merges each side against its PAIR SNAPSHOT: an addition on either side is
-kept, a removal on either side is applied, an addition beats a removal, and the
-order follows the side that changed it, the account's when both did. A removal
+kept, a removal on either side is applied, and where one side added a track the
+other removed, the later of the two wins, an addition winning whenever either
+moment is unknown (U202). The order follows the side that changed it, the
+account's when both did. A removal
 takes a membership off and never a track out of the collection or the account.
 A rekordbox row the account has no match for is named and stays in rekordbox; an
 account track the library lacks is queued once through `intake.playlist`.
@@ -679,8 +689,8 @@ never remove.
 
 ### Pair snapshot
 What each side of a playlist pair held when its last whole sync finished: the
-account's tracks in order, every live rekordbox membership with its row, and
-the links between the two (U130). It moves only when both gates applied, every
+account's tracks in order with the date the account gives each (U202), every
+live rekordbox membership with its row, and the links between the two (U130). It moves only when both gates applied, every
 write landed and the account listed the whole playlist; a sync short of that
 records the links and leaves the snapshot, so the next sync finishes from the
 same base. A pair with no snapshot is on its first sync, which adds only.
@@ -2220,8 +2230,9 @@ longer under INBOX at all. A row a label landing recorded its provider track
 for is matched to that track with no request. A row whose ISRC names several
 releases that all agree with it is matched as one of them, the lowest provider
 identifier after the account's hearts and the file's album have narrowed them,
-and kept on that one by every later refresh (R-1032), where a heart or a pair
-refuses the same tie, since there the release becomes the row's identity.
+and kept on that one by every later refresh (R-1032). A pair breaks the same
+tie the same way since U208; a heart refuses it, since there the release is
+the person's own choice.
 
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).

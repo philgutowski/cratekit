@@ -101,6 +101,12 @@ class Credential(StrEnum):
     #: ``identity`` value is the login (U176). Recorded from a file, since the
     #: sign in form carries a CAPTCHA and the cookie is the only way in.
     BANDCAMP_SESSION = "bandcamp-session"
+    #: Cratekit's own app on the streaming provider's developer platform (U205):
+    #: the app's identifier and the key it is issued beside it, exchanged for a
+    #: token under the client credentials flow. Catalogue lookups go under them
+    #: when both are recorded, and under the account session when either is not.
+    CATALOGUE_APP_ID = "catalogue-app-id"
+    CATALOGUE_APP_KEY = "catalogue-app-key"
 
 
 class Remedy(StrEnum):

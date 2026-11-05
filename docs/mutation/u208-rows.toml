@@ -1,0 +1,246 @@
+name = "u208"
+pass_kind = "light"
+
+# ── the pair asks the tie, and links it ─────────────────────────────────────
+
+[[rows]]
+id = "M1_ask_any_agreeing"
+description = "_ask: ask the account without any_agreeing, so a tie between agreeing releases is refused as before U208"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''            album=album,
+            any_agreeing=True,
+        )
+        or ""'''
+new = '''            album=album,
+            any_agreeing=False,
+        )
+        or ""'''
+
+[[rows]]
+id = "M2_old_tie_miss_reused"
+description = "_ask: reuse a miss remembered with the tie's words, so a tie remembered before U208 is never asked again nor linked"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''    if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:'''
+new = '''    if held is not None and held.isrc == isrc:'''
+
+[[rows]]
+id = "M3_unreadable_tie_remembered"
+description = "_ask: remember a miss whose reason says a candidate could not be read, so an unreadable tie is never asked again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''    if UNREADABLE_CANDIDATE not in reason and AGREEING_RELEASES not in reason:'''
+new = '''    if AGREEING_RELEASES not in reason:'''
+
+# ── the gate's count ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "M4_tie_flag_dropped"
+description = "_ask: never say a tie was broken, so the gate counts none"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''        return remote_id, "", bool(remote.tie_broken(row.content_id))'''
+new = '''        return remote_id, "", False'''
+
+[[rows]]
+id = "M5_tied_rows_not_gathered"
+description = "plan_pair: gather no tied rows, so the facts line, the totals and the item flag say nothing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''        elif broke:
+            tied.append(names[key])'''
+new = '''        elif False:
+            tied.append(names[key])'''
+
+[[rows]]
+id = "M6_facts_line_dropped"
+description = "facts: leave the broken tie count off the pair's line on the gate"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''                if one.tied
+                else ""'''
+new = '''                if False
+                else ""'''
+
+[[rows]]
+id = "M7_totals_tied_zero"
+description = "payload: report totals.tied as zero whatever the plan broke"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''            "tied": sum(len(one.tied) for one in planned.pairs),'''
+new = '''            "tied": 0,'''
+
+[[rows]]
+id = "M8_item_flag_dropped"
+description = "_items: mark no account add as chosen by a broken tie"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''                **({"tied": True} if remote_id in broken else {}),'''
+new = '''                **({}),'''
+
+# ── a sibling release added on the account ─────────────────────────────────
+
+[[rows]]
+id = "M9_here_lookup_dropped"
+description = "_owned: never look among the pair's own rows, so a sibling of a file ISRC row is queued for acquisition"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''    if rest and here is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M10_here_database_only"
+description = "here: read only the database ISRC, never the row's file"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''            if code is None:
+                code = match.isrc_token(row.isrc) or file_identity(cfg, row.path)[0]
+            if code:
+                codes.setdefault(code, []).append(row.content_id)'''
+new = '''            if code is None:
+                code = match.isrc_token(row.isrc)
+            if code:
+                codes.setdefault(code, []).append(row.content_id)'''
+
+# ── one row, one key ───────────────────────────────────────────────────────
+
+[[rows]]
+id = "M11_alias_off"
+description = "alias: read every account track as its own key, so two releases of one row are two keys again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''        return aliased.get(remote_id) or remote_key(remote_id)'''
+new = '''        return remote_key(remote_id)'''
+
+[[rows]]
+id = "M12_canon_last_not_lowest"
+description = "by_row: take the last linked release, not the lowest, as the row's key"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''        if row not in by_row or _lower(remote, by_row[row]):'''
+new = '''        if True:'''
+
+[[rows]]
+id = "M13_account_keys_raw"
+description = "plan_pair: list the account's keys without alias, while the base still aliases"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''    account_keys = list(pair_merge.distinct(alias(remote_id) for remote_id in account_now))'''
+new = '''    account_keys = list(pair_merge.distinct(remote_key(remote_id) for remote_id in account_now))'''
+
+[[rows]]
+id = "M14_base_account_raw"
+description = "plan_pair: read the account base without alias, while the account now aliases"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''        base_account = pair_merge.distinct(alias(one) for one in held.account or ())'''
+new = '''        base_account = pair_merge.distinct(remote_key(one) for one in held.account or ())'''
+
+[[rows]]
+id = "M15_removal_one_release"
+description = "account_removes: take only the key's own release off the account, leaving a sibling"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''                    [held for held in account_now if alias(held) == key] or [remote_of(key)]'''
+new = '''                    [remote_of(key)]'''
+
+[[rows]]
+id = "M16_order_compares_remotes"
+description = "account order: compare the expanded releases, not the keys' first occurrences, so non adjacent releases reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''        if wanted_keys != firsts:'''
+new = '''        if tuple(one for key in wanted_keys for one in after if alias(one) == key) != after:'''
+
+[[rows]]
+id = "M17_added_moment_first_not_latest"
+description = "account_added: keep the first release's added moment for a row held as two, not the latest"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''        if moment is not None and (key not in account_added or moment > account_added[key]):'''
+new = '''        if moment is not None and key not in account_added:'''
+
+[[rows]]
+id = "M18_held_there_asks_provider"
+description = "plan_pair: with several releases of the row on the account, ask the provider as round one did"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''            elif isrc and held_there:'''
+new = '''            elif False:'''
+
+# ── the adapter ────────────────────────────────────────────────────────────
+
+[[rows]]
+id = "M19_adapter_never_records_tie"
+description = "match_track: never record a broken tie"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '''                    elif tied:
+                        self._ties.add(key)'''
+new = '''                    elif False:
+                        self._ties.add(key)'''
+
+[[rows]]
+id = "M20_adapter_stale_tie"
+description = "match_track: keep the last match's tie flag across a later match of the same row"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '''        self._ties.discard(key)'''
+new = '''        pass'''
+
+[[rows]]
+id = "M21_adapter_every_choice_a_tie"
+description = "_among: call every any_agreeing choice a broken tie, an album naming one included"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '''            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1'''
+new = '''            return _lowest(narrowed), "", True'''
+
+[[rows]]
+id = "M22_adapter_hearts_half"
+description = "_among: drop the hearts half of the tie flag, so two hearts the album narrows to one are not a tie"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py"]
+old = '''            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1'''
+new = '''            return _lowest(narrowed), "", len(narrowed) > 1'''
+
+[[rows]]
+id = "M23_adapter_unreadable_tie_taken"
+description = "_among: break a tie beside an unreadable release too (existing guard, sampled)"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_tidal_account.py", "tests/test_sync_pair_tie.py", "tests/test_organize_mirror_tie.py"]
+old = '''        if any_agreeing and not unreadable:'''
+new = '''        if any_agreeing:'''
+
+[[rows]]
+id = "M24_alias_unfrozen"
+description = "alias: read the links live, as the first fix round did, so a link the library lookup makes after the merge changes the key space"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_tie.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''        return aliased.get(remote_id) or remote_key(remote_id)'''
+new = '''        return remote_key(canon[known[remote_id]]) if known.get(remote_id) in canon else remote_key(remote_id)'''
