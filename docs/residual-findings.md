@@ -42213,3 +42213,135 @@ wrong answer.
 
 **Closes when:** the token, or the client, is held once per process and the
 second opener reuses it. Ledger only.
+
+---
+
+## R-1219. A pair's row held as two releases keys on the lowest numbered release ever linked, so a remove and re-add cycle brings back the release the person dropped, and releases already held ignore the heart
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** `sync/pair_cli.plan_pair` reads every account release
+linked to one rekordbox row as that row's one key, the lowest numbered linked
+release's (`by_row`, `_lower`). Links are kept while the row lives in the
+collection, so the canonical release is the lowest of every link ever made,
+with no memory of which release the person kept or hearted. The same rule
+chooses among two or more unlinked releases the account already holds
+(`held_there`), and it never asks whether one is hearted.
+
+**Measured cost.** Driven by the review: links to 101 and 202, the person
+drops 101 and keeps 202, later the row leaves rekordbox and both leave the
+account, then the row is put back in rekordbox: the account gains 101, not
+202. Same with a heart: hearted 202 linked first, 101 added by hand, after a
+remove and re-add cycle the account gets 101. Both releases agree with the
+row; nothing is lost and nothing false is said. Which held release is taken
+is unpinned by the suite (the add loop links the other release either way).
+
+**Closes when:** the canonical release prefers a linked release the account
+still holds, and then a hearted one, before the number, or a link the account
+lost is dropped once the row's other release stays; and a test pins which of
+two held releases is taken. Ledger only: a preference between agreeing
+releases, reachable only through a remove and re-add cycle.
+
+---
+
+## R-1220. A pair's tie broken in favour of a release the account already holds is counted on the gate's line and in totals but named on no item
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** `sync/pair_cli._items` marks `tied: True` only on account
+add items. A tie whose chosen release is already on the account adds nothing,
+so the row is counted in the facts line and `totals.tied` and appears on no
+item.
+
+**Measured cost.** Driven by the review: account holding 101 and 202 before
+the first sync, the facts line says one row matched by a tie and no item
+carries the flag, so a reader of the gate cannot find which row. Nothing is
+written wrong.
+
+**Closes when:** the gate names the tied rows themselves, for instance as the
+facts line's list, with a test. Ledger only.
+
+---
+
+## R-1221. Taking a pair's first release of a row off the account while a later release stays moves the row in rekordbox to the later release's place
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** A row held on the account as two releases is one key in
+the merge, and a key's place on the account side is its first occurrence.
+When the earlier release is taken off and the later stays, the key's place
+moves to the later release's, and rekordbox follows the account's order.
+
+**Measured cost.** Driven: rekordbox (1, 2, 3), account [101, 92, 93, 202];
+the person removes 101; the sync reorders rekordbox to [2, 3, 1], then stays.
+No track is lost and the account's visible order is mirrored faithfully;
+whether the row should keep its place is a judgment the brief does not make.
+`test_the_first_release_taken_off_while_a_later_one_stays_keeps_the_row`
+pins that the row stays, not its place.
+
+**Closes when:** the brief says whether a row's place survives the removal of
+one of its releases; if it should, the key's place is the place of the
+release the base held first. Ledger only.
+
+---
+
+## R-1222. The hearts' refusal of a tie between agreeing releases is pinned at the adapter and through the favourites sweep, and nothing asserts the hearts never pass any_agreeing
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** U208 lets the pairs pass `any_agreeing` to
+`match_track`. The hearts (`modules/outbound/hearts.py`) must not; the
+refusal is pinned by the adapter test without the flag and by the favourites
+sweep over `_releases_for_three_rows` in `tests/test_outbound_tidal_account.py`,
+whose row 2 is the tie. No test watches the hearts path's own call for the
+flag.
+
+**Measured cost.** None today: grep finds no `any_agreeing` in hearts.py,
+export.py or set_cli.py, and the branch does not touch them. Reachability of
+a regression unmeasured; no mutation of hearts.py was run.
+
+**Closes when:** a test drives a heart over a tie with a recording fake and
+asserts the flag absent, or a mutation of hearts.py passing it is killed.
+Ledger only.
+
+---
+
+## R-1223. A pair's linked rows with no database ISRC are read from their files in each of the three plans a sync makes whenever an account track the library lacks has a code no row's database ISRC names
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** `here()` in `sync/pair_cli.plan_pair`, the lookup that
+finds a sibling release's row among the pair's own rows, reads the audio tags
+of every row with no database ISRC that the plan did not already read, once
+per plan, and a sync makes three plans. `_Reader` is per plan, so nothing
+carries the reads across.
+
+**Measured cost.** Driven by the review: four linked file ISRC rows and one
+hand added track the library lacks, 12 file reads in one sync; a quiet sync
+reads none. Time only, proportional to the playlist's file ISRC rows; no
+wrong answer.
+
+**Closes when:** the file identities are read once per sync (a cache carried
+across the gates' plans) or recorded with the link. Ledger only.
+
+---
+
+## R-1224. Two rows of one pair carrying one ISRC, with two unlinked releases of it on the account, leave the second row unmatched and the free release named ambiguous
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** The `held_there` branch in `sync/pair_cli.plan_pair`
+takes the lowest of the account's unlinked releases of a row's ISRC, and does
+not exclude a release another row of the same playlist already took
+(`seen_remote`), so the second row takes the same release and is refused as
+"another row of this playlist ... is already the account track it matches".
+The free release then finds two library rows by ISRC and is named ambiguous.
+
+**Measured cost.** Driven by the review: row 2 given row 1's ISRC and words,
+account [101, 202]: links {101: row 1}, row 2 unmatched, 202 ambiguous, every
+sync. The provider path before U208 reached the same outcome for two such
+rows (reasoned from `_ask` to `_lowest`, not driven on main).
+
+**Closes when:** `held_there` leaves out releases another row of the plan
+took, so the second row takes the free release, with a test. Ledger only: two
+rows of one recording in one playlist is a duplicate the person made.

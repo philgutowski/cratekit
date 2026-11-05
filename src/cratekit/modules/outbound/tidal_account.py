@@ -290,14 +290,15 @@ def _streamable(track: Any) -> bool:
 
 
 class TidalAccount:
-    """The fifteen ``RemoteAccount`` members, over one logged in client.
+    """The ``RemoteAccount`` members, over one logged in client.
 
     Eight add only, two that read folders, one that puts a playlist in a
     folder, one that retitles a playlist the account owns, one that says why
-    the last match of a row came back empty, one that names a playlist's
-    tracks, and the one removal, from a playlist the product made. Since U143
-    also the account root's two removals, each of a kind a gate named, and
-    since U207 one that screens a plan's ISRCs before it asks, which reads only.
+    the last match of a row came back empty and one whether it broke a tie
+    (U208), one that names a playlist's tracks, and the one removal, from a
+    playlist the product made. Since U143 also the account root's two
+    removals, each of a kind a gate named, and since U207 one that screens a
+    plan's ISRCs before it asks, which reads only.
     """
 
     def __init__(
@@ -324,6 +325,8 @@ class TidalAccount:
         self._hearts: set[str] | None = None
         self._members: dict[str, list[str]] = {}
         self._reasons: dict[str, str] = {}
+        #: U208. The identities whose last match took one of a tie.
+        self._ties: set[str] = set()
 
     def _call(self, doing: str, fn: Callable[[], Any], *, retries: int = WRITE_RETRIES) -> Any:
         """One provider call, retried ``retries`` times, translated on failure.
@@ -406,8 +409,8 @@ class TidalAccount:
         and only :meth:`_among` reads it (R-572).
 
         ``any_agreeing`` lets :meth:`_among` take one of a tie between agreeing
-        releases rather than refuse it, for the mirror's listening copy only
-        (R-1032).
+        releases rather than refuse it, for the mirror's listening copy (R-1032)
+        and the pairs (U208), and :meth:`tie_broken` then says it did.
 
         IDENTITY SECOND, and only an exact provider track reference, see
         :func:`track_reference`. Never a text search over title and artist:
@@ -420,6 +423,7 @@ class TidalAccount:
         """
         key = str(identity)
         self._reasons.pop(key, None)
+        self._ties.discard(key)
         wanted = str(isrc or "").strip()
         if wanted:
             # A CODE A BATCH ANSWERED AS FILED UNDER NOTHING (U207) is the
@@ -440,7 +444,7 @@ class TidalAccount:
                 if len(tracks) == 1 and not agree:
                     return next(iter(tracks))
                 if tracks:
-                    chosen, reason = self._among(
+                    chosen, reason, tied = self._among(
                         tracks,
                         isrc=wanted,
                         title=title,
@@ -450,6 +454,8 @@ class TidalAccount:
                     )
                     if chosen is None:
                         self._reasons[key] = reason
+                    elif tied:
+                        self._ties.add(key)
                     return chosen
         reference = track_reference(identity)
         if reference is None:
@@ -471,8 +477,8 @@ class TidalAccount:
         artist: str,
         album: str = "",
         any_agreeing: bool = False,
-    ) -> tuple[str | None, str]:
-        """One of several tracks sharing an ISRC, or ``None`` and why not.
+    ) -> tuple[str | None, str, bool]:
+        """One of several tracks sharing an ISRC, or ``None`` and why not, and whether a tie chose.
 
         THREE RULES, IN ORDER, AND NONE IS A GUESS.
 
@@ -508,12 +514,15 @@ class TidalAccount:
 
         UNLESS ``any_agreeing`` SAYS ANY OF THEM WILL DO (R-1032), which the
         mirror says because its playlist is a listening copy and writes nothing
-        back as the row's identity. Then a tie with no unreadable candidate is
+        back as the row's identity, and the pairs say since U208, decided by
+        Phillip at Sitting 54. Then a tie with no unreadable candidate is
         broken by :func:`_lowest` over the hearted releases if the account
         hearts several, else over every agreeing one, narrowed first to those
         the file's album names when it names any. Only the tie is broken: the
         refusals before it, no agreeing release, no row to judge agreement by,
-        a candidate that could not be read, are unchanged.
+        a candidate that could not be read, are unchanged. The third value
+        is true only for a track this branch chose, one that without
+        ``any_agreeing`` would have been refused.
         """
         named = f"the ISRC {isrc} names {len(tracks)} provider tracks"
         row = _row_of(title, artist)
@@ -521,7 +530,7 @@ class TidalAccount:
             return None, (
                 f"{named} and this row carries no artist and title to choose "
                 f"among them by"
-            )
+            ), False
         verdicts = {
             remote: _agrees(row, track)
             for remote, track in tracks.items()
@@ -531,7 +540,7 @@ class TidalAccount:
         unreadable = sum(1 for verdict in verdicts.values() if verdict is None)
         agreeing = [remote for remote, verdict in verdicts.items() if verdict]
         if len(agreeing) == 1 and not unreadable:
-            return agreeing[0], ""
+            return agreeing[0], "", False
         aside = (
             (f", {withdrawn} cannot be streamed" if withdrawn else "")
             + (f", {unreadable} {UNREADABLE_CANDIDATE}" if unreadable else "")
@@ -541,33 +550,37 @@ class TidalAccount:
             return None, (
                 f"{named}{aside} and none of {rest} agrees with this row's "
                 f"artist, title and version"
-            )
+            ), False
         hearts = self._favorites()
         hearted = [remote for remote in agreeing if remote in hearts]
         if len(hearted) == 1:
-            return hearted[0], ""
+            return hearted[0], "", False
         if any_agreeing and not unreadable:
-            return _lowest(_on_album(hearted or agreeing, tracks, album)), ""
+            # A TIE ONLY WHEN SOMETHING WAS LEFT TO BREAK: two hearts, or more
+            # than one release after the album. One release the album names is
+            # the album rule's answer, which stands without ``any_agreeing``.
+            narrowed = _on_album(hearted or agreeing, tracks, album)
+            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1
         said = (
             f"{named}{aside}, {len(agreeing)} {AGREEING_RELEASES} and the "
             f"account hearts {len(hearted)} of those"
         )
         if hearted:
-            return None, f"{said}, so none was chosen"
+            return None, f"{said}, so none was chosen", False
         if unreadable:
-            return None, f"{said}, so none was chosen"
+            return None, f"{said}, so none was chosen", False
         wanted = match.fold(album)
         if not wanted:
-            return None, f"{said}, and the file carries no album tag, so none was chosen"
+            return None, f"{said}, and the file carries no album tag, so none was chosen", False
         named_album = [
             remote for remote in agreeing if match.fold(_album_name(tracks[remote])) == wanted
         ]
         if len(named_album) == 1:
-            return named_album[0], ""
+            return named_album[0], "", False
         return None, (
             f"{said}, and the file's album {album!r} names {len(named_album)} "
             f"of them, so none was chosen"
-        )
+        ), False
 
     def unmatched_reason(self, identity: str) -> str:
         """Why the last match of this row came back ``None``, or ``""``.
@@ -576,6 +589,16 @@ class TidalAccount:
         already report as unmatched, and for a row that matched.
         """
         return self._reasons.get(str(identity), "")
+
+    def tie_broken(self, identity: str) -> bool:
+        """Whether the last match of this row took one of a tie between agreeing releases (U208).
+
+        True only when ``any_agreeing`` chose a track that without it would
+        have been refused, so a lone agreeing track, a lone heart or a lone
+        album is never a broken tie. False after any other match and after a
+        miss.
+        """
+        return str(identity) in self._ties
 
     # ── hearts ──────────────────────────────────────────────────────────────
 

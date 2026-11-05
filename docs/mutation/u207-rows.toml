@@ -180,7 +180,7 @@ description = "sync pair: a code the account playlist already holds is screened 
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_isrc_screen.py"]
-old = '''        and len(held_on_account(code)) != 1
+old = '''        and not held_on_account(code)
 '''
 new = ''''''
 

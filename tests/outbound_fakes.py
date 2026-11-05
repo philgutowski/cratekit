@@ -38,6 +38,8 @@ PROTOCOL_METHODS = frozenset(
         "unmatched_reason",
         # U207. Reads only: which codes a plan will ask the provider files nothing under.
         "screen_isrcs",
+        # U208. Whether the last match broke a tie between agreeing releases.
+        "tie_broken",
         "add_heart",
         "has_heart",
         "create_playlist",
@@ -124,6 +126,8 @@ class FakeAccount:
         self.reasons: dict[str, str] = {}
         #: Every ``screen_isrcs`` call, its codes in the order given (U207).
         self.screened: list[tuple[str, ...]] = []
+        #: The identities whose match this account says broke a tie (U208).
+        self.ties: set[str] = set()
         #: Each ``(playlist, track)``'s added time for ``playlist_listing`` (U201).
         self.added_at: dict[tuple[str, str], str] = {}
         #: Tracks a playlist holds that its listing leaves out, by playlist.
@@ -191,6 +195,9 @@ class FakeAccount:
         """Recorded, and asks nothing: this account has no batch form (U207)."""
         self.screened.append(tuple(codes))
         return 0
+
+    def tie_broken(self, identity: str) -> bool:
+        return identity in self.ties and bool(self.catalog.get(identity))
 
     def add_heart(self, remote_id: str) -> None:
         self._bump(remote_id)
