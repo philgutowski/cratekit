@@ -57,19 +57,15 @@ old = '''    entries = sorted(directory / name for name in names if fnmatch.fnma
 new = '''    entries = sorted(directory / name for name in names)'''
 
 [[rows]]
-id = "S6_unlisted_log_probe"
-description = "unlisted_log: never answer the log, so doctor reports a clean log over one it cannot list"
+id = "S6_records_refuses_unlisted"
+description = "records: answer an unlisted log as no session again, so restore list, restore run and session release read it as empty"
 file = "src/cratekit/core/session.py"
 surface = "user"
-tests = ["tests/test_session_log_unlisted.py", "tests/test_doctor.py", "tests/test_inbox_unmirrored.py"]
-old = '''        _listed(directory)
-    except OSError:
-        return directory
-    return None'''
-new = '''        _listed(directory)
-    except OSError:
-        return None
-    return None'''
+tests = ["tests/test_session_log_unlisted.py", "tests/test_session_cli.py", "tests/test_restore.py", "tests/test_doctor.py"]
+old = '''    if log_unlisted(unreadable, cfg):
+        raise refuse('''
+new = '''    if False:
+        raise refuse('''
 
 [[rows]]
 id = "S7_log_unlisted_predicate"
@@ -208,19 +204,23 @@ new = '''        False,
     )'''
 
 [[rows]]
-id = "C2_check_warning_wording"
-description = "check_cli warnings_of: word an unlisted log as a count of records"
-file = "src/cratekit/analysis/check_cli.py"
-surface = "user"
-tests = ["tests/test_session_log_unlisted.py", "tests/test_analyze_check.py"]
-old = '''                    if found.scope.log_unlisted'''
-new = '''                    if False'''
-
-[[rows]]
-id = "D1_doctor_probe"
-description = "doctor _log_directory_unreadable: answer None, so doctor reads a log it cannot list as clean"
+id = "D1_doctor_branches_on_the_scan"
+description = "doctor _check_unresolved_session: never branch on the listing, so the log directory is named as an unreadable record"
 file = "src/cratekit/cli/doctor.py"
 surface = "user"
 tests = ["tests/test_doctor.py", "tests/test_session_log_unlisted.py"]
-old = '''    return session.unlisted_log(cfg)'''
-new = '''    return None'''
+old = '''    if session.log_unlisted(unreadable, inputs.cfg):
+        unreadable_directory = session.log_dir(inputs.cfg)'''
+new = '''    if False:
+        unreadable_directory = session.log_dir(inputs.cfg)'''
+
+[[rows]]
+id = "D2_status_names_the_log"
+description = "status _source_findings: never name an unlisted log, so a refused source reads as none in flight"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    if session.log_unlisted(unreadable, cfg):
+        # A LOG NOBODY COULD LIST IS SAID'''
+new = '''    if False:
+        # A LOG NOBODY COULD LIST IS SAID'''
