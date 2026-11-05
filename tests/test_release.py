@@ -447,3 +447,193 @@ def test_plan_caps_a_break_below_1_0_0_at_minor(repo, capsys, monkeypatch):
     out = capsys.readouterr().out
     assert "proposed bump: minor, v0.1.0 to v0.2.0" in out
     assert "Phillip's to choose" in out
+
+
+# --------------------------------------------------------------------------
+# a local merge of main, U215
+#
+# A local session commits on `main` and then pulls, so each landing pushed to
+# `origin/main` meanwhile sits on the second parent side of a merge of `main`
+# into the local `main`. Here the branch `upstream` plays `origin/main`.
+
+
+def _merge_into(repo: Path, target: str, branch: str, message: str) -> tuple[str, str]:
+    """A branch with one commit off ``target``, merged into it with --no-ff."""
+    _git(repo, "checkout", "-q", target)
+    _git(repo, "checkout", "-q", "-b", branch)
+    head = _commit(repo, f"{branch.replace('/', '-')}.txt", f"feat: {branch}")
+    _git(repo, "checkout", "-q", target)
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", message, branch)
+    return head, _git(repo, "rev-parse", "HEAD")
+
+
+def _pull_upstream(repo: Path, message: str = "Merge branch 'main' of https://github.com/o/r"):
+    """A local commit on main, then main merged with what landed upstream."""
+    _git(repo, "checkout", "-q", "main")
+    _commit(repo, "sitting.txt", "docs(cutover): a sitting recorded on the Mac")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", message, "upstream")
+    return _git(repo, "rev-parse", "HEAD")
+
+
+def _tag_and_branch_upstream(repo: Path) -> None:
+    _git(repo, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+    _git(repo, "branch", "upstream", "main")
+
+
+def test_two_unit_merges_behind_a_local_merge_of_main_are_both_listed(repo):
+    _tag_and_branch_upstream(repo)
+    _merge_into(repo, "upstream", "cloud/2-a", "merge(u2): the first behind the pull")
+    _merge_into(repo, "upstream", "cloud/3-b", "merge(u3): the second behind the pull")
+    _pull_upstream(repo)
+    since, prs, direct = release.gather(_fake_gh()[0], "o/r")
+    assert since == "v0.1.0"
+    assert prs == []
+    assert [d.title for d in direct] == [
+        "merge(u2): the first behind the pull",
+        "merge(u3): the second behind the pull",
+    ], "a unit merge on the second parent side of a local merge of main went unlisted"
+
+
+def test_a_pull_request_merged_through_the_api_off_the_first_parent_line_is_listed(repo):
+    _tag_and_branch_upstream(repo)
+    head_a, merge_a = _merge_into(repo, "upstream", "cloud/2-a", "merge(u2): through the API")
+    head_b, merge_b = _merge_into(repo, "upstream", "cloud/3-b", "merge(u3): also the API")
+    _pull_upstream(repo)
+    pulls = [
+        {"number": 21, "title": "U2: a", "merged_at": "x", "merge_commit_sha": merge_a,
+         "head": {"sha": head_a}},
+        {"number": 22, "title": "U3: b", "merged_at": "x", "merge_commit_sha": merge_b,
+         "head": {"sha": head_b}},
+    ]
+    _since, prs, direct = release.gather(_fake_gh(pulls)[0], "o/r")
+    assert [p.number for p in prs] == [21, 22]
+    assert [p.sha for p in prs] == [merge_a, merge_b]
+    assert direct == [], "a pull request's own merge commit was listed a second time"
+
+
+@pytest.mark.parametrize(
+    "subject",
+    [
+        "Merge branch 'main' of https://github.com/philgutowski/cratekit",
+        "Merge branch 'main' of github.com:philgutowski/cratekit",
+        "Merge remote-tracking branch 'origin/main'",
+        "Merge origin/main",
+    ],
+)
+def test_a_local_merge_of_main_is_never_a_landing(repo, subject):
+    _tag_and_branch_upstream(repo)
+    _commit(repo, "upstream-only.txt", "docs: nothing merged upstream")
+    _git(repo, "checkout", "-q", "upstream")
+    _commit(repo, "upstream.txt", "docs(residuals): number what landed")
+    _pull_upstream(repo, subject)
+    _since, prs, direct = release.gather(_fake_gh()[0], "o/r")
+    assert prs == [] and direct == [], f"{subject!r} was read as a landing"
+
+
+def test_a_unit_reachable_through_its_head_and_its_merge_is_listed_once(repo):
+    _tag_and_branch_upstream(repo)
+    head_a, merge_a = _merge_into(repo, "upstream", "cloud/2-a", "merge(u2): merged locally")
+    # Another branch took U2's head before U2 landed, under a sync subject.
+    _git(repo, "checkout", "-q", "upstream")
+    _git(repo, "checkout", "-q", "-b", "cloud/3-b", "upstream~1")
+    _commit(repo, "b.txt", "feat: b")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m",
+         "Merge remote-tracking branch 'origin/cloud/2-a' into cloud/3-b", head_a)
+    _git(repo, "checkout", "-q", "upstream")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "merge(u3): after U2", "cloud/3-b")
+    _pull_upstream(repo)
+    pulls = [
+        # GitHub's merge commit for a pull request merged by a local push is
+        # not always the commit on main; the head is what finds it.
+        {"number": 31, "title": "U2: a", "merged_at": "x", "merge_commit_sha": "e" * 40,
+         "head": {"sha": head_a}},
+    ]
+    _since, prs, direct = release.gather(_fake_gh(pulls)[0], "o/r")
+    assert [(p.number, p.sha) for p in prs] == [(31, merge_a)], (
+        "the pull request landed at the branch sync that took its head, not at its own merge"
+    )
+    assert [d.title for d in direct] == ["merge(u3): after U2"], (
+        "a unit reachable through its head and its merge was listed twice, or a sync was listed"
+    )
+
+
+def test_a_range_with_no_local_merge_lists_what_the_first_parent_line_lists(repo):
+    _git(repo, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+    head_a, merge_a = _merge_into(repo, "main", "cloud/2-a", "merge(u2): through the API")
+    # A branch that catches up with main, then lands without a pull request.
+    _git(repo, "checkout", "-q", "-b", "unit/u3-b", "main~1")
+    _commit(repo, "b.txt", "feat: b")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "merge: main into the U3 branch", "main")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "Merge relay task 3 from relay/3",
+         "unit/u3-b")
+    _merge_into(repo, "main", "cloud/4-c", "feat(config)!: a break")
+    _commit(repo, "residuals.txt", "docs(residuals): number what landed")
+    pulls = [{"number": 41, "title": "U2: a", "merged_at": "x", "merge_commit_sha": merge_a,
+              "head": {"sha": head_a}}]
+    _since, prs, direct = release.gather(_fake_gh(pulls)[0], "o/r")
+    first_parent_merges = [
+        line.split(" ", 1)[1]
+        for line in _git(repo, "log", "--first-parent", "--merges", "--reverse",
+                         "--format=%H %s", "v0.1.0..HEAD").splitlines()
+        if not line.startswith(merge_a)
+    ]
+    assert [p.number for p in prs] == [41]
+    assert [d.title for d in direct] == first_parent_merges == [
+        "Merge relay task 3 from relay/3",
+        "feat(config)!: a break",
+    ]
+
+
+def test_the_bump_over_a_minor_unit_behind_a_local_merge_is_minor(repo):
+    _tag_and_branch_upstream(repo)
+    _merge_into(repo, "upstream", "cloud/2-a", "merge(u2): the only unit")
+    _pull_upstream(repo)
+    _merge_into(repo, "main", "cloud/3-r", "merge(r-3): a repair on the first parent line")
+    _since, prs, direct = release.gather(_fake_gh()[0], "o/r")
+    assert release.propose([*prs, *direct])[0] == "minor"
+
+
+def _plan(repo, monkeypatch, **flags):
+    monkeypatch.setattr(release, "ROOT", repo)
+    args = SimpleNamespace(repo="o/r", since=None, tip=None, notes=False)
+    for key, value in flags.items():
+        setattr(args, key, value)
+    return release.cmd_plan(args, runner=_fake_gh()[0])
+
+
+def test_plan_reruns_a_past_range_and_prints_its_notes(repo, capsys, monkeypatch):
+    _tag_and_branch_upstream(repo)
+    _merge_into(repo, "upstream", "cloud/2-a", "merge(u2): behind the pull")
+    _pull_upstream(repo)
+    _merge_into(repo, "main", "cloud/3-b", "merge(u3): on the line")
+    _git(repo, "tag", "-a", "v0.2.0", "-m", "v0.2.0")
+    _merge_into(repo, "main", "cloud/4-c", "merge(u4): after the range")
+    _git(repo, "tag", "-a", "v0.3.0", "-m", "v0.3.0")
+    assert _plan(repo, monkeypatch, since="v0.1.0", tip="v0.2.0") == 0
+    out = capsys.readouterr().out
+    assert "merge(u2): behind the pull" in out and "merge(u3): on the line" in out
+    assert "merge(u4)" not in out
+    assert "proposed bump: minor, v0.1.0 to v0.2.0" in out, "the bump was not read from --since"
+    assert _plan(repo, monkeypatch, since="v0.1.0", tip="v0.2.0", notes=True) == 0
+    body = capsys.readouterr().out
+    assert body.startswith("Cratekit v0.2.0.\n")
+    assert "- merge(u2): behind the pull (" in body and "- merge(u3): on the line (" in body
+    assert "merge(u4)" not in body and "proposed bump" not in body
+    assert "cratekit @ git+https://github.com/o/r@v0.2.0" in body
+
+
+def test_plan_refuses_a_tip_without_a_start_and_a_ref_that_names_nothing(repo, monkeypatch):
+    _merge_into(repo, "main", "cloud/2-a", "merge(u2): a verb")
+    with pytest.raises(release.ReleaseError, match="--tip needs --since"):
+        _plan(repo, monkeypatch, tip="HEAD")
+    with pytest.raises(release.ReleaseError, match="names no commit"):
+        _plan(repo, monkeypatch, since="v9.9.9")
+
+
+def test_plan_notes_over_an_empty_range_print_nothing_and_fail(repo, capsys, monkeypatch):
+    _git(repo, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+    assert _plan(repo, monkeypatch, notes=True) == 1
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert "nothing landed" in captured.err
