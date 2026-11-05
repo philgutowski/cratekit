@@ -19,7 +19,7 @@ import pytest
 from cratekit.core import held_plan, provider_gate
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
-from cratekit.sync import pair_cli
+from cratekit.sync import pair_calls, pair_cli
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -170,8 +170,8 @@ def test_the_stop_names_the_run_and_the_calls_its_continue_needs(made_world):
     words = shlex.split(command)
     assert words[words.index("--run") + 1] == run_id
     higher = int(words[words.index("--calls") + 1])
-    assert higher >= 10, "the continue names a ceiling below the one it stopped at"
-    assert higher >= cause["detail"]["expected"]
+    assert higher == pair_calls.named(cause["detail"]["expected"], 10)
+    assert higher > cause["detail"]["expected"]
     assert cause["remediation"]["steps"][0].endswith(command)
     # The command it names is the one that finishes the run.
     code, done = drive(words[1:])
@@ -284,3 +284,45 @@ def test_a_gate_under_its_ceiling_shows_the_expected_calls_and_no_warning(made_w
     shown = first["cause"]["detail"]["shown"]
     assert "the command that writes is expected to make about" in shown["provider calls"]
     assert "call ceiling" not in shown
+
+
+def test_a_stop_in_a_run_whose_plan_was_not_held_says_it_cannot_be_continued(
+    made_world, monkeypatch
+):
+    """Round one's second finding: no step recorded, so no continue of the run is promised."""
+    world, _playlists = made_world
+    monkeypatch.setattr(pair_cli, "_hold", lambda *args: "the plan could not be written")
+    run_id, _first = to_the_write(VERB)
+    code, stopped = write(run_id, VERB, 10)
+    assert code == CEILING, stopped
+    cause = stopped["cause"]
+    assert "cannot be continued" in cause["message"]
+    assert "run_id" not in cause["detail"]
+    assert "--run" not in shlex.split(cause["detail"]["continue"])
+    assert not held_plan.steps_path(run_id).exists()
+
+
+def test_made_here_reads_only_a_pair_made_for_this_playlist_in_this_folder():
+    from cratekit.modules.outbound.pairs import Pair
+
+    one = pair_cli.PairPlan.__new__(pair_cli.PairPlan)
+    object.__setattr__(one, "target", pair_cli.Target("", "rb-1", False, "GIG READY", "t"))
+    object.__setattr__(one, "place", pair_cli.Place("GIG READY", "t", pair_cli.FOLDER_CREATE))
+
+    def pair(**changed) -> Pair:
+        fields = {
+            "account_id": "pl-1",
+            "rekordbox_id": "rb-1",
+            "name": "t",
+            "marked": "2026-11-05",
+            "made": True,
+            "folder": "GIG READY",
+        }
+        fields.update(changed)
+        return Pair(**fields)
+
+    assert pair_cli._made_here(pair(), one)
+    assert not pair_cli._made_here(None, one)
+    assert not pair_cli._made_here(pair(made=False), one), "a pair made by hand was read as made"
+    assert not pair_cli._made_here(pair(rekordbox_id="rb-2"), one)
+    assert not pair_cli._made_here(pair(folder="ARCHIVE"), one)

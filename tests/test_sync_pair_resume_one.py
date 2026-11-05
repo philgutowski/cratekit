@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pytest
 
-from cratekit.core import held_plan
+from cratekit.core import held_plan, jobs
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
@@ -132,3 +132,85 @@ def test_a_step_that_cannot_be_recorded_stops_the_write(paired, monkeypatch):
     assert world.on_account() == ["t1", "t2", "t3", "t4"], "the account was written"
 
 
+
+
+def test_a_reorder_by_hand_on_the_part_written_playlist_refuses_stale(paired):
+    """Round one's blocking finding: the order the plan read is held until the write orders."""
+    world = paired
+    args = [*VERB, ACCOUNT]
+    run_id, _first = to_the_write(args)
+    assert write(run_id, args, 1)[0] == CEILING
+    world.account.playlists[ACCOUNT] = ["t4", "t3", "t1"]
+
+    code, refused = write(run_id, args, 100)
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
+        "was reordered since the plan"
+    ]
+    assert world.on_account() == ["t4", "t3", "t1"], "the author's order was written over"
+
+
+def test_a_track_withheld_on_the_part_written_playlist_refuses_stale(paired):
+    world = paired
+    args = [*VERB, ACCOUNT]
+    run_id, _first = to_the_write(args)
+    assert write(run_id, args, 1)[0] == CEILING
+    world.account.playlists[ACCOUNT].append("t8")
+    world.withheld.add("t8")
+
+    code, refused = write(run_id, args, 100)
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
+        "withholds a different number of tracks than the plan read"
+    ]
+
+
+def test_a_job_queued_before_a_stop_is_not_queued_again_by_the_continue(world, monkeypatch):
+    made = world(account=("1",), rekordbox=("1", "2"))
+    assert sync(made.args())[0] == int(ExitCode.OK)
+    gate_the_account(made.account, monkeypatch)
+    made.account.playlists[ACCOUNT].append("t-missing")
+    made.codes["t-missing"] = "GBZZZ2600099"
+    made.rekordbox_add("5")
+    args = [*VERB, ACCOUNT]
+    run_id, _first = to_the_write(args)
+    # The account's addition fails after rekordbox's commit and the queue.
+    made.account.fail_on = frozenset({ACCOUNT})
+    made.account.provider_error = True
+    code, failed = write(run_id, args, 100)
+    assert code != int(ExitCode.OK), failed
+    with jobs.open_store() as store:
+        queued = pair_cli.pair_jobs(made.cfg, store)
+    assert len(queued) == 1
+
+    made.account.fail_on = frozenset()
+    code, done = write(run_id, args, 100)
+    assert code == int(ExitCode.OK), done
+    with jobs.open_store() as store:
+        assert len(pair_cli.pair_jobs(made.cfg, store)) == 1, "the continue queued a second job"
+    assert done["data"]["totals"]["queued_jobs"] == []
+    assert sorted(made.on_account()) == ["t-missing", "t1", "t2", "t5"]
+
+
+def test_a_first_sync_named_by_hand_that_failed_after_its_mark_is_continued_on_its_plan(
+    world, cfg, monkeypatch
+):
+    """The pair was unmarked when the plan was made and is marked now, by this run alone."""
+    made = world(account=("1", "2"), rekordbox=("2", "3"))
+    gate_the_account(made.account, monkeypatch)
+    args = made.args()
+    run_id, _first = to_the_write(args)
+    lookups = len(made.account.matches)
+    made.account.fail_on = frozenset({ACCOUNT})
+    made.account.provider_error = True
+    code, failed = write(run_id, args, 100)
+    assert code != int(ExitCode.OK), failed
+    assert pairs.PairStore(cfg).get(ACCOUNT) is not None, "the pair was not marked"
+
+    made.account.fail_on = frozenset()
+    code, done = write(run_id, args, 100)
+    assert code == int(ExitCode.OK), done
+    assert pair_cli.REPLANNED not in {w["code"] for w in done["warnings"]}
+    assert len(made.account.matches) == lookups, "the continue planned again"
+    assert sorted(made.on_account()) == ["t1", "t2", "t3"]
+    assert sorted(made.held()) == ["1", "2", "3"]

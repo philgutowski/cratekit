@@ -151,20 +151,23 @@ def account_write(
     return calls
 
 
-def pair_write(one: Any, *, made: bool = False) -> int:
+def pair_write(one: Any, *, made_before: bool = False) -> int:
     """The calls one pair's account side is expected to make, a made playlist's make included.
 
-    ``one`` is a ``pair_cli.PairPlan``. ``made`` says the account side was
-    already made by an earlier command of the run, so only its filling is left.
+    ``one`` is a ``pair_cli.PairPlan``. ``made_before`` says an earlier command
+    of the run made the account side, so only its filling is left, and the
+    adapter, a fresh process's, reads its membership first rather than
+    holding the empty one its own make left.
     """
     new = bool(one.target.new)
-    calls = MAKE_PLAYLIST if new and not made else 0
+    calls = MAKE_PLAYLIST if new and not made_before else 0
     return calls + account_write(
         () if new else tuple(one.account_now),
         adds=tuple(one.account_adds),
         removes=tuple(one.account_removes),
         order=one.account_order,
-        made=new,
+        made=new and not made_before,
+        listed=not made_before,
     )
 
 

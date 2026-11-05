@@ -2768,7 +2768,7 @@ class Moved:
 
 
 def check(
-    cfg: config.Config, planned: Plan, steps: Any = None, *, store
+    cfg: config.Config, planned: Plan, steps: Any = None, *, store, unread: str = ""
 ) -> dict[str, tuple[str, ...]]:
     """Refuse a write whose lists moved since the plan the gates showed, before anything is written.
 
@@ -3155,7 +3155,11 @@ def check(
         raise refuse(
             "decision-stale",
             f"{len(moved)} list(s) moved since the plan the gates showed, so nothing "
-            f"{'more ' if begun else ''}was written: " + "; ".join(one.said() for one in moved),
+            f"{'more ' if begun else ''}was written: "
+            + "; ".join(one.said() for one in moved)
+            # U210. STEPS THAT COULD NOT BE READ are why a continue reads every
+            # list as the plan read it, so the refusal says so.
+            + (f"; {unread}, so every list was read as the plan read it" if unread else ""),
             steps=(
                 "run crate sync pair again and answer both gates over the plan it shows now",
             ),
@@ -3292,7 +3296,7 @@ def _expected(planned: Plan, steps: Any) -> tuple[int, int]:
         if made:
             # Its listing is the check's now, as any paired playlist's is.
             check_calls += pair_calls.listing_calls(0)
-        write_calls += pair_calls.pair_write(one, made=made)
+        write_calls += pair_calls.pair_write(one, made_before=made)
     return check_calls, write_calls
 
 
@@ -3323,6 +3327,19 @@ def _stopped(
 
     from cratekit.core import provider_gate
 
+    if steps is None:
+        # NOTHING WAS RECORDED (U210, from round one's review): the plan could
+        # not be held, so no step was, and a continue of this run would find
+        # the lists this write moved and refuse stale. Said, and no run named.
+        return dataclasses.replace(
+            cause,
+            message=(
+                f"{cause.message}; this run's plan could not be held, so the steps it "
+                f"wrote were not recorded and it cannot be continued: run crate sync "
+                f"pair again and answer both gates over the plan it shows"
+            ),
+            detail={**dict(cause.detail or {}), "fresh": True},
+        )
     finished = sum(1 for one in planned.pairs if _steps_of(steps, one).has(STEP_DONE))
     said = (
         f"; run {run_id} finished {finished} of {len(planned.pairs)} pair(s) before it "
@@ -3400,8 +3417,10 @@ def sync_pair(ctx) -> Envelope:
         # fresh when this command planned it, and none when it is not held.
         steps: held_plan.Steps | None = None
         steps_notes: list[dict[str, str]] = []
+        steps_unread = ""
         if held:
             steps, steps_why = held_plan.load_steps(run_id, planned.digest)
+            steps_unread = steps_why
             if steps_why:
                 steps_notes.append(
                     {
@@ -3503,7 +3522,7 @@ def sync_pair(ctx) -> Envelope:
             if held:
                 before = _spent()
                 try:
-                    listed = check(cfg, planned, steps, store=store)
+                    listed = check(cfg, planned, steps, store=store, unread=steps_unread)
                 finally:
                     calls["check"] = _spent() - before
             if steps is not None:
