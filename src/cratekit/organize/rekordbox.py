@@ -265,16 +265,7 @@ def _rotation(cfg: config.Config, declared, today: date, area: Area) -> Step:
         counts={key: totals[key] for key in ("move", "remove", "keep", "left alone")},
         items=list(shown["items"]),
     )
-    if plan.unreadable_records:
-        step.warnings.append(
-            {
-                "code": rotate_cli.RECORDS_UNREADABLE,
-                "message": (
-                    f"{plan.unreadable_records} session record(s) could not be read, so a "
-                    f"batch one of them names was aged from its playlist's creation date"
-                ),
-            }
-        )
+    step.warnings.extend(rotate_cli.records_warnings(plan))
     if plan.writes:
 
         def apply() -> dict[str, Any]:

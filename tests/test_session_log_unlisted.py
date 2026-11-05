@@ -31,7 +31,8 @@ from cratekit.core.cause import CratekitError
 from cratekit.intake import batch_name, native, refill, refill_cli, rotate, rotate_cli
 from tests.test_restore import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
 from tests.test_restore import _release_process_locks as _release_process_locks  # noqa: PLC0414
-from tests.test_restore import acknowledge, cfg, gate_seams  # noqa: F401 - cfg is a fixture
+from tests.test_restore import acknowledge, gate_seams
+from tests.test_restore import cfg as cfg  # noqa: PLC0414 - fixture
 
 BATCH = "2026-10-20 Tidal playlists"
 

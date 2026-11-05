@@ -223,8 +223,10 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
     _record_landing(cfg, batch, "2026-09-20 Defected", TODAY - timedelta(days=13))
     assert [name for _id, name in _live(cfg).batches] == ["2026-09-20 Defected"]
     log = Path(session.log_dir(cfg))
+    # The scan asks the listing itself since R-1255, so refusing it is enough;
+    # the glob it used to read is refused too, as an unprivileged account is.
     _refuse_under(monkeypatch, "listdir", log)
-    monkeypatch.setattr(session, "scan_log", lambda _cfg: ((), ()))
+    _refuse_under(monkeypatch, "scandir", log)
 
     (node,) = _live(cfg).left
 

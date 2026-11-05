@@ -279,7 +279,10 @@ def warnings_of(found: rc.Check) -> list[dict[str, str]]:
             {
                 "code": RECORDS_UNREAD,
                 "message": (
-                    f"{found.scope.unreadable_records} session record(s) could not be "
+                    f"the session log could not be listed, so a landing of "
+                    f"{found.scope.name} in it is not in this check"
+                    if found.scope.log_unlisted
+                    else f"{found.scope.unreadable_records} session record(s) could not be "
                     f"read, so a landing of {found.scope.name} among them is not in this "
                     f"check"
                 ),

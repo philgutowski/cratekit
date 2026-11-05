@@ -2770,29 +2770,12 @@ def _log_directory_unreadable(cfg: config.Config) -> Path | None:
 
     The mount question answers "is the disk there". This answers the other half,
     which no mount state can: a directory that IS on the right volume and that
-    this account cannot open. ``scan_log`` swallows that into the same empty pair
-    it returns for a library that has simply never opened a session, and the
-    difference between those two is the difference between "nothing to resolve"
-    and "cannot tell".
+    this account cannot open. Asked through ``session.unlisted_log``, the one
+    probe the scan itself asks since R-1255, so this report and the gate it
+    describes cannot disagree about one directory: a state directory this
+    account cannot traverse, and a log it cannot list, both answer the path.
     """
-    directory = session.log_dir(cfg)
-    try:
-        if not directory.exists():
-            return None
-    except OSError:
-        # ``Path.exists`` re-raises anything that is not "it is not there", so a
-        # state directory this account cannot TRAVERSE arrived here as an
-        # exception rather than as False. Doctor lost the whole report to it.
-        # Unreadable is the honest answer and it is the one the caller renders.
-        return directory
-    try:
-        # Listed rather than stat-ed. A directory with no execute bit stats fine
-        # and cannot be read, which is exactly the state that produced an empty
-        # scan and a green report.
-        next(iter(directory.iterdir()), None)
-    except OSError:
-        return directory
-    return None
+    return session.unlisted_log(cfg)
 
 
 def _check_unresolved_session(inputs: _Inputs) -> Finding:

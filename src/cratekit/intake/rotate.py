@@ -227,8 +227,12 @@ class RotationPlan:
     kept: tuple[Batch, ...]
     left: tuple[Left, ...]
     #: Session records that could not be read, so their batches aged from the row.
+    #: An unlisted log counts as one (R-1255).
     unreadable_records: int
     digest: str
+    #: The session log exists and could not be listed, so no record was read
+    #: at all; the warning says so rather than naming a count (R-1255).
+    log_unlisted: bool = False
 
     @property
     def writes(self) -> bool:
@@ -373,7 +377,8 @@ class Landings:
     #: How many records could not be read.
     unreadable: int
     #: The session log exists and could not be listed (U214), so no record in
-    #: it was read at all, which is not the same as none being there.
+    #: it was read at all, which is not the same as none being there. Read
+    #: off the scan's unread half since R-1255, where it counts as one.
     unlisted: bool = False
 
     def unread(self) -> str:
@@ -383,21 +388,6 @@ class Landings:
         if self.unreadable:
             return f"{self.unreadable} session record(s) could not be read, and one of them may"
         return ""
-
-
-def _unlisted(path: Path) -> bool:
-    """True when the directory is there and cannot be listed, False when listed or absent.
-
-    The scan reads a glob, which answers an unlistable directory with nothing
-    at all, so the listing is asked once here where it says so.
-    """
-    try:
-        os.listdir(path)
-    except FileNotFoundError:
-        return False
-    except OSError:
-        return True
-    return False
 
 
 def _batch_folder(path: str) -> bool | None:
@@ -425,7 +415,7 @@ def landings(cfg: config.Config) -> Landings:
     reason the module gives.
     """
     records, unreadable = session.scan_log(cfg)
-    unlisted = _unlisted(session.log_dir(cfg))
+    unlisted = session.log_unlisted(unreadable, cfg)
     by_id: dict[str, date] = {}
     by_name: dict[str, tuple[date, str]] = {}
     for record in records:
@@ -710,6 +700,7 @@ def plan_rotation(
         left=tuple(sorted(left, key=lambda node: (node.place, node.name, node.playlist_id))),
         unreadable_records=unreadable,
         digest="",
+        log_unlisted=found.unlisted,
     )
     return replace(planned, digest=digest_of(identity(planned)))
 

@@ -277,7 +277,10 @@ class Scope:
     #: Each step that was looked at and passed over on the way, with why.
     passed_over: tuple[str, ...] = ()
     #: The session records the log could not read, which a named landing might be among.
+    #: An unlisted log counts as one (R-1255).
     unreadable_records: int = 0
+    #: The session log exists and could not be listed, so no record was read at all.
+    log_unlisted: bool = False
 
 
 def _recorded_playlists(record: session.SessionRecord) -> tuple[str, ...]:
@@ -294,8 +297,9 @@ def _recorded_playlists(record: session.SessionRecord) -> tuple[str, ...]:
 
 def _landed(
     cfg: config.Config, *, pass_name: str | None, session_id: str | None
-) -> tuple[tuple[session.SessionRecord, ...], int]:
-    """The closed native landings a pass or a session names, and the unreadable record count.
+) -> tuple[tuple[session.SessionRecord, ...], int, bool]:
+    """The closed native landings a pass or a session names, the unread count, and whether
+    the log could not be listed at all (R-1255).
 
     A pass is :func:`cratekit.intake.native.landings_of_pass`'s proof, so a
     landing refused after its moves, which names no pass, is never read as one.
@@ -313,7 +317,11 @@ def _landed(
             and record.state is session.SessionState.CLOSED
             and str(session.SourceState.COMMITTED) in record.sources.values()
         }
-    return tuple(record for record in records if record.session_id in wanted), len(unreadable)
+    return (
+        tuple(record for record in records if record.session_id in wanted),
+        len(unreadable),
+        session.log_unlisted(unreadable, cfg),
+    )
 
 
 def _live_members(db: Any, playlist_ids: Iterable[str]) -> tuple[str, ...]:
@@ -371,10 +379,15 @@ def resolve_scope(
     if pass_name is not None or session_id is not None:
         kind = SCOPE_PASS if pass_name is not None else SCOPE_SESSION
         name = str(pass_name if pass_name is not None else session_id)
-        records, unreadable = _landed(cfg, pass_name=pass_name, session_id=session_id)
+        records, unreadable, unlisted = _landed(
+            cfg, pass_name=pass_name, session_id=session_id
+        )
         if not records:
             unread = (
-                f"; {unreadable} session record(s) could not be read and it may be among them"
+                "; the session log could not be listed and it may be in it"
+                if unlisted
+                else f"; {unreadable} session record(s) could not be read and it may be "
+                "among them"
                 if unreadable
                 else ""
             )
@@ -383,7 +396,12 @@ def resolve_scope(
                 f"no closed landing is recorded for the {kind} {name!r}, so there are no "
                 f"landed rows to check{unread}",
                 origin=_ORIGIN,
-                detail={"kind": kind, "name": name, "unreadable_records": unreadable},
+                detail={
+                    "kind": kind,
+                    "name": name,
+                    "unreadable_records": unreadable,
+                    "log_unlisted": unlisted,
+                },
             )
         playlists = [one for record in records for one in _recorded_playlists(record)]
         members = _live_members(db, playlists)
@@ -405,6 +423,7 @@ def resolve_scope(
             name=name,
             content_ids=members,
             unreadable_records=unreadable,
+            log_unlisted=unlisted,
         )
     members, why = _analyze_members(db, declared, registry)
     if members:
