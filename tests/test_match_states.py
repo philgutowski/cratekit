@@ -250,6 +250,9 @@ def test_a_featured_credit_is_a_performer_and_never_a_version():
         ("(With Or Without You)", ("With Or Without You", "")),
         ("(With Love) (Remix)", ("With Love", "Remix")),
         ("(feat. Mira)", ("feat. Mira", "")),
+        ("(Extended)", ("", "Extended")),
+        ("[Original Mix] (Remastered)", ("", "Original Mix Remastered")),
+        ("[Premade Sandwiches Live]", ("", "Premade Sandwiches Live")),
     ],
 )
 def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
@@ -272,7 +275,7 @@ def test_a_provider_row_titled_wholly_in_brackets_reads_rather_than_refuses():
     )
     assert (read.artist, read.title, read.version) == ("Glass Animals", "Premade Sandwiches", "")
     assert read.spelled == "[Premade Sandwiches]"
-    for nothing in ("[]", "( )"):
+    for nothing in ("[]", "( )", "(Extended)", "[Radio Edit]"):
         with pytest.raises(match.UnreadableList, match="names no title"):
             match.read_tidal_tracks(
                 [{"id": "6", "name": nothing, "artist": {"name": "Glass Animals"}}]

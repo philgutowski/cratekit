@@ -496,6 +496,18 @@ def _is_a_credit(inside: str) -> bool:
     return any(folded.startswith(fold(prefix)) for prefix in _CREDIT_PREFIXES)
 
 
+def _names_a_version(inside: str) -> bool:
+    """Whether a bracketed group's last word is one the version vocabulary holds.
+
+    The test :func:`split_version` asks of a group that stands first (U213),
+    by the vocabulary the dash reader uses, so ``(Extended)`` stays a version
+    and ``[Premade Sandwiches]`` is a title. Defined beside its one caller and
+    read at call time, since the vocabulary is declared further down.
+    """
+    words = fold(inside).split()
+    return bool(words) and words[-1] in _DASH_VERSIONS
+
+
 def split_version(title: str) -> tuple[str, str]:
     """The BRACKETED half of the split, on its own. Not the reader's entry point.
 
@@ -520,9 +532,12 @@ def split_version(title: str) -> tuple[str, str]:
     the credit prefixes include ``with ``, and ``[With You]`` or ``(With Or
     Without You)`` are titles, so excepting credits put the defect back for
     them (U213's review, round two). A row titled only ``(feat. Mira)`` reads
-    as the title ``feat. Mira``, a residual. Read here, in the one function
-    every reader and the library index start from, so the two sides still
-    fold one recording to one token.
+    as the title ``feat. Mira``, a residual. A GROUP THAT NAMES A VERSION
+    STAYS ONE: ``(Extended)`` or ``[Original Mix]`` alone is a row that lost
+    its title, refused as before, which U68's emitter pins (see
+    :func:`_names_a_version`). Read here, in the one function every reader and
+    the library index start from, so the two sides still fold one recording to
+    one token.
     """
     remaining = str(title).strip()
     qualifiers: list[str] = []
@@ -531,7 +546,7 @@ def split_version(title: str) -> tuple[str, str]:
         if found is None:
             break
         inside = found.group(1).strip()
-        if found.start() == 0:
+        if found.start() == 0 and not _names_a_version(inside):
             remaining = inside
             break
         remaining = remaining[: found.start()].strip()
