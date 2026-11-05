@@ -2070,6 +2070,40 @@ The installed v0.8.0 carries U192. Two staging folders in the session's scratch 
 
 **A71 (#445) is held** and now depends on **#369 (A45)** as well: the proof needs a label batch landed natively with `--label`, and a label batch is downloaded only on Phillip's go per label. The gate's reading of a native pass with nothing filed under the label is recorded above for the retake.
 
+
+## Sitting 74, 2026-11-05, the attended session on v0.9.0, no desktop control: A81 (#476), the continue after the call ceiling resumes the kept listing
+
+A sub session of the attended run with no desktop control. The installed copy is v0.9.0, which carries U217 (#533). No job running, rekordbox and rekordboxAgent not running before every verb, both backup ages two days; no library write, so no acknowledgment was needed. Before the first run the label crawl cache held Defected's release reads (`reads.json`, sitting 60's) and **no kept listing**, so the first run listed from nothing. Every provider call went on the account; the provider gate's count was 507,147 before.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Ceiling | `crate label playlists Defected`, run `2026-11-05T23:08:51Z-402c`, 61 s | **Stopped at exactly 500 calls**, `blocked (REFUSED_BY_POLICY)`, `provider-call-ceiling`, printing **`crate --calls 1000 label playlists Defected`**. The message now reads "the remaining items stay queued; what it read and did not keep is read again when it continues" (U217 dropped "what it did is kept"). Spend line: 500 calls, none rate limited. The kept listing was written on the way out: `label_crawl/defected/listing.json`, 1 named, 84 identified, 80 searched and 167 listed answers. | stopped |
+| Its continue | the printed command, exactly, run `2026-11-05T23:10:01Z-f817`, 66 s | **Reached the crawl gate with 542 calls**: "listing: the label's listing continued from an earlier run: 332 answer(s) kept, the oldest 2 minute(s) old, and 331 asked of the provider now". Gate `label.playlists.crawl`, digest `13d2f3c783fd3ccf`: **12,093 releases listed**, 506 kept reads from sitting 60 (9 hours old), the other 11,587 at least 23,174 calls, about 39 min; `call ceiling` names `--calls 23900`. Two roster artists, `3534055` and `3930127`, were reported unavailable. | gate |
+| Crawl gate | `crate run decide --actor session 2026-11-05T23:10:01Z-f817 label.playlists.crawl abort` | `ok`, recorded by session. **The crawl was not run**: at least 23,174 calls is over this run's 5,000 call bound for one command, and the card proves the listing's stop and continue, which both happened before the gate. | aborted |
+
+**Calls:** 500 then 542, **1,042 for the whole listing**, where sitting 60 on v0.7.0 paid 500, then 1,000, then 1,790 (3,290) to reach the same gate, and a fresh listing alone was 1,790. The continue is cheaper than even one fresh listing because U217 also reads discovery's listings back from the store rather than paging every discovered artist twice. The gate's count moved 507,147 to 508,189.
+
+**A81 (#476) is met**: the build stopped at exactly 500 with outcome blocked and its printed `--calls 1000` continue, and that continue resumed from the kept answers and finished the listing under its raised ceiling. The macOS battery it owes is sitting 68's on `3c0b3722`, which carries U193.
+
+
+## Sitting 75, 2026-11-05, the attended session on v0.9.0, no desktop control: A58 (#418), the second ask of one label costs no call
+
+Run straight after sitting 74, on the same conditions. Every provider call went on the account; the gate's count was 508,189 before.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Defected, first | `crate label sync --next --label defected`, run `2026-11-05T23:11:26Z-c16a`, 12 s | `no_op`: "Defected: nothing new since it was last asked; 11991 release(s) past this run's window", and **"the label's listing was answered from the one kept by an earlier run, 2 minute(s) old, with no listing call to the provider"**, so `label sync` reads the listing `label playlists` kept. The report names Defected only. **12 calls.** | read |
+| Defected, again | the same command, run `2026-11-05T23:11:45Z-4879`, 10 s | The same answer, **12 calls**, where sitting 60 paid 1,800. | finding |
+| What the 12 are | the same command once more through the installed interpreter with the HTTP client's request log on, run `2026-11-05T23:12:50Z-d08a`, 12 calls | **None is a listing call**: one session read and one user read, then album and its tracks for five releases (`519880827`, `555140902`, `497841184`, `513897942`, `482701430`), the window's confirmed releases whose ownership the sweep checks by reading their tracks against the library. Those reads are not kept, so a label with nothing new pays them on every ask. | traced |
+| A label with something new | `crate label sync --next --label puls`, run `23:13:51Z-db54`, 3 calls | Refused `label-sync-unlisted`: **18 provider artists are named exactly `PULS`**, and the entry sitting 69 added names no seed. | refused |
+| Another | `crate label sync --next --label voll-schoen`, run `23:14:08Z-e699`, 83 calls | Refused `label-sync-unlisted`: no artist named exactly `Voll Schön`, no seed, and discovery found nothing. | refused |
+| Multinotes, first | `crate label sync --next --label multinotes` (asked 2026-10-07, answered not now), run `2026-11-05T23:14:30Z-1b5f`, **31 s** | `ok`: "the label's listing was read from the provider, since none was kept"; **the question: 2 new releases, 7 tracks, about 310 MB**, Murat Uncuoglu `Just Now` (2020, 3 tracks) and `Trees Of Light` (2019, 4 tracks), with its answer command. The report names Multinotes only. **128 calls**, one label's listing and its question. | question |
+| Multinotes, again | the same command, run `2026-11-05T23:15:09Z-c4c7`, under 1 s | **The same question, printed from the saved one, with no provider call**: no spend line, and the gate's count stayed 508,439. | met |
+
+**A58 (#418) is met**: the time (31 s), the one label report with its question, the call count (128, one label's listing), and the second run's zero calls, on Multinotes, a followed label below the first in registry order with something new, which is the case U189's "a saved question is printed again with no provider call" names. Defected, with nothing new, saves no question, so each ask lists again; U217 makes that listing free, and what is left is **12 calls a run**, the session and the ownership reads of the five releases in its window. A small finding, recorded here and no card. The battery it owes is sitting 68's.
+
+**Calls for the sitting:** 250 (Defected 36, PULS 3, Voll Schön 83, Multinotes 128); the gate's count ended at 508,439. **Left for Phillip:** the Multinotes question is saved and waits for his answer (`crate label sync --answer ... --label multinotes`), since label releases are always his call. Two followed labels cannot be listed until their entries carry a seed: **PULS** (18 artists share the name) and **Voll Schön** (no artist by the name; each ask costs about 80 calls of discovery for nothing).
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
