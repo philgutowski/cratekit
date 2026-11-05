@@ -452,6 +452,9 @@ def test_without_both_values_the_opener_builds_no_app_client(monkeypatch, gate, 
 
     assert provider_session.catalogue_client(AccountClient(), gate=gate) is None
     assert transport.sent == []
+    # One value of two was never set up, which is not a value the keychain
+    # lost, so the run's spend line names nothing (the mutation table's O1).
+    assert provider_gate.app_lost() == ()
 
 
 def test_without_the_app_an_isrc_lookup_goes_to_the_account_and_is_counted_there(gate):
