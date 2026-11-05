@@ -301,10 +301,9 @@ def test_the_scan_does_not_use_process_iter(table, monkeypatch):
     assert _scanned() == ("rekordbox",)
 
 
-def test_the_real_platform_is_read_without_raising_on_this_machine():
-    """The seam is psutil itself when nothing replaces it."""
+def test_the_seam_is_psutil_when_nothing_replaces_it():
+    """Not a read of this machine's process table, which no test may depend on."""
     assert processes._platform() is psutil
-    assert isinstance(processes.running_process_names(), tuple)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
