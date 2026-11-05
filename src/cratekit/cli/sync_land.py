@@ -32,6 +32,14 @@ mends it; ``go`` takes the pass on without vocal scores. Sitting 51
 landed nineteen rows with no voxlevel from a copy installed without the
 vocals extra, and found out from one clause of the landing plan.
 
+A TRACK AN UNLANDED PASS STAGED IS NOT DOWNLOADED AGAIN (U212). The listing
+counts a missing track a staged file already carries as staged, and the pass
+says how many on its missing step. A pass with nothing to download and
+something staged skips the download and runs the tail and the landing over
+the staging folder, which takes the staged files, rather than ending with
+nothing landed. Sitting 55 downloaded two such tracks again, and the copies
+stopped the name step on names already taken.
+
 A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
 a lossy only track above all, leaves the job failed with every other item
 durable. The pass names each refused track and goes on with the ones that
@@ -744,8 +752,11 @@ def _intake(report: _Pass, run_id: str, cfg: config.Config) -> bool:
 
 @dataclasses.dataclass(frozen=True)
 class _Listed:
-    path: Path
+    #: The list to download, or None when every missing track is staged (U212).
+    path: Path | None
     land_name: str
+    #: How many missing tracks a staged file already carries.
+    staged: int = 0
 
 
 def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> _Listed:
@@ -763,7 +774,8 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
     summary = _summary_of(envelope)
     listed = summary.get("list")
     land_name = str(summary.get("land_name") or "")
-    if envelope.get("outcome") == str(Outcome.NO_OP) or not listed:
+    staged = int(summary.get("staged") or 0)
+    if (envelope.get("outcome") == str(Outcome.NO_OP) or not listed) and not staged:
         unlisted = int(summary.get("unlisted") or 0)
         report.check(
             MISSING,
@@ -773,15 +785,30 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
             f"{unlisted}), so nothing is downloaded or landed",
         )
         raise _Done(MISSING)
-    report.summary["list"] = str(listed)
+    report.summary["staged"] = staged
     report.summary["land_name"] = land_name
+    # SAID ON THE STEP THAT DECIDED IT (U212), so a person reading the pass
+    # sees why fewer tracks were downloaded than the playlists asked for.
+    held = (
+        "staged already by a download not landed yet, not downloaded again, and "
+        "the landing over the staging folder lands them"
+    )
+    if not listed:
+        report.check(
+            MISSING,
+            "ok",
+            f"nothing to download: {staged} missing track(s) are {held}",
+        )
+        return _Listed(path=None, land_name=land_name, staged=staged)
+    report.summary["list"] = str(listed)
     report.check(
         MISSING,
         "ok",
         f"{summary.get('written', summary.get('missing', 0))} missing track(s) "
-        f"listed as one at {listed}",
+        f"listed as one at {listed}"
+        + (f"; {staged} more {held}" if staged else ""),
     )
-    return _Listed(path=Path(str(listed)), land_name=land_name)
+    return _Listed(path=Path(str(listed)), land_name=land_name, staged=staged)
 
 
 def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> jobs.Job | None:
@@ -808,9 +835,16 @@ def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> job
 
 
 def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
-    """Download the list, skip what was refused for good, and return how many landed."""
+    """Download the list, skip what was refused for good, and return how many landed.
+
+    A pass whose every missing track is staged has no list, and the tail and
+    the landing go on over what is staged (U212).
+    """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's reading
 
+    if listed.path is None:
+        report.check(DOWNLOAD, "info", "nothing downloaded: every missing track is staged already")
+        return 0
     with jobs.open_store() as store:
         job = _download_job(store, listed.path, cfg)
         if (
