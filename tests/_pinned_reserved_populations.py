@@ -1682,10 +1682,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-export-required',
     ],
     # 2026-10-13, U143: the account root removals' five refusal problems joined.
-    # 2026-11-05, U220: an order's first reading that never agrees, read-differs.
+    # 2026-11-05, U220: an order's first reading that never agrees, read-differs,
+    # and an order whose moves never reach it, no-progress.
     'modules/outbound/tidal_account.py': [
         'internal-error',
         'ledger-claimed',
+        'no-progress',
         'not-a-legacy-folder',
         'not-a-root-kind',
         'not-empty',

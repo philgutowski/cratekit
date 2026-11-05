@@ -1248,6 +1248,11 @@ class TidalAccount:
         and nothing is sent again: a move that reached the provider and then
         timed out, sent again, would move whatever stands at that position.
 
+        AT MOST ONE MOVE PER ASKED TRACK from any one reading, since each move
+        grows the kept tail by one; a reading that needs more is refused,
+        ``outbound-remove-refused`` with the problem ``no-progress``, rather
+        than moved without end.
+
         READ BACK after every move, see :meth:`_read_back`, which must be what
         it held with that one track moved to the front. A reading still equal
         to the playlist before the move is a read that lags the move (Sitting
@@ -1270,10 +1275,26 @@ class TidalAccount:
         )
         doing = f"put the playlist {identifier} in order"
         stale = 0
+        moved = 0
         while True:
             pending = _to_the_front(before, remote_ids)
             if not pending:
                 return tuple(before)
+            if moved >= len(remote_ids):
+                # EVERY MOVE GROWS THE KEPT TAIL BY ONE, so a reading needs at
+                # most one move per asked track. More means the moves are not
+                # taking the playlist toward the order, and an order that goes
+                # on moving would write to the account without end.
+                raise refuse(
+                    "outbound-remove-refused",
+                    f"the playlist {identifier} was moved {moved} times, one for every "
+                    f"track asked, and is still not in the asked order, so nothing "
+                    f"more was moved; every track is still on it",
+                    steps=("check the playlist's order by hand in the provider's own player",),
+                    scope=Scope.RUN,
+                    origin=("outbound", "account"),
+                    detail={"playlist_id": identifier, "problem": "no-progress"},
+                )
             one = pending[0]
             at = before.index(one)
             try:
@@ -1296,6 +1317,9 @@ class TidalAccount:
                 playlist, before = self._settled(
                     identifier, tuple(before), exact=False, pauses_from=stale
                 )
+                # A NEW READING IS PLANNED FROM AFRESH, so its moves are counted
+                # afresh; the 412s that lead to one are bounded on their own.
+                moved = 0
                 continue
             if accepted is False or accepted is _ABSENT:
                 raise account.provider_failure(
@@ -1304,6 +1328,7 @@ class TidalAccount:
             playlist, before = self._read_back(
                 identifier, before, [one, *before[:at], *before[at + 1 :]]
             )
+            moved += 1
 
     def _settled(
         self,

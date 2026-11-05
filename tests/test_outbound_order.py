@@ -202,6 +202,26 @@ def test_a_move_that_lands_anywhere_else_refuses_at_once_with_every_track_kept(i
     assert provider.members == ["a", "d", "b", "c"]
 
 
+def test_moves_that_never_reach_the_order_stop_at_one_per_track_asked(installed, monkeypatch):
+    """A planner that never runs out of moves is refused, not followed without end.
+
+    Every move to the front grows the kept tail by one, so no reading needs
+    more moves than tracks asked. The mutation table's planner that keeps no
+    tail moved the playlist until the run was killed; a write loop on the
+    account with no bound is the hazard, so the bound is held here.
+    """
+    monkeypatch.setattr(
+        tidal_account, "_to_the_front", lambda before, remote_ids: list(reversed(remote_ids))
+    )
+    provider = Provider(["a", "b", "c"])
+    with pytest.raises(CratekitError) as refused:
+        _adapter(installed, provider).order_tracks("mine", ("c", "a", "b"))
+    assert refused.value.cause.reason == "outbound-remove-refused"
+    assert refused.value.cause.detail["problem"] == "no-progress"
+    assert len(provider.moves) == 3
+    assert sorted(provider.members) == ["a", "b", "c"]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # A stale version tag
 # ═══════════════════════════════════════════════════════════════════════════
