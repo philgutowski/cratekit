@@ -1071,7 +1071,10 @@ crate converge
 `route unplaced` lists tracks no tree files, and `audit coverage` asks the same
 question from an export. `audit duplicates` never deletes. Run `route resort`
 after a genre or energy change, and `converge` to check that each tree matches
-the database. `route resort` also fills a genre sub, a playlist beside a genre
+the database. `route resort` first shows every track it will add at the
+explicit gate `route.resort.apply`, answered with `crate run decide`, and files
+only the routing tree: INBOX and the other places the taxonomy names are left
+alone. It also fills a genre sub, a playlist beside a genre
 folder's energy bands for one genre: in the shipped taxonomy, every track
 tagged exactly `Rominimal` sits in its Minimal / Deep Tech band and in
 `Minimal / Deep Tech / Rominimal` too. A library whose taxonomy copy predates
