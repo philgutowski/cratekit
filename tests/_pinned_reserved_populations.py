@@ -253,6 +253,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unavailable-permanent',
         'unavailable-transient',
     ],
+    # 2026-11-05, U205: the app credentials' catalogue client refuses a rejected
+    # or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     'acquire/cli.py': [
         'acquire-refused',  # 2026-11-01, U169: the warning naming a declined track.
         'adapter-broken',
@@ -1085,6 +1088,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'core/routing.py': ['not-judged'],
     'core/secrets.py': [
         'bandcamp-session',  # 2026-10-28, U176
+        'catalogue-client-id',  # 2026-11-05, U205
+        'catalogue-client-key',  # 2026-11-05, U205
         'credential-index-unreadable',
         'identify-key',
         'identify-signing-key',
@@ -2139,6 +2144,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
 PINNED_NAMED_WITHOUT_OWN = {
     # 2026-11-01, U177: a file that would not take its label.
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten'],
+    # 2026-11-05, U205: a rejected or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
@@ -2228,6 +2235,8 @@ PINNED_NAMED_WITH_OWN = {
     # 2026-10-28, U176: the plan's disposition enum.
     # 2026-11-01, U177: a file that would not take its label.
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten', 'not-downloadable'],
+    # 2026-11-05, U205: a rejected or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
@@ -2473,6 +2482,8 @@ PINNED_LITERAL_HOLDERS = {
         'unavailable-permanent',
         'unavailable-transient',
     ],
+    # 2026-11-05, U205: a rejected or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     'acquire/cli.py': [
         'adapter-broken',
         'auth-failed',
