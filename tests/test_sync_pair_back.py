@@ -591,3 +591,77 @@ def test_a_commit_that_lands_and_then_raises_still_pairs_the_playlist(world, cfg
     assert list(in_rekordbox(world, gig)).count("Closer") == 1
     assert not _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
     assert not _items(envelope["data"], "discovery", pair_discover.TAKEN)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# From the mutation table: what no earlier test reached
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_set_playlist_sharing_a_name_does_not_stop_the_authors_own(world, gig, monkeypatch):
+    """C8: the scope check runs before names are counted, so a set's list takes no name."""
+    from cratekit.modules.outbound import ledger
+
+    built = on_account(world, "GIG READY Closer", "GIG READY", "t6")
+    mine = on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    monkeypatch.setattr(ledger, "set_playlist_ids", lambda cfg: frozenset({built}))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(in_rekordbox(world, gig)["Closer"]) == ["4"]
+    assert not _items(envelope["data"], "account-discovery", pair_discover.TWICE)
+    (left,) = _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
+    assert left["account_id"] == built
+    assert mine != built
+
+
+def test_with_every_pair_released_a_new_playlist_in_a_recorded_folder_still_comes(
+    world, cfg, gig
+):
+    """C10: a sync of every pair reads the account when only root folders are recorded."""
+    world.delete_rekordbox(in_rekordbox(world, gig)["Opener"])
+    assert sync()[0] == int(ExitCode.OK)
+    assert not pairs.PairStore(cfg).all()
+    closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    made = in_rekordbox(world, gig)["Closer"]
+    assert world.held(made) == ["4"]
+    assert pairs.PairStore(cfg).get(closer).rekordbox_id == made
+
+
+def test_a_write_outside_the_playlist_made_is_refused_with_nothing_written(
+    world, cfg, gig, monkeypatch
+):
+    """R2: the confinement check judges the write before its commit."""
+    closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    real = rb_writer.add_memberships
+
+    def strays(db, playlist, *args, **kwargs):
+        added = real(db, playlist, *args, **kwargs)
+        if str(playlist.Name) == "Closer":
+            db.create_playlist("Stray")
+            db.session.flush()
+        return added
+
+    monkeypatch.setattr(rb_writer, "add_memberships", strays)
+    code, _envelope = sync()
+    assert code != int(ExitCode.OK)
+    names = {name for (name,) in world.sql("SELECT Name FROM djmdPlaylist")}
+    assert "Stray" not in names and "Closer" not in names
+    assert pairs.PairStore(cfg).get(closer) is None
+
+
+def test_reserving_an_account_playlist_a_pair_holds_answers_that_pair_and_makes_nothing(
+    world, cfg, gig
+):
+    """P1: two syncs racing to one account playlist never make two rekordbox playlists."""
+    opener = world.titled("GIG READY Opener")
+    store = pairs.PairStore(cfg)
+    held = store.get(opener)
+
+    def create() -> str:
+        raise AssertionError("a held account playlist is made again")
+
+    got = store.reserve_made_rekordbox(opener, name="Opener", folder="GIG READY", create=create)
+    assert got == (held.rekordbox_id, False)
+    assert store.get(opener) == held
