@@ -101,6 +101,9 @@ class Frozen:
     )
     #: Each step of the area as the gate showed it (U222), by its key.
     steps: Mapping[str, Shown] = field(default_factory=dict)
+    #: Whether a gate showed this plan, or a run that applies planned it afresh
+    #: because the gate's own could not be read (U222, review round one).
+    shown: bool = True
 
 
 def _path(cfg: config.Config, run_id: str) -> Path | None:
@@ -215,12 +218,15 @@ def freeze(
     *,
     recorded: Mapping[str, ledger.MirrorFolder] | None = None,
     steps: Iterable[Any] = (),
+    shown: bool = True,
 ) -> str:
     """Write this run's frozen plan and prune the old ones. Returns what the gate says of it.
 
     ``recorded`` is the ledger's mirrored folders as the plan READ them, before
     the plan recorded any snapshot of its own, and ``steps`` the area's steps
-    as its gate shows them (U222).
+    as its gate shows them (U222). ``shown`` is false for a plan a run that
+    applies made afresh, which no gate showed: it is frozen so the next resume
+    asks the provider nothing, and it is never read as what the gate showed.
 
     Raises ``OSError`` when the directory cannot be written, which the caller
     shows as a fact rather than a refusal: the plan stands, and the run that
@@ -236,10 +242,16 @@ def freeze(
         "matches": {cid: list(held) for cid, held in sorted(matches.items())},
         "agreed": _agreed_json(recorded or {}),
         "steps": {step.key: _shown_json(step) for step in steps},
+        "shown": shown,
     }
     path.parent.mkdir(parents=True, exist_ok=True)
     config.atomic_write_bytes(json.dumps(document, sort_keys=True).encode("utf-8") + b"\n", path)
     _prune(path)
+    if not shown:
+        return (
+            f"frozen on run {run_id} as planned now, so a later resume asks the provider "
+            f"nothing, though the plan its gate showed is not the one frozen"
+        )
     return f"frozen on run {run_id}, so the apply rebuilds it without asking the provider again"
 
 
@@ -309,9 +321,12 @@ def load(cfg: config.Config, run_id: str) -> tuple[Frozen | None, str]:
         }
         agreed = _agreed_of(data["agreed"])
         steps = _steps_of(data["steps"])
+        shown = data["shown"]
+        if not isinstance(shown, bool):
+            raise ValueError(f"whether a gate showed it is {shown!r}, not true or false")
     except (AttributeError, KeyError, TypeError, ValueError) as exc:
         return None, f"the frozen mirror plan of run {run_id} is not one this build reads ({exc})"
-    return Frozen(library=library, matches=matches, agreed=agreed, steps=steps), ""
+    return Frozen(library=library, matches=matches, agreed=agreed, steps=steps, shown=shown), ""
 
 
 def _text(value: Any, what: str) -> str:
@@ -393,10 +408,16 @@ def moved(steps: Iterable[Any], frozen: Frozen) -> list[str]:
         if digest_of(step.identity()) == then.digest:
             continue
         lines = _lines(step)
-        named = sorted(
-            label
-            for label in set(lines) | set(then.lines)
-            if lines.get(label) != then.lines.get(label)
+        # A STEP WITH NO LINES ON ONE SIDE, refused now or at the gate, is
+        # named alone: every line of the other side would read as moved.
+        named = (
+            sorted(
+                label
+                for label in set(lines) | set(then.lines)
+                if lines.get(label) != then.lines.get(label)
+            )
+            if lines and then.lines
+            else []
         )
         said.append(
             step.title

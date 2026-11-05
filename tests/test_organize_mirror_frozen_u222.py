@@ -226,7 +226,8 @@ def test_a_decided_run_with_no_frozen_plan_says_it_planned_afresh(world, monkeyp
     assert not any(line.startswith("moved since") for line in applied.stale)
     assert applied.stale[0] == (
         f"{account_mirror.FROZEN_FACT}: none, by the test, so it was planned afresh; "
-        f"frozen on run {GATE}, so the apply rebuilds it without asking the provider again"
+        f"frozen on run {GATE} as planned now, so a later resume asks the provider nothing, "
+        "though the plan its gate showed is not the one frozen"
     )
 
 
@@ -265,6 +266,13 @@ def test_a_step_new_since_the_gate_and_one_gone_are_named():
     ]
     assert mirror_frozen.moved(then, frozen) == [
         "the sets step, which the gate showed and this run did not plan"
+    ]
+    # A step refused now shows no lines, so it is named alone, never by every
+    # line the gate showed (review round one).
+    refused = [One("mirror:A", "mirror A onto the account", digest="refused")]
+    assert mirror_frozen.moved(refused, frozen) == [
+        "mirror A onto the account",
+        "the sets step, which the gate showed and this run did not plan",
     ]
 
 
@@ -334,6 +342,8 @@ def test_a_version_5_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(
         {"steps": {"mirror:INBOX": {"title": "t", "digest": 7, "lines": {}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d", "lines": {"x": None}}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": "d"}}},
+        {"agreed": {"INBOX": {INBOX_A: ["p1", ["r1", 7]]}}},
+        {"shown": "yes"},
     ):
         path.write_text(json.dumps({**document, **changed}), encoding="utf-8")
         frozen, said = mirror_frozen.load(world.cfg, GATE)
@@ -347,3 +357,31 @@ def test_a_version_5_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(
         "mirror:Favorites",
         "mirror:INBOX",
     }
+
+
+def test_a_plan_made_afresh_by_a_decided_run_is_never_read_as_what_the_gate_showed(world):
+    """Review round one: the resume after a fresh plan must not say nothing moved.
+
+    The gate's record is one this build does not read (version 5, as every run
+    gated before U222), a batch lands between the acts, and the gate's run is
+    resumed twice. The first resume plans afresh; it freezes what it planned so
+    the next one asks the provider nothing, but that plan is not the gate's, so
+    the second resume cannot name what moved and says so.
+    """
+    shown = _gate(world)
+    path = config.state_path("mirror_plans", world.cfg) / f"{GATE}.json"
+    document = json.loads(path.read_text(encoding="utf-8"))
+    path.write_text(json.dumps({**document, "version": 5}), encoding="utf-8")
+    world.land("9", code="ISRC00000009")
+
+    first = _answered(world)
+    second = _answered(world)
+
+    assert first.digest() != shown.digest() and second.digest() != shown.digest()
+    assert "so it was planned afresh" in first.stale[0], first.stale
+    assert "the plan its gate showed is not the one frozen" in first.stale[0], first.stale
+    assert second.stale[0] == (
+        "what moved cannot be named: the plan frozen on this run was planned afresh "
+        "by a run that applies, not shown by its gate"
+    )
+    assert not any(line.startswith("every step plans as") for line in second.stale)

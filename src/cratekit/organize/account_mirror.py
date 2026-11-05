@@ -936,7 +936,12 @@ def _stale(area: Area, frozen: mirror_frozen.Frozen | None) -> list[str]:
     plan and see what it cost.
     """
     said: list[str] = []
-    if frozen is not None:
+    if frozen is not None and not frozen.shown:
+        said.append(
+            "what moved cannot be named: the plan frozen on this run was planned afresh "
+            "by a run that applies, not shown by its gate"
+        )
+    elif frozen is not None:
         moved = mirror_frozen.moved(area.steps, frozen)
         said.append(
             "moved since the gate showed it: " + "; ".join(moved)
@@ -973,6 +978,8 @@ def _record(cfg: config.Config, run: Run, reading: Reading, area: Area) -> str:
             matcher.seen,
             recorded=reading.recorded,
             steps=area.steps,
+            # A RUN THAT APPLIES PLANNED THIS AFRESH, so no gate showed it.
+            shown=not run.decided,
         )
     except OSError as exc:
         return f"{said}not frozen ({exc}), so the apply plans again"

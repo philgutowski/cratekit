@@ -720,6 +720,11 @@ def test_a_plan_that_moves_after_the_answer_is_stale_rather_than_applied(world):
 
     assert code == int(ExitCode.DECISION_STALE), again
     assert again["cause"]["reason"] == "decision-stale"
+    # U222: an area with nothing to say beside the digests leaves the refusal as the gate gave it.
+    assert again["cause"]["message"] == (
+        f"the decision on {DB_GATE!r} was made against a plan that has since changed"
+    )
+    assert "stale" not in again["cause"]["detail"]
     assert _filed(cfg) == [] and held.folders_created == []
 
 
