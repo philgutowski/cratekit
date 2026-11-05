@@ -50,7 +50,7 @@ from __future__ import annotations
 import re
 import time
 from collections import deque
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 # Imported at module top rather than deferred, because ``catalogue.bound`` asks
@@ -60,7 +60,7 @@ import tidalapi
 from cratekit.acquire import catalogue_api, isrc_cache, isrc_screen, listing, provider_session
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError
-from cratekit.label import harvest, registry
+from cratekit.label import harvest, kept_listing, registry
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
     PLAYLIST_HOSTS,
@@ -182,15 +182,29 @@ class LabelRoster(listing.HeldReleases):
     see a member that lacks one. ``unread`` is where that fact goes instead:
     what discovery could not read, handed in, plus every member whose client
     object lacks a listing, found here. The sweep reads it (R-261, R-393).
+
+    ``lister`` READS ONE MEMBER'S LISTING OF ONE METHOD (U217). The catalogue
+    hands one that answers from the label's kept listing first and keeps what
+    it asks, so a member discovery already listed is not listed again and a
+    second build asks nothing; left out, each member is listed now, as before.
+    ``kept`` is what the build made of that store, for the screen.
     """
 
-    def __init__(self, artists: list[Any], unread: tuple[Unread, ...] = ()) -> None:
+    def __init__(
+        self,
+        artists: list[Any],
+        unread: tuple[Unread, ...] = (),
+        *,
+        lister: Callable[[Any, str, list[Unread]], list[Any]] | None = None,
+    ) -> None:
         self.artists = list(artists)
+        self._lister = lister if lister is not None else _listed_now
         missing: list[Unread] = []
         self._listed = {
             method: self._list(method, missing) for method in listing.RELEASE_METHODS
         }
         self.unread = (*unread, *missing)
+        self.kept: kept_listing.Summary | None = None
 
     def _list(self, method: str, missing: list[Unread]) -> list[Any]:
         """Every artist's releases for one listing, concatenated.
@@ -205,15 +219,44 @@ class LabelRoster(listing.HeldReleases):
         """
         held: list[Any] = []
         for artist in self.artists:
-            skipped: list[str] = []
-            held.extend(
-                listing.artist_releases(artist, methods=(method,), skipped=skipped, sleep=_pause)
-            )
-            missing.extend(missing_listing(artist, name) for name in skipped)
+            held.extend(self._lister(artist, method, missing))
         return held
 
     def held(self, method: str) -> list[Any] | None:
         return self._listed.get(method)
+
+
+def _listed_now(artist: Any, method: str, missing: list[Unread]) -> list[Any]:
+    """One artist's listing of one method, asked of the provider now."""
+    skipped: list[str] = []
+    rows = listing.artist_releases(artist, methods=(method,), skipped=skipped, sleep=_pause)
+    missing.extend(missing_listing(artist, name) for name in skipped)
+    return rows
+
+
+class _Member:
+    """A roster artist a kept answer named, read from the provider only when needed.
+
+    A kept resolution gives the artist's identifier and name and no provider
+    object. The object is what a listing that is NOT kept pages, so it is read
+    once, by identifier, the first time such a listing needs it, and never when
+    every listing of the member is kept (U217).
+    """
+
+    __slots__ = ("_object", "_read", "id", "name")
+
+    def __init__(self, identity: str, name: str, read: Callable[[str], Any]) -> None:
+        self.id = identity
+        self.name = name
+        self._object: Any = None
+        self._read: Callable[[str], Any] | None = read
+
+    def provider_object(self) -> Any | None:
+        """The provider's artist, read now if it was not yet, ``None`` once it is gone."""
+        if self._read is not None:
+            read, self._read = self._read, None
+            self._object = read(self.id)
+        return self._object
 
 
 def _results(found: Any, key: str) -> list[Any]:
@@ -332,15 +375,137 @@ class TidalCatalogue:
             return None
         return artist or None
 
-    def _artist_from_seed(self, seed: str) -> Any | None:
+    def _artist_from_seed(self, seed: str, kept: kept_listing.KeptListing) -> Any | None:
         """Resolve one registry seed, by identifier when it is one, else by name."""
         identifier = seed_identifier(seed)
         if identifier is not None:
-            return self._artist_identified(identifier)
-        return self._artist_named(seed)
+            return self._member_identified(identifier, kept, need_object=False)
+        return self._member_named(seed, kept)
+
+    def _member_named(self, name: str, kept: kept_listing.KeptListing) -> Any | None:
+        """:meth:`_artist_named`, answered from the kept listing when it holds the name.
+
+        Two exact matches still raise and are never kept, so the refusal is
+        said again on every run until the registry pins one by identifier.
+        """
+        held = kept.named(name)
+        if held is not None:
+            if not held:
+                return None
+            ((identity, said),) = held
+            return _Member(identity, said, self._artist_identified)
+        if not label_verify.fold_label(name):
+            return None
+        artist = self._artist_named(name)
+        if artist is None:
+            kept.keep_named(name, ())
+            return None
+        identity = str(getattr(artist, "id", "") or "")
+        if identity:
+            kept.keep_named(name, ((identity, str(getattr(artist, "name", "") or "")),))
+        else:
+            # NO IDENTIFIER TO KEY ITS LISTINGS BY, so nothing about it is kept.
+            kept.asked_unkept()
+        return artist
+
+    def _member_identified(
+        self, artist_id: str, kept: kept_listing.KeptListing, *, need_object: bool
+    ) -> Any | None:
+        """:meth:`_artist_identified`, answered from the kept listing when it can be.
+
+        A kept "the provider has no such artist" answers ``None``. A kept
+        artist answers a :class:`_Member` that reads the provider object only
+        when an unkept listing needs it, unless ``need_object`` asks for it
+        now, which discovery does so a read that fails still fails where it
+        always did, outside the listing's own skip.
+        """
+        held = kept.identified(artist_id)
+        if held is not None:
+            found, name = held
+            if not found:
+                return None
+            if not need_object:
+                return _Member(artist_id, name, self._artist_identified)
+        artist = self._artist_identified(artist_id)
+        kept.keep_identified(
+            artist_id,
+            found=artist is not None,
+            name=str(getattr(artist, "name", "") or "") if artist is not None else "",
+        )
+        return artist
+
+    def _credited_by(self, query: str, needle: str, kept: kept_listing.KeptListing) -> tuple[str, ...]:
+        """The artists one discovery album search credits beside the label, kept or asked.
+
+        A search that fails skips its query, as it always did, and is not kept.
+        """
+        held = kept.searched(query)
+        if held is not None:
+            return held
+        try:
+            found = self._session.search(query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT)
+        except CratekitError:
+            raise
+        except tidalapi.exceptions.AuthenticationError:
+            raise
+        except Exception:  # noqa: BLE001 - one query, not the session
+            kept.asked_unkept()
+            return ()
+        credited = tuple(
+            identity
+            for album in _results(found, "albums")
+            if _credits_label(album, needle)
+            for identity in _credited_ids(album)
+        )
+        kept.keep_searched(query, credited)
+        return credited
+
+    def _listed(
+        self, kept: kept_listing.KeptListing, artist: Any, method: str, missing: list[Unread]
+    ) -> list[Any]:
+        """One member's listing of one method, from the kept listing or asked and kept.
+
+        A LISTING IS KEPT ONLY WHOLE. One the provider failed raises out of
+        here before anything is kept, one the client does not expose is
+        recorded in ``missing`` and not kept, and an artist with no identifier
+        to key it by is listed and not kept.
+        """
+        identity = str(getattr(artist, "id", "") or "")
+        if identity:
+            held = kept.listed(identity, method)
+            if held is not None:
+                return list(held)
+        target = artist.provider_object() if isinstance(artist, _Member) else artist
+        if target is None:
+            # A KEPT ARTIST THE PROVIDER NO LONGER HAS. Its listing cannot be
+            # read, and a roster missing it is not the whole label, so it is
+            # unread rather than empty.
+            missing.append(
+                Unread(
+                    artist=str(getattr(artist, "name", "") or identity),
+                    listing=method,
+                    reason="the provider no longer has this artist",
+                    transient=False,
+                )
+            )
+            return []
+        skipped: list[str] = []
+        rows = listing.artist_releases(target, methods=(method,), skipped=skipped, sleep=_pause)
+        missing.extend(missing_listing(target, name) for name in skipped)
+        if skipped:
+            return rows
+        if identity:
+            kept.keep_listed(identity, method, rows)
+        else:
+            kept.asked_unkept()
+        return rows
 
     def _discover(
-        self, entry: registry.LabelEntry, held: list[Any], unread: list[Unread]
+        self,
+        entry: registry.LabelEntry,
+        held: list[Any],
+        unread: list[Unread],
+        kept: kept_listing.KeptListing,
     ) -> list[Any]:
         """Artists album search plus a credited artist walk add to the roster.
 
@@ -365,31 +530,34 @@ class TidalCatalogue:
                 queue.append(artist_id)
 
         for query in album_search_queries(entry.name):
-            try:
-                found = self._session.search(
-                    query, models=[tidalapi.album.Album], limit=SEARCH_LIMIT
-                )
-            except CratekitError:
-                raise
-            except tidalapi.exceptions.AuthenticationError:
-                raise
-            except Exception:  # noqa: BLE001 - one query, not the session
-                continue
-            for album in _results(found, "albums"):
-                if _credits_label(album, needle):
-                    for identity in _credited_ids(album):
-                        enqueue(identity)
+            for identity in self._credited_by(query, needle, kept):
+                enqueue(identity)
 
         discovered: list[Any] = []
         held_ids = {str(getattr(artist, "id", "") or "") for artist in held}
         held_ids.discard("")
         while queue:
             artist_id = queue.popleft()
-            artist = self._artist_identified(artist_id)
+            # THE OBJECT ONLY WHEN A LISTING OF IT IS NOT KEPT, read here and
+            # not inside the listing's skip below, where a failed read of it
+            # always raised (U217).
+            artist = self._member_identified(
+                artist_id,
+                kept,
+                need_object=not all(
+                    kept.has_listing(artist_id, method) for method in listing.RELEASE_METHODS
+                ),
+            )
             if artist is None:
                 continue
             try:
-                releases = listing.artist_releases(artist, sleep=_pause)
+                # BOTH METHODS, EACH KEPT ON ITS OWN, so the roster below reads
+                # this member's listings from the store and does not ask again.
+                releases = [
+                    release
+                    for method in listing.RELEASE_METHODS
+                    for release in self._listed(kept, artist, method, [])
+                ]
             except CratekitError:
                 raise
             except Exception as exc:  # noqa: BLE001 - one artist's listing, not the session
@@ -435,14 +603,32 @@ class TidalCatalogue:
         label's own page is optional because most labels have none. Discovery
         still runs when the roster already has members, because the silent
         shortfall is an incomplete seed list, not only an empty roster.
+
+        EVERY ANSWER IS ASKED OF THE LABEL'S KEPT LISTING FIRST (U217), and
+        what is asked is kept, written as it goes and once more on the way out
+        whatever stopped the build, a call ceiling or a breaker park included.
+        So a continue asks only what the stopped build did not finish, and a
+        second build inside the kept life asks nothing. A kept listing that
+        cannot be read refuses, ``label-listing-kept-unusable``, before any
+        call. The roster carries what the build made of the store as ``kept``.
         """
+        kept = kept_listing.KeptListing.load(entry)
+        try:
+            roster = self._roster(entry, kept)
+        finally:
+            kept.flush()
+        roster.kept = kept.summary()
+        return roster
+
+    def _roster(self, entry: registry.LabelEntry, kept: kept_listing.KeptListing) -> LabelRoster:
+        """:meth:`artist_for`'s roster, every answer through ``kept``."""
         artists: list[Any] = []
-        own = self._artist_named(entry.name)
+        own = self._member_named(entry.name, kept)
         if own is not None:
             artists.append(own)
         unresolved: list[str] = []
         for seed in entry.seed_artists:
-            artist = self._artist_from_seed(seed)
+            artist = self._artist_from_seed(seed, kept)
             if artist is None:
                 unresolved.append(seed)
             else:
@@ -459,13 +645,17 @@ class TidalCatalogue:
                 f"{entry.name!r}"
             )
         unread: list[Unread] = []
-        artists.extend(self._discover(entry, artists, unread))
+        artists.extend(self._discover(entry, artists, unread, kept))
         if not artists:
             raise LabelUnresolvable(
                 f"the provider has no artist named exactly {entry.name!r}, the "
                 f"label names no seed artists, and discovery found nothing"
             )
-        return LabelRoster(artists, tuple(unread))
+        return LabelRoster(
+            artists,
+            tuple(unread),
+            lister=lambda artist, method, missing: self._listed(kept, artist, method, missing),
+        )
 
     def playlist_for(self, reference: str) -> Any:
         """The provider playlist a URL, a share link, or an identifier names."""
