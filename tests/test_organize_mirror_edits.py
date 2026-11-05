@@ -864,3 +864,21 @@ def test_a_vocal_calibration_that_cannot_be_read_refuses_the_step_alone(machine,
     machine.put_in("Tech House Med", "r1")
     _area, step, _shared = machine.plan()
     assert step.state == REFUSED and step.cause.reason == "vocal-calibration-unreadable"
+
+
+def test_a_mirror_made_before_u201_is_agreed_by_its_first_run_and_an_edit_after_it_is_taken(
+    machine,
+):
+    """Every playlist equal and never agreed, so nothing is written and the plan records it."""
+    machine.forget_snapshots()
+    _area, step = machine.run()
+    assert step.state == NOTHING
+    agreed = ledger.mirror_folders(machine.cfg)["Deep House"].playlists["Deep House Low"].agreed
+    assert agreed == {"r1"}
+
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Tech House Med", "r1")
+    _area, step = machine.run()
+
+    assert step.state == PLANNED
+    assert machine.places("1") == {("Tech House", "Med")}
