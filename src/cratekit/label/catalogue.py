@@ -36,7 +36,7 @@ from __future__ import annotations
 
 import importlib
 import re
-from collections.abc import Mapping
+from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from typing import Any, Protocol
 from urllib.parse import urlsplit
@@ -403,7 +403,7 @@ ReleaseRead = tuple[tuple[Any, ...], int | None, ListingShortfall | None]
 class Catalogue(Protocol):
     """Every provider read the product makes through this seam, and nothing more.
 
-    TEN MEMBERS BECAUSE THERE ARE TEN CALL SITES, and the protocol is the list
+    ONE MEMBER PER CALL SITE, and the protocol is the list
     rather than a description of a provider. A method nobody calls is a method an
     adapter has to implement for no reason, and it is the shape by which a seam
     stops being a seam and becomes a client library.
@@ -538,6 +538,19 @@ class Catalogue(Protocol):
         nothing for, and whatever the provider raised for one it could not
         answer about. The empty string means the provider answered and names no
         artist for the release, never that nobody could ask.
+        """
+
+    def screen_isrcs(self, codes: Iterable[str]) -> int:
+        """Ask, in as few requests as the provider allows, which codes it files nothing under.
+
+        Consumed by ``intake.missing_cli`` before its lookups (U207). A later
+        :meth:`tracks_for_isrc` of a code the provider answered as filed under
+        nothing answers the empty tuple with no request; every other code is
+        asked as before, since a batch answer names one release per code and
+        never says how many there are. RAISES NOTHING for a batch the provider
+        could not answer: the codes are then asked one at a time, which is the
+        contract :meth:`tracks_for_isrc` already keeps. Returns the requests
+        made, zero for a catalogue with no batch form.
         """
 
     def tracks_for_isrc(self, isrc: str) -> tuple[Any, ...]:

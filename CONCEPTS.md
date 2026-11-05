@@ -2249,6 +2249,19 @@ is not an answer about the row.
 *Avoid:* reading it as a refusal recorded on a mirrored playlist (`refused`
 under `mirrors`), which is a track the provider would not ADD, already matched.
 
+### ISRC screen
+A batch question asked before a plan's ISRC lookups, built by U207: up to
+twenty codes in one request to the provider's catalogue API, under the app
+credentials only, asking which of them it files anything under. A code the
+answer leaves out is answered not found with no lookup of its own; every code
+it names is still looked up alone, because given several codes the API answers
+one release per code, and which release a row means is decided from every
+release. `sync pair`, the account mirror and `intake missing` screen. A batch
+that fails, or an answer that cannot be attributed whole, marks nothing.
+
+*Avoid:* reading it as a batched lookup, or as the ISRC cache, which keeps
+answers across runs.
+
 ### Frozen mirror plan
 The library and the matches the account mirror's plan read on the organize run
 that showed its gate, written to the library's `mirror_plans` state directory

@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -71,7 +71,7 @@ from urllib.parse import urlsplit
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi  # noqa: F401
 
-from cratekit.acquire import catalogue_api, listing, match, provider_session
+from cratekit.acquire import catalogue_api, isrc_screen, listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -297,7 +297,8 @@ class TidalAccount:
     the last match of a row came back empty and one whether it broke a tie
     (U208), one that names a playlist's tracks, and the one removal, from a
     playlist the product made. Since U143 also the account root's two
-    removals, each of a kind a gate named.
+    removals, each of a kind a gate named, and since U207 one that screens a
+    plan's ISRCs before it asks, which reads only.
     """
 
     def __init__(
@@ -312,6 +313,8 @@ class TidalAccount:
         #: Where catalogue lookups go: the app client when the opener built
         #: one (U205), else the account session, exactly as before.
         self._lookups = catalogue if catalogue is not None else session
+        #: The codes a batch answered as filed under nothing (U207).
+        self._screen = isrc_screen.Screen()
         #: The configuration whose outbound ledger says which playlists the
         #: product made (R-836). None refuses every removal, since a ledger
         #: that cannot be named cannot say yes.
@@ -362,6 +365,20 @@ class TidalAccount:
 
     # ── matching ────────────────────────────────────────────────────────────
 
+    def screen_isrcs(self, codes: Iterable[str]) -> int:
+        """Ask the catalogue which of ``codes`` it files anything under, in batches.
+
+        BEFORE A PLAN'S LOOKUPS, NEVER INSTEAD OF THEM (U207). A code a batch
+        answered as filed under nothing is answered not found by
+        :meth:`match_track` with no request; every other code is asked alone
+        there as before, so :meth:`_among` sees every release. Only the app
+        client is asked, see ``acquire.isrc_screen``, so without it this makes
+        no request. Returns the requests made, for a caller that reports what
+        its run spent. A failed batch marks nothing and raises nothing but the
+        gate's own park.
+        """
+        return self._screen.screen(self._lookups, codes)
+
     def match_track(
         self,
         *,
@@ -409,9 +426,15 @@ class TidalAccount:
         self._ties.discard(key)
         wanted = str(isrc or "").strip()
         if wanted:
-            found = self._call(
-                f"look up the ISRC {wanted}",
-                lambda: self._lookups.get_tracks_by_isrc(wanted),
+            # A CODE A BATCH ANSWERED AS FILED UNDER NOTHING (U207) is the
+            # empty answer this lookup would give, so it is not asked again.
+            found = (
+                _ABSENT
+                if self._screen.absent(wanted)
+                else self._call(
+                    f"look up the ISRC {wanted}",
+                    lambda: self._lookups.get_tracks_by_isrc(wanted),
+                )
             )
             if found is not _ABSENT:
                 tracks = {

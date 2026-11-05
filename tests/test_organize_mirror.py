@@ -162,6 +162,34 @@ def test_soul_with_six_playlists_and_no_mirror_plans_one_folder_and_six_playlist
     assert area.facts[account_mirror.PLAN_FACT].startswith("13 account request(s) in ")
 
 
+def test_the_plan_screens_every_code_its_rows_will_ask_before_asking_any(installed, monkeypatch):
+    """U207. ``read`` hands the account every code the plans will ask, once and
+    before the first match, so the codes the catalogue files nothing under are
+    screened in batches; a linked row is not handed over on the next run."""
+    world = World(installed, monkeypatch)
+    codes = {n: f"GBAAA24{n:05d}" for n in (1, 2, 3)}
+    world.mirror(
+        mirror.Folder(
+            name="Soul",
+            playlists=(
+                mirror.Source(
+                    name=mirror.title("Soul", "Low"),
+                    rows=tuple(row(n, isrc=code) for n, code in codes.items()),
+                ),
+            ),
+        )
+    )
+
+    world.run()
+
+    assert world.account.screened == [tuple(codes.values())]
+    assert [asked["isrc"] for asked in world.account.matches] == list(codes.values())
+
+    world.plan()
+    # Every row was linked by the first apply: nothing is screened again.
+    assert world.account.screened == [tuple(codes.values())]
+
+
 def test_a_second_run_plans_nothing_writes_nothing_and_asks_no_match_again(installed, monkeypatch):
     world = World(installed, monkeypatch)
     world.mirror(soul())

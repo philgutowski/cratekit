@@ -45,6 +45,12 @@ exception's text, an ISRC or a track identifier can hold the digits 404, and
 the outbound seam asks that classifier whether a failure is an absence. An
 outage read as an absence is a track reported as one the provider lacks.
 
+SEVERAL CODES IN ONE REQUEST ANSWER PRESENCE ONLY (U207). The API takes up to
+:data:`ISRC_BATCH` codes in one filter and then answers one track per code,
+a release it picked, so :meth:`AppCatalogue.isrcs_held` reads from such an
+answer which codes are held and nothing else; ``acquire.isrc_screen`` is its
+one caller.
+
 WHAT IT DOES NOT DO. It does not page. An ISRC answer is read as the one page
 the API returns, as the provider library's own ISRC lookup reads it; a code
 filed under more releases than one page holds is a residual of this unit. It
@@ -57,10 +63,11 @@ Layer: acquire.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from typing import Any
 
+from cratekit.acquire import match
 from cratekit.core import secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -78,6 +85,12 @@ JSON_API = "application/vnd.api+json"
 #: ``_among`` reads come in the same response rather than in one more request
 #: per release.
 INCLUDE = "artists,albums"
+
+#: The most ISRCs one request may name, the catalogue API's own ``maxItems``
+#: on ``filter[isrc]`` (U207). Given several, the API answers ONE TRACK PER
+#: CODE and pages nothing, so a batch says which codes are held and never
+#: which releases: see :meth:`AppCatalogue.isrcs_held`.
+ISRC_BATCH = 20
 
 #: How long one request may take before the transport gives up. The provider
 #: library sets none, and a read that hangs holds the gate's lock for as long.
@@ -397,7 +410,7 @@ class AppCatalogue:
     # ── the reads ─────────────────────────────────────────────────────────
 
     def _get(
-        self, path: str, params: Mapping[str, str], what: str, *, absence: bool = True
+        self, path: str, params: Mapping[str, Any], what: str, *, absence: bool = True
     ) -> Mapping[str, Any]:
         """One read. ``absence`` says whether a 404 on this route is the API's
         answer about a resource (a track by its identifier) or about the
@@ -462,6 +475,69 @@ class AppCatalogue:
             for resource in data
             if isinstance(resource, Mapping) and _text(resource.get("type")) in ("", "tracks")
         ]
+
+    def isrcs_held(self, codes: Sequence[str]) -> frozenset[str]:
+        """Which of two to :data:`ISRC_BATCH` codes the catalogue files any track under.
+
+        ONE REQUEST, NEVER A LOOKUP (U207). Given several codes the API answers
+        one track per code, a release it picked, so nothing here reads a track
+        off the answer: only the codes it names. A code it does not name is
+        filed under nothing. A held code's releases are still
+        :meth:`get_tracks_by_isrc`'s to answer.
+
+        AN ANSWER THAT CANNOT BE ATTRIBUTED WHOLE IS AN OUTAGE, never a list of
+        absences, because the caller reads every code left out as not found:
+
+        * a track whose ISRC is missing or not one answers a code nobody can
+          name, which may be any of those asked;
+        * a code nobody asked says the API matched on something other than
+          the spelling sent, so the one asked may be that one;
+        * a ``next`` link says the answer is paged, and a code may be on the
+          page not read.
+
+        Each raises :class:`CatalogueUnavailable`, which the screen reads as
+        nothing learned. The codes must be distinct, well formed and spelled as
+        their own fold, which the caller checks; anything else is a defect
+        here, not an answer.
+        """
+        asked = tuple(str(code) for code in codes)
+        if not 2 <= len(asked) <= ISRC_BATCH:
+            raise ValueError(f"a batch names two to {ISRC_BATCH} ISRCs")
+        if len(set(asked)) != len(asked) or any(code != match.isrc_token(code) for code in asked):
+            raise ValueError("a batch names distinct ISRCs, each in its own fold")
+        what = "ISRC batch"
+        body = self._get("tracks", {"filter[isrc]": list(asked)}, what, absence=False)
+        data = body.get("data")
+        if not isinstance(data, list):
+            raise CatalogueUnavailable(
+                f"the catalogue API's answer to this {what} carries no list of tracks"
+            )
+        links = body.get("links")
+        if isinstance(links, Mapping) and _text(links.get("next")):
+            raise CatalogueUnavailable(
+                f"the catalogue API paged its answer to this {what}, so a code "
+                f"left out may be on a page not read"
+            )
+        named: set[str] = set()
+        for resource in data:
+            if not isinstance(resource, Mapping):
+                raise CatalogueUnavailable(
+                    f"the catalogue API's answer to this {what} holds an entry that is not a resource"
+                )
+            if _text(resource.get("type")) not in ("", "tracks"):
+                continue
+            code = match.isrc_token(_attributes(resource).get("isrc"))
+            if not code:
+                raise CatalogueUnavailable(
+                    f"the catalogue API's answer to this {what} holds a track with no "
+                    f"readable ISRC, so which code it answers cannot be told"
+                )
+            named.add(code)
+        if not named <= set(asked):
+            raise CatalogueUnavailable(
+                f"the catalogue API's answer to this {what} names a code that was not asked"
+            )
+        return frozenset(named)
 
     def track(self, track_id: str) -> Track:
         """One track by its identifier. A track the catalogue lacks is not found."""
@@ -533,6 +609,7 @@ __all__ = [
     "API_ROOT",
     "CREDENTIALS",
     "INCLUDE",
+    "ISRC_BATCH",
     "LOGIN_STEPS",
     "TOKEN_URL",
     "Album",
