@@ -43705,3 +43705,76 @@ provider's do.
 
 **Closes when:** a test pins each, one per guard. Ledger only, a maintainer
 facing gap.
+
+---
+
+## R-1287. A rekordbox removal of a pair's track the account lists unreadably is undone once the account lists it readably
+
+**Found:** at the build of #532, R-1264, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.py` `plan_pair` never takes an unread track
+off either side, as the card's approach says. When the person removes, in
+rekordbox, the row a pair linked to such a track, rekordbox loses it and the
+account keeps it, and the snapshot moves with the account holding it and
+rekordbox not. Once the provider lists that track with its title and artist
+again, the merge reads it as held on the account since the last sync and never
+in rekordbox, so it is added back to rekordbox.
+
+**Measured cost.** Not driven. It needs an unread track the library holds and
+links, removed in rekordbox while unread, and then read again later; each step
+is reachable on the twins world, the last only if the provider fixes the row.
+
+**Closes when:** a rekordbox removal of a row linked to an unread track is
+carried to the account as a removal by id, or the base keeps the unread track
+out of the account's snapshot until it reads. Ledger only: it needs a provider
+correcting its own row, whose reachability is unmeasured.
+
+---
+
+## R-1288. The stale check's unread comparison on a part written pair, and the digest's unread ids, kill no test on a resume
+
+**Found:** at the review of #532, R-1264, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.py` `check` compares the unread set with the
+plan's on both of its paths. On the path for a pair this run part wrote
+(U210), reverting the comparison kills no test, since no test resumes a write
+whose account listing gained or lost an unread track after the account step.
+
+**Measured cost.** None driven: the review's round one reverted it and the
+suite stayed green, and drove no part written resume whose unread set moves
+(0 candidates driven). A stale such a resume should refuse would be written
+instead; reachability unmeasured. The digest's unread ids are now pinned by
+`tests/test_sync_pair_unread.py`.
+
+**Closes when:** a resume test in `tests/test_sync_pair_resume.py` stops a
+write after the account step, adds an unread track, and continues, refusing
+stale. Ledger only: a guard with no driven producer.
+
+---
+
+## R-1289. crate sync all leaves out a whole account playlist when one of its tracks names no title or no artist
+
+**Found:** at the review of #532, R-1264, 2026-11-05.
+
+**The mechanism.** `sync/playlists.py` lists each account playlist it sweeps
+through `intake_cli.list_playlist_declared`, whose reader refuses the whole
+listing with `intake-list-unusable` when one row names no title or no artist.
+The sweep takes that refusal per playlist, so the run goes on, but the playlist
+is excluded as unreadable and none of its readable tracks is queued.
+`organize/mirror_downloads.py` lists the same way (not driven). `crate sync
+twins` (U213) and `crate sync pair` (R-1264) now read row by row through
+`intake_cli.list_playlist_readable`; the sweep is the class one file over.
+
+**Measured cost.** Driven by the review's round one on a disposable world: a
+swept playlist holding two readable tracks and a third with no title was
+excluded with "track 3 names no title", and only the other playlist queued.
+The playlist is named in the summary and a warning, so the report is not
+clean, but its readable tracks never reach intake while the provider lists the
+one row that way, which may be for good. Live reachability is the ledger's
+unmeasured one for R-1264.
+
+**Closes when:** the sweep (and the mirror's downloads) read each playlist row
+by row through `list_playlist_readable`, queue the readable tracks and name
+each unread one. Earns an issue under the board bar's (c): a workflow a DJ
+needs, bringing an account playlist into intake, cannot finish for that
+playlist.
