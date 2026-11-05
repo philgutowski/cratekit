@@ -7,8 +7,9 @@ next sync. The account side is now read row by row, as the backfill reads it:
 a track the reader refuses is unread, kept by its id, never added to either
 side and never read as taken off the account. Unlike a withheld track it may
 stay that way for good, so the pair still syncs whole: removals land on both
-sides and the snapshot moves, the unread id recorded in its place, and only
-the account's order is left as it is. A listing the reader cannot use at all
+sides, the snapshot moves with the unread id recorded in its place, and a
+reorder is written to the account whole, each unread track kept behind the
+one listed before it. A listing the reader cannot use at all
 leaves its pair out of a sync of every pair, named, and the others sync.
 
 Driven end to end through the dispatcher on the twins suite's world, the
