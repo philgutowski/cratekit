@@ -989,6 +989,18 @@ whose rekordbox playlist you deleted, two that would take one rekordbox name,
 one whose name its rekordbox folder already holds, and one whose rekordbox top
 folder is gone or doubled.
 
+Only a playlist made after the folder was synced comes back. When the first
+sync found a root folder of the name already on the account, such as an old
+`Genre Trivia!`, the playlists it already held are the account's own and stay
+there: the sync records them when it takes the folder over, and lists them on
+the gate rather than making them in rekordbox. A folder taken over before
+Cratekit kept that record is read by when the account says each playlist was
+made, and one with no time it can read is listed rather than made. A
+`DOWNLOADED ` copy of a playlist a pair in the same folder already holds, such
+as `DOWNLOADED Techno` beside `Genre Trivia! Techno`, is listed too. To sync
+one of these anyway, pair it by hand with `crate sync pair ACCOUNT_ID
+--rekordbox PLAYLIST_ID`.
+
 When you add a track on one side and take it off the other between two syncs,
 the change you made later wins on both. Cratekit reads when the account says
 the track was added and when rekordbox's playlist row was made or marked
