@@ -83,6 +83,14 @@ often than their authors realize, since each side of a collision has its own
 reason to write one, so a merge reads both branches' records rather than only the
 one it is standing on.
 
+### Held plan
+The plan a verb's first command made, kept under its run until the run writes,
+so the later commands that answer its explicit gates use the plan the person
+was shown rather than planning again (U209). It is read back only when it
+digests to every offer the run recorded; otherwise the verb plans again and its
+gates compare. Because nothing is planned again, the write checks first that the
+lists the plan read have not moved, and refuses stale naming them if they have.
+
 ### Board bar
 The test a residual finding has to pass to earn an issue, decided 2026-09-18. A
 finding passes when it is open and a person using the shipped verbs pays for it
