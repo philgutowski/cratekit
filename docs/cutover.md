@@ -1865,6 +1865,26 @@ From the installed v0.7.0, `main` at `d4232416`. Both backup ages one day; the a
 
 **Held:** the live `crate sync pair` was not run, so A88 (#514), A91 (#521), A92 (#523) and A86 (#509) now depend on #530 (U216), filed with this finding. The tie count the rehearsal reads, 378 account adds against Sitting 54's 388 tie rows left out, and the forecast line are recorded above for when the live run comes. **A84 (#502) and A93 (#525) are met.**
 
+
+## Sitting 60, 2026-11-05, the attended session on v0.7.0: the label cards A58 (#418), A81 (#476), A76 (#459), and the drift cut A67 (#438)
+
+From v0.7.0, no job running, rekordbox closed. Every provider call went on the account (no app credentials).
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| One label alone (A58) | `crate label sync --next --label defected`, run `2026-11-05T13:30:59Z-439b`, 60 s | Stopped at **500 calls**, `provider-call-ceiling`, printing `crate --calls 1000 label sync --next --label defected`. | stopped |
+| Its continue | the printed command, run `13:32:03Z-f922`, 1m51s | Stopped at **1,000**, printing `--calls 2000`. | stopped |
+| Its continue | the printed command, run `13:33:58Z-30ed`, 3m27s | `no_op`: "Defected: nothing new since it was last asked; 11887 release(s) past this run's window". **1,800 calls**: each continue read the listing again from the start. The report named Defected only. | ok |
+| Again | the same command, run `13:37:31Z-e221`, 3m30s | The same answer, **1,800 calls again**, where U189's proof expects none. | finding |
+| Ceiling (A81) | `crate label playlists Defected`, run `13:41:06Z-15da`, 54 s | **Stopped at exactly 500**, outcome blocked, `provider-call-ceiling`, printing `crate --calls 1000 label playlists Defected`, before its crawl gate (the listing alone is about 1,790 calls). | as briefed |
+| Its continue | the printed command, run `13:42:05Z-43f3` | Stopped at 1,000, printing `--calls 2000`: it **started the listing again rather than continuing from the kept reads**. | finding |
+| Crawl gate (A76) | `crate --calls 2000 label playlists Defected`, run `13:44:00Z-73b3`, 3m21s | **The listing took 1,790 calls.** Gate: 11,989 releases, at least 23,978 calls, about 40 min; the new `call ceiling` line names `--calls 25900`. | gate |
+| Crawl, stopped part way | `run decide ... crawl --continue` with `--calls 3000` | **Stopped by the provider's breaker**: rate limited 6 calls in a row, 9 of 2,823 calls answered rate limited, every call refused until 14:08:16Z. | stopped |
+| Resume (A76) | after the cooldown, `crate --calls 2500 label playlists Defected`, run `14:09:05Z-96e1`, 1,790 calls | The crawl screen: **"506 of them read by an earlier run within the last 7 day(s), so reading the other 11483 is at least 22966"**, `kept reads: 506 ... the oldest 21 minute(s) old`. Answered `abort`: the full crawl to the build gate (about 23,000 calls) was not run after the rate limit. | resumed, aborted |
+| Drift (A67) | 20 files of the 2026-10-27 batch copied to a local scratch folder; `crate analyze run` settled them in 0.5 s without measuring (they were analysed before U157), so `detect.analyse_file` with the configured cut was called on each copy directly, reading only | Programmed house and techno: John Tejada 0.10, Omar-S 0.10, Pangaea 0.35, **Shed 1.18**, Overmono 0.14 and 0.41, Anunaku and DJ Plead 0.04, Move D 0.21, Pearson Sound 0.14, Roman Flügel 0.07. Live band recordings: **Mocky 0.89, L'Eclair and The Mauskovic Dance Band 1.22, K.O.G and The Zongo Brigade 5.35** (the only `variable`). Edits and remixes of live material: Tony Allen (Motor City Drum Ensemble remix) 0.39, Tabu Ley Rochereau (re-edit) 0.39, Quantic 0.58, Khruangbin and Quantic (Cut a Rug Mix) 0.07, David Walters 0.28, Voilaaa 0.18, Dan Kye 0.14. The kind of each is the session's reading from the artist and the version, not by ear. No older library tracks were added. | measured |
+
+**A67 (#438) is met**: the kinds overlap from 0.89 to 1.22, leaning to Normal keeps the cut above 1.22, so **the cut stays 1.5** and R-1136 is closed on its entry. **A81 (#476)**: the stop at exactly 500 with its printed continue is met; the continue started again rather than from kept reads, which is #533 (U217). **A76 (#459)**: the listing's call count and the resume that asks only the rest are met; the build gate's `release reads` line was not reached. **A58 (#418)**: the one label report and its time are read; the second run's zero calls failed, filed as #533. The macOS battery is sitting 59's on `d4232416`.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**

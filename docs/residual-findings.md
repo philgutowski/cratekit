@@ -40572,6 +40572,14 @@ batch holding both kinds, reads each file's `driftlevel`, and sets the default
 from where the two kinds part, recorded in `docs/cutover.md`. The attended card
 this unit files is that sitting. Ledger only.
 
+**Closed 2026-11-05, sitting 60, A67 (#438).** Twenty files of the 2026-10-27
+batch measured on v0.7.0's detector: programmed house and techno read 0.04 to
+1.18 (Shed the highest), live band recordings 0.89 (Mocky), 1.22 (L'Eclair
+and The Mauskovic Dance Band) and 5.35 (K.O.G and The Zongo Brigade), edits of
+live material 0.07 to 0.58. The kinds overlap from 0.89 to 1.22; leaning to
+Normal there keeps the cut above 1.22, so the shipped 1.5 stands and
+`DEFAULT_DRIFT_CUT` does not change.
+
 ---
 
 ## R-1137. Two of the drift measurement's constants kill no test
