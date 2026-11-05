@@ -169,3 +169,59 @@ def test_a_rejected_session_on_the_order_still_stops_the_whole_write(world, owed
 
 def test_the_order_refusals_that_stop_one_pair_are_the_two_an_order_raises():
     assert pair_cli.ORDER_REFUSALS == {"outbound-remove-refused", "unavailable-transient"}
+
+
+def test_a_continue_after_moves_that_landed_agrees_with_the_playlist_as_it_is_now(
+    world, owed, monkeypatch
+):
+    """Round two: the expected reading is the continue's own listing, not the plan's."""
+    _gig, opener, _second = owed
+    opener_account = world.titled("GIG READY Opener")
+    refused_on = {opener_account}
+    real = world.account.order_tracks
+
+    def order_tracks(playlist_id, remote_ids, *, expect=None):
+        if playlist_id in refused_on:
+            world.account.expected.append((playlist_id, expect))
+            # One move landed somewhere the read back did not expect.
+            world.account.playlists[playlist_id][:] = ["t1", "t3", "t2"]
+            raise refuse(
+                "outbound-remove-refused",
+                "read back after a move is not what it held",
+                scope=Scope.RUN,
+                origin=("test", "order"),
+                detail={"playlist_id": playlist_id, "problem": "read-back-differs"},
+            )
+        return real(playlist_id, remote_ids, expect=expect)
+
+    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    refused_on.clear()
+    code, done = drive(["--run", stopped["run_id"], *VERB])
+    assert code == int(ExitCode.OK), done
+    assert world.account.expected[-1] == (opener_account, ("t1", "t3", "t2"))
+    assert world.account.playlists[opener_account] == ["t3", "t1", "t2"]
+    assert world.held(opener) == ["3", "1", "2"]
+
+
+def test_the_stop_carries_every_unfinished_pairs_steps_once():
+    """Round two: the stop asks the person to do what each refusal asks, so it shows each."""
+    def cause(steps):
+        return refuse(
+            "outbound-remove-refused",
+            "refused",
+            steps=steps,
+            scope=Scope.RUN,
+            origin=("test", "order"),
+        ).cause
+
+    unordered = [
+        pair_cli.Done(account_id="a", name="A", order_refused=cause(("look at A",))),
+        pair_cli.Done(account_id="b", name="B", order_refused=cause(("look at B", "look at A"))),
+    ]
+    said = pair_cli._unordered(unordered, None, None, run_id="r", argv=None)
+    assert said.remediation.steps == ("look at A", "look at B")
+    assert said.detail["fresh"] is True
+    assert [one["account_id"] for one in said.detail["unordered"]] == ["a", "b"]
+    assert "run crate sync pair again" in said.message

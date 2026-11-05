@@ -3558,7 +3558,19 @@ def _unordered(
             + shlex.join(["crate", "--run", run_id, *(argv or VERB_PATH)])
         )
         detail.update({"run_id": run_id, "finished": finished})
-    return dataclasses.replace(first, message=said, detail=detail)
+    # EVERY REFUSAL'S STEPS, once each, since the message asks the person to
+    # do what each one asks (round two's review).
+    steps_said = tuple(
+        dict.fromkeys(
+            step for one in unordered for step in one.order_refused.remediation.steps
+        )
+    )
+    return dataclasses.replace(
+        first,
+        message=said,
+        detail=detail,
+        remediation=dataclasses.replace(first.remediation, steps=steps_said),
+    )
 
 
 def sync_pair(ctx) -> Envelope:

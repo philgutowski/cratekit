@@ -121,9 +121,11 @@ NOT_FOUND_NAMES = frozenset({"ObjectNotFound", "InvalidISRC"})
 #: move, and when the provider refuses a move's version tag as stale.
 ORDER_REREADS = 3
 
-#: U220. The pause before each reading taken again, the first before the first.
-#: Unmeasured: how long the provider's reads lag its writes is owed to an
-#: attended sitting, and these bound the wait at seven seconds a step.
+#: U220. The pause before each reading taken again, the first before the first;
+#: past the last, the last repeats. Unmeasured: how long the provider's reads
+#: lag its writes is owed to an attended sitting. A read back waits at most
+#: seven seconds; the readings after 412s wait longer, at most 41 seconds over
+#: the whole of one order, since each starts its pauses where the last ended.
 ORDER_PAUSES = (1.0, 2.0, 4.0)
 
 #: U220. The status the provider answers a write whose version tag is not the
@@ -1356,8 +1358,12 @@ class TidalAccount:
             last = refuse(
                 "outbound-remove-refused",
                 f"the playlist {identifier} read {attempt + 1} time(s) does not hold "
-                f"what was last known of it, so the reading may lag a write and no "
-                f"track was moved",
+                f"what was last known of it, so the reading may lag a write and "
+                + (
+                    "nothing more was moved; every track is still on it"
+                    if pauses_from
+                    else "no track was moved"
+                ),
                 steps=(
                     "check the playlist by hand in the provider's own player, then "
                     "run the sync again",

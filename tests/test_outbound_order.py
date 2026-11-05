@@ -400,3 +400,28 @@ def test_the_fake_account_orders_by_the_adapters_rule(installed, before, order):
     fake = FakeAccount()
     fake.playlists["mine"] = list(before)
     assert fake.order_tracks("mine", order) == live
+
+
+def test_the_readings_after_a_412_start_their_pauses_where_the_412_left_them(installed):
+    """Round two: a reading after a 412 waits longer than a first reading does."""
+    provider = Provider(["a", "b", "c"], whole=True)
+    slept: list[float] = []
+    account = _adapter(installed, provider, slept)
+    account.add_tracks("mine", ("x",))
+    provider.stale_tags = 1
+    provider.lag_after_refusal = 2
+    assert account.order_tracks("mine", ("x", "a", "b", "c")) == ("x", "a", "b", "c")
+    assert slept == [1.0, 2.0, 4.0]
+
+
+def test_a_reading_after_a_412_that_never_agrees_does_not_say_no_track_was_moved(installed):
+    provider = Provider(["a", "b", "c"], whole=True)
+    account = _adapter(installed, provider)
+    account.add_tracks("mine", ("x",))
+    provider.stale_tags = 1
+    provider.lag_after_refusal = 99
+    with pytest.raises(CratekitError) as refused:
+        account.order_tracks("mine", ("x", "a", "b", "c"))
+    assert refused.value.cause.detail["problem"] == "read-differs"
+    assert "no track was moved" not in refused.value.cause.message
+    assert "every track is still on it" in refused.value.cause.message
