@@ -66,6 +66,9 @@ DRIVEN_ELSEWHERE = {
 PAYLOADS: dict[str, dict[str, object]] = {
     "master": {"source": "set.wav"},
     "rebuild": {"actor": "a-person"},
+    # U219. A resort's resume answers its gate from the adds the job froze and
+    # refuses a job that froze none, so an empty approved plan is frozen here.
+    "route.resort": {"adds": []},
     "tag.retag": {"folder": "Music"},
 }
 
