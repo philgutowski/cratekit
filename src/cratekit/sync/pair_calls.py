@@ -20,8 +20,11 @@ fixed shape, and each count here follows it:
 * tracks are TAKEN OFF :data:`REMOVE_CHUNK` a request by position: the
   positions are read once, and each request is followed by a fresh open and
   read, which the next request reuses;
-* an ORDER moves one track to the end per request, each followed by a fresh
-  open and read, after the longest run already in order is kept.
+* an ORDER moves one track to the front per request, each followed by a
+  fresh open and read, after the longest run at the tail of the asked order
+  already standing is kept (U220). A reading the adapter takes again, after a
+  read that lags a write or a stale tag, is not counted: it happens only when
+  the provider lags, and the ceiling's margin is what covers it.
 
 The adapter's own chunk sizes cannot be imported here, since its module needs
 the provider library the slim profile does not install, so a test pins these
@@ -80,8 +83,8 @@ def _moves(before: Sequence[str], order: Sequence[str]) -> int:
     """How many tracks the adapter's order moves, by its own rule.
 
     A track held twice, or not held, is not moved. The longest run at the
-    head of the asked order already standing in that order stays; every track
-    after it is moved to the end once.
+    tail of the asked order already standing in that order stays; every track
+    before it is moved to the front once (U220).
     """
     counts: dict[str, int] = {}
     for one in before:
@@ -89,8 +92,8 @@ def _moves(before: Sequence[str], order: Sequence[str]) -> int:
     wanted = [one for one in dict.fromkeys(order) if one and counts.get(one) == 1]
     asked = set(wanted)
     keep = 0
-    for one in before:
-        if one in asked and keep < len(wanted) and one == wanted[keep]:
+    for one in reversed(before):
+        if one in asked and keep < len(wanted) and one == wanted[len(wanted) - 1 - keep]:
             keep += 1
     return len(wanted) - keep
 

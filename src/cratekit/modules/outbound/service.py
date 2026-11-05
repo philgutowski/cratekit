@@ -291,13 +291,23 @@ class RemoteAccount(Protocol):
         again for one that came off before records it and takes nothing.
         """
 
-    def order_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
+    def order_tracks(
+        self,
+        playlist_id: str,
+        remote_ids: tuple[str, ...],
+        *,
+        expect: tuple[str, ...] | None = None,
+    ) -> tuple[str, ...]:
         """Put one playlist's tracks in this order, and change nothing else (U130).
 
         REFUSED BEFORE ANY PROVIDER CALL on :meth:`remove_tracks`'s rule. A
         track the playlist does not hold is not added and one it holds that
         the order does not name stays on it. Returns the playlist's order once
         the moves are done, read back.
+
+        ``expect`` is a reading of the playlist the caller took (U220): no
+        track is moved until the adapter's own reading agrees with it, and a
+        reading that never does refuses with nothing moved.
         """
 
     def remove_playlist(self, playlist_id: str) -> None:

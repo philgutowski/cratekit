@@ -75,7 +75,7 @@ for.
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, fields, replace
 from datetime import datetime
 from enum import StrEnum
 from pathlib import Path
@@ -473,15 +473,157 @@ DERIVATIONS: Mapping[tree_registry.DerivationSource, Callable[..., Any]] = Mappi
 )
 
 
+def other_declared_trees(declared: taxonomy.Taxonomy) -> dict[str, str]:
+    """Every place the declaration names that is not the routing tree, id to display (U219).
+
+    DERIVED FROM THE DECLARATION'S OWN NODES, never listed. The intake flow,
+    its Old folder, the inspiration folder and the catalogue tree are all a
+    ``Node`` on the taxonomy, and a node a later template adds lands in this
+    set on the day it is added, so a new declared place cannot be handed the
+    routing tree's membership by nobody having named it here.
+    """
+    out: dict[str, str] = {}
+    for entry in fields(declared):
+        value = getattr(declared, entry.name)
+        if entry.name == "tree" or not isinstance(value, taxonomy.Node):
+            continue
+        out[value.id] = value.display
+    out.pop(declared.tree.id, None)
+    return out
+
+
+def derivable(declared: taxonomy.Taxonomy, tree_id: str) -> bool:
+    """Whether the taxonomy derivation describes this tree's membership (U219).
+
+    The taxonomy derivation places a track in a bucket's band, vocal sub and
+    genre sub, which is the ROUTING tree's shape and no other's. A tree the
+    declaration names as something else, the intake flow above all, holds
+    what the verbs that write it put there: landed batches, an Old folder, a
+    set's playlist. None of that is derived from a tag, so a rebuild of one
+    has nothing to reproduce. A tree the declaration does not name at all is
+    read as a routing tree under another identifier, which is what every
+    governed tree in this repository's tests is.
+    """
+    return tree_id not in other_declared_trees(declared)
+
+
+def assert_derivable(declared: taxonomy.Taxonomy, tree_id: str) -> None:
+    """Refuse to derive membership for a tree the taxonomy derivation does not describe.
+
+    THE GUARD R-789 AND SITTING 61 BOUGHT. The cutover records the intake tree
+    with the taxonomy as its source (R-746), and the derivation took the source
+    and never the tree, so a resort over a library whose intake tree had cut
+    over wrote ``INBOX / Minimal / Deep Tech`` with every band in it. It lives
+    at the derivation, the one call every reader and every writer of a derived
+    membership makes, so no caller can place routing membership under another
+    tree's root by forgetting to filter its own list.
+    """
+    others = other_declared_trees(declared)
+    if tree_id not in others:
+        return
+    raise refuse(
+        "rebuild-tree-not-derivable",
+        f"the tree {tree_id!r} is this library's {others[tree_id]!r}, which holds "
+        f"what the verbs that write it put there and not anything a tag decides, "
+        f"so no rebuild can reproduce it; deriving it from the taxonomy would file "
+        f"the routing tree's genre and energy folders under {others[tree_id]!r}",
+        remedy=Remedy.FIX_COMMAND_LINE,
+        steps=(
+            f"rebuild or resort the routing tree, {declared.tree.id!r}, which is "
+            f"the one tree the taxonomy derives",
+        ),
+        scope=Scope.RUN,
+        origin=("tree_rebuild",),
+        detail={"tree_id": tree_id, "routing_tree": declared.tree.id},
+    )
+
+
+def detect_restore(cfg: config.Config) -> None:
+    """Run the restore detection over the database as it now stands, and close it.
+
+    Read only on the database; what it writes is the convergence record, which
+    marks every native tree a restore has left behind. The acceptance gate asks
+    after this, so the record it shows is current (U219).
+    """
+    handle = rb_writer.open_db(cfg=cfg)
+    try:
+        convergence.detect_out_of_band_restore(cfg, handle, tree_registry.read(cfg))
+    finally:
+        rb_writer.close_db(handle)
+
+
+def accept_as_it_stands(
+    cfg: config.Config, declared: taxonomy.Taxonomy, tree_id: str, *, actor: str
+) -> None:
+    """Record a named person accepting a marked tree no rebuild can reproduce (U219).
+
+    THE ENGINE OWNS WHICH TREES THIS MAY TOUCH. Only a tree
+    :func:`derivable` says no derivation describes, the intake flow above all,
+    and only while its record refuses. A routing tree is cleared by
+    :func:`rebuild_tree` on the evidence of a check and never here, so this
+    cannot become the flag's off switch for a tree a rebuild can repair.
+
+    A DISPOSITION, NOT A CLEARING. The flag stays set and the report still
+    says unconverged; the refusal is answered by ``actor``, who answered the
+    explicit gate, and a later restore clears the answer and marks it again.
+    """
+    if derivable(declared, tree_id):
+        # No surface asks this for a routing tree; one that did is a defect.
+        raise refuse(
+            "refused-by-policy",
+            f"the tree {tree_id!r} is one a rebuild reproduces, so it is cleared "
+            f"by a rebuild on the evidence of a check and never accepted as it stands",
+            remedy=Remedy.REPORT_DEFECT,
+            steps=(f"run the rebuild for {tree_id!r}",),
+            scope=Scope.RUN,
+            origin=("tree_rebuild",),
+            detail={"tree_id": tree_id},
+        )
+    registry = tree_registry.read(cfg)
+    handle = rb_writer.open_db(cfg=cfg)
+    try:
+        # THE DETECTION FIRST, as a rebuild runs it before its write: it marks
+        # every native tree over whatever the database now shows, so the
+        # fingerprint recorded below blesses nothing it has not marked.
+        convergence.detect_out_of_band_restore(cfg, handle, registry)
+        record = convergence.read(cfg).tree(tree_id)
+        reason = "a restore" if record is None or not record.reason else record.reason
+        convergence.clear_unconverged(
+            cfg,
+            tree_id,
+            differences=(),
+            disposition=convergence.Disposition(
+                actor=actor,
+                note=f"accepted as it stands after {reason}; no rebuild can reproduce it",
+            ),
+        )
+        # THE LATCH AS WELL AS THE FLAG (round two). Every intake write meets
+        # ``assert_tree_writable``, which refuses on a fingerprint the database
+        # has gone behind whatever the flag says; a rebuild answers it by the
+        # fingerprint its write records at its close, and an acceptance writes
+        # nothing, so it records the database as it now stands. The routing
+        # tree stays marked by the detection above and refuses until rebuilt.
+        convergence.record_fingerprint(cfg, handle)
+    finally:
+        rb_writer.close_db(handle)
+
+
 def declared_membership(
     cfg: config.Config,
     declared: taxonomy.Taxonomy,
     *,
+    tree_id: str,
     source: tree_registry.DerivationSource | None,
     vocal_threshold: float | None,
     truth: Iterable[Truth] | None = None,
 ) -> tuple[tuple[DeclaredPlacement, ...], tuple[str, ...]]:
     """What the declaration says the tree holds, by the source the registry records.
+
+    ``tree_id`` IS REQUIRED AND IS CHECKED FIRST (U219). The source says how a
+    membership is derived and the tree says whether that derivation describes
+    it at all; this took the source alone, so the intake tree, recorded with
+    the taxonomy as its source, was handed the routing tree's placements.
+    :func:`assert_derivable` refuses it before a file is read.
 
     ``truth`` defaults to a live walk of the library's music directory, and a
     caller supplying its own is supplying the READINGS rather than the rules:
@@ -506,6 +648,7 @@ def declared_membership(
     and none of them is evidence about the tree. The honest answer is that the
     question could not be asked.
     """
+    assert_derivable(declared, tree_id)
     derive = None if source is None else DERIVATIONS.get(source)
     if derive is None:
         raise refuse(
@@ -1528,6 +1671,7 @@ def report_convergence(
     placements, gaps = declared_membership(
         cfg,
         declared,
+        tree_id=tree_id,
         source=registry.derivation_source(tree_id),
         vocal_threshold=vocal_threshold,
         truth=truth,
@@ -1549,6 +1693,107 @@ def report_convergence(
     )
 
 
+def additions(report: ConvergenceReport) -> list[dict[str, str]]:
+    """What a rebuild over this report adds, one row per track and destination (U219).
+
+    THE MISSING DIRECTION OF THE CHECK THE REBUILD RUNS BEFORE IT WRITES, and
+    nothing else. The write plans every declared placement and the writer
+    skips what a playlist already holds and what reaches no row, so what it
+    adds is exactly the declared track a destination lacks, which is this
+    list. Sorted and plain, so a gate's digest over it is stable and a job
+    payload that has been through JSON compares equal to it.
+    """
+    rows = [
+        {
+            "tree": report.tree_id,
+            "folder": entry.folder,
+            "playlist": entry.playlist,
+            "path": entry.location or entry.content_id or "",
+        }
+        for entry in report.missing
+    ]
+    return sorted(rows, key=lambda row: (row["tree"], row["folder"], row["playlist"], row["path"]))
+
+
+def preview_governed_trees(
+    cfg: config.Config,
+    *,
+    tree_ids: Sequence[str],
+    vocal_threshold: float | None,
+) -> tuple[tuple[ConvergenceReport, ...], str]:
+    """What a rebuild of each tree would find, read only, and the file it read (U219).
+
+    THE GATE'S HALF OF :func:`rebuild_governed_tree`: the same opener, the
+    same registry, declaration and rows, and the same derivation and check the
+    rebuild runs before its write, through :func:`report_convergence`. Nothing
+    is written, no session is taken and no flag moves, so a resort can show a
+    person every add before anything is queued. The database path is returned
+    so the gate can pin its answer to the file it was taken over (U161).
+    """
+    entries = tree_registry.read(cfg)
+    declared = active_taxonomy.load(cfg)
+    handle = rb_writer.open_db(cfg=cfg)
+    try:
+        opened = str(rb_writer.handle_path(handle) or rb_writer.live_db_path(cfg))
+        known = {str(row.ID) for row in handle.get_playlist()}
+        rows = list(routing_pass.content_rows(handle))
+        reports = tuple(
+            report_convergence(
+                cfg,
+                handle,
+                tree_id=tree_id,
+                registry=entries,
+                declared=declared,
+                rows=rows,
+                root_exists=lambda root_id: root_id in known,
+                vocal_threshold=vocal_threshold,
+            )
+            for tree_id in tree_ids
+        )
+    finally:
+        rb_writer.close_db(handle)
+    return reports, opened
+
+
+def _plan_key(rows: Iterable[Mapping[str, Any]]) -> list[tuple[str, str, str, str]]:
+    return sorted(
+        (str(row.get("tree")), str(row.get("folder")), str(row.get("playlist")), str(row.get("path")))
+        for row in rows
+    )
+
+
+def assert_as_approved(before: ConvergenceReport, approved: Sequence[Mapping[str, Any]]) -> None:
+    """Refuse a write that would add anything other than what a person approved (U219).
+
+    THE PLAN IS CONSUMED, NOT REMADE, which is the rule ``route inbox`` keeps
+    (R-691) carried across a queue. A resort's gate shows every add and the
+    approved rows are frozen in its job; the worker derives again when it
+    drives, and a library that moved in between, a file retagged, a playlist
+    edited, a taxonomy changed, would write a plan nobody read. Checked on the
+    rebuild's own before check, after the derivation and before the write, so
+    nothing is written when the two differ.
+    """
+    planned = _plan_key(additions(before))
+    wanted = _plan_key(approved)
+    if planned == wanted:
+        return
+    raise refuse(
+        "resort-plan-stale",
+        f"the tree {before.tree_id!r} would now take {len(planned)} add(s) and the "
+        f"plan that was approved named {len(wanted)}, or named different ones, so "
+        f"the library or its taxonomy moved after the gate; nothing was written",
+        remedy=Remedy.REPLAN_THEN_DECIDE,
+        steps=("run the resort again, read the new plan, and answer its gate",),
+        scope=Scope.RUN,
+        origin=("tree_rebuild",),
+        detail={
+            "tree_id": before.tree_id,
+            "approved": len(wanted),
+            "planned": len(planned),
+        },
+    )
+
+
 def rebuild_tree(
     cfg: config.Config,
     db: Any,
@@ -1564,8 +1809,14 @@ def rebuild_tree(
     prefix_map: Sequence[locations.PrefixRule] | None = None,
     workflow: str = REBUILD_WORKFLOW,
     now: datetime | None = None,
+    approved: Sequence[Mapping[str, Any]] | None = None,
 ) -> RebuildReport:
     """Write back everything the declaration places in this tree and the database lacks.
+
+    ``approved`` IS A RESORT'S FROZEN PLAN (U219): the adds its gate showed
+    for this tree. When given, the before check must add exactly those or the
+    run refuses before writing (:func:`assert_as_approved`). None is a rebuild,
+    which is a repair rather than a plan a person read.
 
     THE ORDER IS THE UNIT, and it is: refuse if this tree is not rebuildable,
     derive, check, write, record where it landed, check again, and only then
@@ -1647,6 +1898,7 @@ def rebuild_tree(
     derived, not_compared = declared_membership(
         cfg,
         declared,
+        tree_id=tree_id,
         source=source,
         vocal_threshold=vocal_threshold,
         truth=truth,
@@ -1672,6 +1924,9 @@ def rebuild_tree(
         prefix_map=prefix_map,
         not_compared=not_compared,
     )
+
+    if approved is not None:
+        assert_as_approved(before, approved)
 
     record = convergence.read(cfg).tree(tree_id)
     standing = read_tree(db, root_id)
@@ -1725,6 +1980,17 @@ def rebuild_tree(
         cfg, db, declared, registry, collection, derived, not_compared, tree_id=tree_id
     )
     favorites = tuple(entry for entry in placements if entry not in set(derived))
+    if approved is not None:
+        # A RESORT WRITES ONLY WHAT ITS GATE SHOWED (U219). A favourite whose
+        # track the first write has just moved into a new folder is derived
+        # only now, from the tree as this run left it, so no gate before the
+        # write could have shown it. It is left for the next resort, whose
+        # plan shows it, rather than written past the person who approved this
+        # one. The before check is what the approved rows were matched to.
+        shown = {(entry.location, entry.bucket, entry.sub) for entry in before.missing}
+        favorites = tuple(
+            entry for entry in favorites if (entry.location, entry.bucket, entry.sub) in shown
+        )
     if favorites:
         standing_now = read_tree(db, root_id)
         record_now = convergence.read(cfg).tree(tree_id)
@@ -1884,6 +2150,7 @@ def rebuild_governed_tree(
     tree_id: str,
     workflow: str = REBUILD_WORKFLOW,
     vocal_threshold: float | None,
+    approved: Sequence[Mapping[str, Any]] | None = None,
 ) -> RebuildReport:
     """Open this library's database, rebuild one governed tree, and close it again.
 
@@ -1945,6 +2212,7 @@ def rebuild_governed_tree(
             analysis_roots=analysis_store.watch_roots(cfg),
             vocal_threshold=vocal_threshold,
             workflow=workflow,
+            approved=approved,
         )
     finally:
         rb_writer.close_db(handle)
@@ -1991,6 +2259,14 @@ def governed_not_compared(
 
 __all__ = [
     "DERIVATIONS",
+    "accept_as_it_stands",
+    "additions",
+    "detect_restore",
+    "assert_as_approved",
+    "assert_derivable",
+    "preview_governed_trees",
+    "derivable",
+    "other_declared_trees",
     "LEFT_BEHIND",
     "LEFT_BEHIND_NAMED",
     "REBUILD_ACTOR",

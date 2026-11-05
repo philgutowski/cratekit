@@ -2586,6 +2586,16 @@ def test_conformance_2_no_module_builds_an_exit_code_from_a_bare_integer():
 #: fires is a gate the suite can hold a verb to.
 UNREACHABLE_GATES: Mapping[str, str] = MappingProxyType(
     {
+        "rebuild.accept": (
+            "asked only by rebuild --tree naming a tree no rebuild can "
+            "reproduce, the intake tree above all, that a restore marked "
+            "unconverged, and the conformance fixture has no native tree, so "
+            "the sample queues nothing and asks nothing (U219). That path never "
+            "queues, so the queued resume contract has nothing to hold it to. "
+            "The gate, its explicit two act answer and the disposition it "
+            "records are driven in tests/test_resort_scope.py over a restore "
+            "the real detection marked."
+        ),
         "export.set.rename": (
             "asked only by export set --rename JOB, which names a succeeded set "
             "job, and the conformance fixture's queue holds none, so the sample "
@@ -4035,12 +4045,13 @@ EXPECTED_UNREACHABLE_GATES = frozenset(
         "intake.shelve.native",
         "label.playlists.crawl",
         "sync.twins.approve",
+        "rebuild.accept",
     }
 )
 
 
 def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
-    """Nine gates are exempt. A tenth one is a decision, not a diff.
+    """Ten gates are exempt. An eleventh one is a decision, not a diff.
 
     The sixth, ``intake.shelve.native``, joined with U154, decided there: the
     verb asks only over a plan that moves a batch, approving one writes a path
@@ -4076,6 +4087,10 @@ def test_the_unreachable_exemption_set_is_exactly_the_intended_one():
     approving one writes, which the unpinned fixture refuses, while a folder
     in order asks nothing by the brief. Its own suite,
     tests/test_favorites_order.py, drives the gate's two acts and the write.
+    The tenth, ``rebuild.accept``, joined with U219: it is asked only by a
+    rebuild naming a tree no rebuild can reproduce that a restore marked, and
+    the conformance fixture has no native tree. tests/test_resort_scope.py
+    drives the gate's two acts over a restore the real detection marked.
 
     Note what this pin does NOT prove, so nobody reads more into a green run than
     is there: the map is still a named exemption, not a drive of the unreadable

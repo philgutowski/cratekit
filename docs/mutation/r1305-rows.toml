@@ -1,0 +1,164 @@
+name = "r1305"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_no_context"
+description = "failure_links: walk the declared causes alone, as before R-1305, so a 401 or 403 whose body is not JSON is read as an outage again"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_order.py"]
+old = '''    pending = [one.__context__ for one in reversed(declared)]'''
+new = '''    pending: list[BaseException | None] = []'''
+
+[[rows]]
+id = "W2_context_of_the_failure_only"
+description = "failure_links: start the context walk from the failure's own context only, so one hanging off a declared cause is missed"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_order.py"]
+old = '''    pending = [one.__context__ for one in reversed(declared)]'''
+new = '''    pending = [one.__context__ for one in declared[:1]]'''
+
+[[rows]]
+id = "W3_no_refusal_boundary"
+description = "failure_links: follow a context link into a product refusal, so an outage met while handling a rejected session asks for a login"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_order.py"]
+old = '''        if one is None or id(one) in walked or isinstance(one, CratekitError):'''
+new = '''        if one is None or id(one) in walked:'''
+
+[[rows]]
+id = "W4_boundary_on_any_error"
+description = "failure_links: stop the context walk at any error rather than at a product refusal, so the client's decode chain is never entered"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_order.py"]
+old = '''        if one is None or id(one) in walked or isinstance(one, CratekitError):'''
+new = '''        if one is None or id(one) in walked or isinstance(one, Exception):'''
+
+[[rows]]
+id = "W5_declared_cycle"
+description = "failure_links: drop the cycle guard on the declared chain, so a cause cycle is walked without end"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    while current is not None and id(current) not in walked:
+        walked.add(id(current))
+        declared.append(current)'''
+new = '''    while current is not None:
+        walked.add(id(current))
+        declared.append(current)'''
+
+[[rows]]
+id = "W6_context_cycle"
+description = "failure_links: drop the walked check off the declared chain, so a context cycle is walked without end"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if one is None or id(one) in walked or isinstance(one, CratekitError):'''
+new = '''        if one is None or isinstance(one, CratekitError):'''
+
+[[rows]]
+id = "W7_no_cause_off_the_chain"
+description = "failure_links: follow only context off the declared chain, never a context link's own cause"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        pending.extend((one.__cause__, one.__context__))'''
+new = '''        pending.append(one.__context__)'''
+
+[[rows]]
+id = "W8_context_marked_declared"
+description = "failure_links: mark a link reached as context as declared, so a name reached only as context is trusted"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        yield one, False'''
+new = '''        yield one, True'''
+
+[[rows]]
+id = "L1_login_name_on_any_link"
+description = "_rejected: read the client's authentication error by name on any link, so a reset met while handling one asks for a login"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if declared and type(link).__name__ == "AuthenticationError":
+            return True
+    return False
+'''
+new = '''        if type(link).__name__ == "AuthenticationError":
+            return True
+    return False
+'''
+
+[[rows]]
+id = "L2_login_status_declared_only"
+description = "_rejected: read a status on the declared chain only, so a login answered 401 or 403 with a page is told to wait"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if answered_status(link) in REJECTED_STATUSES:'''
+new = '''        if declared and answered_status(link) in REJECTED_STATUSES:'''
+
+[[rows]]
+id = "L3_login_name_dropped"
+description = "_rejected: drop the client's authentication error by name, a sample of the guard as it stood before R-1305"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if declared and type(link).__name__ == "AuthenticationError":
+            return True
+    return False
+'''
+new = '''        if False:
+            return True
+    return False
+'''
+
+[[rows]]
+id = "A1_account_name_on_any_link"
+description = "_session_refused: read the client's authentication error by name on any link, so a reset met while handling one drops the account and asks for a login"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py"]
+old = '''        if declared and type(link).__name__ == "AuthenticationError":'''
+new = '''        if type(link).__name__ == "AuthenticationError":'''
+
+[[rows]]
+id = "A2_account_status_declared_only"
+description = "_session_refused: read a status on the declared chain only, so a session rejected mid sweep with a page is told to wait"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py"]
+old = '''        if answered_status(link) in SESSION_REFUSED_STATUSES:'''
+new = '''        if declared and answered_status(link) in SESSION_REFUSED_STATUSES:'''
+
+[[rows]]
+id = "A3_account_statuses_narrowed"
+description = "SESSION_REFUSED_STATUSES: drop 403, a sample of the guard as it stood before R-1305"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py"]
+old = '''SESSION_REFUSED_STATUSES = frozenset({401, 403})'''
+new = '''SESSION_REFUSED_STATUSES = frozenset({401})'''
+
+[[rows]]
+id = "A4_account_reads_its_own_link_only"
+description = "_session_refused: read the failure alone and no link of it, so a rejection the client rewraps is told to wait"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py"]
+old = '''    for link, declared in failure_links(exc):
+        if answered_status(link) in SESSION_REFUSED_STATUSES:'''
+new = '''    for link, declared in [(exc, True)]:
+        if answered_status(link) in SESSION_REFUSED_STATUSES:'''
+
+[[rows]]
+id = "S1_status_off_another_field"
+description = "answered_status: read the status off the request rather than the response, so no status is ever found"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_rejection_bodies.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_order.py"]
+old = '''    return getattr(getattr(exc, "response", None), "status_code", None)'''
+new = '''    return getattr(getattr(exc, "request", None), "status_code", None)'''

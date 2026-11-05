@@ -217,20 +217,21 @@ def test_a_first_sync_named_by_hand_that_failed_after_its_mark_is_continued_on_i
 
 
 def _one_move_a_call(account) -> None:
-    """Order as the live adapter does: one gated move to the end per track moved."""
+    """Order as the live adapter does: one gated move to the front per track moved (U220)."""
 
-    def order(playlist_id, remote_ids):
+    def order(playlist_id, remote_ids, *, expect=None):
+        account.expected.append((playlist_id, expect))
         members = account.playlists[playlist_id]
         once = {one for one in members if members.count(one) == 1}
         wanted = [one for one in dict.fromkeys(remote_ids) if one in once]
         keep = 0
-        for one in list(members):
-            if one in set(wanted) and keep < len(wanted) and one == wanted[keep]:
+        for one in reversed(members):
+            if one in set(wanted) and keep < len(wanted) and one == wanted[-1 - keep]:
                 keep += 1
-        for one in wanted[keep:]:
+        for one in reversed(wanted[: len(wanted) - keep]):
             account._bump(playlist_id)
             members.remove(one)
-            members.append(one)
+            members.insert(0, one)
         account.ordered.append((playlist_id, tuple(remote_ids)))
         return tuple(members)
 
@@ -248,7 +249,7 @@ def test_a_stop_in_the_middle_of_an_order_is_finished_by_the_continue(world, mon
     run_id, _first = to_the_write(args)
     code, stopped = write(run_id, args, 1)
     assert code == CEILING, stopped
-    assert made.on_account() == ["t1", "t3", "t2"], "the stop did not fall between the moves"
+    assert made.on_account() == ["t2", "t1", "t3"], "the stop did not fall between the moves"
 
     code, done = write(run_id, args, 100)
     assert code == int(ExitCode.OK), done

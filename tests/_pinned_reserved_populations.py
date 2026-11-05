@@ -156,6 +156,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'rebuild-actor-required',
     'rebuild-derivation-empty',
     'rebuild-derivation-incomplete',
+    'rebuild-tree-not-derivable',  # 2026-11-05, U219: the intake tree is not derived.
     'rebuild-tree-not-native',
     'recovery-target-refused',
     'refused-by-policy',
@@ -164,6 +165,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'removal-sequence-unreadable',
     'rename-incomplete',
     'report-as-of-invalid',
+    'resort-plan-stale',  # 2026-11-05, U219: a resort's adds moved after its gate.
     'restore-discards-committed-work',
     'restore-flag-needs-pull',
     'restore-reconciliation-outstanding',
@@ -569,9 +571,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'config-unusable',
         'internal-error',
         'job-unknown',
+        'no-derivable-tree',  # 2026-11-05, U219
         'no-native-tree',
         'rebuild-actor-required',
         'rebuild-tree-not-native',
+        'tree-not-derived',  # 2026-11-05, U219
     ],
     'cli/registry.py': [
         'dj-analyze-validate',
@@ -855,6 +859,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'rebuild-actor-required',
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
+        'rebuild-tree-not-derivable',  # 2026-11-05, U219
         'rebuild-tree-not-native',
         'recovery-target-refused',
         'refill-playlist-outside-inbox',
@@ -865,6 +870,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'removal-sequence-unreadable',
         'rename-incomplete',
         'report-as-of-invalid',
+        'resort-plan-stale',  # 2026-11-05, U219
         'restore-discards-committed-work',
         'restore-flag-needs-pull',
         'restore-not-confirmed',
@@ -1687,9 +1693,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-export-required',
     ],
     # 2026-10-13, U143: the account root removals' five refusal problems joined.
+    # 2026-11-05, U220: an order's first reading that never agrees, read-differs,
+    # and an order whose moves never reach it, no-progress.
     'modules/outbound/tidal_account.py': [
         'internal-error',
         'ledger-claimed',
+        'no-progress',
         'not-a-legacy-folder',
         'not-a-root-kind',
         'not-empty',
@@ -1699,6 +1708,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-remove-refused',
         'positions-unknown',
         'read-back-differs',
+        'read-differs',
     ],
     'modules/reports/aging.py': ['intake-flow-absent'],
     'modules/reports/coverage.py': ['governed-tree-absent'],
@@ -1811,10 +1821,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'skills/cli.py': ['path-permission-denied'],
     'sync/artifacts.py': ['sync-artifacts-unusable', 'utf-8'],
+    # 2026-11-05, R-1289: the sweep's warning naming each unread track.
     'sync/cli.py': [
         'config-unusable',
         'not-built',
         'nothing-new',
+        'sync-playlists-unread',
         'sync-playlists-unreadable',
         'sync-playlists-withheld',
         'sync-source-not-queued',
@@ -1844,7 +1856,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # and the warning a run planned again carries. 2026-11-05, U210: a
     # continued run's warning, its steps unread, and the refusal a step it
     # could not record stops the write with. 2026-11-05, R-1264: the warning
-    # naming account tracks listed with no title or no artist.
+    # naming account tracks listed with no title or no artist. 2026-11-05,
+    # U220: the step an order refused records, and the two refusals that stop
+    # that pair alone.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
@@ -1852,6 +1866,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'intake-list-unusable',
         'label-playlist-unreadable',
         'on-hold',  # 2026-11-05, U221.
+        'order-refused',
+        'outbound-remove-refused',
         'playlist-pair',
         'rekordbox-home',
         'sync-pair-ambiguous',
@@ -1876,6 +1892,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-unread',
         'sync-pair-withheld',
         'sync-pair-written',
+        'unavailable-transient',
     ],
     # 2026-11-04, U202: the later change calls joined.
     'sync/pair_merge.py': ['addition-later', 'removal-later', 'time-unknown'],
@@ -2130,6 +2147,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'membership-left-behind',
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
+        'rebuild-tree-not-derivable',  # 2026-11-05, U219
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-plan-stale',  # 2026-11-05, U219
         'routing-destination-renamed',
         'tree-rebuild',
         'tree-unconverged',
@@ -2146,10 +2166,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'job-unknown',
         'library-export-unusable',
         'library-volume-unmounted',
+        'no-derivable-tree',  # 2026-11-05, U219
         'no-native-tree',
+        'nothing-to-add',  # 2026-11-05, U219
         'nothing-to-route',
         'rating-not-landable',
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-again',  # 2026-11-05, U219
         'resort-artifacts',
+        'resort-plan-stale',  # 2026-11-05, U219
         'resort-staging',
         'route-blocked',
         'route-inbox',
@@ -2158,6 +2183,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'routing-not-landable',
         'track-file-unreadable',
         'track-row-absent',
+        'tree-not-derived',  # 2026-11-05, U219
         'tree-unconverged',
         'unplaced-export',
     ],
@@ -3101,13 +3127,16 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
     # 2026-11-05, U209: the check before the write refuses stale.
     # 2026-11-05, U210: a write step it could not record stops the write.
+    # 2026-11-05, U220: the two order refusals that stop one pair alone.
     'sync/pair_cli.py': [
         'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
+        'outbound-remove-refused',
         'sync-pair-out-of-scope',
         'sync-pair-steps-unwritten',
         'sync-pair-unknown',
+        'unavailable-transient',
     ],
     # 2026-11-04, U202: the rekordbox side of a pair made from the account.
     'sync/pair_reverse.py': ['decision-stale'],
@@ -3173,6 +3202,9 @@ PINNED_LITERAL_HOLDERS = {
     'write/rebuild.py': [
         'rebuild-derivation-empty',
         'rebuild-derivation-incomplete',
+        'rebuild-tree-not-derivable',  # 2026-11-05, U219
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-plan-stale',  # 2026-11-05, U219
         'routing-destination-renamed',
         'tree-unconverged',
     ],
@@ -3184,6 +3216,8 @@ PINNED_LITERAL_HOLDERS = {
         'job-unknown',
         'library-export-unusable',
         'library-volume-unmounted',
+        'refused-by-policy',  # 2026-11-05, U219
+        'resort-plan-stale',  # 2026-11-05, U219
         'tree-unconverged',
     ],
     'write/routing_pass.py': [

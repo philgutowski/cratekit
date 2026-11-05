@@ -1929,6 +1929,182 @@ U213 (#507) is in v0.8.0. No job running, rekordbox closed before each verb.
 
 **Since U221 (#549, 2026-11-05)** those 612 are held, not queued: the 77 twins were paired before U221 and carry no recorded hold, so `crate sync pair` reads each by time and names every track the account listed before the twin was made as on hold, queueing none, until `crate sync release ACCOUNT_ID` (or `--all`) lets a twin's go. Only once the installed copy carries U221; a build without it still queues them.
 
+## Sitting 64, 2026-11-05, the attended session on v0.8.0: A85 (#504), an edit on Tidal to a mirrored genre playlist carried into the library, then undone
+
+Phillip answered in the session: the session makes the edits through the product's account client on tracks it picks and reverses every one afterwards (the TIDAL app is refused to desktop control and the browser extension was not connected). For #474 he chose the alias `Latin Electronic` to `Organic House`, recorded on that card; its apply runs `crate route resort` and waits on #537. No job running, rekordbox closed throughout.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| First run | `crate --calls 20000 organize --only mirror-edits --only mirror-downloads --only mirror`, run `2026-11-05T19:06:29Z-9dc3`, 1m34s, 677 calls | `mirror-edits` and `mirror-downloads` plan nothing ("no mirrored playlist was changed on the account since the mirror last finished it"), every mirror step `nothing to write`; both gates answered, `no_op`, the snapshots recorded. | done |
+| The edits | account client; removals through the client's own playlist object, since the client refuses to take a track off a playlist it did not make | (1) Chris Luno `Night Thoughts` taken off `Organic House Low` and put in `Downtempo Med`; (2) a track taken off `Organic House Low` into nothing: first Nathan Katz `Parallax`, which the rehearsal **held** ("2 library rows match it, so which one changes is not something the account says"), so it was put back (at the end of the playlist) and Kasbï `Conviction` taken off instead; (3) MONKYMAN `Interest` (Downtempo Low) put in `Organic House with vox`. | done |
+| Rehearsal | the same command on the hand copy (`scratch/copyrun`), run `2026-11-05T19:17:26Z-6e5e` | **digest `5ce83beadf438256`**: Night Thoughts `move` Organic House / Low to Downtempo / Med, genre Organic House to Downtempo, energy 2 to 4; Conviction `unfile`, leaves Organic House / Low, joins nothing, with the note that rekordbox's Genre column keeps its word; Interest `folder` Downtempo / Low to Organic House / Low, read as the genre Organic House. **Answered `abort` on the copy**: this step retags the audio files, which a hand copy shares with the live library, so the copy proves the digest only. | rehearsed |
+| Live | run `2026-11-05T19:19:07Z-153f`, both gates as `session` | digest `5ce83beadf438256`, equal. `mirror-edits: applied: 1 track(s) moved, 1 given another genre, 1 unfiled`; the account step "3 edit(s) made on the account: 3 taken into the library", every mirror folder equal. | live |
+| Read back | a copy of the live database and the files | Night Thoughts: row and file genre Downtempo, in `Downtempo / Med` only. Interest: row and file Organic House, in `Organic House / Low`. Conviction: in no BY GENRE + ENERGY playlist, the file's genre cleared, the row's kept as the plan said, and **listed by `crate route unplaced`** (its JSON items; the human output prints only the count line). On the account all three edits stood. | read |
+| Second run | `crate organize --report --only mirror-edits --only mirror` | `no_op`, nothing on either side. | met |
+| Undo | account client: Night Thoughts back to `Organic House Low`, Conviction back to `Organic House Low`, Interest off `Organic House with vox`; two passes, each rehearsed on a refreshed copy for its digest (`e859a6b33b135be6`, then `9130ef7f8a3c9b9d`) and applied live on an equal digest | The first pass moved Night Thoughts and Conviction back; Interest needed a second account edit, since the first pass's mirror had already moved it into `Organic House Low` on the account, so it was moved there back to `Downtempo Low`. Read back: all three hold their original genre in row and file and their original BY GENRE + ENERGY playlist; a further report plans nothing. Parallax sits at the end of `Organic House Low` on the account rather than second. | undone |
+
+**A85 (#504) is met**, read from the database rather than in the rekordbox window (the Monologue overlay has covered the tree at both earlier visits today). The macOS battery is sitting 59's.
+
+
+## Sitting 65, 2026-11-05, the attended session on v0.8.0: A90 (#518), edits on Tidal to Favorites and INBOX carried into the library, then undone
+
+Made and reversed through the product's account client, as Phillip answered at sitting 64; the one queued download cancelled before it fetched, by the same answer. Each live pass was rehearsed on a refreshed hand copy for its digest and answered `abort` there (the step writes the files' colour and tags), then applied live on an equal digest as `session`.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The edits | account client | Chris Luno `Night Thoughts`, no favourite, put in `All Favorites`; Skeewiff `Man of Constant Sorrow` moved from `Favorites 2026-10` to `Favorites 2026-09`; Paul Cut `The Joy` taken off `All Favorites`; Mark Barrott `Island Life` put in `INBOX Phil 10_8_26` and Geto Boys `Mind Playing Tricks on Me` taken off it; ANOTR `Unlock`, which the library lacks, put in `Deep House Med`. A read straight after two removals still listed them; a second read five seconds later did not. | done |
+| Plan | rehearsal digest `50b77dd04082e110`, live run `2026-11-05T19:47:41Z-773d` equal | Night Thoughts `favourite`, joins All Favorites and 2026-11, colour Pink; Skeewiff `favourite` leaves 2026-10, joins 2026-09; The Joy `unfavourite`, leaves All Favorites and 2026-10, with the note that it stays hearted on the account; Island Life `join`; Geto Boys `leave`; Unlock `held`, "the library holds no track matched to it, so it is queued for download". | gate |
+| Live | both gates | `mirror-edits: applied: 2 favourited, 1 unfavourited, 1 joined to and 1 taken off an INBOX batch`; `mirror-downloads: queue 1 track(s)`, job `2026-11-05T19:51:57Z-7e71`, **cancelled** with `crate job cancel` before anything ran. | live |
+| Read back | a copy of the live database | Night Thoughts in All Favorites and 2026-11, Pink; Skeewiff in 2026-09 only among the months; The Joy in no Favorites folder playlist, still Pink and still in `BY GENRE + ENERGY / Deep House / Favorites` (it stays hearted); Island Life in INBOX / Phil 10_8_26; Geto Boys in no INBOX batch. A further report planned no edit, but `mirror-downloads` would queue Unlock again while it stood on the account. | read |
+| Undo | account edits reversed, then passes `2026-11-05T19:56:50Z-7d67` (`6a9ebe8fb1912c41`), `20:03:47Z-89d5` (`ef1d4b1e3e7f074c`), `20:11:44Z-9c9a` (`3f8b60d3aa5eab16`) | The first pass restored Skeewiff, The Joy's All Favorites, and both INBOX edits, and **kept Night Thoughts as a favourite**: "placed in the favourites in rekordbox since: an addition beats a removal, whose time is never known"; its mirror put it back on the account. Taking it off All Favorites again then read as a true `unfavourite` (it was never hearted on the account). The Joy came back to All Favorites but not to `2026-10`; taking it off and back onto the account's 2026-10 carried it in. Final read: every track in its original Favorites and INBOX playlists; **Night Thoughts keeps the Pink colour the favourite gave it**; Unlock off the account; a further organize `no_op` on both steps. | undone |
+
+**A90 (#518) is met except its download half**: the queued track was cancelled by Phillip's choice rather than landed and filed, so "the download" step is owed, and the read was from the database rather than the rekordbox window. Two small findings, no card: an unfavourite leaves the row's Pink colour; and undoing a favourite on the account loses to rekordbox's newer placement until the mirror has written it back, by the stated rule.
+
+
+## Sitting 66, 2026-11-05, the attended session on v0.8.0: A68 (#439) judged by measure, A63's (#429) hearts check, A41's (#365) stale case, A96's (#539) notes prepared
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| A68, the dyn call | the file's tags and sitting 55's `crate analyze check` | The by-ear check is replaced by the measured read, since the session cannot listen. `What A Difference A Day Made`: Cratekit's `driftlevel` 2.5 (`drift` variable, cut 1.5); rekordbox's Dynamic grid 664 beats from 127.57 to 130.25, a span of 2.68. Both measures say the tempo moves, so the `dyn` mark was the right call. The title's 97 against rekordbox's 129 is a 4:3 reading (97 × 4/3 ≈ 129.3) of a swung ballad, a separate matter and no card. The untagged 13 rows all read one tempo. | met by measure |
+| A63, the hearts check | `crate export collection` to a scratch file (14 rows with no file, 153 unmapped paths, both warned), then `crate sync favorites --export` answered `sync` at its gate twice (the job asked again on its own run), run `2026-11-05T20:21:01Z-1e4f`, job `2026-11-05T20:21:15Z-66f9`, 995 calls, 2m06s | 292 favourites swept, hearts added where matched, never removed; **19 unmatched, 8 of them ties refused with the reason ending "so none was chosen"**, for example The Prodigy `Smack My Bitch Up` (ISRC GBBKS9700073, 4 provider tracks agree, the account hearts 2 of them) and Bob Moses `Time of Your Life` (QM6MZ2589604, 3 agree, 2 hearted). | met |
+| A41, the stale case | `crate organize --only mirror` to its gate (run `2026-11-05T20:23:49Z-5868`, digest `b7d48d4cf6fe79b6`, nothing to write); then Island Life put in `INBOX Phil 10_8_26` on the account and a `mirror-edits` pass (rehearsed `8025f47525aa2eba`, applied live, 1 joined); then the first run's gate answered `apply` | **`decision-stale`** after **677 calls** and 1m21s: the apply planned in full and found the decided plan changed. Sitting 58's apply with no write between said "mirror plan frozen"; this one did not. A41 expects no stale with a write between, so it is filed as #552 (U222, `idea`), and the join was undone (rehearsed `ef3fb7da01edfb22`, applied, a further report `no_op`). | not met |
+| A96, the notes | `release.py plan --since v0.6.0 --tip v0.7.0` and `--notes` | 12 pull requests, U201 to U211 and U214, none without one, proposing minor, v0.6.0 to v0.7.0; the notes open `Cratekit v0.7.0.`, carry no `Merge branch 'main'` line, and end with the `@v0.7.0` upgrade command. Not yet published: replacing a public release's body waits on Phillip's yes. | prepared |
+
+**Met:** A68 (#439) by measure, and A63 (#429) now that its hearts check is read; A63's "a release you heart afterwards does not swap a mirrored track" is not run, since the client can add a heart but not take one off. **Not met:** A41 (#365), on #552.
+
+
+## Sitting 67, 2026-11-05, the attended session on v0.8.0: A75 (#454), A65 (#433), and two cards met by earlier sittings, A97 (#541) and A78 (#468)
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| A75, first mint | sitting 59, `crate session ack --as session` from the session's shell, no terminal, no `script` | Both ages one day; `backup.acknowledgment: recorded now, by the session-ages rule, valid until 2026-11-06T01:18:06.468653+00:00`. | done |
+| A75, again | `crate session ack --as session`, run `2026-11-05T20:37:43Z-733a` | `no_op`, "already on record, not minted again, by the session-ages rule", the same expiry; `crate run show` on it lists no gate. | done |
+| A75, doctor | `crate doctor` | Right after `backup.age.files` (2 days) and `backup.age.database` (1 day): "valid until 2026-11-06T01:18:06+00:00, 4h 40m from now, minted by the session-ages rule". | met |
+| A65, status | `crate status` | One line: "runs.old: 18 open gates idle for more than 7 days, from 2026-09-23 to 2026-10-27; crate run retire --older-than 7d answers each one abort after a confirm"; the three gates opened on 2026-10-31 listed one by one. | read |
+| A65, retire | `crate run retire --older-than 7d`, run `2026-11-05T20:38:10Z-dc21`, digest `9159f964e3a701ba`, answered `apply --continue` as `session` | Each of the 18 (name.apply 9, intake.land 2, sync.all, sync.favorites, tag.retag, export.prune, session.ack, adopt.apply, favorites.backfill) reads `retired`, answered `abort` as `session`; none kept. | done |
+| A65, status again | `crate status` | The `runs.old` line is gone; only the three gates of 2026-10-31 remain. | met |
+| A97 | sitting 62 | The live plan named "not made in rekordbox: 18 account playlist(s)" and planned none of the Genre Trivia! `DOWNLOADED` playlists as a create. | met |
+| A78 | sittings 55 and 58 | In rekordbox, `Welcoming vibe 2026-11-04` sits directly under INBOX with the date at the end beside the date first batch; on the account, the mirror made `INBOX Welcoming vibe 2026-11-04` in the `INBOX` folder. | met |
+
+The macOS battery these cards owe is sitting 59's on `d4232416`.
+
+
+## Sitting 68, 2026-11-05, the attended session on v0.8.0, no desktop control: the macOS battery, and A57 (#415) owing its DEADCA7 push
+
+A sub session of the attended run with no desktop control, so it took only steps that need no screen. No job running, rekordbox and rekordboxAgent not running before every verb, both backup ages two days and the acknowledgment of sitting 59 valid (none was needed).
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| macOS battery | `main` at `3c0b3722` (carries every merge to U219, so U172, U178, U185, U191, U192 and R-1056 are all in it) | `ruff` clean; **16,841 tests collected, `pytest` exit 0** in 7m49s, run twice (the second only to keep its log; this repository's `addopts` already carries `-q`, so the session's own `-q` silenced the count line, and the count is from `--collect-only`); `scan_repo.py` clean; `config.toml` unchanged after each. | clean |
+| A57, what a push needs | `crate doctor`; `/Applications`; `~/Library/Application Support` | `deadca7.push`: "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox". `DEADCA7.app` is in `/Applications`, but its support folder `~/Library/Application Support/deadca7` does not exist, so the app has never run on this account, and its bundle holds only the GUI binary and its `deadcatalog` resource, no command line. | read |
+
+**A57 (#415) owes its screen step**: the DEADCA7 push into a library copy is made in DEADCA7's own window, which this session cannot drive, and every other step of the card (the report naming the DEADCA7 folder once, the full `organize`, `converge`, the byte for byte read back, `deadca7.push` and the two times) reads that push, so none of them could run without it. The battery it owes is above. Next: an attended session with desktop control launches DEADCA7 once, points its push at a disposable copy with library state redirected, and takes the card from the report on.
+
+
+## Sitting 69, 2026-11-05, the attended session on v0.8.0, no desktop control: A55 (#412), a PULS batch tagged Rominimal by its label
+
+No PULS batch was staged (sitting 46's 96 landed into `Music/2026-10-27 PULS`, and no new Bandcamp purchase was fetched), so the batch is six copies of those landed files in the session's scratch folder, outside the library: the genre taken off five, and the sixth given `Deep Tech` so a file with its own genre is in the sweep. Every copy carries its cover art, no label tag and no ISRC, as the Bandcamp downloads did.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Register | `crate label registry set PULS --genre Rominimal` | Refused `PRECONDITION`, `label-unknown`: PULS was never registered (sitting 46 built its label folder by hand). | refused |
+| Register | `crate label registry add PULS --genre Rominimal`, run `2026-11-05T21:35:26Z-f578` | **`labels.puls: puls, genre Rominimal, genre Rominimal routes to Minimal / Deep Tech by the taxonomy's keyword rule 'minimal'`.** No `--bandcamp` was set, since the brief names only the genre. | live |
+| Sweep | `crate tag folder a55-puls-staging --label PULS`, job `2026-11-05T21:35:37Z-a55f`, 1.5 s | `succeeded`, 6 of 6 settled. The job's summary (`--output json ... --job`): **`tagged` 5, `tagged_by` `label-genre` 5 and every catalogue 0, `label_genres` `{"PULS": 5}`**, `skipped` `has-genre` 1, `off_taxonomy` empty, every catalogue's answers all 0 (none asked, not even `not-asked`), `art_fetch` `present` 6, `art_repair` `ok` 6. Each item's record reads `source: label-genre`, `label: PULS`, `answers: []`. | live |
+| Read back | the six files, by mutagen | Five carry `Rominimal`; the sixth still carries `Deep Tech`; one picture each, no label tag written. | read |
+| Calls | `crate doctor`'s provider gate count, before and after | 507,057 before and after: **no provider call**, and no catalogue call. | read |
+
+**A55 (#412) is met**, on copies of a landed PULS batch rather than a newly staged one; the sweep reads files only, so where they sit does not change what it does. The battery it owes is sitting 68's. **PULS is now a followed label**, so a `crate label sync` sweep asks the account about it.
+
+
+## Sitting 70, 2026-11-05, the attended session on v0.8.0, no desktop control: A54 (#409), the Defected 2026 playlist from the sync's releases
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Plan | `crate --calls 200 label playlists defected --releases`, run `2026-11-05T21:36:52Z-2f9e`, 6 s | **16 calls.** Gate `label.playlists.confirm`, digest `df874830fdb5d2b4`, count 2: folder `Defected`, "use the one already on the account"; `Defected 2026`, "use the one already in the folder, add 12 of 12"; "catalogue: only the 3 release(s) a label sync took were read, and none of the rest of the catalogue"; releases read **Sorley `Phreaky`, Sam Divine `Paradise`, Yours `What's Mine Is YOURS (Live At Abbey Road)`**; "removes: nothing, ever". No listing, no crawl gate. | gate |
+| Against the brief | read | The brief expects two releases and 10 tracks; the plan reads three and 12, the third being Sorley `Phreaky` (two tracks), which a later label sync go took. Both Sorley tracks are owned (`Processed_Tracks/2026/10_08_26 Labels`), as are the other ten, so the add was approved as `session`. | decided |
+| Apply | `run decide --actor session --continue ... label.playlists.confirm apply` | `ok`, **20 calls for the run**. | live |
+| Read back | the product's account client, read only, folder `e8ce5b95` | The year playlist is **`DOWNLOADED Defected 2026`** (`35e42d16`, made 2026-07-08, so the plan's "Defected 2026" is the marked playlist adopted by its built name), **66 tracks, the last 12 the twelve planned**: Phreaky and its Extended Mix, Paradise and its Extended Mix, and the eight Yours tracks. The other year playlists hold 1 (2005, 2008, 2010, 2015, 2018), 2 (2019, 2022, 2024) and 18 (2025), all made 2026-07-08; the plan named only 2026, and the verb never removes. | read |
+| Again | the same command, run `2026-11-05T21:37:18Z-fcf7` | **13 calls**; "Defected 2026: use the one already built, add 0 of 12", **"nothing to write: the account already holds every year and track planned"**, digest `2fa1e0d458bbfa67`. It still opened its gate, answered `abort`. | met |
+
+**A54 (#409) is met**: 90 provider calls in all across the plan, the apply, the second run and the read back, against about 24,700 for a full build. The full build was not started. Two small findings, no card: a plan with nothing to write still asks its gate, and the adopted playlist's account name `DOWNLOADED Defected 2026` is shown by its built name only.
+
+
+## Sitting 71, 2026-11-05, the attended session on v0.8.0, no desktop control: A79 (#470), the genre guess on sitting 47's untagged tracks, and Discogs
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Report | `crate --calls 500 --output json tag guess "Music/2026-10-27 Tidal playlists and Favorites" --pass 2026-10-27T190706Z-21c7_synced --report`, 7 s | `no_op`, digest `e682ff4957c2c4c4`, **no provider call** (the gate count did not move). 116 files: **87 have a genre, 29 do not**, which are sitting 47's 29. Playlists voting: `Lisa_10_27_26`, `Idris precise beats`, `The LIVING room`. | read |
+| How many a guess would tag | the same report | **28 of 29 guessed, 1 with no votes.** Totals `before` 87, `after` 115. | read |
+| Bands | the same report | This build names its bands `high`, `medium`, `split`, `low` (the brief's `strong` and `good` are `high` and `medium`): **high 0, medium 1, split 2, low 25.** The medium one is Youandewan `Be Good To Me Poly` (Deep House, 9.05 against 2.0, four library tracks by the artist). Twenty of the low ones carry nothing but the `Idris precise beats` playlist's mix (Deep House 1.09, House / Funky House / Disco 0.85), so each is guessed Deep House on the playlist alone. Where the artist's library tracks vote `Electronica` higher than anything else (Kelly Lee Owens, Shire T, Romare 2.0; O'Flynn 4.0) the guess takes the second word (Deep House, or Dance / Pop for O'Flynn). | read |
+| Splits | `tag-guess-split` | Maajo `Maajo` and Voilaaa, Ayuune Sule `Fighting Slowly`: R&B and Rock tied at 0.75 from `The LIVING room`, written as R&B. | read |
+| Off taxonomy | `tag-guess-off-taxonomy` | One word: **`Latin Electronic`**, on Quantic `Atlantic Oscillations` (a file with a genre). | read |
+| Without a guess | `tag-guess-no-votes` | **Y traxx `Mystery land`** only. | read |
+| Discogs | the Discogs API's database search by artist and track, no token (the site's search page refuses a fetch with 403) | **Y-Traxx `Mystery Land`: 43 releases, all Electronic, style Trance on 40** (Techno 7, Progressive Trance 5), the 1998 master Electronic / Trance; the taxonomy has a `Trance` genre, so Discogs would have tagged it. For the two splits: Maajo is Electronic with House and Deep House (`Maajo Remixes`, 2017) or Afrobeat, Disco, Deep House (`Tropic Of Tulli`, 2016); Voilaaa `Voiciii` (2021) is Funk / Soul with Disco and Afrobeat. Neither is R&B by Discogs. | read |
+
+**A79 (#470) is met** by its done line: the counts, the bands and the Discogs findings. Small findings for the record, no card: the two split ties were broken to R&B where Discogs reads house and disco; and twenty low guesses rest on one playlist's mix alone. The battery is sitting 68's. Its "next sync pass's report read for the guess's before and after" waits for the next `crate sync land` pass, which needs a rekordbox visit.
+
+
+## Sitting 72, 2026-11-05, the attended session on v0.8.0, no desktop control: A60 (#423), tag folder, analyze run and analyze restamp in one command each, and a Ctrl-C
+
+The installed v0.8.0 carries U192. Two staging folders in the session's scratch folder, outside the library, of copies from `Music/2026-10-27 Tidal playlists and Favorites` with the key and tempo head taken off each name (the head is `analyze run`'s skip marker) and the genre taken off: `a60-x` with two tracks, `a60-y` with five. The interrupt was sent by a small wrapper that starts the command in its own process group and sends SIGINT to the group, as a terminal's Ctrl-C does, since a background command in a non interactive shell starts with SIGINT ignored.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Tag | `crate tag folder a60-x`, typed once | **`job: 2026-11-05T21:40:59Z-3381, succeeded`, `items: 2 of 2 settled`, no `drive it with` line**; Traxsource and Bandcamp blocked, as every sitting since 32. | met |
+| Analyse | `crate analyze run a60-x`, typed once, 1m03s | **`job: 2026-11-05T21:53:27Z-75a0, succeeded`, `items: 2 of 2 settled`**, no `drive it with` line; both renamed to their heads (`01A - 122 - ...`, `01B - 89 - ...`). | met |
+| Restamp | `crate analyze restamp a60-x`, typed once, 9 s | **`job: 2026-11-05T21:54:33Z-c879, succeeded`, `items: 2 of 2 settled`**, no `drive it with` line; the `db-metadata-not-written` warning as always. | met |
+| Interrupt | `crate analyze run a60-y`, SIGINT to its group after 45 s | **`analyze.run: cancelled (INTERRUPTED)`**, "job 2026-11-05T21:54:46Z-8e37 was cancelled at stage 'items'", **`resume it with: crate analyze run .../a60-y --job 2026-11-05T21:54:46Z-8e37`**, "the job is queued again with 2 of 5 items settled, and the resume does not redo them". On disk three files carried a head, not two. | as briefed |
+| Job | `crate job show 2026-11-05T21:54:46Z-8e37` | **queued**; done 2, pending 3. | as briefed |
+| Resume | the printed command, typed, 39 s | Analysed the two untouched tracks and did not analyse the two settled ones again, then **failed `PRECONDITION`, `source-missing`**: "Roman Flügel - Parade D'Amour.flac is no longer a file ... every failure is permanent so resuming this job cannot succeed". That track was the one in flight at the signal: on disk as `08A - 123 - Roman Flügel - Parade D'Amour.flac`, its staged report `0002.json` reading `analyzed` with `renamed_to` set, and **no rename intent** in its staging directory. | failed |
+| Why | `src/cratekit/analysis/cli.py` `handle_run`, `src/cratekit/analysis/artifacts.py` | `handle_run` records the rename intent, renames, then returns `artifacts.produced`, whose `staged_path` removes the item's staging directory, the intent with it, in the same attempt. An interrupt after that and before the engine flips the row to done leaves a pending row under the old name and nothing that names the new one, so `_finalized_twin` finds nothing. | traced |
+| Queue only | `crate tag folder a60-y --queue-only` | **`job: 2026-11-05T21:56:38Z-7a1e, queued`, `drive it with: crate tag folder .../a60-y --job 2026-11-05T21:56:38Z-7a1e`, `items: 0 of 5 settled`**, as before U192. Driven with that command so nothing was left queued: succeeded, 5 of 5. | met |
+
+**A60 (#423) is not met** and depends on **#555 (U223)**, filed with this finding at P1: the printed resume must finish a job whose interrupt landed between a rename and its row's commit. Every other line of the brief read as written. No provider call. The battery is sitting 68's.
+
+
+## Sitting 73, 2026-11-05, the attended session on v0.8.0, no desktop control: A71 (#445), held for a native label landing
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| What can be marked | the 78 landing session records under the library's `history/sessions` | **None carries a `labels` entry**: no batch has been landed natively with label filing yet. A45 (#369), the card that lands one, is open. | read |
+| The nearest pass | `crate label mark Defected --pass 2026-11-05T022315Z-910b_synced` (sitting 55's landing, which carried the ten Defected tracks), run `2026-11-05T21:41:50Z-5d69` | Gate `label.mark.confirm`, digest `94599ea8fbc7f182`: **"pass: 2026-11-05T022315Z-910b_synced, landed on the database native 'inbox' tree"**, "renamed on the account: none", left alone **"Defected 2026: the landed batch filed no track of this year under the label"**, `undone by: crate sync unmark --pass ...`. The item's `name` reads empty, since the account already calls the playlist `DOWNLOADED Defected 2026`. Answered `abort`; no provider call. | read |
+
+**A71 (#445) is held** and now depends on **#369 (A45)** as well: the proof needs a label batch landed natively with `--label`, and a label batch is downloaded only on Phillip's go per label. The gate's reading of a native pass with nothing filed under the label is recorded above for the retake.
+
+
+## Sitting 74, 2026-11-05, the attended session on v0.9.0, no desktop control: A81 (#476), the continue after the call ceiling resumes the kept listing
+
+A sub session of the attended run with no desktop control. The installed copy is v0.9.0, which carries U217 (#533). No job running, rekordbox and rekordboxAgent not running before every verb, both backup ages two days; no library write, so no acknowledgment was needed. Before the first run the label crawl cache held Defected's release reads (`reads.json`, sitting 60's) and **no kept listing**, so the first run listed from nothing. Every provider call went on the account; the provider gate's count was 507,147 before.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Ceiling | `crate label playlists Defected`, run `2026-11-05T23:08:51Z-402c`, 61 s | **Stopped at exactly 500 calls**, `blocked (REFUSED_BY_POLICY)`, `provider-call-ceiling`, printing **`crate --calls 1000 label playlists Defected`**. The message now reads "the remaining items stay queued; what it read and did not keep is read again when it continues" (U217 dropped "what it did is kept"). Spend line: 500 calls, none rate limited. The kept listing was written on the way out: `label_crawl/defected/listing.json`, 1 named, 84 identified, 80 searched and 167 listed answers. | stopped |
+| Its continue | the printed command, exactly, run `2026-11-05T23:10:01Z-f817`, 66 s | **Reached the crawl gate with 542 calls**: "listing: the label's listing continued from an earlier run: 332 answer(s) kept, the oldest 2 minute(s) old, and 331 asked of the provider now". Gate `label.playlists.crawl`, digest `13d2f3c783fd3ccf`: **12,093 releases listed**, 506 kept reads from sitting 60 (9 hours old), the other 11,587 at least 23,174 calls, about 39 min; `call ceiling` names `--calls 23900`. Two roster artists, `3534055` and `3930127`, were reported unavailable. | gate |
+| Crawl gate | `crate run decide --actor session 2026-11-05T23:10:01Z-f817 label.playlists.crawl abort` | `ok`, recorded by session. **The crawl was not run**: at least 23,174 calls is over this run's 5,000 call bound for one command, and the card proves the listing's stop and continue, which both happened before the gate. | aborted |
+
+**Calls:** 500 then 542, **1,042 for the whole listing**, where sitting 60 on v0.7.0 paid 500, then 1,000, then 1,790 (3,290) to reach the same gate, and a fresh listing alone was 1,790. The continue is cheaper than even one fresh listing because U217 also reads discovery's listings back from the store rather than paging every discovered artist twice. The gate's count moved 507,147 to 508,189.
+
+**A81 (#476) is met**: the build stopped at exactly 500 with outcome blocked and its printed `--calls 1000` continue, and that continue resumed from the kept answers and finished the listing under its raised ceiling. The macOS battery it owes is sitting 68's on `3c0b3722`, which carries U193.
+
+
+## Sitting 75, 2026-11-05, the attended session on v0.9.0, no desktop control: A58 (#418), the second ask of one label costs no call
+
+Run straight after sitting 74, on the same conditions. Every provider call went on the account; the gate's count was 508,189 before.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Defected, first | `crate label sync --next --label defected`, run `2026-11-05T23:11:26Z-c16a`, 12 s | `no_op`: "Defected: nothing new since it was last asked; 11991 release(s) past this run's window", and **"the label's listing was answered from the one kept by an earlier run, 2 minute(s) old, with no listing call to the provider"**, so `label sync` reads the listing `label playlists` kept. The report names Defected only. **12 calls.** | read |
+| Defected, again | the same command, run `2026-11-05T23:11:45Z-4879`, 10 s | The same answer, **12 calls**, where sitting 60 paid 1,800. | finding |
+| What the 12 are | the same command once more through the installed interpreter with the HTTP client's request log on, run `2026-11-05T23:12:50Z-d08a`, 12 calls | **None is a listing call**: one session read and one user read, then album and its tracks for five releases (`519880827`, `555140902`, `497841184`, `513897942`, `482701430`), the window's confirmed releases whose ownership the sweep checks by reading their tracks against the library. Those reads are not kept, so a label with nothing new pays them on every ask. | traced |
+| A label with something new | `crate label sync --next --label puls`, run `23:13:51Z-db54`, 3 calls | Refused `label-sync-unlisted`: **18 provider artists are named exactly `PULS`**, and the entry sitting 69 added names no seed. | refused |
+| Another | `crate label sync --next --label voll-schoen`, run `23:14:08Z-e699`, 83 calls | Refused `label-sync-unlisted`: no artist named exactly `Voll Schön`, no seed, and discovery found nothing. | refused |
+| Multinotes, first | `crate label sync --next --label multinotes` (asked 2026-10-07, answered not now), run `2026-11-05T23:14:30Z-1b5f`, **31 s** | `ok`: "the label's listing was read from the provider, since none was kept"; **the question: 2 new releases, 7 tracks, about 310 MB**, Murat Uncuoglu `Just Now` (2020, 3 tracks) and `Trees Of Light` (2019, 4 tracks), with its answer command. The report names Multinotes only. **128 calls**, one label's listing and its question. | question |
+| Multinotes, again | the same command, run `2026-11-05T23:15:09Z-c4c7`, under 1 s | **The same question, printed from the saved one, with no provider call**: no spend line, and the gate's count stayed 508,439. | met |
+
+**A58 (#418) is met**: the time (31 s), the one label report with its question, the call count (128, one label's listing), and the second run's zero calls, on Multinotes, a followed label below the first in registry order with something new, which is the case U189's "a saved question is printed again with no provider call" names. Defected, with nothing new, saves no question, so each ask lists again; U217 makes that listing free, and what is left is **12 calls a run**, the session and the ownership reads of the five releases in its window. A small finding, recorded here and no card. The battery it owes is sitting 68's.
+
+**Calls for the sitting:** 250 (Defected 36, PULS 3, Voll Schön 83, Multinotes 128); the gate's count ended at 508,439. **Left for Phillip:** the Multinotes question is saved and waits for his answer (`crate label sync --answer ... --label multinotes`), since label releases are always his call. Two followed labels cannot be listed until their entries carry a seed: **PULS** (18 artists share the name) and **Voll Schön** (no artist by the name; each ask costs about 80 calls of discovery for nothing).
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**

@@ -299,6 +299,13 @@ ends with the command that lists the whole pass at once:
 crate intake missing --run RUN_ID
 ```
 
+A track the account lists with no title or no artist does not hold its
+playlist back: the pass queues the playlist's other tracks and names that one,
+by its id and why, in its summary and a warning. Once the playlist's job
+succeeds it is recorded like any other, so no later pass offers it again; bring
+the named track in by hand once the account names it. A playlist with no track
+left to queue is reported unreadable and offered again.
+
 It writes one list for every playlist job the pass queued on this library,
 named for the run, so the pass downloads and lands as one batch. A track two
 playlists share is listed once, and the list's manifest names both playlists.
@@ -1089,6 +1096,16 @@ on Tidal or in rekordbox, it refuses as stale and names it, and a fresh
 provider calls the write is expected to make, and when that is more than one
 command may make, the `--calls` value that lets it finish in one go.
 
+Putting a Tidal playlist in rekordbox's order is one move per track, each read
+back before the next. When the provider is slow to show a change, Cratekit
+waits a few seconds and reads again rather than moving anything twice, and when
+it cannot trust what it reads it leaves that one playlist with every track on
+it but not yet in order. That stops that pair alone: every other pair, and
+every playlist brought into rekordbox, is still written, and the answer names
+the playlists left out of order and the `crate --run RUN sync pair` that
+finishes them. Look at each in the Tidal app first; the continue moves nothing
+until its reading agrees with the one it took just before.
+
 ### Publish a playlist
 
 ```bash
@@ -1117,7 +1134,10 @@ crate converge
 `route unplaced` lists tracks no tree files, and `audit coverage` asks the same
 question from an export. `audit duplicates` never deletes. Run `route resort`
 after a genre or energy change, and `converge` to check that each tree matches
-the database. `route resort` also fills a genre sub, a playlist beside a genre
+the database. `route resort` first shows every track it will add at the
+explicit gate `route.resort.apply`, answered with `crate run decide`, and files
+only the routing tree: INBOX and the other places the taxonomy names are left
+alone. It also fills a genre sub, a playlist beside a genre
 folder's energy bands for one genre: in the shipped taxonomy, every track
 tagged exactly `Rominimal` sits in its Minimal / Deep Tech band and in
 `Minimal / Deep Tech / Rominimal` too. A library whose taxonomy copy predates
@@ -1133,7 +1153,9 @@ you accept or reject each one with `crate review resolve`. Nothing is inferred.
 behind a confirm gate, and never one the rekordbox collection references, since
 that would strand the row. It does not re-point rows or rewrite an export. `converge` reports and never repairs. If a tree has fallen
 out of step, `crate rebuild --tree TREE_ID --actor YOUR_NAME` is the only way to
-clear it.
+clear it. INBOX is the exception: no rebuild can reproduce its batches, so
+naming it asks the explicit gate `rebuild.accept`, and accepting records you
+as having taken it as it stands after a restore.
 
 To tidy everything the product's rules govern in one pass, on both sides:
 
@@ -1149,7 +1171,10 @@ gives every downloaded set on the account its INSPIRATION playlist: each
 `DOWNLOADED` playlist in a `Downloaded Sets <year>` folder with no INSPIRATION
 playlist of its name (the account name without `DOWNLOADED `) gets one, holding
 the library tracks its account tracks match, in the set's order, with every
-track it could not match named under the set. Nothing is downloaded, a set with
+track it could not match named under the set. A track Tidal lists with no
+title or no artist does not hold its set back: it is named among the misses,
+by its id and why, and the set's other tracks are matched; a set none of whose
+tracks can be read is shown unread. Nothing is downloaded, a set with
 no match gets no playlist, and a set already in INSPIRATION is skipped, so a
 second run plans nothing. That write needs rekordbox closed. The account
 area builds a folder for every followed label that lacks one or a year, marks
@@ -1215,8 +1240,9 @@ never touched: when the rotation moves an edited batch into Old in the same
 run, the step writes nothing that run and the next organize takes the other
 edits again, while the edit to that batch goes with its retired playlist. A track you add on Tidal to any mirrored
 playlist that your library does not have is queued for download once, by the
-rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one; it
-stays on Tidal meanwhile, and once it lands the next organize files it where
+rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one (a
+track Tidal lists with no title or no artist is named and not queued, and the
+playlist's other tracks still are); it stays on Tidal meanwhile, and once it lands the next organize files it where
 you put it. A track whose recording you already own as another release is not
 queued, and one the download found you own, or could not fetch, is named as
 such and left on Tidal as you put it. Approve one area and abort the other
@@ -1675,6 +1701,12 @@ is an act at a browser and the vendored downloader owns that conversation. The
 full procedure, and why the session has to be the PKCE kind or every download
 quietly comes back lossy, is in [`adapters.md`](adapters.md) under "Authorising
 the provider". Delete the plaintext token file once it is in the keychain.
+
+When the streaming account rejects the stored session, at sign in or in the
+middle of a job, Cratekit says the session was rejected and to sign in again,
+whatever the answer's body held, a gateway's page and an empty answer
+included. When the provider fails or cannot be reached it says to wait and
+resume, and keeps the stored session, because nothing judged it.
 
 ## Where things live
 

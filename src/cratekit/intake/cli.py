@@ -1450,9 +1450,10 @@ def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[
     carries one shape wherever a bound provider was asked about a playlist
     and could not answer. What is this verb's is the reading of the rows.
 
-    PUBLIC because ``crate sync all`` lists each account playlist it sweeps
-    through exactly this path, so a row this verb refuses is refused there too.
-    An empty mapping is a playlist the provider listed with nothing in it.
+    PUBLIC for a caller that reads one playlist whole. ``crate sync all`` read
+    each playlist it sweeps here until R-1289, and now reads them through
+    :func:`list_playlist_readable`, so one unreadable row no longer leaves the
+    whole playlist out of the sweep. An empty mapping is a playlist the provider listed with nothing in it.
 
     A PLAYLIST ONLY. The reserved reference is :func:`list_favorites`, which
     carries a count this shape has nowhere to put.
@@ -1513,6 +1514,26 @@ def _absent(title: str) -> str:
     return "artist" if match.split_title(title)[0] else "title"
 
 
+def set_aside(row: object) -> Unreadable:
+    """One provider row the reader refused, named by its id as the account lists it (U213).
+
+    THE READER'S OWN RULE for which half it names, so every caller that sets
+    a row aside says the same word: :func:`list_playlist_readable`, and
+    ``crate organize``'s INSPIRATION step, which names such a track of a
+    downloaded set beside the set's misses (R-1295). The id is empty for a row
+    that carries none, which the caller refuses as it refuses that row today.
+    """
+    ref, artist, title = match.listed_names(row)
+    code = match.row_isrc(row)
+    return Unreadable(
+        ref=ref,
+        artist=artist,
+        title=title,
+        isrc=str(code).strip() if code else "",
+        why=f"the account lists it with no {_absent(title)}",
+    )
+
+
 def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readable:
     """:func:`list_playlist_declared`, with a row the reader refuses set aside, not fatal (U213).
 
@@ -1522,7 +1543,12 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
     anywhere could be made. Here that track is named where it stood and every
     other track reads as it always did. ``crate sync pair`` reads each pair's
     account side here too (R-1264), so a twin made over such a playlist syncs
-    the tracks it can read. A single playlist verb keeps
+    the tracks it can read, and so do ``crate sync all``'s sweep and ``crate
+    organize``'s mirror downloads (R-1289), which queue the tracks it can read
+    and name the others. ``crate organize``'s INSPIRATION step reads a
+    downloaded set row by row too (R-1295), through :func:`set_aside`, since it
+    matches each track by its position in the set rather than queueing it by
+    id. A single playlist verb keeps
     :func:`list_playlist_declared`, whose refusal is the answer when that
     playlist is all it was asked.
 
@@ -1536,7 +1562,7 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
     order: dict[str, None] = {}
     nameless: list[int] = []
     for position, row in enumerate(rows, start=1):
-        ref, artist, title = match.listed_names(row)
+        ref = match.listed_names(row)[0]
         if not ref:
             nameless.append(position)
             continue
@@ -1545,16 +1571,7 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
             read.append(match.read_row(row, origin=match.TIDAL, position=position))
         except match.UnreadableList:
             if ref not in refused:
-                code = match.row_isrc(row)
-                refused[ref] = Unreadable(
-                    ref=ref,
-                    artist=artist,
-                    title=title,
-                    isrc=str(code).strip() if code else "",
-                    # THE READER'S OWN RULE for which half it names, so the
-                    # gate and a single playlist verb say the same word.
-                    why=f"the account lists it with no {_absent(title)}",
-                )
+                refused[ref] = set_aside(row)
     _refuse_unidentified(nameless)
     tracks = frozen_rows(tuple(read))
     unread = {ref: one for ref, one in refused.items() if ref not in tracks}
@@ -1932,6 +1949,7 @@ __all__ = [
     "reset_cache",
     "resolve_track",
     "set_argv",
+    "set_aside",
     "thawed",
     "tracklist_name",
     "withheld_warning",
