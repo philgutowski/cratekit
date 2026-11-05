@@ -44,8 +44,10 @@ from cratekit.modules.outbound import mirror
 
 #: The frozen record's own schema version. 2 since U150, which froze the
 #: INBOX folder's retirement and the titles INBOX holds; a version 1 record
-#: is planned afresh, never read as a library with no INBOX.
-VERSION = 2
+#: is planned afresh, never read as a library with no INBOX. 3 since U201,
+#: which froze each genre folder's flag and each row's membership time, so a
+#: version 2 record is planned afresh rather than read as a tree with no genre.
+VERSION = 3
 
 #: How long a frozen plan is kept once another is written.
 KEPT_DAYS = 7
@@ -77,7 +79,7 @@ def _library_json(library: Any) -> dict[str, Any]:
                     {
                         "name": source.name,
                         "rows": [
-                            [row.content_id, row.title, row.artist, row.isrc, row.path]
+                            [row.content_id, row.title, row.artist, row.isrc, row.path, row.added]
                             for row in source.rows
                         ],
                     }
@@ -85,6 +87,7 @@ def _library_json(library: Any) -> dict[str, Any]:
                 ],
                 "retire": folder.retire,
                 "present": sorted(folder.present),
+                "genre": folder.genre,
             }
             for folder in library.folders
         ],
@@ -111,14 +114,16 @@ def _library_of(data: Mapping[str, Any]) -> Any:
                                 artist=str(artist),
                                 isrc=str(isrc),
                                 path=str(path),
+                                added=str(added),
                             )
-                            for cid, title, artist, isrc, path in source["rows"]
+                            for cid, title, artist, isrc, path, added in source["rows"]
                         ),
                     )
                     for source in folder["playlists"]
                 ),
                 retire=_flag(folder["retire"]),
                 present=_titles(folder["present"]),
+                genre=_flag(folder["genre"]),
             )
             for folder in data["folders"]
         ),
@@ -138,7 +143,7 @@ def _titles(value: Any) -> frozenset[str]:
 def _flag(value: Any) -> bool:
     """A frozen boolean, refused as unreadable when it is anything else."""
     if not isinstance(value, bool):
-        raise ValueError(f"a folder's retire is {value!r}, not true or false")
+        raise ValueError(f"a folder's flag is {value!r}, not true or false")
     return value
 
 

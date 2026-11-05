@@ -52,6 +52,8 @@ PROTOCOL_METHODS = frozenset(
         # R-836. A read that names a playlist's tracks, and the one removal.
         "track_names",
         "remove_tracks",
+        # U201. The same read with each track's added time and the declared count.
+        "playlist_listing",
         # U123. The one playlist removal, of a dated playlist heard.
         "remove_playlist",
         # U130. The order of a playlist the product made or the author paired.
@@ -118,6 +120,12 @@ class FakeAccount:
         self.any_agreeing: list[str] = []
         #: What this account says about a row it does not match, by identity.
         self.reasons: dict[str, str] = {}
+        #: Each ``(playlist, track)``'s added time for ``playlist_listing`` (U201).
+        self.added_at: dict[tuple[str, str], str] = {}
+        #: Tracks a playlist holds that its listing leaves out, by playlist.
+        self.hidden: dict[str, tuple[str, ...]] = {}
+        #: Playlists whose listing declares no count.
+        self.undeclared: set[str] = set()
         #: R-835. Folders, identifier to name, which folder each playlist
         #: sits in, and which folder (if any) each folder sits in. A
         #: playlist or folder with no parent sits at the root.
@@ -269,6 +277,32 @@ class FakeAccount:
             one: self.names.get(one, (f"Artist of {one}", f"Title of {one}"))
             for one in self.playlists.get(playlist_id, ())
         }
+
+    def playlist_listing(self, playlist_id: str):
+        """``track_names`` with ``added_at``'s times and a declared count (U201).
+
+        ``hidden`` names tracks the provider counts and does not list, by
+        playlist, so a short read is drivable; ``undeclared`` names playlists
+        that declare no count.
+        """
+        from cratekit.modules.outbound.service import PlaylistListing
+
+        held = list(self.playlists.get(playlist_id, ()))
+        names = self.track_names(playlist_id)
+        hidden = self.hidden.get(playlist_id, ())
+        for one in hidden:
+            names.pop(one, None)
+        listed = [one for one in held if one not in hidden]
+        return PlaylistListing(
+            names=names,
+            added={
+                one: self.added_at[(playlist_id, one)]
+                for one in names
+                if (playlist_id, one) in self.added_at
+            },
+            listed=len(listed),
+            declared=None if playlist_id in self.undeclared else len(held),
+        )
 
     def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
         """Take every occurrence off. One write per call, so ``fail_on`` names the playlist."""

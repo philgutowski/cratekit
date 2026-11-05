@@ -1,0 +1,62 @@
+name = "u202-composites"
+pass_kind = "light"
+
+# The five rows u202-rows.toml measured zero. C8, C10, R2 and P1 are
+# measured again over the four tests written to kill them; C3 is an
+# equivalent mutant on a single read and gets its composite.
+
+[[rows]]
+id = "C8_scope"
+description = "_discovered_back: an account playlist a pair may not hold is brought over"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''            try:
+                _scope_account(
+                    account_id, reader.listed, reader.label_owned, reader.set_built, reader.mirrored
+                )
+            except CratekitError as exc:'''
+new = '''            try:
+                pass
+            except CratekitError as exc:'''
+
+[[rows]]
+id = "C10_reads_account"
+description = "plan: a sync of every pair with no marked pair never lists the account, so nothing comes back"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''    reads_account = bool(wanted) or (every and bool(document.folders))'''
+new = '''    reads_account = bool(wanted)'''
+
+[[rows]]
+id = "R2_confined"
+description = "pair_reverse.create: the twins' confinement check is not run before the commit"
+file = "src/cratekit/sync/pair_reverse.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py"]
+old = '''                twins.assert_confined(
+                    db,'''
+new = '''                (lambda *a, **k: None)(
+                    db,'''
+
+[[rows]]
+id = "P1_reserve_held"
+description = "reserve_made_rekordbox: an account playlist a pair already holds is made a second rekordbox playlist"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py"]
+old = '''            held = document.pairs.get(account_id)
+            if held is not None:
+                return held.rekordbox_id, False
+            rekordbox_id = str(create())'''
+new = '''            rekordbox_id = str(create())'''
+
+[[rows]]
+id = "C3_composite"
+description = "composite for C3_removed_only in u202.md: plan_pair never dates a rekordbox removal, so a removal later than the account's put back reads as no moment"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_back.py", "tests/test_sync_pair.py", "tests/test_sync_pair_discover.py"]
+old = '''                rekordbox_removed[as_key(content_id)] = max('''
+new = '''                _undated = max('''
