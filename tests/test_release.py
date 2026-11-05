@@ -563,7 +563,8 @@ def test_a_range_with_no_local_merge_lists_what_the_first_parent_line_lists(repo
     # A branch that catches up with main, then lands without a pull request.
     _git(repo, "checkout", "-q", "-b", "unit/u3-b", "main~1")
     _commit(repo, "b.txt", "feat: b")
-    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "merge: main into the U3 branch", "main")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m",
+         "merge: main into the U3 branch", "main")
     _git(repo, "checkout", "-q", "main")
     _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "Merge relay task 3 from relay/3",
          "unit/u3-b")
@@ -730,9 +731,14 @@ def test_plan_reads_the_bump_from_the_version_the_range_starts_at(repo, capsys, 
     assert "current version 0.2.0" in out
     assert "proposed bump: patch, v0.2.0 to v0.2.1" in out
     assert "merge(u4)" not in out
-    # A range ending past the next version tag is titled by its tip.
-    assert _plan(repo, monkeypatch, since="v0.2.1", tip="v0.3.0", notes=True) == 0
-    assert capsys.readouterr().out.startswith("Cratekit v0.3.0.\n")
+    # A range ending at a version tag is titled by that tag, however the tip
+    # is spelled, not by the proposal (a patch here, v0.2.2).
+    _git(repo, "branch", "at-v0.3.0", "v0.3.0")
+    for tip in ("v0.3.0", "at-v0.3.0"):
+        assert _plan(repo, monkeypatch, since="v0.2.1", tip=tip, notes=True) == 0
+        body = capsys.readouterr().out
+        assert body.startswith("Cratekit v0.3.0.\n"), f"--tip {tip} titled the notes {body[:20]!r}"
+        assert "@v0.3.0" in body
 
 
 def test_plan_refuses_a_range_that_crosses_a_version_tag(repo, capsys, monkeypatch):
@@ -743,3 +749,27 @@ def test_plan_refuses_a_range_that_crosses_a_version_tag(repo, capsys, monkeypat
     with pytest.raises(release.ReleaseError, match="crosses v0.3.0"):
         _plan(repo, monkeypatch, since="v0.2.0", tip="HEAD", notes=True)
     assert capsys.readouterr().out == "", "notes were printed over a range two releases wide"
+
+
+def test_plan_refuses_a_reversed_range(repo, monkeypatch):
+    _set_version(repo, "0.2.0")
+    _merge_into(repo, "main", "cloud/3-a", "merge(u3): a unit")
+    _set_version(repo, "0.3.0")
+    with pytest.raises(release.ReleaseError, match="is not behind"):
+        _plan(repo, monkeypatch, since="v0.3.0", tip="v0.2.0")
+
+
+def test_a_pull_request_merged_twice_under_github_s_default_subject_is_listed_once(repo):
+    # U2's head reached upstream through the API and the local main under
+    # GitHub's default subject, which is no landing subject but is on the line.
+    _tag_and_branch_upstream(repo)
+    head_a, merge_api = _merge_into(repo, "upstream", "cloud/2-a", "merge(u2): through the API")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m",
+         "Merge pull request #2 from o/cloud/2-a", head_a)
+    _pull_upstream(repo)
+    pulls = [{"number": 2, "title": "U2: a", "merged_at": "x", "merge_commit_sha": merge_api,
+              "head": {"sha": head_a}}]
+    _since, prs, direct = release.gather(_fake_gh(pulls)[0], "o/r")
+    assert [p.number for p in prs] == [2]
+    assert direct == [], "the second merge of a listed pull request was listed again"

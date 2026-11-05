@@ -490,16 +490,27 @@ def version_at(runner: Runner, ref: str) -> str:
     return versions[0]
 
 
-def refuse_a_crossed_tag(runner: Runner, since: str, tip: str) -> None:
-    """Refuse a range holding a version tag other than the one at its tip."""
+def refuse_a_crossed_tag(runner: Runner, since: str, tip: str) -> str | None:
+    """Refuse a reversed range or one holding a version tag other than at its tip.
+
+    Returns the highest version tag at the tip, which titles the range's notes
+    however the tip was spelled, or None when no version tag is there.
+    """
+    if runner(["git", "merge-base", "--is-ancestor", since, tip]).returncode != 0:
+        raise ReleaseError(f"{since!r} is not behind {tip!r}, so the range holds nothing of it")
     tip_sha = git(runner, "rev-parse", f"{tip}^{{commit}}")
     inside = git(runner, "tag", "--list", "v*", "--merged", tip, "--no-merged", since)
+    at_tip = []
     for name in sorted(inside.splitlines(), key=lambda n: parse_tag(n) or (0, 0, 0)):
-        if parse_tag(name) and git(runner, "rev-parse", f"{name}^{{commit}}") != tip_sha:
+        if not parse_tag(name):
+            continue
+        if git(runner, "rev-parse", f"{name}^{{commit}}") != tip_sha:
             raise ReleaseError(
                 f"the range crosses {name}; start it there with --since {name}, "
                 f"or end it there with --tip {name}"
             )
+        at_tip.append(name)
+    return at_tip[-1] if at_tip else None
 
 
 def cmd_plan(args, runner: Runner = run) -> int:
@@ -519,8 +530,9 @@ def cmd_plan(args, runner: Runner = run) -> int:
     sync_history(runner)
     repo = args.repo or repo_slug(runner)
     since, prs, direct = gather(runner, repo, since=asked_since, tip=tip)
+    tip_tag = None
     if asked_since:
-        refuse_a_crossed_tag(runner, asked_since, tip)
+        tip_tag = refuse_a_crossed_tag(runner, asked_since, tip)
         current = version_at(runner, asked_since)
     else:
         current = read_versions(ROOT)[0]
@@ -538,7 +550,7 @@ def cmd_plan(args, runner: Runner = run) -> int:
             start = since or "the root commit"
             print(f"release: nothing landed after {start}; no notes to print", file=sys.stderr)
             return 1
-        tag = tip if parse_tag(tip) else f"v{nxt}"
+        tag = tip_tag or f"v{nxt}"
         print(notes(tag, repo, prs, direct), end="")
         return 0
     print(f"current version {current}, last tag {since or 'none (from the root commit)'}")
