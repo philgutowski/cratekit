@@ -128,10 +128,54 @@ description = "_classify: say no landing record names an unrecognised playlist e
 file = "src/cratekit/intake/rotate.py"
 surface = "user"
 tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
-old = '''            if unreadable
+old = '''            if unread
             else'''
 new = '''            if False
             else'''
+
+[[rows]]
+id = "M17_log_unlisted"
+description = "_unlisted: read a log the account cannot list as listed, so its batches are said to have no record"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''    except OSError:
+        return True
+    return False'''
+new = '''    except OSError:
+        return False
+    return False'''
+
+[[rows]]
+id = "M18_folder_unknown"
+description = "_batch_folder: read a refused batch folder as absent, so a batch is said to have none"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''    except OSError:
+        return None'''
+new = '''    except OSError:
+        return False'''
+
+[[rows]]
+id = "M19_folder_unread_reason"
+description = "_classify: say no batch folder carries the name even while the music folder could not be read"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''            if folder_unread
+'''
+new = '''            if False
+'''
+
+[[rows]]
+id = "M20_unread_unlisted"
+description = "Landings.unread: say nothing of a log that could not be listed"
+file = "src/cratekit/intake/rotate.py"
+surface = "user"
+tests = ["tests/test_inbox_unmirrored.py", "tests/test_inbox_rotate.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py", "tests/test_inbox_analyzed.py", "tests/test_organize_mirror.py"]
+old = '''        if self.unlisted:'''
+new = '''        if False:'''
 
 [[rows]]
 id = "M16_old_only_under_inbox"
