@@ -197,7 +197,10 @@ the plan promised, whether that is a collision, a file that left while the gate
 waited, a name taken after the plan was approved, a rename the filesystem
 refused, or a title tag that could not be written. The renames that could happen
 still happened, `totals.renamed` says how many, and the cause names every
-outstanding file with the reason it was not renamed. It is not a refusal and it
+outstanding file with the reason it was not renamed. A file held back because
+its name is taken by a file carrying the same ISRC is said to be a second copy
+of one recording, and carries that ISRC: keep one copy and move the other out
+of the folder. It is not a refusal and it
 is not ok: a sweep reported as ok over a rename that never happened is a library
 nobody knows is out of convention.
 
