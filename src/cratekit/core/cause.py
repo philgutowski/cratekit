@@ -1288,6 +1288,17 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # A rebuild of a tree still on the bridge would write membership the
         # next import would overwrite.
         "rebuild-tree-not-native": ExitCode.PRECONDITION,
+        # U219. A rebuild or a resort of a tree the taxonomy derivation does not
+        # describe, the intake flow above all, would file the routing tree's
+        # genre and energy folders under that tree's root (R-789, sitting 61).
+        # A PRECONDITION beside the one above: the tree named is the wrong tree
+        # for this verb, and naming the routing tree is the answer.
+        "rebuild-tree-not-derivable": ExitCode.PRECONDITION,
+        # U219. A resort's worker derived adds other than the ones its gate
+        # showed and a person approved, so the library or its taxonomy moved
+        # between the gate and the drive. Stale, as a decision over a changed
+        # digest is: the answer is a new plan and a new answer.
+        "resort-plan-stale": ExitCode.DECISION_STALE,
         # ── U37's refusals, appended ────────────────────────────────────────
         #
         # APPENDED, same reason as the U20 block above: two units writing into
