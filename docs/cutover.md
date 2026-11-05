@@ -1959,6 +1959,18 @@ Made and reversed through the product's account client, as Phillip answered at s
 
 **A90 (#518) is met except its download half**: the queued track was cancelled by Phillip's choice rather than landed and filed, so "the download" step is owed, and the read was from the database rather than the rekordbox window. Two small findings, no card: an unfavourite leaves the row's Pink colour; and undoing a favourite on the account loses to rekordbox's newer placement until the mirror has written it back, by the stated rule.
 
+
+## Sitting 66, 2026-11-05, the attended session on v0.8.0: A68 (#439) judged by measure, A63's (#429) hearts check, A41's (#365) stale case, A96's (#539) notes prepared
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| A68, the dyn call | the file's tags and sitting 55's `crate analyze check` | The by-ear check is replaced by the measured read, since the session cannot listen. `What A Difference A Day Made`: Cratekit's `driftlevel` 2.5 (`drift` variable, cut 1.5); rekordbox's Dynamic grid 664 beats from 127.57 to 130.25, a span of 2.68. Both measures say the tempo moves, so the `dyn` mark was the right call. The title's 97 against rekordbox's 129 is a 4:3 reading (97 × 4/3 ≈ 129.3) of a swung ballad, a separate matter and no card. The untagged 13 rows all read one tempo. | met by measure |
+| A63, the hearts check | `crate export collection` to a scratch file (14 rows with no file, 153 unmapped paths, both warned), then `crate sync favorites --export` answered `sync` at its gate twice (the job asked again on its own run), run `2026-11-05T20:21:01Z-1e4f`, job `2026-11-05T20:21:15Z-66f9`, 995 calls, 2m06s | 292 favourites swept, hearts added where matched, never removed; **19 unmatched, 8 of them ties refused with the reason ending "so none was chosen"**, for example The Prodigy `Smack My Bitch Up` (ISRC GBBKS9700073, 4 provider tracks agree, the account hearts 2 of them) and Bob Moses `Time of Your Life` (QM6MZ2589604, 3 agree, 2 hearted). | met |
+| A41, the stale case | `crate organize --only mirror` to its gate (run `2026-11-05T20:23:49Z-5868`, digest `b7d48d4cf6fe79b6`, nothing to write); then Island Life put in `INBOX Phil 10_8_26` on the account and a `mirror-edits` pass (rehearsed `8025f47525aa2eba`, applied live, 1 joined); then the first run's gate answered `apply` | **`decision-stale`** after **677 calls** and 1m21s: the apply planned in full and found the decided plan changed. Sitting 58's apply with no write between said "mirror plan frozen"; this one did not. A41 expects no stale with a write between, so it is filed as #552 (U222, `idea`), and the join was undone (rehearsed `ef3fb7da01edfb22`, applied, a further report `no_op`). | not met |
+| A96, the notes | `release.py plan --since v0.6.0 --tip v0.7.0` and `--notes` | 12 pull requests, U201 to U211 and U214, none without one, proposing minor, v0.6.0 to v0.7.0; the notes open `Cratekit v0.7.0.`, carry no `Merge branch 'main'` line, and end with the `@v0.7.0` upgrade command. Not yet published: replacing a public release's body waits on Phillip's yes. | prepared |
+
+**Met:** A68 (#439) by measure, and A63 (#429) now that its hearts check is read; A63's "a release you heart afterwards does not swap a mirrored track" is not run, since the client can add a heart but not take one off. **Not met:** A41 (#365), on #552.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
