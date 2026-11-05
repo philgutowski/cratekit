@@ -346,6 +346,22 @@ names a kind of music rather than a word written onto files, and not the label
 genre gate itself, which judges a release in a label sweep by the general
 catalogue's words and writes nothing onto a file.
 
+### Kept listing
+Every provider answer a label's roster was built from, kept for seven days in
+one file per label beside the kept release reads (U217): the name searches,
+the identifier reads, discovery's album searches and each artist's listing of
+each release method. A listing stopped by the call ceiling continues from it,
+and a second listing of the label inside the seven days asks the provider
+nothing; `label sync --next`, `label playlists` and the label sweep all read
+it. Each answer has its own age, and the document says what it was asked for,
+the label's name, match and seeds, so an entry that changed reads it as empty.
+A failed read is never kept.
+
+*Avoid:* the **kept release reads** of R-1091, which keep a release's tracks
+for a full `label playlists` build, not the label's listing, or reading a kept
+listing as the catalogue now: a release put out after it was read shows once
+it is seven days old, and the screen says its age.
+
 ### Seller account
 The Bandcamp account a followed label sells its releases from, the name in
 their address, `pulsromania` for `pulsromania.bandcamp.com`, or the whole host

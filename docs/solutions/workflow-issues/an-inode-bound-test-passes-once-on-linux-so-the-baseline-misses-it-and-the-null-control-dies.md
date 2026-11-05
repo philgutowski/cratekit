@@ -47,3 +47,10 @@ INVALID. Nothing in the unit's diff touches it.
   ...` then ran a green baseline and a zero null control with no copy of the
   baseline file at all, and the test's file passed 53 of 53 there.
   It changes where the suite writes, never what it asserts.
+  **It does not always hold**, measured by R-1264 on 2026-11-05: on that
+  container `/var/tmp` gave files inodes near 600,000, below the bound, and
+  a driver run under `TMPDIR=/var/tmp/r1264` refused a red baseline on this
+  test after an earlier run there was green. Check an inode first
+  (`python -c "import tempfile,os;print(os.stat(tempfile.NamedTemporaryFile().name).st_ino)"`
+  under the `TMPDIR` you mean to use), and fall back to the scratch copy above
+  when it is under 2,000,000.

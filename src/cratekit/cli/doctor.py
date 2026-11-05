@@ -1602,7 +1602,24 @@ def _origin_verdict(cfg: config.Config, active_text: str, named: str) -> tuple[S
 
 def _check_rekordbox_closed(inputs: _Inputs) -> Finding:
     key, title = "rekordbox.closed", "rekordbox not running"
-    running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    try:
+        running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    except processes.AbsenceUnconfirmed as exc:
+        # A NOTE NAMING THE PROCESS, NEVER A PASS (U211). The scan met a live
+        # process it could not read, so the absence is unknown and is said as
+        # unknown; it is a note rather than a failure because it clears as the
+        # process finishes exiting, and every write refuses on its own until it
+        # does. A zombie the scan met was skipped and never reaches here.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"{exc.cause.message}. Every database write refuses until the scan "
+                f"reads clean, which it does once the process finishes exiting; a "
+                f"zombie is skipped and never reported"
+            ),
+        )
     if not running:
         return Finding(
             key=key,
@@ -1736,7 +1753,21 @@ def _check_paths_resolved(inputs: _Inputs) -> Finding:
     if inputs.cfg is None:
         return _unchecked(key, title)
     cfg = inputs.cfg
-    running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    try:
+        running = processes.rekordbox_processes_running(lister=inputs.probes.process_lister)
+    except processes.AbsenceUnconfirmed as exc:
+        # NO COPY OVER AN ABSENCE NOBODY CONFIRMED (U211), said as unknown and
+        # as a note, as rekordbox.closed says the same condition.
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"whether the collection's rows resolve was not established: "
+                f"{exc.cause.message}, so no copy of the database was taken. The "
+                f"answer is unknown rather than good"
+            ),
+        )
     if running:
         # FAIL and not INFO, with the act that unblocks it. The condition is
         # reported by rekordbox.closed as well, and this is not that report

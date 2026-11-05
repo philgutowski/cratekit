@@ -734,6 +734,14 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # "wait for the holder", and what is held is the account.
         "provider-gate-held": ExitCode.LIBRARY_BUSY,
         "rekordbox-running": ExitCode.REKORDBOX_OPEN,
+        # U211. The process scan met a live process it could not read, so
+        # rekordbox's absence was not established. On rekordbox's code because
+        # a caller branching on it is asking whether rekordbox's state stops
+        # the write, and it does. Its own slug because nothing established that
+        # rekordbox is running, so "quit rekordbox" would be false, and the act
+        # that helps is waiting for a process to finish exiting. The one
+        # refusal outside the gates that keeps its run (``cli.gates``).
+        "rekordbox-absence-unconfirmed": ExitCode.REKORDBOX_OPEN,
         "library-volume-unmounted": ExitCode.LIBRARY_UNAVAILABLE,
         # U27. Some directory on the way to the configured library root cannot be
         # opened by this account, so which volume the library sits on was not
@@ -1853,6 +1861,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # ``label-sync-unusable``'s rule. PRECONDITION: the file is this
         # installation's to repair, and deleting it costs only provider calls.
         "label-playlists-reads-unusable": ExitCode.PRECONDITION,
+        # U217. The listing a label's roster keeps could not be read: not JSON,
+        # another version, another label, or an answer of the wrong shape.
+        # Refused before any provider call, never read as empty, on R-1091's
+        # rule; deleting the file costs only provider calls.
+        "label-listing-kept-unusable": ExitCode.PRECONDITION,
         # The account holds two root folders named as the label, so which one is
         # the label's is not something a name decides. Its own slug rather than
         # ``export-playlist-ambiguous``, since the remedy is on the account and

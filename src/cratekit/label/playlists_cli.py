@@ -458,6 +458,9 @@ class Estimate:
         default_factory=lambda: int(core_config.DEFAULT_PROVIDER_CALLS_PER_COMMAND)
     )
     spent: int = 0
+    #: Where the label's listing came from, kept or asked and why (U217),
+    #: ``""`` from a catalogue that keeps none.
+    listing: str = ""
 
     @property
     def calls(self) -> int:
@@ -554,6 +557,8 @@ class Estimate:
         }
         if self.kept:
             shown["kept reads"] = _kept_said(self.kept, self.kept_age)
+        if self.listing:
+            shown["listing"] = self.listing
         if self.over_ceiling:
             shown["call ceiling"] = (
                 f"this is more than the {self.ceiling} provider calls one command may "
@@ -591,6 +596,7 @@ def estimate(
         kept_age=oldest,
         ceiling=provider_gate.ceiling(provider_gate.GateSettings.from_config(cfg)),
         spent=provider_gate.command_spent(),
+        listing=listed.kept.said() if listed.kept is not None else "",
     )
 
 
@@ -729,6 +735,8 @@ def _shown(
             f"provider call(s) to read the tracks of the "
             f"{listed.releases - listed.kept} not kept from an earlier run"
         )
+    if listed is not None and listed.listing:
+        shown["listing"] = listed.listing
     if reads is not None:
         shown["release reads"] = _reads_said(reads)
     if planned.stale_folder:

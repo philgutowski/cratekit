@@ -24,7 +24,7 @@ from cratekit.acquire.vendored import is_rate_limit
 from cratekit.core import config, review, tombstone
 from cratekit.core.cause import CratekitError
 from cratekit.core.review import DecisionStore, Queue
-from cratekit.label import crawl, registry
+from cratekit.label import crawl, kept_listing, registry
 from cratekit.label import gate as genre_gate
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
@@ -123,6 +123,15 @@ class LabelListing:
     #: actually keeping out. One the window does not reach becomes what any
     #: release past the window is, unexamined, and is judged when it is reached.
     stale: tuple[str, ...] = ()
+    #: What the label's roster made of its kept listing (U217): reused from an
+    #: earlier run, asked now and why. ``None`` from a catalogue that keeps none.
+    kept: kept_listing.Summary | None = None
+
+
+def kept_of(artist: Any) -> kept_listing.Summary | None:
+    """The kept listing summary a roster carries, or ``None`` when it carries none."""
+    held = getattr(artist, "kept", None)
+    return held if isinstance(held, kept_listing.Summary) else None
 
 
 def _year_of(release: Any) -> str:
@@ -707,6 +716,7 @@ def list_for_label(
         gated=tuple(gated),
         released=tuple(released),
         stale=tuple(stale),
+        kept=kept_of(artist),
     )
 
 
@@ -1145,6 +1155,8 @@ class Listed:
     unread: tuple[Unread, ...]
     claimed: str
     verify: Callable[[str, Any], Mapping[str, Any]]
+    #: What the roster made of the label's kept listing (U217), or ``None``.
+    kept: kept_listing.Summary | None = None
 
 
 def listed_releases(
@@ -1168,6 +1180,7 @@ def listed_releases(
         unread=tuple(unread),
         claimed=entry.match or entry.name,
         verify=verify,
+        kept=kept_of(artist),
     )
 
 

@@ -1,0 +1,73 @@
+{
+  "name": "r1264-composites",
+  "pass_kind": "light",
+  "branch": "cloud/532-crate-sync-pair-refuses-every-pa",
+  "head": "fca9c16f",
+  "when": "2026-11-05 17:12 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 16647,
+  "baseline_exit": 1,
+  "pytest_runs": 4,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 162,
+  "known_source": "/tmp/claude-0/-home-user-cratekit/f7e2fcaf-586d-5218-9b51-1f70d625e657/scratchpad/known-r1264.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/pair_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/pair_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "f2776bce1e5e35c0",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 16647,
+    "baseline_collected": 16647,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M7_account_add_filter",
+      "description": "plan_pair: offer an unread track to the account as an addition, which already lists it; reached on a first sync, where no base strips the unread key",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f1b73cc5f27b58e6",
+      "subset": [
+        "tests/test_sync_pair_unread.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 16,
+      "baseline_collected": 16,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_unread.py::test_a_first_sync_never_offers_the_account_an_unread_track_it_already_lists"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if remote_of(key) and key not in unseen and key not in unread_keys",
+      "new": "        if remote_of(key) and key not in unseen"
+    }
+  ],
+  "dropped": []
+}

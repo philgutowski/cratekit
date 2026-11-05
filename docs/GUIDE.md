@@ -310,6 +310,19 @@ while your intake tree is on the xml bridge and no export once it is database
 native. The pass names the importable file, which is how `sync mark` later finds
 the run, and the batch itself is named for the date and the playlists.
 
+A missing track an earlier download already left in the download staging
+folder, one whose landing was never answered, is not listed again. Each file a
+landing would take from that folder is read for the ISRC the downloader wrote,
+and a missing track carrying the same ISRC is counted under `staged`, named with
+its file on the `staged` line, and left off the list; the landing over that
+folder lands it. A file with no ISRC, or one that cannot be read, matches
+nothing, so its track is listed as before. If every missing track is staged
+the list is not written and the output says the landing takes them, and
+`crate sync land` then skips the download and goes on to the tail and the
+landing. A track the pass's own list already names stays listed, so continuing
+a pass rewrites the same list. If the staging folder cannot be read the
+`staged` line fails and says so.
+
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless
@@ -671,6 +684,23 @@ every label's line still shown and a line saying what to do about each kind. A n
 asked about its newest few releases, the `labels.offer_per_sweep` count, not its
 whole catalogue.
 
+A label's listing is kept. Listing a label asks the provider for its roster,
+discovery's album searches and every artist's releases, which on a label the
+size of Defected is about 1,800 calls, so every answer is kept for seven days,
+written as it goes and again whenever the run stops. A `--next` stopped by the
+call ceiling continues from where it stopped rather than from the start, a
+second ask of the same label inside the seven days makes no listing call at
+all, and `label playlists` and the label sweep read the same kept listing. The
+cost is that a release the label put out after its listing was read shows once
+the listing is seven days old. Each label's `listing` line says which it was:
+answered from the kept listing and how old, continued from an earlier run, or
+read from the provider and why (none kept, older than seven days, or the
+label's name, `--match` or seeds changed). Deleting the file the line names
+lists the label afresh and costs only provider calls. If the kept listing
+cannot be read the run refuses with `label-listing-kept-unusable`, before any
+call, naming the file; if it cannot be written the line says so and the next
+run lists the label again.
+
 When every label with something new is answered, the walk ends at one gate,
 `label.sync.confirm`, over one summary of every answer saved since the last go:
 the labels taking releases, the releases, the tracks, an estimated size and
@@ -816,8 +846,9 @@ it stops, so a build the provider's rate limit stops part way starts again
 where it stopped, and the run that applies the plan you
 approved reads none of the catalogue again. The estimate counts only the
 releases not kept, and both screens say how many reads were reused and how old
-the oldest is. The listing itself is read again every run, so a release the
-label put out since is never missed. If the kept reads cannot be read the build
+the oldest is. The listing itself is the kept one described under `label sync`
+above, so a release the label put out after it was read shows once that
+listing is seven days old, and the crawl gate says how old it is. If the kept reads cannot be read the build
 refuses with `label-playlists-reads-unusable`; deleting the file it names is
 safe and costs only provider calls. If they cannot be written the build still
 shows its plan and warns `label-playlists-reads-unkept`, and a later run reads
@@ -922,9 +953,23 @@ playlist it lands, beside its INBOX playlist and in the same write, and pairs th
 two with no hand step. `crate sync twins` does the same once for every
 `DOWNLOADED` playlist the account already holds in a year folder, shows every
 twin and every track it will not hold on one gate, and plans nothing the second
-time. From then on `crate sync pair` keeps each twin and its account playlist
+time. One playlist never stops the others: a playlist the account cannot list
+is left and named on the gate with the reason, and read again on the next run,
+and a track the account lists with no title or no artist is still placed when a
+recorded link or its ISRC finds its row, and otherwise named on the gate as a
+track the twin will not hold. A title written wholly in brackets, such as
+`[Premade Sandwiches]`, reads as its words; `crate intake playlist` on one
+playlist still refuses a track that names no title, so you see it before
+anything is queued. From then on `crate sync pair` keeps each twin and its account playlist
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
+
+A track the account lists with no title or no artist never stops `crate sync
+pair`. It is left where it is on both sides and named on the gate, and every
+other track of that playlist syncs both ways, removals and order included; a
+reorder keeps such a track behind the one listed before it. When a playlist's
+listing cannot be used at all, a row with no track id, a sync of every pair
+leaves that pair out, names it and syncs the others; named alone, it refuses.
 
 A twin is never counted: when its folder already holds a playlist of its name,
 the twin is left and named, and you pair the one there by hand with
@@ -981,6 +1026,18 @@ lacks is queued for download once. Listed on the gate and never made: one
 whose rekordbox playlist you deleted, two that would take one rekordbox name,
 one whose name its rekordbox folder already holds, and one whose rekordbox top
 folder is gone or doubled.
+
+Only a playlist made after the folder was synced comes back. When the first
+sync found a root folder of the name already on the account, such as an old
+`Genre Trivia!`, the playlists it already held are the account's own and stay
+there: the sync records them when it takes the folder over, and lists them on
+the gate rather than making them in rekordbox. A folder taken over before
+Cratekit kept that record is read by when the account says each playlist was
+made, and one with no time it can read is listed rather than made. A
+`DOWNLOADED ` copy of a playlist a pair in the same folder already holds, such
+as `DOWNLOADED Techno` beside `Genre Trivia! Techno`, is listed too. To sync
+one of these anyway, pair it by hand with `crate sync pair ACCOUNT_ID
+--rekordbox PLAYLIST_ID`.
 
 When you add a track on one side and take it off the other between two syncs,
 the change you made later wins on both. Cratekit reads when the account says
@@ -1548,8 +1605,10 @@ treated like any other.
 | "Decision required" | `crate run show RUN_ID` names the gate and its options. |
 | A job that never moves | `crate job show JOB_ID`. Queued work needs `crate job resume`. |
 | A blocked job | `job show` carries the cause, usually a review decision or a credential. |
-| "provider-call-ceiling" | The command made as many calls to the streaming provider as one command may, 500 unless `[provider] calls_per_command` says otherwise, and stopped with what it did kept. The refusal prints the exact command that continues, with `--calls N` raising the ceiling for that one run; a job continues with `crate --calls N job resume JOB_ID`. The next run is back at the configured ceiling. |
+| "provider-call-ceiling" | The command made as many calls to the streaming provider as one command may, 500 unless `[provider] calls_per_command` says otherwise, and stopped with the remaining items queued; what it read and did not keep is read again when it continues, and a label's listing is kept. The refusal prints the exact command that continues, with `--calls N` raising the ceiling for that one run; a job continues with `crate --calls N job resume JOB_ID`. The next run is back at the configured ceiling. |
+| "rekordbox-absence-unconfirmed" | A process the check for rekordbox could not read, named by its pid, so whether rekordbox is closed was not established and the step that needed it closed did not run. It is usually a process that is still exiting: wait a moment, then continue the run with the command the refusal prints, `crate --run RUN_ID` and the verb's own words, which keeps every gate already answered. A process that has finished exiting, a zombie, is skipped and never refuses. If it refuses again, look at the pid with `ps -p PID -o pid,stat,comm`. `crate doctor` shows the same thing as a note under `rekordbox.closed`. |
 | A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
+| `sync land` stops at `name apply` over a "second copy of one recording" | Two files in the staging folder carry one ISRC, so one would take the other's name. The refusal names the passes whose downloads it was, earliest first. Keep one copy, move the other out of the folder, and continue the pass with the command it prints. |
 | `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
 | A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |
 | A tree "unconverged" | `crate converge`, then `crate rebuild`, then `crate converge` again. |

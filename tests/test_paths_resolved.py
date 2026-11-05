@@ -27,7 +27,7 @@ import pytest
 
 from cratekit.cli import doctor, prompt, registry
 from cratekit.cli import setup as setup_verb
-from cratekit.core import config, locations, rb_writer, session, tags
+from cratekit.core import config, locations, processes, rb_writer, session, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import metadata_cli
@@ -1020,3 +1020,40 @@ def test_a_refusal_on_the_way_in_is_not_reclassified_as_a_wrong_path(bench, monk
     cause = _refusal_from_the_copy(bench.db_path, bench.cfg).cause
 
     assert cause.reason == "pyrekordbox-pin-drift"
+
+
+def _unconfirmed() -> processes.AbsenceUnconfirmed:
+    """The scan's refusal over a live process it could not read (U211)."""
+    return processes._unconfirmed([(300, "SystemError: proc_cmdline")])
+
+
+def test_setup_skips_the_offer_while_rekordbox_s_absence_is_unconfirmed(bench, opened, monkeypatch):
+    """U211. No copy over an absence nobody confirmed, said as unknown, and setup goes on."""
+
+    def unconfirmed():
+        raise _unconfirmed()
+
+    monkeypatch.setattr(rb_writer, "rekordbox_running", unconfirmed)
+    document = dict(bench.cfg.to_toml_dict())
+    wizard = setup_verb._Wizard(document, _scripted(["yes"]))
+
+    assert setup_verb._propose_prefix_map(wizard, document, bench.cfg) is False
+
+    assert opened == []
+    assert document["library"].get("location_prefix_map", []) == []
+    detail = _note(wizard).detail
+    assert "rekordbox's absence could not be confirmed" in detail
+    assert "process 300" in detail
+    assert "no copy of the database was taken" in detail
+
+
+def test_setup_takes_no_copy_of_a_wrong_file_while_absence_is_unconfirmed(
+    bench, opened, monkeypatch
+):
+    def unconfirmed():
+        raise _unconfirmed()
+
+    _empty(bench.db_path)
+    monkeypatch.setattr(rb_writer, "rekordbox_running", unconfirmed)
+    assert setup_verb._refuse_a_database_that_is_not_one(bench.cfg) is None
+    assert opened == []

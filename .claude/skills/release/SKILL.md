@@ -40,7 +40,11 @@ battery itself. A red battery is a stop: no release goes out over it.
 
 It lists the pull requests merged since the last `vX.Y.Z` tag, then the merges
 made without one, each with the bump its title asks for, and proposes the
-largest. Read the list rather than taking the proposal on trust: **major** when
+largest. It reads every commit in the range, not only the first parent line,
+so a unit merged on `origin/main` while a local session's commit waited is
+counted, and a local `Merge branch 'main' of ...` is never itself listed
+(U215). `plan --since vA.B.C --tip vX.Y.Z` reruns a past range, and `--notes`
+prints only that range's release body, ready to replace a published one. Read the list rather than taking the proposal on trust: **major** when
 a change breaks an existing library or config, **minor** when it adds a verb
 or changes behaviour, **patch** when it only repairs. While the version is
 below 1.0.0, a breaking change is a minor bump with the break said first in

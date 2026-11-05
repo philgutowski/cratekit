@@ -102,6 +102,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'label-intent-unusable',
     'label-list-unusable',
     'label-name-invalid',
+    # 2026-11-05, U217: the kept label listing a roster cannot read.
+    'label-listing-kept-unusable',
     'label-new-playlists-no-folder',
     'label-playlist-unreadable',
     'label-playlists-ambiguous',
@@ -233,7 +235,8 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
 })
 
 # Reserved table size. Moves only when a reservation is added or removed.
-PINNED_RESERVED_CAUSE_COUNT = 28
+# 2026-11-05, U211: rekordbox-absence-unconfirmed joined the backup reservations.
+PINNED_RESERVED_CAUSE_COUNT = 29
 
 # Kebab-shaped string literals per module. A card that adds literals edits only its own module's entry. The package-wide distinct counts are derived below.
 PINNED_KEBAB_LITERALS_BY_MODULE = {
@@ -519,6 +522,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-snapshot-available',
         'output-exists',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'repair-backup-facts',
@@ -636,6 +640,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'config-unusable',
         'decision-required',
         'internal-error',
+        # 2026-11-05, U212: the name step's refusal it reads for a second copy.
+        'rename-incomplete',
         'source-missing',
     ],
     'cli/verbs/login.py': ['credential-missing', 'utf-8'],
@@ -788,6 +794,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-heard-not-product-made',
         'label-intent-unusable',
         'label-list-unusable',
+        'label-listing-kept-unusable',  # 2026-11-05, U217.
         'label-name-invalid',
         'label-new-playlists-no-folder',
         'label-playlist-unreadable',
@@ -849,6 +856,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'recovery-target-refused',
         'refill-playlist-outside-inbox',
         'refused-by-policy',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'removal-sequence-unreadable',
@@ -1018,6 +1026,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/naming.py': ['utf-8'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],
     'core/rb_writer.py': [
@@ -1563,6 +1573,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unavailable-transient',
     ],
     # 2026-11-01, R-1091: the kept release reads and their refusal.
+    'label/kept_listing.py': ['label-listing-kept-unusable', 'utf-8'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable', 'utf-8'],
     'label/mark_cli.py': [
         'internal-error',
@@ -1706,6 +1717,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'prune-archive',
         'prune-archive-folder',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-database',
@@ -1826,7 +1838,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # folder side, the side a made rekordbox playlist's home is named on,
     # and the warning a run planned again carries. 2026-11-05, U210: a
     # continued run's warning, its steps unread, and the refusal a step it
-    # could not record stops the write with.
+    # could not record stops the write with. 2026-11-05, R-1264: the warning
+    # naming account tracks listed with no title or no artist.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
@@ -1853,6 +1866,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
+        'sync-pair-unread',
         'sync-pair-withheld',
         'sync-pair-written',
     ],
@@ -2197,9 +2211,12 @@ PINNED_NAMED_WITHOUT_OWN = {
     'cli/tail.py': [
         'backup-acknowledgment-missing',
         'decision-required',
+        'rename-incomplete',  # 2026-11-05, U212: read for a second copy.
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-05, U210: the refusal a write step it could not record stops it with.
     'sync/pair_cli.py': ['sync-pair-steps-unwritten'],
     'acquire/adapter.py': [
@@ -2229,6 +2246,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
     # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
@@ -2236,6 +2254,7 @@ PINNED_NAMED_WITHOUT_OWN = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -2280,6 +2299,8 @@ PINNED_NAMED_WITH_OWN = {
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten', 'not-downloadable'],
     # 2026-11-05, U205: a rejected or unreadable app credential.
     'acquire/catalogue_api.py': ['credential-missing'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
@@ -2290,6 +2311,7 @@ PINNED_NAMED_WITH_OWN = {
     'cli/tail.py': [
         'backup-acknowledgment-missing',
         'decision-required',
+        'rename-incomplete',  # 2026-11-05, U212: read for a second copy.
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
@@ -2416,6 +2438,7 @@ PINNED_NAMED_WITH_OWN = {
     'intake/refill.py': ['refill-playlist-outside-inbox'],
     'intake/set_playlist.py': ['inspiration-folder-undeclared', 'set-playlist-unnamed'],
     # 2026-11-01, R-1091: the kept reads name their refusal by a constant.
+    'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'modules/tools/backup.py': [
         'database-absent',
@@ -2423,6 +2446,7 @@ PINNED_NAMED_WITH_OWN = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -2483,6 +2507,7 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
     'core/review.py',
     'core/session.py',
     'deletion/candidates.py',
+    'label/kept_listing.py',  # 2026-11-05, U217.
     'label/kept_reads.py',  # 2026-11-01, R-1091: its version and flush count.
     'modules/tools/mastering.py',
     'tagging/searchers.py',
@@ -2505,6 +2530,7 @@ PINNED_LITERAL_HOLDERS = {
         'config-unusable',
         'decision-required',
         'internal-error',
+        'rename-incomplete',  # 2026-11-05, U212: read for a second copy.
         'source-missing',
     ],
     'acquire/adapter.py': [
@@ -2684,6 +2710,8 @@ PINNED_LITERAL_HOLDERS = {
         'no-evidence',
         'unavailable-transient',
     ],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
     'core/rb_writer.py': [
@@ -2947,6 +2975,7 @@ PINNED_LITERAL_HOLDERS = {
         'unavailable-transient',
     ],
     # 2026-11-01, R-1091: the kept reads' refusal.
+    'label/kept_listing.py': ['label-listing-kept-unusable'],  # 2026-11-05, U217.
     'label/kept_reads.py': ['label-playlists-reads-unusable'],
     'label/mark_cli.py': ['internal-error', 'sync-mark-record-unusable', 'sync-marks-blocked'],
     'label/marks.py': ['label-watermark-unusable'],
@@ -2997,6 +3026,7 @@ PINNED_LITERAL_HOLDERS = {
         'library-root-absent',
         'no-snapshot-available',
         'rclone-missing',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'restore-not-confirmed',
@@ -3188,6 +3218,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'intake/imported_cli.py',
     'intake/land_cli.py',  # 2026-10-31, U162: the rehearsal's counts joined.
     'label/catalogue.py',
+    'label/kept_listing.py',  # 2026-11-05, U217.
     'label/kept_reads.py',  # 2026-11-01, R-1091.
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',

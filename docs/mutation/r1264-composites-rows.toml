@@ -1,0 +1,18 @@
+name = "r1264-composites"
+pass_kind = "light"
+
+# The four rows r1264-rows.toml measured zero. M7 is measured again over the
+# test written to kill it. M16 and M23 are user facing zeros whose composites
+# are rows of the first table: M14 reverts the same unread comparison on the
+# path a pair takes when this run wrote nothing to it (killed 1), and M22
+# drops the added dates M23 chooses among (killed 6). M24 is maintainer
+# facing and gets its line in the record.
+
+[[rows]]
+id = "M7_account_add_filter"
+description = "plan_pair: offer an unread track to the account as an addition, which already lists it; reached on a first sync, where no base strips the unread key"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '        if remote_of(key) and key not in unseen and key not in unread_keys'
+new = '        if remote_of(key) and key not in unseen'

@@ -86,7 +86,7 @@ from typing import Any
 # whose name would otherwise be ambiguous says what it is instead.
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, restore
+from cratekit.core import analysis_store, config, processes, restore
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
@@ -1284,6 +1284,42 @@ def _halves(decided: backup.RestorePlan) -> tuple[tuple[str, backup.RestorePlan]
     )
 
 
+def _absence_unconfirmed(
+    exc: processes.AbsenceUnconfirmed,
+    completed: Sequence[str],
+    decided: backup.RestorePlan,
+    *,
+    dry_run: bool,
+) -> processes.AbsenceUnconfirmed:
+    """The scan's refusal at the database half, saying what the mirror half left (U211).
+
+    The scan's own sentence says the step that needed rekordbox closed was not
+    run, which is true and leaves out that the mirror half has already landed
+    on the target, so a person reading only the refusal would not know the
+    target holds the mirror and no database. It ends on the same rerun step
+    every failure at the database half ends on.
+    """
+    declared = exc.declared_cause
+    steps = tuple(declared.remediation.steps)
+    if not dry_run:
+        steps = (*steps, rerun_step(decided.database_target))
+    cause = replace(
+        declared,
+        remediation=replace(declared.remediation, steps=steps),
+        message=(
+            f"{declared.message}. The mirror half completed onto {decided.target} "
+            f"and the database half was not attempted"
+        ),
+        detail={
+            **dict(declared.detail or {}),
+            "half": DATABASE_HALF,
+            "completed_halves": list(completed),
+            "target": str(decided.target),
+        },
+    )
+    return processes.AbsenceUnconfirmed(cause, exc.read)
+
+
 def _half_failed(
     exc: backup.BackupRefused,
     half: str,
@@ -1464,7 +1500,12 @@ def recover_under_bare_metal_session(
                 continue
             try:
                 if half == DATABASE_HALF:
-                    running = backup.rekordbox_processes_running(lister=process_lister)
+                    try:
+                        running = backup.rekordbox_processes_running(lister=process_lister)
+                    except processes.AbsenceUnconfirmed as exc:
+                        raise _absence_unconfirmed(
+                            exc, completed, decided, dry_run=dry_run
+                        ) from exc
                     if running:
                         raise backup.BackupRefused(
                             backup.Refusal.REKORDBOX_RUNNING,
