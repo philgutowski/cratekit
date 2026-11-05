@@ -1971,6 +1971,22 @@ Made and reversed through the product's account client, as Phillip answered at s
 
 **Met:** A68 (#439) by measure, and A63 (#429) now that its hearts check is read; A63's "a release you heart afterwards does not swap a mirrored track" is not run, since the client can add a heart but not take one off. **Not met:** A41 (#365), on #552.
 
+
+## Sitting 67, 2026-11-05, the attended session on v0.8.0: A75 (#454), A65 (#433), and two cards met by earlier sittings, A97 (#541) and A78 (#468)
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| A75, first mint | sitting 59, `crate session ack --as session` from the session's shell, no terminal, no `script` | Both ages one day; `backup.acknowledgment: recorded now, by the session-ages rule, valid until 2026-11-06T01:18:06.468653+00:00`. | done |
+| A75, again | `crate session ack --as session`, run `2026-11-05T20:37:43Z-733a` | `no_op`, "already on record, not minted again, by the session-ages rule", the same expiry; `crate run show` on it lists no gate. | done |
+| A75, doctor | `crate doctor` | Right after `backup.age.files` (2 days) and `backup.age.database` (1 day): "valid until 2026-11-06T01:18:06+00:00, 4h 40m from now, minted by the session-ages rule". | met |
+| A65, status | `crate status` | One line: "runs.old: 18 open gates idle for more than 7 days, from 2026-09-23 to 2026-10-27; crate run retire --older-than 7d answers each one abort after a confirm"; the three gates opened on 2026-10-31 listed one by one. | read |
+| A65, retire | `crate run retire --older-than 7d`, run `2026-11-05T20:38:10Z-dc21`, digest `9159f964e3a701ba`, answered `apply --continue` as `session` | Each of the 18 (name.apply 9, intake.land 2, sync.all, sync.favorites, tag.retag, export.prune, session.ack, adopt.apply, favorites.backfill) reads `retired`, answered `abort` as `session`; none kept. | done |
+| A65, status again | `crate status` | The `runs.old` line is gone; only the three gates of 2026-10-31 remain. | met |
+| A97 | sitting 62 | The live plan named "not made in rekordbox: 18 account playlist(s)" and planned none of the Genre Trivia! `DOWNLOADED` playlists as a create. | met |
+| A78 | sittings 55 and 58 | In rekordbox, `Welcoming vibe 2026-11-04` sits directly under INBOX with the date at the end beside the date first batch; on the account, the mirror made `INBOX Welcoming vibe 2026-11-04` in the `INBOX` folder. | met |
+
+The macOS battery these cards owe is sitting 59's on `d4232416`.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
