@@ -1,0 +1,11 @@
+name = "u216-m14"
+pass_kind = "full"
+
+[[rows]]
+id = "M14_moment_any_folder"
+description = "_discovered_back: the adoption moment reads made pairs in every folder, not only this one"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''                if pair.made and pair.folder == folder'''
+new = '''                if pair.made'''

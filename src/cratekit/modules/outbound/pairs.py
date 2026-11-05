@@ -44,6 +44,14 @@ back on the account between two syncs can be told from one held all along
 drops them on its next write, and the sync after reads every track as held
 all along, which is the rule before U202, never a loss.
 
+**AND WHAT AN ADOPTED FOLDER HELD (U216).** A root folder adopted by its name
+records the account playlists it held at that moment (``MadeFolder.held``), so
+no sync brings them to rekordbox; a folder the product created records that it
+held nothing. Still version 2: a record without ``held`` is a folder adopted
+before U216, and a sync reads it by time, every unknown as held, so a copy
+that drops the field on its next write costs a playlist named rather than one
+made twice.
+
 Layer: modules.
 """
 
@@ -156,6 +164,10 @@ class MadeFolder:
     folder_id: str
     #: True only when this product created it; one adopted by its name may be a person's.
     created: bool = False
+    #: U216. The account playlists the folder held when a sync adopted it, which no
+    #: sync brings to rekordbox. Empty for a folder this product created, which held
+    #: nothing. None for a folder recorded before U216, whose record does not say.
+    held: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -260,8 +272,16 @@ class PairStore:
                 or not isinstance(value.get("created", False), bool)
             ):
                 raise self._unusable(f"the folder {name!r} is not a recorded folder")
+            held = value.get("held")
+            if held is not None and (
+                not isinstance(held, list) or not all(isinstance(one, str) and one for one in held)
+            ):
+                raise self._unusable(f"what the folder {name!r} held is not playlist ids")
             found[str(name)] = MadeFolder(
-                str(name), str(value["folder_id"]), value.get("created") is True
+                str(name),
+                str(value["folder_id"]),
+                value.get("created") is True,
+                None if held is None else frozenset(held),
             )
         return found
 
@@ -383,7 +403,11 @@ class PairStore:
         }
         if rest.folders:
             payload["folders"] = {
-                name: {"folder_id": one.folder_id, "created": one.created}
+                name: {
+                    "folder_id": one.folder_id,
+                    "created": one.created,
+                    **({"held": sorted(one.held)} if one.held is not None else {}),
+                }
                 for name, one in sorted(rest.folders.items())
             }
         if rest.misses:
@@ -520,7 +544,13 @@ class PairStore:
         return self._document().released
 
     def reserve_folder(
-        self, name: str, create: Callable[[], str], *, adopt: str = "", stale: str = ""
+        self,
+        name: str,
+        create: Callable[[], str],
+        *,
+        adopt: str = "",
+        stale: str = "",
+        held: Iterable[str] | None = None,
     ) -> tuple[str, bool]:
         """The account root folder for ``name``, made only if none is recorded. ``(id, created)``.
 
@@ -528,17 +558,24 @@ class PairStore:
         unwritable document refuses before anything exists on the account;
         ``adopt`` is the one root folder of the name the plan found and a
         person was shown, and ``stale`` a recorded folder read as gone.
+        ``held`` is what the plan listed in the folder it adopts, recorded in
+        the same write (U216), and None records an adoption whose plan did not
+        say, which a sync reads by time; a folder this call creates held nothing.
         """
         with self._locked():
             document = self._document()
-            held = document.folders.get(name)
-            if held is not None and held.folder_id != stale:
-                return held.folder_id, False
+            recorded = document.folders.get(name)
+            if recorded is not None and recorded.folder_id != stale:
+                return recorded.folder_id, False
             if adopt:
                 folder_id, created = adopt, False
+                before = (
+                    None if held is None else frozenset(str(one) for one in held if str(one))
+                )
             else:
                 folder_id, created = str(create()), True
-            document.folders[name] = MadeFolder(name, folder_id, created)
+                before = frozenset()
+            document.folders[name] = MadeFolder(name, folder_id, created, before)
             self._write(document.pairs, document)
             return folder_id, created
 

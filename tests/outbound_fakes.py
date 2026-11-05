@@ -24,7 +24,7 @@ Not a test module: pytest does not collect it.
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Callable, Mapping, Sequence
+from typing import Any, Callable, Mapping, Sequence
 
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import Remedy
@@ -50,6 +50,8 @@ PROTOCOL_METHODS = frozenset(
         "add_tracks",
         "folders",
         "folder_playlists",
+        # U216. The same read with when the account says each playlist was made.
+        "folder_playlists_dated",
         "folder_folders",
         "create_folder",
         "move_to_folder",
@@ -128,6 +130,9 @@ class FakeAccount:
         self.screened: list[tuple[str, ...]] = []
         #: The identities whose match this account says broke a tie (U208).
         self.ties: set[str] = set()
+        #: When the account says each playlist was made, for ``folder_playlists_dated``
+        #: (U216); a playlist absent here reads as made at no known time.
+        self.made_at: dict[str, Any] = {}
         #: Each ``(playlist, track)``'s added time for ``playlist_listing`` (U201).
         self.added_at: dict[tuple[str, str], str] = {}
         #: Tracks a playlist holds that its listing leaves out, by playlist.
@@ -260,6 +265,13 @@ class FakeAccount:
             playlist_id: self.titles.get(playlist_id, "")
             for playlist_id, folder in self.placed.items()
             if folder == folder_id
+        }
+
+    def folder_playlists_dated(self, folder_id: str) -> dict[str, tuple[str, Any]]:
+        """U216. Each playlist's title and when it was made, as ``made_at`` says, else None."""
+        return {
+            playlist_id: (title, self.made_at.get(playlist_id))
+            for playlist_id, title in self.folder_playlists(folder_id).items()
         }
 
     def folder_folders(self, folder_id: str) -> dict[str, str]:
