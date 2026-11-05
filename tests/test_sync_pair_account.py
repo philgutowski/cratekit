@@ -2,7 +2,7 @@
 
 The removal guard (R-836) now admits a playlist the author paired as well as one
 the product made, and nothing else. ``order_tracks`` is held to the same guard,
-moves every track to the end in turn and reads back after each move.
+moves each track to the front in turn (U220) and reads back after each move.
 """
 
 from __future__ import annotations
@@ -82,15 +82,15 @@ def test_a_paired_playlist_is_never_removed_whole(installed):
     assert store.opened == []
 
 
-def test_the_order_moves_each_track_to_the_end_and_reads_back(installed):
+def test_the_order_moves_each_track_to_the_front_and_reads_back(installed):
     store = _store()
     _paired(installed, store, "mine", ["a", "b", "c", "d"])
     after = _adapter(installed, store).order_tracks("mine", ("a", "d", "b", "c"))
     assert after == ("a", "d", "b", "c")
     assert store.members["mine"] == ["a", "d", "b", "c"]
-    # "a" and "d" already stand in order at the head of the asked order; only
-    # what follows them is moved, one track per request, each to the end.
-    assert [asked for _pid, asked, _to in store.moves] == [(1,), (1,)]
+    # "b" and "c" already stand in order at the tail of the asked order (U220);
+    # only what comes before them is moved, the last first, each to the front.
+    assert [(asked, to) for _pid, asked, to in store.moves] == [((3,), 0), ((1,), 0)]
 
 
 def test_an_order_already_standing_sends_nothing(installed):
@@ -124,10 +124,10 @@ def test_a_track_held_twice_is_not_moved(installed):
     store = _store()
     _paired(installed, store, "mine", ["a", "b", "a", "c"])
     after = _adapter(installed, store).order_tracks("mine", ("c", "a", "b"))
-    # "a" is held twice, so it is not one of the moves; "c" already stands
-    # before "b", so "b" alone goes to the end.
-    assert after == ("a", "a", "c", "b")
-    assert [asked for _pid, asked, _to in store.moves] == [(1,)]
+    # "a" is held twice, so it is not one of the moves; "b" is the asked
+    # order's tail and stays, so "c" alone goes to the front (U220).
+    assert after == ("c", "a", "b", "a")
+    assert [asked for _pid, asked, _to in store.moves] == [(3,)]
 
 
 def test_a_playlist_made_by_the_product_still_takes_the_order(installed):

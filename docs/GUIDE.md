@@ -1075,6 +1075,16 @@ on Tidal or in rekordbox, it refuses as stale and names it, and a fresh
 provider calls the write is expected to make, and when that is more than one
 command may make, the `--calls` value that lets it finish in one go.
 
+Putting a Tidal playlist in rekordbox's order is one move per track, each read
+back before the next. When the provider is slow to show a change, Cratekit
+waits a few seconds and reads again rather than moving anything twice, and when
+it cannot trust what it reads it leaves that one playlist with every track on
+it but not yet in order. That stops that pair alone: every other pair, and
+every playlist brought into rekordbox, is still written, and the answer names
+the playlists left out of order and the `crate --run RUN sync pair` that
+finishes them. Look at each in the Tidal app first; the continue moves nothing
+until its reading agrees with the one it took just before.
+
 ### Publish a playlist
 
 ```bash

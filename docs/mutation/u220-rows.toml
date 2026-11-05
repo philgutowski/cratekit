@@ -1,0 +1,244 @@
+name = "u220"
+pass_kind = "full"
+
+[[rows]]
+id = "A1_front_target"
+description = "order_tracks: move each track to the playlist's length instead of the front, the move whose landing depends on how the provider counts"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''playlist.move_by_indices([at], 0)'''
+new = '''playlist.move_by_indices([at], len(before))'''
+
+[[rows]]
+id = "A2_keep_nothing"
+description = "_to_the_front: keep no standing tail, so every asked track is moved"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''        if keep < len(wanted) and one == wanted[len(wanted) - 1 - keep]:
+            keep += 1'''
+new = '''        if keep < len(wanted) and one == wanted[len(wanted) - 1 - keep]:
+            keep += 0'''
+
+[[rows]]
+id = "A3_keep_head"
+description = "_to_the_front: match the asked order's head rather than its tail, the old to the end rule"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''one == wanted[len(wanted) - 1 - keep]'''
+new = '''one == wanted[keep]'''
+
+[[rows]]
+id = "A4_first_first"
+description = "_to_the_front: move the tracks first first rather than last first, so the moved ones land reversed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''    return list(reversed(wanted[: len(wanted) - keep]))'''
+new = '''    return wanted[: len(wanted) - keep]'''
+
+[[rows]]
+id = "A6_no_reread_on_412"
+description = "order_tracks: raise every move failure, a 412 included, so a stale tag stops the order"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''                if stale >= ORDER_REREADS or not _stale_tag(exc):'''
+new = '''                if True:'''
+
+[[rows]]
+id = "A7_resend_any_failure"
+description = "order_tracks: read again and resend after any move failure, not a 412 alone"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''                if stale >= ORDER_REREADS or not _stale_tag(exc):'''
+new = '''                if stale >= ORDER_REREADS:'''
+
+[[rows]]
+id = "A9_bare_reread_after_412"
+description = "order_tracks: plan from a bare reading after a 412, not one settled against what the playlist holds (round one R1)"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''                playlist, before = self._settled(
+                    identifier, tuple(before), exact=False, pauses_from=stale
+                )'''
+new = '''                playlist = self._playlist(identifier)
+                before = self._positions(identifier, playlist)'''
+
+[[rows]]
+id = "A10_wrong_status"
+description = "_stale_tag: look for a 409 rather than the 412 the provider answers"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''        if status == PRECONDITION_FAILED:'''
+new = '''        if status == 409:'''
+
+[[rows]]
+id = "A11_cause_chain_only"
+description = "_stale_tag: walk the cause chain alone, so a 412 the client failed to decode is missed (round one R3)"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''(one.__cause__, one.__context__)'''
+new = '''(one.__cause__,)'''
+
+[[rows]]
+id = "A12_no_memory_guard"
+description = "order_tracks: ignore what this command's adds left, so a first reading lagging them is planned from"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''        known = self._members.get(identifier)'''
+new = '''        known = None'''
+
+[[rows]]
+id = "A13_exact_agrees"
+description = "_settled: read any reading as agreeing with the caller's expected one"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''            if exact:
+                return list(dict.fromkeys(reading)) == list(dict.fromkeys(known))'''
+new = '''            if exact:
+                return True'''
+
+[[rows]]
+id = "A14_multiset_agrees"
+description = "_settled: read any reading as holding what is known"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''            return sorted(reading) == sorted(known)'''
+new = '''            return True'''
+
+[[rows]]
+id = "A15_count_short_not_retried"
+description = "_settled: refuse a reading short of its count at once even after a write it may lag"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''                if known is None or (exc.cause.detail or {}).get("problem") != "positions-unknown":'''
+new = '''                if True:'''
+
+[[rows]]
+id = "A17_settle_once"
+description = "_settled: take one reading only, never again after a pause"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''        last: CratekitError | None = None
+        for attempt in range(ORDER_REREADS + 1):'''
+new = '''        last: CratekitError | None = None
+        for attempt in range(1):'''
+
+[[rows]]
+id = "A18_lag_not_tolerated"
+description = "_read_back: refuse a read back that still shows the playlist before the move, with no reading taken again"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''            if reading != before:
+                break'''
+new = '''            if True:
+                break'''
+
+[[rows]]
+id = "A19_neither_reread"
+description = "_read_back: take a read back that is neither before nor after again, rather than refuse it at once"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''            if reading != before:
+                break'''
+new = '''            if False:
+                break'''
+
+[[rows]]
+id = "A21_expected_at_end"
+description = "order_tracks: expect the moved track at the end in the read back, as the old rule did"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''[one, *before[:at], *before[at + 1 :]]'''
+new = '''[*before[:at], *before[at + 1 :], one]'''
+
+[[rows]]
+id = "A23_pause_index"
+description = "_pause: index the pauses by the attempt with no repeat of the last"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_order.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_order.py"]
+old = '''    return ORDER_PAUSES[min(attempt, len(ORDER_PAUSES)) - 1]'''
+new = '''    return ORDER_PAUSES[attempt - 1]'''
+
+[[rows]]
+id = "P1_refusal_stops_all"
+description = "apply_pair: let every order refusal stop the whole write, as before U220"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '''                if exc.cause.reason not in ORDER_REFUSALS:
+                    raise'''
+new = '''                if True:
+                    raise'''
+
+[[rows]]
+id = "P2_session_tolerated"
+description = "ORDER_REFUSALS: tolerate a rejected session too, so every later pair meets it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '''ORDER_REFUSALS = frozenset({"outbound-remove-refused", "unavailable-transient"})'''
+new = '''ORDER_REFUSALS = frozenset({"outbound-remove-refused", "unavailable-transient", "credential-missing"})'''
+
+[[rows]]
+id = "P4_refused_pair_finished"
+description = "apply_pair: go on past a refused order, so the pair is recorded done and a continue skips it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '''                done.name = one.name
+                return done'''
+new = '''                done.name = one.name
+                account_after = None'''
+
+[[rows]]
+id = "P5_no_stop_after_loop"
+description = "sync_pair: end OK after the loop though an order did not finish"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '''    if unordered:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P6_expect_always"
+description = "apply_pair: hand the check's listing as expect to every order, not only one this run saw refused"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '''                if steps.has(STEP_ORDER_REFUSED) and account_listed is not None'''
+new = '''                if account_listed is not None'''
+
+[[rows]]
+id = "P3_refusal_unrecorded"
+description = "apply_pair: record no refusal step, so a continue orders with nothing to agree with"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '''                steps.mark(STEP_ORDER_REFUSED, exc.cause.message)'''
+new = '''                pass'''
+
+[[rows]]
+id = "C1_moves_head_rule"
+description = "pair_calls._moves: count the moves by the old head rule"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_tie.py"]
+old = '''    for one in reversed(before):'''
+new = '''    for one in before:'''
