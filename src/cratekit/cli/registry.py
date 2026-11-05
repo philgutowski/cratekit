@@ -926,7 +926,20 @@ ENTRIES: tuple[Entry, ...] = (
             "rekordbox.closed",
             "library.paths_resolved",
         ),
-        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
+        gates=(
+            CLOUD_SYNC_UNREADABLE_GATE,
+            GateSpec(
+                name="rebuild.accept",
+                options=("accept", "abort"),
+                prompt="Accept this tree as it stands? No rebuild can reproduce it.",
+                #: U219. EXPLICIT, because the answer is a named person
+                #: disposing of a convergence refusal (R34): the recorded actor
+                #: is who the disposition names. Asked only for a tree no
+                #: rebuild can reproduce that a restore marked, the intake tree
+                #: above all, which nothing else can release.
+                explicit=True,
+            ),
+        ),
     ),
     # R-235. The two verbs over ``core.tree_registry``, which held the precheck,
     # the record and the revert since U20 with no caller under ``src``.
@@ -1605,7 +1618,21 @@ ENTRIES: tuple[Entry, ...] = (
             "rekordbox.pins",
             "library.paths_resolved",
         ),
-        gates=(CLOUD_SYNC_UNREADABLE_GATE,),
+        gates=(
+            GateSpec(
+                name="route.resort.apply",
+                options=("apply", "abort"),
+                prompt="Add these tracks to the routing tree?",
+                #: U219. EXPLICIT, for ``tag.retag.confirm``'s reason: the verb
+                #: queues, so the confirmed work runs in a detached child that
+                #: names the run the answer was recorded against. The plan is
+                #: every add, so the rehearsal rule has a digest to hold the
+                #: live run to, which sitting 61 found it did not have.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
     ),
     Entry(
         name="audit.coverage",

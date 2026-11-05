@@ -1,6 +1,6 @@
 ---
 name: restore-and-converge
-description: Roll the library back to a recorded write session, and get a governed tree back to its declared membership afterwards. Use when someone wants to undo what a sync, an intake, or a routing pass did, when a drive was replaced and the database has to come back off the off machine mirror, when a verb refuses saying a tree is unconverged or that declared membership no longer matches the database, or when someone asks what a rollback would discard before they authorise it. Covers the session listing, the explicit confirmation and its digest, the mirror pull, the per tree convergence report, and the rebuild that is the only exit from an unconverged tree.
+description: Roll the library back to a recorded write session, and get a governed tree back to its declared membership afterwards. Use when someone wants to undo what a sync, an intake, or a routing pass did, when a drive was replaced and the database has to come back off the off machine mirror, when a verb refuses saying a tree is unconverged or that declared membership no longer matches the database, or when someone asks what a rollback would discard before they authorise it. Covers the session listing, the explicit confirmation and its digest, the mirror pull, the per tree convergence report, and the rebuild that is the only exit from an unconverged tree that a rebuild can reproduce, with the intake tree accepted as it stands instead.
 ---
 
 # Restore and converge
@@ -271,6 +271,22 @@ than being filed a second time.
 
 A tree still on the XML bridge is refused rather than rebuilt, because the
 membership written would be overwritten by the next import. Cut it over first.
+
+## The intake tree is accepted, not rebuilt
+
+The rebuild derives the routing tree, and only the routing tree. INBOX holds the
+batches the landings wrote, which no rebuild can reproduce, so a sweep leaves it
+alone with a `tree-not-derived` warning. When a restore marks INBOX unconverged,
+naming it on the rebuild asks the explicit gate `rebuild.accept` instead of
+queueing anything. Accepting records the person who answered the gate as having
+taken INBOX as it stands. The flag stays set and `converge` still reports it, but
+the landings stop refusing. The next restore marks it again.
+
+```bash
+crate rebuild --tree inbox --actor NAME
+crate run decide RUN_ID rebuild.accept accept --actor NAME
+crate --run RUN_ID rebuild --tree inbox --actor NAME
+```
 
 ## The rebuild is queued, so something has to drive it
 

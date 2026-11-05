@@ -266,13 +266,57 @@ def native(stocked) -> str:
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _drive(argv: list[str]) -> tuple[int, dict]:
+def _drive_once(argv: list[str]) -> tuple[int, dict]:
     out, err = io.StringIO(), io.StringIO()
     code = cli.run(["--output", "json", *argv], stdout=out, stderr=err)
     assert out.getvalue().strip(), f"the verb printed nothing: {err.getvalue()}"
     document = json.loads(out.getvalue())
     assert output.envelope_problems(document) == [], document
     return code, document
+
+
+#: The resort's plan gate since U219. Explicit, so it is answered by R34's
+#: separate recorded act and never inline.
+RESORT_GATE = "route.resort.apply"
+
+
+def _drive(argv: list[str]) -> tuple[int, dict]:
+    """Drive one invocation; a resort's plan gate is approved the way a person does.
+
+    U219 PUT AN EXPLICIT GATE IN FRONT OF THE RESORT, and these suites are about
+    what the resort does once approved, so when one meets that gate the two
+    acts R34 requires are made here, the same three invocations
+    :func:`tests.cli_drive.approve_and_queue` makes: the refusal, ``run decide``
+    with an actor, and the same command again naming that run. What the gate
+    shows and refuses is driven in ``tests/test_resort_scope.py``.
+    """
+    code, document = _drive_once(argv)
+    if (
+        code == int(ExitCode.DECISION_REQUIRED)
+        and document["cause"]["detail"].get("gate") == RESORT_GATE
+        and "--run" not in argv
+    ):
+        run_id = document["run_id"]
+        decided, envelope = _drive_once(
+            ["run", "decide", run_id, RESORT_GATE, "apply", "--actor", "a-person"]
+        )
+        assert decided == int(ExitCode.OK), envelope
+        code, document = _drive_once(["--run", run_id, *argv])
+    return code, document
+
+
+def _approved_adds() -> list[dict[str, str]]:
+    """The adds a resort's gate would show for the governed tree, for a job built by hand.
+
+    A resort's worker writes only what its job froze (U219), so a test that
+    enqueues a resort itself freezes what the real preview reads, the way the
+    verb does, rather than a list spelled here.
+    """
+    cfg = config.load()
+    reports, _ = rebuild.preview_governed_trees(
+        cfg, tree_ids=(TREE_ID,), vocal_threshold=None
+    )
+    return [row for report in reports for row in rebuild.additions(report)]
 
 
 def _items(job_id: str) -> tuple[jobs.Item, ...]:
@@ -362,8 +406,10 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     cuts: list[tuple[object, object]] = []
     frozen = object()
     measured = object()
-    after = object()
+    # The after check: what the resort's report counts as due again (U219).
+    after = SimpleNamespace(missing=())
     staged: list[tuple] = []
+    approvals: list[object] = []
 
     def left_behind(report, declared):
         assert report is after
@@ -378,7 +424,8 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
         # NO DEFAULT ON ``workflow`` OR ``vocal_threshold``. A spy that supplied
         # one would answer the question for a worker that named nothing, which
         # is the half this test exists to tell apart.
-        del cfg, rest
+        del cfg
+        approvals.append(rest.get("approved"))
         seen.append((tree_id, workflow))
         cuts.append(vocal_threshold)
         # The one field of the engine's report a worker reads (R-312).
@@ -406,11 +453,16 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     # WHAT THE ENGINE MEASURED BECOMES THE RESORT ITEM'S REPORT (R-312), handed
     # to the one helper that stages it under the job and the ordinal. The
     # rebuild worker has no surface that reads one and still produces nothing.
-    driven = SimpleNamespace(job_id="j")
+    # U219: the resort hands the engine its own tree's approved adds and no
+    # other tree's, and the rebuild, a repair, hands it none.
+    mine = {"tree": TREE_ID, "folder": "f", "playlist": "p", "path": "a.flac"}
+    other = {"tree": "another_tree", "folder": "f", "playlist": "p", "path": "b.flac"}
+    driven = SimpleNamespace(job_id="j", payload={routing_cli.RESORT_ADDS_KEY: [mine, other]})
     assert routing_cli.handle_resort(driven, item, frozen) == "staged"
+    assert approvals == [None, [mine]]
     assert staged == [
         (routing_cli.RESORT_ARTIFACTS, frozen, driven, item,
-         {"tree_id": TREE_ID, "left_behind": [{"kept": measured}]})
+         {"tree_id": TREE_ID, "left_behind": [{"kept": measured}], "due_again": 0})
     ]
 
     assert cuts == [7.5, 7.5]
@@ -1164,7 +1216,8 @@ def test_a_resume_whose_items_did_not_all_succeed_is_not_an_ok_exit(
         job = jobs.enqueue(
             store,
             handler_key=key,
-            payload={"tree": None, "actor": "a-person"},
+            # The resort's worker writes only what its gate approved (U219).
+            payload={"tree": None, "actor": "a-person", "adds": _approved_adds()},
             cfg=config.load(),
             item_ids=(TREE_ID, "second_tree"),
         )
@@ -1576,8 +1629,21 @@ def test_one_jobs_leftovers_are_not_counted_under_another(acknowledged, native, 
     count the first resort's report again under the second.
     """
     del acknowledged, native, leftover
-    for _ in range(2):
-        job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+    for turn in range(2):
+        if turn == 0:
+            job_id = _drive(["route", "resort"])[1]["data"]["job_id"]
+        else:
+            # The first resort filed every add, and since U219 a resort with
+            # nothing to add queues no job, so the second job over the same
+            # state is enqueued with the adds its gate would freeze, none.
+            with jobs.open_store() as store:
+                job_id = jobs.enqueue(
+                    store,
+                    handler_key="route.resort",
+                    payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
+                    cfg=config.load(),
+                    item_ids=(TREE_ID,),
+                ).job_id
         (warning,) = _left_behind(_drive(["route", "resort", "--job", job_id])[1])
         assert "1 membership" in warning["message"], warning
         assert job_id in warning["message"], "the warning does not say where this job's list is"
@@ -1613,7 +1679,7 @@ def test_a_resort_that_failed_part_way_still_names_what_the_finished_tree_left(
         job = jobs.enqueue(
             store,
             handler_key="route.resort",
-            payload={},
+            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
             cfg=config.load(),
             item_ids=(TREE_ID, "second_tree"),
         )
@@ -1646,7 +1712,7 @@ def test_a_resort_that_failed_with_nothing_left_behind_adds_no_step(
         job = jobs.enqueue(
             store,
             handler_key="route.resort",
-            payload={},
+            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
             cfg=config.load(),
             item_ids=(TREE_ID, "second_tree"),
         )
@@ -1698,7 +1764,7 @@ def test_a_second_process_names_what_the_first_ones_tree_left(
         job = jobs.enqueue(
             store,
             handler_key="route.resort",
-            payload={},
+            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
             cfg=config.load(),
             item_ids=(TREE_ID, "second_tree"),
         )
@@ -1745,7 +1811,7 @@ def test_a_refusal_raised_before_the_drive_carries_no_leftover_step(
         job = jobs.enqueue(
             store,
             handler_key="route.resort",
-            payload={},
+            payload={routing_cli.RESORT_ADDS_KEY: _approved_adds()},
             cfg=config.load(),
             item_ids=(TREE_ID, "second_tree"),
         )
@@ -3305,6 +3371,11 @@ def test_a_second_calibrated_inbox_creates_no_second_vocal_sub(acknowledged, nat
 def test_a_calibrated_resume_files_under_with_vox_and_does_not_warn(
     acknowledged, native, vox_levels, argv, level, filed
 ):
+    if argv[0] == "route":
+        # U219: a resort's adds are approved at its gate, so the library it
+        # will write is settled before it asks; a rebuild reads it at the drive.
+        _calibrated(acknowledged)
+        vox_levels[SHELVED] = level
     job_id = _drive(argv)[1]["data"]["job_id"]
     _calibrated(acknowledged)
     vox_levels[SHELVED] = level
