@@ -19,8 +19,10 @@ import json
 from pathlib import Path
 
 from cratekit.cli import sync_land
+from cratekit.cli import tail as tail_chain
 from cratekit.core import tags
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.cause import Cause, Remediation
+from cratekit.core.exit_codes import ExitCode, Remedy
 from tests.acquire_fakes import Landing
 from tests.cli_drive import drive
 from tests.intake.test_workers import Track
@@ -28,6 +30,7 @@ from tests.test_sync_all import _playlist, bind_playlists
 from tests.test_sync_land import (  # noqa: F401 - fixtures by name
     _by_key,
     _check,
+    _refused,
     _staged,
     _summary,
     machine,
@@ -141,3 +144,76 @@ def test_a_continued_pass_whose_own_downloads_are_staged_lists_them_again(
     assert script.fetched == []
     assert len(_by_key("acquire.download")) == 1
     assert _summary(again)["staged"] == 0
+
+
+def _rename_incomplete(isrc: str) -> Cause:
+    return Cause(
+        reason="rename-incomplete",
+        message="0 file(s) were renamed, and 1 file(s) this plan named were not",
+        remediation=Remediation(remedy=Remedy.REPORT_DEFECT, steps=("read the files",)),
+        retryable=True,
+        origin=("write.naming_cli",),
+        detail={
+            "renamed": 0,
+            "incomplete_count": 1,
+            "incomplete": [
+                {"from": "101.wav", "path": "/staged/101.wav", "why": "taken", "isrc": isrc}
+            ],
+        },
+    )
+
+
+def test_a_name_stop_over_a_second_copy_names_the_pass_that_downloaded_it(
+    machine, monkeypatch, tail
+):
+    """The collision the listing cannot rule out, a copy downloaded anyway, is
+    stood in for at the name step. The refusal's ISRC is read against the
+    download jobs, and the step names the pass whose download it was."""
+    cfg, script = machine
+    first = _first_pass(monkeypatch, script, cfg)
+    (download,) = _by_key("acquire.download")
+    run_id = _summary(first)["pass_run"]
+    monkeypatch.setattr(
+        tail_chain, "dispatch", _refusing_name(tail, _rename_incomplete(ISRC["101"]))
+    )
+
+    code, again = drive(["sync", "land", "--pass-run", run_id])
+
+    assert code == int(ExitCode.PRECONDITION), again
+    steps = again["cause"]["remediation"]["steps"]
+    said = [step for step in steps if step.startswith(f"ISRC {ISRC['101']}")]
+    assert said == [
+        f"ISRC {ISRC['101']}, carried by 101.wav and by the file whose name it would "
+        f"take, was downloaded by: {_summary(first)['land_name']} (job {download.job_id}); "
+        f"keep one copy, move the other out of the folder, and continue the pass"
+    ], steps
+    assert _summary(again)["stopped_at"] == sync_land.NAME
+
+
+def test_a_second_copy_no_download_job_records_is_said_so(machine, monkeypatch, tail):
+    cfg, script = machine
+    first = _first_pass(monkeypatch, script, cfg)
+    run_id = _summary(first)["pass_run"]
+    monkeypatch.setattr(
+        tail_chain, "dispatch", _refusing_name(tail, _rename_incomplete("GBAAA2601999"))
+    )
+
+    code, again = drive(["sync", "land", "--pass-run", run_id])
+
+    assert code == int(ExitCode.PRECONDITION), again
+    steps = again["cause"]["remediation"]["steps"]
+    assert (
+        "ISRC GBAAA2601999, carried by 101.wav and by the file whose name it would "
+        "take, is in no download job of this library, so the copy in its way did "
+        "not come from a download here: compare the two by hand"
+    ) in steps, steps
+
+
+def _refusing_name(tail, cause: Cause):
+    def refusing(argv):
+        if "name" in argv and "apply" in argv:
+            tail.calls.append(list(argv))
+            return _refused(cause)
+        return tail(argv)
+
+    return refusing

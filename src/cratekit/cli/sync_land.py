@@ -122,7 +122,7 @@ STEPS: tuple[str, ...] = (
 
 #: The verbs the pass runs that are not the tail's.
 SYNC_VERB = "sync.all"
-DOWNLOAD_VERB = "acquire.download"
+DOWNLOAD_VERB = tail.DOWNLOAD_VERB
 BACKUP_VERB = "backup.run"
 
 #: Why the favourites write half queues nothing in a pass this verb runs: no
