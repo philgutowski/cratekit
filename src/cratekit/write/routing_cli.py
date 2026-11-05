@@ -2047,6 +2047,7 @@ def _resume(ctx, store, job_id: str) -> Envelope:
                 # The rebuild's engine, so the rebuild's skipped step (U132).
                 *rebuild.favorites_skipped_warnings(declared, driven),
                 *rebuild.left_behind_warnings(records, listed_in=listed_in),
+                *_due_again_warnings(frozen, job.job_id),
             )
         jobs.raise_for_state(job)
     except CratekitError as failed:
@@ -2239,6 +2240,10 @@ def handle_resort(job, item, cfg) -> None:
         {
             "tree_id": str(item.item_id),
             "left_behind": [rebuild.left_behind_record(entry) for entry in left],
+            # WHAT CAME DUE ONLY FROM THIS RESORT'S OWN WRITES (U219, round
+            # two): a favourite whose track it filed into a new folder, which
+            # no plan before the write could show and so it did not write.
+            "due_again": len(report.after.missing),
         },
     )
 
@@ -2255,6 +2260,43 @@ def _left_behind(cfg: config.Config, job_id: str) -> tuple[list[dict[str, Any]],
         for entry in report.get("left_behind") or ()
     ]
     return records, str(jobs.store_dir(cfg) / RESORT_ARTIFACTS.final / job_id)
+
+
+#: The warning a resort carries when its own writes made adds due that its
+#: plan could not show (U219).
+DUE_AGAIN = "resort-again"
+
+
+def _due_again_warnings(cfg: config.Config, job_id: str) -> list[dict[str, str]]:
+    """Say that a second resort has more to show, and what stands until it runs.
+
+    A RESORT WRITES ONLY WHAT ITS GATE SHOWED, so a favourite whose track this
+    run filed into a new folder is left for the next resort's plan. Said here
+    rather than only logged, because the tree still differs after a run that
+    succeeded: on a tree a restore marked, its flag stays set and its writes
+    keep refusing until the next resort files the rest.
+    """
+    due: dict[str, int] = {}
+    for report in artifacts.committed(RESORT_ARTIFACTS, cfg, job_id):
+        count = int(report.get("due_again") or 0)
+        if count:
+            due[str(report.get("tree_id"))] = due.get(str(report.get("tree_id")), 0) + count
+    if not due:
+        return []
+    recorded = convergence.read(cfg)
+    held = sorted(
+        tree for tree in due if (record := recorded.tree(tree)) is not None and record.blocking
+    )
+    message = (
+        f"{sum(due.values())} add(s) came due only from this resort's own writes, "
+        f"a favourite whose track it filed into a new folder, so they were not on "
+        f"its plan and were not written; run the resort again to see and file them"
+    )
+    if held:
+        message += (
+            f". Until then {', '.join(held)} stays unconverged and its writes refuse"
+        )
+    return [{"code": DUE_AGAIN, "message": message}]
 
 
 def _with_left_behind(error: CratekitError, cfg: config.Config, job_id: str) -> CratekitError:

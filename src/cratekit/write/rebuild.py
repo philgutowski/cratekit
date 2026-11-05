@@ -538,6 +538,20 @@ def assert_derivable(declared: taxonomy.Taxonomy, tree_id: str) -> None:
     )
 
 
+def detect_restore(cfg: config.Config) -> None:
+    """Run the restore detection over the database as it now stands, and close it.
+
+    Read only on the database; what it writes is the convergence record, which
+    marks every native tree a restore has left behind. The acceptance gate asks
+    after this, so the record it shows is current (U219).
+    """
+    handle = rb_writer.open_db(cfg=cfg)
+    try:
+        convergence.detect_out_of_band_restore(cfg, handle, tree_registry.read(cfg))
+    finally:
+        rb_writer.close_db(handle)
+
+
 def accept_as_it_stands(
     cfg: config.Config, declared: taxonomy.Taxonomy, tree_id: str, *, actor: str
 ) -> None:
@@ -565,17 +579,33 @@ def accept_as_it_stands(
             origin=("tree_rebuild",),
             detail={"tree_id": tree_id},
         )
-    record = convergence.read(cfg).tree(tree_id)
-    reason = "a restore" if record is None or not record.reason else record.reason
-    convergence.clear_unconverged(
-        cfg,
-        tree_id,
-        differences=(),
-        disposition=convergence.Disposition(
-            actor=actor,
-            note=f"accepted as it stands after {reason}; no rebuild can reproduce it",
-        ),
-    )
+    registry = tree_registry.read(cfg)
+    handle = rb_writer.open_db(cfg=cfg)
+    try:
+        # THE DETECTION FIRST, as a rebuild runs it before its write: it marks
+        # every native tree over whatever the database now shows, so the
+        # fingerprint recorded below blesses nothing it has not marked.
+        convergence.detect_out_of_band_restore(cfg, handle, registry)
+        record = convergence.read(cfg).tree(tree_id)
+        reason = "a restore" if record is None or not record.reason else record.reason
+        convergence.clear_unconverged(
+            cfg,
+            tree_id,
+            differences=(),
+            disposition=convergence.Disposition(
+                actor=actor,
+                note=f"accepted as it stands after {reason}; no rebuild can reproduce it",
+            ),
+        )
+        # THE LATCH AS WELL AS THE FLAG (round two). Every intake write meets
+        # ``assert_tree_writable``, which refuses on a fingerprint the database
+        # has gone behind whatever the flag says; a rebuild answers it by the
+        # fingerprint its write records at its close, and an acceptance writes
+        # nothing, so it records the database as it now stands. The routing
+        # tree stays marked by the detection above and refuses until rebuilt.
+        convergence.record_fingerprint(cfg, handle)
+    finally:
+        rb_writer.close_db(handle)
 
 
 def declared_membership(
@@ -2231,6 +2261,7 @@ __all__ = [
     "DERIVATIONS",
     "accept_as_it_stands",
     "additions",
+    "detect_restore",
     "assert_as_approved",
     "assert_derivable",
     "preview_governed_trees",

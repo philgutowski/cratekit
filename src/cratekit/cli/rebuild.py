@@ -312,6 +312,10 @@ def _accept_as_it_stands(ctx, cfg: config.Config, declared: Any, tree_id: str) -
     A TREE THAT IS NOT REFUSING HAS NOTHING TO ACCEPT, and is refused as a
     tree no rebuild can reproduce, before any gate is asked.
     """
+    if tree_registry.read(cfg).is_database_native(tree_id):
+        # THE DETECTION FIRST, so the record the gate shows is the one the
+        # database now warrants and not one a later restore has overtaken.
+        engine.detect_restore(cfg)
     record = convergence.read(cfg).tree(tree_id)
     if record is None or not record.blocking:
         engine.assert_derivable(declared, tree_id)
@@ -329,6 +333,10 @@ def _accept_as_it_stands(ctx, cfg: config.Config, declared: Any, tree_id: str) -
                 "by you, until it is next marked"
             ),
         },
+        # THE ANSWER IS PINNED TO THE MARK IT WAS GIVEN OVER (U161's rule): a
+        # restore detected between the ask and the answer is a mark nobody
+        # was shown, and the answer recorded over the first is refused stale.
+        pinned={"since": str(record.since or ""), "reason": str(record.reason or "")},
     )
     if option != "accept":
         return ctx.envelope(data=_no_op("declined"), outcome=Outcome.NO_OP, code=ExitCode.OK)

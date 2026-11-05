@@ -406,7 +406,8 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     cuts: list[tuple[object, object]] = []
     frozen = object()
     measured = object()
-    after = object()
+    # The after check: what the resort's report counts as due again (U219).
+    after = SimpleNamespace(missing=())
     staged: list[tuple] = []
     approvals: list[object] = []
 
@@ -461,7 +462,7 @@ def test_each_worker_names_its_own_verb_and_rebuilds_the_item_it_was_handed(monk
     assert approvals == [None, [mine]]
     assert staged == [
         (routing_cli.RESORT_ARTIFACTS, frozen, driven, item,
-         {"tree_id": TREE_ID, "left_behind": [{"kept": measured}]})
+         {"tree_id": TREE_ID, "left_behind": [{"kept": measured}], "due_again": 0})
     ]
 
     assert cuts == [7.5, 7.5]

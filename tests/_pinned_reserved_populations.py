@@ -2139,6 +2139,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'nothing-to-route',
         'rating-not-landable',
         'refused-by-policy',  # 2026-11-05, U219
+        'resort-again',  # 2026-11-05, U219
         'resort-artifacts',
         'resort-plan-stale',  # 2026-11-05, U219
         'resort-staging',

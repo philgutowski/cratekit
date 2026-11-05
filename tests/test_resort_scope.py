@@ -542,14 +542,54 @@ def restored(both_native) -> dict[str, str]:
     return both_native
 
 
-def _landing_refuses(cfg: config.Config) -> bool:
-    """Whether the latch every intake write meets refuses the intake tree."""
+def _landing_refuses(cfg: config.Config, tree_id: str = "inbox") -> bool:
+    """Whether the latch every governed write meets refuses this tree.
+
+    ``assert_tree_writable``, as the intake writes call it (the landing, the
+    refill, the rotation, the analysed clearing), which runs the restore
+    detection BEFORE it reads the flag. Reading the flag alone is how round
+    one's acceptance passed a green suite while the landing still refused.
+    """
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
     try:
-        convergence.assert_converged(cfg, "inbox")
+        convergence.assert_tree_writable(cfg, handle, tree_id, tree_registry.read(cfg))
     except CratekitError as refused:
         assert refused.cause.reason == "tree-unconverged"
         return True
+    finally:
+        rb_writer.close_db(handle)
     return False
+
+
+def _accept(actor: str = "the-dj") -> dict:
+    verb = ["rebuild", "--actor", "a-person", "--tree", "inbox"]
+    code, refused = _drive(verb)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    code, envelope = _drive(["run", "decide", run_id, "rebuild.accept", "accept", "--actor", actor])
+    assert code == int(ExitCode.OK), envelope
+    code, accepted = _drive(["--run", run_id, *verb])
+    assert code == int(ExitCode.OK), accepted
+    return accepted
+
+
+def _restore_again(cfg: config.Config) -> None:
+    """A second out of band restore of the same kind, through the real detection."""
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    try:
+        taken = convergence.probe(handle)
+        ahead = convergence.Fingerprint(
+            schema_version=taken.schema_version,
+            active_rows=taken.active_rows,
+            local_usn=taken.local_usn + 50,
+            taken="2026-11-02T00:00:00Z",
+        )
+        convergence.write(cfg, convergence.read(cfg).with_fingerprint(ahead))
+        assert convergence.detect_out_of_band_restore(
+            cfg, handle, tree_registry.read(cfg)
+        ).regression is not None
+    finally:
+        rb_writer.close_db(handle)
 
 
 def test_a_restore_marked_inbox_is_accepted_by_a_named_person(restored):
@@ -626,3 +666,44 @@ def test_two_files_that_swap_places_after_the_gate_refuse_by_their_paths(
     assert code != int(ExitCode.OK), refused
     assert "resort-plan-stale" in json.dumps(refused), refused
     assert _below(cfg, both_native["genre"]) == {}
+
+
+
+def test_a_second_restore_clears_the_acceptance_of_the_first(restored):
+    """Two restores of one kind carry one reason; the second is still not accepted."""
+    cfg = config.load()
+    _accept()
+    assert not _landing_refuses(cfg)
+    _restore_again(cfg)
+    record = convergence.read(cfg).tree("inbox")
+    assert record.disposition is None, (
+        "a named person's acceptance of the first restore stands over the second"
+    )
+    assert _landing_refuses(cfg)
+
+
+def test_the_routing_tree_stays_marked_after_inbox_is_accepted(restored):
+    """Accepting INBOX records the database as it stands and blesses no other tree."""
+    cfg = config.load()
+    _accept()
+    assert _landing_refuses(cfg, taxonomy.default_taxonomy().tree.id)
+
+
+def test_a_resort_that_left_a_favourite_for_later_says_so(with_favourite):
+    """Over a marked routing tree, the deferred favourite keeps the flag, and the report says why."""
+    cfg = config.load()
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    try:
+        convergence.record_fingerprint(cfg, handle)
+    finally:
+        rb_writer.close_db(handle)
+    _restore_again(cfg)
+    code, done = _resort()
+    assert code == int(ExitCode.OK), done
+    (warning,) = [w for w in done["warnings"] if w["code"] == "resort-again"]
+    assert "run the resort again" in warning["message"]
+    assert taxonomy.default_taxonomy().tree.id in warning["message"], warning
+    code, again = _resort()
+    assert code == int(ExitCode.OK), again
+    assert [w for w in again["warnings"] if w["code"] == "resort-again"] == []
+    assert not convergence.read(cfg).tree(taxonomy.default_taxonomy().tree.id).blocking

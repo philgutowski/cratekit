@@ -169,6 +169,9 @@ and the live run are compared by their digests. The approved adds are frozen
 in the job: if the library or the taxonomy moves before the job is driven and
 the resort would add anything else, it refuses with `resort-plan-stale` and
 writes nothing, and the answer is to run it again and read the new plan.
+A favourite whose track the resort itself files into a new genre folder only
+becomes due after that write, so no plan could show it; the resort leaves it,
+says so with a `resort-again` warning, and the next resort shows and files it.
 
 The resort files only the routing tree. A native tree the taxonomy names as
 something else, the intake flow above all, holds what the verbs that write it
