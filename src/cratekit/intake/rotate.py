@@ -471,12 +471,16 @@ def _classify(
     expired_days: int,
     named: Mapping[str, tuple[date, str]] | None = None,
     old_display: str | None = None,
+    unreadable: int = 0,
 ) -> Batch | Left:
     """One node as a batch, or as left alone with its kind and reason.
 
     ``old_display`` is the declared Old folder's name, so the folder of that
     name directly under INBOX is named as Old rather than as any folder
     (U214); ``None`` when no Old is declared, which reads it as a folder.
+    ``unreadable`` is how many session records could not be read, so a
+    playlist no rule recognises is never said to have no record naming it
+    while one that might could not be read.
     """
     playlist_id, name = str(row.ID), str(getattr(row, "Name", "") or "")
 
@@ -511,10 +515,17 @@ def _classify(
     named = named or {}
     recognised_by = _recognised(cfg, row, recorded, named)
     if recognised_by is None:
+        # UNREAD IS NOT NONE: a record that could not be read may name it.
+        records = (
+            f"no readable landing record names it ({unreadable} session record(s) "
+            f"could not be read, and one of them may)"
+            if unreadable
+            else "no landing record names it"
+        )
         return left(
             LEFT_UNRECOGNISED,
-            "no landing record names it, its name does not end _inboxed, and no "
-            "batch folder under the music folder carries its name",
+            f"{records}, its name does not end _inboxed, and no batch folder under "
+            f"the music folder carries its name",
         )
     if playlist_id in recorded:
         landed, aged_from = recorded[playlist_id], AGED_FROM_RECORD
@@ -608,6 +619,7 @@ def plan_rotation(
             expired_days=expired_days,
             named=found.by_name,
             old_display=old.display,
+            unreadable=unreadable,
         )
         (batches if isinstance(classified, Batch) else left).append(classified)
 
@@ -705,6 +717,7 @@ def live_batches(
             expired_days=cfg.reports.intake_expired_days,
             named=found.by_name,
             old_display=old_display,
+            unreadable=found.unreadable,
         )
         if isinstance(classified, Batch) or classified.kind == LEFT_UNDATED:
             batches.append((classified.playlist_id, classified.name))

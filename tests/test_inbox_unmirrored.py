@@ -23,7 +23,7 @@ from datetime import timedelta
 
 import pytest
 
-from cratekit.core import active_taxonomy, config, rb_writer, tree_registry
+from cratekit.core import active_taxonomy, config, rb_writer, session, tree_registry
 from cratekit.intake import native, rotate
 from cratekit.modules.outbound import mirror
 from cratekit.organize import account_mirror, mirror_frozen
@@ -175,6 +175,45 @@ def test_an_undated_batch_is_mirrored_and_not_named_left(native_library):
 
     assert [name for _id, name in live.batches] == ["2026-10-09 Favorites"]
     assert live.left == ()
+
+
+def test_a_playlist_whose_record_cannot_be_read_is_never_said_to_have_none(native_library):
+    """Unread is not none: the record a later build wrote may be the one naming it."""
+    cfg, root_id = native_library
+    batch = _node(cfg, "2026-09-20 Defected", under=root_id, age=13, tracks=("t1", "t2"))
+    _record_landing(cfg, batch, "2026-09-20 Defected", TODAY - timedelta(days=13))
+    (entry,) = sorted(session.log_dir(cfg).glob("*.json"))
+    data = json.loads(entry.read_text(encoding="utf-8"))
+    data["schema_version"] = 2
+    entry.write_text(json.dumps(data), encoding="utf-8")
+
+    (node,) = _live(cfg).left
+    planned = _rotation(cfg)
+
+    assert node.kind == rotate.LEFT_UNRECOGNISED
+    assert node.reason.startswith(
+        "no readable landing record names it (1 session record(s) could not be read, "
+        "and one of them may)"
+    )
+    assert "no landing record names it" not in node.reason
+    assert planned.unreadable_records == 1
+    assert [(one.name, one.reason) for one in planned.left] == [(node.name, node.reason)]
+    assert dict(_inbox(cfg).unmirrored)[node.label()] == node.reason
+
+
+def test_a_folder_named_old_inside_old_is_a_folder_and_listed_as_yours(brief):
+    """Only the Old directly under INBOX is the rotation's own folder."""
+    cfg, _root, _ids = brief
+    planned = _rotation(cfg)
+    (nested,) = [_node(cfg, OLD, under=planned.old_id, folder=True)]
+
+    again = _rotation(cfg)
+
+    (inside,) = [node for node in again.left if node.playlist_id == nested]
+    assert (inside.kind, inside.place) == (rotate.LEFT_FOLDER, again.old_place)
+    area = Area(name="rekordbox")
+    rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    assert [one["kind"] for one in area.yours if one["name"] == OLD] == [rotate.LEFT_FOLDER]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
