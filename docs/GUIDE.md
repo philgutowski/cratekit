@@ -1681,6 +1681,12 @@ full procedure, and why the session has to be the PKCE kind or every download
 quietly comes back lossy, is in [`adapters.md`](adapters.md) under "Authorising
 the provider". Delete the plaintext token file once it is in the keychain.
 
+When the streaming account rejects the stored session, at sign in or in the
+middle of a job, Cratekit says the session was rejected and to sign in again,
+whatever the answer's body held, a gateway's page and an empty answer
+included. When the provider fails or cannot be reached it says to wait and
+resume, and keeps the stored session, because nothing judged it.
+
 ## Where things live
 
 | What | Where |
