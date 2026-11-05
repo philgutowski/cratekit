@@ -40572,6 +40572,14 @@ batch holding both kinds, reads each file's `driftlevel`, and sets the default
 from where the two kinds part, recorded in `docs/cutover.md`. The attended card
 this unit files is that sitting. Ledger only.
 
+**Closed 2026-11-05, sitting 60, A67 (#438).** Twenty files of the 2026-10-27
+batch measured on v0.7.0's detector: programmed house and techno read 0.04 to
+1.18 (Shed the highest), live band recordings 0.89 (Mocky), 1.22 (L'Eclair
+and The Mauskovic Dance Band) and 5.35 (K.O.G and The Zongo Brigade), edits of
+live material 0.07 to 0.58. The kinds overlap from 0.89 to 1.22; leaning to
+Normal there keeps the cut above 1.22, so the shipped 1.5 stands and
+`DEFAULT_DRIFT_CUT` does not change.
+
 ---
 
 ## R-1137. Two of the drift measurement's constants kill no test
@@ -43367,3 +43375,223 @@ that names this behaviour cannot tell the two apart.
 
 **Closes when:** a test tags a commit whose `pyproject.toml` version differs
 from the tag name, if that shape is ever wanted. Ledger only.
+
+---
+
+## R-1273. Whether the account's folder listing carries a playlist's creation time is proven on a fixture only
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** A root folder adopted before U216 has no record of what it
+held, so `sync/pair_cli._discovered_back` reads each unpaired playlist there by
+when the account says it was made, through
+`TidalAccount.folder_playlists_dated`, which takes the `created` the client's
+playlist parser reads off each folder item. The test that proves it adds a
+`created` field to an item the author wrote. No live sample of a folder item's
+data carrying `created` is recorded anywhere in the repository.
+
+**Measured cost.** Not driven, since the live account cannot be read from the
+cloud. If the live items carry no time, every unpaired playlist in the live
+`Genre Trivia!` folder is named "no creation time" for good, one made on the
+account after the sync included: named on the gate and never made, so never a
+duplicate, but nothing made there comes back by itself until it is paired by
+hand. The card's live check, no create for the 18, passes either way, so the
+attended sitting reads the reason on the 18: "not after a sync adopted" means
+the time was read, "no creation time" that it was not.
+
+**Closes when:** the attended sitting reads the reason text on the next live
+`crate sync pair` plan. Ledger only; it closes at a sitting.
+
+---
+
+## R-1274. A folder adopted before U216 whose made pairs are all gone names every playlist made in it since
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** For a root folder adopted before U216 the adoption moment
+is the earliest mark of a pair made in that folder
+(`pair_discover.adoption_moment`). A pair whose rekordbox side was deleted is
+unpaired and leaves the pairs document, so when every made pair of such a
+folder is gone there is no moment, and `before_adoption` reads every unpaired
+playlist there as one the folder may have held, the decision recorded at the
+plan: an unknown is named, never made.
+
+**Measured cost.** Driven by the review on the fake account: with the record
+removed and both rekordbox playlists deleted, a playlist made on the account
+afterwards with a readable later creation time was named "no playlist made in
+it dates the adoption" and not made. Nothing is lost or duplicated; a playlist
+the author makes there comes back only when paired by hand, which the gate
+says how to do.
+
+**Closes when:** the moment survives the pairs, for example by recording the
+adoption time on the folder the first time a U216 build reads an unrecorded
+one, or Phillip decides an unknown should come in. Ledger only.
+
+---
+
+## R-1275. A DOWNLOADED copy's reason can say the sync brings in a playlist the same plan leaves out
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli._discovered_back` checks each fresh
+account playlist for a `DOWNLOADED ` copy against the paired titles and the
+other fresh playlists in the folder, before the later checks (the scope check,
+`home_of`, two taking one rekordbox name) run on the fresh one it copies. So
+when the plain playlist is left out by a later check, the copy's reason still
+says "which this sync brings in from the same folder".
+
+**Measured cost.** Driven by the review's second round on the fake account:
+rekordbox already holding a `Disco` no pair made, and the account holding
+`Genre Trivia! Disco` and `DOWNLOADED Disco`, planned no create, a TAKEN row
+for the plain one and a COPY row saying the sync brings it in. Nothing is made
+and nothing is lost; the gate carries two rows that disagree.
+
+**Closes when:** the copy check runs after the place checks and reads only the
+fresh playlists still wanted, or its words say "a playlist beside it in the
+same folder". Ledger only.
+
+---
+
+## R-1276. A DOWNLOADED copy of a playlist whose pair was released is made in rekordbox
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** The copy check reads the titles of paired account
+playlists and of fresh ones. A made pair whose rekordbox side was deleted is
+released and leaves the pairs, and its account playlist is listed RELEASED,
+not fresh, so a `DOWNLOADED ` copy of it made after the sync copies nothing
+and is brought in.
+
+**Measured cost.** Driven by the review's second round on the fake account: a
+fresh `DOWNLOADED Techno` named a copy while the Techno pair stood; after
+rekordbox Techno was deleted and one sync released the pair, the next plan
+created `DOWNLOADED Techno` with its tracks beside a RELEASED row saying
+`Genre Trivia! Techno` is not made again. The create is on the rekordbox gate
+the person answers, and follows the brief's letter (a released playlist is not
+paired). On the live library every DOWNLOADED copy was in its folder before
+adoption, so this needs a new copy made on the account after the sync; that
+producer was not driven live.
+
+**Closes when:** Phillip says whether a released playlist's title counts as
+held for the copy check (the conservative reading is yes). Ledger only.
+
+---
+
+## R-1277. The released and name taken reasons still say pair it by hand without the rekordbox playlist
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** U216's fix round made `pair_discover.BY_HAND` say to make
+or choose the rekordbox playlist and name `--rekordbox PLAYLIST_ID`, and its
+two new reasons use it. The RELEASED reason in `sync/pair_cli._discovered_back`
+and in `pair_discover.discover`, and the name taken reason in
+`pair_discover.home_of`, keep the older words, and the test that pins the step
+lists BEFORE and COPY only.
+
+**Measured cost.** Driven by the review's second round: following the RELEASED
+row's step as written, `crate sync pair pl-3`, exits 30 saying the account
+playlist is not paired with a rekordbox playlist; the refusal's own steps name
+the right form. One dead end command, nothing lost.
+
+**Closes when:** every pair by hand step reads `BY_HAND`, and the test
+quantifies over every kind the back direction lists. Ledger only.
+
+---
+
+## R-1278. Two guards in U216's copy check kill no test
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** In `sync/pair_cli._discovered_back` the copy check leaves
+a playlist's own title out of the fresh titles it compares against
+(`other_id != account_id`), and picks its words by whether the copied title is
+paired. Removing the exclusion, or forcing the words to the brought in side,
+leaves the suite green.
+
+**Measured cost.** None driven. The exclusion matters only for a root folder
+literally named `DOWNLOADED`, since a title cannot otherwise copy itself once
+`name_of` strips the folder prefix; the paired side of the words is pinned by
+no test.
+
+**Closes when:** a test drives each. Ledger only, a maintainer facing guard.
+
+---
+
+## R-1279. board.py cloud reads a card the grok builder holds as ready, since that builder's comments carry no session footer
+
+**Found:** at the review of #536, U218, 2026-11-05.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads only comments
+that carry the Claude Code session footer as a hold. The `grok/` builder's
+comments carry none (its comments on #309 and #310 of 2026-10-13), so a card
+it holds reads `ready, no cloud session has taken it`, and `board.py cloud`
+prints no branch names. Driven at review on comments shaped like #310's.
+
+**Measured cost.** No card pays today: the two `grok/` branches on the remote
+belong to #309 and #310, both closed. A grok held card offered to a build
+thread would put two builders on one card. The same reader takes a comment
+of that builder's posted after a cloud thread's `Brainstorm` or `Question for
+Phillip` as Phillip's reply (driven at review on a synthetic pair: `answered,
+Phillip replied`), so a thread could fold another builder's words into a
+brief as his answer; no open card carries that input today. The cloud-unit skill now tells a
+thread to look for a `grok/` branch naming the card and that builder's
+comment before it posts `Started`.
+
+**Closes when:** `board.py cloud` reads a `grok/` branch or that builder's
+comment as a hold, with a test. Ledger only: maintainer facing, and
+`board.py` was out of U218's scope.
+
+---
+
+## R-1280. board.py cloud stops counting a card as held once its thread posts a question for Phillip, though the thread keeps building
+
+**Found:** at the build of #536, U218, 2026-11-05.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads a card whose
+session's last stated comment is `Question for Phillip` (or `Brainstorm`) as
+`waiting-on-phillip`, and `cmd_cloud` counts only `underway` cards against
+`CLOUD_LANES`. Since Phillip's rules of 2026-11-04 a question does not stop
+the build: the thread makes the conservative call and keeps going, posting
+`Progress` notes that the reader skips when it picks the stated heading. So
+the queue prints one lane fewer held than there are threads building, and a
+session reading the queue alone would start a thread the cap has no room for.
+
+**Measured cost.** Driven on the live board on 2026-11-05: four threads
+held #526, #532, #533 and #536, #533 having posted a question while it kept
+building, and `board.py cloud` printed `Held, 3 of 5` and offered #537. The
+same reader also reads such a card `answered` once Phillip's answer lands,
+while its thread is still building, and step 1 of the cloud-unit skill would
+hand it to a second thread; the skill now says to pass over an `answered`
+card whose thread is still writing. No user of the shipped verbs pays: the building project's coordinator counts lanes by
+its own running threads (METHOD's cloud lane section, written by U218), and
+`CLOUD_LANES` is five against the building project's cap of four, so one
+uncounted question still leaves the cap within the lane count.
+
+**Closes when:** the reader keeps a card held while a session that posted a
+question is still writing under it, for example a `Progress` comment after the
+question read as a hold, with a test, or the coordinator's own count is the
+documented source and `board.py cloud` says its held count excludes
+questioning threads. Ledger only: maintainer facing.
+
+---
+
+## R-1281. Two open cards are both titled U218, #536 and #537, because parallel threads read the next unit number at the same time
+
+**Found:** at the build of #536, U218, 2026-11-05.
+
+**The mechanism.** The `file-card` skill takes a new card's number as one
+past the highest U number any issue title carries. Two threads grooming the
+board on 2026-11-05 read it within two minutes of each other: #536 was filed
+at 14:14 and #537 at 14:16, both as U218. The same race gave two A93 cards
+(#525, #528).
+
+**Measured cost.** Read from the issue titles over REST. A unit number names a
+record, `docs/restart/u218.md`, a mutation table and residual files, so the
+later card's landing would write over or collide with the earlier one's
+record, and the board names two units by one number. No library or DJ pays.
+
+**Closes when:** the later card, #537, takes the next free number in its
+title before it is built, and its record is named for that number. METHOD's
+Sharing the board section, written by U218, now says a number is read just
+before filing; a check in `board.py audit` that refuses two open cards with
+one number would close the class. Ledger only: maintainer facing.

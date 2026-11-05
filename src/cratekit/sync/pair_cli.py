@@ -59,6 +59,15 @@ one that is not the author's own or that a pair may not hold, one whose place
 ``home_of`` refuses, and two that would take one rekordbox name in one folder,
 which refuse that name only.
 
+**ONLY ONE MADE AFTER THE SYNC (U216).** A root folder a sync adopted by its
+name already held the account's own playlists, and those never come to
+rekordbox: the adoption records what the folder held (``MadeFolder.held``),
+and a folder adopted before that record existed is read by when the account
+says each playlist was made against the earliest mark of a pair made in it,
+an unknown read as held. A ``DOWNLOADED `` copy of a playlist a pair in the
+same folder holds is that playlist again, and is not made either. Each is
+named on the gate, never dropped.
+
 **THE LATER OF TWO OPPOSITE CHANGES WINS (U202).** Where one track was added
 on one side and removed on the other since the last sync, the merge applies
 the later change to both (``sync/pair_merge.py``). The moments are the
@@ -492,6 +501,11 @@ class Place:
     folder_id: str = ""
     #: A recorded folder read as gone, so a new one is made in its place.
     stale: str = ""
+    #: U216. The account playlists the plan listed in a folder it adopts, which
+    #: the adoption records as held before, so no sync brings them to rekordbox.
+    #: None when the plan did not say, a plan held by a build before U216, and
+    #: the folder is then recorded as one whose record does not say.
+    held: frozenset[str] | None = None
 
     def identity(self) -> dict[str, str]:
         return {
@@ -619,6 +633,9 @@ class _Reader:
     matched: set[str] = field(default_factory=set)
     #: U202. Each account root folder's playlists, listed once per plan.
     inside: dict[str, dict[str, str]] = field(default_factory=dict)
+    #: U216. When the account says each playlist in a folder was made, listed
+    #: once per plan, and only for a folder adopted with no record of what it held.
+    made_at: dict[str, dict[str, Any]] = field(default_factory=dict)
 
     @cached_property
     def remote(self):
@@ -637,6 +654,17 @@ class _Reader:
         if folder_id not in self.inside:
             self.inside[folder_id] = dict(self.remote.folder_playlists(folder_id))
         return self.inside[folder_id]
+
+    def folder_dates(self, folder_id: str) -> dict[str, Any]:
+        """When the account says each playlist in one root folder was made, None unknown (U216)."""
+        if folder_id not in self.made_at:
+            self.made_at[folder_id] = {
+                playlist_id: made
+                for playlist_id, (_title, made) in self.remote.folder_playlists_dated(
+                    folder_id
+                ).items()
+            }
+        return self.made_at[folder_id]
 
     @cached_property
     def by_isrc(self) -> dict[str, tuple[str, ...]]:
@@ -1651,7 +1679,16 @@ def _discovered(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple
             news.append(
                 (
                     Target("", one.rekordbox_id, False, folder=folder, title=one.title),
-                    Place(folder, one.title, action, folder_id, stale),
+                    Place(
+                        folder,
+                        one.title,
+                        action,
+                        folder_id,
+                        stale,
+                        # U216. WHAT AN ADOPTED FOLDER HOLDS NOW is what it held
+                        # before any sync, recorded when the folder is adopted.
+                        held=frozenset(inside) if action == FOLDER_ADOPT else None,
+                    ),
                 )
             )
     return news, listed
@@ -1667,6 +1704,9 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
     one, one the account does not list among the author's own or that a pair
     may not hold, one ``pair_discover.home_of`` places nowhere, and two that
     would take one rekordbox name in one folder, which refuse that name only.
+    U216: and one the folder held before a sync adopted it
+    (``pair_discover.before_adoption``), or a ``DOWNLOADED `` copy of one a
+    pair in the folder holds (``pair_discover.downloaded_copy``).
     """
     from cratekit.core import active_taxonomy
     from cratekit.favorites import placement
@@ -1682,7 +1722,7 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
         )
 
     root = reader.root_folders
-    held = set(document.pairs)
+    paired_ids = set(document.pairs)
     released = document.released.account
     favorites = placement.source_name(active_taxonomy.load(cfg))
     wanted: list[tuple[str, str, str, Any]] = []
@@ -1690,8 +1730,24 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
         if recorded.folder_id not in root:
             continue
         inside = reader.folder_listing(recorded.folder_id)
+        # U216. A FOLDER ADOPTED BEFORE ITS RECORD SAID WHAT IT HELD is read by
+        # time: the earliest mark of a playlist made in it dates the adoption.
+        unrecorded = recorded.held is None and not recorded.created
+        adopted = (
+            pair_discover.adoption_moment(
+                pair.marked
+                for pair in document.pairs.values()
+                if pair.made and pair.folder == folder
+            )
+            if unrecorded
+            else None
+        )
+        paired_titles = [
+            title for account_id, title in inside.items() if account_id in paired_ids
+        ]
+        fresh: list[tuple[str, str]] = []
         for account_id, title in sorted(inside.items(), key=lambda one: (one[1], one[0])):
-            if account_id in held:
+            if account_id in paired_ids:
                 continue
             if account_id in released:
                 left(
@@ -1701,6 +1757,46 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
                     pair_discover.RELEASED,
                     "its rekordbox playlist was deleted, so it was unpaired and is not made "
                     "again; pair it by hand with crate sync pair to sync it once more",
+                )
+                continue
+            # U216. ONLY A PLAYLIST MADE ON THE ACCOUNT AFTER THE SYNC COMES IN,
+            # decided by Phillip on 2026-11-04: one the folder held before a
+            # sync adopted it is the account's own, and is named, never made.
+            before = pair_discover.before_adoption(
+                account_id,
+                held=recorded.held,
+                created=recorded.created,
+                folder=folder,
+                made=(
+                    reader.folder_dates(recorded.folder_id).get(account_id)
+                    if unrecorded and adopted is not None
+                    else None
+                ),
+                adopted=adopted,
+            )
+            if before:
+                left(account_id, title, folder, pair_discover.BEFORE, before)
+                continue
+            fresh.append((account_id, title))
+        for account_id, title in fresh:
+            # AND A DOWNLOADED COPY of a playlist a pair in this folder holds, or
+            # of one this sync brings in beside it (U216, from the review), is
+            # that playlist again, so making it would put it in rekordbox twice.
+            beside = [other for other_id, other in fresh if other_id != account_id]
+            copied = pair_discover.downloaded_copy(folder, title, [*paired_titles, *beside])
+            if copied:
+                whose = (
+                    "a pair in the same folder already holds"
+                    if copied in paired_titles
+                    else "this sync brings in from the same folder"
+                )
+                left(
+                    account_id,
+                    title,
+                    folder,
+                    pair_discover.COPY,
+                    f"it is a DOWNLOADED copy of {copied!r}, which {whose}, so it is not "
+                    f"made in rekordbox; {pair_discover.BY_HAND}",
                 )
                 continue
             try:
@@ -2084,6 +2180,7 @@ def _made(
         lambda: remote.create_folder(place.folder),
         adopt=place.folder_id if place.action == FOLDER_ADOPT else "",
         stale=place.stale,
+        held=place.held,
     )
     account_id, made = store.reserve_made(
         one.target.rekordbox_id,
