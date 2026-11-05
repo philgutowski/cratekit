@@ -163,9 +163,9 @@ written whole too: each key sits at its first release's place in the listing,
 and a reorder puts each unread track back behind the track listed before it,
 since an order withheld while the snapshot moved let the account lead the next
 sync and undo a rekordbox reorder (the review's round two). The gate names
-each. A listing the
-reader cannot use at all, a row carrying no provider id, leaves its pair out of
-a sync of every pair, named, and refuses a pair named alone.
+each. A listing the reader cannot use at all, a row carrying no provider id,
+leaves its pair out of a sync of every pair, named, and refuses a pair named
+alone.
 
 Layer: modules.
 """

@@ -232,6 +232,8 @@ def test_a_plan_whose_unread_tracks_differ_digests_differently(world, cfg):
     code, second = drive(["sync", "pair"])
     assert code == int(ExitCode.DECISION_REQUIRED), second
     assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
+    facts = [str(one) for one in second["cause"]["detail"]["shown"].values()]
+    assert any("lists 2 track(s) with no title or no artist" in one for one in facts), facts
     world.account.playlists[PHIL].remove("t5")
     code, third = drive(["sync", "pair"])
     assert third["cause"]["detail"]["shown"]["digest"] == first["cause"]["detail"]["shown"]["digest"]
