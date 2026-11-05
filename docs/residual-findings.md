@@ -35704,6 +35704,12 @@ Phillip's standard of 2026-10-27, so `KeyID` is never written. The rekordbox
 visit and `docs/GUIDE.md` drop Reload Tags. The live proof is owed to the
 next attended landing.
 
+**Live proof, sitting 55 (2026-11-05), A50 (#386).** The 14 rows landed by
+pass `2026-11-05T022315Z-910b_synced` showed artist and genre on every row in
+rekordbox before any Reload Tags, and one row read in the Info panel showed
+its album and year (Jamie Cullum, `Twentysomething (Special Edition)`, 2004);
+the database read the same four columns on all 14.
+
 ---
 
 ## R-922. A native landing's digest names the database file, so no copy rehearsal can match it
