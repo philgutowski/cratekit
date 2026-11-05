@@ -235,6 +235,51 @@ def test_a_featured_credit_is_a_performer_and_never_a_version():
     assert match.split_version("Sun Path (feat. Mira)") == ("Sun Path", "")
 
 
+@pytest.mark.parametrize(
+    ("spelled", "expected"),
+    [
+        ("[Premade Sandwiches]", ("Premade Sandwiches", "")),
+        ("(Premade Sandwiches)", ("Premade Sandwiches", "")),
+        ("  [Premade Sandwiches]  ", ("Premade Sandwiches", "")),
+        ("[Premade Sandwiches] (Live)", ("Premade Sandwiches", "Live")),
+        ("[Premade Sandwiches] (feat. Mira)", ("Premade Sandwiches", "")),
+        ("Song (Remix)", ("Song", "Remix")),
+        ("Song [Remix] (Edit)", ("Song", "Remix Edit")),
+        ("[]", ("", "")),
+    ],
+)
+def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
+    """U213. A group that is all the title has left is the title, brackets dropped.
+
+    Glass Animals' ``[Premade Sandwiches]`` walked off whole like a qualifier,
+    so the row named no title and refused every playlist ``crate sync twins``
+    planned. An empty group is still nothing, and a group after a title is
+    still the version it always was.
+    """
+    assert match.split_version(spelled) == expected
+    assert match.split_title(spelled) == expected
+
+
+def test_a_provider_row_titled_wholly_in_brackets_reads_rather_than_refuses():
+    (read,) = match.read_tidal_tracks(
+        [{"id": "5", "name": "[Premade Sandwiches]", "artist": {"name": "Glass Animals"}}]
+    )
+    assert (read.artist, read.title, read.version) == ("Glass Animals", "Premade Sandwiches", "")
+    assert read.spelled == "[Premade Sandwiches]"
+    with pytest.raises(match.UnreadableList, match="names no title"):
+        match.read_tidal_tracks([{"id": "6", "name": "[]", "artist": {"name": "Glass Animals"}}])
+
+
+def test_listed_names_reads_a_row_the_reader_refuses():
+    row = {"id": " 7 ", "name": "", "artist": {"name": "Glass Animals"}}
+    assert match.listed_names(row) == ("7", "Glass Animals", "")
+    assert match.listed_names({"id": "8", "title": "[X]", "name": "Y", "artists": []}) == (
+        "8",
+        "",
+        "[X]",
+    )
+
+
 def test_a_dash_inside_a_title_is_never_read_as_a_version():
     """The parser that guessed would invent a record nobody released."""
     assert match.split_version("Sun - Rise") == ("Sun - Rise", "")
@@ -1650,6 +1695,25 @@ def test_a_head_inside_the_title_tag_is_stripped_so_a_plain_provider_row_matches
     assert index.versions(match.recording_token("Felixcw", "06A - 126 - Dr. Beat")) == ()
     found = resolve([one(artist="Felixcw", title="Dr. Beat", origin=match.TIDAL)], index)
     assert found.matches[0].state is match.MatchState.MATCHED
+
+
+def test_a_headed_tag_titled_wholly_in_brackets_matches_the_provider_row(music, tmp_path):
+    """U213. Both sides read the bracketed title through one function, so they converge.
+
+    Before, the provider row refused and the file indexed under an empty
+    title, so the library's own copy could never be found by its title.
+    """
+    headed_tag(
+        music, tmp_path, "06A - 126 - Glass Animals - [Premade Sandwiches]",
+        artist="Glass Animals", title="06A - 126 - [Premade Sandwiches]",
+    )
+    index = index_of(music)
+    held = index.versions(match.recording_token("Glass Animals", "Premade Sandwiches"))
+    assert [(row.title, row.version) for row in held] == [("Premade Sandwiches", "")]
+    rows = match.read_tidal_tracks(
+        [{"id": "5", "name": "[Premade Sandwiches]", "artist": {"name": "Glass Animals"}}]
+    )
+    assert resolve(rows, index).matches[0].state is match.MatchState.MATCHED
 
 
 def test_a_head_only_in_the_filename_with_a_plain_tag_indexes_as_it_did(music, tmp_path):
