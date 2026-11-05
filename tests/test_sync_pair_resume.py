@@ -40,20 +40,33 @@ class Answer:
     status_code = 200
 
 
-def gate_the_account(account, monkeypatch) -> None:
+class Limited:
+    """The provider's rate limit answer, asking for a wait longer than any cooldown."""
+
+    status_code = 429
+    headers = {"Retry-After": "100000"}
+
+
+def gate_the_account(account, monkeypatch, *, limited_on: int | None = None) -> None:
     """Send every write the fake account makes through a real provider gate.
 
     The fake counts a write in ``_bump`` before it changes anything, so the
     gate is asked first: a call the ceiling refuses is never made and changes
-    nothing, which is the gate's own promise for a live call.
+    nothing, which is the gate's own promise for a live call. ``limited_on``
+    makes that gated call answer rate limited, writing nothing, which trips
+    the gate's cooldown: a park that is not the ceiling.
     """
     gate = provider_gate.Gate(
         provider_gate.GateSettings(min_interval_s=0.0), sleep=lambda seconds: None
     )
     real = account._bump
+    made = [0]
 
     def bump(subject: str = "") -> None:
-        def send() -> Answer:
+        def send():
+            made[0] += 1
+            if made[0] == limited_on:
+                return Limited()
             real(subject)
             return Answer()
 
@@ -326,3 +339,18 @@ def test_made_here_reads_only_a_pair_made_for_this_playlist_in_this_folder():
     assert not pair_cli._made_here(pair(made=False), one), "a pair made by hand was read as made"
     assert not pair_cli._made_here(pair(rekordbox_id="rb-2"), one)
     assert not pair_cli._made_here(pair(folder="ARCHIVE"), one)
+
+
+def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):
+    """The first pair made and moved, its fill refused: what the continue is named for."""
+    world, _playlists = made_world
+    run_id, _first = to_the_write(VERB)
+    code, stopped = write(run_id, VERB, 3)
+    assert code == CEILING, stopped
+    # The check: the made playlist listed, and the root folders read once.
+    check = pair_calls.listing_calls(0) + pair_calls.READ_FOLDER
+    # The write: the first pair filled after its membership is read, and the
+    # other four made and filled; their folder is made already.
+    fill = pair_calls.listing_calls(0) + 1 + 1
+    others = 4 * (pair_calls.MAKE_PLAYLIST + 1 + 1)
+    assert stopped["cause"]["detail"]["expected"] == check + fill + others

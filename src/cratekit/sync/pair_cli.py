@@ -3288,8 +3288,16 @@ def _expected(planned: Plan, steps: Any) -> tuple[int, int]:
     """
     left = [one for one in planned.pairs if not _steps_of(steps, one).has(STEP_DONE)]
     check_calls = pair_calls.check(left, create=FOLDER_CREATE)
+    # A FOLDER A MADE PAIR OF THIS RUN BEGAN IN IS MADE ALREADY, by the
+    # first pair that went in it, so the pairs still to make there make none.
+    begun_in = {
+        one.place.folder
+        for one in planned.pairs
+        if one.place is not None and _steps_of(steps, one).has(STEP_MAKING)
+    }
     write_calls = pair_calls.folders_made(
-        [one for one in left if not _steps_of(steps, one).has(STEP_MAKING)], FOLDER_CREATE
+        [one for one in left if one.place is None or one.place.folder not in begun_in],
+        FOLDER_CREATE,
     )
     for one in left:
         made = one.target.new and bool(_steps_of(steps, one).get(STEP_MADE))
@@ -3347,6 +3355,12 @@ def _stopped(
         f"is left, with no new plan and no new answer"
     )
     detail = {**dict(cause.detail or {}), "run_id": run_id, "finished": finished}
+    if cause.reason != provider_gate.CEILING:
+        # ANY OTHER PARK names the command too (round two's review), to give
+        # once what parked it has passed: the same run, the same words.
+        said += ", once that has passed: " + shlex.join(
+            ["crate", "--run", run_id, *(argv or VERB_PATH)]
+        )
     if cause.reason == provider_gate.CEILING:
         check_calls, write_calls = _expected(planned, steps)
         line = int(detail.get("ceiling") or _ceiling(cfg))

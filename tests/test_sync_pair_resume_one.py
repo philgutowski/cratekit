@@ -214,3 +214,63 @@ def test_a_first_sync_named_by_hand_that_failed_after_its_mark_is_continued_on_i
     assert len(made.account.matches) == lookups, "the continue planned again"
     assert sorted(made.on_account()) == ["t1", "t2", "t3"]
     assert sorted(made.held()) == ["1", "2", "3"]
+
+
+def _one_move_a_call(account) -> None:
+    """Order as the live adapter does: one gated move to the end per track moved."""
+
+    def order(playlist_id, remote_ids):
+        members = account.playlists[playlist_id]
+        once = {one for one in members if members.count(one) == 1}
+        wanted = [one for one in dict.fromkeys(remote_ids) if one in once]
+        keep = 0
+        for one in list(members):
+            if one in set(wanted) and keep < len(wanted) and one == wanted[keep]:
+                keep += 1
+        for one in wanted[keep:]:
+            account._bump(playlist_id)
+            members.remove(one)
+            members.append(one)
+        account.ordered.append((playlist_id, tuple(remote_ids)))
+        return tuple(members)
+
+    account.order_tracks = order
+
+
+def test_a_stop_in_the_middle_of_an_order_is_finished_by_the_continue(world, monkeypatch):
+    """Round two: the moves made before the stop are this run's, and the order is not read."""
+    made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
+    assert sync(made.args())[0] == int(ExitCode.OK)
+    gate_the_account(made.account, monkeypatch)
+    _one_move_a_call(made.account)
+    made.rekordbox_order("3", "2", "1")
+    args = [*VERB, ACCOUNT]
+    run_id, _first = to_the_write(args)
+    code, stopped = write(run_id, args, 1)
+    assert code == CEILING, stopped
+    assert made.on_account() == ["t1", "t3", "t2"], "the stop did not fall between the moves"
+
+    code, done = write(run_id, args, 100)
+    assert code == int(ExitCode.OK), done
+    assert made.on_account() == ["t3", "t2", "t1"]
+    code, again = sync(args)
+    assert code == int(ExitCode.OK), again
+    assert again["outcome"] == "no_op"
+
+
+def test_a_park_that_is_not_the_ceiling_names_the_command_that_continues_the_run(
+    world, monkeypatch
+):
+    made = world(account=("1", "2", "3"), rekordbox=("1", "2", "3"))
+    assert sync(made.args())[0] == int(ExitCode.OK)
+    gate_the_account(made.account, monkeypatch, limited_on=2)
+    made.account.playlists[ACCOUNT].append("t4")
+    made.rekordbox_remove("2")
+    made.rekordbox_add("5")
+    args = [*VERB, ACCOUNT]
+    run_id, _first = to_the_write(args)
+    code, parked = write(run_id, args, 100)
+    assert parked["cause"]["reason"] == "provider-cooldown", parked
+    message = parked["cause"]["message"]
+    assert f"run {run_id} finished 0 of 1 pair(s)" in message
+    assert message.endswith(f"once that has passed: crate --run {run_id} sync pair {ACCOUNT}")
