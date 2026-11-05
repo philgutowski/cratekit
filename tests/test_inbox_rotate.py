@@ -315,7 +315,10 @@ def test_the_forty_and_the_hundred_move_the_old_one_hundred_twenty_goes_and_no_t
     assert actions["move"] == ["2026-06-25T101010Z-1_inboxed", "2026-08-24 Favorites"]
     assert actions["remove"] == ["a batch named by hand"]
     assert actions["keep"] == ["2026-09-23 Tidal playlists"]
-    assert sorted(actions[rotate_cli.LEAVE]) == ["2026-01-01 my list", "Lisa picks", "listen later"]
+    # Old itself is named left beside the rest since U214, as the mirror names it.
+    assert sorted(actions[rotate_cli.LEAVE]) == [
+        "2026-01-01 my list", "Lisa picks", OLD, "listen later"
+    ]
 
     # The moves: parent is Old, still live, every track still in it.
     for key, members in (("40", ["t3", "t4"]), ("100", ["t5", "t6"])):
@@ -423,7 +426,11 @@ def test_a_second_run_plans_nothing_and_still_asks(native_library):
     assert code == int(ExitCode.OK), acted
     assert acted["outcome"] == "no_op"
     assert refused["cause"]["detail"]["gate"] == GATE
-    assert [item["action"] for item in acted["data"]["items"]] == ["keep"]
+    # The keep, and Old, which the first run made, named left (U214).
+    assert [(item["action"], item["playlist"]) for item in acted["data"]["items"]] == [
+        ("keep", "2026-08-20 Set"),
+        (rotate_cli.LEAVE, OLD),
+    ]
     assert (acted["data"]["totals"]["move"], acted["data"]["totals"]["remove"]) == (0, 0)
     assert (_content(cfg), _memberships(cfg)) == (content, members)
     assert _query(cfg, "SELECT * FROM djmdPlaylist ORDER BY ID") == nodes

@@ -16,7 +16,10 @@ account area reads its INSPIRATION listing (U142), with rekordbox open or not:
   its own name holding one playlist per LIVE BATCH directly under it,
   ``INBOX 2026-10-31 Defected``, a batch being what ``inbox rotate`` calls one
   (:func:`cratekit.intake.rotate.live_batches`). Old, and every playlist that
-  is not a batch, is not mirrored. A batch that leaves INBOX, into Old or
+  is not a batch, is not mirrored, and each such node directly under INBOX
+  is NAMED on the INBOX step with the classifier's reason and, for a plain
+  playlist, its row count (U214), so a batch skipped by rule reads apart
+  from one missed. A batch that leaves INBOX, into Old or
   out, has its mirrored playlist REMOVED at the next refresh, the one
   mirrored playlist the product removes, and only when its title no longer
   sits directly under INBOX at all. An intake tree that is not database
@@ -272,6 +275,7 @@ def _inbox(
         retire=True,
         present=frozenset(mirror.title(name, one) for one in live.present),
         edits=mirror_edits.INBOX,
+        unmirrored=tuple((node.label(), node.reason) for node in live.left),
     )
 
 
@@ -434,7 +438,18 @@ def file_signature(cfg: config.Config) -> Callable[[mirror.Row], str]:
     return signature
 
 
-def _detail(planned: mirror.FolderPlan) -> str:
+def _detail(planned: mirror.FolderPlan, folder: mirror.Folder | None = None) -> str:
+    """The step's line, with every node the folder leaves off named on it (U214)."""
+    said = _counted(planned)
+    if folder is not None and folder.unmirrored:
+        said += (
+            f"; {len(folder.unmirrored)} node(s) in {folder.name} not mirrored: "
+            + "; ".join(label for label, _reason in folder.unmirrored)
+        )
+    return said
+
+
+def _counted(planned: mirror.FolderPlan) -> str:
     counts = planned.counts()
     if not planned.writes:
         return (
@@ -803,7 +818,7 @@ def add_steps(
             key=key,
             title=title,
             state=PLANNED if planned.writes else NOTHING,
-            detail=_detail(planned),
+            detail=_detail(planned, folder),
             digest=digest_of(planned.identity()),
             counts=planned.counts(),
             items=planned.items(),

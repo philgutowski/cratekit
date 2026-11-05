@@ -42858,3 +42858,147 @@ provider that pages differently would move every count.
 
 **Closes when:** the next attended `crate sync pair` records its answer's
 `totals.calls_expected` against `totals.calls`. Ledger only.
+
+---
+
+## R-1251. A mirrored INBOX playlist still in INBOX but no longer read as a batch is named twice on the step, and counted twice in its left count
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `mirror.plan` names a playlist the ledger records as
+mirrored, whose title is still present in INBOX but no longer reads as a
+batch, with its "still in INBOX but no longer read as one to mirror" line.
+Since U214 the same node is also one of `Folder.unmirrored`, so the step
+carries two left lines for it and its `left` count counts it twice: "2 left as
+they are; 1 node(s) in INBOX not mirrored".
+
+**Measured cost.** Both lines are true. A person reconciling the left count
+against INBOX reads one too many. Driven on the account side through the
+organize step's fake account; the library side producer, a batch folder
+removed after the batch was mirrored, was not driven end to end.
+
+**Closes when:** the step names such a node once, the recorded line folded
+into its unmirrored line, or the count counts nodes rather than lines. Ledger
+only: a wording and count fix, nothing false.
+
+---
+
+## R-1252. An INBOX step refused for two batches of one title shows the refusal only, and none of the nodes it would leave off
+
+**Found:** at the plan and the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `account_mirror._inbox` returns the `_twice` refusal when
+two live batches take one account title, before the unmirrored lines are
+built, so the refused INBOX step names neither the batches it would mirror
+nor the nodes it would leave off.
+
+**Measured cost.** The brief's "never dropped without a line" does not hold
+while the step is refused. Nothing is mirrored and nothing is skipped
+silently: the refusal names the title to fix, and once it is fixed the next
+refresh names every node. Driven on a disposable database with two
+`2026-09-23 Tidal playlists` batches and a label playlist beside them. The
+author's call at the plan, the conservative one, since the refusal stops the
+step whole.
+
+**Closes when:** the refusal's detail carries the unmirrored lines too.
+Ledger only.
+
+---
+
+## R-1253. Two live folders named Old under INBOX are both named the Old folder by the mirror, while the rotation refuses the tree
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `plan_rotation` refuses `intake-old-undeclared` when INBOX
+holds two live folders of the declared Old's name, since a rotation that
+targets the folder by name cannot tell them apart. `live_batches` refuses
+nothing there and the mirror's INBOX step names both as "the Old folder".
+
+**Measured cost.** Nothing false: neither folder is mirrored and both are
+named. The mirror and the rotation disagree on whether INBOX is readable, and
+only the rotation's refusal says why. Driven on a disposable database.
+
+**Closes when:** the mirror's line for a second Old says the rotation refuses
+the pair. Ledger only.
+
+---
+
+## R-1254. The Old check in the rotation's classifier carries a guard that kills no test, because a name is never None
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `rotate._classify` tests `old_display is not None and name
+== old_display`. A node's name is always text, so the first clause decides
+nothing the second does not already decide.
+
+**Measured cost.** None. Removed in a mutation run, every test passed. It
+documents the undeclared case and costs nothing.
+
+**Closes when:** the clause is dropped or kept on purpose. Ledger only,
+maintainer facing.
+
+---
+
+## R-1255. The session scan reads a log directory it cannot list as no record and no unreadable one, for every consumer but the rotation's classifier
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `session.scan_log` globs the log directory, and a glob over
+a directory the account cannot list yields nothing rather than raising, so it
+returns `(), ()`: no record read and none unreadable. U214 made the rotation's
+classifier ask the listing itself (`rotate.Landings.unlisted`), so its
+unrecognised reason says the log could not be listed. Every other consumer of
+`scan_log` still reads the unlistable log as empty, the gates included, and the
+rotation's own `rotate-records-unreadable` warning does not fire on it, so a
+batch recognised by its name rather than its record is aged from its playlist's
+creation date with no warning.
+
+**Measured cost.** Driven at the review as an unprivileged account with the
+log directory's mode set to none: the scan answered no record and no unreadable
+one, and nothing warned. The producer was a permission change made outside the
+tool, so the natural producer is unmeasured; the repository treats a directory
+it cannot list as a reachable class. A gate that reads the log through the
+scan fails open on it, which the scan's own docstring names as the shape it
+exists to prevent.
+
+**Closes when:** `scan_log` asks the listing and reports an unlistable log as
+unread, each gate consumer refuses on it, and the rotation warns on it as it
+warns on an unreadable record. Earns an issue under the board bar's (b) and
+(d): a clean report over state it could not read, and a guard on a gated path
+that reads unread as none.
+
+---
+
+## R-1256. A landing record whose start is not a date is read as readable and then skipped, so its batch reads as named by no record with no warning
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `SessionRecord.from_json` keeps a `started` that is not a
+date as text, so the record counts as read, and `rotate.landings` skips it when
+`_local_date` returns nothing. The batch it names then reads "no landing record
+names it" and `unreadable_records` stays at 0.
+
+**Measured cost.** A false reason with no warning on the rotation's plan and
+the mirror's INBOX step. Driven with a hand edited record; the writer always
+writes an ISO date, so no Cratekit verb was found to produce it (1 candidate
+driven).
+
+**Closes when:** `landings` counts such a record as unreadable. Ledger only.
+
+---
+
+## R-1257. A batch with no record and no creation date is said to have no landing record while a session record could not be read
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `rotate._classify` names a recognised batch with nothing to
+age it from "no landing record and no creation date to age it from", without
+the unread clause U214 gave the unrecognised reason. The gate's
+`rotate-records-unreadable` warning still fires beside it.
+
+**Measured cost.** A reason that overclaims, with a true warning beside it.
+Driven with the playlist's creation column set empty in SQL; rekordbox always
+fills it, so the producer is synthetic (1 candidate driven).
+
+**Closes when:** the reason carries `Landings.unread()` as the unrecognised one
+does. Ledger only.
