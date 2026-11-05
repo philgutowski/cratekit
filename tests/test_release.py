@@ -732,13 +732,16 @@ def test_plan_reads_the_bump_from_the_version_the_range_starts_at(repo, capsys, 
     assert "proposed bump: patch, v0.2.0 to v0.2.1" in out
     assert "merge(u4)" not in out
     # A range ending at a version tag is titled by that tag, however the tip
-    # is spelled, not by the proposal (a patch here, v0.2.2).
-    _git(repo, "branch", "at-v0.3.0", "v0.3.0")
-    for tip in ("v0.3.0", "at-v0.3.0"):
-        assert _plan(repo, monkeypatch, since="v0.2.1", tip=tip, notes=True) == 0
+    # is spelled, not by the proposal: a repair alone proposes v0.3.1, and
+    # the release cut over it was v0.4.0.
+    _merge_into(repo, "main", "cloud/5-r", "merge(r-5): a repair")
+    _set_version(repo, "0.4.0")
+    _git(repo, "branch", "at-v0.4.0", "v0.4.0")
+    for tip in ("v0.4.0", "at-v0.4.0"):
+        assert _plan(repo, monkeypatch, since="v0.3.0", tip=tip, notes=True) == 0
         body = capsys.readouterr().out
-        assert body.startswith("Cratekit v0.3.0.\n"), f"--tip {tip} titled the notes {body[:20]!r}"
-        assert "@v0.3.0" in body
+        assert body.startswith("Cratekit v0.4.0.\n"), f"--tip {tip} titled the notes {body[:20]!r}"
+        assert "@v0.4.0" in body and "v0.3.1" not in body
 
 
 def test_plan_refuses_a_range_that_crosses_a_version_tag(repo, capsys, monkeypatch):
