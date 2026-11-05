@@ -34,6 +34,16 @@ kept for good is not the set. A set whose listing the provider refused is
 shown unread with that refusal, and two account sets of one name are shown and
 neither is written, since the library cannot hold both under one name.
 
+A SET IS READ ROW BY ROW (R-1295), as ``crate sync all`` and ``crate sync
+pair`` read a playlist. A track the account lists with no title or no artist is
+never asked of the library, since the half left matches any file agreeing on
+it; it is a miss at its place in the set, named by its id and why, and the
+set's other tracks are matched as ever. A set no track of which reads is shown
+unread, each track named, never as a set with no match. Such a row that carries
+no provider id still leaves its set unread in the reader's own words,
+since nothing would name it; a row the reader reads is matched with or
+without an id, as it always was, because nothing here keys a track by its id.
+
 THE WRITE is one session for every set: a capture, each playlist found live by
 its name under INSPIRATION or made there by the rule a set's playlist is
 (:func:`cratekit.intake.set_playlist.place_playlist`), the guarded commit, the
@@ -120,9 +130,14 @@ class SetRow:
     withheld: int = 0
     #: Why a set is unread or left, in the words the gate shows.
     why: str = ""
-    #: The account tracks as read, kept so the write asks the library again
-    #: about exactly these and never reads the account a second time.
-    wanted: tuple[match.Wanted, ...] = field(default=(), compare=False)
+    #: The account tracks as read, each at its place in the set, kept so the
+    #: write asks the library again about exactly these and never reads the
+    #: account a second time.
+    wanted: tuple[tuple[int, match.Wanted], ...] = field(default=(), compare=False)
+    #: The tracks the account lists with no title or no artist, each a miss at
+    #: its place in the set (R-1295), kept beside ``wanted`` for the same
+    #: reason; ``misses`` carries them too.
+    unread: tuple[Miss, ...] = field(default=(), compare=False)
 
     def identity(self) -> dict[str, Any]:
         return {
@@ -323,38 +338,80 @@ def recorded_folders(cfg: config.Config) -> frozenset[str]:
     )
 
 
-def _read(found: Any, playlist_id: str) -> tuple[tuple[match.Wanted, ...], int]:
-    """The set's account tracks as the match engine reads them, and the count withheld."""
+@dataclass(frozen=True, slots=True)
+class _Listed:
+    """One set as read from the account, row by row (R-1295)."""
+
+    #: Each track the match engine read, at its place in the set.
+    wanted: tuple[tuple[int, match.Wanted], ...]
+    #: Each track it would not read, at its place, as the account names it.
+    unread: tuple[tuple[int, Any], ...]
+    #: Tracks the provider counts on the playlist and would not list.
+    withheld: int
+
+
+def _read(found: Any, playlist_id: str) -> _Listed:
+    """The set's account tracks as the match engine reads them, row by row (R-1295).
+
+    A row the engine will not read, naming no title or no artist, is set aside
+    by the reader's own rule (``intake_cli.set_aside``) and named, and every
+    other row reads as it always did. Such a row carrying no provider id
+    raises the engine's own refusal, so the set is shown unread in its words.
+    """
+    from cratekit.intake import cli as intake_cli
     from cratekit.label import cli as label_cli
 
     rows, short = label_cli.playlist_listing_or_refuse(found, playlist_id)
-    return match.read_tidal_tracks(rows), (short.withheld if short is not None else 0)
+    wanted: list[tuple[int, match.Wanted]] = []
+    unread: list[tuple[int, Any]] = []
+    for position, row in enumerate(rows, start=1):
+        try:
+            wanted.append((position, match.read_row(row, origin=match.TIDAL, position=position)))
+        except match.UnreadableList:
+            one = intake_cli.set_aside(row)
+            if not one.ref:
+                raise
+            unread.append((position, one))
+    return _Listed(tuple(wanted), tuple(unread), short.withheld if short is not None else 0)
+
+
+def _unread_miss(position: int, one: Any) -> Miss:
+    """A track the account lists with no title or no artist, named under its set."""
+    return Miss(
+        position,
+        one.artist or "no artist",
+        one.title or "no title",
+        f"{one.why} (track {one.ref}), so it was not asked of the library",
+    )
 
 
 def _matched(
-    row_of: Callable[[match.Wanted], tuple[str, str]], wanted: Sequence[match.Wanted]
+    row_of: Callable[[match.Wanted], tuple[str, str]],
+    wanted: Sequence[tuple[int, match.Wanted]],
+    unread: Sequence[Miss] = (),
 ) -> tuple[tuple[str, ...], tuple[Miss, ...]]:
-    """Each track's collection row, distinct and in set order, and every miss named."""
+    """Each track's collection row, distinct and in set order, and every miss named in set order."""
     ids: list[str] = []
-    misses: list[Miss] = []
-    for position, one in enumerate(wanted, start=1):
+    misses: list[Miss] = list(unread)
+    for position, one in wanted:
         held, why = row_of(one)
         if held:
             ids.append(held)
         else:
             misses.append(Miss(position, one.artist, one.listed, why))
-    return tuple(dict.fromkeys(ids)), tuple(misses)
+    return tuple(dict.fromkeys(ids)), tuple(sorted(misses, key=lambda miss: miss.position))
 
 
 def _decided(
     name: str,
     playlist_id: str,
     folder: str,
-    wanted: tuple[match.Wanted, ...],
+    wanted: tuple[tuple[int, match.Wanted], ...],
     withheld: int,
     row_of: Callable[[match.Wanted], tuple[str, str]],
+    unread: tuple[Miss, ...] = (),
 ) -> SetRow:
-    members, misses = _matched(row_of, wanted)
+    members, misses = _matched(row_of, wanted, unread)
     return SetRow(
         name=name,
         playlist_id=playlist_id,
@@ -365,6 +422,7 @@ def _decided(
         withheld=withheld,
         why="" if members else "no track of the set matched a library row, so nothing is written",
         wanted=wanted,
+        unread=unread,
     )
 
 
@@ -416,7 +474,7 @@ def plan(
         held = _held(db, folder_id)
     listed, rows = account_sets(remote, recorded_folders(cfg))
     named = Counter(name for _folder, _pid, name in listed)
-    read: list[tuple[str, str, str, tuple[match.Wanted, ...], int]] = []
+    read: list[tuple[str, str, str, _Listed]] = []
     for folder, playlist_id, name in listed:
         if name in held:
             rows.append(SetRow(name, playlist_id, folder, SKIP))
@@ -437,20 +495,42 @@ def plan(
             )
             continue
         try:
-            wanted, withheld = _read(found, playlist_id)
+            listing = _read(found, playlist_id)
         except CratekitError as exc:
             rows.append(SetRow(name, playlist_id, folder, UNREAD, why=exc.cause.message))
             continue
         except match.UnreadableList as exc:
             rows.append(SetRow(name, playlist_id, folder, UNREAD, why=str(exc)))
             continue
-        read.append((name, playlist_id, folder, wanted, withheld))
+        if listing.unread and not listing.wanted:
+            # EVERY TRACK UNREAD is a set that could not be read, not one with
+            # no match, and is shown with each track and why (R-1295).
+            rows.append(
+                SetRow(
+                    name,
+                    playlist_id,
+                    folder,
+                    UNREAD,
+                    why="no track of the set could be read: "
+                    + ", ".join(f"{one.ref} ({one.why})" for _place, one in listing.unread),
+                )
+            )
+            continue
+        read.append((name, playlist_id, folder, listing))
     if read:
         with reading() as db:
             row_of = _Rows(cfg, db)
             rows.extend(
-                _decided(name, playlist_id, folder, wanted, withheld, row_of)
-                for name, playlist_id, folder, wanted, withheld in read
+                _decided(
+                    name,
+                    playlist_id,
+                    folder,
+                    listing.wanted,
+                    listing.withheld,
+                    row_of,
+                    tuple(_unread_miss(place, one) for place, one in listing.unread),
+                )
+                for name, playlist_id, folder, listing in read
             )
     return ParityPlan(
         tree_id=node.id,
@@ -488,7 +568,13 @@ def again(cfg: config.Config, db: Any, declared: Any, approved: ParityPlan) -> P
                 replace(row, action=SKIP, members=(), misses=(), withheld=0, why="")
                 if now
                 else _decided(
-                    row.name, row.playlist_id, row.folder, row.wanted, row.withheld, row_of
+                    row.name,
+                    row.playlist_id,
+                    row.folder,
+                    row.wanted,
+                    row.withheld,
+                    row_of,
+                    row.unread,
                 )
             )
         else:
