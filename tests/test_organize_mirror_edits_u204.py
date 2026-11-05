@@ -832,3 +832,74 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
 
     assert list(planned.queue) == ["p2"]
     assert [one["track"] for one in planned.named] == ["r7"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. Review round two (Fable): driven, then pinned
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_favorites_edit_planned_and_not_applied_is_taken_whole_by_the_next_run(world):
+    """Round two, finding 1: the plan's snapshot of a level playlist swallowed half the edit."""
+    september = _second_month(world)
+    handle = rb_writer.open_db(world.db, unlock=False, cfg=world.cfg)
+    try:
+        rb_writer.add_memberships(handle, handle.get_playlist(ID=september), ["1"])
+        handle.session.commit()
+    finally:
+        rb_writer.close_db(handle)
+    world.take_off(f"Favorites {MONTH}", "r1")
+    # Later than rekordbox's own addition, so the account's move is the one carried.
+    world.put_in("Favorites 2026-09", "r1", at="2099-01-01T00:00:00+00:00")
+    # The run that plans records its snapshots and its account side, and the
+    # edits step is never applied (rekordbox was open, say).
+    area, step, _queue, _shared = world.plan_all()
+    assert step.state == PLANNED
+    for one in area.steps:
+        if one.apply is not None:
+            one.apply()
+
+    _area, step, _queue = world.run_all()
+
+    (change,) = _items(step)
+    assert change["leaves"] == [f"Favorites / {MONTH}"]
+    assert world.members(world.month) == set()
+    assert world.members(september) == {"1"}
+    _area, step, _queue, shared = world.plan_all()
+    assert step.state == NOTHING
+    assert shared.reading().decided.decisions == ()
+
+
+@pytest.mark.parametrize(
+    ("state", "said"),
+    [("owned", "already holds it"), ("missing", "could not be fetched"), ("offered", None)],
+)
+def test_a_finished_download_that_never_lands_is_never_said_to_await_one(
+    world, monkeypatch, state, said
+):
+    """Round two, finding 2: the job owned what this step's own check cannot see."""
+    from cratekit.intake import missing_cli
+
+    world.put_in("Tech House Med", "r3")
+    world.run_all()
+    (job,) = _queued(world.cfg)
+    with jobs.open_store() as store:
+        store.conn.execute(
+            "UPDATE jobs SET state = ? WHERE job_id = ?",
+            (str(jobs.JobState.SUCCEEDED), job.job_id),
+        )
+        store.conn.commit()
+    monkeypatch.setattr(
+        missing_cli, "job_reports", lambda _store, _job: ({"item_id": "r3", "state": state},)
+    )
+
+    _area, _step, queue = world.run_all()
+
+    (named,) = queue.items
+    if said is None:
+        assert named["outcome"] == "awaiting its landing"
+    else:
+        assert named["outcome"] == "not queued" and said in named["why"]
+        assert "awaiting" not in named["why"]
+    assert len(_queued(world.cfg)) == 1
+    assert world.held("Tech House Med") == ["r3"]

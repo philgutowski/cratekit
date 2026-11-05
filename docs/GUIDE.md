@@ -1068,7 +1068,9 @@ edits again, while the edit to that batch goes with its retired playlist. A trac
 playlist that your library does not have is queued for download once, by the
 rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one; it
 stays on Tidal meanwhile, and once it lands the next organize files it where
-you put it. Approve one area and abort the other
+you put it. A track whose recording you already own as another release is not
+queued, and one the download found you own, or could not fetch, is named as
+such and left on Tidal as you put it. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation

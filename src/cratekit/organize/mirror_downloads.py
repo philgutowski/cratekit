@@ -95,6 +95,46 @@ def queued(cfg: config.Config) -> dict[str, dict[str, Any]]:
     return held
 
 
+#: What a finished job's report says of a track that will never land, by its state.
+_NEVER_LANDS = {
+    "owned": (
+        "its download found the library already holds it, so nothing lands; it stays "
+        "on the account as it is"
+    ),
+    "missing": "its download could not be fetched, so nothing lands; it stays on the account as it is",
+    "suppressed": "its download was suppressed, so nothing lands; it stays on the account as it is",
+}
+
+
+def outcomes(cfg: config.Config) -> dict[str, str]:
+    """Each account track a FINISHED mirror job resolved to something that never lands, and why.
+
+    Read from each succeeded job's reports, so a track the job found owned by a
+    rule this step's own check cannot see (a code only in a file, an exact title
+    under another code) is never said to await a landing that nothing will make.
+    A job whose reports cannot be read says nothing here, and its tracks read as
+    awaiting, as before.
+    """
+    from cratekit.core import jobs
+    from cratekit.intake import missing_cli
+
+    said: dict[str, str] = {}
+    finished = [job for job in _jobs(cfg) if job.state == jobs.JobState.SUCCEEDED]
+    if not finished:
+        return said
+    with jobs.open_store() as store:
+        for job in finished:
+            try:
+                reports = missing_cli.job_reports(store, job)
+            except CratekitError:
+                continue
+            for report in reports:
+                why = _NEVER_LANDS.get(str(report.get("state")))
+                if why:
+                    said.setdefault(str(report.get("item_id")), why)
+    return said
+
+
 def landed(
     cfg: config.Config, seen: Mapping[str, tuple[str, str, str]]
 ) -> dict[str, tuple[str, ...]]:
@@ -178,6 +218,7 @@ def plan(
     if not wanted:
         return Planned()
     already = queued(cfg)
+    ended = outcomes(cfg) if already else {}
     grouped: dict[str, tuple[str, list[str]]] = {}
     taken: set[str] = set()
     for decision in wanted:
@@ -186,13 +227,16 @@ def plan(
         if decision.track in taken:
             continue
         if decision.track in already:
+            ended_why = ended.get(decision.track)
             named.append(
                 {
                     **decision.item(),
-                    "outcome": "awaiting its landing",
+                    "outcome": "not queued" if ended_why else "awaiting its landing",
                     "why": (
-                        f"{decision.why}; a mirror download already queued it, so it is "
-                        f"not queued again"
+                        f"added on the account; a mirror download queued it and {ended_why}"
+                        if ended_why
+                        else f"{decision.why}; a mirror download already queued it, so it "
+                        f"is not queued again"
                     ),
                 }
             )
@@ -386,6 +430,7 @@ __all__ = [
     "Planned",
     "add_step",
     "landed",
+    "outcomes",
     "plan",
     "queued",
     "write",

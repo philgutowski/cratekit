@@ -170,14 +170,19 @@ class Hold:
 
     ``keep`` is account tracks it never takes off, ``skip`` rekordbox's tracks
     it never adds, both because the track's own edit is carried or held.
+    ``stay`` is tracks whose snapshot word is kept even where both sides agree
+    now (U204): a Favorites edit reads its whole folder, so a playlist the plan
+    finds level must not agree the track before the library took the edit, or
+    a run that plans and does not apply loses half of it.
     """
 
     keep: frozenset[str] = frozenset()
     skip: frozenset[str] = frozenset()
+    stay: frozenset[str] = frozenset()
 
     @property
     def tracks(self) -> frozenset[str]:
-        return self.keep | self.skip
+        return self.keep | self.skip | self.stay
 
 
 @dataclass(frozen=True, slots=True)
@@ -816,8 +821,9 @@ def _holds(playlists: Sequence[Mirrored], decisions: Iterable[Decision]) -> dict
         mine = held.get(key, set())
         keep = frozenset(track for track in mine if track in one.account and track not in one.rekordbox)
         skip = frozenset(track for track in mine if track in one.rekordbox and track not in one.account)
-        if keep or skip:
-            holds[one.place.title] = Hold(keep=keep, skip=skip)
+        stay = frozenset(mine) if one.place.tree == FAVORITES else frozenset()
+        if keep or skip or stay:
+            holds[one.place.title] = Hold(keep=keep, skip=skip, stay=stay)
     return holds
 
 
