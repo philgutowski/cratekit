@@ -794,6 +794,65 @@ def test_a_linked_intent_is_cleared_rather_than_kept_and_followed(cfg, folder, t
     assert planted.is_file(), "the clear followed the link"
 
 
+def test_a_linked_intent_or_report_is_never_read_as_the_twin(cfg, folder, tmp_path):
+    """Fix round two: the read path followed a planted link before the clear
+    could drop it, and named its far end's file as this item's twin."""
+    job = _job_over(folder)
+    other = folder / "other.flac"
+    other.write_bytes(b"x")
+    planted = tmp_path / "planted.json"
+    planted.write_text(json.dumps({"item": "a.flac", "target": str(other)}))
+    intent = artifacts.intent_path(cfg, _Job.job_id, _Item.ordinal)
+    intent.parent.mkdir(parents=True)
+    intent.symlink_to(planted)
+    assert artifacts.rename_intent(cfg, job, _Item) is None
+    intent.unlink()
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {"item": "a.flac", "path": str(other), "renamed_to": other.name, "status": "analyzed"}
+        )
+    )
+    (intent.parent / "0001.json").symlink_to(report)
+    assert artifacts.staged_report(cfg, job, _Item) is None
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None
+
+
+def test_the_discard_never_reaches_through_a_linked_staging_directory(cfg, folder, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    for name in (artifacts.RENAME_INTENT_FILENAME, "0001.json"):
+        (elsewhere / name).write_text("{}", encoding="utf-8")
+    directory = artifacts.intent_path(cfg, _Job.job_id, _Item.ordinal).parent
+    directory.parent.mkdir(parents=True)
+    directory.symlink_to(elsewhere)
+
+    artifacts.discard_rename_evidence(cfg, _job_over(folder), _Item)
+
+    assert sorted(p.name for p in elsewhere.iterdir()) == ["0001.json", "rename-intent.json"]
+
+
+def test_a_directory_at_the_report_name_is_cleared_and_the_attempt_finishes(
+    cfg, folder, silence, monkeypatch
+):
+    """Fix round two: the attempt start's discard unlinked the report name and
+    failed the item for good on a directory there, a shape the clear before
+    U223 healed."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+    item = _item(job.job_id, "a.flac")
+    staged = artifacts.staged_path(cfg, job.job_id, item.ordinal)
+    staged.mkdir()
+    (staged / "inside").write_text("x", encoding="utf-8")
+
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+
+
 def test_a_prefixed_source_drops_a_stale_intent_too(cfg, folder, silence, monkeypatch):
     place(folder, silence, "08A - 124 - a")
     bind_scoring(monkeypatch)

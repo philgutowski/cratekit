@@ -729,10 +729,12 @@ def handle_run(job, item, cfg) -> jobs.Produced:
                 "resumed_after_rename": True,
             },
         )
-    # THE SOURCE IS STILL A FILE, so an intent or a staged report an earlier
-    # attempt left names a rename that did not land, and nothing reads either
-    # as evidence from here on: this attempt starts clean, before any work a
-    # kill could interrupt, and records its own if it renames (U223).
+    # THE SOURCE IS A FILE, so this attempt analyses it and nothing an earlier
+    # attempt left is read as evidence from here on: an intent or a staged
+    # report under a present source names a rename that did not land, or one
+    # whose source name a new file has since taken. This attempt starts
+    # clean, before any work a kill could interrupt, and records its own if
+    # it renames (U223).
     artifacts.discard_rename_evidence(cfg, job, item)
     if carries_head(path, cfg):
         return artifacts.produced(

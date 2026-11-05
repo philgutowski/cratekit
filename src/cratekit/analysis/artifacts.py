@@ -127,9 +127,13 @@ def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
 
 
 def rename_intent(cfg: config.Config, job, item) -> Path | None:
-    """The target this item's last attempt meant to rename it to, if recorded."""
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: this module writes the intent as a plain file, and
+    a link would name whatever its far end says as this item's twin.
+    """
     path = intent_path(cfg, job.job_id, item.ordinal)
-    if not path.is_file():
+    if path.is_symlink() or not path.is_file():
         return None
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
@@ -153,21 +157,32 @@ def discard_rename_evidence(cfg: config.Config, job, item) -> None:
     would clear it comes only after the work, which a kill can forestall.
     """
     directory = _staging_dir(cfg, job.job_id, item.ordinal)
-    (directory / RENAME_INTENT_FILENAME).unlink(missing_ok=True)
-    (directory / _report_name(item.ordinal)).unlink(missing_ok=True)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at
+        # the link's far end is not this item's staging, and ``staged_path``
+        # refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which
+        # removes its tree; an ``unlink`` would fail the item for good on a
+        # shape the clear before U223 healed.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
 
 
 def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
     """This item's report, staged by an attempt whose row never moved, if any.
 
-    Read in place and never cleared here. A report is staged only after the
-    file was renamed, so it is the item's own record of the rename when the
-    intent is gone, which is the state the shipped ``staged_path`` left
-    every job interrupted in that window (U223). A report for another item,
-    or one that does not parse to a mapping, is no report.
+    Read in place and never cleared here. A report that says it renamed is
+    staged only after the rename, so it is the item's own record of the
+    rename when the intent is gone, which is the state the shipped
+    ``staged_path`` left every job interrupted in that window (U223); which
+    reports say so is the caller's check. A report for another item, one
+    that does not parse to a mapping, or a link, is no report.
     """
     path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
-    if not path.is_file():
+    if path.is_symlink() or not path.is_file():
         return None
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
