@@ -11,7 +11,10 @@ judges the bump from what landed since the last tag.
 `plan` lists what reached `main` since the last `vX.Y.Z` tag (or since the root
 commit when there is none), the pull requests first and then the units merged
 before U158 put every landing through one, and proposes a bump with a reason
-for each. It writes nothing.
+for each. It reads every commit in the range, not only the first parent
+line, so a landing behind a local merge of `main` is counted (U215). With
+`--since` and `--tip` it reruns a past range, and `--notes` prints only that
+range's release body. It writes nothing.
 
 `cut` refuses unless the checkout is on `main`, clean, and equal to
 `origin/main` as last fetched, and unless the battery is clean on that commit:
@@ -59,6 +62,19 @@ INIT_VERSION_RE = re.compile(r'^__version__ = "([^"]*)"$', re.MULTILINE)
 BREAKING_RE = re.compile(r"\bBREAKING\b|^[A-Za-z0-9-]+(?:\([^)]*\))?!:")
 UNIT_RE = re.compile(r"^(?:U\d+\b|merge\(u\d+[a-z0-9-]*\):)", re.IGNORECASE)
 REPAIR_RE = re.compile(r"^(?:R-\d+\b|merge\(r-?\d+[a-z0-9-]*\):|fix\b|fix\()", re.IGNORECASE)
+
+# A merge commit that is a landing whatever line of history it sits on: the
+# subject every unit and residual merge carries, `merge(u57): ...`,
+# `merge(u99-b): ...`, `merge(r-12): ...`. A branch catching up with `main`
+# is merged under any other subject, `merge: main into the U207 branch`.
+LANDING_RE = re.compile(r"^merge\((?:u\d+|r-?\d+)[a-z0-9-]*\):", re.IGNORECASE)
+
+# A merge of `main` into a local `main`, the one `git pull` makes before a
+# push: it carries other landings and is never one itself.
+MAIN_SYNC_RE = re.compile(
+    r"^Merge (?:(?:remote-tracking )?branch '(?:[\w.-]+/)?main'(?: of \S+)?"
+    r"|(?:[\w.-]+/)?main)(?: into main)?$"
+)
 
 
 Runner = Callable[[Sequence[str]], subprocess.CompletedProcess]
@@ -164,12 +180,23 @@ def propose(landings: Sequence[Landing]) -> tuple[str | None, list[str]]:
     return chosen, reasons
 
 
-def first_parent_range(runner: Runner, since: str | None, tip: str) -> list[tuple[str, str, list[str]]]:
-    """Each first parent commit after ``since`` up to ``tip``: sha, subject, parents."""
+def range_commits(
+    runner: Runner, since: str | None, tip: str, *, first_parent: bool = False
+) -> list[tuple[str, str, list[str]]]:
+    """Each commit after ``since`` up to ``tip``, newest first: sha, subject, parents.
+
+    The whole range by default, every commit reachable from ``tip`` and not
+    from ``since``; only the first parent line with ``first_parent``. Date
+    order keeps every commit after its parents, so the first parent line reads
+    the same in either walk.
+    """
     span = f"{since}..{tip}" if since else tip
+    argv = ["log", "--date-order", "--format=%H%x1f%P%x1f%s", span]
+    if first_parent:
+        argv.insert(1, "--first-parent")
     # The subject last: the root commit's parents are empty, and the unit
     # separator is whitespace to `str.strip`, so a trailing empty field is lost.
-    out = git(runner, "log", "--first-parent", "--format=%H%x1f%P%x1f%s", span)
+    out = git(runner, *argv)
     commits = []
     for line in out.splitlines():
         if not line.strip():
@@ -184,17 +211,36 @@ def landings_since(
 ) -> tuple[list[Landing], list[Landing]]:
     """The pull requests merged in the range, and the merges made without one.
 
-    A pull request belongs to the range when its merge commit is one of the
-    range's first parent commits, or when its head is the second parent of one,
-    which is how a pull request merged by a local merge and push lands. Every
-    other merge commit on the first parent line is a landing made without a
-    pull request, which is how every unit before U158 reached `main`.
+    The whole range is read, not only its first parent line (U215). A local
+    session commits on `main` and then pulls, so every landing pushed to
+    `origin/main` meanwhile sits on the second parent side of that local
+    merge, and a first parent walk never met eleven of v0.7.0's twelve units.
+
+    A pull request belongs to the range when its merge commit is anywhere in
+    it. Failing that, when its head is in it: it landed at the merge that took
+    the head as a later parent, a unit or residual landing before any other,
+    which is how a pull request merged by a local merge and push lands, or at
+    the head itself on a fast forward. A landing merge that took the head is
+    claimed with it, so a unit reachable both ways is listed once.
+
+    A merge no pull request claimed is a landing made without one, which is
+    how every unit before U158 reached `main`, when it is on the first parent
+    line, or off it when its subject is a unit or residual landing. A merge of
+    `main` into a local `main` is never one, and neither is a branch merging
+    `main` or another branch into itself.
     """
-    commits = first_parent_range(runner, since, tip)
+    commits = range_commits(runner, since, tip)
+    first_line = {sha for sha, _s, _p in range_commits(runner, since, tip, first_parent=True)}
     by_sha = {sha: (subject, parents) for sha, subject, parents in commits}
-    second_parents = {
-        parents[1]: sha for sha, (_s, parents) in by_sha.items() if len(parents) > 1
-    }
+    order = {sha: i for i, (sha, _s, _p) in enumerate(reversed(commits))}
+    taken_by: dict[str, list[str]] = {}
+    for sha, (_subject, parents) in by_sha.items():
+        for parent in parents[1:]:
+            taken_by.setdefault(parent, []).append(sha)
+
+    def is_landing_subject(sha: str) -> bool:
+        return bool(LANDING_RE.match(by_sha[sha][0]))
+
     prs: list[Landing] = []
     claimed: set[str] = set()
     for pull in pulls:
@@ -202,13 +248,20 @@ def landings_since(
             continue
         merge_sha = pull.get("merge_commit_sha") or ""
         head_sha = (pull.get("head") or {}).get("sha") or ""
+        taking = sorted(
+            taken_by.get(head_sha, ()),
+            key=lambda sha: (not is_landing_subject(sha), order[sha]),
+        )
         if merge_sha in by_sha:
             landed_at = merge_sha
-        elif head_sha in second_parents:
-            landed_at = second_parents[head_sha]
+        elif taking:
+            landed_at = taking[0]
+        elif head_sha in by_sha:
+            landed_at = head_sha
         else:
             continue
         claimed.add(landed_at)
+        claimed.update(sha for sha in taking if is_landing_subject(sha))
         prs.append(
             Landing(
                 title=pull.get("title", ""),
@@ -217,12 +270,14 @@ def landings_since(
                 url=pull.get("html_url"),
             )
         )
-    order = {sha: i for i, (sha, _s, _p) in enumerate(reversed(commits))}
     prs.sort(key=lambda landing: order[landing.sha])
     direct = [
         Landing(title=subject, sha=sha)
         for sha, subject, parents in reversed(commits)
-        if len(parents) > 1 and sha not in claimed
+        if len(parents) > 1
+        and sha not in claimed
+        and not MAIN_SYNC_RE.match(subject)
+        and (sha in first_line or LANDING_RE.match(subject))
     ]
     return prs, direct
 
@@ -397,32 +452,66 @@ def sync_history(runner: Runner) -> None:
     git(runner, "fetch", "--quiet", "--tags", "origin")
 
 
-def gather(runner: Runner, repo: str):
-    tags = git(runner, "tag", "--list", "v*").splitlines()
-    since = latest_tag(tags)
-    prs, direct = landings_since(runner, since, "HEAD", merged_pulls(runner, repo))
+def gather(runner: Runner, repo: str, *, since: str | None = None, tip: str = "HEAD"):
+    """The range's start, its pull requests and its merges made without one.
+
+    ``since`` defaults to the last `vX.Y.Z` tag, or the root commit when there
+    is none; a ref given here is checked to name a commit before it is read.
+    """
+    for ref in (since, tip):
+        if ref is None:
+            continue
+        found = runner(["git", "rev-parse", "--verify", "--quiet", f"{ref}^{{commit}}"])
+        if found.returncode != 0:
+            raise ReleaseError(f"{ref!r} names no commit here; fetch it, or name another")
+    if since is None:
+        since = latest_tag(git(runner, "tag", "--list", "v*").splitlines())
+    prs, direct = landings_since(runner, since, tip, merged_pulls(runner, repo))
     return since, prs, direct
 
 
 def cmd_plan(args, runner: Runner = run) -> int:
+    """List what landed and propose a bump; with ``--notes``, print the release body only.
+
+    ``--since`` and ``--tip`` rerun a past range, `plan --since v0.6.0 --tip
+    v0.7.0`, and the bump is then read from the version ``--since`` names.
+    """
     sync_history(runner)
+    asked_since = getattr(args, "since", None)
+    tip = getattr(args, "tip", None)
+    if tip and not asked_since:
+        raise ReleaseError("--tip needs --since, the tag the range starts after")
+    tip = tip or "HEAD"
     repo = args.repo or repo_slug(runner)
-    since, prs, direct = gather(runner, repo)
-    current = read_versions(ROOT)[0]
-    print(f"current version {current}, last tag {since or 'none (from the root commit)'}")
+    since, prs, direct = gather(runner, repo, since=asked_since, tip=tip)
+    from_tag = parse_tag(asked_since) if asked_since else None
+    current = dotted(from_tag) if from_tag else read_versions(ROOT)[0]
     bump, reasons = propose([*prs, *direct])
+    if bump == "major" and parse_dotted(current)[0] == 0:
+        # Below 1.0.0 a break is a minor bump with the break said first in the
+        # notes; 1.0.0 is Phillip's to choose, never a proposal's.
+        capped = True
+        bump = "minor"
+    else:
+        capped = False
+    nxt = dotted(bumped(parse_dotted(current), bump)) if bump else None
+    if getattr(args, "notes", False):
+        if bump is None:
+            start = since or "the root commit"
+            print(f"release: nothing landed after {start}; no notes to print", file=sys.stderr)
+            return 1
+        tag = tip if parse_tag(tip) else f"v{nxt}"
+        print(notes(tag, repo, prs, direct), end="")
+        return 0
+    print(f"current version {current}, last tag {since or 'none (from the root commit)'}")
     if bump is None:
         print("nothing landed since the last tag; no release to cut")
         return 0
     print(f"{len(prs)} pull request(s), {len(direct)} merge(s) without one")
     for line in reasons:
         print(f"  {line}")
-    if bump == "major" and parse_dotted(current)[0] == 0:
-        # Below 1.0.0 a break is a minor bump with the break said first in the
-        # notes; 1.0.0 is Phillip's to choose, never a proposal's.
+    if capped:
         print("  a break below 1.0.0 is proposed as minor; 1.0.0 is Phillip's to choose")
-        bump = "minor"
-    nxt = dotted(bumped(parse_dotted(current), bump))
     print(f"proposed bump: {bump}, v{current} to v{nxt}")
     return 0
 
@@ -485,7 +574,18 @@ def main(argv: Sequence[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     parser.add_argument("--repo", help="owner/name; read from the origin URL by default")
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("plan", help="list what landed since the last tag and propose a bump")
+    plan = sub.add_parser("plan", help="list what landed since the last tag and propose a bump")
+    plan.add_argument(
+        "--since", help="the tag or commit the range starts after; the last tag by default"
+    )
+    plan.add_argument(
+        "--tip", help="the tag or commit the range ends at, with --since; HEAD by default"
+    )
+    plan.add_argument(
+        "--notes",
+        action="store_true",
+        help="print only the release body for the range, titled by --tip when it is a version",
+    )
     cut = sub.add_parser("cut", help="write the version, tag, push and publish the release")
     cut.add_argument("--bump", choices=BUMPS, required=True)
     cut.add_argument(
