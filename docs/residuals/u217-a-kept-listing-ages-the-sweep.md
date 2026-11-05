@@ -10,15 +10,14 @@ reads it, the scheduled sweep (`label.cli.handle` through
 `sweep.LabelSource`) included. `label sync --next`, the walk and `label
 playlists` print where the listing came from and how old it is; the sweep's
 job report records only `beyond` and says nothing about the listing's age.
-The brief gave the seven days; whether the sweep should list fresh instead is
-a question put to Phillip on the card, options seven days everywhere (built),
-the sweep always fresh, one day everywhere, or a `--fresh` flag.
+Phillip answered the card's question on 2026-11-05 (decision
+`533-listing-age-1`): seven days for every verb, the sweep included, as built.
+What remains is that the sweep alone does not say the age.
 
 **Measured cost.** Read, not driven, on the sweep: a release the label put out
 after its listing was kept is absent from a sweep for up to seven days, and
 the sweep's report does not say so. Nothing false is said; the age is
 unstated there.
 
-**Closes when:** Phillip answers the card's question and the chosen life is
-built, or the sweep's report carries the listing line the two verbs print.
-Ledger only: it is a product choice awaiting an answer, not a defect.
+**Closes when:** the sweep's report carries the listing line the two verbs
+print. Ledger only: the life is Phillip's choice, and nothing false is said.
