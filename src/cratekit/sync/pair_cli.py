@@ -75,10 +75,15 @@ on the pair as a link and reused. A rekordbox row with no link is matched on the
 account ISRC first, through the account seam ``export playlist`` uses, with the
 code read from the database and else from the row's audio file; a row it does
 not match is NAMED on the gate and in the answer with the account's reason, and
-stays in rekordbox. An account track with no link is looked for in the library:
-a live row carrying its ISRC, a row an intake job this pair queued resolved it
-to, or a row of the INBOX playlist a landing made for this account playlist
-(U128) whose file carries its ISRC. A track found nowhere is QUEUED FOR
+stays in rekordbox. A row whose ISRC names several releases that all agree with
+it is matched as one of them, as the mirror matches it (U208, decided by
+Phillip at Sitting 54, reversing U198's keeping of R-572's refusal): the one
+the account hearts, else the lowest numbered after the file's album narrowed
+them, linked like any match, and counted on the gate. An account track with
+no link is looked for in the library: a live row carrying its ISRC, a row of
+this playlist whose file carries it (U208), a row an intake job this pair
+queued resolved it to, or a row of the INBOX playlist a landing made for this
+account playlist (U128) whose file carries its ISRC. A track found nowhere is QUEUED FOR
 ACQUISITION through the intake path, ``intake.playlist`` exactly as
 ``intake playlist`` queues it, and never written to rekordbox as a row without a
 file. A track an earlier sync queued is not queued again and is named as
@@ -115,7 +120,7 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
 from pathlib import Path
@@ -390,6 +395,8 @@ class PairPlan:
     awaiting: tuple[Named, ...] = ()
     #: Account tracks two live library rows carry, so no row is chosen.
     ambiguous: tuple[Named, ...] = ()
+    #: U208. Rekordbox rows matched as one of several releases that all agree.
+    tied: tuple[Named, ...] = ()
     #: Links this plan made, remote id to content id.
     links: dict[str, str] = field(default_factory=dict)
     #: Every key's words, for the screen.
@@ -780,6 +787,9 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     names: dict[str, Named] = {}
     content_of: dict[str, str] = {}
     unmatched: list[Named] = []
+    tied: list[Named] = []
+    #: Each unlinked row's ISRC as it was asked under, read once.
+    asked_under: dict[str, str] = {}
     rows = playlist_pair.by_content(rekordbox.rows)
     # THE ACCOUNT PLAYLIST'S OWN TRACKS FIRST, by ISRC, when exactly one of
     # them carries the row's code: the account already holds that recording,
@@ -794,6 +804,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     for row in rows.values():
         remote_id = by_row.get(row.content_id, "")
         reason = ""
+        broke = False
         if not remote_id:
             from cratekit.core import naming
             from cratekit.modules.outbound import source
@@ -804,13 +815,14 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             album = ""
             if not isrc:
                 isrc, album = file_identity(cfg, row.path)
+            asked_under[row.content_id] = isrc
             held_there = [one for one in on_account.get(isrc, ()) if one not in linked]
             if isrc and len(held_there) == 1:
                 remote_id = held_there[0]
             elif not isrc:
                 reason = NO_ISRC
             else:
-                remote_id, reason = _ask(
+                remote_id, reason, broke = _ask(
                     reader,
                     row,
                     isrc=isrc,
@@ -843,6 +855,8 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         )
         if not remote_id:
             unmatched.append(names[key])
+        elif broke:
+            tied.append(names[key])
     known = {**links, **made}
 
     # ── the account now, as keys ────────────────────────────────────────────
@@ -971,7 +985,18 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     lacking = [
         remote_of(key) for key in merged.add_rekordbox if remote_of(key) not in known
     ]
-    found_rows = _owned(reader, target.account_id, tracks, lacking)
+    def here() -> dict[str, tuple[str, ...]]:
+        """ISRC to this playlist's own rows, from the database or else the row's file."""
+        codes: dict[str, list[str]] = {}
+        for row in rows.values():
+            code = asked_under.get(row.content_id)
+            if code is None:
+                code = match.isrc_token(row.isrc) or file_identity(cfg, row.path)[0]
+            if code:
+                codes.setdefault(code, []).append(row.content_id)
+        return {code: tuple(ids) for code, ids in codes.items()}
+
+    found_rows = _owned(reader, target.account_id, tracks, lacking, here=here)
     # Held live and staying: a track matched under another key already has its
     # membership, and a second would be the same track twice.
     live_here = {
@@ -1047,6 +1072,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         acquire=acquire,
         awaiting=tuple(awaiting),
         ambiguous=tuple(ambiguous),
+        tied=tuple(tied),
         links=made,
         names=names,
         content_of=content_of,
@@ -1056,8 +1082,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     )
 
 
-def _ask(reader: _Reader, row: Any, *, isrc: str, title: str, album: str) -> tuple[str, str]:
-    """The account track for one unlinked row, or why there is none: asked once per ISRC.
+def _ask(
+    reader: _Reader, row: Any, *, isrc: str, title: str, album: str
+) -> tuple[str, str, bool]:
+    """The account track for one unlinked row, or why there is none, and whether a tie chose it.
 
     R-988, closed by U198. A row the account had no track for is remembered
     with the ISRC it was asked under and its answer, and a plan meeting it
@@ -1066,14 +1094,23 @@ def _ask(reader: _Reader, row: Any, *, isrc: str, title: str, album: str) -> tup
     again each time. A row whose ISRC changed is asked again. An answer that
     says a candidate could not be read is no answer about the row, and is
     never remembered.
+
+    A TIE TAKES ONE RELEASE (U208, decided by Phillip at Sitting 54, as the
+    mirror's R-1032). The account is asked with ``any_agreeing``, so a row
+    whose ISRC names several releases that all agree with it is matched as
+    one of them, the one the account hearts, else the lowest numbered after
+    the file's album narrowed them, and the match is linked like any other,
+    so no later plan asks about it. The refusals before the tie stand: no
+    agreeing release, no row to judge agreement by, a candidate that could
+    not be read. The third value says the account broke a tie, for the gate.
     """
     from cratekit.modules.outbound.service import AGREEING_RELEASES, UNREADABLE_CANDIDATE
 
     held = reader.misses.get(row.content_id)
-    # A TIE IS ASKED AGAIN (R-1032's rule, one file over): releases that agree
-    # today may be told apart tomorrow, so a tie is never remembered as an answer.
+    # A TIE REMEMBERED BEFORE U208 IS ASKED AGAIN, once, since asking with
+    # ``any_agreeing`` no longer misses on it, and its match forgets the miss.
     if held is not None and held.isrc == isrc and AGREEING_RELEASES not in held.reason:
-        return "", held.reason
+        return "", held.reason, False
     remote = reader.remote
     remote_id = str(
         remote.match_track(
@@ -1082,19 +1119,22 @@ def _ask(reader: _Reader, row: Any, *, isrc: str, title: str, album: str) -> tup
             title=title,
             artist=row.artist,
             album=album,
+            any_agreeing=True,
         )
         or ""
     )
     if remote_id:
         if held is not None:
             reader.matched.add(row.content_id)
-        return remote_id, ""
+        return remote_id, "", bool(remote.tie_broken(row.content_id))
     reason = remote.unmatched_reason(row.content_id) or NO_MATCH
+    # A TIE BESIDE AN UNREADABLE RELEASE STILL MISSES, in words naming both,
+    # and is never remembered: the unreadable one may agree tomorrow.
     if UNREADABLE_CANDIDATE not in reason and AGREEING_RELEASES not in reason:
         from cratekit.modules.outbound import pairs
 
         reader.fresh[row.content_id] = pairs.Miss(isrc, reason)
-    return "", reason
+    return "", reason, False
 
 
 def _with_reason(named: Named, reason: str) -> Named:
@@ -1113,8 +1153,17 @@ def _owned(
     account_id: str,
     tracks: Mapping[str, Mapping[str, Any]],
     lacking: Sequence[str],
+    *,
+    here: Callable[[], Mapping[str, tuple[str, ...]]] | None = None,
 ) -> dict[str, tuple[str, ...]]:
-    """Each lacking account track's library rows: by ISRC, by an intake job, by its landing."""
+    """Each lacking account track's library rows: by ISRC, by an intake job, by its landing.
+
+    ``here`` is the pair's own rekordbox rows by ISRC, the database's or else
+    the file's, asked only for a track no row's database ISRC names (U208). A
+    release the account holds beside the one a tie linked, put there by hand,
+    carries the ISRC of a row this playlist already holds, which may be in
+    that row's file only, and it is that row, never a track to acquire.
+    """
     if not lacking:
         return {}
     found: dict[str, tuple[str, ...]] = {}
@@ -1126,6 +1175,12 @@ def _owned(
     for remote_id, code in codes.items():
         if code and by_isrc.get(code):
             found[remote_id] = by_isrc[code]
+    rest = {remote_id for remote_id in lacking if remote_id not in found and codes.get(remote_id)}
+    if rest and here is not None:
+        own = here()
+        for remote_id in rest:
+            if own.get(codes[remote_id]):
+                found[remote_id] = own[codes[remote_id]]
     rest = {remote_id for remote_id in lacking if remote_id not in found}
     if rest:
         for remote_id, content_id in _owned_by_jobs(
@@ -1608,8 +1663,16 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
         items.append(row("rekordbox", "order", None, tracks=len(one.change.order)))
     for remote_id in one.account_removes:
         items.append(row("account", "remove", by_remote.get(remote_id)))
+    broken = {named.remote_id for named in one.tied}
     for remote_id in one.account_adds:
-        items.append(row("account", "add", by_remote.get(remote_id)))
+        items.append(
+            row(
+                "account",
+                "add",
+                by_remote.get(remote_id),
+                **({"tied": True} if remote_id in broken else {}),
+            )
+        )
     if one.account_order:
         items.append(row("account", "order", None, tracks=len(one.account_order)))
     for remote_id in one.acquire:
@@ -1697,6 +1760,8 @@ def payload(planned: Plan) -> dict[str, Any]:
                 if item["side"] == "merge" and item["action"] != pair_merge.TIME_UNKNOWN
             ),
             "time_unknown": count("merge", pair_merge.TIME_UNKNOWN),
+            # U208. Rows matched as one of several releases that all agree.
+            "tied": sum(len(one.tied) for one in planned.pairs),
         },
         "chunk": None,
     }
@@ -1739,6 +1804,12 @@ def facts(planned: Plan) -> dict[str, Any]:
                 f"; the account withheld {one.withheld.get('withheld', 0)} track(s), so "
                 f"nothing is removed or reordered there"
                 if one.withheld
+                else ""
+            )
+            + (
+                f"; {len(one.tied)} row(s) matched as one of several releases that all "
+                f"agree with it, the hearted one or else the lowest numbered"
+                if one.tied
                 else ""
             )
         )

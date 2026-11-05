@@ -937,9 +937,14 @@ a smart playlist, and every playlist under a top folder
 `outbound.pair_skip_folders` names, which is `["ARCHIVE"]` unless you change
 it. A made pair whose rekordbox playlist you move into such a folder, another
 app's folder or the Favorites folder is unpaired, and its account playlist
-stays. A track the account cannot carry stays in
-rekordbox, counted on the gate, and is not asked about again until its ISRC
-changes, except a tie between releases, which is asked again. Another app's
+stays. A track whose ISRC names several releases on
+the account that all agree with it, a single and its album cut, is paired as
+one of them: the one you heart, else the lowest numbered after the file's
+album has narrowed them, as the mirror chooses, and it stays on that one; the
+gate counts how many rows were paired that way. A release of it you add on the
+account by hand is read as the same track, never queued for download. A
+track the account cannot carry stays in rekordbox, counted on the gate, and is
+not asked about again until its ISRC changes. Another app's
 folder is never paired either. Two playlists that would take one account title refuse that title
 until you rename one. Delete either side of such a pair and the next sync
 unpairs it, leaves the other side where it is, and does not make it again.

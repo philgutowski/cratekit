@@ -29,7 +29,8 @@ the provider only about rows it has not matched before, and a row it could not
 match is remembered with what it was asked under and not asked again until that
 changes (R-1031). Several releases that all agree with a row are a tie the
 mirror breaks by taking one of them, since a listening copy writes nothing
-back as the row's identity, where a heart or a pair refuses it (R-1032). What
+back as the row's identity (R-1032), and a pair breaks the same way since
+U208, where a heart refuses it. What
 exists is reused,
 by the ledger's record first and by exact name second, never made twice:
 
@@ -252,7 +253,8 @@ class Matcher:
     row is matched as one of them, linked like any match and so kept by every
     later refresh. A miss remembered with the tie's words before that is asked
     again rather than reused, once, since asking again no longer misses on it.
-    The hearts and the pairs keep R-572's refusal; they never pass it.
+    The pairs break a tie the same way since U208 (``sync/pair_cli._ask``);
+    the hearts keep R-572's refusal and never pass it.
     """
 
     def __init__(
