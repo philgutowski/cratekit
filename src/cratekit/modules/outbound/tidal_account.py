@@ -131,14 +131,30 @@ ORDER_PAUSES = (1.0, 2.0, 4.0)
 PRECONDITION_FAILED = 412
 
 
+def _pause(attempt: int) -> float:
+    """The pause before the ``attempt``-th reading taken again, from one; the last repeats."""
+    return ORDER_PAUSES[min(attempt, len(ORDER_PAUSES)) - 1]
+
+
 def _stale_tag(exc: BaseException) -> bool:
-    """Whether a failure, or one it was raised from, is the provider's 412 (U220)."""
-    seen: BaseException | None = exc
-    while seen is not None:
-        status = getattr(getattr(seen, "response", None), "status_code", None)
+    """Whether a failure, or one it was raised from or while handling, is the provider's 412 (U220).
+
+    BOTH CHAINS ARE WALKED. The client reads an error answer's body as JSON
+    inside its own handler of the HTTP error, so a 412 whose body is not JSON
+    surfaces as the decode error with the HTTP error as its context, not its
+    cause (round one's review, measured on the client's own code).
+    """
+    seen: list[BaseException] = [exc]
+    walked: set[int] = set()
+    while seen:
+        one = seen.pop()
+        if id(one) in walked:
+            continue
+        walked.add(id(one))
+        status = getattr(getattr(one, "response", None), "status_code", None)
         if status == PRECONDITION_FAILED:
             return True
-        seen = seen.__cause__
+        seen.extend(link for link in (one.__cause__, one.__context__) if link is not None)
     return False
 
 
@@ -1209,9 +1225,10 @@ class TidalAccount:
         one short. The longest run at the TAIL of ``remote_ids`` already
         standing in that order stays where it is, and the tracks before it are
         moved to the front, the last of them first, which leaves the asked
-        tracks in exactly the asked order with every track not asked after
-        them. The moves are worked out again from each reading, so a reading
-        taken again is planned from as it is.
+        tracks in exactly the asked order. A track not asked stays where it
+        stood among the kept tail, so it ends after the moved tracks and may
+        stand between two of the kept ones. The moves are worked out again
+        from each reading, so a reading taken again is planned from as it is.
 
         THE FIRST READING MUST AGREE WITH WHAT IS KNOWN OF THE PLAYLIST, see
         :meth:`_settled`: ``expect``, a reading the caller took, or else what
@@ -1268,10 +1285,15 @@ class TidalAccount:
                     raise
                 # A 412 CHANGED NOTHING, so the playlist is read again and the
                 # moves planned from that reading, with the tag it came with.
-                self._sleep(ORDER_PAUSES[stale])
                 stale += 1
-                playlist = self._playlist(identifier)
-                before = self._positions(identifier, playlist)
+                # THE READING AFTER A 412 IS HELD TO WHAT THE PLAYLIST HOLDS, as
+                # the first was, since a move changes no membership: a reading
+                # that lags the adds would otherwise be planned from as whole
+                # (round one's review).
+                self._sleep(_pause(stale))
+                playlist, before = self._settled(
+                    identifier, tuple(before), exact=False, pauses_from=stale
+                )
                 continue
             if accepted is False or accepted is _ABSENT:
                 raise account.provider_failure(
@@ -1282,7 +1304,12 @@ class TidalAccount:
             )
 
     def _settled(
-        self, identifier: str, known: tuple[str, ...] | None, *, exact: bool
+        self,
+        identifier: str,
+        known: tuple[str, ...] | None,
+        *,
+        exact: bool,
+        pauses_from: int = 0,
     ) -> tuple[Any, list[str]]:
         """The playlist opened and read for an order, once the reading agrees with ``known`` (U220).
 
@@ -1301,7 +1328,8 @@ class TidalAccount:
         :data:`ORDER_PAUSES`, and once :data:`ORDER_REREADS` are spent the last
         refusal is raised with nothing moved. With nothing known a reading
         short of its count refuses at once, as :meth:`_positions` always has,
-        since there is no write for it to lag.
+        since there is no write for it to lag. ``pauses_from`` is how many
+        pauses the caller already took, so a reading after a 412 waits longer.
         """
 
         def agrees(reading: list[str]) -> bool:
@@ -1314,7 +1342,7 @@ class TidalAccount:
         last: CratekitError | None = None
         for attempt in range(ORDER_REREADS + 1):
             if attempt:
-                self._sleep(ORDER_PAUSES[attempt - 1])
+                self._sleep(_pause(pauses_from + attempt))
             playlist = self._playlist(identifier)
             try:
                 reading = self._positions(identifier, playlist)
@@ -1356,7 +1384,7 @@ class TidalAccount:
         attempt = 0
         for attempt in range(ORDER_REREADS + 1):
             if attempt:
-                self._sleep(ORDER_PAUSES[attempt - 1])
+                self._sleep(_pause(attempt))
             playlist = self._playlist(identifier)
             reading = self._positions(identifier, playlist)
             if reading == expected:

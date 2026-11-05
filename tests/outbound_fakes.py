@@ -350,16 +350,25 @@ class FakeAccount:
         *,
         expect: tuple[str, ...] | None = None,
     ) -> tuple[str, ...]:
-        """Put the asked tracks it holds once in the asked order, the rest after (U220). One write.
+        """Put the asked tracks it holds once in the asked order, by the adapter's rule. One write.
 
-        ``expect`` is recorded in :attr:`expected`, by playlist (U220).
+        The adapter's rule (U220): the longest run at the tail of the asked
+        order already standing stays, and each asked track before it is moved
+        to the front, the last first, so a track not asked stays where it
+        stood among the kept tail. ``expect`` is recorded in :attr:`expected`.
         """
         self.expected.append((playlist_id, None if expect is None else tuple(expect)))
         self._bump(playlist_id)
         members = self.playlists.setdefault(playlist_id, [])
         once = {one for one in members if members.count(one) == 1}
         asked = [one for one in dict.fromkeys(remote_ids) if one in once]
-        members[:] = asked + [one for one in members if one not in set(asked)]
+        keep = 0
+        for one in reversed(members):
+            if one in set(asked) and keep < len(asked) and one == asked[-1 - keep]:
+                keep += 1
+        for one in reversed(asked[: len(asked) - keep]):
+            members.remove(one)
+            members.insert(0, one)
         self.ordered.append((playlist_id, tuple(remote_ids)))
         return tuple(members)
 

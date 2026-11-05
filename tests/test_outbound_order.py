@@ -55,6 +55,7 @@ class Provider:
         landing: str = "end",
         lag: int = 0,
         stale_tags: int = 0,
+        whole: bool = False,
     ) -> None:
         self.members = list(members)
         self.version = 1
@@ -64,6 +65,10 @@ class Provider:
         self.lagging = 0
         self.stale_tags = stale_tags
         self.elsewhere = False
+        #: Whether a lagging read lags the declared count too, not the tracks alone.
+        self.whole = whole
+        #: How many reads lag after a move the provider refuses 412.
+        self.lag_after_refusal = 0
         #: Every move asked, as ``(indices, position, tag)``, refused or not.
         self.moves: list[tuple[tuple[int, ...], int, int]] = []
         #: Every move refused with a 412.
@@ -86,7 +91,8 @@ class Movable:
         provider.opened += 1
         self.provider = provider
         self.id = playlist_id
-        self.num_tracks = len(provider.members)
+        lagging = provider.whole and provider.lagging
+        self.num_tracks = len(provider.previous[0] if lagging else provider.members)
         self._etag = provider.version
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[SimpleNamespace]:
@@ -122,6 +128,7 @@ class Movable:
         provider.moves.append((asked, position, self._etag))
         if self._etag != provider.version:
             provider.refused += 1
+            provider.lagging = provider.lag_after_refusal
             raise Stale()
         before = list(provider.members)
         moving = [before[i] for i in asked]
@@ -330,3 +337,66 @@ def test_a_reading_that_lags_the_expected_one_is_read_again(installed):
         "mine", ("c", "b", "a"), expect=("b", "a", "c")
     )
     assert after == ("c", "b", "a")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round one's review
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("whole", [False, True])
+def test_the_reading_after_a_412_is_held_to_what_the_adds_left(installed, whole):
+    """R1 of round one: a reading after a 412 that lags the adds is not planned from."""
+    provider = Provider(["a", "b", "c"], whole=whole)
+    account = _adapter(installed, provider)
+    account.add_tracks("mine", ("x", "y"))
+    provider.stale_tags = 1
+    provider.lag_after_refusal = 1
+    after = account.order_tracks("mine", ("y", "x", "a", "b", "c"))
+    assert after == ("y", "x", "a", "b", "c")
+    assert provider.members == ["y", "x", "a", "b", "c"]
+    assert provider.refused == 1
+
+
+def test_a_412_whose_body_is_not_json_is_still_read_as_a_stale_tag():
+    """R3 of round one: the client raises a decode error while handling the HTTP error."""
+    try:
+        try:
+            raise Stale()
+        except Stale:
+            raise ValueError("Expecting value: line 1 column 1 (char 0)") from None
+    except ValueError as decoded:
+        assert decoded.__cause__ is None and isinstance(decoded.__context__, Stale)
+        wrapped = CratekitError.__new__(CratekitError)
+        wrapped.__cause__ = decoded
+        assert tidal_account._stale_tag(wrapped)
+    assert not tidal_account._stale_tag(RuntimeError("a 500"))
+
+
+def test_more_readings_than_pauses_repeat_the_last_pause(installed, monkeypatch):
+    monkeypatch.setattr(tidal_account, "ORDER_REREADS", 5)
+    provider = Provider(["a", "b", "c"], lag=99)
+    slept: list[float] = []
+    with pytest.raises(CratekitError):
+        _adapter(installed, provider, slept).order_tracks("mine", ("c", "a", "b"))
+    assert slept == [*tidal_account.ORDER_PAUSES, tidal_account.ORDER_PAUSES[-1], tidal_account.ORDER_PAUSES[-1]]
+
+
+@pytest.mark.parametrize(
+    ("before", "order"),
+    [
+        (["a", "z", "b", "c"], ("c", "a", "b")),
+        (["a", "b", "a", "c"], ("c", "a", "b")),
+        (["d", "c", "b", "a"], ("a", "b", "c", "d")),
+        (["a", "b", "c"], ("q", "c", "a")),
+    ],
+)
+def test_the_fake_account_orders_by_the_adapters_rule(installed, before, order):
+    """R4 of round one: a sync suite's snapshot is the one the live adapter would leave."""
+    from tests.outbound_fakes import FakeAccount
+
+    provider = Provider(before)
+    live = _adapter(installed, provider).order_tracks("mine", order)
+    fake = FakeAccount()
+    fake.playlists["mine"] = list(before)
+    assert fake.order_tracks("mine", order) == live

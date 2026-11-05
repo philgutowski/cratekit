@@ -3552,8 +3552,9 @@ def _unordered(
         said += (
             f"; run {run_id} finished {finished} of {len(planned.pairs)} pair(s), wrote "
             f"every other write of these, and recorded each step it took, so "
-            f"continuing the run puts these in order with no new plan and no new "
-            f"answer, once each reads in the provider's own player as it should: "
+            f"continuing the run tries their order again with no new plan and no "
+            f"new answer, and moves nothing until its reading agrees with the "
+            f"check's; first do what each refusal above asks, then: "
             + shlex.join(["crate", "--run", run_id, *(argv or VERB_PATH)])
         )
         detail.update({"run_id": run_id, "finished": finished})
