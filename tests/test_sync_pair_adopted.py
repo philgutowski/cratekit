@@ -255,6 +255,27 @@ def test_without_a_record_the_creation_time_decides(world, cfg, trivia):
     assert set(in_rekordbox(world, rekordbox)) == {"Techno", "House", "Disco"}
 
 
+def test_without_a_record_the_moment_is_read_from_this_folders_own_pairs(world, cfg, trivia):
+    """A pair made earlier in another folder does not date this folder's adoption."""
+    rekordbox, _copies = trivia
+    gig = world.folder("GIG READY")
+    world.playlist("Opener", "1", under=gig)
+    assert sync()[0] == int(ExitCode.OK)
+    unrecorded(cfg)
+    path = config.state_path("playlist_pairs", cfg)
+    raw = json.loads(path.read_text(encoding="utf-8"))
+    for pair in raw["pairs"].values():
+        if pair.get("folder") == "GIG READY":
+            pair["marked"] = "2026-01-02T00:00:00+00:00"
+    path.write_text(json.dumps(raw, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    between = on_account(world, f"{FOLDER} Disco", FOLDER, "t3")
+    world.account.made_at[between] = datetime(2026, 3, 1, tzinfo=timezone.utc)
+    plan = plan_only()
+    assert not _items(plan, "rekordbox", "create")
+    assert "not after a sync adopted" in left(plan, pair_discover.BEFORE)[f"{FOLDER} Disco"]["why"]
+    assert set(in_rekordbox(world, rekordbox)) == {"Techno", "House"}
+
+
 def test_without_a_record_a_creation_time_without_a_zone_is_no_time(world, cfg, trivia):
     _rekordbox, _copies = trivia
     unrecorded(cfg)
