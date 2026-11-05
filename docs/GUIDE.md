@@ -310,6 +310,19 @@ while your intake tree is on the xml bridge and no export once it is database
 native. The pass names the importable file, which is how `sync mark` later finds
 the run, and the batch itself is named for the date and the playlists.
 
+A missing track an earlier download already left in the download staging
+folder, one whose landing was never answered, is not listed again. Each file a
+landing would take from that folder is read for the ISRC the downloader wrote,
+and a missing track carrying the same ISRC is counted under `staged`, named with
+its file on the `staged` line, and left off the list; the landing over that
+folder lands it. A file with no ISRC, or one that cannot be read, matches
+nothing, so its track is listed as before. If every missing track is staged
+the list is not written and the output says the landing takes them, and
+`crate sync land` then skips the download and goes on to the tail and the
+landing. A track the pass's own list already names stays listed, so continuing
+a pass rewrites the same list. If the staging folder cannot be read the
+`staged` line fails and says so.
+
 Downloading is its own step. `crate acquire download LIST` fetches tracks into
 the download staging folder through the configured adapter, paced so the account
 is not blocked, and `crate acquire audit` reports files that break the lossless
@@ -922,7 +935,14 @@ playlist it lands, beside its INBOX playlist and in the same write, and pairs th
 two with no hand step. `crate sync twins` does the same once for every
 `DOWNLOADED` playlist the account already holds in a year folder, shows every
 twin and every track it will not hold on one gate, and plans nothing the second
-time. From then on `crate sync pair` keeps each twin and its account playlist
+time. One playlist never stops the others: a playlist the account cannot list
+is left and named on the gate with the reason, and read again on the next run,
+and a track the account lists with no title or no artist is still placed when a
+recorded link or its ISRC finds its row, and otherwise named on the gate as a
+track the twin will not hold. A title written wholly in brackets, such as
+`[Premade Sandwiches]`, reads as its words; `crate intake playlist` on one
+playlist still refuses a track that names no title, so you see it before
+anything is queued. From then on `crate sync pair` keeps each twin and its account playlist
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
 
@@ -1551,6 +1571,7 @@ treated like any other.
 | "provider-call-ceiling" | The command made as many calls to the streaming provider as one command may, 500 unless `[provider] calls_per_command` says otherwise, and stopped with what it did kept. The refusal prints the exact command that continues, with `--calls N` raising the ceiling for that one run; a job continues with `crate --calls N job resume JOB_ID`. The next run is back at the configured ceiling. |
 | "rekordbox-absence-unconfirmed" | A process the check for rekordbox could not read, named by its pid, so whether rekordbox is closed was not established and the step that needed it closed did not run. It is usually a process that is still exiting: wait a moment, then continue the run with the command the refusal prints, `crate --run RUN_ID` and the verb's own words, which keeps every gate already answered. A process that has finished exiting, a zombie, is skipped and never refuses. If it refuses again, look at the pid with `ps -p PID -o pid,stat,comm`. `crate doctor` shows the same thing as a note under `rekordbox.closed`. |
 | A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
+| `sync land` stops at `name apply` over a "second copy of one recording" | Two files in the staging folder carry one ISRC, so one would take the other's name. The refusal names the passes whose downloads it was, earliest first. Keep one copy, move the other out of the folder, and continue the pass with the command it prints. |
 | `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
 | A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |
 | A tree "unconverged" | `crate converge`, then `crate rebuild`, then `crate converge` again. |

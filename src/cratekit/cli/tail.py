@@ -39,6 +39,12 @@ then, and against that build: sitting 47 resumed a queued analysis that
 answered ``module-extras-missing`` after the extra was installed. Each tail step
 cancels any such job and queues its own.
 
+A NAME STEP HELD BY A SECOND COPY NAMES THE PASSES THAT DOWNLOADED IT (U212).
+``name apply`` says a file held back by one carrying the same ISRC is a second
+copy of one recording, with the ISRC; the chain reads the download jobs for it
+and adds the step that names each pass whose download it was, earliest first,
+since the naming verb sits below the download verb and may not read its jobs.
+
 ``name apply``'s CONFIRM IS ANSWERED INLINE, by one argument list. It is not
 explicit, so answering it on the command line is the act a person running the
 tail makes; the plan it answers is the verb's own.
@@ -68,7 +74,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from cratekit.cli import gates, registry, render
-from cratekit.core import config, drift, jobs, profiles
+from cratekit.core import config, drift, jobs, profiles, tags
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.modules import foreground
@@ -98,6 +104,12 @@ TAIL: tuple[tuple[str, str, tuple[str, ...]], ...] = (
 )
 
 NAME_VERB = "name.apply"
+
+#: The download verb whose jobs record which pass downloaded a recording (U212).
+DOWNLOAD_VERB = "acquire.download"
+
+#: What ``name apply`` answers when part of its plan did not happen.
+RENAME_INCOMPLETE = "rename-incomplete"
 LAND_VERB = "intake.land"
 
 #: The genre guess the chain runs right after ``tag folder`` (U172), over the
@@ -632,15 +644,97 @@ def name_argv(folder: Path) -> list[str]:
     return ["-d", f"{NAME_GATE}={NAME_OPTION}", "name", "apply", "--root", str(folder)]
 
 
-def name(chain: Chain, folder: Path) -> None:
+def name(chain: Chain, folder: Path, cfg: config.Config | None = None) -> None:
     """``name apply`` over the ABSOLUTE staging folder, its confirm answered inline.
 
     The confirm is not explicit, so answering it on the command line is the act
-    a person running the tail makes; the plan it answers is the verb's own.
+    a person running the tail makes; the plan it answers is the verb's own. A
+    refusal over a second copy of one recording names the passes that
+    downloaded it (U212); ``cfg`` keeps that reading to this library's jobs.
     """
-    envelope = required(chain, NAME, name_argv(folder))
+    try:
+        envelope = required(chain, NAME, name_argv(folder))
+    except Stop as stop:
+        raise second_copies(stop, cfg) from None
     totals = (envelope.get("data") or {}).get("totals") or {}
     chain.check(NAME, "ok", f"name apply ran over {folder}: {json.dumps(totals, sort_keys=True)}")
+
+
+def second_copies(stop: Stop, cfg: config.Config | None) -> Stop:
+    """The name step's stop, with a step per second copy naming who downloaded it (U212).
+
+    ONLY A ``rename-incomplete`` WHOSE OUTSTANDING FILES CARRY AN ISRC, which
+    ``name apply`` puts on a file held back by one carrying the same ISRC.
+    Anything else, and a queue that cannot be read, is the stop unchanged: the
+    refusal is already true, and this only adds who downloaded the recording.
+    """
+    cause = stop.error.cause
+    if cause.reason != RENAME_INCOMPLETE:
+        return stop
+    owed = (cause.detail or {}).get("incomplete")
+    copies: dict[str, str] = {}
+    for item in owed if isinstance(owed, list) else ():
+        if isinstance(item, dict):
+            isrc = tags.isrc_token(item.get("isrc"))
+            if isrc:
+                copies.setdefault(isrc, str(item.get("from") or ""))
+    if not copies:
+        return stop
+    try:
+        steps = tuple(_downloaded_by(isrc, held, cfg) for isrc, held in copies.items())
+    except (CratekitError, OSError):
+        return stop
+    return Stop(stop.step, with_steps(stop.error, *steps), continues=stop.continues)
+
+
+def _downloaded_by(isrc: str, held: str, cfg: config.Config | None) -> str:
+    """One step: the passes whose download jobs acquired ``isrc``, earliest first.
+
+    A JOB COUNTS ONLY FOR AN ITEM IT FINISHED, read off the queue, so a job
+    that froze the track and never acquired it is not named as its source.
+    The pass is the name of the list the job downloaded, the name a sync
+    pass's list and its landing share.
+    """
+    from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's keys
+    from cratekit.acquire import listdoc  # noqa: PLC0415 - the list's own suffix
+
+    key = registry.entry(DOWNLOAD_VERB).handler_key
+    passes: list[str] = []
+    with jobs.open_store() as store:
+        # ``list_jobs`` IS NEWEST FIRST, so reversed is earliest first.
+        for job in reversed(jobs.list_jobs(store)):
+            if job.handler_key != key:
+                continue
+            if cfg is not None and job.library_id != cfg.library.volume_id:
+                continue
+            payload = job.payload or {}
+            frozen = payload.get(acquire_cli.TRACKS)
+            refs = {
+                str(ref)
+                for ref, said in (frozen.items() if isinstance(frozen, dict) else ())
+                if isinstance(said, dict) and tags.isrc_token(said.get("isrc")) == isrc
+            }
+            if not refs:
+                continue
+            done = {
+                item.item_id
+                for item in jobs.items(store, job.job_id)
+                if item.state is jobs.ItemState.DONE
+            }
+            if refs & done:
+                listed = Path(str(payload.get(acquire_cli.LIST) or "")).name
+                named = listed.removesuffix(listdoc.LIST_SUFFIX) or job.job_id
+                passes.append(f"{named} (job {job.job_id})")
+    carried = f"ISRC {isrc}, carried by {held} and by the file whose name it would take,"
+    if not passes:
+        return (
+            f"{carried} is in no download job of this library, so the copy in its way "
+            f"did not come from a download here: compare the two by hand"
+        )
+    return (
+        f"{carried} was downloaded by: {', '.join(passes)}; keep one copy, move the "
+        f"other out of the folder, and continue the pass"
+    )
 
 
 def land(chain: Chain, folder: Path, landing: Sequence[str] = ()) -> None:
@@ -738,7 +832,7 @@ def through_name(
             guess(chain, folder, pass_name)
         if step == ANALYZE:
             rescore(chain, folder, cfg, unable=unable)
-    name(chain, folder)
+    name(chain, folder, cfg)
     return folder
 
 
