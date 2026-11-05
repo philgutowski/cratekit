@@ -45,6 +45,8 @@ PROTOCOL_METHODS = frozenset(
         "release_artist",
         "tracks_for_isrc",
         "search_tracks",
+        # U207. Reads only: which codes intake missing will ask the provider files nothing under.
+        "screen_isrcs",
     }
 )
 

@@ -2446,6 +2446,7 @@ PINNED_NAMED_WITH_OWN = {
 
 # The named-with-own modules that also hold an in-range integer.
 PINNED_NAMED_WITH_INTEGER = frozenset({
+    'acquire/catalogue_api.py',  # 2026-11-05, U207: the ISRC batch's floor and ceiling.
     'acquire/match.py',
     'adopt/revert.py',
     'core/config.py',
@@ -3133,6 +3134,7 @@ PINNED_LITERAL_HOLDERS = {
 
 # The literal-holder modules that also hold an in-range integer.
 PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
+    'acquire/catalogue_api.py',  # 2026-11-05, U207: the ISRC batch's floor and ceiling.
     'acquire/match.py',
     'adopt/revert.py',
     'analysis/cli.py',
