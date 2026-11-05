@@ -175,16 +175,25 @@ def _facts(plan: rotate.RotationPlan) -> dict[str, Any]:
     }
 
 
-def _warnings(plan: rotate.RotationPlan) -> list[dict[str, str]]:
+def records_warnings(plan: rotate.RotationPlan) -> list[dict[str, str]]:
+    """The warning a plan over unread session records carries, empty when every one was read.
+
+    PUBLIC FOR ``crate organize``, whose rotation step warns exactly as this
+    verb does. An unlisted log is named as one (R-1255), not as a count of
+    records, since no record in it was read at all.
+    """
     if not plan.unreadable_records:
         return []
+    unread = (
+        "the session log could not be listed, so a batch a record in it names"
+        if plan.log_unlisted
+        else f"{plan.unreadable_records} session record(s) could not be read, so a "
+        f"batch one of them names"
+    )
     return [
         {
             "code": RECORDS_UNREADABLE,
-            "message": (
-                f"{plan.unreadable_records} session record(s) could not be read, so a "
-                f"batch one of them names was aged from its playlist's creation date"
-            ),
+            "message": f"{unread} was aged from its playlist's creation date",
         }
     ]
 
@@ -230,7 +239,7 @@ def inbox_rotate(ctx) -> Envelope:
 
     plan = planned(cfg, declared, as_of(ctx))
     data = plan_payload(plan)
-    warnings = _warnings(plan)
+    warnings = records_warnings(plan)
     if ctx.gate.require(spec, plan=data, context=_facts(plan)) != "approve":
         return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
     if not plan.writes:

@@ -2693,8 +2693,11 @@ def landed_passes(cfg: config.Config) -> tuple[str, ...]:
     proves. A landing of no pass names none and is not listed. The names are
     every pass's, a label's or a set's as well as a sync's: which of them a
     sync pass owns is the mark's to decide, from its jobs.
+
+    Read through :func:`cratekit.core.session.records`, so a log this account
+    cannot list refuses rather than reading as no landing (R-1255).
     """
-    records, _unreadable = session.scan_log(cfg)
+    records = session.records(cfg)
     return tuple(
         sorted(
             {
@@ -2717,8 +2720,13 @@ def landings_of_pass(cfg: config.Config, name: str) -> tuple[str, ...]:
     committed and whose detail names the pass. A landing refused after its
     moves leaves its files in the library and adds no row, and its record
     names no pass, so its files cannot mark a playlist by being on disk.
+
+    A LOG THIS ACCOUNT CANNOT LIST REFUSES (R-1255, review round two), through
+    :func:`cratekit.core.session.records`: read as no landing, ``sync mark
+    --pass`` told a person a recorded landing never committed and sent them to
+    land the pass again.
     """
-    records, _unreadable = session.scan_log(cfg)
+    records = session.records(cfg)
     return tuple(
         sorted(
             record.session_id

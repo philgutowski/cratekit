@@ -66,6 +66,7 @@ reaches a persisted record arrives as a parameter from the layer that owns one.
 
 from __future__ import annotations
 
+import fnmatch
 import functools
 import hashlib
 import json
@@ -440,6 +441,46 @@ def read_record(session_id: str, cfg: config.Config) -> SessionRecord:
     return SessionRecord.from_json(json.loads(raw.decode("utf-8")))
 
 
+def _listed(directory: Path) -> list[str] | None:
+    """The names in ``directory``, ``None`` when it is not there; raises when it is there and refused.
+
+    ASKED OF THE LISTING ITSELF, once, because neither of the obvious questions
+    answers it: a glob yields nothing over a directory it is refused, and
+    ``os.path.isdir`` answers False over one it cannot stat. Not there is a
+    missing path or one under a file; a path that is itself a file is there
+    and cannot be listed, so it raises with the rest.
+    """
+    try:
+        return os.listdir(directory)
+    except FileNotFoundError:
+        return None
+    except NotADirectoryError:
+        if os.path.lexists(directory):
+            raise
+        return None
+
+
+def log_unlisted(unreadable: Sequence[Path], cfg: config.Config) -> bool:
+    """Whether the unread half :func:`scan_log` returned is the log itself, not a record in it."""
+    return log_dir(cfg) in unreadable
+
+
+def unread_clause(unreadable: Sequence[Path], cfg: config.Config) -> str:
+    """The unread half as a refusal says it: the listing refused, or how many entries.
+
+    A gate's refusal over an unlisted log used to say the log held one entry
+    this build cannot read, which sends a person to look for a damaged file
+    where the remedy is a permission.
+    """
+    if log_unlisted(unreadable, cfg):
+        return "the session log exists and cannot be listed by this account"
+    return (
+        f"the session log holds {len(unreadable)} entr"
+        + ("y" if len(unreadable) == 1 else "ies")
+        + " this build cannot read"
+    )
+
+
 def scan_log(cfg: config.Config) -> tuple[tuple[SessionRecord, ...], tuple[Path, ...]]:
     """Read the log once and return BOTH halves: what parsed, and what did not.
 
@@ -456,11 +497,26 @@ def scan_log(cfg: config.Config) -> tuple[tuple[SessionRecord, ...], tuple[Path,
       exists to stop.
 
     Returning both halves is what lets each consumer say which one it is.
+
+    A LOG THAT IS THERE AND CANNOT BE LISTED IS THE ONE ENTRY OF THE SECOND
+    HALF (R-1255): the log directory itself, which :func:`log_unlisted` names.
+    The scan used to glob, and a glob over a directory this account cannot list
+    yields nothing rather than raising, so a log nobody could open read as one
+    holding no record, and every gate behind the scan admitted the write the
+    log may refuse. Reported in the half a gate already refuses on, and
+    :func:`records` refuses on it for every reporting reader; a consumer of
+    this scan that drops the second half by its own policy drops this too. A
+    log that is not there is still no record at all.
     """
+    directory = log_dir(cfg)
     try:
-        entries = sorted(log_dir(cfg).glob("*.json"))
-    except OSError:
+        names = _listed(directory)
+    except OSError as exc:
+        logger.debug("session log %s could not be listed: %s", directory, exc)
+        return (), (directory,)
+    if names is None:
         return (), ()
+    entries = sorted(directory / name for name in names if fnmatch.fnmatchcase(name, "*.json"))
     parsed: list[SessionRecord] = []
     unreadable: list[Path] = []
     for entry in entries:
@@ -482,8 +538,25 @@ def records(cfg: config.Config) -> tuple[SessionRecord, ...]:
 
     THAT POLICY IS FOR REPORTING AND FOR NOTHING ELSE. A gate that borrowed it
     would fail open; see :func:`scan_log` and :func:`assert_no_unresolved_session`.
+
+    A LOG THAT CANNOT BE LISTED REFUSES (R-1255, review round one). Skipping
+    one damaged record still leaves every other one reported, but a log nobody
+    could list leaves nothing, and answering "no session" over it told a person
+    asking to restore that their session was never recorded, listed no restore
+    point, and released no orphan while saying it had. Every reader of this
+    function is answered by the refusal instead of by an empty log.
     """
-    return scan_log(cfg)[0]
+    parsed, unreadable = scan_log(cfg)
+    if log_unlisted(unreadable, cfg):
+        raise refuse(
+            "internal-error",
+            f"{unread_clause(unreadable, cfg)}, so no session recorded in it can be "
+            "read; refusing rather than answering that none is recorded",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            detail={"log": str(log_dir(cfg)), "unlisted": True},
+        )
+    return parsed
 
 
 # ---------------------------------------------------------------------------
@@ -1084,7 +1157,8 @@ def abandon_orphaned_sessions(
     invocations, and binding the answer to the first one's list is R-648.
 
     ABANDONING IS THE UNGATED CLOSE, which is what keeps it reachable whatever
-    state the library is in. A record that recorded a commit still says so after
+    state the library's records are in, short of a log this account cannot
+    list, which :func:`records` refuses (R-1255). A record that recorded a commit still says so after
     this, so a restore still reads it as work it would discard.
     """
     here = current_holder()
@@ -1981,14 +2055,15 @@ def assert_no_unresolved_session(cfg: config.Config) -> None:
     if unreadable:
         raise refuse(
             "internal-error",
-            f"the session log holds {len(unreadable)} entr"
-            + ("y" if len(unreadable) == 1 else "ies")
-            + " this build cannot read, so this gate cannot vouch that no session "
-            "ended unresolved; refusing rather than writing against a log it "
-            "cannot read",
+            f"{unread_clause(unreadable, cfg)}, so this gate cannot vouch that no "
+            "session ended unresolved; refusing rather than writing against a log "
+            "it cannot read",
             remedy=Remedy.REPORT_DEFECT,
             scope=Scope.RUN,
-            detail={"unreadable": [str(path) for path in unreadable]},
+            detail={
+                "unreadable": [str(path) for path in unreadable],
+                "unlisted": log_unlisted(unreadable, cfg),
+            },
         )
 
 
@@ -2880,6 +2955,7 @@ __all__ = [
     "is_analysis_file",
     "lock_path",
     "log_dir",
+    "log_unlisted",
     "log_path",
     "machine_identity",
     "mark_awaiting_import",
@@ -2901,6 +2977,7 @@ __all__ = [
     "resolve_unverified_session",
     "scan_log",
     "session_lock",
+    "unread_clause",
     "verify_commit",
     "write_record",
 ]
