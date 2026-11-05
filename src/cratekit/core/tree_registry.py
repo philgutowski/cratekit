@@ -825,14 +825,15 @@ def _whole_log(cfg: config.Config, *, so: str) -> tuple[session.SessionRecord, .
     if unreadable:
         raise refuse(
             "internal-error",
-            f"the session log holds {len(unreadable)} entr"
-            + ("y" if len(unreadable) == 1 else "ies")
-            + f" this build cannot read, so {so}; refusing rather than "
+            f"{session.unread_clause(unreadable, cfg)}, so {so}; refusing rather than "
             "writing the tree registry against a log it cannot read",
             remedy=Remedy.REPORT_DEFECT,
             scope=Scope.RUN,
             origin=("tree_registry",),
-            detail={"unreadable": [str(path) for path in unreadable]},
+            detail={
+                "unreadable": [str(path) for path in unreadable],
+                "unlisted": session.log_unlisted(unreadable, cfg),
+            },
         )
     return parsed
 

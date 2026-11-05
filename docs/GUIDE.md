@@ -964,6 +964,13 @@ anything is queued. From then on `crate sync pair` keeps each twin and its accou
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
 
+A track the account lists with no title or no artist never stops `crate sync
+pair`. It is left where it is on both sides and named on the gate, and every
+other track of that playlist syncs both ways, removals and order included; a
+reorder keeps such a track behind the one listed before it. When a playlist's
+listing cannot be used at all, a row with no track id, a sync of every pair
+leaves that pair out, names it and syncs the others; named alone, it refuses.
+
 A twin is never counted: when its folder already holds a playlist of its name,
 the twin is left and named, and you pair the one there by hand with
 `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`. When you delete the

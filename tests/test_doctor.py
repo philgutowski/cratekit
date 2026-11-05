@@ -49,6 +49,7 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import doctor_machines
 from tests._hardware import filesystem_kind, hdiutil_available, read_only_volume
 from tests.test_active_taxonomy import shipped_without, write_active
+from tests.test_session_log_unlisted import _refuse_listing
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -2380,6 +2381,58 @@ def test_status_reports_open_runs_sessions_and_trees(configured):
     assert data["summary"]["open_runs"] == 1
 
 
+def test_status_names_a_session_log_it_cannot_list_and_still_reports_the_rest(
+    configured, monkeypatch
+):
+    """R-1255, review round one: a log nobody could list is said, not read as no source.
+
+    The status reports runs, sources and trees, and only the sources are in
+    the log, so the log is one failing finding of its own and the report goes
+    on; a source refused in it is not lost behind an empty read.
+    """
+    record = session.SessionRecord(
+        session_id="s-2",
+        workflow="sync.labels",
+        started="2026-08-02T00:00:00+00:00",
+        sources={"labels": str(session.SourceState.REFUSED)},
+    )
+    session.write_record(record, configured)
+    log = Path(session.log_dir(configured))
+    _refuse_listing(monkeypatch, log)
+
+    code, out, err = drive(["--output", "json", "status"])
+
+    assert code == int(ExitCode.OK), err
+    checks = {check["key"]: check for check in json.loads(out)["data"]["checks"]}
+    assert "source.labels" not in checks
+    named = checks["source.session-log"]
+    assert named["status"] == "fail"
+    assert f"the session log directory {log} exists and cannot be listed" in named["detail"]
+
+
+def test_status_reads_one_damaged_record_as_a_record_not_as_an_unlisted_log(configured):
+    """Review round two: the listing's finding is for the listing alone.
+
+    A damaged record beside a readable one is skipped by the status as it was,
+    the readable one still reported; broadening the guard to any unread entry
+    would call one bad file a log nobody could list.
+    """
+    record = session.SessionRecord(
+        session_id="s-2",
+        workflow="sync.labels",
+        started="2026-08-02T00:00:00+00:00",
+        sources={"labels": str(session.SourceState.REFUSED)},
+    )
+    session.write_record(record, configured)
+    (Path(session.log_dir(configured)) / "s-0-dead.json").write_text("{not json")
+
+    code, out, err = drive(["--output", "json", "status"])
+
+    assert code == int(ExitCode.OK), err
+    keys = {check["key"] for check in json.loads(out)["data"]["checks"]}
+    assert "source.labels" in keys
+    assert "source.session-log" not in keys
+
 def test_the_human_rendering_shows_the_checks_rather_than_only_a_status(
     configured, monkeypatch
 ):
@@ -2944,6 +2997,29 @@ def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
     assert "did not complete" not in finding.detail, "the blanket rescue answered"
     assert "cannot be listed by this account" in finding.detail
     assert "An unreadable log is not an empty one" in finding.detail
+
+
+def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(configured, monkeypatch):
+    """R-1255: the test above on a container that runs as root, which no mode bars.
+
+    The listing is refused for the one path, as an account the log is closed
+    to is refused. The scan answers that log as the one unread entry too, so
+    the check under it would still FAIL with "1 session record(s) cannot be
+    read" if this probe answered nothing; the sentence is the probe's own.
+    """
+    log = Path(session.log_dir(configured))
+    log.mkdir(parents=True, exist_ok=True)
+    (log / "s-1.json").write_text("{}")
+    _refuse_listing(monkeypatch, log)
+
+    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+
+    assert finding.status is doctor.Status.FAIL
+    assert (
+        f"the session log directory {log} exists and cannot be listed by this account"
+        in finding.detail
+    )
+    assert "session record(s) in the log cannot be read" not in finding.detail
 
 
 def test_a_library_with_no_sessions_still_reports_a_clean_log(configured):
