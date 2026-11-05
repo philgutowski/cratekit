@@ -1896,6 +1896,23 @@ From v0.7.0, no job running, rekordbox closed. Every provider call went on the a
 
 **A69 (#440) is not met** and depends on #537 (U218), filed with this finding. The edited taxonomy is kept in the session scratch folder as `taxonomy.toml.2026-11-05-with-rominimal` for whoever retakes the card; the shipped template's text is the same edit.
 
+
+## Sitting 62, 2026-11-05, the attended session on v0.8.0: one sync pair for A86 (#509), A88 (#514), A91 (#521) and A92 (#523), stopped part way by the account's reorder
+
+From v0.8.0 (U212, U213, U215, U216 in it; U217 and the resort fix #537 not). Backup ages one and two days, the acknowledgment of sitting 59 valid, no job running, rekordbox closed throughout. #440 still waits: the U218 that landed is the board sharing card; the resort fix is #537, now titled U219 and open.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The playlist (A86) | the product's account client: `create_playlist('GIG READY A86 proof')`, moved into the account's `GIG READY` folder, three tracks the library owns added (`When Doves Cry (Sir Reel Mix)`, `2000 & Universe`, `Island Life`) | Account playlist `28a6a344-bb8f-46b7-a673-2a3292abeba6`, in the folder, the three tracks in that order. | done |
+| Rehearsal | `crate --output json --calls 20000 sync pair` on the hand copy (`scratch/copyrun`, refreshed), run `2026-11-05T17:40:21Z-77dd`, 1m02s | **348 calls** (379 ISRC answers from the copy's cache). **digest `679288bae9ddcb85`, count 756, 103 pairs.** U216 holds: the 18 `DOWNLOADED <genre>` playlists of Genre Trivia! are `account-discovery before` items, named on the gate "not made in rekordbox: 18 account playlist(s)". One `create`, `GIG READY / A86 proof`, with its three tracks in the account's order. **378 account adds, every one `tied`** (Sitting 54 left 388 such rows out), 66 order items, **198 unmatched** (576 at Sitting 54). Forecast: "the command that writes is expected to make about 2859, 206 to check the lists and 2653 to write". On the copy: the rekordbox gate's answer in its own command, **0.56 s, no plan call**; the account gate answered `skip`, and the write made the A86 playlist with 3 rows on the copy, nothing on the account, **314 calls**. | rehearsed |
+| Live plan | the same live, run `2026-11-05T17:42:49Z-5ddd`, 4m36s | **2,024 calls** (103 from the live cache, 276 ISRC asked); **digest `679288bae9ddcb85`, equal.** | gate |
+| Rekordbox gate (A91) | `run decide ... sync.pair.rekordbox apply --continue`, its own command | **0.83 s, no provider call**; the account gate showed the same digest. | answered |
+| Account gate and write (A92) | `run decide ... sync.pair.account apply --continue` | **Failed `unavailable-transient`** after **330 calls** (forecast 2,859): a 412 from the provider while putting `GIG READY Phil Sets Classic Soul Intro` (`0372d822`) in order, the first pair written. Its six tie adds had landed; nothing else was written, on the account or in rekordbox. | stopped |
+| Continue (A92) | `crate --calls 20000 --run 2026-11-05T17:42:49Z-5ddd sync pair`, twice | No new plan and no gate asked again, **322 and 327 calls**; each refused `outbound-remove-refused`, "read back after a move is not what it held with that track moved to the end". Each made one or two moves before refusing: the playlist now holds all 10 tracks in an order matching neither side (`Island Life, Hyaku, Inner City Blues, Cheer Up, Hopeless, A Break In The Clouds, When Doves Cry, 2000 & Universe, Lujon, Moonsmith`). Stopped there rather than move it further. | stopped |
+| Read back | a copy of the live database; `playlist_pairs.json` | No `A86 proof` playlist in rekordbox and no pair recorded for it: the write stops at the first account order item, before the rekordbox side. | read |
+
+**None of the four is met.** A91's per phase counts are recorded above (plan 2,024; rekordbox answer none; account answer 330 before its stop). A92's forecast against the live count could not be read on a finished write, and its continue resumed without a new plan but could not finish. A88's tie count reads 378 on both plans; GIG READY's account count after the apply and the quiet sync wait on a finished write. All four now depend on #543 (U220), filed with this finding. **Left on the account for the next sync:** `GIG READY A86 proof` (three tracks), and Classic Soul Intro out of order; the next finished `sync pair` puts its order back to rekordbox's.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
