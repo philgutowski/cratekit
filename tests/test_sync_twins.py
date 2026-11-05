@@ -637,11 +637,13 @@ def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made
 class Flaky(RuntimeError):
     """A provider failure whose words differ every time they are read, as a request id does."""
 
-    calls = 0
+    def __init__(self) -> None:
+        super().__init__()
+        self.calls = 0
 
     def __str__(self) -> str:
-        Flaky.calls += 1
-        return f"the provider timed out, request {Flaky.calls}"
+        self.calls += 1
+        return f"the provider timed out, request {self.calls}"
 
 
 def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(world, cfg):

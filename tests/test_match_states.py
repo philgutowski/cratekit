@@ -246,8 +246,10 @@ def test_a_featured_credit_is_a_performer_and_never_a_version():
         ("Song (Remix)", ("Song", "Remix")),
         ("Song [Remix] (Edit)", ("Song", "Remix Edit")),
         ("[]", ("", "")),
-        ("(feat. Mira)", ("", "")),
-        ("[ft. Mira] (Live)", ("", "Live")),
+        ("[With You]", ("With You", "")),
+        ("(With Or Without You)", ("With Or Without You", "")),
+        ("(With Love) (Remix)", ("With Love", "Remix")),
+        ("(feat. Mira)", ("feat. Mira", "")),
     ],
 )
 def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
@@ -256,8 +258,9 @@ def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
     Glass Animals' ``[Premade Sandwiches]`` walked off whole like a qualifier,
     so the row named no title and refused every playlist ``crate sync twins``
     planned. An empty group is still nothing, and a group after a title is
-    still the version it always was, and a credit still comes off: it names
-    a performer, never the record.
+    still the version it always was. A first group is the title even when it
+    reads like a credit, since ``with `` is a credit prefix and ``[With You]``
+    is a title.
     """
     assert match.split_version(spelled) == expected
     assert match.split_title(spelled) == expected
@@ -269,7 +272,7 @@ def test_a_provider_row_titled_wholly_in_brackets_reads_rather_than_refuses():
     )
     assert (read.artist, read.title, read.version) == ("Glass Animals", "Premade Sandwiches", "")
     assert read.spelled == "[Premade Sandwiches]"
-    for nothing in ("[]", "(feat. Mira)"):
+    for nothing in ("[]", "( )"):
         with pytest.raises(match.UnreadableList, match="names no title"):
             match.read_tidal_tracks(
                 [{"id": "6", "name": nothing, "artist": {"name": "Glass Animals"}}]
