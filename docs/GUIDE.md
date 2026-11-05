@@ -1449,11 +1449,22 @@ A cancelled job is its own state and is never counted as a failure.
 
 Credentials live in the operating system keychain (macOS's built in password
 store), never in the config file, and `crate doctor` reports which are recorded.
-There are three.
 
 - `provider-session` is the streaming account session used to list and download.
 - `identify-key` and `identify-signing-key` are the recognition service's access
   key and signing value, used only by identification.
+- `catalogue-app-id` and `catalogue-app-key` are Cratekit's own app on the
+  streaming provider's developer platform, its client identifier and the key
+  issued beside it. Optional. When both are recorded, catalogue lookups (which
+  tracks carry an ISRC, a track by its identifier) go under the app rather than
+  under your account, so the account carries only its own playlists, hearts and
+  downloads; the label crawl still reads through the account. With either one
+  missing, every lookup goes to the account as before. Register the app on the
+  developer platform, put each value in its own file only you can read, and run
+  `crate login catalogue-app-id --from-file PATH` and
+  `crate login catalogue-app-key --from-file PATH`. `crate doctor` says where
+  lookups are going and how many calls the account and the app have each made,
+  and every verb that reached the provider says the same of its own run.
 
 `crate login NAME --from-file PATH` records one. It refuses a value on the
 command line, since that would sit in your shell history and in the process list
