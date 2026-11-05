@@ -3600,10 +3600,15 @@ def _check_isrc_cache(inputs: _Inputs) -> Finding:
         detail = "off: [provider] isrc_cache_days is 0, so every ISRC lookup asks the provider"
     else:
         held = cache.count()
-        if held is None:
+        if held == isrc_cache.UNREADABLE:
             detail = (
                 f"{cache.path} could not be read, so every ISRC lookup asks the provider "
                 f"until it can be"
+            )
+        elif held == isrc_cache.UNPARSED:
+            detail = (
+                f"{cache.path} does not parse; the next ISRC lookup sets it aside and "
+                f"starts a fresh one, so there is nothing to do"
             )
         else:
             answers = "answer" if held == 1 else "answers"

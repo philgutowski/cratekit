@@ -109,20 +109,6 @@ def _not_found(exc: BaseException) -> bool:
     return classify_unavailable(exc) is TrackOutcome.UNAVAILABLE_PERMANENT
 
 
-def _said_not_found(exc: BaseException) -> bool:
-    """Whether a failure is a not found the client said in so many words (U206).
-
-    NARROWER THAN :func:`_not_found`, and on purpose: that one answers
-    ``InvalidISRC`` as no match too, which the client raises for an outage as
-    well (R-477), and the classifier it falls back on reads a status out of a
-    message. This is what the ISRC cache may keep, so it is the client's own
-    not found class or a 404 status, the catalogue's rule, and nothing else.
-    """
-    if type(exc).__name__ == "ObjectNotFound":
-        return True
-    return getattr(getattr(exc, "response", None), "status_code", None) == 404
-
-
 def track_reference(identity: str) -> str | None:
     """The provider track identifier an identity names EXACTLY, or ``None``.
 
@@ -424,7 +410,7 @@ class TidalAccount:
         A remembered answer is used as the client's would be, and a remembered
         not found is ``_ABSENT`` as an asked one is. Asked, the answer is kept
         only when it is one: a track list, or a not found the client said in so
-        many words on the attempt that settled it (:func:`_said_not_found`). An
+        many words on the attempt that settled it (``isrc_cache.said_not_found``). An
         ``InvalidISRC`` this account still reads as no match is not kept, nor
         is anything the ladder raised.
         """
@@ -441,7 +427,7 @@ class TidalAccount:
             try:
                 return self._session.get_tracks_by_isrc(wanted)
             except Exception as exc:
-                last["said_not_found"] = _said_not_found(exc)
+                last["said_not_found"] = isrc_cache.said_not_found(exc)
                 raise
 
         isrc_cache.asked()

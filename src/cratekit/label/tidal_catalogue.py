@@ -658,7 +658,12 @@ class TidalCatalogue:
                 found = lookup(wanted)
             except Exception as exc:
                 if _gone(exc):
-                    answered.append(())
+                    # Answered as gone as it always was, and KEPT only when the
+                    # client said so in so many words: ``_gone`` reads any class
+                    # named for a not found, and a file or module one raised
+                    # inside the lookup is not the provider's answer.
+                    if isrc_cache.said_not_found(exc):
+                        answered.append(())
                     return ()
                 raise
             if isinstance(found, (list, tuple)):

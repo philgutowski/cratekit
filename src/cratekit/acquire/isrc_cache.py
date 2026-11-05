@@ -117,6 +117,11 @@ LOCK_POLL_S = 0.05
 #: What a file that could not be parsed is renamed to, before a stamp.
 SET_ASIDE = ".unreadable-"
 
+#: What :meth:`Cache.count` answers for a file it cannot open, and for one it
+#: opens that does not parse.
+UNREADABLE = "unreadable"
+UNPARSED = "unparsed"
+
 #: This process's own counts, across every cache it built: lookups a
 #: remembered answer settled, and lookups that went to the provider. The
 #: dispatcher reads the difference over one verb and reports it, as it does
@@ -131,13 +136,6 @@ class Lookups:
 
     remembered: int = 0
     asked: int = 0
-
-    def since(self, earlier: Lookups) -> Lookups:
-        """What happened between ``earlier`` and this snapshot."""
-        return Lookups(
-            remembered=max(0, self.remembered - earlier.remembered),
-            asked=max(0, self.asked - earlier.asked),
-        )
 
 
 def process_lookups() -> Lookups:
@@ -259,6 +257,22 @@ def _key(isrc: str, country: str) -> str | None:
     if not folded or folded != isrc:
         return None
     return f"{folded}|{country}"
+
+
+def said_not_found(exc: BaseException) -> bool:
+    """Whether a failure is a not found the client said in so many words.
+
+    THE ONE RULE BOTH SEAMS KEEP A NOT FOUND BY, and narrower than either
+    seam's own reading of a failure as no track, on purpose: the account reads
+    ``InvalidISRC`` as no match (R-477), and the catalogue reads any class
+    whose name holds "notfound" as gone, which a ``FileNotFoundError`` or a
+    ``ModuleNotFoundError`` raised inside a lookup would satisfy. Either seam
+    may go on answering those as it did; only the client's own not found
+    class, by its exact name, or a 404 status is kept for a week.
+    """
+    if type(exc).__name__ == "ObjectNotFound":
+        return True
+    return getattr(getattr(exc, "response", None), "status_code", None) == 404
 
 
 def country_of(session: Any) -> str:
@@ -543,17 +557,23 @@ class Cache:
         except OSError:
             return ()
 
-    def count(self) -> int | None:
-        """How many entries can still answer, or ``None`` when the file cannot be read."""
+    def count(self) -> int | str:
+        """How many entries can still answer, or why none can be counted.
+
+        :data:`UNREADABLE` for a file that cannot be opened, which answers
+        nothing until it can be, and :data:`UNPARSED` for one that opens and
+        does not parse, which the next lookup sets aside and rebuilds. Two
+        states, because one heals itself and the other needs a person.
+        """
         try:
             text = self.path.read_text(encoding="utf-8")
         except FileNotFoundError:
             return 0
         except (OSError, UnicodeDecodeError):
-            return None
+            return UNREADABLE
         entries = self._parse(text)
         if entries is None:
-            return None
+            return UNPARSED
         now = self.clock()
         return sum(1 for entry in entries.values() if self._fresh(entry, now) is not None)
 
@@ -565,6 +585,8 @@ __all__ = [
     "SCHEMA",
     "SET_ASIDE",
     "STATE_KEY",
+    "UNPARSED",
+    "UNREADABLE",
     "Cache",
     "Lookups",
     "Named",
@@ -572,4 +594,5 @@ __all__ = [
     "asked",
     "country_of",
     "process_lookups",
+    "said_not_found",
 ]

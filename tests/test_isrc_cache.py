@@ -631,7 +631,8 @@ def test_the_process_counts_say_what_the_cache_settled_and_what_was_asked(clock)
     account(Client({ONE: single()}), made).match_track(identity="1", isrc=ONE)
     account(Client({ONE: single()}), made).match_track(identity="1", isrc=ONE)
 
-    assert isrc_cache.process_lookups().since(before) == isrc_cache.Lookups(remembered=2, asked=1)
+    after = isrc_cache.process_lookups()
+    assert (after.remembered - before.remembered, after.asked - before.asked) == (2, 1)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -737,3 +738,76 @@ def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_
 
     assert config.ENV_ISRC_CACHE_DIR not in os.environ
     assert isrc_cache.Cache().path == live
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Review round one: what each seam keeps as a not found is one narrow rule
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize(
+    "failure", [FileNotFoundError, ModuleNotFoundError], ids=["file", "module"]
+)
+def test_the_catalogue_answers_a_class_named_not_found_as_before_and_keeps_nothing(
+    clock, monkeypatch, failure
+):
+    """``_gone`` reads any class named for a not found, and still answers it as
+    empty; the cache keeps only the client's own not found."""
+    client = Client({ONE: failure("not the provider's answer")})
+    made = cache(clock)
+    assert catalogue(client, made, monkeypatch).tracks_for_isrc(ONE) == ()
+    client.answers[ONE] = single()
+
+    assert [t.id for t in catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)] == [9001]
+    assert client.asked == [ONE, ONE]
+
+
+@pytest.mark.parametrize("seam", ["account", "catalogue"])
+def test_a_404_status_is_kept_as_a_not_found_at_either_seam(clock, monkeypatch, seam):
+    client = Client({ONE: HTTPFailure(404)})
+    made = cache(clock)
+
+    def ask():
+        if seam == "account":
+            return account(client, made).match_track(identity="1", isrc=ONE)
+        return catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
+
+    ask()
+    asked = len(client.asked)
+    ask()
+
+    assert len(client.asked) == asked
+    assert stored()["entries"][f"{ONE}|GB"]["tracks"] == []
+
+
+@pytest.mark.parametrize(
+    "failure",
+    [ObjectNotFound("gone"), HTTPFailure(404), InvalidISRC("hid"), HTTPFailure(500), FileNotFoundError()],
+    ids=["client-not-found", "404", "invalid-isrc", "500", "file-not-found"],
+)
+def test_said_not_found_is_the_clients_own_class_or_a_404_and_nothing_else(failure):
+    kept = isinstance(failure, ObjectNotFound) or getattr(
+        getattr(failure, "response", None), "status_code", None
+    ) == 404
+    assert isrc_cache.said_not_found(failure) is kept
+
+
+def test_doctor_tells_a_file_that_does_not_parse_from_one_that_cannot_be_read(monkeypatch):
+    path = config.state_path(isrc_cache.STATE_KEY)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("{ not json", encoding="utf-8")
+
+    unparsed = _doctor_note()
+    assert "does not parse" in unparsed.detail and "nothing to do" in unparsed.detail
+
+    real = Path.read_text
+
+    def refused(self, *args, **kwargs):
+        if self == path:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real(self, *args, **kwargs)
+
+    with monkeypatch.context() as scoped:
+        scoped.setattr(Path, "read_text", refused)
+        unreadable = _doctor_note()
+    assert "could not be read" in unreadable.detail
