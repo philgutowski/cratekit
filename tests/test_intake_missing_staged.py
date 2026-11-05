@@ -27,11 +27,15 @@ from tests._containers import tagged_container
 from tests.test_intake_missing import (  # noqa: F401 - the fixtures are used by name
     Track,
     cfg,
+    fail,
     finished,
+    finished_in_run,
     fresh_cache,
+    in_run,
     library,
     lists_dir,
     missing,
+    run_missing,
 )
 
 SALT = "GBAAA2600001"
@@ -286,3 +290,26 @@ def test_a_track_held_since_the_job_is_never_said_to_carry_no_isrc(
     assert check(envelope, "staged")["detail"] == (
         "no track is missing, so none was asked whether it is staged"
     )
+
+
+def test_a_run_with_a_failed_job_and_every_finished_row_staged_answers_ok(
+    cfg, library, tmp_path
+):
+    """Mutation row M10: the left out refusal stands aside when the finished
+    jobs' only missing tracks are staged, so the pass lands them, while the
+    skipped row still fails and names the job it left out."""
+    salt = Track("204", "Lumen Drift", "Salt Road")
+    salt.isrc = SALT
+    kept = finished_in_run(cfg, "pl-a", [salt])
+    broken = in_run(cfg, "pl-b", [Track("205", "Kite Harbor", "Low Tide Signal")])
+    fail(broken)
+    staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
+
+    code, envelope = run_missing("--skip-failed")
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["jobs"], summary["skipped"]) == ([kept], [broken])
+    assert (summary["list"], summary["staged"]) == (None, 1)
+    (skipped,) = [c for c in envelope["data"]["checks"] if c["title"] == "skipped"]
+    assert skipped["status"] == "fail" and broken in skipped["detail"]
