@@ -61,6 +61,7 @@ from __future__ import annotations
 
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Protocol
 
 #: The words an unmatched reason carries when a candidate track could not be
@@ -237,6 +238,13 @@ class RemoteAccount(Protocol):
 
     def folder_playlists(self, folder_id: str) -> dict[str, str]:
         """Every playlist one folder holds, identifier to name."""
+
+    def folder_playlists_dated(self, folder_id: str) -> dict[str, tuple[str, datetime | None]]:
+        """Every playlist one folder holds, identifier to its name and when it was made.
+
+        U216. The same walk as :meth:`folder_playlists`, read off the same
+        pages; the time is None where the account gave none, never guessed.
+        """
 
     def folder_folders(self, folder_id: str) -> dict[str, str]:
         """Every folder one folder holds, identifier to name."""

@@ -339,6 +339,23 @@ def test_reserving_an_adopted_folder_records_what_it_held_and_a_created_one_noth
     assert folders["GIG READY"].held == frozenset() and folders["GIG READY"].created
 
 
+def test_an_adoption_whose_plan_did_not_say_what_it_held_is_recorded_as_unknown(cfg):
+    """A plan held by a build before U216 carries no listing: never read as an empty folder."""
+    store = pairs.PairStore(cfg)
+    store.reserve_folder(FOLDER, lambda: "unused", adopt="f1")
+    assert store.folders()[FOLDER].held is None
+
+
+def test_a_place_held_by_an_earlier_build_reads_back_as_saying_nothing():
+    from cratekit.core import held_plan
+
+    registry = pair_cli._held_classes()
+    place = pair_cli.Place(FOLDER, f"{FOLDER} Techno", pair_cli.FOLDER_ADOPT, "f1")
+    encoded = held_plan.encode(place, registry)
+    encoded[held_plan.VALUE].pop("held")
+    assert held_plan.decode(encoded, registry).held is None
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # The account's dated folder read
 # ═══════════════════════════════════════════════════════════════════════════
