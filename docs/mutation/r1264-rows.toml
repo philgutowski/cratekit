@@ -1,0 +1,244 @@
+name = "r1264"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_unread_dropped"
+description = "plan_pair: read no unread tracks off the listing, so an untitled track the base holds reads as taken off the account and its linked row is removed from rekordbox"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_twins.py", "tests/test_sync_pair_hold.py"]
+old = '''            listing.unread,
+            listing.order,'''
+new = '''            {},
+            listing.order,'''
+
+[[rows]]
+id = "M2_unread_isrc_on_account"
+description = "plan_pair: do not join an unread track's ISRC to the account's codes, so a rekordbox row carrying it asks the provider, which may name another release"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_tie.py", "tests/test_sync_twins.py"]
+old = '''        code = match.isrc_token(one.isrc)
+        if code:'''
+new = '''        code = match.isrc_token(one.isrc)
+        if False:'''
+
+[[rows]]
+id = "M3_account_keys_listing_order"
+description = "plan_pair: read the account's keys in the readable tracks' order, so a row's key sits at its readable release's place"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''            for remote_id in (listed_order or account_now)
+            if alias(remote_id) in readable_keys'''
+new = '''            for remote_id in account_now
+            if alias(remote_id) in readable_keys'''
+
+[[rows]]
+id = "M4_account_keys_filter"
+description = "plan_pair: keep an unread track's own key among the account's keys, so it reads as held on the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair.py"]
+old = '''            for remote_id in (listed_order or account_now)
+            if alias(remote_id) in readable_keys'''
+new = '''            for remote_id in (listed_order or account_now)
+            if True'''
+
+[[rows]]
+id = "M5_unread_keys_empty"
+description = "plan_pair: no unread keys, so nothing is stripped from the base or kept from the account's additions"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_twins.py"]
+old = '''    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'''
+new = '''    unread_keys: set[str] = set()'''
+
+[[rows]]
+id = "M6_base_strip"
+description = "plan_pair: leave unread keys in the base account, so a row linked to an unread track reads as removed on the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_twins.py"]
+old = '''        if unread_keys:
+            unseen |='''
+new = '''        if False:
+            unseen |='''
+
+[[rows]]
+id = "M7_account_add_filter"
+description = "plan_pair: offer an unread track to the account as an addition, which already lists it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair.py"]
+old = '''        if remote_of(key) and key not in unseen and key not in unread_keys'''
+new = '''        if remote_of(key) and key not in unseen'''
+
+[[rows]]
+id = "M8_order_after_listing"
+description = "plan_pair: compute the account order over the readable tracks only"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_tie.py", "tests/test_sync_pair.py"]
+old = '''        after = pair_merge.appended(listed_order or account_now, account_removes, account_adds)'''
+new = '''        after = pair_merge.appended(account_now, account_removes, account_adds)'''
+
+[[rows]]
+id = "M9_firsts_keep_unread"
+description = "plan_pair: count unread keys among the account's order keys, so the order differs from the merge's whenever one is unread"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair.py"]
+old = '''            alias(one) for one in after if alias(one) not in unread_keys'''
+new = '''            alias(one) for one in after'''
+
+[[rows]]
+id = "M10_unread_placed_at_front"
+description = "_with_unread_placed: put every unread track at the front rather than behind its neighbour"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '''                at = placed.index(before) + 1
+                break'''
+new = '''                at = 0
+                break'''
+
+[[rows]]
+id = "M11_unread_placed_dropped"
+description = "_with_unread_placed: return the order without the unread tracks, as a plain merge order"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_tie.py"]
+old = '''        placed.insert(at, one)
+        held.add(one)'''
+new = '''        held.add(one)'''
+
+[[rows]]
+id = "M12_record_holds_back"
+description = "_record: hold the snapshot back while a track is unread, the round one defect"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_hold.py"]
+old = '''    whole = rekordbox_after is not None and account_after is not None and not one.withheld'''
+new = '''    whole = (
+        rekordbox_after is not None
+        and account_after is not None
+        and not one.withheld
+        and not one.unread
+    )'''
+
+[[rows]]
+id = "M13_check_listing_order"
+description = "check: answer the readable tracks only as the listing a pair with no account write records"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_hold.py"]
+old = '''                listed[account_id] = tuple(listing.order)'''
+new = '''                listed[account_id] = now'''
+
+[[rows]]
+id = "M14_check_unread_moved"
+description = "check: never read the unread tracks as moved, so a new unread track after the plan is written over"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_hold.py"]
+old = '''            unread_moved = set(listing.unread) != {named.remote_id for named in one.unread}'''
+new = '''            unread_moved = False'''
+
+[[rows]]
+id = "M15_check_unread_as_tuple"
+description = "check: compare the unread tracks by place, so tracks trading places refuses stale"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '''            unread_moved = set(listing.unread) != {named.remote_id for named in one.unread}'''
+new = '''            unread_moved = tuple(listing.unread) != tuple(named.remote_id for named in one.unread)'''
+
+[[rows]]
+id = "M16_check_part_written_unread"
+description = "check: on a pair this run part wrote, never read the unread tracks as moved (residual: no resume test reaches it)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py"]
+old = '''                elif unread_moved:
+                    moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, unread_said))'''
+new = '''                elif False:
+                    moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, unread_said))'''
+
+[[rows]]
+id = "M17_per_pair_unusable"
+description = "PER_PAIR_REASONS: drop intake-list-unusable, so one pair whose row carries no id stops a sync of every pair"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair.py", "tests/test_sync_twins.py"]
+old = '''    {"sync-pair-unknown", "sync-pair-out-of-scope", "intake-list-unusable"}'''
+new = '''    {"sync-pair-unknown", "sync-pair-out-of-scope"}'''
+
+[[rows]]
+id = "M18_identity_unread"
+description = "PairPlan.identity: leave the unread ids out of the digest"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_hold.py"]
+old = '''                {"unread": [named.remote_id for named in self.unread]} if self.unread else {}'''
+new = '''                {} if self.unread else {}'''
+
+[[rows]]
+id = "M19_warning"
+description = "_warnings: say nothing of the unread tracks"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '''    unread = [(one, named) for one in planned.pairs for named in one.unread]
+    if unread:'''
+new = '''    unread = [(one, named) for one in planned.pairs for named in one.unread]
+    if False:'''
+
+[[rows]]
+id = "M20_item"
+description = "_items: list no unread track among the gate's items"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '''        items.append(row("account", "unread", named))'''
+new = '''        pass'''
+
+[[rows]]
+id = "M21_facts"
+description = "facts: no line naming how many tracks the account lists unreadably"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '''                f"artist, so each is left where it is on both sides"
+                if one.unread'''
+new = '''                f"artist, so each is left where it is on both sides"
+                if False'''
+
+[[rows]]
+id = "M22_readable_dates"
+description = "list_playlist_readable: give no added dates, so a pair's later change calls read every time as unknown"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_merge.py"]
+old = '''        dates=_added_dates(rows, tracks),'''
+new = '''        dates={},'''
+
+[[rows]]
+id = "M23_dates_first_mention"
+description = "_added_dates: take a track's last mention's date rather than its first"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_merge.py"]
+old = '''        if key in frozen and key not in dates:'''
+new = '''        if key in frozen:'''
+
+[[rows]]
+id = "M24_unread_named_link"
+description = "plan_pair: name an unread track with no library row even when one is linked"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_unread.py"]
+old = '''                content_id=known.get(remote_id, ""),
+                reason=one.why,'''
+new = '''                content_id="",
+                reason=one.why,'''

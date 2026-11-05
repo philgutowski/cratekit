@@ -1810,10 +1810,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'skills/cli.py': ['path-permission-denied'],
     'sync/artifacts.py': ['sync-artifacts-unusable', 'utf-8'],
+    # 2026-11-05, R-1289: the sweep's warning naming each unread track.
     'sync/cli.py': [
         'config-unusable',
         'not-built',
         'nothing-new',
+        'sync-playlists-unread',
         'sync-playlists-unreadable',
         'sync-playlists-withheld',
         'sync-source-not-queued',
@@ -1842,8 +1844,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # folder side, the side a made rekordbox playlist's home is named on,
     # and the warning a run planned again carries. 2026-11-05, U210: a
     # continued run's warning, its steps unread, and the refusal a step it
-    # could not record stops the write with. 2026-11-05, U220: the step an
-    # order refused records, and the two refusals that stop that pair alone.
+    # could not record stops the write with. 2026-11-05, R-1264: the warning
+    # naming account tracks listed with no title or no artist. 2026-11-05,
+    # U220: the step an order refused records, and the two refusals that stop
+    # that pair alone.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
@@ -1872,6 +1876,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
+        'sync-pair-unread',
         'sync-pair-withheld',
         'sync-pair-written',
         'unavailable-transient',

@@ -299,6 +299,13 @@ ends with the command that lists the whole pass at once:
 crate intake missing --run RUN_ID
 ```
 
+A track the account lists with no title or no artist does not hold its
+playlist back: the pass queues the playlist's other tracks and names that one,
+by its id and why, in its summary and a warning. Once the playlist's job
+succeeds it is recorded like any other, so no later pass offers it again; bring
+the named track in by hand once the account names it. A playlist with no track
+left to queue is reported unreadable and offered again.
+
 It writes one list for every playlist job the pass queued on this library,
 named for the run, so the pass downloads and lands as one batch. A track two
 playlists share is listed once, and the list's manifest names both playlists.
@@ -964,6 +971,13 @@ anything is queued. From then on `crate sync pair` keeps each twin and its accou
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
 
+A track the account lists with no title or no artist never stops `crate sync
+pair`. It is left where it is on both sides and named on the gate, and every
+other track of that playlist syncs both ways, removals and order included; a
+reorder keeps such a track behind the one listed before it. When a playlist's
+listing cannot be used at all, a row with no track id, a sync of every pair
+leaves that pair out, names it and syncs the others; named alone, it refuses.
+
 A twin is never counted: when its folder already holds a playlist of its name,
 the twin is left and named, and you pair the one there by hand with
 `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`. When you delete the
@@ -1197,8 +1211,9 @@ never touched: when the rotation moves an edited batch into Old in the same
 run, the step writes nothing that run and the next organize takes the other
 edits again, while the edit to that batch goes with its retired playlist. A track you add on Tidal to any mirrored
 playlist that your library does not have is queued for download once, by the
-rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one; it
-stays on Tidal meanwhile, and once it lands the next organize files it where
+rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one (a
+track Tidal lists with no title or no artist is named and not queued, and the
+playlist's other tracks still are); it stays on Tidal meanwhile, and once it lands the next organize files it where
 you put it. A track whose recording you already own as another release is not
 queued, and one the download found you own, or could not fetch, is named as
 such and left on Tidal as you put it. Approve one area and abort the other

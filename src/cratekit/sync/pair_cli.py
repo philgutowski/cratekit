@@ -157,6 +157,25 @@ not serve. A track it withheld would read as one the author removed, so when the
 listing is short no account track is read as removed, the account side takes no
 removal and no reorder, and the answer says how many were withheld.
 
+**A TRACK THE ACCOUNT LISTS UNREADABLY IS WITHHELD BY ID (R-1264).** Each
+pair's account side is read row by row, as the twins backfill reads it: a track
+listed with no title or no artist is unread, kept by its id. It is never added
+to rekordbox, never read as taken off the account, so a row linked to it stays,
+and never offered to the account, which already lists it; a row carrying its
+ISRC matches it. Unlike a withheld track it is no passing state, the provider
+may list it that way for good, so the pair still syncs WHOLE: a removal on
+either side lands on both, and the snapshot moves, recording the account in its
+listed order with each unread id in its place, since a snapshot held back while
+the account kept listing such a track would read every later removal as an
+addition and undo it (the review's round one). The account's order is read and
+written whole too: each key sits at its first release's place in the listing,
+and a reorder puts each unread track back behind the track listed before it,
+since an order withheld while the snapshot moved let the account lead the next
+sync and undo a rekordbox reorder (the review's round two). The gate names
+each. A listing the reader cannot use at all, a row carrying no provider id,
+leaves its pair out of a sync of every pair, named, and refuses a pair named
+alone.
+
 Layer: modules.
 """
 
@@ -220,10 +239,16 @@ LEFT_OUT = "sync-pair-left-out"
 WRITTEN = "sync-pair-written"
 #: A custom playlist twin's pair forgotten because its account playlist is gone (U149).
 UNPAIRED = "sync-pair-twin-unpaired"
+#: R-1264. Account tracks listed with no title or no artist, kept by their id.
+UNREAD = "sync-pair-unread"
 
 #: The refusals that are about one pair's own playlists, which a sync of every
-#: pair names and passes over rather than stopping at.
-PER_PAIR_REASONS = frozenset({"sync-pair-unknown", "sync-pair-out-of-scope"})
+#: pair names and passes over rather than stopping at. R-1264: and an account
+#: listing the reader cannot use at all, a row carrying no provider id, since
+#: a track it merely cannot read is unread, below, and never refuses.
+PER_PAIR_REASONS = frozenset(
+    {"sync-pair-unknown", "sync-pair-out-of-scope", "intake-list-unusable"}
+)
 #: U202. The refusals one account playlist brought from a synced folder may
 #: raise about itself, which list it rather than refuse the sync.
 BROUGHT_REASONS = PER_PAIR_REASONS | frozenset(
@@ -451,6 +476,9 @@ class PairPlan:
     content_of: dict[str, str] = field(default_factory=dict)
     #: ``ListingShortfall.block()`` when the account listing was short.
     withheld: dict[str, int] | None = None
+    #: R-1264. Account tracks the reader would not read, by id in the
+    #: listing's order, each named with what it lacks.
+    unread: tuple[Named, ...] = ()
     #: U198. Where the account side is made, for a pair whose account side is new.
     place: Place | None = None
     #: U202. Where the rekordbox side is made, for a pair whose rekordbox side
@@ -487,6 +515,11 @@ class PairPlan:
             **({"place": self.place.identity()} if self.place is not None else {}),
             # U202, the same for a pair whose rekordbox side is new.
             **({"home": self.home.identity()} if self.home is not None else {}),
+            # R-1264, ONLY WHEN ANY, so a pair the account serves whole
+            # digests as it did.
+            **(
+                {"unread": [named.remote_id for named in self.unread]} if self.unread else {}
+            ),
         }
 
 
@@ -836,11 +869,26 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             reader.tops,
         )
     dates: dict[str, str] = {}
+    #: R-1264. Account tracks the reader would not read, by id, and every id
+    #: the account lists, each once at its first place, unread ones included.
+    unread: Mapping[str, Any] = {}
+    listed_order: tuple[str, ...] = ()
     if target.new:
         tracks: Mapping[str, Any] = {}
         short = None
     else:
-        tracks, short, dates = intake_cli.list_playlist_dated(reader.found, target.account_id)
+        # ROW BY ROW, AS THE TWINS BACKFILL READS IT (R-1264): one track the
+        # account lists with no title or no artist used to refuse the whole
+        # listing, so the pair never synced again. It is unread now, kept by
+        # its id, and every other track reads exactly as it did.
+        listing = intake_cli.list_playlist_readable(reader.found, target.account_id)
+        tracks, short, dates, unread, listed_order = (
+            listing.tracks,
+            listing.short,
+            listing.dates,
+            listing.unread,
+            listing.order,
+        )
     account_now = pair_merge.distinct(tracks)
 
     # ── the links, kept only while their rows are live ──────────────────────
@@ -878,6 +926,12 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     on_account: dict[str, list[str]] = {}
     for remote_id in account_now:
         code = match.isrc_token(tracks[remote_id].get("isrc"))
+        if code:
+            on_account.setdefault(code, []).append(remote_id)
+    # AN UNREAD TRACK IS STILL ON THE ACCOUNT (R-1264): a row carrying its code
+    # is matched to it, never to another release the provider would name.
+    for remote_id, one in unread.items():
+        code = match.isrc_token(one.isrc)
         if code:
             on_account.setdefault(code, []).append(remote_id)
     linked = set(links)
@@ -984,7 +1038,23 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         return aliased.get(remote_id) or remote_key(remote_id)
 
     # ── the account now, as keys ────────────────────────────────────────────
-    account_keys = list(pair_merge.distinct(alias(remote_id) for remote_id in account_now))
+    readable_keys = {alias(remote_id) for remote_id in account_now}
+    # EACH KEY AT ITS FIRST RELEASE'S PLACE IN THE LISTING (R-1264, the
+    # review's round two), an unread release included: a row whose first
+    # release the account lists unreadably and a later one readably sits where
+    # the base, which aliases every recorded id, places it, so nobody's edit
+    # reads as a reorder. With nothing unread this is ``account_now``'s order.
+    account_keys = list(
+        pair_merge.distinct(
+            alias(remote_id)
+            for remote_id in (listed_order or account_now)
+            if alias(remote_id) in readable_keys
+        )
+    )
+    # R-1264. AN UNREAD TRACK IS A WITHHELD TRACK WHOSE ID IS KNOWN: never read
+    # as taken off the account, so a row linked to it stays in rekordbox, and
+    # never offered to the account, which already lists it.
+    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys
     siblings: dict[str, Named] = {}
     for remote_id in account_now:
         key = alias(remote_id)
@@ -1030,6 +1100,9 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             # it may be on the playlist, served to nobody.
             unseen = {key for key in base_account if key not in set(account_keys)}
             base_account = tuple(key for key in base_account if key not in unseen)
+        if unread_keys:
+            unseen |= {key for key in base_account if key in unread_keys}
+            base_account = tuple(key for key in base_account if key not in unread_keys)
         # A RE-ADD IS A TRACK NONE OF WHOSE BASE MEMBERSHIPS SURVIVES. A track
         # the playlist holds twice that lost one copy still holds the other,
         # which the base saw, so it was not taken out and put back.
@@ -1170,7 +1243,9 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
 
     # ── what the account is asked ───────────────────────────────────────────
     account_adds = tuple(
-        remote_of(key) for key in merged.add_account if remote_of(key) and key not in unseen
+        remote_of(key)
+        for key in merged.add_account
+        if remote_of(key) and key not in unseen and key not in unread_keys
     )
     account_removes: tuple[str, ...] = ()
     account_order: tuple[str, ...] | None = None
@@ -1186,13 +1261,17 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
                 )
             )
         )
-        after = pair_merge.appended(account_now, account_removes, account_adds)
-        firsts = pair_merge.distinct(alias(one) for one in after)
+        # EVERY ID THE ACCOUNT LISTS, an unread one included (R-1264), so the
+        # order is read and written whole.
+        after = pair_merge.appended(listed_order or account_now, account_removes, account_adds)
+        firsts = pair_merge.distinct(
+            alias(one) for one in after if alias(one) not in unread_keys
+        )
         wanted_keys = pair_merge.as_held(merged.order, set(firsts))
         if wanted_keys != firsts:
             # A ROW'S RELEASES MOVE TOGETHER, in the order the account holds them.
-            account_order = tuple(
-                one for key in wanted_keys for one in after if alias(one) == key
+            account_order = _with_unread_placed(
+                [one for key in wanted_keys for one in after if alias(one) == key], after
             )
 
     return PairPlan(
@@ -1217,9 +1296,43 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         names=names,
         content_of=content_of,
         withheld=short.block() if short is not None else None,
+        unread=tuple(
+            Named(
+                key=alias(remote_id),
+                artist=one.artist,
+                title=one.title,
+                remote_id=remote_id,
+                content_id=known.get(remote_id, ""),
+                reason=one.why,
+            )
+            for remote_id, one in unread.items()
+        ),
         home=home,
         account_dates=dict(dates),
     )
+
+
+def _with_unread_placed(ordered: list[str], listed: Sequence[str]) -> tuple[str, ...]:
+    """``ordered`` with every id of ``listed`` it lacks put back after its neighbour (R-1264).
+
+    An unread track is never moved by the merge, which cannot read it, so it
+    keeps its place behind the track the account listed before it, or the
+    front when none was. The order is then the whole playlist, and an account
+    reorder written from it leaves no track for the provider to place.
+    """
+    placed = list(ordered)
+    held = set(placed)
+    for index, one in enumerate(listed):
+        if one in held:
+            continue
+        at = 0
+        for before in reversed(listed[:index]):
+            if before in held:
+                at = placed.index(before) + 1
+                break
+        placed.insert(at, one)
+        held.add(one)
+    return tuple(placed)
 
 
 def _remembered_miss(reader: _Reader, content_id: str, isrc: str) -> Any:
@@ -1917,6 +2030,8 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
         items.append(row("account", "unmatched", named))
     for named in one.ambiguous:
         items.append(row("rekordbox", "ambiguous", named))
+    for named in one.unread:
+        items.append(row("account", "unread", named))
     # U202. EVERY CALL BETWEEN AN ADDITION AND A REMOVAL IS NAMED, with the
     # moments it was decided on, empty where unknown.
     for call in one.merged.calls:
@@ -1996,6 +2111,8 @@ def payload(planned: Plan) -> dict[str, Any]:
             "time_unknown": count("merge", pair_merge.TIME_UNKNOWN),
             # U208. Rows matched as one of several releases that all agree.
             "tied": sum(len(one.tied) for one in planned.pairs),
+            # R-1264. Account tracks listed with no title or no artist.
+            "unread": count("account", "unread"),
         },
         "chunk": None,
     }
@@ -2038,6 +2155,12 @@ def facts(planned: Plan) -> dict[str, Any]:
                 f"; the account withheld {one.withheld.get('withheld', 0)} track(s), so "
                 f"nothing is removed or reordered there"
                 if one.withheld
+                else ""
+            )
+            + (
+                f"; the account lists {len(one.unread)} track(s) with no title or no "
+                f"artist, so each is left where it is on both sides"
+                if one.unread
                 else ""
             )
             + (
@@ -2127,6 +2250,11 @@ def _record(
     """
     from cratekit.modules.outbound import pairs
 
+    # AN UNREAD TRACK DOES NOT HOLD THE SNAPSHOT BACK (R-1264, the review's
+    # round one): the account may list it that way for good, and a base that
+    # never moved would read every later removal as an addition. The account
+    # after the write names it in its place, and the next plan strips it from
+    # the base as it does now.
     whole = rekordbox_after is not None and account_after is not None and not one.withheld
     held_after = pair_merge.distinct(account_after or ())
     pairs.PairStore(cfg).record(
@@ -2718,6 +2846,22 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                 ),
             }
         )
+    unread = [(one, named) for one in planned.pairs for named in one.unread]
+    if unread:
+        said.append(
+            {
+                "code": UNREAD,
+                "message": (
+                    f"the account lists {len(unread)} track(s) that cannot be read, so each "
+                    f"stays where it is on both sides until it reads: "
+                    + "; ".join(
+                        f"{one.name!r}: {named.artist or '?'} - {named.title or '?'} "
+                        f"({named.reason})"
+                        for one, named in unread
+                    )
+                ),
+            }
+        )
     return said
 
 
@@ -2919,8 +3063,9 @@ def check(
     list that moved, and nothing is written.
 
     Answers each account playlist's listing as the check read it, which equals
-    the plan's, so a pair with nothing to write there records it as its
-    snapshot without listing it again.
+    the plan's with each unread track in its place (R-1264), so a pair with
+    nothing to write there records it as its snapshot without listing it
+    again.
 
     ``steps`` is the run's record of what an earlier command of it already
     wrote (U210), read when a write that stopped part way is continued. A pair
@@ -2975,7 +3120,8 @@ def check(
         for one in on_account:
             account_id = one.target.account_id or ours[one.target.key]
             try:
-                tracks, short, _dates = intake_cli.list_playlist_dated(found, account_id)
+                # READ AS THE PLAN READ IT (R-1264), row by row.
+                listing = intake_cli.list_playlist_readable(found, account_id)
             except CratekitError as exc:
                 if exc.cause.reason not in BROUGHT_REASONS:
                     raise
@@ -2988,8 +3134,14 @@ def check(
                     )
                 )
                 continue
-            now = pair_merge.distinct(tracks)
-            withheld = short.block() if short is not None else None
+            now = pair_merge.distinct(listing.tracks)
+            withheld = listing.short.block() if listing.short is not None else None
+            # AS A SET (R-1264, the review's round one): where an unread track
+            # sits decides nothing the merge did, and the snapshot is read off
+            # the listing as the write leaves it.
+            unread_moved = set(listing.unread) != {named.remote_id for named in one.unread}
+            #: R-1264. Said when only the tracks it cannot read moved.
+            unread_said = "lists a different set of tracks it cannot read than the plan read"
             if one.target.new or of(one).has(STEP_ACCOUNT):
                 # U210. PART WRITTEN BY THIS RUN: only its own write's doing.
                 why = _beyond(one, now, ordering=of(one).has(STEP_ORDERING))
@@ -3004,9 +3156,12 @@ def check(
                             "withholds a different number of tracks than the plan read",
                         )
                     )
+                elif unread_moved:
+                    moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, unread_said))
                 else:
-                    # U220. The listing a refused order is checked against.
-                    listed[account_id] = now
+                    # U220. The listing a refused order is checked against,
+                    # every id in its place as the adapter reads it (R-1264).
+                    listed[account_id] = tuple(listing.order)
             elif now != tuple(one.account_now):
                 moved.append(
                     Moved(ACCOUNT_SIDE, account_id, one.name, _differs(one.account_now, now))
@@ -3020,8 +3175,12 @@ def check(
                         "withholds a different number of tracks than the plan read",
                     )
                 )
+            elif unread_moved:
+                moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, unread_said))
             else:
-                listed[account_id] = now
+                # EVERY ID IN ITS PLACE, an unread one included (R-1264), since
+                # this is the snapshot a pair with nothing to write there keeps.
+                listed[account_id] = tuple(listing.order)
     brought = [one for one in todo if one.target.rekordbox_new and one.home is not None]
     folders = document.folders
     made = [

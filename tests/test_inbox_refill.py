@@ -18,7 +18,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.cli.output import digest_of
-from cratekit.core import config, jobs, rb_writer, session
+from cratekit.core import active_taxonomy, config, jobs, rb_writer, session
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import missing_cli, native, refill, refill_cli, set_playlist
 from cratekit.sync import twins
@@ -44,6 +44,7 @@ from tests.test_intake_land_native import library as library  # noqa: PLC0414
 from tests.test_intake_land_native import machine as machine  # noqa: PLC0414
 from tests.test_intake_land_native import native_library as native_library  # noqa: PLC0414
 from tests.test_intake_land_native import silence as silence  # noqa: PLC0414
+from tests.test_session_log_unlisted import _refuse_listing
 
 GATE = refill_cli.APPROVE_GATE
 ACCOUNT = "Sunset Warmup"
@@ -681,3 +682,23 @@ def test_bridge_names_reads_only_this_accounts_entries_of_this_pass_with_no_id()
         f"{INBOX_NAME} 2",
     )
     assert refill.bridge_names(records, pass_name=PASS, account="pl-c") == ()
+
+
+def test_a_session_log_that_cannot_be_listed_is_named_as_one_by_the_plan(
+    native_library, silence, offline, monkeypatch
+):
+    """R-1255: the plan carries the listing to its warning, never a count of one record."""
+    cfg, _root = native_library
+    _five_landed_and_emptied(cfg, silence)
+    _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
+
+    plan = refill_cli.planned(cfg, active_taxonomy.load(cfg), PASS)
+
+    assert (plan.unreadable, plan.log_unlisted) == (1, True)
+    (warning,) = [
+        one for one in refill_cli.warnings_of(plan) if one["code"] == refill_cli.RECORDS_UNREADABLE
+    ]
+    assert warning["message"] == (
+        "the session log could not be listed, so no account playlist without a readable "
+        "landing record was found by its name"
+    )

@@ -41,7 +41,7 @@ warning saying how much of it was never answered.
 
 from __future__ import annotations
 
-from collections.abc import Iterator, Mapping
+from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field, replace
 from pathlib import Path
@@ -1450,9 +1450,10 @@ def list_playlist(found: catalogue.Catalogue, reference: str) -> dict[str, dict[
     carries one shape wherever a bound provider was asked about a playlist
     and could not answer. What is this verb's is the reading of the rows.
 
-    PUBLIC because ``crate sync all`` lists each account playlist it sweeps
-    through exactly this path, so a row this verb refuses is refused there too.
-    An empty mapping is a playlist the provider listed with nothing in it.
+    PUBLIC for a caller that reads one playlist whole. ``crate sync all`` read
+    each playlist it sweeps here until R-1289, and now reads them through
+    :func:`list_playlist_readable`, so one unreadable row no longer leaves the
+    whole playlist out of the sweep. An empty mapping is a playlist the provider listed with nothing in it.
 
     A PLAYLIST ONLY. The reserved reference is :func:`list_favorites`, which
     carries a count this shape has nowhere to put.
@@ -1503,6 +1504,9 @@ class Readable:
     short: catalogue.ListingShortfall | None
     unread: dict[str, Unreadable]
     order: tuple[str, ...]
+    #: R-1264. When the account says each read track was added (U202), ISO
+    #: 8601 UTC text by id, the first mention's, off the same rows.
+    dates: dict[str, str] = field(default_factory=dict)
 
 
 def _absent(title: str) -> str:
@@ -1517,7 +1521,11 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
     track's identity to place it, which is ``crate sync twins``: one track the
     account lists with no title stopped the whole backfill, so no twin
     anywhere could be made. Here that track is named where it stood and every
-    other track reads as it always did. A single playlist verb keeps
+    other track reads as it always did. ``crate sync pair`` reads each pair's
+    account side here too (R-1264), so a twin made over such a playlist syncs
+    the tracks it can read, and so do ``crate sync all``'s sweep and ``crate
+    organize``'s mirror downloads (R-1289), which queue the tracks it can read
+    and name the others. A single playlist verb keeps
     :func:`list_playlist_declared`, whose refusal is the answer when that
     playlist is all it was asked.
 
@@ -1553,26 +1561,24 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
     _refuse_unidentified(nameless)
     tracks = frozen_rows(tuple(read))
     unread = {ref: one for ref, one in refused.items() if ref not in tracks}
-    return Readable(tracks=tracks, short=short, unread=unread, order=tuple(order))
+    return Readable(
+        tracks=tracks,
+        short=short,
+        unread=unread,
+        order=tuple(order),
+        dates=_added_dates(rows, tracks),
+    )
 
 
-def list_playlist_dated(
-    found: catalogue.Catalogue, reference: str
-) -> tuple[
-    dict[str, dict[str, Any]], catalogue.ListingShortfall | None, dict[str, str]
-]:
-    """:func:`list_playlist_declared`, and when the account says each track was added (U202).
+def _added_dates(rows: Sequence[object], frozen: Mapping[str, Any]) -> dict[str, str]:
+    """When the account says each frozen track was added, by id (U202).
 
-    The dates come off the same rows, so no request is added: the provider's
-    client copies a playlist item's ``dateAdded`` onto the track it serves,
-    which :func:`hearted_on` reads for a heart. ISO 8601 UTC text by item
-    identifier, the first mention's for a track listed twice; a track the
-    account dates nowhere is missing, never guessed. The frozen rows are
-    exactly :func:`list_playlist_declared`'s, so a job queued from them is the
-    job it always was.
+    The dates come off the listing's own rows, so no request is added: the
+    provider's client copies a playlist item's ``dateAdded`` onto the track it
+    serves, which :func:`hearted_on` reads for a heart. ISO 8601 UTC text, the
+    first mention's for a track listed twice; a track the account dates
+    nowhere is missing, never guessed.
     """
-    rows, short = label_cli.playlist_listing_or_refuse(found, reference)
-    frozen = frozen_rows(_read_rows(rows, reference))
     dates: dict[str, str] = {}
     for row in rows:
         key = str(getattr(row, "id", "") if not isinstance(row, Mapping) else row.get("id", ""))
@@ -1580,7 +1586,7 @@ def list_playlist_dated(
             moment = hearted_on(row)
             if moment:
                 dates[key] = moment
-    return frozen, short, dates
+    return dates
 
 
 def list_favorites(

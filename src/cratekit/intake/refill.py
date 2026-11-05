@@ -199,8 +199,12 @@ class RefillPlan:
     targets: tuple[Target, ...]
     unfound: tuple[Unfound, ...] = ()
     #: Session records that could not be read, so a playlist one names was not seen.
+    #: An unlisted log counts as one (R-1255).
     unreadable: int = 0
     digest: str = ""
+    #: The session log exists and could not be listed, so no record was read
+    #: at all; the warning says so rather than naming a count (R-1255).
+    log_unlisted: bool = False
 
     @property
     def writes(self) -> bool:
@@ -577,6 +581,7 @@ def plan_refill(
         targets=tuple(targets),
         unfound=tuple(unfound),
         unreadable=len(unreadable),
+        log_unlisted=session.log_unlisted(unreadable, cfg),
     )
     return replace(plan, digest=digest_of(identity(plan)))
 

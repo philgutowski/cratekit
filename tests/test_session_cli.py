@@ -35,6 +35,7 @@ import stat
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 
 import pytest
 
@@ -43,6 +44,7 @@ from cratekit.core import backup_facts, config, preflight, rb_writer, session
 from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import test_restore as restore_suite
 from tests.test_restore import completed_session
+from tests.test_session_log_unlisted import _refuse_listing
 
 # IMPORTED, NOT COPIED. ``_lock_recording`` is a plain function with no fixture
 # semantics, so the reason the autouse guards below are duplicated does not apply
@@ -547,6 +549,27 @@ def test_releasing_a_lock_nobody_holds_asks_anyway_and_reports_a_no_op(installed
         "abandoned": [],
         "kept": [],
     }
+
+
+def test_a_session_log_that_cannot_be_listed_refuses_the_release_before_its_question(
+    installed, monkeypatch
+):
+    """R-1255, review round one: the release showed no orphan and said released.
+
+    The orphans it ends are read from the log, and a log nobody could list read
+    as none, so an orphan stayed open behind a release that reported success.
+    It refuses before the question now, naming the listing; nothing is cleared.
+    """
+    gone = _a_process_that_is_gone()
+    path = _lock_recording(installed, gone)
+    before = path.read_bytes()
+    _refuse_listing(monkeypatch, Path(session.log_dir(installed)))
+
+    code, refused = _drive(["session", "release"])
+
+    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
+    assert "cannot be listed by this account" in refused["cause"]["message"]
+    assert path.read_bytes() == before
 
 
 def test_aborting_the_release_clears_nothing(installed):

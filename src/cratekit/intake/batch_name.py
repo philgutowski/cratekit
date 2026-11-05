@@ -285,12 +285,14 @@ def _records(cfg: config.Config) -> list:
     if unreadable:
         raise refuse(
             "internal-error",
-            f"the session log holds {len(unreadable)} entr"
-            + ("y" if len(unreadable) == 1 else "ies")
-            + " this build cannot read, so no batch name can be called free; refusing "
-            "rather than naming a batch after one a shelve or a landing may have filed",
+            f"{session.unread_clause(unreadable, cfg)}, so no batch name can be called "
+            "free; refusing rather than naming a batch after one a shelve or a landing "
+            "may have filed",
             remedy=Remedy.REPORT_DEFECT,
-            detail={"unreadable": [str(path) for path in unreadable]},
+            detail={
+                "unreadable": [str(path) for path in unreadable],
+                "unlisted": session.log_unlisted(unreadable, cfg),
+            },
         )
     return list(parsed)
 

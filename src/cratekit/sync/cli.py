@@ -404,6 +404,33 @@ def _plan_playlists(spec: sources.SourceSpec, ctx) -> _Plan:
                 ),
             }
         )
+    # EACH UNREAD TRACK OF A QUEUED PLAYLIST IS NAMED (R-1289): the playlist's
+    # other tracks are queued, and it is recorded once its job succeeds, so
+    # the pass says no later sync offers it rather than promising one does. A
+    # playlist with no track left to queue is unreadable, said above, and is
+    # offered again.
+    left = {
+        identity: tracks for identity, tracks in sweep.unread.items() if identity in sweep.ready
+    }
+    if left:
+        names = sweep.names()
+        warnings.append(
+            {
+                "code": "sync-playlists-unread",
+                "message": (
+                    f"{sum(len(tracks) for tracks in left.values())} track(s) on "
+                    f"{len(left)} queued account playlist(s) were not queued: "
+                    + "; ".join(
+                        f"{names.get(identity) or identity}: "
+                        + ", ".join(f"{ref} ({one['why']})" for ref, one in tracks.items())
+                        for identity, tracks in left.items()
+                    )
+                    + ". Every other track on those playlists is queued, and once a "
+                    "playlist's intake job succeeds no later sync offers it again, so "
+                    "a track named here is brought in by hand once the account names it"
+                ),
+            }
+        )
     if sweep.short:
         # A SHORT LISTING IS SAID PER PLAYLIST (R-515), never passed off as
         # the playlist: the provider counts tracks it will not serve.

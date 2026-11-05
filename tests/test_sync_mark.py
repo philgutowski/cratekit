@@ -42,6 +42,7 @@ from tests.cli_drive import drive
 from tests.intake.test_workers import Track
 from tests.test_intake_missing import tombstone
 from tests.test_outbound_workers import bind as bind_account
+from tests.test_session_log_unlisted import _refuse_listing
 from tests.test_sync_all import _playlist, _playlist_jobs, _tracks, bind_playlists
 from tests.test_sync_all import slim as slim  # noqa: PLC0414 - the fixture, re-exported
 from tests.xml_fixtures import _xml_doc
@@ -1039,6 +1040,31 @@ def test_a_native_pass_no_closed_committed_landing_names_is_refused(
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     assert "no landing" in refused["cause"]["message"]
+    assert account.renamed == []
+
+
+def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_landing(slim, monkeypatch):
+    """R-1255, review round two: the pass landed, and the mark said it never had.
+
+    A log this account cannot list read as no landing, so the verb refused with
+    "no landing ... committed" and sent the person to land the pass again. It
+    refuses naming the listing now; the readable twin reaches the question.
+    """
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    _cut_over_intake(slim)
+    _hold(slim, "101", "102", "201")
+    _record_landing(slim, name)
+    code, asked = _mark_pass(name)
+    assert code == int(ExitCode.DECISION_REQUIRED), asked
+    _refuse_listing(monkeypatch, Path(session.log_dir(slim)))
+
+    code, refused = _mark_pass(name)
+
+    assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
+    assert "cannot be listed by this account" in refused["cause"]["message"]
+    assert "no landing" not in refused["cause"]["message"]
     assert account.renamed == []
 
 

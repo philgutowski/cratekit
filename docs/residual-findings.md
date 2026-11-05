@@ -43705,3 +43705,257 @@ provider's do.
 
 **Closes when:** a test pins each, one per guard. Ledger only, a maintainer
 facing gap.
+
+---
+
+## R-1287. A rekordbox removal of a pair's track the account lists unreadably is undone once the account lists it readably
+
+**Found:** at the build of #532, R-1264, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.py` `plan_pair` never takes an unread track
+off either side, as the card's approach says. When the person removes, in
+rekordbox, the row a pair linked to such a track, rekordbox loses it and the
+account keeps it, and the snapshot moves with the account holding it and
+rekordbox not. Once the provider lists that track with its title and artist
+again, the merge reads it as held on the account since the last sync and never
+in rekordbox, so it is added back to rekordbox.
+
+**Measured cost.** Not driven. It needs an unread track the library holds and
+links, removed in rekordbox while unread, and then read again later; each step
+is reachable on the twins world, the last only if the provider fixes the row.
+
+**Closes when:** a rekordbox removal of a row linked to an unread track is
+carried to the account as a removal by id, or the base keeps the unread track
+out of the account's snapshot until it reads. Ledger only: it needs a provider
+correcting its own row, whose reachability is unmeasured.
+
+---
+
+## R-1288. The stale check's unread comparison on a part written pair, and the digest's unread ids, kill no test on a resume
+
+**Found:** at the review of #532, R-1264, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.py` `check` compares the unread set with the
+plan's on both of its paths. On the path for a pair this run part wrote
+(U210), reverting the comparison kills no test, since no test resumes a write
+whose account listing gained or lost an unread track after the account step.
+
+**Measured cost.** None driven: the review's round one reverted it and the
+suite stayed green, and drove no part written resume whose unread set moves
+(0 candidates driven). A stale such a resume should refuse would be written
+instead; reachability unmeasured. The digest's unread ids are now pinned by
+`tests/test_sync_pair_unread.py`.
+
+**Closes when:** a resume test in `tests/test_sync_pair_resume.py` stops a
+write after the account step, adds an unread track, and continues, refusing
+stale. Ledger only: a guard with no driven producer.
+
+---
+
+## R-1289. crate sync all leaves out a whole account playlist when one of its tracks names no title or no artist
+
+**Found:** at the review of #532, R-1264, 2026-11-05.
+
+**The mechanism.** `sync/playlists.py` lists each account playlist it sweeps
+through `intake_cli.list_playlist_declared`, whose reader refuses the whole
+listing with `intake-list-unusable` when one row names no title or no artist.
+The sweep takes that refusal per playlist, so the run goes on, but the playlist
+is excluded as unreadable and none of its readable tracks is queued.
+`organize/mirror_downloads.py` lists the same way (not driven). `crate sync
+twins` (U213) and `crate sync pair` (R-1264) now read row by row through
+`intake_cli.list_playlist_readable`; the sweep is the class one file over.
+
+**Measured cost.** Driven by the review's round one on a disposable world: a
+swept playlist holding two readable tracks and a third with no title was
+excluded with "track 3 names no title", and only the other playlist queued.
+The playlist is named in the summary and a warning, so the report is not
+clean, but its readable tracks never reach intake while the provider lists the
+one row that way, which may be for good. Live reachability is the ledger's
+unmeasured one for R-1264.
+
+**Closes when:** the sweep (and the mirror's downloads) read each playlist row
+by row through `list_playlist_readable`, queue the readable tracks and name
+each unread one. Earns an issue under the board bar's (c): a workflow a DJ
+needs, bringing an account playlist into intake, cannot finish for that
+playlist.
+
+---
+
+## R-1290. A session log path under a regular file reads as no log at all, where U214's probe read it as unlisted
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `session._listed` answers `None` for a log path whose
+parent is a file (`NotADirectoryError` with nothing at the path), so
+`scan_log` answers no record and nothing unread, and every gate reads a
+library with no session. U214's probe in the rotation, which R-1255 replaced
+with the scan's own, answered it as unlisted, so the rotation's warning on
+that shape is lost. The choice is pinned by
+`test_a_log_under_a_file_is_not_there`.
+
+**Measured cost.** Driven on the branch: the four readers answer as for an
+absent log. No verb puts a file at the state root, so it is reachable only by
+hand, and nobody was found to pay for it.
+
+**Closes when:** a state root replaced by a file is decided to be a refusal
+of its own, upstream of the session log, or the trade stays as recorded.
+
+---
+
+## R-1291. A refusal over a session log this account cannot list tells a person to report a defect, where the fix is a permission
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** Every refusal over an unlisted session log, the gate's in
+`assert_no_unresolved_session` and the reporting reader's in
+`session.records`, carries `Remedy.REPORT_DEFECT`, so the human rendering
+says "fix: this is a defect; report it with the cause identifier below". The
+message itself names the directory and the account, and the project has
+`path-permission-denied` with its grant access remedy for this shape.
+
+**Measured cost.** Driven in round two as a second account over a chmod 000
+log: `crate restore list`, `restore run` and `session release` each print the
+defect remedy beside a sentence naming the permission. A label, not a wrong
+sentence; nobody is sent to change anything wrong.
+
+**Closes when:** the refusals over an unlisted log carry the access remedy,
+decided once for the gate and the reader together, with the rendering pinned.
+
+---
+
+## R-1292. Session release clears the stale lock before it reads the log again, so a listing refused in between reports a refusal over a lock already cleared
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `crate session release` reads the session log through
+`session.records` before its question, and again after `release_stale_lock`
+has cleared the lock, to abandon orphans and list what is kept. Since R-1255
+that reader refuses an unlisted log, so a log that becomes unlisted between
+the question and the answer ends the run refused with the lock already gone.
+
+**Measured cost.** Not driven. Nothing in the tool changes the log's mode
+inside the verb; it needs a person or another account to do it in that
+window. The lock cleared is the one the person asked to clear.
+
+**Closes when:** the release reads the log once more before clearing the
+lock, or the envelope says the lock was cleared when the later read refuses.
+
+---
+
+## R-1293. The scan's readers that drop its unread half by their own policy drop an unlisted log with it, unsaid
+
+**Found:** at the review of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `account_mirror.landed_tracks`, `pair_cli`, the set
+export, `set_playlist._landed` and `account_playlists.mirrored` and
+`pending_names` read `session.scan_log` and keep only the parsed half, a
+policy each chose for one damaged record. An unlisted log arrives in that half
+and is dropped too, so each reads it as a log with no record and says
+nothing. `unread_clause` also words a regular file standing at the log path
+as a log "this account cannot list", whose remedy is a permission, where the
+file needs replacing.
+
+**Measured cost.** Not driven. Every one of these that feeds a write runs
+inside `assert_gates`, which refuses an unlisted log first since R-1255, so
+the cost is a report or a plan that is quiet about a log nobody read.
+
+**Closes when:** each reader that reports says the log could not be listed,
+as the rotation, the refill and the check do since R-1255, and the clause
+names a file at the log path as one.
+
+---
+
+## R-1294. The snapshot pruner reads the session log through a glob of its own, so an unlisted log protects no snapshot
+
+**Found:** at the build of #526, R-1255, 2026-11-05.
+
+**The mechanism.** `rb_writer.read_run_state_records` globs the run state
+directory and `default_protected_snapshot_paths` builds on it, so a log this
+account cannot list yields no record and protects no capture from
+`rb_writer.prune_snapshots` or from `restore.retention_plan`'s default
+provider. R-1255 moved `session.scan_log` off its glob and left this second
+reader of the same directory on one. `restore.prune` with no owning session
+refuses first since R-1255, through the reporting reader; with one named it
+does not read the log and reaches the provider.
+
+**Measured cost.** Not driven. Neither `rb_writer.prune_snapshots` nor
+`restore.prune` has a caller in `src`, so no person pays for it today.
+
+**Closes when:** the pruner reads the log through `session.scan_log` and
+refuses on an unlisted one, before any verb prunes with the default
+protection.
+
+---
+
+## R-1295. crate organize leaves a downloaded set out of INSPIRATION when one of its tracks names no title or no artist
+
+**Found:** at the review of #547, R-1289, 2026-11-05.
+
+**The mechanism.** `organize/inspiration.py` `_read` lists a downloaded set's
+account playlist through `label_cli.playlist_listing_or_refuse` and reads the
+rows whole with `match.read_tidal_tracks`, which raises `UnreadableList` when
+one row names no title or no artist. `plan` catches it and files the whole set
+as unread with the reader's message, so none of its tracks is matched and no
+INSPIRATION playlist is written for it. `crate sync twins` (U213), `crate sync
+pair` (R-1264), `crate sync all`'s sweep and the mirror's downloads (R-1289)
+now read row by row through `intake_cli.list_playlist_readable`; this is the
+class one file over.
+
+**Measured cost.** Driven by the review's round one on a fake catalogue:
+`inspiration._read` over a set listing tracks 101, 102 and an untitled 103
+raised "track 3 names no title". The set is named unread with that message,
+so the report is not silent, but its readable tracks never reach INSPIRATION
+while the provider lists the one row that way. Live reachability is the
+ledger's unmeasured one for R-1264.
+
+**Closes when:** `_read` reads the set row by row, matches the readable tracks
+and names each unread one beside the set's misses. Earns an issue under the
+board bar's (c): a workflow a DJ needs, bringing a downloaded set into
+INSPIRATION, cannot finish for that set.
+
+---
+
+## R-1296. crate intake missing over a sync all pass says nothing of a track the pass named unread
+
+**Found:** at the review of #547, R-1289, 2026-11-05.
+
+**The mechanism.** Since R-1289 `crate sync all` queues a swept playlist's
+readable tracks and names a track the account lists with no title or no
+artist in its summary and the `sync-playlists-unread` warning. The job it
+queues holds no item for that track, and `crate intake missing --run` reads
+jobs only, so its list and its summary carry no word of it.
+
+**Measured cost.** Driven by the review's round one: `sync all` over a
+playlist of 101 and an untitled 103, the job resumed to success, then
+`intake missing --run RUN`: exit 0, no warning, and `103` absent from the
+whole envelope. The GUIDE calls that verb the one that lists the whole pass at
+once, so a person who reads only its list sees a clean pass. The pass's own
+warning named the track one verb earlier.
+
+**Closes when:** Phillip answers the question on #547 about a playlist that
+left a track unread. Its third option, carrying the unread tracks on the job
+so the missing report lists them, closes this; the first, the build's
+conservative call, leaves it as recorded. Ledger only until that answer.
+
+---
+
+## R-1297. crate organize's mirror downloads reads an expired provider session as one playlist that could not be listed
+
+**Found:** at the review of #547, R-1289, 2026-11-05.
+
+**The mechanism.** `organize/mirror_downloads.py` `plan` catches every
+`CratekitError` from its listing, so a refusal that is not about one playlist,
+an expired session (`credential-missing`), names each wanted track "the
+provider could not list the playlist: ..." and plans the rest, where `crate
+sync all`'s sweep re raises any reason outside `PER_PLAYLIST_REASONS` and
+stops. The catch is the same on `main`; R-1289 changed only the reader.
+
+**Measured cost.** Driven by the review's round one: `listed` raising
+`credential-missing` left the queue empty and named both wanted tracks with
+the session's message. The step reports nothing planned with the tracks named
+and the reason given, so the report is not clean, but it is not the refusal
+that would send a person to log in again.
+
+**Closes when:** the step re raises a refusal outside the per playlist reasons,
+as the sweep does, so the step refuses with the session's own cause. Ledger
+only: the words a person reads carry the true reason.
