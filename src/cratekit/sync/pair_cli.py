@@ -97,13 +97,25 @@ awaiting.
 **TWO GATES, BOTH ASKED BEFORE ANYTHING IS WRITTEN.** ``sync.pair.rekordbox``
 and ``sync.pair.account`` each show the whole plan, every addition and every
 removal on both sides by artist and title, and each answers for its own side.
-Both are explicit (R34), digest bound to the plan, so a list that moved between
-the plan and the write refuses as stale. Rekordbox is written first, through the
+Both are explicit (R34), digest bound to the plan. Rekordbox is written first, through the
 session spine and the native writer's guarded commit, behind the backup
 acknowledgment read before the plan; then the account, through the account
 seam, whose removals and orders a pair vouches for. A side whose gate is
 answered ``skip`` is not written and its snapshot is not moved, so the next sync
 finishes it.
+
+**ONE PLAN PER RUN (U209).** Each gate is answered in a later command, and
+each of those used to plan every pair again, at thousands of provider calls a
+gate over a hundred playlists (Sitting 54). The command that plans now holds
+its plan under its run (``core/held_plan.py``), and every later command of the
+run reads it back, checked against the digest each gate offered, so the gates
+and the write use the plan the person was shown. Before the first write,
+:func:`check` reads only the lists the plan read, each pair's rekordbox
+membership and account listing and a made side's folder, and refuses
+``decision-stale`` naming every list that moved, with nothing written; it
+never matches a track. A held plan that cannot be used is planned again, digest
+bound, and the answer says why. The answer counts each phase's provider calls,
+plan, check and write.
 
 **THE SNAPSHOT MOVES ONLY WHEN THE WHOLE PAIR WAS WRITTEN.** Both gates
 applied, every write landed, and the account listed the whole playlist: only
@@ -616,14 +628,7 @@ class _Reader:
     @cached_property
     def pair_jobs(self) -> tuple[jobs.Job, ...]:
         """Every intake job this verb queued on this library that did not fail, newest first."""
-        return tuple(
-            job
-            for job in jobs.list_jobs(self.store)
-            if job.handler_key == INTAKE_HANDLER
-            and job.library_id == self.cfg.library.volume_id
-            and (job.payload or {}).get("source_id") == PAIR_SOURCE
-            and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
-        )
+        return pair_jobs(self.cfg, self.store)
 
     @cached_property
     def mirrors(self) -> dict[str, frozenset[str]]:
@@ -636,6 +641,18 @@ class _Reader:
             for job in self.pair_jobs
             if str((job.payload or {}).get(intake_cli.SOURCE) or "") == account_id
         )
+
+
+def pair_jobs(cfg: config.Config, store) -> tuple[jobs.Job, ...]:
+    """Every intake job this verb queued on this library that did not fail, newest first."""
+    return tuple(
+        job
+        for job in jobs.list_jobs(store)
+        if job.handler_key == INTAKE_HANDLER
+        and job.library_id == cfg.library.volume_id
+        and (job.payload or {}).get("source_id") == PAIR_SOURCE
+        and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
+    )
 
 
 def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
@@ -2134,9 +2151,22 @@ def _queue(cfg: config.Config, one: PairPlan, store) -> str:
 
 
 def apply_pair(
-    cfg: config.Config, one: PairPlan, *, rekordbox: bool, account: bool, store
+    cfg: config.Config,
+    one: PairPlan,
+    *,
+    rekordbox: bool,
+    account: bool,
+    store,
+    account_listed: Sequence[str] | None = None,
 ) -> Done:
-    """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot."""
+    """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot.
+
+    ``account_listed`` is the account playlist as the check before the write
+    read it (U209), equal to what the plan read. A pair with nothing to write
+    on the account records it as the side's snapshot rather than listing the
+    playlist again; a pair that writes there lists it after the write, as
+    every pair did before.
+    """
     from cratekit.modules.outbound import pairs
 
     done = Done(account_id=one.target.account_id)
@@ -2206,6 +2236,8 @@ def apply_pair(
         if one.account_order:
             account_after = tuple(remote.order_tracks(playlist_id, one.account_order))
             done.account_ordered = True
+        elif account_listed is not None and not (one.account_removes or one.account_adds):
+            account_after = tuple(account_listed)
         else:
             account_after = tuple(remote.playlist_tracks(playlist_id))
     done.snapshot = _record(
@@ -2372,8 +2404,514 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
     return said
 
 
+# ---------------------------------------------------------------------------
+# The plan held across the gates (U209)
+# ---------------------------------------------------------------------------
+
+#: The kind a held plan is filed under.
+HELD_KIND = "sync.pair"
+
+#: The warning a command carries when it planned again under a run that was
+#: meant to hold its plan, naming why the held one could not be used.
+REPLANNED = "sync-pair-replanned"
+
+#: The two gates whose offers a held plan must match.
+GATES = (REKORDBOX_GATE, ACCOUNT_GATE)
+
+
+def _held_classes() -> dict[str, type]:
+    """Every class a plan holds, by name: the closed registry the held plan reads back through."""
+    from cratekit.modules.outbound import pairs
+    from cratekit.sync import pair_discover
+
+    classes = (
+        Plan,
+        PairPlan,
+        Target,
+        Named,
+        Place,
+        Unpaired,
+        pair_merge.Merged,
+        pair_merge.Call,
+        playlist_pair.Change,
+        pair_discover.Home,
+        pair_discover.Listed,
+        pairs.Miss,
+    )
+    return {kind.__name__: kind for kind in classes}
+
+
+def _spent() -> int:
+    """The provider calls this process has made, read around each phase."""
+    from cratekit.core import provider_gate
+
+    return provider_gate.process_spend().calls
+
+
+def _asked(wanted: Sequence[Target], every: bool) -> dict[str, Any]:
+    """What a plan was made for: the pairs asked and whether every pair was, as plain JSON."""
+    return {
+        "every": every,
+        "targets": [[one.account_id, one.rekordbox_id, one.marked] for one in wanted],
+    }
+
+
+def _held_plan(
+    run_id: str, offered: Mapping[str, str], asked: Mapping[str, Any]
+) -> tuple[Plan | None, int, str]:
+    """The plan held for this run, the calls its plan took, and why not when there is none.
+
+    The held plan answers only when it digests to EVERY offer this run
+    recorded, which is the plan each gate showed, and when it was made for the
+    pairs this command asks for; any other plan is planned again, digest
+    bound, and the gates refuse it stale if it moved.
+    """
+    from cratekit.core import held_plan
+
+    planned, digest, extra, why = held_plan.load(
+        run_id, HELD_KIND, registry=_held_classes(), digest_of=lambda one: one.digest
+    )
+    if planned is None:
+        return None, 0, why
+    if not isinstance(planned, Plan):
+        return None, 0, "the held plan is not a plan of this verb"
+    moved = sorted(gate for gate, offer in offered.items() if offer != digest)
+    if moved:
+        return None, 0, f"the held plan is not the plan {', '.join(moved)} showed"
+    if extra.get("asked") != dict(asked):
+        # THE SAME RUN, OTHER PAIRS: a command run again under the run with
+        # another account playlist named, or a pair marked or forgotten since.
+        return None, 0, "the held plan was made for other pairs than this command asks for"
+    calls = extra.get("plan_calls")
+    return planned, calls if isinstance(calls, int) and calls >= 0 else 0, ""
+
+
+def _hold(run_id: str, planned: Plan, calls: int, asked: Mapping[str, Any]) -> str:
+    """Hold this command's plan under its run, and answer why not, or the empty string."""
+    from cratekit.core import held_plan
+
+    return held_plan.hold(
+        run_id,
+        HELD_KIND,
+        planned,
+        registry=_held_classes(),
+        digest=planned.digest,
+        extra={"plan_calls": calls, "asked": dict(asked)},
+    )
+
+
+def _release(run_id: str) -> None:
+    from cratekit.core import held_plan
+
+    held_plan.release(run_id)
+
+
+#: The side a made rekordbox playlist's home is named on when it moved.
+HOME_SIDE = "rekordbox-home"
+
+
+@dataclass(frozen=True, slots=True)
+class Moved:
+    """One list the check before the write found other than the plan read it (U209)."""
+
+    side: str
+    playlist_id: str
+    name: str
+    why: str
+
+    def shown(self) -> dict[str, str]:
+        return {
+            "side": self.side,
+            "playlist_id": self.playlist_id,
+            "name": self.name,
+            "why": self.why,
+        }
+
+    def said(self) -> str:
+        if self.side == HOME_SIDE:
+            return f"the rekordbox playlist to be made at {self.name!r}: {self.why}"
+        where = "the account playlist" if self.side == ACCOUNT_SIDE else "the rekordbox playlist"
+        if self.side == "account-folder":
+            where = "the account folder"
+        if self.side == "library":
+            where = "the acquisitions queued for"
+        named = f"{where} {self.name!r} ({self.playlist_id})" if self.playlist_id else (
+            f"{where} {self.name!r}"
+        )
+        return f"{named} {self.why}"
+
+
+def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, ...]]:
+    """Refuse a write whose lists moved since the plan the gates showed, before anything is written.
+
+    U209. A plan held across its gates is not made again, so before the first
+    write this reads only the lists the write is merged from: each pair's
+    rekordbox playlist membership in the database against what the plan read,
+    each pair's account listing against what the plan read, its shortfall
+    included, the rows a pair adds still live, the folder a made account side
+    goes in still there and free of a playlist of its title, a made rekordbox
+    side's home still free (``pair_reverse.recheck``, read here so it stops
+    the sync before any pair is written), and a playlist the product pairs by
+    itself still where a pair is kept, or still not where a pair it let go
+    for that is kept. EVERY PAIR, whichever gate applied, because each side's writes were
+    merged from both sides. It never matches a track and asks the provider
+    nothing about one. Anything moved refuses ``decision-stale`` naming every
+    list that moved, and nothing is written.
+
+    Answers each account playlist's listing as the check read it, which equals
+    the plan's, so a pair with nothing to write there records it as its
+    snapshot without listing it again.
+    """
+    from cratekit.label import catalogue
+    from cratekit.modules.outbound import pairs
+
+    # THE PAIRS DOCUMENT AS THE WRITE WILL FIND IT, read once.
+    document = pairs.PairStore(cfg)._document()
+    moved: list[Moved] = []
+    listed: dict[str, tuple[str, ...]] = {}
+    on_account = [one for one in planned.pairs if not one.target.new]
+    if on_account:
+        found = catalogue.resolve(cfg)
+        for one in on_account:
+            try:
+                tracks, short, _dates = intake_cli.list_playlist_dated(found, one.target.account_id)
+            except CratekitError as exc:
+                if exc.cause.reason not in BROUGHT_REASONS:
+                    raise
+                moved.append(
+                    Moved(
+                        ACCOUNT_SIDE,
+                        one.target.account_id,
+                        one.name,
+                        f"could not be listed ({exc.cause.message})",
+                    )
+                )
+                continue
+            now = pair_merge.distinct(tracks)
+            withheld = short.block() if short is not None else None
+            if now != tuple(one.account_now):
+                moved.append(
+                    Moved(ACCOUNT_SIDE, one.target.account_id, one.name, _differs(one.account_now, now))
+                )
+            elif withheld != one.withheld:
+                moved.append(
+                    Moved(
+                        ACCOUNT_SIDE,
+                        one.target.account_id,
+                        one.name,
+                        "withholds a different number of tracks than the plan read",
+                    )
+                )
+            else:
+                listed[one.target.account_id] = now
+    brought = [one for one in planned.pairs if one.target.rekordbox_new and one.home is not None]
+    folders = document.folders
+    made = [one for one in planned.pairs if one.target.new and one.place is not None]
+    if brought:
+        from cratekit.modules.outbound import account as outbound_account
+
+        remote = outbound_account.resolve(cfg)
+        seen: dict[str, dict[str, str]] = {}
+        for one in brought:
+            recorded = folders.get(one.target.folder)
+            listing: dict[str, str] = {}
+            if recorded is not None:
+                if recorded.folder_id not in seen:
+                    seen[recorded.folder_id] = dict(remote.folder_playlists(recorded.folder_id))
+                listing = seen[recorded.folder_id]
+            if listing.get(one.target.account_id) != one.target.title:
+                # TAKEN OUT OF THE SYNCED FOLDER, or retitled, since the plan:
+                # a plan made now would bring it nowhere, or somewhere else.
+                moved.append(
+                    Moved(
+                        ACCOUNT_SIDE,
+                        one.target.account_id,
+                        one.name,
+                        f"is no longer titled {one.target.title!r} in the account folder "
+                        f"{one.target.folder!r}",
+                    )
+                )
+    if any(one.acquire for one in planned.pairs):
+        queued = pair_jobs(cfg, store)
+        for one in planned.pairs:
+            if not one.acquire:
+                continue
+            owner = one.target.account_id
+            now = {
+                str(item)
+                for job in queued
+                if str((job.payload or {}).get(intake_cli.SOURCE) or "") == owner
+                for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
+            }
+            again = sorted(set(one.acquire) & now)
+            if again:
+                # ANOTHER SYNC QUEUED THEM SINCE THE PLAN, which a plan made now
+                # would name as awaiting rather than queue twice.
+                moved.append(
+                    Moved(
+                        "library",
+                        owner,
+                        one.name,
+                        f"include {len(again)} track(s) another sync queued since the plan",
+                    )
+                )
+    if made:
+        from cratekit.modules.outbound import account as outbound_account
+
+        remote = outbound_account.resolve(cfg)
+        root: dict[str, str] | None = None
+        inside: dict[str, dict[str, str]] = {}
+        for one in made:
+            place = one.place
+            assert place is not None
+            if place.folder_id:
+                if root is None:
+                    root = dict(remote.folders())
+                if place.folder_id not in root:
+                    moved.append(
+                        Moved(
+                            "account-folder",
+                            place.folder_id,
+                            place.folder,
+                            "is no longer a root folder on the account",
+                        )
+                    )
+                    continue
+                if place.folder_id not in inside:
+                    inside[place.folder_id] = dict(remote.folder_playlists(place.folder_id))
+                if place.title in inside[place.folder_id].values():
+                    moved.append(
+                        Moved(
+                            "account-folder",
+                            place.folder_id,
+                            place.folder,
+                            f"now holds a playlist titled {place.title!r}",
+                        )
+                    )
+            elif place.action == FOLDER_CREATE:
+                if root is None:
+                    root = dict(remote.folders())
+                if place.folder in root.values():
+                    moved.append(
+                        Moved(
+                            "account-folder",
+                            "",
+                            place.folder,
+                            "is now a root folder on the account, which the plan was to make",
+                        )
+                    )
+    from cratekit.core import active_taxonomy, tree_registry
+    from cratekit.favorites import placement
+    from cratekit.sync import pair_discover, pair_reverse
+
+    taxonomy = active_taxonomy.load(cfg)
+    favorites = placement.source_name(taxonomy)
+    skip = cfg.outbound.pair_skip_folders
+    tops = generated_tops(taxonomy, tree_registry.read(cfg))
+    db = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        discovered: dict[str, Any] = {}
+        if any(one.place is not None for one in planned.pairs):
+            discovered = {
+                found.rekordbox_id: found
+                for found in pair_discover.discover(
+                    db,
+                    tops=tops,
+                    favorites=favorites,
+                    skip=skip,
+                    paired=(pair.rekordbox_id for pair in document.pairs.values()),
+                    released=document.released.rekordbox,
+                ).found
+            }
+        for one in planned.pairs:
+            if one.target.rekordbox_new:
+                # U202. THE HOME IT IS MADE AT, read now rather than at its
+                # turn in the write, so a name taken or a row gone since the
+                # plan stops the sync before any pair is written.
+                try:
+                    pair_reverse.recheck(db, one.home, one.change.order)
+                except CratekitError as exc:
+                    if exc.cause.reason != "decision-stale":
+                        raise
+                    moved.append(Moved(HOME_SIDE, "", one.home.where, _reworded(exc.cause.message)))
+                    continue
+                now = pair_discover.home_of(
+                    db, one.target.folder, one.target.title, tops=tops, favorites=favorites, skip=skip
+                )
+                if now != one.home:
+                    moved.append(
+                        Moved(
+                            HOME_SIDE,
+                            "",
+                            one.home.where,
+                            "its place moved since the plan"
+                            + (f" ({now})" if isinstance(now, str) else f", it now goes at {now.where!r}"),
+                        )
+                    )
+                continue
+            there = playlist_pair.read_playlist(db, one.target.rekordbox_id)
+            if there is None or there.removed or not there.plain:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,
+                        one.rekordbox_name,
+                        "is no longer a live plain playlist",
+                    )
+                )
+                continue
+            if there.memberships() != tuple(tuple(row) for row in one.rekordbox_before):
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,
+                        one.rekordbox_name,
+                        _differs(
+                            [content for content, _row in one.rekordbox_before],
+                            [content for content, _row in there.memberships()],
+                            rows=True,
+                        ),
+                    )
+                )
+                continue
+            if one.place is not None:
+                # A DISCOVERED PLAYLIST IS READ AS DISCOVERY READS IT NOW: still
+                # found, under the same account folder and title. Moved to
+                # another folder, the root, a subfolder or anywhere discovery
+                # lists rather than finds, a plan made now would make another
+                # account playlist or none.
+                now_found = discovered.get(one.target.rekordbox_id)
+                if now_found is None or (now_found.folder, now_found.title) != (
+                    one.place.folder,
+                    one.place.title,
+                ):
+                    moved.append(
+                        Moved(
+                            REKORDBOX_SIDE,
+                            one.target.rekordbox_id,
+                            one.rekordbox_name,
+                            "was moved since the plan, and "
+                            + (
+                                f"would now be made as {now_found.title!r} in "
+                                f"{now_found.folder!r}"
+                                if now_found is not None
+                                else "is no longer one a sync of every pair would make"
+                            ),
+                        )
+                    )
+                    continue
+            held = document.pairs.get(one.target.account_id)
+            if held is not None and held.made:
+                # A PLAYLIST THE PRODUCT PAIRS BY ITSELF IS KEPT ONLY WHERE
+                # DISCOVERY WOULD FIND IT (U198), which the plan read as so:
+                # one dragged under ARCHIVE since is let go by a plan made
+                # now, never written.
+                why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
+                if why:
+                    moved.append(
+                        Moved(
+                            REKORDBOX_SIDE,
+                            one.target.rekordbox_id,
+                            one.rekordbox_name,
+                            f"was moved since the plan and is now {why}",
+                        )
+                    )
+                    continue
+            gone = sorted(set(one.change.adds) - set(playlist_pair.content(db, one.change.adds)))
+            if gone:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,
+                        one.rekordbox_name,
+                        f"would gain {len(gone)} row(s) that are no longer live rows of the "
+                        f"collection",
+                    )
+                )
+        for lost in planned.unpaired:
+            if lost.gone != REKORDBOX_SIDE:
+                continue
+            # A MADE PAIR LET GO FOR ITS REKORDBOX SIDE is let go only while
+            # that side is still gone or still where no pair is kept.
+            there = playlist_pair.read_playlist(db, lost.rekordbox_id)
+            if there is None or there.removed or not there.plain:
+                continue
+            if not pair_discover.left_behind(db, there, favorites=favorites, skip=skip):
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        lost.rekordbox_id,
+                        lost.rekordbox_name or there.name,
+                        "is back where its pair is kept since the plan, which unpaired it",
+                    )
+                )
+    finally:
+        rb_writer.close_db(db)
+    if moved:
+        raise refuse(
+            "decision-stale",
+            f"{len(moved)} list(s) moved since the plan the gates showed, so nothing was "
+            f"written: " + "; ".join(one.said() for one in moved),
+            steps=(
+                "run crate sync pair again and answer both gates over the plan it shows now",
+            ),
+            origin=_ORIGIN,
+            detail={"moved": [one.shown() for one in moved]},
+        )
+    return listed
+
+
+def _reworded(message: str) -> str:
+    """A recheck's refusal as a line of the check's own, without its closing advice."""
+    head = message.split("; sync the pairs again", 1)[0]
+    return head.replace(", so nothing was made", "")
+
+
+def _differs(before: Sequence[str], now: Sequence[str], *, rows: bool = False) -> str:
+    """How a list moved, in words: what it gained, what it lost, or that it was reordered."""
+    gained = len(set(now) - set(before))
+    lost = len(set(before) - set(now))
+    parts = []
+    if gained:
+        parts.append(f"gained {gained} track(s)")
+    if lost:
+        parts.append(f"lost {lost} track(s)")
+    if parts:
+        return "has " + " and ".join(parts) + " since the plan"
+    if list(before) != list(now):
+        return "was reordered since the plan"
+    return (
+        "holds the same tracks in other membership rows than the plan read"
+        if rows
+        else "changed since the plan"
+    )
+
+
+def _with_calls(data: Mapping[str, Any], calls: Mapping[str, int]) -> dict[str, Any]:
+    """The plan payload with each phase's provider calls in its totals, since ``plan/1`` is closed."""
+    return {**data, "totals": {**data["totals"], "calls": dict(calls)}}
+
+
+def _calls_said(calls: Mapping[str, int], *, held: bool) -> str:
+    plan = f"{calls['plan']} to plan" + (" (in the command that planned)" if held else "")
+    return (
+        f"provider calls: {plan}, {calls['check']} to check the lists before writing, "
+        f"{calls['write']} to write"
+    )
+
+
 def sync_pair(ctx) -> Envelope:
-    """Plan every asked pair, ask both gates, then write each side approved."""
+    """Plan every asked pair once, ask both gates, check the lists, then write each side approved.
+
+    U209. The command that plans holds its plan under its run, and every later
+    command of the run, an answer continued or the verb run again with
+    ``--run``, reads that plan back rather than planning again, so a two gate
+    sync costs one plan of provider calls. Before the first write the lists
+    the plan read are checked (:func:`check`); a plan made in this same
+    command needs no check. The answer counts the calls of each phase.
+    """
     from cratekit.modules.outbound import pairs
 
     cfg = sync_cli._load()
@@ -2384,25 +2922,61 @@ def sync_pair(ctx) -> Envelope:
     wanted = targets(
         store_of_pairs, getattr(ctx.args, "account", None), getattr(ctx.args, "rekordbox", None)
     )
+    run_id = ctx.run.run_id
+    offered = {gate: ctx.run.offers[gate] for gate in GATES if gate in ctx.run.offers}
+    notes: list[dict[str, str]] = []
     with jobs.open_store() as store:
         every = not getattr(ctx.args, "account", None)
-        planned = plan(cfg, wanted, store=store, every=every)
-        # R-988. WHAT THE ACCOUNT SAID OF A ROW IS A FACT ABOUT THE ROW, recorded
-        # before the gate, so the plans the gates make again ask it nothing.
-        store_of_pairs.remember(planned.misses, forget=planned.matched)
+        asked = _asked(wanted, every)
+        planned: Plan | None = None
+        plan_calls = 0
+        if offered:
+            # A LATER COMMAND OF A RUN THAT SHOWED A GATE reads its plan back.
+            planned, plan_calls, why = _held_plan(run_id, offered, asked)
+            if planned is None:
+                notes.append(
+                    {
+                        "code": REPLANNED,
+                        "message": (
+                            f"{why}, so the pairs were planned again; the gates compare "
+                            f"this plan with the one they showed"
+                        ),
+                    }
+                )
+        held = planned is not None
+        not_held = ""
+        if planned is None:
+            before = _spent()
+            planned = plan(cfg, wanted, store=store, every=every)
+            plan_calls = _spent() - before
+            # R-988. WHAT THE ACCOUNT SAID OF A ROW IS A FACT ABOUT THE ROW,
+            # recorded before the gate, so a plan made again asks it nothing.
+            store_of_pairs.remember(planned.misses, forget=planned.matched)
+            not_held = _hold(run_id, planned, plan_calls, asked)
         data = payload(planned)
         shown = facts(planned)
-        warnings = _warnings(planned)
+        if not_held:
+            shown["plan held"] = (
+                f"no, {not_held}; an answer given in a later command plans the pairs again"
+            )
+        for note in notes:
+            # SAID ON THE SCREEN AS WELL, since a gate's refusal carries no warning.
+            shown["planned again"] = note["message"]
+        warnings = [*notes, *_warnings(planned)]
         gates = {spec.name: spec for spec in ctx.entry.gates}
         on_rekordbox = (
             ctx.gate.require(gates[REKORDBOX_GATE], plan=data, context=shown) == APPLY
         )
         on_account = ctx.gate.require(gates[ACCOUNT_GATE], plan=data, context=shown) == APPLY
+        calls = {"plan": plan_calls, "check": 0, "write": 0}
         if not planned.pairs and not planned.unpaired:
+            _release(run_id)
             if planned.listed or planned.listed_back:
-                return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)
+                return ctx.envelope(
+                    data=_with_calls(data, calls), outcome=Outcome.NO_OP, warnings=warnings
+                )
             return ctx.envelope(
-                data=data,
+                data=_with_calls(data, calls),
                 outcome=Outcome.NO_OP,
                 warnings=[
                     *warnings,
@@ -2417,18 +2991,37 @@ def sync_pair(ctx) -> Envelope:
                 ],
             )
         if not (on_rekordbox or on_account):
+            _release(run_id)
             return ctx.envelope(
-                data=data,
+                data=_with_calls(data, calls),
                 outcome=Outcome.NO_OP,
                 warnings=[
                     *warnings,
                     {"code": SKIPPED, "message": "both sides were skipped, nothing was written"},
                 ],
             )
-        done = [
-            apply_pair(cfg, one, rekordbox=on_rekordbox, account=on_account, store=store)
-            for one in planned.pairs
-        ]
+        listed: dict[str, tuple[str, ...]] = {}
+        if held:
+            before = _spent()
+            try:
+                listed = check(cfg, planned, store=store)
+            finally:
+                calls["check"] = _spent() - before
+        before = _spent()
+        try:
+            done = [
+                apply_pair(
+                    cfg,
+                    one,
+                    rekordbox=on_rekordbox,
+                    account=on_account,
+                    store=store,
+                    account_listed=listed.get(one.target.account_id),
+                )
+                for one in planned.pairs
+            ]
+        finally:
+            calls["write"] = _spent() - before
     forgotten = [
         one
         for one in planned.unpaired
@@ -2513,9 +3106,11 @@ def sync_pair(ctx) -> Envelope:
         f"collection or the account"
         + (f"; {' and '.join(skipped)} skipped, its snapshot unchanged" if skipped else "")
     )
+    message += "; " + _calls_said(calls, held=held)
     wrote = any(d.wrote for d in done) or bool(forgotten) or bool(released)
+    _release(run_id)
     return ctx.envelope(
-        data={**data, "totals": totals},
+        data={**data, "totals": {**totals, "calls": calls}},
         outcome=Outcome.OK if wrote else Outcome.NO_OP,
         warnings=[*warnings, {"code": WRITTEN if wrote else NOTHING, "message": message}],
     )
@@ -2524,6 +3119,9 @@ def sync_pair(ctx) -> Envelope:
 __all__ = [
     "ACCOUNT_GATE",
     "BROUGHT_REASONS",
+    "GATES",
+    "HELD_KIND",
+    "REPLANNED",
     "INTAKE_HANDLER",
     "PAIR_SOURCE",
     "REKORDBOX_GATE",
@@ -2534,6 +3132,7 @@ __all__ = [
     "RELEASED",
     "TIME_UNKNOWN",
     "Done",
+    "Moved",
     "PairPlan",
     "Place",
     "Plan",
@@ -2541,6 +3140,7 @@ __all__ = [
     "Unpaired",
     "apply_pair",
     "build",
+    "check",
     "facts",
     "file_identity",
     "generated_tops",

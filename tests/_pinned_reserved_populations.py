@@ -937,6 +937,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'repair-config-file',
         'retry-when-unlocked',
         'run-setup',
+        'runs-held',  # 2026-11-05, U209: the held plans' state directory.
         'survives-rollback',
         'trashed-file',
         'upgrade-cratekit',
@@ -1819,11 +1820,17 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # not discovered and released warnings joined. 2026-11-04, U202: the
     # account playlists not brought over and the later change calls joined,
     # and the two listing refusals a brought playlist is listed for.
+    # 2026-11-05, U209: the check before the write's stale refusal, its moved
+    # folder side, the side a made rekordbox playlist's home is named on,
+    # and the warning a run planned again carries.
     'sync/pair_cli.py': [
         'account-discovery',
+        'account-folder',
+        'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
         'playlist-pair',
+        'rekordbox-home',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
         'sync-pair-later-change',
@@ -1833,6 +1840,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-nothing',
         'sync-pair-out-of-scope',
         'sync-pair-released',
+        'sync-pair-replanned',
         'sync-pair-skipped',
         'sync-pair-time-unknown',
         'sync-pair-twin-unpaired',
@@ -3030,7 +3038,9 @@ PINNED_LITERAL_HOLDERS = {
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined.
     # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
+    # 2026-11-05, U209: the check before the write refuses stale.
     'sync/pair_cli.py': [
+        'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
         'sync-pair-out-of-scope',

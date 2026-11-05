@@ -1,0 +1,242 @@
+name = "u209"
+pass_kind = "light"
+
+[[rows]]
+id = "H1_offer_mismatch_ignored"
+description = "_held_plan: read back a held plan whatever offer the run recorded"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''    if moved:
+        return None, 0, f"the held plan is not the plan {', '.join(moved)} showed"'''
+new = '''    if False:
+        return None, 0, f"the held plan is not the plan {', '.join(moved)} showed"'''
+
+[[rows]]
+id = "H2_asked_mismatch_ignored"
+description = "_held_plan: read back a held plan made for other pairs than this command asks for"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''    if extra.get("asked") != dict(asked):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H3_not_a_plan_accepted"
+description = "_held_plan: accept a held object that is not a Plan"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''    if not isinstance(planned, Plan):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H4_load_digest_unchecked"
+description = "held_plan.load: accept a plan that does not digest as the digest held beside it"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''    if actual != held:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H5_load_kind_unchecked"
+description = "held_plan.load: accept a held document of another version, kind or run"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''        if raw.get(key) != wanted:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "H6_load_age_unchecked"
+description = "held_plan.load: read back a held plan older than it is kept"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''    if age > KEEP.total_seconds():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "H7_hold_equality_unchecked"
+description = "held_plan.hold: hold a plan that does not read back equal to itself"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''        if decode(encoded, registry) != plan:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "H8_prune_never"
+description = "held_plan.prune: prune nothing whatever its age"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            if one.stat().st_mtime < cutoff:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "H9_release_after_write"
+description = "sync_pair: keep the held plan after the run wrote"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''    wrote = any(d.wrote for d in done) or bool(forgotten) or bool(released)
+    _release(run_id)'''
+new = '''    wrote = any(d.wrote for d in done) or bool(forgotten) or bool(released)'''
+
+[[rows]]
+id = "C1_no_check"
+description = "sync_pair: write a held plan with no check of its lists"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''        if held:
+            before = _spent()'''
+new = '''        if False:
+            before = _spent()'''
+
+[[rows]]
+id = "C2_account_listing"
+description = "check: read no moved account listing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            if now != tuple(one.account_now):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "C3_withheld"
+description = "check: read no change in the account's withheld count"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            elif withheld != one.withheld:'''
+new = '''            elif False:'''
+
+[[rows]]
+id = "C4_rekordbox_gone"
+description = "check: read no rekordbox playlist deleted or turned into a folder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            if there is None or there.removed or not there.plain:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,'''
+new = '''            if there is None:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,'''
+
+[[rows]]
+id = "C5_memberships"
+description = "check: read no moved rekordbox membership"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            if there.memberships() != tuple(tuple(row) for row in one.rekordbox_before):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "C6_discovered_place"
+description = "check: read no move of a discovered playlist's place"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''                if now_found is None or (now_found.folder, now_found.title) != ('''
+new = '''                if False and (now_found.folder, now_found.title) != ('''
+
+[[rows]]
+id = "C7_made_left_behind"
+description = "check: read no made pair dragged where no pair is kept"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''                why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
+                if why:'''
+new = '''                why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
+                if False:'''
+
+[[rows]]
+id = "C8_rows_gone"
+description = "check: read no row the plan adds gone from the collection"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            gone = sorted(set(one.change.adds) - set(playlist_pair.content(db, one.change.adds)))'''
+new = '''            gone = []'''
+
+[[rows]]
+id = "C9_unpaired_back"
+description = "check: read no let go playlist back where its pair is kept"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            if not pair_discover.left_behind(db, there, favorites=favorites, skip=skip):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "C10_reverse_recheck"
+description = "check: run no recheck of a made rekordbox side's home before the write"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''                    pair_reverse.recheck(db, one.home, one.change.order)'''
+new = '''                    pass'''
+
+[[rows]]
+id = "C11_home_of"
+description = "check: compare no home a made rekordbox side goes to with the plan's"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''                if now != one.home:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "C12_brought_folder"
+description = "check: read no brought playlist taken out of its account folder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            if listing.get(one.target.account_id) != one.target.title:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "C13_jobs_queued"
+description = "check: read no acquisitions another sync queued since the plan"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''            again = sorted(set(one.acquire) & now)'''
+new = '''            again = []'''
+
+[[rows]]
+id = "C14_folder_gone"
+description = "check: read no account folder gone that a made side goes in"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''                if place.folder_id not in root:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "C15_folder_title_taken"
+description = "check: read no playlist of the title made in the folder since"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''                if place.title in inside[place.folder_id].values():'''
+new = '''                if False:'''
+
+[[rows]]
+id = "C16_listing_not_reused"
+description = "apply_pair: list the account playlist again for a pair with nothing to write there"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_discover.py"]
+old = '''        elif account_listed is not None and not (one.account_removes or one.account_adds):'''
+new = '''        elif False:'''

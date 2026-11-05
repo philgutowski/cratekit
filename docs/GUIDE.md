@@ -989,6 +989,16 @@ removed. The account keeps no time for a removal, and rekordbox often keeps
 none either, so where either time is unknown the track stays on both and the
 gate names it.
 
+A sync plans once. The first command reads both sides and shows the rekordbox
+gate; answering it, and then the account gate, reuses that plan rather than
+reading every playlist and asking the provider about every track again, even
+when you answer a day later. Just before writing, Cratekit reads each paired
+playlist on both sides once more, and only to see that it is as the plan read
+it: if you changed one in between, nothing is written, the answer names each
+playlist that moved, and you run `crate sync pair` again to see the plan as it
+is now. The answer says how many provider calls the plan, that check and the
+write each took.
+
 ### Publish a playlist
 
 ```bash
