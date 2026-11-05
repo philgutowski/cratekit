@@ -20,18 +20,18 @@ from __future__ import annotations
 import os
 from datetime import date
 from pathlib import Path
-from types import SimpleNamespace
 
 import pytest
 
-from cratekit.analysis import check_cli
 from cratekit.analysis import rekordbox_check as rc
 from cratekit.core import session, tree_registry
 from cratekit.core.cause import CratekitError
+from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import batch_name, native, refill, refill_cli, rotate, rotate_cli
+from tests.cli_drive import drive
 from tests.test_restore import _nothing_is_running as _nothing_is_running  # noqa: PLC0414
 from tests.test_restore import _release_process_locks as _release_process_locks  # noqa: PLC0414
-from tests.test_restore import acknowledge, gate_seams
+from tests.test_restore import acknowledge, completed_session, gate_seams
 from tests.test_restore import cfg as cfg  # noqa: PLC0414 - fixture
 
 BATCH = "2026-10-20 Tidal playlists"
@@ -86,8 +86,28 @@ def test_a_log_that_cannot_be_listed_is_returned_as_the_one_unread_entry(cfg, mo
     assert parsed == ()
     assert unreadable == (log,)
     assert session.log_unlisted(unreadable, cfg) is True
-    assert session.unlisted_log(cfg) == log
-    assert session.records(cfg) == ()
+
+
+def test_the_reporting_reader_refuses_a_log_it_cannot_list(cfg, monkeypatch):
+    """Review round one: restore list, restore run and session release read this.
+
+    Skipping a damaged record leaves the others reported; a log nobody could
+    list leaves none, and an empty answer told a person their session was never
+    recorded. One damaged record is still skipped, which the twin pins.
+    """
+    log = _unverified(cfg)
+    (log / "2026-10-21-dead.json").write_text("{not json")
+    assert [record.session_id for record in session.records(cfg)] == ["s-1"]
+    _refuse_listing(monkeypatch, log)
+
+    with pytest.raises(CratekitError) as refused:
+        session.records(cfg)
+
+    assert str(refused.value.cause.message).startswith(
+        "the session log exists and cannot be listed by this account, so no session "
+        "recorded in it can be read"
+    )
+    assert refused.value.cause.detail == {"log": str(log), "unlisted": True}
 
 
 def test_a_listed_log_is_read_and_names_nothing_unlisted(cfg):
@@ -100,7 +120,6 @@ def test_a_listed_log_is_read_and_names_nothing_unlisted(cfg):
     assert [record.session_id for record in parsed] == ["s-1"]
     assert unreadable == (log / "2026-10-21-dead.json",)
     assert session.log_unlisted(unreadable, cfg) is False
-    assert session.unlisted_log(cfg) is None
     assert session.unread_clause(unreadable, cfg) == (
         "the session log holds 1 entry this build cannot read"
     )
@@ -111,7 +130,6 @@ def test_a_log_that_is_not_there_is_no_record_at_all(cfg):
     assert not log.exists()
 
     assert session.scan_log(cfg) == ((), ())
-    assert session.unlisted_log(cfg) is None
 
 
 def test_a_log_path_that_is_a_file_is_there_and_unread(cfg, monkeypatch, tmp_path):
@@ -120,7 +138,6 @@ def test_a_log_path_that_is_a_file_is_there_and_unread(cfg, monkeypatch, tmp_pat
     monkeypatch.setattr(session, "log_dir", lambda _cfg: held)
 
     assert session.scan_log(cfg) == ((), (held,))
-    assert session.unlisted_log(cfg) == held
 
 
 def test_a_log_under_a_file_is_not_there(cfg, monkeypatch, tmp_path):
@@ -129,7 +146,6 @@ def test_a_log_under_a_file_is_not_there(cfg, monkeypatch, tmp_path):
     monkeypatch.setattr(session, "log_dir", lambda _cfg: parent / "session_log")
 
     assert session.scan_log(cfg) == ((), ())
-    assert session.unlisted_log(cfg) is None
 
 
 def test_the_clause_names_the_listing_and_not_an_entry(cfg, monkeypatch):
@@ -336,16 +352,36 @@ def test_the_check_refuses_an_unknown_landing_naming_the_listing(cfg, monkeypatc
     assert caught.value.cause.detail["log_unlisted"] is True
 
 
-def test_the_check_warns_on_a_log_it_could_not_list():
-    scope = rc.Scope(
-        kind=rc.SCOPE_PASS, name="2026-10-20 sync", content_ids=(), unreadable_records=1,
-        log_unlisted=True,
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. The verbs that read the log to report it refuse rather than answer none
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_restore_list_refuses_a_log_it_cannot_list_rather_than_list_nothing(cfg, monkeypatch):
+    """Review round one: exit 0 with no item and no warning, over a recorded session."""
+    record, _captured = completed_session(cfg)
+    code, listing = drive(["restore", "list"])
+    assert code == int(ExitCode.OK), listing
+    assert [row["session_id"] for row in listing["data"]["items"]] == [record.session_id]
+    _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
+
+    code, refused = drive(["restore", "list"])
+
+    assert code != int(ExitCode.OK), refused
+    assert refused["cause"]["message"].startswith(
+        "the session log exists and cannot be listed by this account, so no session "
+        "recorded in it can be read"
     )
 
-    (warning, *_rest) = check_cli.warnings_of(SimpleNamespace(scope=scope, verdict=None))
 
-    assert warning["code"] == check_cli.RECORDS_UNREAD
-    assert warning["message"] == (
-        "the session log could not be listed, so a landing of 2026-10-20 sync in it "
-        "is not in this check"
-    )
+def test_restore_run_refuses_naming_the_listing_not_an_unrecorded_session(cfg, monkeypatch):
+    """Review round one: it said no session was recorded under an id that was."""
+    record, _captured = completed_session(cfg)
+    _refuse_listing(monkeypatch, Path(session.log_dir(cfg)))
+
+    code, refused = drive(["restore", "run", record.session_id])
+
+    assert code != int(ExitCode.OK), refused
+    assert "cannot be listed by this account" in refused["cause"]["message"]
+    assert "is recorded under" not in refused["cause"]["message"]

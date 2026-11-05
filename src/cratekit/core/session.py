@@ -460,20 +460,6 @@ def _listed(directory: Path) -> list[str] | None:
         return None
 
 
-def unlisted_log(cfg: config.Config) -> Path | None:
-    """The session log when it is there and this account cannot list it, else ``None`` (R-1255).
-
-    The one probe of the listing, which the scan, the rotation and ``crate
-    doctor`` all ask, so the three cannot disagree about one directory.
-    """
-    directory = log_dir(cfg)
-    try:
-        _listed(directory)
-    except OSError:
-        return directory
-    return None
-
-
 def log_unlisted(unreadable: Sequence[Path], cfg: config.Config) -> bool:
     """Whether the unread half :func:`scan_log` returned is the log itself, not a record in it."""
     return log_dir(cfg) in unreadable
@@ -517,9 +503,10 @@ def scan_log(cfg: config.Config) -> tuple[tuple[SessionRecord, ...], tuple[Path,
     The scan used to glob, and a glob over a directory this account cannot list
     yields nothing rather than raising, so a log nobody could open read as one
     holding no record, and every gate behind the scan admitted the write the
-    log may refuse. Reported in the half every consumer already reads as
-    unread, so a gate refuses on it and a report says it without a change of
-    its own. A log that is not there is still no record at all.
+    log may refuse. Reported in the half a gate already refuses on, and
+    :func:`records` refuses on it for every reporting reader; a consumer of
+    this scan that drops the second half by its own policy drops this too. A
+    log that is not there is still no record at all.
     """
     directory = log_dir(cfg)
     try:
@@ -551,8 +538,25 @@ def records(cfg: config.Config) -> tuple[SessionRecord, ...]:
 
     THAT POLICY IS FOR REPORTING AND FOR NOTHING ELSE. A gate that borrowed it
     would fail open; see :func:`scan_log` and :func:`assert_no_unresolved_session`.
+
+    A LOG THAT CANNOT BE LISTED REFUSES (R-1255, review round one). Skipping
+    one damaged record still leaves every other one reported, but a log nobody
+    could list leaves nothing, and answering "no session" over it told a person
+    asking to restore that their session was never recorded, listed no restore
+    point, and released no orphan while saying it had. Every reader of this
+    function is answered by the refusal instead of by an empty log.
     """
-    return scan_log(cfg)[0]
+    parsed, unreadable = scan_log(cfg)
+    if log_unlisted(unreadable, cfg):
+        raise refuse(
+            "internal-error",
+            f"{unread_clause(unreadable, cfg)}, so no session recorded in it can be "
+            "read; refusing rather than answering that none is recorded",
+            remedy=Remedy.REPORT_DEFECT,
+            scope=Scope.RUN,
+            detail={"log": str(log_dir(cfg)), "unlisted": True},
+        )
+    return parsed
 
 
 # ---------------------------------------------------------------------------
@@ -2972,7 +2976,6 @@ __all__ = [
     "resolve_unverified_session",
     "scan_log",
     "session_lock",
-    "unlisted_log",
     "unread_clause",
     "verify_commit",
     "write_record",

@@ -2765,19 +2765,6 @@ def _check_backup_remote(inputs: _Inputs) -> Finding:
     )
 
 
-def _log_directory_unreadable(cfg: config.Config) -> Path | None:
-    """The session log directory when it exists and cannot be listed, else None.
-
-    The mount question answers "is the disk there". This answers the other half,
-    which no mount state can: a directory that IS on the right volume and that
-    this account cannot open. Asked through ``session.unlisted_log``, the one
-    probe the scan itself asks since R-1255, so this report and the gate it
-    describes cannot disagree about one directory: a state directory this
-    account cannot traverse, and a log it cannot list, both answer the path.
-    """
-    return session.unlisted_log(cfg)
-
-
 def _check_unresolved_session(inputs: _Inputs) -> Finding:
     key, title = "session.unresolved", "destructive sessions"
     if inputs.cfg is None:
@@ -2785,8 +2772,13 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
     unreadable = _library_state_unreadable(inputs, "the session log")
     if unreadable is not None:
         return Finding(key=key, title=title, status=Status.INFO, detail=unreadable)
-    unreadable_directory = _log_directory_unreadable(inputs.cfg)
-    if unreadable_directory is not None:
+    # ONE SCAN, BRANCHED ON WHAT IT COULD NOT READ (R-1255, review round one):
+    # the log itself, unlisted, or records in it. A probe of its own asked the
+    # listing a second time, and a window between the two let the record
+    # branch name the log directory as a record nobody could read.
+    parsed, unreadable = session.scan_log(inputs.cfg)
+    if session.log_unlisted(unreadable, inputs.cfg):
+        unreadable_directory = session.log_dir(inputs.cfg)
         return Finding(
             key=key,
             title=title,
@@ -2799,7 +2791,6 @@ def _check_unresolved_session(inputs: _Inputs) -> Finding:
             ),
             remedy=Remedy.REPORT_DEFECT,
         )
-    parsed, unreadable = session.scan_log(inputs.cfg)
     if unreadable:
         # A gate reading its own state through a tolerant reader fails OPEN, which
         # is why the scan returns both halves. Doctor reports the half the gate
@@ -4082,7 +4073,25 @@ def _source_findings(cfg: config.Config) -> list[Finding]:
     from cratekit.sync import watermarks as sync_watermarks
 
     found: list[Finding] = []
-    for record in session.records(cfg):
+    parsed, unreadable = session.scan_log(cfg)
+    if session.log_unlisted(unreadable, cfg):
+        # A LOG NOBODY COULD LIST IS SAID, not read as no source in flight
+        # (R-1255, review round one); the reporting reader would refuse the
+        # whole status, which reports runs and trees the log does not hold.
+        found.append(
+            Finding(
+                key="source.session-log",
+                title="sources in the session log",
+                status=Status.FAIL,
+                detail=(
+                    f"the session log directory {session.log_dir(cfg)} exists and "
+                    f"cannot be listed by this account, so whether a source is "
+                    f"refused or still in flight is unknown"
+                ),
+                remedy=Remedy.REPORT_DEFECT,
+            )
+        )
+    for record in parsed:
         if record.terminal:
             continue
         for source, state in sorted(record.sources.items()):

@@ -277,10 +277,9 @@ class Scope:
     #: Each step that was looked at and passed over on the way, with why.
     passed_over: tuple[str, ...] = ()
     #: The session records the log could not read, which a named landing might be among.
-    #: An unlisted log counts as one (R-1255).
+    #: An unlisted log never reaches a Scope: it reads no record, so a named
+    #: landing refuses, naming the listing (R-1255).
     unreadable_records: int = 0
-    #: The session log exists and could not be listed, so no record was read at all.
-    log_unlisted: bool = False
 
 
 def _recorded_playlists(record: session.SessionRecord) -> tuple[str, ...]:
@@ -423,7 +422,6 @@ def resolve_scope(
             name=name,
             content_ids=members,
             unreadable_records=unreadable,
-            log_unlisted=unlisted,
         )
     members, why = _analyze_members(db, declared, registry)
     if members:

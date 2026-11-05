@@ -49,6 +49,7 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 from tests import doctor_machines
 from tests._hardware import filesystem_kind, hdiutil_available, read_only_volume
 from tests.test_active_taxonomy import shipped_without, write_active
+from tests.test_session_log_unlisted import _refuse_listing
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -2944,6 +2945,29 @@ def test_an_unreadable_session_log_directory_is_not_an_empty_one(configured):
     assert "did not complete" not in finding.detail, "the blanket rescue answered"
     assert "cannot be listed by this account" in finding.detail
     assert "An unreadable log is not an empty one" in finding.detail
+
+
+def test_a_session_log_this_account_cannot_list_is_failed_by_its_own_check(configured, monkeypatch):
+    """R-1255: the test above on a container that runs as root, which no mode bars.
+
+    The listing is refused for the one path, as an account the log is closed
+    to is refused. The scan answers that log as the one unread entry too, so
+    the check under it would still FAIL with "1 session record(s) cannot be
+    read" if this probe answered nothing; the sentence is the probe's own.
+    """
+    log = Path(session.log_dir(configured))
+    log.mkdir(parents=True, exist_ok=True)
+    (log / "s-1.json").write_text("{}")
+    _refuse_listing(monkeypatch, log)
+
+    finding = find(doctor.run(configured, probes=probes()), "session.unresolved")
+
+    assert finding.status is doctor.Status.FAIL
+    assert (
+        f"the session log directory {log} exists and cannot be listed by this account"
+        in finding.detail
+    )
+    assert "session record(s) in the log cannot be read" not in finding.detail
 
 
 def test_a_library_with_no_sessions_still_reports_a_clean_log(configured):
