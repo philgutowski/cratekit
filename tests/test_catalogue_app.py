@@ -36,7 +36,7 @@ import pytest
 import requests
 
 from cratekit import cli as cli_package
-from cratekit.acquire import adapter, catalogue_api, match, provider_session
+from cratekit.acquire import adapter, catalogue_api, isrc_cache, match, provider_session
 from cratekit.cli import doctor
 from cratekit.cli.output import Envelope
 from cratekit.core import provider_gate, secrets
@@ -460,8 +460,11 @@ def test_without_both_values_the_opener_builds_no_app_client(monkeypatch, gate, 
 def test_without_the_app_an_isrc_lookup_goes_to_the_account_and_is_counted_there(gate):
     account = AccountClient(isrcs={ISRC: ["101"]})
     gate.attach(account)
-    adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=None)
-    catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=None)
+    # The ISRC cache off (U206), so each seam's own route is what is counted
+    # rather than the second answered from the first.
+    off = isrc_cache.Cache(days=0)
+    adapter_ = tidal_account.TidalAccount(account, sleep=no_sleep, catalogue=None, cache=off)
+    catalogue = tidal_catalogue.TidalCatalogue(account, catalogue=None, cache=off)
 
     assert adapter_.match_track(identity="row-1", isrc=ISRC) == "101"
     assert [one.id for one in catalogue.tracks_for_isrc(ISRC)] == ["101"]
@@ -806,12 +809,13 @@ def test_a_write_goes_to_the_account_and_never_to_the_app(monkeypatch, gate):
 
 
 def test_the_app_client_has_no_write_and_sends_only_reads_and_its_token_request():
-    """Its public surface is the two reads, and the only methods it ever sends
-    are a GET under the API root and a POST to the token service."""
+    """Its public surface is the reads, three since U207's batch screen, and the
+    only methods it ever sends are a GET under the API root and a POST to the
+    token service."""
     public = sorted(
         name for name in vars(catalogue_api.AppCatalogue) if not name.startswith("_")
     )
-    assert public == ["get_tracks_by_isrc", "track"]
+    assert public == ["get_tracks_by_isrc", "isrcs_held", "track"]
     tree = ast.parse((SRC_ROOT / "cratekit/acquire/catalogue_api.py").read_text(encoding="utf-8"))
     sent = sorted(
         node.args[0].value

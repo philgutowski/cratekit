@@ -314,6 +314,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unavailable-permanent',
         'unavailable-transient',
     ],
+    # 2026-11-05, U206: the ISRC cache joined, reading and writing its file as text.
+    'acquire/isrc_cache.py': ['utf-8'],
     'acquire/listdoc.py': ['utf-8'],
     'acquire/match.py': [
         'candidate-gone',
@@ -460,6 +462,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-required',
         'decision-unknown-gate',
         'internal-error',
+        # 2026-11-05, U206: the warning a run that looked an ISRC up carries.
+        'isrc-lookups',
         'module-extras-missing',
         'provider-spend',
     ],
@@ -1745,6 +1749,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-committed-unverified',
         'two-of-one-name',
     ],
+    # 2026-11-05, U204: the mirror downloads step's kind and its job source joined.
+    'organize/mirror_downloads.py': ['account-mirror', 'mirror-downloads'],
     # 2026-11-05, U201: the mirror edits step's kind, its write refusals and
     # its untagged warning joined.
     'organize/mirror_edits.py': [
@@ -2454,6 +2460,7 @@ PINNED_NAMED_WITH_OWN = {
 
 # The named-with-own modules that also hold an in-range integer.
 PINNED_NAMED_WITH_INTEGER = frozenset({
+    'acquire/catalogue_api.py',  # 2026-11-05, U207: the ISRC batch's floor and ceiling.
     'acquire/match.py',
     'adopt/revert.py',
     'core/config.py',
@@ -3143,6 +3150,7 @@ PINNED_LITERAL_HOLDERS = {
 
 # The literal-holder modules that also hold an in-range integer.
 PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
+    'acquire/catalogue_api.py',  # 2026-11-05, U207: the ISRC batch's floor and ceiling.
     'acquire/match.py',
     'adopt/revert.py',
     'analysis/cli.py',

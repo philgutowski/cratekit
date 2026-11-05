@@ -593,6 +593,51 @@ def test_rows_the_account_cannot_carry_are_counted_skipped_and_never_asked_again
     assert third["data"]["totals"]["unmatched"] == 2
 
 
+def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remembered_miss(
+    world, cfg
+):
+    """U207. The plan hands the account every code it is about to ask, before
+    asking any, so the codes the catalogue files nothing under are screened in
+    batches; a row with no code, a linked row and a remembered miss are never
+    handed over, since none of them is asked."""
+    world.sql("UPDATE djmdContent SET ISRC = '' WHERE ID = '2'")
+    del world.account.catalog["3"]
+    world.account.reasons["3"] = "the provider has no track under this ISRC"
+    gig = world.folder("GIG READY")
+    world.playlist("Opener", "1", "2", "3", "4", under=gig)
+
+    assert sync()[0] == int(ExitCode.OK)
+    first = list(world.account.screened)
+    assert first[0] == (isrc("1"), isrc("3"), isrc("4"))
+    asked = {one["isrc"] for one in world.account.matches}
+    assert all(set(screened) <= asked for screened in first)
+
+    assert sync()[0] == int(ExitCode.OK)
+    # Rows 1 and 4 are linked and row 3 is a remembered miss: nothing is asked
+    # and nothing is screened.
+    assert world.account.screened == first
+
+
+def test_a_code_the_account_playlist_already_holds_is_never_screened(world, cfg):
+    """U207. A row whose code exactly one track of the account playlist carries
+    is taken from the playlist with no lookup, so its code is not screened."""
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", under=gig)
+    assert sync()[0] == int(ExitCode.OK)
+    made = world.titled("GIG READY Opener")
+    # Rows 3 and 4 are added in rekordbox, and row 4's track on the account by
+    # hand, so on the next sync row 4's code is held by the account playlist.
+    world.rekordbox_add(opener, "3", "4")
+    world.account.playlists[made].append(remote("4"))
+    before = len(world.account.screened)
+
+    assert sync()[0] == int(ExitCode.OK)
+
+    later = [code for screened in world.account.screened[before:] for code in screened]
+    assert isrc("3") in later
+    assert isrc("4") not in later
+
+
 def test_a_remembered_miss_is_asked_again_when_the_rows_isrc_changes(world, cfg):
     del world.account.catalog["3"]
     gig = world.folder("GIG READY")

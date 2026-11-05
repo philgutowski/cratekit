@@ -63,7 +63,7 @@ from __future__ import annotations
 
 import re
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -71,7 +71,14 @@ from urllib.parse import urlsplit
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi  # noqa: F401
 
-from cratekit.acquire import catalogue_api, listing, match, provider_session
+from cratekit.acquire import (
+    catalogue_api,
+    isrc_cache,
+    isrc_screen,
+    listing,
+    match,
+    provider_session,
+)
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -297,7 +304,8 @@ class TidalAccount:
     the last match of a row came back empty and one whether it broke a tie
     (U208), one that names a playlist's tracks, and the one removal, from a
     playlist the product made. Since U143 also the account root's two
-    removals, each of a kind a gate named.
+    removals, each of a kind a gate named, and since U207 one that screens a
+    plan's ISRCs before it asks, which reads only.
     """
 
     def __init__(
@@ -307,11 +315,14 @@ class TidalAccount:
         sleep: Callable[[float], None] | None = None,
         cfg: Any = None,
         catalogue: Any = None,
+        cache: isrc_cache.Cache | None = None,
     ) -> None:
         self._session = session
         #: Where catalogue lookups go: the app client when the opener built
         #: one (U205), else the account session, exactly as before.
         self._lookups = catalogue if catalogue is not None else session
+        #: The codes a batch answered as filed under nothing (U207).
+        self._screen = isrc_screen.Screen()
         #: The configuration whose outbound ledger says which playlists the
         #: product made (R-836). None refuses every removal, since a ledger
         #: that cannot be named cannot say yes.
@@ -319,6 +330,9 @@ class TidalAccount:
         # Looked up at construction rather than bound as a default, so a caller
         # that replaced ``time.sleep`` is honoured.
         self._sleep = sleep or time.sleep
+        #: What the provider already answered for an ISRC (U206), off the
+        #: configuration's ``[provider] isrc_cache_days`` when one is given.
+        self._cache = cache if cache is not None else isrc_cache.Cache.from_config(cfg)
         self._hearts: set[str] | None = None
         self._members: dict[str, list[str]] = {}
         self._reasons: dict[str, str] = {}
@@ -361,6 +375,27 @@ class TidalAccount:
             raise account.provider_failure(exc, doing) from exc
 
     # ── matching ────────────────────────────────────────────────────────────
+
+    def screen_isrcs(self, codes: Iterable[str]) -> int:
+        """Ask the catalogue which of ``codes`` it files anything under, in batches.
+
+        BEFORE A PLAN'S LOOKUPS, NEVER INSTEAD OF THEM (U207). A code a batch
+        answered as filed under nothing is answered not found by
+        :meth:`match_track` with no request; every other code is asked alone
+        there as before, so :meth:`_among` sees every release. Only the app
+        client is asked, see ``acquire.isrc_screen``, so without it this makes
+        no request. Returns the requests made, for a caller that reports what
+        its run spent. A failed batch marks nothing and raises nothing but the
+        gate's own park.
+        """
+        # A CODE THE ISRC CACHE ANSWERS IS NOT SCREENED (U206): its lookup
+        # makes no request, so a batch about it would be the one request a
+        # second run over the same codes still paid.
+        country = isrc_cache.country_of(self._lookups)
+        return self._screen.screen(
+            self._lookups,
+            [code for code in codes if not self._cache.holds(str(code or ""), country)],
+        )
 
     def match_track(
         self,
@@ -409,10 +444,10 @@ class TidalAccount:
         self._ties.discard(key)
         wanted = str(isrc or "").strip()
         if wanted:
-            found = self._call(
-                f"look up the ISRC {wanted}",
-                lambda: self._lookups.get_tracks_by_isrc(wanted),
-            )
+            # A CODE A BATCH ANSWERED AS FILED UNDER NOTHING (U207) is the
+            # empty answer this lookup would give, so it is not asked again;
+            # every other code is remembered or asked (U206).
+            found = _ABSENT if self._screen.absent(wanted) else self._isrc_tracks(wanted)
             if found is not _ABSENT:
                 tracks = {
                     str(getattr(track, "id", "") or ""): track for track in found or ()
@@ -444,6 +479,43 @@ class TidalAccount:
             return None
         resolved = str(getattr(track, "id", "") or "")
         return resolved if resolved == reference else None
+
+    def _isrc_tracks(self, wanted: str) -> Any:
+        """The provider's tracks for one ISRC, remembered or asked (U206).
+
+        A remembered answer is used as the client's would be, and a remembered
+        not found is ``_ABSENT`` as an asked one is. Asked, the answer is kept
+        only when it is one: a track list, or a not found the client said in so
+        many words on the attempt that settled it (``isrc_cache.said_not_found``). An
+        ``InvalidISRC`` this account still reads as no match is not kept, nor
+        is anything the ladder raised.
+        """
+        # The country the client that is ASKED asks in: the app client when
+        # one is open (U205), which carries the account's own.
+        country = isrc_cache.country_of(self._lookups)
+        held = self._cache.recall(wanted, country)
+        if held is not None:
+            return held if held else _ABSENT
+        # What the LAST attempt said, reset on each one, so a not found on an
+        # attempt the ladder retried past is not read as the settling answer.
+        last = {"said_not_found": False}
+
+        def ask() -> Any:
+            last["said_not_found"] = False
+            try:
+                return self._lookups.get_tracks_by_isrc(wanted)
+            except Exception as exc:
+                last["said_not_found"] = isrc_cache.said_not_found(exc)
+                raise
+
+        isrc_cache.asked()
+        found = self._call(f"look up the ISRC {wanted}", ask)
+        if found is _ABSENT:
+            if last["said_not_found"]:
+                self._cache.remember(wanted, country, ())
+        elif isinstance(found, (list, tuple)):
+            self._cache.remember(wanted, country, found)
+        return found
 
     def _among(
         self,

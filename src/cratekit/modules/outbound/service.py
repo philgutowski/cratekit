@@ -59,6 +59,7 @@ applying it when the run merely started.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -147,6 +148,19 @@ class RemoteAccount(Protocol):
         candidate that could not be read still refuses. A heart never passes
         it, since there the heart is the person's own choice of release and
         R-572's refusal stands.
+        """
+
+    def screen_isrcs(self, codes: Iterable[str]) -> int:
+        """Ask, in as few requests as the provider allows, which codes it files nothing under.
+
+        Called by a plan before its first ``match_track``, with every code the
+        plan will ask (U207). A later ``match_track`` of a code the provider
+        answered as filed under nothing is answered unmatched with no request;
+        every other code is asked as before, since a batch answer names one
+        release per code and never says which release a row is. It writes
+        nothing, raises nothing for a batch the provider could not answer (the
+        codes are then asked one at a time), and returns the requests it made,
+        zero for an account that has no batch form.
         """
 
     def unmatched_reason(self, identity: str) -> str:

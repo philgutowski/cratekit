@@ -42345,3 +42345,296 @@ rows (reasoned from `_ask` to `_lowest`, not driven on main).
 **Closes when:** `held_there` leaves out releases another row of the plan
 took, so the second row takes the free release, with a test. Ledger only: two
 rows of one recording in one playlist is a duplicate the person made.
+
+---
+
+## R-1225. A Favorites month move that loses to rekordbox's own addition lists the old month as a lone month removal on every run
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** When the account moves a track between month playlists and
+rekordbox also added it to the new month with the account's time earlier or
+unknown, the later change rule answers REKORDBOX. The account no longer holds
+the old month and rekordbox still does, so every later run reads the old month
+as a month removal alone, which the brief lists and does not carry.
+
+**Measured cost.** Driven by review round two (two of three parametrisations):
+the old month is kept in the library and named on every run until a person
+takes it off one side.
+
+**Closes when:** a REKORDBOX answer on a month move settles the old month as
+rekordbox has it, or Phillip decides a lone month removal is carried. Ledger
+only: the brief's rule.
+
+---
+
+## R-1226. A downloaded row the ledger already links to another account track is never tied to the track it was queued for
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** `account_mirror._read_edits` ties a queued track to the row
+of its frozen ISRC (`mirror_downloads.landed`) and answers the row as that
+track, unless the ledger links the row to another track, which round one's
+fix made the rule so an owned row's release is never swapped. A landed row that
+some other engine linked before organize read it is therefore never adopted.
+
+**Measured cost.** Driven by review round two with a direct ledger write: the
+account track stays named as awaiting its landing on every run. The real
+producer, another engine linking a freshly landed row first, was not driven.
+
+**Closes when:** the tie tells a row the download made from one the library
+held before it, by the landing record that names the row. Ledger only.
+
+---
+
+## R-1227. A rotation approved in the same organize run moves an edited INBOX batch into Old and refuses the whole mirror-edits step
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** The rekordbox area applies `rotate` before `mirror-edits`
+(`organize/rekordbox.py` STEPS). An INBOX batch a person edited on the account
+that the rotation moves into Old in the same run is no longer a live batch
+when `mirror-edits` plans again on its write handle, so the plan the gate
+showed differs and `_stale` refuses the step, with every other edit of the run.
+Old is never touched.
+
+**Measured cost.** Driven by review round one: nothing written that run; the
+next organize takes the other edits again, while the edit to that batch goes
+with its retired mirrored playlist. Round two's drive did not reach the
+refusal, so its producer is not always met.
+
+**Closes when:** the step plans an INBOX edit only for a batch the rotation
+will not move this run, or drops a moved batch's change alone rather than
+refusing the step. Ledger only: an honest refusal that heals on the next run.
+
+---
+
+## R-1228. A track added on the account that the download job finds owned by a rule mirror-downloads cannot see is queued, then named and never carried
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** `mirror_downloads._owned` reads the database's ISRC column
+and the mirror matcher's codes. The `intake playlist` job owns a track by
+`intake_cli.resolve_track`'s rules over the files: ISRC_EXACT, EXACT artist and
+title and version, CREDITED_EXACT. A row whose code is only in its file and that
+sits in no mirrored playlist, one with no code at all, or the same artist and
+title under another code, is missed by the step, so the track is queued; the job
+resolves it owned and lands nothing. Since round two the step names it as
+found owned rather than awaiting a landing, but the account's edit is never
+carried, since no library row is tied to the account track.
+
+**Measured cost.** Driven by review round two through the real handler (three
+populations): one queued job and one request per such track, the edit named
+on every run and never taken. The file only population is unmeasured; the
+untagged one is the matcher's count, 1691 of 9868 live files with no ISRC tag,
+measured on the tree by an earlier unit.
+
+**Closes when:** the step asks the job's own rule (`match_cli.library_view`
+with `resolve_one`) before queueing, and ties an owned answer to its row so the
+edit is carried. Ledger only: the product says what happened.
+
+---
+
+## R-1229. Several U204 guards are killed by no test in the touched files
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** The reviewers' guard sweeps reverted each guard alone over
+the touched test files. Pinned after round one: the INBOX latch, the
+favourites restore detection, the favourite read back, the quarter refusal, the
+queue's second read and a failed job freeing its track. Still killed by no test
+after round two: the AGREED clause's `not there_m & away`, the month move's
+`pid in held`, the ledger link guard on adoption in `_read_edits`, the matcher's
+codes in `_owned`, the folder guard on a title two folders share
+(`_read_edits`, `holds_for`), `Applied.wrote` counting a colour and a made
+month, the settle keyed by tree, a month already held, and the source at the
+playlist root refusal. The second fix round, `Hold.stay` and the finished job
+outcomes, was not reviewed, since both rounds were spent; each has a test that
+fails without it.
+
+**Measured cost.** None to a user named; the behaviour is unpinned. The
+mutation table, `docs/mutation/u204.md`, is the author's measure of the rest.
+
+**Closes when:** each has a test that kills its revert. Ledger only.
+
+---
+
+## R-1230. The account mirror screens the ISRCs of a playlist its plan then leaves, a person's playlist of the same title
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `organize.account_mirror.read` hands `Matcher.screen` every row of every mirrored folder before any plan runs. A playlist the plan then leaves, because a person's playlist of the same title already sits in the folder, has its rows screened though none of them is ever matched. Rows with no database code also have their file's tag read for the screen.
+
+**Measured cost.** Driven by the round two review on the mirror's fixture world: a library mirroring one playlist that the account already holds under a person's title planned no match and screened all three codes. With the app client that is one batch request per twenty such rows where `main` sent none. It costs request budget only: no data and no false report.
+
+**Closes when:** the screen runs per folder after the plan has decided which playlists it reuses or creates, or the rows of a left playlist are left out of it. Ledger only.
+
+---
+
+## R-1231. A code a batch of ISRCs leaves out is read as filed under nothing on the provider's document alone, never on a live answer
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `acquire.isrc_screen` reads a code that a multi code answer of `GET /tracks?filter[isrc]=` does not name as filed under nothing, and `TidalAccount.match_track` and `TidalCatalogue.tracks_for_isrc` then answer it not found with no request. Two things say an omitted code is lacking: the platform's published document (version 1.10.224), which says several codes return one track per code, and the screen's refusal of any answer it cannot attribute whole. No live request has confirmed it, because the container that built U207 had no app credential.
+
+**Measured cost.** Not driven against the live API. Driven on fixtures by the round one review: a screened absence is remembered by `sync pair` as a `pairs.Miss` and by the mirror as a ledger miss. Both carry the same reason and key the account session path writes, and both are reused until the row's code changes. If the live answer ever omits a held code, up to twenty rows per request would be remembered as unmatched, where before U207 one wrong empty answer cost one row. Until the app credentials are recorded at the attended sitting U205 owes, the screen makes no request at all.
+
+**Closes when:** the attended live read compares one batch answer against the same codes asked one at a time and they agree, recorded in the sitting record. Ledger only; the screen is off until the app is registered, and the read is owed as an attended card.
+
+---
+
+## R-1232. Under a token service outage the ISRC screen asks for a token once a batch and reports each batch as a request made
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `Screen.screen` treats a failed batch as nothing learned and goes on to the next one, unless the failure was a rate limit, a rejected credential or a 4xx. A token service answering 503 fails every batch before its read, so each batch spends one token request. Each one is also counted in the number `screen_isrcs` returns, though no catalogue request was sent.
+
+**Measured cost.** Driven by the round one review: 45 codes with the token endpoint answering 503 cost three token requests, no catalogue request and nothing marked absent. `screen_isrcs` returned 3. The lookups that follow then refuse as they did before U207. That is three wasted calls on the gate, and a request count in the mirror's plan fact that is three high.
+
+**Closes when:** a failure that never reached the catalogue stops the screening for the run, and a batch that sent no read is not counted. Ledger only.
+
+---
+
+## R-1233. One rejected app credential on an ISRC batch stops the screening for the run, though the next lookup refetches the token and succeeds
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `Screen.screen` stops for the rest of the run on `AppCredentialsRejected`, on the reasoning that every later batch would be refused the same way. The app client drops its token on a 401 or 403, though, and the next request asks for a fresh one, so a token that lapsed inside its margin or was revoked mid run is refused once and then works. The lookups after it succeed, and the screening that would have saved them is off.
+
+**Measured cost.** Driven by the round two review with a fake answering one batch 401: sixty codes the catalogue files nothing under cost 62 app reads, against 3 with no failure and 23 with a 503 on one batch. A real lapse or revocation was not driven against the provider. It costs request budget only: no false answer.
+
+**Closes when:** a rejection on a batch is retried once with a fresh token before the screening stops. Ledger only.
+
+---
+
+## R-1234. Without the app credentials an ISRC lookup still costs one request plus one per release, through the client library
+
+**Found:** at the plan of #497, U207, 2026-11-05.
+
+**The mechanism.** Under the app client (U205) an ISRC lookup is one request, with the artists and releases included. Without it, `TidalAccount.match_track` and `TidalCatalogue.tracks_for_isrc` call the client library's `Session.get_tracks_by_isrc`. At 0.8.11 that makes one catalogue v2 call and then a `session.track(id)` for every release the answer names. The account path also has no batch form, so the U207 screen makes no request there.
+
+**Measured cost.** Read from the library's source, not driven live. A code filed under a single, an album cut and three compilations costs six account calls rather than one. This is the live path until the app is registered.
+
+**Closes when:** the app credentials are recorded at the attended sitting U205 owes, which moves every lookup to the one request path. Alternatively, a later card moves the account path to a v2 request of its own after a live probe of what the account token's answer includes. Ledger only.
+
+---
+
+## R-1235. Under the app credentials a track's streamability is read off availability, a field the provider marks deprecated and due for removal
+
+**Found:** at the plan of #497, U207, 2026-11-05.
+
+**The mechanism.** `catalogue_api._available` reads a track's `availability` array for `STREAM`, and `tidal_account._streamable` leaves a track that cannot stream out of the choice. The platform's published document (version 1.10.224) marks `availability` deprecated in favour of `usageRules` and says it will be removed. Once it is gone, every app answer reads as `None`, which is streamable, so a withdrawn release becomes a candidate again.
+
+**Measured cost.** Not driven. Nothing today is affected, since the field is still documented and the app is not registered yet. On removal, a heart or a pair could land on a release nobody can play wherever it is the one release that agrees.
+
+**Closes when:** a live probe reads `usageRules` values and `_available` reads them when `availability` is absent. Ledger only.
+
+---
+
+## R-1236. The ISRC cache's re-read under the lock before a set aside kills no test
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** `Cache._set_aside_held` in `src/cratekit/acquire/isrc_cache.py`
+reads the file again under the lock and renames it aside only if it still does
+not parse, so a good file another process wrote between this process's read and
+its lock is never set aside on an old reading. Replacing it with a rename that
+skips the re-read killed none of 153 tests (Fable round one, in process).
+
+**Measured cost.** None driven. The race it covers, a second writer landing a
+good file inside that window, was not produced. If it happened without the
+guard, the cost is calls, never data: the good file is set aside and rebuilt.
+
+**Closes when:** a two process test lands a good file between the read and the
+lock and shows it kept. Ledger only.
+
+---
+
+## R-1237. An ISRC spelled lower case or hyphenated is asked of the provider on every run and never kept
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** The ISRC cache keeps and recalls only a spelling that is
+already its own fold (`_key` in `src/cratekit/acquire/isrc_cache.py`), because
+the provider may answer another spelling differently and that answer must not
+stand for the folded code. Four callers of `match_track` fold through
+`match.isrc_token` first. `export set` (`src/cratekit/export/set_cli.py`) hands
+over a list document's own `Wanted.isrc`, stripped but not folded.
+
+**Measured cost.** Driven at the seam: `qzaaa2600001` and `QZ-AAA-26-00001`
+asked twice each, four calls, nothing written. `export set` was not driven end
+to end. A set exported from a list carrying such spellings pays every lookup on
+every run, as it did before U206; nothing is wrong, only unsaved.
+
+**Closes when:** `export set` folds the code before asking, as the other
+callers do, and a test shows its second run asks nothing. Ledger only.
+
+---
+
+## R-1238. A copy run made by hand saves its ISRC lookups only if it exports CRATEKIT_ISRC_CACHE_DIR, and the sitting steps do not say so yet
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** Every copy run since sitting 39 copies the installation
+state and redirects `CRATEKIT_STATE_DIR`, which puts the ISRC cache in the
+scratch area. `core.rehearsal.redirected` keeps it live by itself; a copy run
+by hand keeps it live only by exporting `CRATEKIT_ISRC_CACHE_DIR` to the live
+state folder first. `docs/GUIDE.md` and the solutions entry on it say so;
+`docs/cutover.md`'s sitting steps and the `crate-sync` skill do not.
+
+**Measured cost.** Driven in process: without the variable a redirected copy
+run asks again, with it the copy run asks nothing. Whether the next sitting
+exports it is not measurable here. A hand rehearsal of `sync pair` that follows
+the old steps pays its lookups twice, the cost #496 was filed for.
+
+**Closes when:** the next attended sitting that rehearses a lookup heavy verb by
+hand exports the variable and records its live run's `isrc-lookups` line, and
+the sitting steps carry it. Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1239. The per attempt reset of what an ISRC lookup said kills no test at either seam and guards a state neither can reach
+
+**Found:** at the second review of #496, U206, 2026-11-05.
+
+**The mechanism.** `TidalAccount._isrc_tracks` in
+`src/cratekit/modules/outbound/tidal_account.py` resets `last["said_not_found"]`
+at the start of every attempt, so a not found on an attempt the ladder retried
+past is not read as the settling answer. But `_call` returns `_ABSENT` on the
+same attempt for every failure `isrc_cache.said_not_found` accepts, so no
+attempt that set the flag is ever retried past.
+
+The catalogue's `answered.clear()` in `TidalCatalogue.tracks_for_isrc`
+(`src/cratekit/label/tidal_catalogue.py`) is the same shape: a not found returns
+the empty answer on the attempt that raised it, so no retried attempt follows
+one that appended.
+
+**Measured cost.** None. Removing the account's reset passed all 57 tests in
+`tests/test_isrc_cache.py` (Fable round two), and rows M15 and M19 of
+`docs/mutation/u206.md` measure zero over the full suite for both seams.
+
+**Closes when:** both resets are removed with a comment saying why, or a seam
+starts retrying past a said not found and a test drives it. Ledger only.
+
+---
+
+## R-1240. Doctor says a cache file that does not parse needs nothing done, also when the lock cannot be opened and no lookup will set it aside
+
+**Found:** at the second review of #496, U206, 2026-11-05.
+
+**The mechanism.** The `provider.isrc-cache` note in `src/cratekit/cli/doctor.py`
+says of a cache file that does not parse that the next lookup sets it aside and
+starts afresh, so there is nothing to do. The set aside needs the sibling lock.
+When the lock file cannot be opened, `Cache._locked` yields not held, nothing is
+set aside, and every lookup asks the provider while the note still says there
+is nothing to do.
+
+**Measured cost.** Driven with a hand made producer, a directory at the lock
+path: three lookups asked three times and the note unchanged. The realistic
+producer, a state directory this account cannot write, could not be driven on
+a container that runs as root, so reachability is unmeasured. The cost is calls
+and a note that reads clean over them, never data.
+
+**Closes when:** the note asks whether the lock can be taken and, when it
+cannot, says every lookup asks the provider until the folder is writable.
+Ledger only.
