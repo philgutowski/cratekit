@@ -41823,3 +41823,525 @@ opens this way. Not a regression, and inside the brief's stated contract.
 **Closes when:** a closer followed by a capital letter after a stop inside the
 span is also read as a span, with a test that `**Brainstorm**s` stays unknown.
 Ledger only: maintainer facing.
+
+---
+
+## R-1201. The mirror-edits write tags each file before the guarded commit, and a commit that then fails leaves the files retagged while the rows and the tree stay as they were
+
+**Found:** at the review of #489, U201, round one, 2026-11-05.
+
+**The mechanism.** `organize.mirror_edits.write` writes each file's `genre` and
+`energylevel`, reads them back, and only then writes the rows and memberships
+and calls `rb_writer.commit_guarded`, the order `tag suggest` keeps so the
+database never says what a file does not. A commit refused after the tags were
+written rolls the database back and leaves the files as written. Routing reads
+the file, so the next `route resort` or adoption reads the new genre while
+rekordbox still files the track where it was. The next organize plans the same
+edit again and writes it whole, since the snapshot was not settled.
+
+**Measured cost.** Driven by the round one reviewer with `commit_guarded`
+replaced to raise (scratchpad drive D5): the file reads Tech House at energy 4,
+the row and the tree are unchanged, and the next run completes the move. No
+product path that fails between the tag write and the commit was driven, so the
+reachability is unmeasured.
+
+**Closes when:** the write records each file's previous tags and puts them back
+when the commit fails, with a test injecting the failure.
+
+---
+
+## R-1202. A Question for Phillip posted by a thread that keeps building reads as waiting on the board, and frees that thread's lane
+
+**Found:** while building #489, U201, 2026-11-05.
+
+**The mechanism.** The project's rules have a thread post a question on its card
+and keep building to the conservative call. `scripts/board.py cloud` reads a
+`Question for Phillip` with no reply as `waiting-on-phillip`, whatever the
+thread posts after it, so a card still held and being built is counted as no
+lane's, and the coordinator may fill that lane while the thread is still
+working.
+
+**Measured cost.** Measured on #489: a `Progress` note posted after the question
+left the card read `waiting-on-phillip`. No card was taken twice, since a
+waiting card is not takeable; the lane count was short by one until the landing.
+
+**Closes when:** `board.py cloud` reads a `Progress` note after a question from
+the holding thread as underway, with a test.
+
+---
+
+## R-1203. A genre track the account listed short at the first U201 run is never agreed on its playlist, and can later be read as a person's addition and filed back
+
+**Found:** at the review of #489, U201, round two, 2026-11-05.
+
+**The mechanism.** The snapshot of a mirrored genre playlist is what the account
+listed when the mirror finished it (`mirror_edits.agreed_after`, recorded by
+`mirror.apply` and `mirror.settled`). A track the provider counts and does not
+list, an unplayable one, is absent from that listing when the first U201 run
+records the playlist, and the mirror's add of it reads back absent, so it is
+recorded as refused and never agreed. If rekordbox later takes the track out of
+the tree and the provider lists it again, `mirror_edits.decide` reads it as on
+the account and not in the snapshot, a person's addition, and the rekordbox
+area's `mirror-edits` step files it back into the playlist.
+
+**Measured cost.** Driven by the round two reviewer on the strict fake, with the
+fake's `add_tracks` answering as `tidal_account.add_tracks` does for a hidden
+track (scratchpad drive S13): a removal made by hand in rekordbox is undone by a
+write and the gate names an account edit nobody made. The producer, the
+provider listing a once unplayable track again, was not driven; one candidate
+was driven on the fake and produces it. Ledger only for that reason.
+
+**Closes when:** a track the mirror asked to add and the provider refused is
+read as agreed absent rather than unknown, for instance by recording the refused
+track in the snapshot's own word, with a test of the S13 sequence.
+
+---
+
+## R-1204. A genre playlist whose listing fails while the edit rule reads it, and reads at the mirror's own plan, lets the mirror add a moved track back for one run
+
+**Found:** at the review of #489, U201, round one, 2026-11-05.
+
+**The mechanism.** `account_mirror._read_edits` reads a genre playlist whose
+listing fails as its snapshot and short, so it carries no edit of its own, and
+caches no listing; `mirror.plan` then reads the listing again. A transient
+failure that succeeds on the second read gives the mirror a listing the edit
+rule never decided over, so a track a person moved off that playlist is not
+held there and the mirror adds it back for one run, converging on the next.
+
+**Measured cost.** Reasoned from the two functions by the round one reviewer,
+not driven: reachability unmeasured.
+
+**Closes when:** the mirror plans a playlist the edit rule could not read from
+that same failure, refused or held, rather than reading it again.
+
+---
+
+## R-1205. Guards of U201's account edit rule and its short listing fix that no test reaches
+
+**Found:** at the review of #489, U201, rounds one and two and the mutation table, 2026-11-05.
+
+**The mechanism.** Each guard below was reverted alone with the suite green.
+From the reviews: `PlaylistPlan.unlisted` (a short listing keeps its snapshot's
+word on what it did not list; the round two drive S14 kills it), `settled`
+recording a short playlist with nothing to write (drive S2 kills it),
+`Decision.settle` leaving short playlists out (one extra agreed line after a
+move into a short playlist, run 3 of S2), `_later` with two rekordbox places,
+a failed listing read as short in `_read_edits`, holds handed only to genre
+folders, memberships outside the tree in the step's plan, and two dead
+conditions in the round one fix (`gone` in `unlisted`, `not now` in the own
+genre held branch). The mutation table, `docs/mutation/u201.md`, adds its own
+zero rows: E2 (masked by the still in two bands guard, the composite C1 kills
+both), E5 (the composite C2 kills what it narrows), M3 and M4 (the short
+listing's settled snapshot), L2 (settle never mints a snapshot; C4 kills what
+it narrows) and O4 (a move leaves only routing's playlists; C5 kills what it
+narrows). The composite C3 was zero too and is now pinned by a test added
+after the table, measured by hand.
+
+**Measured cost.** None on the merged head: every guard was driven working by
+the reviewers. A later change that removed one would stay green.
+
+**Closes when:** a test drives each, the reviewers' S14 and S2 sequences first.
+
+---
+
+## R-1206. An account playlist the provider cannot list is filed under the taken kind on the gate
+
+**Found:** at the second review of #490, U202, 2026-11-05.
+
+**The mechanism.** `pair_cli.plan` lists a brought playlist whose listing the
+provider refuses under `pair_discover.TAKEN`, the kind whose counted words
+are "the account already holds its folder or title for something else". The
+`sync-pair-not-brought` warning carries the provider's own message, so only
+the item's kind is wrong. And with no pair held, a provider that answers
+nothing lists every brought playlist this way and the sync ends as a no op
+with that warning, where with a pair held the same provider refuses the sync.
+
+**Measured cost.** Driven by the second review: the gate item's `action` reads
+`taken` for a transient provider error. Nothing is written either way.
+
+**Closes when:** a listing failure has its own kind, and a refusal about the
+whole account refuses whether or not a pair is held. Ledger only.
+
+---
+
+## R-1207. A sync of every pair that fails part way says nothing of the pairs it already wrote
+
+**Found:** at the second review of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync_pair` applies the pairs in one comprehension, so a
+failure on one pair raises out of it and the envelope carries the failure
+alone. A rekordbox playlist made and paired before the failure, and the pairs
+written before it, are in no item and no warning.
+
+**Measured cost.** Driven by the second review with three account playlists
+brought over and the second failing: the first fully synced, the second
+paired with no snapshot, the third not made, and the envelope reported none of
+it. Nothing false is said and nothing is lost; the next sync converges.
+
+**Closes when:** the verb answers a failure with the pairs it wrote before
+it. Ledger only.
+
+---
+
+## R-1208. A pair made from the account records its first commit under the account playlist's id and every later one under the rekordbox playlist's
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync/pair_reverse.create` records the commit that makes a
+rekordbox playlist for an account playlist under `playlist-pair:<account id>`,
+since the rekordbox playlist has no identifier until that commit. Every later
+sync of the same pair writes through `write/playlist_pair.apply`, which
+records under `playlist-pair:<rekordbox id>`.
+
+**Measured cost.** Read from the diff, not driven. A pair's session history is
+split across two source keys, so a reader of one key misses the commit that
+made the playlist.
+
+**Closes when:** the first commit records under the rekordbox id, or both
+writers record under the pair's account id. Ledger only.
+
+---
+
+## R-1209. A pairs document that fails to write after a playlist is made from the account leaves that playlist unpaired
+
+**Found:** at the second review of #490, U202, 2026-11-05.
+
+**The mechanism.** `PairStore.reserve_made_rekordbox` takes the lock, runs the
+create, which commits the rekordbox playlist, and then writes the document.
+The lock proves the document's directory is writable before anything is made;
+it does not prove the write after will succeed. A write that fails there, a
+full disk for one, leaves the playlist in rekordbox with no pair, and the next
+sync names the account playlist taken because its rekordbox folder holds the
+name. U198's `reserve_made` has the same shape on the account side.
+
+**Measured cost.** The second review made `PairStore._write` raise a disk full
+error: the verb exited 1, the playlist was live and unpaired. The producer was
+simulated, not driven. One account playlist then needs a hand pair, which the
+warning says how to do.
+
+**Closes when:** the pair is written before the create under a reserved
+marker, or a playlist the product made is recognised by a record written
+before its commit. Ledger only.
+
+---
+
+## R-1210. An account playlist whose rekordbox top folder is gone is listed rather than made in a new folder
+
+**Found:** at the build of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync/pair_discover.home_of` places an account playlist
+only in a live rekordbox top folder of its root folder's name. When rekordbox
+holds none, because the folder was deleted or renamed there, the playlist is
+listed under `sync-pair-not-brought` and nothing is made, the conservative
+call: a folder deleted in rekordbox may have been deleted on purpose.
+
+**Measured cost.** Driven by `test_home_of_refuses_each_place_it_cannot_decide`.
+A playlist made on the account in that folder waits until the folder is made
+in rekordbox by hand.
+
+**Closes when:** Phillip says whether a missing top folder is made. Ledger
+only; the question is on the card.
+
+---
+
+## R-1211. The another app's folder half of home_of is reached by no test
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** `sync/pair_discover.home_of` refuses a top folder that is a
+Cratekit tree root or another app's folder in one condition. The tree root
+half is pinned by `test_home_of_refuses_each_place_it_cannot_decide`; the
+other app's half is reached by no test, so a mutation of it kills nothing.
+
+**Measured cost.** Maintainer facing. U198's discovery never records an
+account root folder for another app's folder, so the input needs a person to
+rename a recorded rekordbox folder into another app's shape.
+
+**Closes when:** a test drives `home_of` on another app's top folder. Ledger
+only.
+
+---
+
+## R-1212. The account's added date of a track a playlist lists twice is its first mention's
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** `intake.cli.list_playlist_dated` keeps the first mention's
+date for a track a playlist lists twice, as the frozen rows keep the first
+mention. The provider dates each item, so a second copy added later never
+moves the track's date and never reads as the track put back on the account.
+
+**Measured cost.** Not measurable in the harness, whose fake account dates
+per track; a mutation to the last mention killed nothing. A duplicate added
+later reads as unchanged, so a rekordbox removal of the track is applied as
+before U202 rather than weighed against the addition.
+
+**Closes when:** a pair reads the latest date among a track's items, with a
+test whose fake dates each item. Ledger only.
+
+---
+
+## R-1213. The account's added date of a playlist track was read off the client's parse, never off a live listing
+
+**Found:** at the build of #490, U202, 2026-11-05.
+
+**The mechanism.** U202 reads when the account says each playlist track was
+added from the `date_added` the provider's client copies off a playlist item's
+`dateAdded`, as its own comment says playlist items carry. No live listing of
+the author's playlists was read from the container, so whether the tracks
+endpoint the listing walks serves the date, and whether reordering a playlist
+on the account moves it, were not observed.
+
+**Measured cost.** Not driven. With no date, every call is unknown and keeps
+the track, named on the gate, which is the rule before U202. If a reorder
+moved the date, a track reordered on the account and taken out in rekordbox
+since the last sync would be kept and named rather than taken off.
+
+**Closes when:** the attended sitting lists one paired playlist live, reads a
+date on every track, reorders one track on the account and lists it again.
+Ledger only.
+
+---
+
+## R-1214. The first sync of each pair after U202 lands reads its snapshot without the account's dates
+
+**Found:** at the review of #490, U202, 2026-11-05.
+
+**The mechanism.** A snapshot recorded before U202 holds no account added
+dates, and a track is read as put back on the account only against a date the
+base recorded. So each pair's first whole sync after the landing applies
+R-990's old rule once, and records the dates for the sync after.
+
+**Measured cost.** Driven by the branch's own test of a snapshot without
+dates: a track taken out and put back on the account in that one interval,
+and taken out in rekordbox too, comes off the account. By design, said in
+`modules/outbound/pairs.py`.
+
+**Closes when:** every pair has had one whole sync since the landing. Ledger
+only.
+
+---
+
+## R-1215. An ISRC lookup on the app client reads the first page of the answer and never its next link, as the account's lookup did
+
+**Found:** at the build of #495, U205, 2026-11-05.
+
+**The mechanism.** `AppCatalogue.get_tracks_by_isrc` in
+`acquire/catalogue_api.py` reads `data` off one answer and ignores
+`links.next`, as tidalapi 0.8.11's `Session.get_tracks_by_isrc` does on the
+account. A code the catalogue files under more releases than one page holds is
+answered with the first page's tracks only, so `_among` chooses among fewer
+candidates than exist: a hearted release on the second page is not seen, and
+one agreeing release can read as the only one.
+
+**Measured cost.** Not driven: no fixture or live answer this container could
+reach carries a second page, and the page size of the filter endpoint is
+unmeasured. The behaviour is unchanged from before U205.
+
+**Closes when:** #497 (U207) probes the endpoint's page size and batching, and
+a lookup either follows `links.next` inside `acquire.listing`'s ladder or
+refuses an answer with a next link rather than choosing over part of it.
+Ledger only: unmeasured, and no worse than before.
+
+---
+
+## R-1216. Doctor says the app credentials are recorded off the presence index, so a value deleted through the keychain reads as set while lookups go to the account
+
+**Found:** at the review of #495, U205, 2026-11-05.
+
+**The mechanism.** `credential.catalogue` in `cli/doctor.py` asks
+`secrets.exists`, the installation's index of names it wrote, never the
+keychain, on the rule `core/secrets.exists` gives (a retrieval can raise an
+authorisation prompt). After round one of U205's review, the opener reads a
+value the keychain no longer holds as absent and sends the lookups to the
+account, so in that state doctor says the lookups go under the app while they
+go to the account.
+
+**Measured cost.** Driven by the review: a value deleted with
+`keyring.delete_password`, doctor OK. The run's own spend line says
+"none under Cratekit's app credentials", so the person is told the truth on
+every run that reached the provider; only doctor's sentence is wrong.
+
+**Closes when:** the product gains a way to un-record a credential that clears
+the index with it, or doctor's sentence names that it read the index. Ledger
+only: no data lost, and the verbs report where their calls went.
+
+---
+
+## R-1217. The label crawl still reads the catalogue under the account session after U205, since the official API pages by cursor and the crawl's listings page by offset to a declared count
+
+**Found:** at the plan of #495, U205, 2026-11-05.
+
+**The mechanism.** U205 moved ISRC lookups and exact track reads to the app
+client. Every read of the label crawl in `label/tidal_catalogue.py` (the name
+search, an artist by identifier and its release listings, an album and its
+tracks, the copyright re read, the label check, the track search) still goes to
+the account session. Each listing pages through `acquire.listing` by limit and
+offset and stops on a count the provider declares; the official catalogue API
+pages its relationships by cursor. A mapping between the two written without a
+live probe of the official API's paging is the short page read as the end
+defect this package has paid for four times, so the brief's requirement to
+move the label reads was taken as far as its own carve out allows and no
+further. The module docstring names each read that stays and why.
+
+**Measured cost.** None to a DJ: the crawl works as before and its calls are
+counted under the account, where the spend line and doctor show them. What the
+person pays is the account carrying a label sweep's calls, about 3,000 for a
+full label build (U193), which the card set out to remove.
+
+**Closes when:** a unit opens with one read only probe of the official API's
+artist albums, album items and search relationships on the app client, records
+their paging in `docs/solutions/`, and moves the crawl's reads behind an
+adapter that walks the cursor inside `acquire.listing`. Asked of Phillip on the
+card's plan; ledger only until he answers, since an account carrying calls is
+none of the board bar's four costs.
+
+---
+
+## R-1218. A process that opens both the outbound account and the label catalogue builds two app clients and asks the token service twice
+
+**Found:** at the review of #495, U205, 2026-11-05.
+
+**The mechanism.** `tidal_account.open_account` and `tidal_catalogue.open_catalogue`
+each call `provider_session.catalogue_client`, which builds its own
+`AppCatalogue` with its own token. A verb that opens both in one process
+fetches the app's token twice, one gated call more than it needs.
+
+**Measured cost.** Driven by the review with both values recorded: two token
+requests for two reads, one extra paced call per process that opens both. No
+wrong answer.
+
+**Closes when:** the token, or the client, is held once per process and the
+second opener reuses it. Ledger only.
+
+---
+
+## R-1219. A pair's row held as two releases keys on the lowest numbered release ever linked, so a remove and re-add cycle brings back the release the person dropped, and releases already held ignore the heart
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** `sync/pair_cli.plan_pair` reads every account release
+linked to one rekordbox row as that row's one key, the lowest numbered linked
+release's (`by_row`, `_lower`). Links are kept while the row lives in the
+collection, so the canonical release is the lowest of every link ever made,
+with no memory of which release the person kept or hearted. The same rule
+chooses among two or more unlinked releases the account already holds
+(`held_there`), and it never asks whether one is hearted.
+
+**Measured cost.** Driven by the review: links to 101 and 202, the person
+drops 101 and keeps 202, later the row leaves rekordbox and both leave the
+account, then the row is put back in rekordbox: the account gains 101, not
+202. Same with a heart: hearted 202 linked first, 101 added by hand, after a
+remove and re-add cycle the account gets 101. Both releases agree with the
+row; nothing is lost and nothing false is said. Which held release is taken
+is unpinned by the suite (the add loop links the other release either way).
+
+**Closes when:** the canonical release prefers a linked release the account
+still holds, and then a hearted one, before the number, or a link the account
+lost is dropped once the row's other release stays; and a test pins which of
+two held releases is taken. Ledger only: a preference between agreeing
+releases, reachable only through a remove and re-add cycle.
+
+---
+
+## R-1220. A pair's tie broken in favour of a release the account already holds is counted on the gate's line and in totals but named on no item
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** `sync/pair_cli._items` marks `tied: True` only on account
+add items. A tie whose chosen release is already on the account adds nothing,
+so the row is counted in the facts line and `totals.tied` and appears on no
+item.
+
+**Measured cost.** Driven by the review: account holding 101 and 202 before
+the first sync, the facts line says one row matched by a tie and no item
+carries the flag, so a reader of the gate cannot find which row. Nothing is
+written wrong.
+
+**Closes when:** the gate names the tied rows themselves, for instance as the
+facts line's list, with a test. Ledger only.
+
+---
+
+## R-1221. Taking a pair's first release of a row off the account while a later release stays moves the row in rekordbox to the later release's place
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** A row held on the account as two releases is one key in
+the merge, and a key's place on the account side is its first occurrence.
+When the earlier release is taken off and the later stays, the key's place
+moves to the later release's, and rekordbox follows the account's order.
+
+**Measured cost.** Driven: rekordbox (1, 2, 3), account [101, 92, 93, 202];
+the person removes 101; the sync reorders rekordbox to [2, 3, 1], then stays.
+No track is lost and the account's visible order is mirrored faithfully;
+whether the row should keep its place is a judgment the brief does not make.
+`test_the_first_release_taken_off_while_a_later_one_stays_keeps_the_row`
+pins that the row stays, not its place.
+
+**Closes when:** the brief says whether a row's place survives the removal of
+one of its releases; if it should, the key's place is the place of the
+release the base held first. Ledger only.
+
+---
+
+## R-1222. The hearts' refusal of a tie between agreeing releases is pinned at the adapter and through the favourites sweep, and nothing asserts the hearts never pass any_agreeing
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** U208 lets the pairs pass `any_agreeing` to
+`match_track`. The hearts (`modules/outbound/hearts.py`) must not; the
+refusal is pinned by the adapter test without the flag and by the favourites
+sweep over `_releases_for_three_rows` in `tests/test_outbound_tidal_account.py`,
+whose row 2 is the tie. No test watches the hearts path's own call for the
+flag.
+
+**Measured cost.** None today: grep finds no `any_agreeing` in hearts.py,
+export.py or set_cli.py, and the branch does not touch them. Reachability of
+a regression unmeasured; no mutation of hearts.py was run.
+
+**Closes when:** a test drives a heart over a tie with a recording fake and
+asserts the flag absent, or a mutation of hearts.py passing it is killed.
+Ledger only.
+
+---
+
+## R-1223. A pair's linked rows with no database ISRC are read from their files in each of the three plans a sync makes whenever an account track the library lacks has a code no row's database ISRC names
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** `here()` in `sync/pair_cli.plan_pair`, the lookup that
+finds a sibling release's row among the pair's own rows, reads the audio tags
+of every row with no database ISRC that the plan did not already read, once
+per plan, and a sync makes three plans. `_Reader` is per plan, so nothing
+carries the reads across.
+
+**Measured cost.** Driven by the review: four linked file ISRC rows and one
+hand added track the library lacks, 12 file reads in one sync; a quiet sync
+reads none. Time only, proportional to the playlist's file ISRC rows; no
+wrong answer.
+
+**Closes when:** the file identities are read once per sync (a cache carried
+across the gates' plans) or recorded with the link. Ledger only.
+
+---
+
+## R-1224. Two rows of one pair carrying one ISRC, with two unlinked releases of it on the account, leave the second row unmatched and the free release named ambiguous
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** The `held_there` branch in `sync/pair_cli.plan_pair`
+takes the lowest of the account's unlinked releases of a row's ISRC, and does
+not exclude a release another row of the same playlist already took
+(`seen_remote`), so the second row takes the same release and is refused as
+"another row of this playlist ... is already the account track it matches".
+The free release then finds two library rows by ISRC and is named ambiguous.
+
+**Measured cost.** Driven by the review: row 2 given row 1's ISRC and words,
+account [101, 202]: links {101: row 1}, row 2 unmatched, 202 ambiguous, every
+sync. The provider path before U208 reached the same outcome for two such
+rows (reasoned from `_ask` to `_lowest`, not driven on main).
+
+**Closes when:** `held_there` leaves out releases another row of the plan
+took, so the second row takes the free release, with a test. Ledger only: two
+rows of one recording in one playlist is a duplicate the person made.

@@ -1,0 +1,231 @@
+name = "u201"
+pass_kind = "full"
+
+[[rows]]
+id = "E1_never_agreed_base"
+description = "Mirrored.base: a playlist never agreed reads an empty snapshot, so every account track reads as an edit on the first run"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        return self.account if self.agreed is None else self.agreed'''
+new = '''        return frozenset() if self.agreed is None else self.agreed'''
+
+[[rows]]
+id = "E2_two_bands_held"
+description = "_intent: a track added to two band playlists at once is moved to one of them rather than held"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if len(added) > 1:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E3_own_genre_derived_held"
+description = "_intent: a track taken off its band and left in its own genre's with vox is decided as a genre change"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if removed and not now and folders[0] in {place.folder for place in removed}:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E4_own_genre_no_edit"
+description = "_intent: a track added to its own genre's with vox while keeping its band reads as an edit"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if not removed and folders[0] in {place.folder for place in now}:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E5_agrees_exact"
+description = "_agrees: rekordbox holding the target among other places counts as agreeing"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        return now == frozenset({to})'''
+new = '''        return to in now'''
+
+[[rows]]
+id = "E6_short_unread"
+description = "decide: a short listing marks nothing unread, so a counted, unlisted track reads as taken off"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            unread |= one.agreed - one.account'''
+new = '''            unread |= set()'''
+
+[[rows]]
+id = "E7_addition_beats_removal"
+description = "decide: an unfile on the account against rekordbox placing the track is carried, the removal beating the addition"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            if kind == UNFILE:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "E8_unowned_held"
+description = "decide: a track the library owns no row for is carried with no row"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if not rows:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E9_two_rows_held"
+description = "decide: a track two library rows match is carried onto the first"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if len(rows) > 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E10_unknown_time"
+description = "_later: a time unknown lets the account's move win"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if account_at is None or rekordbox_at is None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "E11_later_strict"
+description = "_later: equal times let the account's move win"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if account_at > rekordbox_at:'''
+new = '''    if account_at >= rekordbox_at:'''
+
+[[rows]]
+id = "E12_hold_keep"
+description = "_holds: a carried track is not kept on the account where rekordbox lacks it, so the mirror takes it off"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        keep = frozenset(track for track in held if track in one.account and track not in one.rekordbox)'''
+new = '''        keep = frozenset()'''
+
+[[rows]]
+id = "E13_snapshot_word"
+description = "agreed_after: a held track takes the account's word rather than the snapshot's"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    before = now if base is None else frozenset(base)'''
+new = '''    before = now'''
+
+[[rows]]
+id = "M1_plan_keeps"
+description = "mirror.plan: removes an account track the hold keeps"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            remove = tuple(one for one in names if one not in keep and one not in hold.keep)'''
+new = '''            remove = tuple(one for one in names if one not in keep)'''
+
+[[rows]]
+id = "M2_plan_skips"
+description = "mirror.plan: adds back a track the hold skips"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''                        if one not in on and one not in mine.refused and one not in hold.skip'''
+new = '''                        if one not in on and one not in mine.refused'''
+
+[[rows]]
+id = "M3_settled_only_unwritten"
+description = "settled: records the plan time snapshot for a playlist that also has writes"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if one.action == REUSE and not one.writes and one.remote_id'''
+new = '''        if one.action == REUSE and one.remote_id'''
+
+[[rows]]
+id = "M4_unlisted"
+description = "PlaylistPlan.unlisted: a short listing keeps no word on what it did not list"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if not self.short or self.agreed is None:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "L1_agreed_own_playlist"
+description = "record_mirror_agreed: a snapshot lands on a playlist recorded under the title with another identifier"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            if not entry or str(entry.get("remote_id") or "") != str(remote_id):
+                continue
+            base ='''
+new = '''            if not entry:
+                continue
+            base ='''
+
+[[rows]]
+id = "L2_settle_never_mints"
+description = "settle_mirror_tracks: a playlist never agreed is given a snapshot"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            if not entry or not isinstance(entry.get("agreed"), list):'''
+new = '''            if not entry:'''
+
+[[rows]]
+id = "S1_short_undeclared"
+description = "PlaylistListing.short: a listing that declares no count is whole"
+file = "src/cratekit/modules/outbound/service.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        return self.declared is None or self.listed < self.declared'''
+new = '''        return self.declared is not None and self.listed < self.declared'''
+
+[[rows]]
+id = "O1_latch"
+description = "write: the tree's convergence latch is not asked"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        convergence.assert_tree_writable(cfg, db, tree_id, registry)'''
+new = '''        pass'''
+
+[[rows]]
+id = "O2_stale"
+description = "_stale: a library moved since the plan is written"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if approved.identity() != now.identity():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "O3_target_bucket"
+description = "target_tags: a genre word filing into another bucket is taken"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if routing.resolve_bucket(declared, word).bucket_id != bucket_id:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "O4_leave_routed"
+description = "plan: a move leaves every tree playlist it is in, not only routing's"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''if pid not in wanted and routed(tree.names[pid])'''
+new = '''if pid not in wanted'''
+
+[[rows]]
+id = "O5_untagged_row"
+description = "write: a file that did not take its tags has its row and memberships written"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            if _write_tags(change):'''
+new = '''            if _write_tags(change) or True:'''

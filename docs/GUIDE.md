@@ -954,12 +954,40 @@ a smart playlist, and every playlist under a top folder
 `outbound.pair_skip_folders` names, which is `["ARCHIVE"]` unless you change
 it. A made pair whose rekordbox playlist you move into such a folder, another
 app's folder or the Favorites folder is unpaired, and its account playlist
-stays. A track the account cannot carry stays in
-rekordbox, counted on the gate, and is not asked about again until its ISRC
-changes, except a tie between releases, which is asked again. Another app's
+stays. A track whose ISRC names several releases on
+the account that all agree with it, a single and its album cut, is paired as
+one of them: the one you heart, else the lowest numbered after the file's
+album has narrowed them, as the mirror chooses, and it stays on that one; the
+gate counts how many rows were paired that way. A release of it you add on the
+account by hand is read as the same track, never queued for download: take
+one release off the account and the track stays while the other is there, at
+the other's place, and take the track out in rekordbox and every release of it
+leaves the account. When the account already holds two or more releases of a
+track, the lowest numbered of those is taken rather than any other. A
+track the account cannot carry stays in rekordbox, counted on the gate, and is
+not asked about again until its ISRC changes. Another app's
 folder is never paired either. Two playlists that would take one account title refuse that title
 until you rename one. Delete either side of such a pair and the next sync
 unpairs it, leaves the other side where it is, and does not make it again.
+
+It works the other way too. A playlist you make on the account inside one of
+those root folders comes into rekordbox at the next `crate sync pair`, in the
+rekordbox folder of the same name, named by its title less the folder:
+`GIG READY Closer` becomes `Closer` in GIG READY, and `GIG READY Halloween
+Closer` goes in GIG READY / Halloween when that subfolder is there. One in
+`Playlists` goes at the rekordbox root. It is made on the rekordbox gate,
+holding every track the library owns in the account's order, and a track it
+lacks is queued for download once. Listed on the gate and never made: one
+whose rekordbox playlist you deleted, two that would take one rekordbox name,
+one whose name its rekordbox folder already holds, and one whose rekordbox top
+folder is gone or doubled.
+
+When you add a track on one side and take it off the other between two syncs,
+the change you made later wins on both. Cratekit reads when the account says
+the track was added and when rekordbox's playlist row was made or marked
+removed. The account keeps no time for a removal, and rekordbox often keeps
+none either, so where either time is unknown the track stays on both and the
+gate names it.
 
 ### Publish a playlist
 
@@ -1046,7 +1074,28 @@ which no account playlist holds, fills from the provider track each file was
 downloaded as. A track whose ISRC names several releases that all agree with
 it, a single and its album cut, goes onto the mirror as one of them and stays
 on that one; `crate sync favorites` still hearts none of them until you heart
-one yourself, since a heart is a choice of release. Approve one area and abort the other
+one yourself, since a heart is a choice of release.
+
+An edit you make on the account to a mirrored genre playlist is kept, and
+your library follows it. Move a track from `Deep House Low` to `Tech House Med`
+on Tidal and the next organize retags it, genre Tech House and the energy
+nearest its own that files into Med, and moves it there in BY GENRE + ENERGY;
+take a track off its genre playlist and add it nowhere and its genre and energy
+are cleared, so `crate route unplaced` lists it for placing again, and it stays
+in your collection. Adding a track to another genre's `with vox` playlist gives
+it that genre and keeps its energy. The mirror remembers what each playlist
+held when it last finished it, so it tells your edit from a change made in
+rekordbox. Where both sides changed one track, an addition beats a removal, and
+two moves follow the later one; when either time is unknown rekordbox's
+stands. A track added to two band playlists at once, one the library does not
+own, one taken off its band and left only in a with vox playlist, and one
+missing from a playlist the account listed short is left on the account as
+you put it and named, never taken off. The rekordbox step is `mirror-edits`,
+on the rekordbox area's gate, each track named with its genre, energy and
+playlists from and to. The first organize after this arrives changes nothing in
+your library: it reads every difference as rekordbox's and remembers each
+playlist from then on. The Favorites folder and INBOX still mirror one way
+until U204 brings them, and a track the library lacks with them. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
@@ -1063,7 +1112,7 @@ crate organize --report --only file
 crate organize --only file
 ```
 
-The kinds are `adopt`, `rotate`, `record-labels` and `inspiration` on the rekordbox side,
+The kinds are `adopt`, `rotate`, `record-labels`, `inspiration` and `mirror-edits` on the rekordbox side,
 `labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the
@@ -1466,11 +1515,24 @@ A cancelled job is its own state and is never counted as a failure.
 
 Credentials live in the operating system keychain (macOS's built in password
 store), never in the config file, and `crate doctor` reports which are recorded.
-There are three.
 
 - `provider-session` is the streaming account session used to list and download.
 - `identify-key` and `identify-signing-key` are the recognition service's access
   key and signing value, used only by identification.
+- `catalogue-app-id` and `catalogue-app-key` are Cratekit's own app on the
+  streaming provider's developer platform, its client identifier and the key
+  issued beside it. Optional. When both are recorded, catalogue lookups (which
+  tracks carry an ISRC, a track by its identifier) go under the app rather than
+  under your account, so the account carries only its own playlists, hearts and
+  downloads; the label crawl still reads through the account. With either one
+  missing, every lookup goes to the account as before; one recorded here and
+  since deleted from the keychain does the same, and the run's spend line says
+  so. Register the app on the
+  developer platform, put each value in its own file only you can read, and run
+  `crate login catalogue-app-id --from-file PATH` and
+  `crate login catalogue-app-key --from-file PATH`. `crate doctor` says where
+  lookups are going and how many calls the account and the app have each made,
+  and every verb that reached the provider says the same of its own run.
 
 `crate login NAME --from-file PATH` records one. It refuses a value on the
 command line, since that would sit in your shell history and in the process list

@@ -59,6 +59,7 @@ applying it when the run merely started.
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
 from typing import Protocol
 
 #: The words an unmatched reason carries when a candidate track could not be
@@ -68,9 +69,39 @@ UNREADABLE_CANDIDATE = "could not be read"
 
 #: The words an unmatched reason carries when several releases agree with the
 #: row and nothing told them apart (R-572), formatted into the reason by the
-#: adapter. The mirror reads it to ask such a miss again, since under
-#: ``any_agreeing`` a tie no longer misses (R-1032).
+#: adapter. The mirror and the pairs read it to ask such a miss again, since
+#: under ``any_agreeing`` a tie no longer misses (R-1032, U208).
 AGREEING_RELEASES = "of them agree with this row's artist, title and version"
+
+
+@dataclass(frozen=True, slots=True)
+class PlaylistListing:
+    """One playlist's tracks as one read gives them, with when each was added (U201).
+
+    ``names`` is every track identifier to ``(artist, title)``, in the order
+    first listed. ``added`` is each track's added time on the playlist as ISO
+    8601 UTC text, or absent when the provider gave none. ``listed`` is how
+    many track items the read returned, a track held twice counted twice, and
+    ``declared`` the count the provider declares for the playlist, ``None``
+    when it declares none.
+    """
+
+    names: dict[str, tuple[str, str]] = field(default_factory=dict)
+    added: dict[str, str] = field(default_factory=dict)
+    listed: int = 0
+    declared: int | None = None
+
+    @property
+    def short(self) -> bool:
+        """Whether the read may have left a track out.
+
+        THE PROVIDER LEAVES OUT A TRACK THIS ACCOUNT CANNOT PLAY AND STILL
+        COUNTS IT, so a read shorter than the declared count is missing tracks
+        it cannot name, and a playlist declaring no count cannot be checked at
+        all. Either is short, since a track missing from it is no evidence that
+        a person took it off.
+        """
+        return self.declared is None or self.listed < self.declared
 
 
 class RemoteAccount(Protocol):
@@ -105,16 +136,17 @@ class RemoteAccount(Protocol):
         that agree with the row and that the account hearts none of, the one
         whose album name is the file's is the match (R-572). Never a search.
 
-        ``any_agreeing`` TAKES ONE OF A TIE rather than refusing it, for a
-        caller that writes nothing back as the row's identity (R-1032): the
-        mirror, whose playlist is a listening copy where releases spelled alike
-        are the same thing to hear. It narrows by the account's hearts and the
+        ``any_agreeing`` TAKES ONE OF A TIE rather than refusing it (R-1032):
+        the mirror passes it, whose playlist is a listening copy where releases
+        spelled alike are the same thing to hear, and since U208 the pairs,
+        decided by Phillip at Sitting 54, so a paired playlist carries the
+        tracks rekordbox holds. It narrows by the account's hearts and the
         file's album first, as without it, and then takes the lowest provider
         identifier, so every run takes the same one. It changes nothing but a
         tie: a release that does not agree is never taken, and a tie beside a
-        candidate that could not be read still refuses. A heart and a pair
-        never pass it, since there the chosen release becomes the row's
-        identity and R-572's refusal stands.
+        candidate that could not be read still refuses. A heart never passes
+        it, since there the heart is the person's own choice of release and
+        R-572's refusal stands.
         """
 
     def unmatched_reason(self, identity: str) -> str:
@@ -123,6 +155,16 @@ class RemoteAccount(Protocol):
         Words for a person, carried on the unmatched row. Empty when the account
         has nothing more to say than "unmatched", and empty after a match. It
         reads and writes nothing on the account.
+        """
+
+    def tie_broken(self, identity: str) -> bool:
+        """Whether the last ``match_track`` of this identity took one of a tie (U208).
+
+        True only when ``any_agreeing`` chose among releases that all agree
+        with the row and that nothing else told apart, a match that without it
+        would have been refused; false after any other match and after a miss.
+        The pairs count it for the gate. It reads and writes nothing on the
+        account.
         """
 
     def add_heart(self, remote_id: str) -> None:
@@ -205,6 +247,13 @@ class RemoteAccount(Protocol):
 
         A read, for the prune's gate, which lists every track it would take
         off by artist and title. It writes nothing.
+        """
+
+    def playlist_listing(self, playlist_id: str) -> PlaylistListing:
+        """Every track on the playlist with its added time and the declared count (U201).
+
+        A read, for the account mirror, which tells an edit a person made on the
+        account from a track the read could not see. It writes nothing.
         """
 
     def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:

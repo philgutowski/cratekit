@@ -198,8 +198,19 @@ def _no_live_provider_client():
     from cratekit.modules.outbound import account
 
     account.forget()
+    def refused_transport():
+        raise AssertionError(
+            "a test reached the live catalogue transport; set "
+            "provider_session.CATALOGUE_TRANSPORT_FACTORY to a fake"
+        )
+
     with _own_patch() as monkeypatch:
         monkeypatch.setattr(provider_session, "CLIENT_FACTORY", refused)
+        # U205: the app credentials' catalogue client sends through its own
+        # transport, so a test that records the app's two values and opens an
+        # account would otherwise reach the live catalogue with the battery
+        # green. Refused the same way.
+        monkeypatch.setattr(provider_session, "CATALOGUE_TRANSPORT_FACTORY", refused_transport)
         yield
     account.forget()
 

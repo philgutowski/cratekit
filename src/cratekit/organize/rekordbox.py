@@ -28,6 +28,11 @@ THE STEPS, each the owning verb's plan:
   its name gets one, of the library rows its tracks match, every miss named.
   A set already there is skipped, so a second run plans nothing. Listed and
   not planned when the export module, which archives sets, is off.
+* AN EDIT MADE ON THE ACCOUNT TO A MIRRORED GENRE PLAYLIST TAKEN INTO THE
+  LIBRARY (U201), :mod:`cratekit.organize.mirror_edits`: decided from the
+  run's one account mirror reading, which the account area's mirror plans from
+  too, so the edit this step takes is the edit the mirror holds. Every
+  membership it takes away is named among the area's deletions.
 
 WHAT THE AUTHOR MADE is every top level node outside the trees the taxonomy
 declares, and every node the rotation leaves alone under INBOX. Each is listed
@@ -59,7 +64,7 @@ from cratekit.core import (
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import rotate, rotate_cli
 from cratekit.organize import account as account_area
-from cratekit.organize import inspiration, own
+from cratekit.organize import inspiration, mirror_edits, own
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 
 AREA = "rekordbox"
@@ -79,9 +84,12 @@ ROTATE = "rotate"
 RECORD_LABELS = "record-labels"
 YOURS = "yours"
 INSPIRATION = "inspiration"
+MIRROR_EDITS = mirror_edits.KIND
 
 #: Every step kind this area plans, in its order, each one ``--only`` may name.
-STEPS = (ADOPT, ROTATE, RECORD_LABELS, INSPIRATION, YOURS)
+#: The edits made on the account to a mirrored genre playlist (U201) run after
+#: adoption, whose worker plans again and would refuse a tree moved under it.
+STEPS = (ADOPT, ROTATE, RECORD_LABELS, INSPIRATION, MIRROR_EDITS, YOURS)
 
 #: The module that archives sets, whose sets the INSPIRATION step reads, the
 #: account area's own word for it.
@@ -439,12 +447,15 @@ def plan_area(
     report: bool,
     only: frozenset[str] | None = None,
     available: frozenset[str] | None = None,
+    shared=None,
 ) -> Area:
     """Plan every database step, or refuse the area before any when no backup is acknowledged.
 
     ``only`` is ``--only``'s selection (U137): the steps of no selected kind are
     not planned, and the area's own preconditions still hold for the rest.
-    ``available`` is the profile's modules, ``None`` for every one.
+    ``available`` is the profile's modules, ``None`` for every one. ``shared``
+    is the organize run's one account mirror reading (U201), which the
+    mirror edits step decides from; with none that step is listed, not planned.
     """
     area = Area(name=AREA, only=selection(STEPS, only))
     unacknowledged = acknowledgment(cfg)
@@ -475,6 +486,21 @@ def plan_area(
         area.steps.append(_record_labels(declared))
     if area.wants(INSPIRATION):
         area.steps.append(_inspiration(cfg, declared, available))
+    if area.wants(MIRROR_EDITS):
+        if shared is None:
+            area.steps.append(
+                Step(
+                    key=MIRROR_EDITS,
+                    title=mirror_edits.TITLE,
+                    state=LISTED,
+                    detail="no account mirror was read on this run, so no edit is taken",
+                )
+            )
+        else:
+            edited = mirror_edits.add_step(cfg, declared, registry, shared)
+            # EVERY MEMBERSHIP TAKEN AWAY IS NAMED ON THE GATE, as a removal is.
+            area.deletes.extend(mirror_edits.deletes(edited.items))
+            area.steps.append(edited)
     if area.wants(YOURS):
         area.steps.append(_yours(cfg, declared, labels, area))
     area.facts["rehearse"] = (
@@ -492,6 +518,7 @@ __all__ = [
     "AREA",
     "EXPORT_MODULE",
     "INSPIRATION",
+    "MIRROR_EDITS",
     "RECORD_LABELS",
     "ROTATE",
     "STEPS",

@@ -795,6 +795,10 @@ def test_only_the_rotation_asks_its_commit_to_admit_a_removed_playlist():
         # U166. The Analyze clear takes each analysed row out of its one
         # playlist, the membership table alone, behind its explicit gate.
         "intake/analyzed.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
+        # U201. An edit made on the account to a mirrored genre playlist moves
+        # a track out of its tree playlists, the membership table alone,
+        # behind the organize rekordbox area's explicit gate.
+        "organize/mirror_edits.py": ["(rb_writer.MEMBERSHIP_TABLE,)"],
     }
     assert set(rotate.REMOVALS) == {rb_writer.PLAYLIST_TABLE, rb_writer.MEMBERSHIP_TABLE}
     from cratekit.favorites import split

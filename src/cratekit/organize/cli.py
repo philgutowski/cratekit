@@ -272,6 +272,19 @@ def organize(ctx) -> Envelope:
     # area that is not planned is neither asked nor written.
     areas: list[Area] = []
     gates: list[tuple[Area, str, str]] = []
+    state = ctx.gate.state
+    run = account_mirror.Run(
+        run_id=state.run_id,
+        record=not report,
+        decided=not report and ACCOUNT_GATE in state.decisions,
+        rematch=bool(getattr(ctx.args, "rematch", False)),
+    )
+    # ONE ACCOUNT AND ONE MIRROR READING FOR BOTH AREAS (U201): the rekordbox
+    # area's mirror edits step decides from the very listings and matches the
+    # account area's mirror plans from, so the edit taken is the edit held.
+    from cratekit.modules.outbound import account as outbound_account
+
+    shared = account_mirror.Shared(cfg, lambda: outbound_account.resolve(cfg), run)
     if _named(rekordbox.STEPS, only):
         database = rekordbox.plan_area(
             cfg,
@@ -282,23 +295,19 @@ def organize(ctx) -> Envelope:
             report=report,
             only=only,
             available=membership.available,
+            shared=shared,
         )
         areas.append(database)
         gates.append((database, REKORDBOX_GATE, APPROVE))
     if _named(account.STEPS, only):
-        state = ctx.gate.state
         remote = account.plan_area(
             cfg,
             available=membership.available,
             followed=followed,
             unfollowed=unfollowed,
             only=only,
-            run=account_mirror.Run(
-                run_id=state.run_id,
-                record=not report,
-                decided=not report and ACCOUNT_GATE in state.decisions,
-                rematch=bool(getattr(ctx.args, "rematch", False)),
-            ),
+            run=run,
+            shared=shared,
         )
         areas.append(remote)
         gates.append((remote, ACCOUNT_GATE, APPLY))

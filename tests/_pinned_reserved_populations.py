@@ -253,6 +253,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'unavailable-permanent',
         'unavailable-transient',
     ],
+    # 2026-11-05, U205: the app credentials' catalogue client refuses a rejected
+    # or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     'acquire/cli.py': [
         'acquire-refused',  # 2026-11-01, U169: the warning naming a declined track.
         'adapter-broken',
@@ -1089,6 +1092,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'core/routing.py': ['not-judged'],
     'core/secrets.py': [
         'bandcamp-session',  # 2026-10-28, U176
+        'catalogue-app-id',  # 2026-11-05, U205
+        'catalogue-app-key',  # 2026-11-05, U205
         'credential-index-unreadable',
         'identify-key',
         'identify-signing-key',
@@ -1743,6 +1748,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-committed-unverified',
         'two-of-one-name',
     ],
+    # 2026-11-05, U201: the mirror edits step's kind, its write refusals and
+    # its untagged warning joined.
+    'organize/mirror_edits.py': [
+        'decision-stale',
+        'mirror-edits',
+        'organize-mirror-edits-untagged',
+        'session-committed-unverified',
+    ],
     # 2026-10-27, R-1031: the frozen mirror plan's encoding name joined.
     'organize/mirror_frozen.py': ['utf-8'],
     'organize/rekordbox.py': ['organize-inspiration-unread', 'record-labels', 'tree-unconverged'],
@@ -1801,23 +1814,35 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'sync/mark_record.py': ['sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined. 2026-11-04, U198: the
-    # not discovered and released warnings joined.
+    # not discovered and released warnings joined. 2026-11-04, U202: the
+    # account playlists not brought over and the later change calls joined,
+    # and the two listing refusals a brought playlist is listed for.
     'sync/pair_cli.py': [
+        'account-discovery',
+        'intake-list-unusable',
+        'label-playlist-unreadable',
         'playlist-pair',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
+        'sync-pair-later-change',
         'sync-pair-left-out',
+        'sync-pair-not-brought',
         'sync-pair-not-discovered',
         'sync-pair-nothing',
         'sync-pair-out-of-scope',
         'sync-pair-released',
         'sync-pair-skipped',
+        'sync-pair-time-unknown',
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
         'sync-pair-withheld',
         'sync-pair-written',
     ],
+    # 2026-11-04, U202: the later change calls joined.
+    'sync/pair_merge.py': ['addition-later', 'removal-later', 'time-unknown'],
+    # 2026-11-04, U202: the rekordbox side of a pair made from the account.
+    'sync/pair_reverse.py': ['decision-stale'],
     'sync/playlists.py': [
         'already-swept',
         'favorites-placeholder',
@@ -2143,6 +2168,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
 PINNED_NAMED_WITHOUT_OWN = {
     # 2026-11-01, U177: a file that would not take its label.
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten'],
+    # 2026-11-05, U205: a rejected or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
@@ -2232,6 +2259,8 @@ PINNED_NAMED_WITH_OWN = {
     # 2026-10-28, U176: the plan's disposition enum.
     # 2026-11-01, U177: a file that would not take its label.
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten', 'not-downloadable'],
+    # 2026-11-05, U205: a rejected or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
@@ -2477,6 +2506,8 @@ PINNED_LITERAL_HOLDERS = {
         'unavailable-permanent',
         'unavailable-transient',
     ],
+    # 2026-11-05, U205: a rejected or unreadable app credential.
+    'acquire/catalogue_api.py': ['credential-missing'],
     'acquire/cli.py': [
         'adapter-broken',
         'auth-failed',
@@ -2966,6 +2997,8 @@ PINNED_LITERAL_HOLDERS = {
     'organize/cli.py': ['internal-error'],
     # 2026-10-13, U144: the INSPIRATION parity step's two write refusals.
     'organize/inspiration.py': ['decision-stale', 'session-committed-unverified'],
+    # 2026-11-05, U201: the mirror edits step's two write refusals joined.
+    'organize/mirror_edits.py': ['decision-stale', 'session-committed-unverified'],
     'organize/rekordbox.py': ['tree-unconverged'],
     'session/cli.py': ['backup-facts-unreadable', 'config-unusable', 'internal-error'],
     'session/restore_cli.py': [
@@ -2993,7 +3026,15 @@ PINNED_LITERAL_HOLDERS = {
     'sync/mark_record.py': ['sync-mark-record-unusable'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined.
-    'sync/pair_cli.py': ['sync-pair-out-of-scope', 'sync-pair-unknown'],
+    # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
+    'sync/pair_cli.py': [
+        'intake-list-unusable',
+        'label-playlist-unreadable',
+        'sync-pair-out-of-scope',
+        'sync-pair-unknown',
+    ],
+    # 2026-11-04, U202: the rekordbox side of a pair made from the account.
+    'sync/pair_reverse.py': ['decision-stale'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
     'sync/run.py': ['sync-source-lookups-failed'],
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.

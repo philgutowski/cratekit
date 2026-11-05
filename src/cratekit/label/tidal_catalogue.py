@@ -12,6 +12,27 @@ and reaching through it would have been shorter. It was rejected because the
 tool is a downloader and this seam is a catalogue, so nothing here imports
 ``cratekit._vendor``, and a guard in the suite says so.
 
+**ISRC LOOKUPS GO UNDER THE APP WHEN IT IS SET UP, AND THE CRAWL STAYS ON THE
+ACCOUNT (U205).** :meth:`TidalCatalogue.tracks_for_isrc` asks the client
+``acquire.provider_session.catalogue_client`` builds under Cratekit's own app
+credentials when the opener built one, and the account session otherwise. Every
+other read here stays on the account session, and these are they:
+
+* :meth:`TidalCatalogue.account_playlists`, :meth:`TidalCatalogue.favourite_tracks`
+  and :meth:`TidalCatalogue.playlist_for` read the account's own things, which
+  are the account's business and which no app credential can see.
+* The label crawl, :meth:`TidalCatalogue.artist_for` and its discovery,
+  :meth:`TidalCatalogue.release_tracks`, :meth:`TidalCatalogue.release_artist`,
+  :meth:`TidalCatalogue.search_release`, :meth:`TidalCatalogue.check_label` and
+  :meth:`TidalCatalogue.search_tracks`. The official catalogue API has reads for
+  most of these, but its listings page by cursor, and every listing this module
+  makes pages through ``acquire.listing`` by limit and offset and stops on a
+  declared count. A mapping between the two, written without a live probe of
+  the official API's paging, is the "a short page is the end" defect this
+  package has already paid for, so the crawl moves only in a unit that opens
+  with that probe. Its calls are counted under the account meanwhile, where a
+  person reading the spend sees them.
+
 **THE FAILURE CONTRACT IS ``Catalogue``'s, AND EVERY RAISE HERE SERVES IT.**
 :meth:`TidalCatalogue.artist_for` and :meth:`TidalCatalogue.playlist_for` raise a
 named ``LookupError`` or ``ValueError`` for something the provider cannot
@@ -36,7 +57,7 @@ from typing import Any
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi
 
-from cratekit.acquire import isrc_cache, listing, provider_session
+from cratekit.acquire import catalogue_api, isrc_cache, listing, provider_session
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError
 from cratekit.label import harvest, registry
@@ -245,8 +266,13 @@ def _credited_ids(release: Any) -> tuple[str, ...]:
 class TidalCatalogue:
     """The seven provider reads the ``Catalogue`` seam declares, over one logged in client."""
 
-    def __init__(self, session: Any, *, cache: isrc_cache.Cache | None = None) -> None:
+    def __init__(
+        self, session: Any, *, catalogue: Any = None, cache: isrc_cache.Cache | None = None
+    ) -> None:
         self._session = session
+        #: Where ISRC lookups go: the app client when the opener built one
+        #: (U205), else the account session, exactly as before.
+        self._lookups = catalogue if catalogue is not None else session
         #: The count the last hearts listing published, None when it published none.
         self.hearts_declared: int | None = None
         #: What the provider already answered for an ISRC (U206).
@@ -635,17 +661,29 @@ class TidalCatalogue:
         AN ANSWER IS ASKED ONCE (U206). A track list, or the not found above,
         is kept in the ISRC cache, and a later lookup of the same code in the
         same country is answered from it with no call. Nothing the ladder
-        re-raises is kept.
+        re-raises is kept, and the app client's own not found, which this
+        route never raises for a code with nothing filed, is answered empty
+        and not kept: only ``isrc_cache.said_not_found`` keeps a not found.
+
+        UNDER THE APP CREDENTIALS WHEN THEY ARE SET UP (U205). The app client
+        answers a code it files nothing under with an empty list and a missing
+        resource with its own not found, both read here as the empty tuple, and
+        raises no ``InvalidISRC`` at all. A rejected app credential climbs the
+        ladder like any failure, since an expired token is its ordinary reason
+        and the next attempt asks for a fresh one, and when the ladder is spent
+        it refuses naming the app's credentials, never the account session.
         """
         wanted = str(isrc or "").strip()
         if not wanted:
             raise ValueError("no ISRC was given to look up")
-        lookup = getattr(self._session, "get_tracks_by_isrc", None)
+        lookup = getattr(self._lookups, "get_tracks_by_isrc", None)
         if not callable(lookup):
             # A client without the method cannot be asked, and waiting on the
             # ladder cannot grow one.
             raise LookupError("the provider client exposes no ISRC lookup")
-        country = isrc_cache.country_of(self._session)
+        # The country the client that is ASKED asks in (U205's app client
+        # carries the account's own).
+        country = isrc_cache.country_of(self._lookups)
         held = self._cache.recall(wanted, country)
         if held is not None:
             return held
@@ -671,7 +709,10 @@ class TidalCatalogue:
             return tuple(found or ())
 
         isrc_cache.asked()
-        result = listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
+        try:
+            result = listing.fetch_with_retry(attempt, limit=0, offset=0, sleep=_pause)
+        except catalogue_api.AppCredentialsRejected as exc:
+            raise catalogue_api.rejected(exc, f"look up the ISRC {wanted}") from exc
         if answered:
             self._cache.remember(wanted, country, answered[-1])
         return result
@@ -724,8 +765,10 @@ def open_catalogue(cfg: Any = None) -> TidalCatalogue:
     gate = provider_gate.Gate(
         provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
     )
+    client = provider_session.client_session(gate=gate)
     return TidalCatalogue(
-        provider_session.client_session(gate=gate),
+        client,
+        catalogue=provider_session.catalogue_client(client, gate=gate),
         cache=isrc_cache.Cache.from_config(cfg),
     )
 

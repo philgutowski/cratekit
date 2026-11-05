@@ -42,6 +42,14 @@ argues, and raises at item scope. The job engine then fails that one item and
 claims the next, rather than converting a foreign exception into an internal
 error.
 
+**CATALOGUE LOOKUPS GO UNDER THE APP WHEN IT IS SET UP (U205).** The ISRC
+lookup and the exact track read in ``match_track`` ask ``catalogue`` when the
+opener built one, the client ``acquire.provider_session.catalogue_client``
+holds under Cratekit's own app credentials, and the account session only when
+it did not. Every write, and every read of the account's own things (its
+hearts, playlists and folders), goes to the account session and to nothing
+else, so the app client is never handed a write: it has none.
+
 **ONE RETRY ON A WRITE, NO MORE**, through ``listing.fetch_with_retry``. A rate
 limit on a write is real, and a ladder of five would hold a sweep for a minute
 per item against a provider that is refusing it. Creating a playlist is not
@@ -63,12 +71,16 @@ from urllib.parse import urlsplit
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi  # noqa: F401
 
-from cratekit.acquire import isrc_cache, listing, match, provider_session
+from cratekit.acquire import catalogue_api, isrc_cache, listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import account, kinds, ledger, pairs
-from cratekit.modules.outbound.service import AGREEING_RELEASES, UNREADABLE_CANDIDATE
+from cratekit.modules.outbound.service import (
+    AGREEING_RELEASES,
+    UNREADABLE_CANDIDATE,
+    PlaylistListing,
+)
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -152,6 +164,17 @@ def _row_of(title: str, artist: str) -> match.Wanted | None:
 def _count(value: Any) -> bool:
     """Whether a declared count is a whole number and not a flag."""
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _added_at(track: Any) -> str:
+    """When a playlist item was added, as ISO 8601 UTC text, or ``""`` when unknown (U201)."""
+    from datetime import datetime, timezone
+
+    for name in ("user_date_added", "date_added"):
+        value = getattr(track, name, None)
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).isoformat()
+    return ""
 
 
 def _shown_artist(track: Any) -> str:
@@ -267,13 +290,14 @@ def _streamable(track: Any) -> bool:
 
 
 class TidalAccount:
-    """The fifteen ``RemoteAccount`` members, over one logged in client.
+    """The ``RemoteAccount`` members, over one logged in client.
 
     Eight add only, two that read folders, one that puts a playlist in a
     folder, one that retitles a playlist the account owns, one that says why
-    the last match of a row came back empty, one that names a playlist's
-    tracks, and the one removal, from a playlist the product made. Since U143
-    also the account root's two removals, each of a kind a gate named.
+    the last match of a row came back empty and one whether it broke a tie
+    (U208), one that names a playlist's tracks, and the one removal, from a
+    playlist the product made. Since U143 also the account root's two
+    removals, each of a kind a gate named.
     """
 
     def __init__(
@@ -282,9 +306,13 @@ class TidalAccount:
         *,
         sleep: Callable[[float], None] | None = None,
         cfg: Any = None,
+        catalogue: Any = None,
         cache: isrc_cache.Cache | None = None,
     ) -> None:
         self._session = session
+        #: Where catalogue lookups go: the app client when the opener built
+        #: one (U205), else the account session, exactly as before.
+        self._lookups = catalogue if catalogue is not None else session
         #: The configuration whose outbound ledger says which playlists the
         #: product made (R-836). None refuses every removal, since a ledger
         #: that cannot be named cannot say yes.
@@ -298,6 +326,8 @@ class TidalAccount:
         self._hearts: set[str] | None = None
         self._members: dict[str, list[str]] = {}
         self._reasons: dict[str, str] = {}
+        #: U208. The identities whose last match took one of a tie.
+        self._ties: set[str] = set()
 
     def _call(self, doing: str, fn: Callable[[], Any], *, retries: int = WRITE_RETRIES) -> Any:
         """One provider call, retried ``retries`` times, translated on failure.
@@ -319,6 +349,11 @@ class TidalAccount:
             return listing.fetch_with_retry(
                 attempt, limit=0, offset=0, max_retries=retries, sleep=self._sleep
             )
+        except catalogue_api.AppCredentialsRejected as exc:
+            # THE APP'S CREDENTIAL, NOT THE ACCOUNT'S. Read by the account's
+            # translation it would be a wait, and the held account would not be
+            # the thing to forget.
+            raise catalogue_api.rejected(exc, doing) from exc
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             raise account.provider_failure(exc, doing) from exc
 
@@ -361,16 +396,21 @@ class TidalAccount:
         and only :meth:`_among` reads it (R-572).
 
         ``any_agreeing`` lets :meth:`_among` take one of a tie between agreeing
-        releases rather than refuse it, for the mirror's listening copy only
-        (R-1032).
+        releases rather than refuse it, for the mirror's listening copy (R-1032)
+        and the pairs (U208), and :meth:`tie_broken` then says it did.
 
         IDENTITY SECOND, and only an exact provider track reference, see
         :func:`track_reference`. Never a text search over title and artist:
         ``title`` and ``artist`` choose among tracks the ISRC already named and
         are never sent to the provider.
+
+        BOTH READS ARE CATALOGUE QUESTIONS and go to the app client when one is
+        open (U205). The favourites :meth:`_among` asks are the account's own
+        and stay on the account session.
         """
         key = str(identity)
         self._reasons.pop(key, None)
+        self._ties.discard(key)
         wanted = str(isrc or "").strip()
         if wanted:
             found = self._isrc_tracks(wanted)
@@ -382,7 +422,7 @@ class TidalAccount:
                 if len(tracks) == 1 and not agree:
                     return next(iter(tracks))
                 if tracks:
-                    chosen, reason = self._among(
+                    chosen, reason, tied = self._among(
                         tracks,
                         isrc=wanted,
                         title=title,
@@ -392,12 +432,14 @@ class TidalAccount:
                     )
                     if chosen is None:
                         self._reasons[key] = reason
+                    elif tied:
+                        self._ties.add(key)
                     return chosen
         reference = track_reference(identity)
         if reference is None:
             return None
         track = self._call(
-            f"look up the track {reference}", lambda: self._session.track(reference)
+            f"look up the track {reference}", lambda: self._lookups.track(reference)
         )
         if track is _ABSENT or track is None:
             return None
@@ -414,7 +456,9 @@ class TidalAccount:
         ``InvalidISRC`` this account still reads as no match is not kept, nor
         is anything the ladder raised.
         """
-        country = isrc_cache.country_of(self._session)
+        # The country the client that is ASKED asks in: the app client when
+        # one is open (U205), which carries the account's own.
+        country = isrc_cache.country_of(self._lookups)
         held = self._cache.recall(wanted, country)
         if held is not None:
             return held if held else _ABSENT
@@ -425,7 +469,7 @@ class TidalAccount:
         def ask() -> Any:
             last["said_not_found"] = False
             try:
-                return self._session.get_tracks_by_isrc(wanted)
+                return self._lookups.get_tracks_by_isrc(wanted)
             except Exception as exc:
                 last["said_not_found"] = isrc_cache.said_not_found(exc)
                 raise
@@ -448,8 +492,8 @@ class TidalAccount:
         artist: str,
         album: str = "",
         any_agreeing: bool = False,
-    ) -> tuple[str | None, str]:
-        """One of several tracks sharing an ISRC, or ``None`` and why not.
+    ) -> tuple[str | None, str, bool]:
+        """One of several tracks sharing an ISRC, or ``None`` and why not, and whether a tie chose.
 
         THREE RULES, IN ORDER, AND NONE IS A GUESS.
 
@@ -485,12 +529,15 @@ class TidalAccount:
 
         UNLESS ``any_agreeing`` SAYS ANY OF THEM WILL DO (R-1032), which the
         mirror says because its playlist is a listening copy and writes nothing
-        back as the row's identity. Then a tie with no unreadable candidate is
+        back as the row's identity, and the pairs say since U208, decided by
+        Phillip at Sitting 54. Then a tie with no unreadable candidate is
         broken by :func:`_lowest` over the hearted releases if the account
         hearts several, else over every agreeing one, narrowed first to those
         the file's album names when it names any. Only the tie is broken: the
         refusals before it, no agreeing release, no row to judge agreement by,
-        a candidate that could not be read, are unchanged.
+        a candidate that could not be read, are unchanged. The third value
+        is true only for a track this branch chose, one that without
+        ``any_agreeing`` would have been refused.
         """
         named = f"the ISRC {isrc} names {len(tracks)} provider tracks"
         row = _row_of(title, artist)
@@ -498,7 +545,7 @@ class TidalAccount:
             return None, (
                 f"{named} and this row carries no artist and title to choose "
                 f"among them by"
-            )
+            ), False
         verdicts = {
             remote: _agrees(row, track)
             for remote, track in tracks.items()
@@ -508,7 +555,7 @@ class TidalAccount:
         unreadable = sum(1 for verdict in verdicts.values() if verdict is None)
         agreeing = [remote for remote, verdict in verdicts.items() if verdict]
         if len(agreeing) == 1 and not unreadable:
-            return agreeing[0], ""
+            return agreeing[0], "", False
         aside = (
             (f", {withdrawn} cannot be streamed" if withdrawn else "")
             + (f", {unreadable} {UNREADABLE_CANDIDATE}" if unreadable else "")
@@ -518,33 +565,37 @@ class TidalAccount:
             return None, (
                 f"{named}{aside} and none of {rest} agrees with this row's "
                 f"artist, title and version"
-            )
+            ), False
         hearts = self._favorites()
         hearted = [remote for remote in agreeing if remote in hearts]
         if len(hearted) == 1:
-            return hearted[0], ""
+            return hearted[0], "", False
         if any_agreeing and not unreadable:
-            return _lowest(_on_album(hearted or agreeing, tracks, album)), ""
+            # A TIE ONLY WHEN SOMETHING WAS LEFT TO BREAK: two hearts, or more
+            # than one release after the album. One release the album names is
+            # the album rule's answer, which stands without ``any_agreeing``.
+            narrowed = _on_album(hearted or agreeing, tracks, album)
+            return _lowest(narrowed), "", bool(hearted) or len(narrowed) > 1
         said = (
             f"{named}{aside}, {len(agreeing)} {AGREEING_RELEASES} and the "
             f"account hearts {len(hearted)} of those"
         )
         if hearted:
-            return None, f"{said}, so none was chosen"
+            return None, f"{said}, so none was chosen", False
         if unreadable:
-            return None, f"{said}, so none was chosen"
+            return None, f"{said}, so none was chosen", False
         wanted = match.fold(album)
         if not wanted:
-            return None, f"{said}, and the file carries no album tag, so none was chosen"
+            return None, f"{said}, and the file carries no album tag, so none was chosen", False
         named_album = [
             remote for remote in agreeing if match.fold(_album_name(tracks[remote])) == wanted
         ]
         if len(named_album) == 1:
-            return named_album[0], ""
+            return named_album[0], "", False
         return None, (
             f"{said}, and the file's album {album!r} names {len(named_album)} "
             f"of them, so none was chosen"
-        )
+        ), False
 
     def unmatched_reason(self, identity: str) -> str:
         """Why the last match of this row came back ``None``, or ``""``.
@@ -553,6 +604,16 @@ class TidalAccount:
         already report as unmatched, and for a row that matched.
         """
         return self._reasons.get(str(identity), "")
+
+    def tie_broken(self, identity: str) -> bool:
+        """Whether the last match of this row took one of a tie between agreeing releases (U208).
+
+        True only when ``any_agreeing`` chose a track that without it would
+        have been refused, so a lone agreeing track, a lone heart or a lone
+        album is never a broken tie. False after any other match and after a
+        miss.
+        """
+        return str(identity) in self._ties
 
     # ── hearts ──────────────────────────────────────────────────────────────
 
@@ -916,6 +977,40 @@ class TidalAccount:
             for track in tracks
             if str(getattr(track, "id", "") or "")
         }
+
+    def playlist_listing(self, playlist_id: str) -> PlaylistListing:
+        """Every track on the playlist with its added time and the declared count (U201).
+
+        One read, as :meth:`track_names` reads, and the membership it read is
+        remembered the same way. The added time is the client's
+        ``user_date_added``, else ``date_added``, which it copies from the
+        playlist item's own ``dateAdded``; a time with no zone, or none, is
+        left out rather than guessed, since the mirror reads an absent time as
+        unknown. The declared count is the playlist's ``num_tracks``.
+        """
+        playlist = self._playlist(playlist_id)
+        tracks = self._listed(playlist_id, playlist)
+        ids = [str(getattr(track, "id", "") or "") for track in tracks]
+        self._members[playlist_id] = ids
+        names: dict[str, tuple[str, str]] = {}
+        added: dict[str, str] = {}
+        for identifier, track in zip(ids, tracks, strict=True):
+            if not identifier or identifier in names:
+                continue
+            names[identifier] = (
+                _shown_artist(track),
+                str(getattr(track, "full_name", "") or getattr(track, "name", "") or ""),
+            )
+            moment = _added_at(track)
+            if moment:
+                added[identifier] = moment
+        declared = getattr(playlist, "num_tracks", None)
+        return PlaylistListing(
+            names=names,
+            added=added,
+            listed=len(ids),
+            declared=declared if isinstance(declared, int) and not isinstance(declared, bool) else None,
+        )
 
     def _positions(self, playlist_id: str, playlist: Any) -> list[str]:
         """The playlist's tracks by position, refused when a position is unknowable.
@@ -1379,7 +1474,10 @@ def open_account(cfg: Any = None) -> TidalAccount:
     gate = provider_gate.Gate(
         provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
     )
-    return TidalAccount(provider_session.client_session(gate=gate), cfg=cfg)
+    client = provider_session.client_session(gate=gate)
+    return TidalAccount(
+        client, cfg=cfg, catalogue=provider_session.catalogue_client(client, gate=gate)
+    )
 
 
 __all__ = [
