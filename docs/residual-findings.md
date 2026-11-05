@@ -43192,3 +43192,52 @@ row as the twins backfill reads it (`intake_cli.list_playlist_readable`), a
 track the reader refuses kept by its id. Earns an issue under the board bar's
 (c): `crate sync pair` is the workflow that keeps every twin one list, and one
 track stops it for every pair.
+
+---
+
+## R-1265. A file an earlier pass staged lands under the later pass's name, so that pass's heart months and gate are not its own
+
+**Found:** at the build of #506, U212, 2026-11-05.
+
+**The mechanism.** `crate sync land` lands everything a landing would take
+from the download staging folder, with `--pass` naming the pass that ran it.
+Since U212 a later pass skips the tracks an unlanded earlier pass staged and
+lands them over that folder under its own pass name. The heart month filing
+(`account_playlists.hearted`) reads only the landing pass's hearts, so a
+staged file the earlier pass's hearts asked for, and the later pass's did not,
+is given no heart month there. The earlier pass's landing gate, never
+answered, is now stale: its folder changed.
+
+**Measured cost.** Not driven. The landing of every file staged was already
+the behaviour before this unit for any landing over that folder; U212 makes
+the path the normal one when an earlier gate is left open. Landing or
+abandoning old open gates is out of the card's scope.
+
+**Closes when:** a landing over a staging folder holding another pass's files
+names that pass's hearts too, or the old gate is answered or abandoned first.
+Ledger only.
+
+---
+
+## R-1266. A staged track is known by its ISRC alone, so a staged file with no ISRC tag is downloaded again
+
+**Found:** at the build of #506, U212, 2026-11-05.
+
+**The mechanism.** `intake missing` subtracts a missing row from the download
+list when a file in the download staging folder carries the row's ISRC, read
+by the index reader (`missing_cli._staged`). A row with no ISRC, or a staged
+file whose ISRC tag is absent, malformed or unreadable, matches nothing, so the
+track is listed and downloaded again, and at the name step `name apply` cannot
+call the collision a second copy either (`naming_cli.second_copy` reads the
+same tag). The provider id is not read: not in a staged file's name, which the
+downloader writes as `{track_id}` until `name apply` renames it, and not in the
+`URL` tag the vendored downloader writes when `metadata_write_url` is on.
+
+**Measured cost.** Not driven live. The downloader writes the Vorbis `isrc`
+comment on every file it delivers (R-355's note in `core/tags.py`), so the
+miss needs a provider row with no ISRC. In sitting 55 both copies carried one.
+
+**Closes when:** a sitting meets a staged file with no ISRC that a pass lists
+again, then the staged set also reads an identifier stem and the URL tag.
+Ledger only: the cost is the collision the unit started from, now with a
+plainer message.
