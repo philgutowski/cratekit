@@ -225,6 +225,10 @@ def _rotation(cfg: config.Config, declared, today: date, area: Area) -> Step:
         return refused(ROTATE, title, exc.cause)
     shown = rotate_cli.plan_payload(plan)
     for node in plan.left:
+        # OLD IS THE ROTATION'S OWN FOLDER, not one of the author's (U214):
+        # the plan names it left, and the screen does not list it as yours.
+        if node.kind == rotate.LEFT_OLD:
+            continue
         area.yours.append(
             {
                 "name": node.name,

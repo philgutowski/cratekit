@@ -1091,7 +1091,11 @@ account: every genre folder of BY GENRE + ENERGY, the Favorites folder and
 INBOX each become one root folder of the same name, holding one private
 playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
 Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
-live batches, the playlists `inbox rotate` moves, never Old. A label batch,
+live batches, the playlists `inbox rotate` moves, never Old, and its step
+names every other playlist or folder directly under INBOX that it leaves off
+the account, with the reason and, for a plain playlist, its row count, so a
+playlist no rule reads as a batch is named rather than missing; `inbox rotate`
+names the same ones the same way. A label batch,
 which no account playlist holds, fills from the provider track each file was
 downloaded as. A track whose ISRC names several releases that all agree with
 it, a single and its album cut, goes onto the mirror as one of them and stays
