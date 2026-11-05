@@ -298,6 +298,75 @@ def client_session(
     return client
 
 
+def _requests_session() -> Any:
+    """A fresh transport for the catalogue client, the library the provider's own uses."""
+    import requests  # noqa: PLC0415 - deferred like the client library, see _tidalapi_client
+
+    return requests.Session()
+
+
+#: How :func:`catalogue_client` builds the transport its client sends through.
+#: Looked up at call time, so a suite substitutes a fake transport here and
+#: nowhere else, and the conftest guard replaces it for every test as it
+#: replaces :data:`CLIENT_FACTORY`: no test can reach the live catalogue by
+#: recording the app's credentials and opening an account.
+CATALOGUE_TRANSPORT_FACTORY: Callable[[], Any] = _requests_session
+
+
+def _country(account: Any) -> str | None:
+    """The account's two letter country, or None when it did not say one."""
+    code = getattr(account, "country_code", None)
+    if isinstance(code, str) and len(code.strip()) == 2 and code.strip().isalpha():
+        return code.strip().upper()
+    return None
+
+
+def catalogue_client(account: Any, *, gate: provider_gate.Gate) -> Any | None:
+    """The client catalogue lookups go to under Cratekit's own app credentials, or None.
+
+    THE ONE PLACE THE APP CLIENT IS BUILT (U205), beside :func:`client_session`
+    and attached to the SAME gate, under the ``app`` identity, before it makes
+    its first request, so the interval, the breaker, the cooldown and the call
+    ceiling the account's calls run under are the ones its calls run under too.
+
+    NONE MEANS ASK THE ACCOUNT, EXACTLY AS BEFORE THIS UNIT, and is answered
+    when either value is not recorded, so an installation that never set the
+    app up behaves as it always did. Presence is asked of the index first, so
+    an installation with no app makes no keychain read for it. Recorded values
+    the keychain will not give are refused rather than read as absent, see
+    ``catalogue_api.unreadable``.
+
+    THE COUNTRY IS THE ACCOUNT'S OWN, read off the account client the login
+    filled, so an availability answer is the one the account would get. An
+    account client that names no country, which no logged in client of the
+    provider library is, also answers None: the app cannot be asked a question
+    whose answer depends on a country nobody named.
+    """
+    from cratekit.acquire import catalogue_api  # noqa: PLC0415 - see _tidalapi_client
+
+    names = [str(name) for name in catalogue_api.CREDENTIALS]
+    if not all(secrets.exists(name) for name in names):
+        return None
+    country = _country(account)
+    if country is None:
+        return None
+    try:
+        client_id, client_key = (secrets.get(name) for name in names)
+    except secrets.CredentialError as exc:
+        raise catalogue_api.unreadable(exc) from exc
+    client = catalogue_api.AppCatalogue(
+        client_id, client_key, country, transport=CATALOGUE_TRANSPORT_FACTORY()
+    )
+    if not gate.attach(client, identity=provider_gate.APP):
+        # Unreachable with the shipped transport, which always has a request
+        # method; a client the gate cannot pace is never handed out unpaced.
+        raise AdapterBroken(
+            "the catalogue client's transport cannot be paced by the provider gate",
+            remedy=Remedy.REPORT_DEFECT,
+        )
+    return client
+
+
 def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
     """Return a refreshed session to the keychain, or leave the keychain alone.
 
@@ -325,6 +394,7 @@ def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
 
 
 __all__ = [
+    "CATALOGUE_TRANSPORT_FACTORY",
     "CLIENT_FACTORY",
     "JSON",
     "REJECTED_STATUSES",
@@ -333,6 +403,7 @@ __all__ = [
     "Codec",
     "ProviderUnavailable",
     "SessionScope",
+    "catalogue_client",
     "client_session",
     "materialised_session",
     "write_back",
