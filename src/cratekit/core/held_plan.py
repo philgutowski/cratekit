@@ -206,11 +206,15 @@ def load(
     """
     where = path(run_id)
     try:
+        age = time.time() - where.stat().st_mtime
         raw = json.loads(where.read_text())
     except FileNotFoundError:
         return None, "", {}, "no plan is held for this run"
     except (OSError, ValueError) as exc:
         return None, "", {}, f"the held plan could not be read ({type(exc).__name__}: {exc})"
+    if age > KEEP.total_seconds():
+        # OLDER THAN IT IS KEPT is no plan, whether or not a prune reached it.
+        return None, "", {}, f"the held plan is older than {KEEP.days} days"
     if not isinstance(raw, dict):
         return None, "", {}, "the held plan is not a JSON object"
     for key, wanted in (("version", VERSION), ("kind", kind), ("run_id", run_id)):

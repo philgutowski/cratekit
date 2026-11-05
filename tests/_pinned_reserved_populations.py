@@ -1819,9 +1819,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # account playlists not brought over and the later change calls joined,
     # and the two listing refusals a brought playlist is listed for.
     # 2026-11-05, U209: the check before the write's stale refusal, its moved
-    # folder side, and the warning a run planned again carries. 2026-11-05,
-    # U210: a continued run's warning, its steps unread, and the refusal a
-    # step it could not record stops the write with.
+    # folder side, the side a made rekordbox playlist's home is named on,
+    # and the warning a run planned again carries. 2026-11-05, U210: a
+    # continued run's warning, its steps unread, and the refusal a step it
+    # could not record stops the write with.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
@@ -1829,6 +1830,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'intake-list-unusable',
         'label-playlist-unreadable',
         'playlist-pair',
+        'rekordbox-home',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
         'sync-pair-later-change',

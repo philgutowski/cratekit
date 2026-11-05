@@ -645,14 +645,7 @@ class _Reader:
     @cached_property
     def pair_jobs(self) -> tuple[jobs.Job, ...]:
         """Every intake job this verb queued on this library that did not fail, newest first."""
-        return tuple(
-            job
-            for job in jobs.list_jobs(self.store)
-            if job.handler_key == INTAKE_HANDLER
-            and job.library_id == self.cfg.library.volume_id
-            and (job.payload or {}).get("source_id") == PAIR_SOURCE
-            and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
-        )
+        return pair_jobs(self.cfg, self.store)
 
     @cached_property
     def mirrors(self) -> dict[str, frozenset[str]]:
@@ -665,6 +658,18 @@ class _Reader:
             for job in self.pair_jobs
             if str((job.payload or {}).get(intake_cli.SOURCE) or "") == account_id
         )
+
+
+def pair_jobs(cfg: config.Config, store) -> tuple[jobs.Job, ...]:
+    """Every intake job this verb queued on this library that did not fail, newest first."""
+    return tuple(
+        job
+        for job in jobs.list_jobs(store)
+        if job.handler_key == INTAKE_HANDLER
+        and job.library_id == cfg.library.volume_id
+        and (job.payload or {}).get("source_id") == PAIR_SOURCE
+        and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
+    )
 
 
 def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
@@ -2191,6 +2196,7 @@ STEP_MADE = "made"
 STEP_REKORDBOX = "rekordbox"
 STEP_QUEUED = "queued"
 STEP_ACCOUNT = "account"
+STEP_ORDERING = "ordering"
 STEP_DONE = "done"
 
 #: U210. The refusal a write stops with when a step it took cannot be recorded.
@@ -2410,6 +2416,8 @@ def apply_pair(
         if one.account_adds:
             done.account_added = len(set(remote.add_tracks(playlist_id, one.account_adds)))
         if one.account_order:
+            # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
+            steps.mark(STEP_ORDERING)
             account_after = tuple(remote.order_tracks(playlist_id, one.account_order))
             done.account_ordered = True
         elif account_listed is not None and not (one.account_removes or one.account_adds):
@@ -2724,6 +2732,10 @@ def _release(run_id: str) -> None:
     held_plan.release(run_id)
 
 
+#: The side a made rekordbox playlist's home is named on when it moved.
+HOME_SIDE = "rekordbox-home"
+
+
 @dataclass(frozen=True, slots=True)
 class Moved:
     """One list the check before the write found other than the plan read it (U209)."""
@@ -2742,21 +2754,34 @@ class Moved:
         }
 
     def said(self) -> str:
+        if self.side == HOME_SIDE:
+            return f"the rekordbox playlist to be made at {self.name!r}: {self.why}"
         where = "the account playlist" if self.side == ACCOUNT_SIDE else "the rekordbox playlist"
         if self.side == "account-folder":
             where = "the account folder"
-        return f"{where} {self.name!r} ({self.playlist_id}) {self.why}"
+        if self.side == "library":
+            where = "the acquisitions queued for"
+        named = f"{where} {self.name!r} ({self.playlist_id})" if self.playlist_id else (
+            f"{where} {self.name!r}"
+        )
+        return f"{named} {self.why}"
 
 
-def check(cfg: config.Config, planned: Plan, steps: Any = None) -> dict[str, tuple[str, ...]]:
+def check(
+    cfg: config.Config, planned: Plan, steps: Any = None, *, store
+) -> dict[str, tuple[str, ...]]:
     """Refuse a write whose lists moved since the plan the gates showed, before anything is written.
 
     U209. A plan held across its gates is not made again, so before the first
     write this reads only the lists the write is merged from: each pair's
     rekordbox playlist membership in the database against what the plan read,
     each pair's account listing against what the plan read, its shortfall
-    included, and the folder a made account side goes in for a playlist of its
-    title. EVERY PAIR, whichever gate applied, because each side's writes were
+    included, the rows a pair adds still live, the folder a made account side
+    goes in still there and free of a playlist of its title, a made rekordbox
+    side's home still free (``pair_reverse.recheck``, read here so it stops
+    the sync before any pair is written), and a playlist the product pairs by
+    itself still where a pair is kept, or still not where a pair it let go
+    for that is kept. EVERY PAIR, whichever gate applied, because each side's writes were
     merged from both sides. It never matches a track and asks the provider
     nothing about one. Anything moved refuses ``decision-stale`` naming every
     list that moved, and nothing is written.
@@ -2769,53 +2794,50 @@ def check(cfg: config.Config, planned: Plan, steps: Any = None) -> dict[str, tup
     wrote (U210), read when a write that stopped part way is continued. A pair
     it records done is not read at all. A pair part written is read for what
     its own write could have done and nothing else: on the account, no track
-    gained but the plan's additions and none lost but its removals, the
-    playlist this run made for it read in its place; in rekordbox, the
-    memberships the commit that landed left; and a folder this run made, or a
-    playlist it made in one, is not read as moved. Anything else moved refuses
-    stale as above, and nothing more is written.
+    gained but the plan's additions, none lost but its removals and the order
+    the plan read kept until the write began to order it, the playlist this
+    run made for it read in its place; in rekordbox, the memberships the
+    commit that landed left; the folder this run made, a job it queued and a
+    pair it reserved are not read as moved. Anything else moved refuses stale
+    as above, and nothing more is written.
     """
     from cratekit.label import catalogue
-    from cratekit.modules.outbound import pairs as pairs_module
+    from cratekit.modules.outbound import pairs
 
     def of(one: PairPlan) -> PairSteps:
         return PairSteps(steps, one.target.key)
 
+    # THE PAIRS DOCUMENT AS THE WRITE WILL FIND IT, read once.
+    document = pairs.PairStore(cfg)._document()
     todo = [one for one in planned.pairs if not of(one).has(STEP_DONE)]
     begun = steps is not None and steps.started()
-    held_pairs = pairs_module.PairStore(cfg).all() if begun else {}
-    held_folders = pairs_module.PairStore(cfg).folders() if begun else {}
     # U210. THE ACCOUNT PLAYLISTS THIS RUN MADE, by the pair's key: recorded
     # made, or begun and reserved in the pairs document for this pair here.
     ours: dict[str, str] = {}
     for one in planned.pairs:
         if not one.target.new:
             continue
-        made = of(one).get(STEP_MADE)
-        if isinstance(made, str) and made:
-            ours[one.target.key] = made
+        made_id = of(one).get(STEP_MADE)
+        if isinstance(made_id, str) and made_id:
+            ours[one.target.key] = made_id
         elif of(one).has(STEP_MAKING):
-            for pair in held_pairs.values():
+            for pair in document.pairs.values():
                 if _made_here(pair, one):
                     ours[one.target.key] = pair.account_id
                     break
-    our_ids = set(ours.values())
     # And the root folders it made: a folder a made pair began in, recorded.
     our_folders = {
-        one.place.folder: held_folders[one.place.folder].folder_id
+        one.place.folder: document.folders[one.place.folder].folder_id
         for one in planned.pairs
         if one.target.new
         and one.place is not None
         and one.place.action == FOLDER_CREATE
         and of(one).has(STEP_MAKING)
-        and one.place.folder in held_folders
+        and one.place.folder in document.folders
     }
-
     moved: list[Moved] = []
     listed: dict[str, tuple[str, ...]] = {}
-    on_account = [
-        one for one in todo if not one.target.new or one.target.key in ours
-    ]
+    on_account = [one for one in todo if not one.target.new or one.target.key in ours]
     if on_account:
         found = catalogue.resolve(cfg)
         for one in on_account:
@@ -2838,7 +2860,7 @@ def check(cfg: config.Config, planned: Plan, steps: Any = None) -> dict[str, tup
             withheld = short.block() if short is not None else None
             if one.target.new or of(one).has(STEP_ACCOUNT):
                 # U210. PART WRITTEN BY THIS RUN: only its own write's doing.
-                why = _beyond(one, now)
+                why = _beyond(one, now, ordering=of(one).has(STEP_ORDERING))
                 if why:
                     moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, why))
                 elif not one.target.new and withheld != one.withheld:
@@ -2865,11 +2887,61 @@ def check(cfg: config.Config, planned: Plan, steps: Any = None) -> dict[str, tup
                 )
             else:
                 listed[account_id] = now
+    brought = [one for one in todo if one.target.rekordbox_new and one.home is not None]
+    folders = document.folders
     made = [
         one
         for one in todo
         if one.target.new and one.place is not None and one.target.key not in ours
     ]
+    if brought:
+        from cratekit.modules.outbound import account as outbound_account
+
+        remote = outbound_account.resolve(cfg)
+        seen: dict[str, dict[str, str]] = {}
+        for one in brought:
+            recorded = folders.get(one.target.folder)
+            listing: dict[str, str] = {}
+            if recorded is not None:
+                if recorded.folder_id not in seen:
+                    seen[recorded.folder_id] = dict(remote.folder_playlists(recorded.folder_id))
+                listing = seen[recorded.folder_id]
+            if listing.get(one.target.account_id) != one.target.title:
+                # TAKEN OUT OF THE SYNCED FOLDER, or retitled, since the plan:
+                # a plan made now would bring it nowhere, or somewhere else.
+                moved.append(
+                    Moved(
+                        ACCOUNT_SIDE,
+                        one.target.account_id,
+                        one.name,
+                        f"is no longer titled {one.target.title!r} in the account folder "
+                        f"{one.target.folder!r}",
+                    )
+                )
+    # U210. A JOB THIS RUN QUEUED is its own, never another sync's.
+    asking = [one for one in todo if one.acquire and not of(one).has(STEP_QUEUED)]
+    if asking:
+        queued = pair_jobs(cfg, store)
+        for one in asking:
+            owner = one.target.account_id
+            now = {
+                str(item)
+                for job in queued
+                if str((job.payload or {}).get(intake_cli.SOURCE) or "") == owner
+                for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
+            }
+            again = sorted(set(one.acquire) & now)
+            if again:
+                # ANOTHER SYNC QUEUED THEM SINCE THE PLAN, which a plan made now
+                # would name as awaiting rather than queue twice.
+                moved.append(
+                    Moved(
+                        "library",
+                        owner,
+                        one.name,
+                        f"include {len(again)} track(s) another sync queued since the plan",
+                    )
+                )
     if made:
         from cratekit.modules.outbound import account as outbound_account
 
@@ -2879,14 +2951,24 @@ def check(cfg: config.Config, planned: Plan, steps: Any = None) -> dict[str, tup
         for one in made:
             place = one.place
             assert place is not None
+            # U210. A FOLDER THIS RUN MADE for an earlier pair is read as the
+            # folder this pair goes in, as a folder the plan found is.
             folder_id = place.folder_id or our_folders.get(place.folder, "")
             if folder_id:
+                if root is None:
+                    root = dict(remote.folders())
+                if folder_id not in root:
+                    moved.append(
+                        Moved(
+                            "account-folder",
+                            folder_id,
+                            place.folder,
+                            "is no longer a root folder on the account",
+                        )
+                    )
+                    continue
                 if folder_id not in inside:
-                    inside[folder_id] = {
-                        playlist_id: title
-                        for playlist_id, title in remote.folder_playlists(folder_id).items()
-                        if playlist_id not in our_ids
-                    }
+                    inside[folder_id] = dict(remote.folder_playlists(folder_id))
                 if place.title in inside[folder_id].values():
                     moved.append(
                         Moved(
@@ -2908,46 +2990,163 @@ def check(cfg: config.Config, planned: Plan, steps: Any = None) -> dict[str, tup
                             "is now a root folder on the account, which the plan was to make",
                         )
                     )
+    from cratekit.core import active_taxonomy, tree_registry
+    from cratekit.favorites import placement
+    from cratekit.sync import pair_discover, pair_reverse
+
+    taxonomy = active_taxonomy.load(cfg)
+    favorites = placement.source_name(taxonomy)
+    skip = cfg.outbound.pair_skip_folders
+    tops = generated_tops(taxonomy, tree_registry.read(cfg))
     db = rb_writer.open_db(
         rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
     )
     try:
+        discovered: dict[str, Any] = {}
+        if any(one.place is not None for one in planned.pairs):
+            discovered = {
+                found.rekordbox_id: found
+                for found in pair_discover.discover(
+                    db,
+                    tops=tops,
+                    favorites=favorites,
+                    skip=skip,
+                    # U210. NOT THE PAIRS THIS RUN MADE, which discovery
+                    # found before the write paired them.
+                    paired=(
+                        pair.rekordbox_id
+                        for pair in document.pairs.values()
+                        if pair.account_id not in set(ours.values())
+                    ),
+                    released=document.released.rekordbox,
+                ).found
+            }
         for one in todo:
             landed = of(one).get(STEP_REKORDBOX)
-            landed = landed if isinstance(landed, dict) else None
-            if one.target.rekordbox_new and landed is None:
+            landed = landed if isinstance(landed, dict) and landed.get("playlist_id") else None
+            if landed is not None:
+                # U210. A COMMIT THIS RUN LANDED is read against what it left.
+                _landed_moved(db, one, landed, moved)
                 continue
-            playlist_id = str(landed["playlist_id"]) if landed else one.target.rekordbox_id
-            there = playlist_pair.read_playlist(db, playlist_id)
-            # U210. A COMMIT THIS RUN LANDED is read against what it left.
-            expected = (
-                tuple(tuple(row) for row in landed.get("rows") or ())
-                if landed
-                else tuple(tuple(row) for row in one.rekordbox_before)
-            )
+            if one.target.rekordbox_new:
+                # U202. THE HOME IT IS MADE AT, read now rather than at its
+                # turn in the write, so a name taken or a row gone since the
+                # plan stops the sync before any pair is written.
+                try:
+                    pair_reverse.recheck(db, one.home, one.change.order)
+                except CratekitError as exc:
+                    if exc.cause.reason != "decision-stale":
+                        raise
+                    moved.append(Moved(HOME_SIDE, "", one.home.where, _reworded(exc.cause.message)))
+                    continue
+                now = pair_discover.home_of(
+                    db, one.target.folder, one.target.title, tops=tops, favorites=favorites, skip=skip
+                )
+                if now != one.home:
+                    moved.append(
+                        Moved(
+                            HOME_SIDE,
+                            "",
+                            one.home.where,
+                            "its place moved since the plan"
+                            + (f" ({now})" if isinstance(now, str) else f", it now goes at {now.where!r}"),
+                        )
+                    )
+                continue
+            there = playlist_pair.read_playlist(db, one.target.rekordbox_id)
             if there is None or there.removed or not there.plain:
                 moved.append(
                     Moved(
                         REKORDBOX_SIDE,
-                        playlist_id,
+                        one.target.rekordbox_id,
                         one.rekordbox_name,
                         "is no longer a live plain playlist",
                     )
                 )
-            elif there.memberships() != expected:
-                said = _differs(
-                    [content for content, _row in expected],
-                    [content for content, _row in there.memberships()],
-                    rows=True,
-                )
+                continue
+            if there.memberships() != tuple(tuple(row) for row in one.rekordbox_before):
                 moved.append(
                     Moved(
                         REKORDBOX_SIDE,
-                        playlist_id,
+                        one.target.rekordbox_id,
                         one.rekordbox_name,
-                        said.replace("since the plan", "since this run wrote it")
-                        if landed
-                        else said,
+                        _differs(
+                            [content for content, _row in one.rekordbox_before],
+                            [content for content, _row in there.memberships()],
+                            rows=True,
+                        ),
+                    )
+                )
+                continue
+            if one.place is not None:
+                # A DISCOVERED PLAYLIST IS READ AS DISCOVERY READS IT NOW: still
+                # found, under the same account folder and title. Moved to
+                # another folder, the root, a subfolder or anywhere discovery
+                # lists rather than finds, a plan made now would make another
+                # account playlist or none.
+                now_found = discovered.get(one.target.rekordbox_id)
+                if now_found is None or (now_found.folder, now_found.title) != (
+                    one.place.folder,
+                    one.place.title,
+                ):
+                    moved.append(
+                        Moved(
+                            REKORDBOX_SIDE,
+                            one.target.rekordbox_id,
+                            one.rekordbox_name,
+                            "was moved since the plan, and "
+                            + (
+                                f"would now be made as {now_found.title!r} in "
+                                f"{now_found.folder!r}"
+                                if now_found is not None
+                                else "is no longer one a sync of every pair would make"
+                            ),
+                        )
+                    )
+                    continue
+            held = document.pairs.get(one.target.account_id)
+            if held is not None and held.made:
+                # A PLAYLIST THE PRODUCT PAIRS BY ITSELF IS KEPT ONLY WHERE
+                # DISCOVERY WOULD FIND IT (U198), which the plan read as so:
+                # one dragged under ARCHIVE since is let go by a plan made
+                # now, never written.
+                why = pair_discover.left_behind(db, there, favorites=favorites, skip=skip)
+                if why:
+                    moved.append(
+                        Moved(
+                            REKORDBOX_SIDE,
+                            one.target.rekordbox_id,
+                            one.rekordbox_name,
+                            f"was moved since the plan and is now {why}",
+                        )
+                    )
+                    continue
+            gone = sorted(set(one.change.adds) - set(playlist_pair.content(db, one.change.adds)))
+            if gone:
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        one.target.rekordbox_id,
+                        one.rekordbox_name,
+                        f"would gain {len(gone)} row(s) that are no longer live rows of the "
+                        f"collection",
+                    )
+                )
+        for lost in planned.unpaired:
+            if lost.gone != REKORDBOX_SIDE:
+                continue
+            # A MADE PAIR LET GO FOR ITS REKORDBOX SIDE is let go only while
+            # that side is still gone or still where no pair is kept.
+            there = playlist_pair.read_playlist(db, lost.rekordbox_id)
+            if there is None or there.removed or not there.plain:
+                continue
+            if not pair_discover.left_behind(db, there, favorites=favorites, skip=skip):
+                moved.append(
+                    Moved(
+                        REKORDBOX_SIDE,
+                        lost.rekordbox_id,
+                        lost.rekordbox_name or there.name,
+                        "is back where its pair is kept since the plan, which unpaired it",
                     )
                 )
     finally:
@@ -2966,24 +3165,67 @@ def check(cfg: config.Config, planned: Plan, steps: Any = None) -> dict[str, tup
     return listed
 
 
-def _beyond(one: PairPlan, now: Sequence[str]) -> str:
+def _landed_moved(db: Any, one: PairPlan, landed: Mapping[str, Any], moved: list[Moved]) -> None:
+    """Read a rekordbox playlist this run's commit landed against what it left (U210)."""
+    playlist_id = str(landed["playlist_id"])
+    there = playlist_pair.read_playlist(db, playlist_id)
+    expected = tuple(tuple(row) for row in landed.get("rows") or ())
+    if there is None or there.removed or not there.plain:
+        moved.append(
+            Moved(REKORDBOX_SIDE, playlist_id, one.rekordbox_name, "is no longer a live plain playlist")
+        )
+    elif there.memberships() != expected:
+        said = _differs(
+            [content for content, _row in expected],
+            [content for content, _row in there.memberships()],
+            rows=True,
+        )
+        moved.append(
+            Moved(
+                REKORDBOX_SIDE,
+                playlist_id,
+                one.rekordbox_name,
+                said.replace("since the plan", "since this run wrote it"),
+            )
+        )
+
+
+def _beyond(one: PairPlan, now: Sequence[str], *, ordering: bool = False) -> str:
     """What an account playlist part written by this run holds beyond its own write, or ``""``.
 
     U210. Every track the plan read, less the ones this write takes off, must
     still be there, and nothing may be there that the plan did not read or
-    this write does not add. The order is not read, since the write puts it
-    in order again.
+    this write does not add. Until the write began to put the playlist in
+    order (``ordering``), the order is read as well, as the write leaves it:
+    the tracks the plan read in the order it read them, then this write's
+    additions after them, so a person's reorder in between refuses rather
+    than being written over. Once the order was begun, its moves are this
+    run's own and the order is not read.
     """
     before = set(one.account_now)
     held = set(now)
-    gained = held - before - set(one.account_adds)
+    added = set(one.account_adds) - before
+    gained = held - before - added
     lost = (before - set(one.account_removes)) - held
     parts = []
     if gained:
         parts.append(f"holds {len(gained)} track(s) this run neither read nor added")
     if lost:
         parts.append(f"lost {len(lost)} track(s) this run was not taking off")
+    if not parts and not ordering:
+        kept = [track for track in now if track not in added]
+        tail = [track for track in now if track in added]
+        if kept != [track for track in one.account_now if track in held] or (
+            list(now) != kept + tail
+        ):
+            parts.append("was reordered")
     return " and ".join(parts) + (" since the plan" if parts else "")
+
+
+def _reworded(message: str) -> str:
+    """A recheck's refusal as a line of the check's own, without its closing advice."""
+    head = message.split("; sync the pairs again", 1)[0]
+    return head.replace(", so nothing was made", "")
 
 
 def _differs(before: Sequence[str], now: Sequence[str], *, rows: bool = False) -> str:
@@ -3261,7 +3503,7 @@ def sync_pair(ctx) -> Envelope:
             if held:
                 before = _spent()
                 try:
-                    listed = check(cfg, planned, steps)
+                    listed = check(cfg, planned, steps, store=store)
                 finally:
                     calls["check"] = _spent() - before
             if steps is not None:
@@ -3403,6 +3645,7 @@ __all__ = [
     "STEP_DONE",
     "STEP_MADE",
     "STEP_MAKING",
+    "STEP_ORDERING",
     "STEP_QUEUED",
     "STEP_REKORDBOX",
     "PairSteps",
