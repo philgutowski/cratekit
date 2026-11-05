@@ -2203,7 +2203,10 @@ def test_the_verb_is_its_own_and_resort_is_still_additive():
     assert (approve.name, approve.explicit, approve.options) == (GATE, True, ("approve", "abort"))
     resort = registry.entry("route.resort")
     assert "additive" in resort.summary
-    assert all(spec.digest_source is None for spec in resort.gates)
+    # U219 gave the resort a plan gate of its own, over the tracks it adds,
+    # and it is still not this verb's: it approves adds, never a move.
+    (plan,) = [spec for spec in resort.gates if spec.digest_source == "plan"]
+    assert (plan.name, plan.options) == ("route.resort.apply", ("apply", "abort"))
 
 
 def test_the_resume_carries_the_run_that_holds_the_approval(moved):

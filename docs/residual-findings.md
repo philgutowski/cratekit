@@ -43959,3 +43959,163 @@ that would send a person to log in again.
 **Closes when:** the step re raises a refusal outside the per playlist reasons,
 as the sweep does, so the step refuses with the session's own cause. Ledger
 only: the words a person reads carry the true reason.
+
+---
+
+## R-1298. A resort whose shown add was made by hand before the drive fails the job and says the library moved
+
+**Found:** at the review of #537, U219, round one, 2026-11-05.
+
+**The mechanism.** `rebuild.assert_as_approved` asks the before check's adds
+to equal the approved adds exactly. A person who approves a resort and then
+files one of its shown tracks by hand in rekordbox before the job is driven
+leaves the worker one add short of the plan, and the job fails with
+`resort-plan-stale`, "the library or its taxonomy moved after the gate". The
+same refusal would meet a job whose item committed and whose driver was
+killed before the item was marked done, when the respawn claims it again.
+
+**Measured cost.** Driven for the hand add: approve and queue, add track 1 to
+`Minimal / Deep Tech / Med Energy` by hand, drive; the job fails, planned 3
+against approved 4, nothing written. Running the resort again plans the rest
+and files it, so nothing is lost; the cost is a failed job and a sentence
+that blames a move rather than a subset. The killed driver window was not
+driven, so that producer is unmeasured.
+
+**Closes when:** the worker accepts a before check whose adds are a subset of
+the approved adds, writing only those, and names the shown adds that were
+already present, or the refusal says which approved adds are already there.
+
+---
+
+## R-1299. converge names the rebuild as the remedy for an INBOX a person accepted, and the rebuild only asks the acceptance again
+
+**Found:** at the review of #537, U219, round two, 2026-11-05.
+
+**The mechanism.** `crate converge` over an accepted intake tree reports it
+not compared, since no derivation describes it, with the remedy
+`rebuild-tree` the convergence record's refusal carries. The rebuild of that
+tree is now the acceptance gate, which a tree no longer refusing does not
+reach: it refuses `rebuild-tree-not-derivable`. Who accepted is in the data
+as `disposed_by` and not in the line a person reads.
+
+**Measured cost.** Driven in the round two review: status not compared,
+nothing blocking, remedy rebuild-tree. A person is pointed at a verb that
+answers it cannot rebuild that tree. Nothing is written or lost.
+
+**Closes when:** converge names an accepted tree as accepted, by whom and
+since when, with no remedy, and names the acceptance gate for a marked one.
+
+---
+
+## R-1300. How INBOX is released after a restore marks it is a conservative call that waits on Phillip
+
+**Found:** by U219, by its author, 2026-11-05.
+
+**The mechanism.** A restore marks every database native tree unconverged,
+INBOX among them, and every landing into a marked tree refuses. The routing
+tree is repaired by `crate rebuild`; INBOX holds the batches the landings
+wrote and cannot be derived, and U219 stopped the rebuild that used to
+derive it wrongly (R-789). So U219 built the conservative way out: `crate
+rebuild --tree inbox` asks the explicit gate `rebuild.accept`, and a named
+person's answer records a disposition on INBOX and a fresh fingerprint, so
+landings resume while `crate converge` still reports it unconverged and
+accepted. The next restore marks it again. The question went on #537 as a
+Question for Phillip with two other ways: never mark INBOX at a restore, or
+keep it blocked until a later card rebuilds its batches from the landing
+records.
+
+**Measured cost.** Not driven live. Whatever a restore took out of INBOX
+stays out unless it is landed again, and only the person accepting is told.
+
+**Closes when:** Phillip answers the question on #537. Option 1 closes it as
+built; option 2 or 3 is a new card. Ledger only: it closes at a decision,
+not at a verb a person pays for.
+
+---
+
+## R-1301. route inbox on a library whose only native tree is the intake tree says no tree has cut over
+
+**Found:** at the review of #537, U219, round one, 2026-11-05.
+
+**The mechanism.** Since U219 `route inbox` files into the routing tree only,
+so on a library where the intake tree has cut over and the routing tree has
+not, its planner finds no routed tree and carries the export remedy, whose
+first clause is "no tree has cut over". The resort says `no-derivable-tree`
+for the same library, which is true.
+
+**Measured cost.** Driven on a registry with `inbox` native alone: the
+warning reads "no tree has cut over". The sentence's remedy, the export path,
+is still the right one, so a person is sent the right way with one false
+clause. Not measured on a real library mid cutover; the author's library has
+both trees native.
+
+**Closes when:** the export remedy says the routing tree has not cut over,
+which is true in both cases, with `tests/test_routing_workers.py` and the
+`r695` rows that spell it moved with it.
+
+---
+
+## R-1302. Three of the resort's and the acceptance's guards kill no test
+
+**Found:** at the review of #537, U219, round one, 2026-11-05.
+
+**The mechanism.** Removing the resume's answer of the gate in
+`routing_cli._resume`, removing the refusal of a resort job that froze no
+plan, or narrowing the acceptance verb's pre check in `cli/rebuild.py` to
+`record is None`, each leaves the suite green, as the review measured. A job
+exists only after its gate was answered, the worker's approved check refuses
+an empty plan, and `clear_unconverged` refuses to dispose of a tree that is
+not refusing, so each sits behind another guard. The deferral key's location
+half in `rebuild_tree` is unpinned the same way: the fixture holds one
+favourite, so a key of bucket and sub alone passes. The fourth the review
+named, the answer's pin to the database file, now dies to a test written for
+it (`docs/mutation/u219-composites.md`).
+
+**Measured cost.** Maintainer facing. Nothing a person pays today; a later
+edit dropping any of the three passes the suite.
+
+**Closes when:** a test drives each: a resume declined at its gate, a job
+queued with no frozen plan, an accepted INBOX named again, and two
+favourites in one bucket of which one was shown.
+
+---
+
+## R-1303. Reporting a finished resort through route resort --job meets its gate again
+
+**Found:** at the review of #537, U219, round one, 2026-11-05.
+
+**The mechanism.** Since U219 the resort's resume answers its explicit gate
+from the job's frozen plan before anything else, so `crate route resort --job
+J` on a job that already succeeded, with no `--run`, mints a new run and
+exits `decision-required`. With `--run` naming the gate run it reports as
+before.
+
+**Measured cost.** Driven after a succeeded job: exit 10 with empty checks.
+`crate job show J` reports the job, and the resume the job engine spawns
+carries `--run`, so no queued work stalls. The cost is a person reaching for
+the verb to read a result and being asked a question already answered.
+
+**Closes when:** the resume answers the gate only while the job is open, and
+a closed job is reported without it.
+
+---
+
+## R-1304. A native tree the taxonomy does not name at all is derived as a routing tree
+
+**Found:** by U219, by its author, 2026-11-05.
+
+**The mechanism.** `rebuild.derivable` refuses a tree the declaration names
+as any node other than the routing tree, and passes a tree the declaration
+does not name at all. The suites' governed trees carry synthesized
+identifiers such as `shelf_stack`, which is why; a registry written by hand,
+or a routing tree whose identifier a later template renamed, is the shape a
+real library could reach.
+
+**Measured cost.** Not driven on a real library. The cutover verb records
+only the routing tree and the intake tree (`tree_registry.cutover_trees`), so
+no shipped verb produces an undeclared native tree; the cost of one would be
+the routing tree's membership written under that tree's root.
+
+**Closes when:** `derivable` allows the declared routing tree alone and the
+suites' synthesized trees are declared as the routing tree, or the cutover
+verb's set is shown to be the only producer.

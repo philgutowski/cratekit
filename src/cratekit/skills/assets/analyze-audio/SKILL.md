@@ -208,11 +208,14 @@ crate job list --state queued
 ## After a restamp, the placement is stale
 
 Energy changed, so where a track belongs changed with it. The analysis verbs do
-not move anything. Re placing is a separate verb, and it queues a job of its own
-for the same reason.
+not move anything. Re placing is a separate verb: it shows every track it will
+add at an explicit gate, answered by a separate recorded act, and then queues a
+job of its own for the same reason.
 
 ```bash
 crate route resort
+crate run decide RUN_ID route.resort.apply apply --actor NAME
+crate --run RUN_ID route resort
 crate job resume JOB_ID
 crate report library /path/to/collection.xml
 ```
