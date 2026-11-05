@@ -43111,3 +43111,487 @@ list is longer than it needs to be.
 
 **Closes when:** a kept refusal at the database half carries only the
 continue step, or the two are made one sentence. Ledger only.
+
+---
+
+## R-1262. A title that is only a bracketed credit reads as the title, and a set aside track shows its own spelling beside the word no title
+
+**Found:** at the review of #507, U213, 2026-11-05.
+
+**The mechanism.** U213 made a leading bracketed group the title unless its
+last word names a version (`acquire/match.py` `split_version` and
+`_names_a_version`), so `[Premade Sandwiches]` reads while `(Original Mix)`,
+`(Live)` and `(Extended)` are still refused as naming no title, as on `main`.
+A group that is a credit or a qualifier ending on some other word takes the
+title: a row titled only `(feat. Mira)` reads as the title `feat. Mira`, and
+`(Live at Wembley)` as `Live at Wembley`, where `main` refused both. An
+exception for credits was built in round one and taken out in round two,
+because the credit prefixes include `with ` and `[With You]` and
+`(With Or Without You)` are titles. Separately, a track `crate sync twins`
+sets aside is named on the gate by the title its row spells, so a row titled
+`[]` shows as `Nova Reef - [] (the account lists it with no title, ...)`.
+
+**Measured cost.** Driven on the reader: each of those spellings reads as
+described. No provider row titled only by a credit was found or driven, so
+the reachability is unmeasured. Where one exists it is queued and matched
+under those words as its title rather than refused, a narrower cost than the
+whole playlist refusal it replaced. The gate line is wording; nothing false
+is written.
+
+**Closes when:** a live listing shows such a row, and the rule is narrowed to
+the guest credit prefixes that cannot begin a title (`feat`, `ft`,
+`featuring`) with a test per prefix. Ledger only.
+
+---
+
+## R-1263. The twins backfill keeps a left playlist's provider words out of its digest on a producer nobody drove
+
+**Found:** at the review of #507, U213, 2026-11-05.
+
+**The mechanism.** `crate sync twins` leaves a playlist whose listing is
+refused, with the provider's message as its reason. U213's round one drove a
+fixture whose message varied per call and found the approved run refusing
+`decision-stale`, since the reason rode in `Backfill.digest`; the fix puts
+the refusal's reason code in the digest (`Twin.refused`) and keeps the words
+for the gate.
+
+**Measured cost.** None on a real producer: a real `requests` connection
+failure run twice gave identical words, and the provider client carries no
+request id in its errors. Round two read five other plans that carry a
+refusal's message (prune, pair, the mirror's downloads, account playlists,
+inspiration) and none compares a message that can move between the ask and
+the write; inspiration holds one in its digest but never lists the account
+again before the write.
+
+**Closes when:** a provider error whose text varies between calls is seen
+live, at which point every plan carrying a refusal's message in its digest
+takes the reason code instead. Ledger only.
+
+---
+
+## R-1264. crate sync pair refuses every pair when one paired account playlist lists a track with no title or no artist
+
+**Found:** at the build of #507, U213, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.py` plans each pair's account side through
+`intake_cli.list_playlist_dated`, whose reader refuses the whole playlist with
+`intake-list-unusable` when one row names no title or no artist. A sync of
+every pair passes over a pair only for the two refusals in
+`PER_PAIR_REASONS` (`sync-pair-unknown`, `sync-pair-out-of-scope`), so that
+refusal stops the run at that pair and no other pair syncs. The account
+playlists a synced folder brings take it per playlist (`BROUGHT_REASONS`);
+the pairs already made do not.
+
+**Measured cost.** Driven on the twins suite's disposable database: a
+backfilled twin whose account playlist lists one track with an empty title,
+then `crate sync pair` with no argument, refuses `intake-list-unusable`
+("track 3 names no title") and syncs nothing; named alone, the pair refuses
+the same way. U213 made this more reachable: before it, `crate sync twins`
+refused on such a playlist and paired nothing, and now it makes the twin and
+names the track, so the next pair sync stops. A pair made by hand over such a
+playlist met it before U213 too. The live case that opened U213, a title
+written wholly in brackets, now reads, so on the live account the producer
+left is a row with an empty title or no artist, whose reachability is
+unmeasured.
+
+**Closes when:** a sync of every pair names a pair whose account listing the
+reader refuses and syncs the others, or the pair's account side is read row by
+row as the twins backfill reads it (`intake_cli.list_playlist_readable`), a
+track the reader refuses kept by its id. Earns an issue under the board bar's
+(c): `crate sync pair` is the workflow that keeps every twin one list, and one
+track stops it for every pair.
+
+---
+
+## R-1265. A file an earlier pass staged lands under the later pass's name, so that pass's heart months and gate are not its own
+
+**Found:** at the build of #506, U212, 2026-11-05.
+
+**The mechanism.** `crate sync land` lands everything a landing would take
+from the download staging folder, with `--pass` naming the pass that ran it.
+Since U212 a later pass skips the tracks an unlanded earlier pass staged and
+lands them over that folder under its own pass name. The heart month filing
+(`account_playlists.hearted`) reads only the landing pass's hearts, so a
+staged file the earlier pass's hearts asked for, and the later pass's did not,
+is given no heart month there. The earlier pass's landing gate, never
+answered, is now stale: its folder changed.
+
+**Measured cost.** Not driven. The landing of every file staged was already
+the behaviour before this unit for any landing over that folder; U212 makes
+the path the normal one when an earlier gate is left open. Landing or
+abandoning old open gates is out of the card's scope.
+
+**Closes when:** a landing over a staging folder holding another pass's files
+names that pass's hearts too, or the old gate is answered or abandoned first.
+Ledger only.
+
+---
+
+## R-1266. A staged track is known by its ISRC alone, so a staged file with no ISRC tag is downloaded again
+
+**Found:** at the build of #506, U212, 2026-11-05.
+
+**The mechanism.** `intake missing` subtracts a missing row from the download
+list when a file in the download staging folder carries the row's ISRC, read
+by the index reader (`missing_cli._staged`). A row with no ISRC, or a staged
+file whose ISRC tag is absent, malformed or unreadable, matches nothing, so the
+track is listed and downloaded again, and at the name step `name apply` cannot
+call the collision a second copy either (`naming_cli.second_copy` reads the
+same tag). The provider id is not read: not in a staged file's name, which the
+downloader writes as `{track_id}` until `name apply` renames it, and not in the
+`URL` tag the vendored downloader writes when `metadata_write_url` is on.
+
+**Measured cost.** Not driven live. The downloader writes the Vorbis `isrc`
+comment on every file it delivers (R-355's note in `core/tags.py`), so the
+miss needs a provider row with no ISRC. In sitting 55 both copies carried one.
+
+**Closes when:** a sitting meets a staged file with no ISRC that a pass lists
+again, then the staged set also reads an identifier stem and the URL tag.
+Ledger only: the cost is the collision the unit started from, now with a
+plainer message.
+
+---
+
+## R-1267. A branch sync titled in the landing form off the first parent line is listed as a release landing
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `landings_since` in `scripts/release.py` lists a merge no
+pull request claimed when it is off the first parent line and its subject
+matches `LANDING_RE`, `merge(uN): ...` or `merge(r-N): ...`. A session that
+titled a merge of `main` into its own branch in that form, as three did before
+v0.2.0 (`merge(u52): main into relay/70 ...`, `merge(u132): main at e686759
+into the branch ...`, `merge(u142): U140 from main at cdd42fd ...`), has it
+counted as a unit landing.
+
+**Measured cost.** Driven by Fable over the real history: `plan --since
+<root> --tip v0.2.0` lists the three as minor landings. Zero such merges in any
+range since v0.2.0, so no range a release would cut again carries one, and the
+cloud unit pipeline titles its syncs with git's default or `merge: main into
+the branch`, which do not match. Notes and the bump are wrong only for a range
+nobody will cut.
+
+**Closes when:** the off line rule stops trusting the subject alone, for
+instance by following each local merge of `main`'s second parent first parent
+line instead. Ledger only.
+
+---
+
+## R-1268. A landing behind a local merge of main whose subject is not in the landing form, and that no pull request claims, is left out of a release
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** Off the first parent line, `landings_since` lists an
+unclaimed merge only under a `merge(uN): ...` or `merge(r-N): ...` subject,
+since every other off line merge in the history is a branch sync. A merge that
+reached `origin/main` under another subject, with no pull request whose merge
+commit or head claims it, and then went behind a local `Merge branch 'main' of
+...`, is not listed.
+
+**Measured cost.** Not produced. Over all of `origin/main`, the three local
+syncs ever made are on the first parent line, every landing since U158 has a
+pull request record whose merge commit is in the history (79 of 79), and the
+over a hundred off line merges without a landing subject are branch syncs.
+
+**Closes when:** the off line walk follows each local sync's second parent
+first parent line and reads it as a stretch of `main`, so a landing there is
+judged as one on the line is. Ledger only.
+
+---
+
+## R-1269. A version shaped tag on a side branch inside a release pair refuses plan over that pair, with advice that drops part of it
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `refuse_a_crossed_tag` in `scripts/release.py` refuses any
+`v*` tag reachable from `--tip` and not from `--since` that is not at the tip,
+including one on a side branch merged into the range. Its advice, `--since`
+that tag, would start the range at the branch point and drop what came before.
+
+**Measured cost.** Driven by the round two reviewer in a throwaway repository,
+v0.2.5 tagged on a feature branch commit then merged: `plan --since v0.2.0
+--tip v0.3.0` is refused. Not produced on the real repository, where all six
+tags sit on `main`'s release commits.
+
+**Closes when:** the scan counts only tags on the first parent line of the
+range, or the refusal names the side branch. Ledger only.
+
+---
+
+## R-1270. The order a release plan lists its landings in is not pinned by any test
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `range_commits` in `scripts/release.py` passes
+`--date-order`, so landings from both sides of a local merge of `main` come out
+in the order they were committed rather than one side after the other. Reverting
+it to git's default order kills no test in `tests/test_release.py`.
+
+**Measured cost.** None measured: the default order and `--date-order` agree
+over v0.6.0 to v0.7.0 and over the root to v0.2.0, so no real release lists
+differently. A future range whose clocks disagree could list out of merge order
+in its notes, which is cosmetic.
+
+**Closes when:** a test builds two landings on either side of a local merge
+with commit dates that differ from their topological order. Ledger only.
+
+---
+
+## R-1271. The release plan's default range starts at the highest version tag whatever line of history it is on
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `gather` in `scripts/release.py`, with no `--since`, takes
+the highest `vX.Y.Z` among every tag, and `plan` and `cut` read the range from
+it. U215 added a crossed tag and reversed range refusal on the `--since` path
+only. A version tag on a commit `main` never reached starts the default range
+there.
+
+**Measured cost.** Driven by the round two reviewer in a throwaway repository,
+v0.9.0 tagged on an abandoned branch: `plan` prints `current version 0.2.0,
+last tag v0.9.0`, lists one of two units on `main` and proposes a version
+below an existing tag, with no refusal. Not produced on the real repository:
+`cut` refuses off `main`, and origin carries six tags, every one on a `main`
+release commit.
+
+**Closes when:** the default range takes the highest version tag merged into
+`HEAD` (`git tag --merged HEAD`), or refuses one that is not. Ledger only.
+
+---
+
+## R-1272. No test tells the version written at a release plan's --since from the version its tag name spells
+
+**Found:** at the review of #529, U215, 2026-11-05.
+
+**The mechanism.** `cmd_plan --since` reads the base version with `version_at`,
+the `pyproject.toml` version at that commit. Reading it from the tag's name
+instead, `dotted(parse_tag(since))`, passes all of `tests/test_release.py`,
+because every fixture tag, like every real one, names the version written at
+its commit.
+
+**Measured cost.** None: the two readings agree on all six real tags, so no
+range produces a difference. Sharper mutations of `version_at` die. The test
+that names this behaviour cannot tell the two apart.
+
+**Closes when:** a test tags a commit whose `pyproject.toml` version differs
+from the tag name, if that shape is ever wanted. Ledger only.
+
+---
+
+## R-1273. Whether the account's folder listing carries a playlist's creation time is proven on a fixture only
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** A root folder adopted before U216 has no record of what it
+held, so `sync/pair_cli._discovered_back` reads each unpaired playlist there by
+when the account says it was made, through
+`TidalAccount.folder_playlists_dated`, which takes the `created` the client's
+playlist parser reads off each folder item. The test that proves it adds a
+`created` field to an item the author wrote. No live sample of a folder item's
+data carrying `created` is recorded anywhere in the repository.
+
+**Measured cost.** Not driven, since the live account cannot be read from the
+cloud. If the live items carry no time, every unpaired playlist in the live
+`Genre Trivia!` folder is named "no creation time" for good, one made on the
+account after the sync included: named on the gate and never made, so never a
+duplicate, but nothing made there comes back by itself until it is paired by
+hand. The card's live check, no create for the 18, passes either way, so the
+attended sitting reads the reason on the 18: "not after a sync adopted" means
+the time was read, "no creation time" that it was not.
+
+**Closes when:** the attended sitting reads the reason text on the next live
+`crate sync pair` plan. Ledger only; it closes at a sitting.
+
+---
+
+## R-1274. A folder adopted before U216 whose made pairs are all gone names every playlist made in it since
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** For a root folder adopted before U216 the adoption moment
+is the earliest mark of a pair made in that folder
+(`pair_discover.adoption_moment`). A pair whose rekordbox side was deleted is
+unpaired and leaves the pairs document, so when every made pair of such a
+folder is gone there is no moment, and `before_adoption` reads every unpaired
+playlist there as one the folder may have held, the decision recorded at the
+plan: an unknown is named, never made.
+
+**Measured cost.** Driven by the review on the fake account: with the record
+removed and both rekordbox playlists deleted, a playlist made on the account
+afterwards with a readable later creation time was named "no playlist made in
+it dates the adoption" and not made. Nothing is lost or duplicated; a playlist
+the author makes there comes back only when paired by hand, which the gate
+says how to do.
+
+**Closes when:** the moment survives the pairs, for example by recording the
+adoption time on the folder the first time a U216 build reads an unrecorded
+one, or Phillip decides an unknown should come in. Ledger only.
+
+---
+
+## R-1275. A DOWNLOADED copy's reason can say the sync brings in a playlist the same plan leaves out
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli._discovered_back` checks each fresh
+account playlist for a `DOWNLOADED ` copy against the paired titles and the
+other fresh playlists in the folder, before the later checks (the scope check,
+`home_of`, two taking one rekordbox name) run on the fresh one it copies. So
+when the plain playlist is left out by a later check, the copy's reason still
+says "which this sync brings in from the same folder".
+
+**Measured cost.** Driven by the review's second round on the fake account:
+rekordbox already holding a `Disco` no pair made, and the account holding
+`Genre Trivia! Disco` and `DOWNLOADED Disco`, planned no create, a TAKEN row
+for the plain one and a COPY row saying the sync brings it in. Nothing is made
+and nothing is lost; the gate carries two rows that disagree.
+
+**Closes when:** the copy check runs after the place checks and reads only the
+fresh playlists still wanted, or its words say "a playlist beside it in the
+same folder". Ledger only.
+
+---
+
+## R-1276. A DOWNLOADED copy of a playlist whose pair was released is made in rekordbox
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** The copy check reads the titles of paired account
+playlists and of fresh ones. A made pair whose rekordbox side was deleted is
+released and leaves the pairs, and its account playlist is listed RELEASED,
+not fresh, so a `DOWNLOADED ` copy of it made after the sync copies nothing
+and is brought in.
+
+**Measured cost.** Driven by the review's second round on the fake account: a
+fresh `DOWNLOADED Techno` named a copy while the Techno pair stood; after
+rekordbox Techno was deleted and one sync released the pair, the next plan
+created `DOWNLOADED Techno` with its tracks beside a RELEASED row saying
+`Genre Trivia! Techno` is not made again. The create is on the rekordbox gate
+the person answers, and follows the brief's letter (a released playlist is not
+paired). On the live library every DOWNLOADED copy was in its folder before
+adoption, so this needs a new copy made on the account after the sync; that
+producer was not driven live.
+
+**Closes when:** Phillip says whether a released playlist's title counts as
+held for the copy check (the conservative reading is yes). Ledger only.
+
+---
+
+## R-1277. The released and name taken reasons still say pair it by hand without the rekordbox playlist
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** U216's fix round made `pair_discover.BY_HAND` say to make
+or choose the rekordbox playlist and name `--rekordbox PLAYLIST_ID`, and its
+two new reasons use it. The RELEASED reason in `sync/pair_cli._discovered_back`
+and in `pair_discover.discover`, and the name taken reason in
+`pair_discover.home_of`, keep the older words, and the test that pins the step
+lists BEFORE and COPY only.
+
+**Measured cost.** Driven by the review's second round: following the RELEASED
+row's step as written, `crate sync pair pl-3`, exits 30 saying the account
+playlist is not paired with a rekordbox playlist; the refusal's own steps name
+the right form. One dead end command, nothing lost.
+
+**Closes when:** every pair by hand step reads `BY_HAND`, and the test
+quantifies over every kind the back direction lists. Ledger only.
+
+---
+
+## R-1278. Two guards in U216's copy check kill no test
+
+**Found:** at the review of #530, U216, 2026-11-05.
+
+**The mechanism.** In `sync/pair_cli._discovered_back` the copy check leaves
+a playlist's own title out of the fresh titles it compares against
+(`other_id != account_id`), and picks its words by whether the copied title is
+paired. Removing the exclusion, or forcing the words to the brought in side,
+leaves the suite green.
+
+**Measured cost.** None driven. The exclusion matters only for a root folder
+literally named `DOWNLOADED`, since a title cannot otherwise copy itself once
+`name_of` strips the folder prefix; the paired side of the words is pinned by
+no test.
+
+**Closes when:** a test drives each. Ledger only, a maintainer facing guard.
+
+---
+
+## R-1279. board.py cloud reads a card the grok builder holds as ready, since that builder's comments carry no session footer
+
+**Found:** at the review of #536, U218, 2026-11-05.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads only comments
+that carry the Claude Code session footer as a hold. The `grok/` builder's
+comments carry none (its comments on #309 and #310 of 2026-10-13), so a card
+it holds reads `ready, no cloud session has taken it`, and `board.py cloud`
+prints no branch names. Driven at review on comments shaped like #310's.
+
+**Measured cost.** No card pays today: the two `grok/` branches on the remote
+belong to #309 and #310, both closed. A grok held card offered to a build
+thread would put two builders on one card. The same reader takes a comment
+of that builder's posted after a cloud thread's `Brainstorm` or `Question for
+Phillip` as Phillip's reply (driven at review on a synthetic pair: `answered,
+Phillip replied`), so a thread could fold another builder's words into a
+brief as his answer; no open card carries that input today. The cloud-unit skill now tells a
+thread to look for a `grok/` branch naming the card and that builder's
+comment before it posts `Started`.
+
+**Closes when:** `board.py cloud` reads a `grok/` branch or that builder's
+comment as a hold, with a test. Ledger only: maintainer facing, and
+`board.py` was out of U218's scope.
+
+---
+
+## R-1280. board.py cloud stops counting a card as held once its thread posts a question for Phillip, though the thread keeps building
+
+**Found:** at the build of #536, U218, 2026-11-05.
+
+**The mechanism.** `cloud_state` in `scripts/board.py` reads a card whose
+session's last stated comment is `Question for Phillip` (or `Brainstorm`) as
+`waiting-on-phillip`, and `cmd_cloud` counts only `underway` cards against
+`CLOUD_LANES`. Since Phillip's rules of 2026-11-04 a question does not stop
+the build: the thread makes the conservative call and keeps going, posting
+`Progress` notes that the reader skips when it picks the stated heading. So
+the queue prints one lane fewer held than there are threads building, and a
+session reading the queue alone would start a thread the cap has no room for.
+
+**Measured cost.** Driven on the live board on 2026-11-05: four threads
+held #526, #532, #533 and #536, #533 having posted a question while it kept
+building, and `board.py cloud` printed `Held, 3 of 5` and offered #537. The
+same reader also reads such a card `answered` once Phillip's answer lands,
+while its thread is still building, and step 1 of the cloud-unit skill would
+hand it to a second thread; the skill now says to pass over an `answered`
+card whose thread is still writing. No user of the shipped verbs pays: the building project's coordinator counts lanes by
+its own running threads (METHOD's cloud lane section, written by U218), and
+`CLOUD_LANES` is five against the building project's cap of four, so one
+uncounted question still leaves the cap within the lane count.
+
+**Closes when:** the reader keeps a card held while a session that posted a
+question is still writing under it, for example a `Progress` comment after the
+question read as a hold, with a test, or the coordinator's own count is the
+documented source and `board.py cloud` says its held count excludes
+questioning threads. Ledger only: maintainer facing.
+
+---
+
+## R-1281. Two open cards are both titled U218, #536 and #537, because parallel threads read the next unit number at the same time
+
+**Found:** at the build of #536, U218, 2026-11-05.
+
+**The mechanism.** The `file-card` skill takes a new card's number as one
+past the highest U number any issue title carries. Two threads grooming the
+board on 2026-11-05 read it within two minutes of each other: #536 was filed
+at 14:14 and #537 at 14:16, both as U218. The same race gave two A93 cards
+(#525, #528).
+
+**Measured cost.** Read from the issue titles over REST. A unit number names a
+record, `docs/restart/u218.md`, a mutation table and residual files, so the
+later card's landing would write over or collide with the earlier one's
+record, and the board names two units by one number. No library or DJ pays.
+
+**Closes when:** the later card, #537, takes the next free number in its
+title before it is built, and its record is named for that number. METHOD's
+Sharing the board section, written by U218, now says a number is read just
+before filing; a check in `board.py audit` that refuses two open cards with
+one number would close the class. Ledger only: maintainer facing.

@@ -60,7 +60,8 @@ one.
    over the whole range, a pull request merged once CI on its head is green
    (Committing and merging below), then on `main`
    `board.py residuals --land` and commit what it numbered, push `main`,
-   delete the branch in both places, `board.py audit`. File the issue for
+   delete the local branch (the merged pull request takes the remote one),
+   `board.py audit`. File the issue for
    each residual `--land` names as meeting the board bar.
 
 ## Card sizes, decided by Phillip on 2026-11-02
@@ -349,9 +350,9 @@ it.
   trailer is the one close. CI judges the pull request's own range and the
   card its head branch names, so a unit a register still owes cannot merge.
   If the merge endpoint is refused, merge locally with the same message and
-  push `main`, and the pull request stays as the record. Delete the branch
-  where you can: `git branch -d <branch>` then `git push origin --delete
-  <branch>`.
+  push `main`, and the pull request stays as the record. The repository's
+  "Automatically delete head branches" setting removes a merged pull
+  request's branch; delete the local one with `git branch -d <branch>`.
 - **`git push origin --all` fails on this connection** with `RPC failed; HTTP
   400`. Push one branch at a time.
 - **No em dashes, no en dashes, no double hyphens** in prose, comments, commit
@@ -433,10 +434,11 @@ over the merged range once. A session does not run it.
 
 ## The cloud lane, decided 2026-10-27
 
-**The cloud is where Cratekit is built.** The coordinator, the Claude that
-talks with Phillip in his Claude project's chat, turns each idea or bug he
-brings into a card and fills the cloud's lanes with fresh build threads on
-Opus 5.5, one card each, waking hourly to fill any lane that freed. It
+**The cloud is where Cratekit is built.** The building project's
+coordinator, the Claude that talks with Phillip in that Claude project's
+chat, fills the cloud's lanes with fresh build threads on Opus 5.5, one card
+each, waking hourly to fill any lane that freed, and the other project files
+the cards and keeps the decisions page (Sharing the board, below). It
 replaced the lane dispatcher, a long lived cloud session woken by a
 scheduled task, which ran from 2026-10-27 and was retired on 2026-10-31.
 Each build thread runs the `cloud-unit` skill, in the repository's Claude
@@ -460,21 +462,29 @@ plan, progress notes, brainstorm, set-aside and landing are comments headed
 `Plan`, `Progress`, `Brainstorm`, `Needs the machine` and `Landed`; Phillip's
 answer is any comment without the session footer after the question, or
 any comment headed `Answer from Phillip` whoever posts it. **The
-cloud builds five cards at once**, three decided 2026-10-28 for the backlog
-and raised to five by Phillip on 2026-10-31 (`CLOUD_LANES` in
-`scripts/board.py`): each worker merges the latest `main`
-into its branch and runs the battery again before it merges, so two builders
-landing in either order is the case the repository was already built for
+cloud has five lanes**, three decided 2026-10-28 for the backlog and raised
+to five by Phillip on 2026-10-31 (`CLOUD_LANES` in `scripts/board.py`), and
+**the building project runs at most four threads at once**, Phillip's cap of
+2026-11-05, so it leaves the fifth lane empty and `CLOUD_LANES` is unchanged.
+Its coordinator counts lanes by its own running threads, not by the held
+count `board.py cloud` prints, which stops counting a card once its thread
+posts a question for Phillip although the thread keeps building. Each worker
+merges the latest `main` into its branch and runs the battery again before
+it merges, so two builders landing in either order is the case the repository was already built for
 (restart fragments, residuals numbered at landing, per module pins). A hold
 beyond the lane count withdraws, the earliest holds keeping theirs. A hold
 with no comment for eight hours is a session that died, and the next one
 resumes it from its pushed branch.
 
 **A decision that is Phillip's goes on the decisions page**, https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS,
-decided 2026-10-28. A worker that reaches one, a brainstorm's questions or a
-question a brief leaves open, writes each question there as a multiple choice
-with its recommendation first, says so on the card, and moves to the next
-card. Phillip answers on the page whenever he likes. The page cannot reach
+decided 2026-10-28. A build thread that reaches one, a brainstorm's
+questions or a question a brief leaves open, posts it on its card only, each
+question a multiple choice with its recommendation first, under a
+`Brainstorm` or `Question for Phillip` heading, and never writes the page;
+the project that files the cards copies it there (Sharing the board, below).
+A brainstorm waits for his answer; a question does not stop the build, which
+makes the conservative call, records it and keeps going. Phillip answers on
+the page whenever he likes. The page cannot reach
 a project session by itself, so the relay thread, the project thread "Wire
 decisions page answers to cards" that the scheduled task "Cratekit decisions
 relay" wakes every hour at 34 minutes past, posts each answer on its card
@@ -516,14 +526,79 @@ issues over REST a numbered page at a time when the GraphQL count is refused.
 `start`, `sync` and a plain `audit` stay local; `audit --labels-only` runs
 in the cloud. The project's cards move only with a `BOARD_TOKEN` secret on
 the board workflow, since no cloud session can write the project. Deleting a
-remote branch is refused too, so merged `cloud/` branches stay until someone
-prunes them locally. The repo scan reads the container's mounts as the
+remote branch is refused too, so the repository's "Automatically delete head
+branches" setting stays on and a merged pull request takes its branch with it
+(No stale branches, below). The repo scan reads the container's mounts as the
 harness's under `CLAUDE_CODE_REMOTE`.
 
 **A local session merges between cloud units, never during one.** When
 `board.py cloud` says the lane is held, a local merge to `main` waits until
 the card lands, or the cloud session meets a moved `main` at its merge and
 has to merge it in and run the battery again.
+
+## Sharing the board, decided by Phillip on 2026-11-04
+
+**Another builder works this board.** A builder that is not Claude works the
+repository on `grok/` branches. A card with a `grok/` branch, or held by that
+builder's comment, is never a cloud thread's to take, and a `grok/` branch is
+never touched, merged in or pruned by a cloud thread.
+
+**Two Claude projects share Cratekit, and one of them builds.** The project
+on Phillip's first account builds nothing: it files cards from his ideas,
+keeps the decisions page, and relays his answers. The project on his second
+account does all of the building, up to four threads at once (The cloud
+lane, above), taking every card `board.py cloud` lists as takeable, in
+order. So a held card belongs to one of the building project's threads or to
+the `grok/` builder, and is never taken. The building project cannot reach
+the decisions page and never writes to it: a thread's question for Phillip
+goes on its card only, in the form the `cloud-unit` skill's Asking Phillip
+section gives, under a `Brainstorm` or `Question for Phillip` heading (a bare
+`Question` is a heading `board.py cloud` does not know, so it reads as a
+hold), and the thread carries on with the conservative call. The first
+project copies the question onto the decisions page and posts Phillip's
+answer on the card under `Answer from Phillip`, which makes the card
+takeable again. An idea or bug Phillip raises in the building project's chat
+is filed there with the `file-card` skill, after a search of the open cards
+so nothing is filed twice. A new card's `U` or `A` number is read from the
+board just before it is filed, never earlier, because parallel threads file
+cards: two cards were once both titled A93 (#525, #528), and two U218 (#536,
+#537).
+
+**No stale branches.** Phillip does not want branches left to go stale. The
+"Automatically delete head branches" setting stays on, so a merged pull
+request takes its branch with it. Any `cloud/` branch with no open pull
+request and no card held in progress is stale: list it in the record for
+Phillip's next local session to prune. Ask Phillip before touching any
+branch that is not plainly a finished `cloud/` branch.
+
+**Questions of code quality are never Phillip's.** Conventions, structure,
+file layout, naming and testing approach are decided by the session: pick the
+highest quality convention or standard, write the choice in the record, and
+move on. Phillip is asked only what a session cannot decide, such as product
+behaviour, scope, what a DJ should see, and anything the limits below touch,
+one question at a time, as a multiple choice with the recommendation first.
+
+**Limits every cloud session keeps**, beside CLAUDE.md's standing
+constraints. Write to the cratekit repository only. Never push `main` except
+to merge a pull request that passed its checks and the residual numbering
+commit after it. Never delete an issue, assign a card, or ping anyone.
+Cratekit is shared with a handful of DJs, so no personal data, credentials,
+library paths or absolute home paths go in any file. A commit or a pull
+request body carries no model name, no "Generated with Claude Code" line, no
+session link and no co author line, whatever an attribution reminder says,
+and a pull request body opens with the line `Requested by Phillip`.
+
+**A card is done only when all of these hold**: the brief's goal is met and
+the record shows it; the tests the brief names exist and pass, a bug's
+failing test written first; the battery is clean net of the base's known
+Linux failures and CI is green on the pull request; the Fable review has no
+finding left that holds the merge; the mutation table is measured to the
+card's size; the record, the residuals and the owed attended cards are
+filed; and the docs are updated wherever behaviour changed (`docs/GUIDE.md`
+and `docs/cutover.md` when a workflow's state changes, `docs/solutions/` when
+a trap cost real time). Two fix rounds that do not reach done end as the
+merge bar says, what is still open filed as a residual, with one question on
+the card for Phillip about what is blocking.
 
 ## Local and attended work, releases
 
@@ -532,7 +607,8 @@ has to merge it in and run the battery again.
 Two rules from it every session keeps: **a release is cut only when Phillip
 asks, and the cut runs on his Mac**, since a cloud session's proxy refuses
 tag pushes; and **work only his Mac can do is an attended card**, titled
-`A<N>:` and labelled `attended`, one per live check a landing owes.
+`A<N>:` and labelled `attended`, one per live check a landing owes, its
+number read from the board just before it is filed.
 
 ## Do not touch
 

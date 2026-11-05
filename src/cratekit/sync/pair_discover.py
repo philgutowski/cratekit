@@ -45,6 +45,14 @@ folders, the rekordbox folder it goes in and its name there, the title less
 refuses, with words a gate shows, every place a name cannot decide or that
 discovery itself would never pair.
 
+**ONLY WHAT WAS MADE AFTER THE SYNC (U216).** Decided by Phillip on
+2026-11-04: an account playlist comes back only when it was made after its
+root folder was synced. :func:`before_adoption` says when a playlist is one
+the folder held before a sync adopted it, from the record of what it held, or
+by time for a folder adopted before that record, every unknown read as held;
+:func:`downloaded_copy` says when a playlist is a ``DOWNLOADED `` copy of one
+a pair in the same folder already holds.
+
 Layer: modules.
 """
 
@@ -53,6 +61,7 @@ from __future__ import annotations
 import re
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 from cratekit.core import rb_writer
@@ -72,9 +81,13 @@ TWICE = "twice"
 RELEASED = "released"
 #: Found, and left out by the account side: its folder or its title is taken there.
 TAKEN = "taken"
+#: U216. An account playlist its root folder held before a sync adopted the folder.
+BEFORE = "before"
+#: U216. An account playlist that is a ``DOWNLOADED `` copy of one a pair holds.
+COPY = "copy"
 
 #: Every reason a playlist is listed, in the order the gate shows them.
-LISTED_KINDS = (SKIPPED, SMART, RELEASED, TWICE, TAKEN)
+LISTED_KINDS = (SKIPPED, SMART, RELEASED, TWICE, TAKEN, BEFORE, COPY)
 
 #: How a warning counts each kind.
 SAID = {
@@ -83,6 +96,8 @@ SAID = {
     RELEASED: "released, its account playlist deleted",
     TWICE: "refused, two taking one account title",
     TAKEN: "left, the account already holds its folder or title for something else",
+    BEFORE: "left, its account folder held it before a sync adopted the folder",
+    COPY: "left, a DOWNLOADED copy of a playlist a pair already holds",
 }
 
 #: The attributes a playlist row carries: a plain playlist and a folder.
@@ -507,6 +522,112 @@ def home_of(
     return Home(folder=folder, name=name, parent_id=parent_id, path=(*path, name))
 
 
+# ---------------------------------------------------------------------------
+# U216: what an account folder held before a sync, and the DOWNLOADED copies
+# ---------------------------------------------------------------------------
+
+#: The step it gives a person who wants a playlist left out here synced anyway:
+#: the rekordbox side is theirs to make or choose first (U216, from the review).
+BY_HAND = (
+    "to sync it anyway, make or choose its rekordbox playlist and pair the two by hand "
+    "with crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID"
+)
+
+
+def adoption_moment(marks: Iterable[str]) -> datetime | None:
+    """When a sync adopted a root folder, as the earliest readable mark of a pair made in it.
+
+    U216. A folder recorded before U216 says nothing of when it was adopted,
+    and the adoption is reserved just before the first playlist made in it is
+    marked, so the earliest mark is the latest moment the adoption can have
+    been. A mark that does not read as a time, or reads without a zone, is
+    passed over; none readable is no moment.
+    """
+    found: list[datetime] = []
+    for mark in marks:
+        try:
+            moment = datetime.fromisoformat(str(mark or ""))
+        except ValueError:
+            continue
+        if moment.tzinfo is not None:
+            found.append(moment)
+    return min(found) if found else None
+
+
+def before_adoption(
+    account_id: str,
+    *,
+    held: frozenset[str] | None,
+    created: bool,
+    folder: str,
+    made: datetime | None,
+    adopted: datetime | None,
+) -> str:
+    """Why an account playlist in a recorded root folder is one the folder held before the sync, or ``""``.
+
+    U216, decided by Phillip on 2026-11-04: a sync brings to rekordbox only a
+    playlist made on the account after its root folder was synced. ``held``
+    is what the folder held when a sync adopted it, which answers alone when
+    recorded. A folder this product ``created`` held nothing. A folder adopted
+    before the record existed is read by time: ``made``, when the account
+    says the playlist was made, against ``adopted``, the folder's
+    :func:`adoption_moment`. Every unknown answers held, since an unknown read
+    as new makes a duplicate in rekordbox and one read as held is only named.
+    """
+    if held is not None:
+        if account_id in held:
+            return (
+                f"the account's {folder!r} folder already held it when a sync adopted the "
+                f"folder, so it is the account's own and not made in rekordbox; {BY_HAND}"
+            )
+        return ""
+    if created:
+        return ""
+    unrecorded = (
+        f"the account's {folder!r} folder was adopted before a sync recorded what it held"
+    )
+    if adopted is None:
+        return (
+            f"{unrecorded}, and no playlist made in it dates the adoption, so this may be "
+            f"one it held before and is not made in rekordbox; {BY_HAND}"
+        )
+    if made is None or made.tzinfo is None:
+        return (
+            f"{unrecorded}, and the account gave no creation time for this playlist, so it "
+            f"may be one the folder held before and is not made in rekordbox; {BY_HAND}"
+        )
+    if made <= adopted:
+        return (
+            f"the account says it was made at {made.isoformat()}, not after a sync adopted "
+            f"the {folder!r} folder at {adopted.isoformat()}, so the folder held it before "
+            f"and it is not made in rekordbox; {BY_HAND}"
+        )
+    return ""
+
+
+def downloaded_copy(folder: str, title: str, paired: Iterable[str]) -> str:
+    """The paired account title ``title`` is a ``DOWNLOADED `` copy of, or ``""``.
+
+    U216. Less the mark's prefix, the title names the same playlist as one a
+    pair in the same root folder holds: both are read less the folder's own
+    prefix (:func:`name_of`), ignoring case, so ``DOWNLOADED Techno`` copies
+    ``Genre Trivia! Techno`` in ``Genre Trivia!``. A title with nothing left
+    after the prefix copies nothing.
+    """
+    from cratekit.modules.outbound.folders import MARK_PREFIX
+
+    text = str(title or "")
+    if text[: len(MARK_PREFIX)].casefold() != MARK_PREFIX.casefold():
+        return ""
+    wanted = name_of(folder, text[len(MARK_PREFIX) :].strip()).casefold()
+    if not wanted:
+        return ""
+    for one in sorted(str(each) for each in paired):
+        if name_of(folder, one).casefold() == wanted:
+            return one
+    return ""
+
+
 def _chain(live: Iterable[Any], node_id: str) -> tuple[str, ...]:
     """Every folder above ``node_id``, nearest first, through live rows."""
     parent_of = {
@@ -529,6 +650,9 @@ def by_kind(listed: Iterable[Listed]) -> Mapping[str, tuple[Listed, ...]]:
 
 
 __all__ = [
+    "BEFORE",
+    "BY_HAND",
+    "COPY",
     "FOLDER",
     "LISTED_KINDS",
     "PLAIN",
@@ -544,8 +668,11 @@ __all__ = [
     "Found",
     "Home",
     "Listed",
+    "adoption_moment",
+    "before_adoption",
     "by_kind",
     "discover",
+    "downloaded_copy",
     "home_of",
     "left_behind",
     "name_of",

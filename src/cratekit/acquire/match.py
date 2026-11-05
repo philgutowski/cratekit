@@ -496,6 +496,18 @@ def _is_a_credit(inside: str) -> bool:
     return any(folded.startswith(fold(prefix)) for prefix in _CREDIT_PREFIXES)
 
 
+def _names_a_version(inside: str) -> bool:
+    """Whether a bracketed group's last word is one the version vocabulary holds.
+
+    The test :func:`split_version` asks of a group that stands first (U213),
+    by the vocabulary the dash reader uses, so ``(Extended)`` stays a version
+    and ``[Premade Sandwiches]`` is a title. Defined beside its one caller and
+    read at call time, since the vocabulary is declared further down.
+    """
+    words = fold(inside).split()
+    return bool(words) and words[-1] in _DASH_VERSIONS
+
+
 def split_version(title: str) -> tuple[str, str]:
     """The BRACKETED half of the split, on its own. Not the reader's entry point.
 
@@ -509,6 +521,23 @@ def split_version(title: str) -> tuple[str, str]:
     string carries no dash convention, and because the two names differing by one
     word is a trap: if you want what a listing means by a title, call
     :func:`split_title`.
+
+    A GROUP THAT IS ALL THE TITLE HAS LEFT IS THE TITLE (U213), its words kept
+    and its brackets dropped. Glass Animals' ``[Premade Sandwiches]`` is a title
+    written wholly in brackets, and walking it off like a qualifier left
+    nothing: the provider row then read as naming no title and refused the
+    whole ``crate sync twins`` run, and a library file tagged that way indexed
+    under an empty title no row could reach. A qualifier needs a title to
+    qualify, so the group that stands first is never one. NOT EVEN A CREDIT:
+    the credit prefixes include ``with ``, and ``[With You]`` or ``(With Or
+    Without You)`` are titles, so excepting credits put the defect back for
+    them (U213's review, round two). A row titled only ``(feat. Mira)`` reads
+    as the title ``feat. Mira``, a residual. A GROUP THAT NAMES A VERSION
+    STAYS ONE: ``(Extended)`` or ``[Original Mix]`` alone is a row that lost
+    its title, refused as before, which U68's emitter pins (see
+    :func:`_names_a_version`). Read here, in the one function every reader and
+    the library index start from, so the two sides still fold one recording to
+    one token.
     """
     remaining = str(title).strip()
     qualifiers: list[str] = []
@@ -517,6 +546,9 @@ def split_version(title: str) -> tuple[str, str]:
         if found is None:
             break
         inside = found.group(1).strip()
+        if found.start() == 0 and not _names_a_version(inside):
+            remaining = inside
+            break
         remaining = remaining[: found.start()].strip()
         if _is_a_credit(inside):
             continue
@@ -773,29 +805,11 @@ def key_token(key: str | None) -> str:
     return "" if parsed is None else f"{parsed[0]:02d}{parsed[1]}"
 
 
-_ISRC = re.compile(r"[A-Z]{2}[A-Z0-9]{3}[0-9]{7}")
-
-
-def fold_isrc(value: object) -> str:
-    """An ISRC spelling with its whitespace and hyphens dropped, upper cased.
-
-    THE ONE FOLD, called by the outbound source, the missing verb and the index,
-    so a hyphenated spelling on one side and a bare one on the other are one
-    string. Not validated: a verb that has to say a value was malformed rather
-    than absent reads this and then asks :func:`isrc_token`.
-    """
-    return re.sub(r"[\s-]", "", str(value or "")).upper()
-
-
-def isrc_token(value: object) -> str:
-    """The folded ISRC as an identity, or ``""`` when the value is not one.
-
-    A value that does not read as an ISRC once folded, a catalogue number or a
-    stray label, is NOT an identity and folds to empty rather than to a key
-    nothing else could share by accident.
-    """
-    folded = fold_isrc(value)
-    return folded if _ISRC.fullmatch(folded) else ""
+# THE ONE FOLD AND THE ONE IDENTITY live with the tag reader since U212, so
+# the write layer reads a file's ISRC through them too. Named here as well,
+# because every caller above the tag reader has always asked this module.
+fold_isrc = tags.fold_isrc
+isrc_token = tags.isrc_token
 
 
 def credited_members(artist: str) -> tuple[str, ...]:
@@ -1691,7 +1705,7 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
     owned; and a row whose artists arrived in a shape this reader did not know
     reported a held track missing.
     """
-    raw_title = str(_field(row, "title", "") or _field(row, "name", "")).strip()
+    raw_title = _raw_title(row)
     declared = str(_field(row, "version", "")).strip()
     title, embedded = split_title(raw_title)
     isrc = row_isrc(row)
@@ -1734,6 +1748,22 @@ def _from_row(row: object, *, origin: str, position: int) -> Wanted:
         other_reading=None if declared else split_ambiguous(raw_title),
         several_artists=_bills_several(row),
     )
+
+
+def _raw_title(row: object) -> str:
+    """The title one provider row spells, its version and brackets still in it."""
+    return str(_field(row, "title", "") or _field(row, "name", "")).strip()
+
+
+def listed_names(row: object) -> tuple[str, str, str]:
+    """The provider id, the artist and the title as one row lists them (U213).
+
+    Read the way :func:`read_row` reads them, for naming a row it REFUSED: a
+    caller that plans many playlists sets that one track aside by its id and
+    says which it was, rather than refusing every playlist over it. The title
+    is the row's own spelling, unsplit, since a refused row has no reading.
+    """
+    return str(_field(row, "id", "")).strip(), _artist_of(row), _raw_title(row)
 
 
 def read_row(row: object, *, origin: str, position: int) -> Wanted:
@@ -2876,6 +2906,7 @@ __all__ = [
     "isrc_token",
     "key_disagreement",
     "key_token",
+    "listed_names",
     "listed_title",
     "every_question_identity",
     "question_identity",

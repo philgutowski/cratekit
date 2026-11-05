@@ -28,8 +28,10 @@ record it as a residual file, and keep going.
 - GitHub GraphQL is refused here. `gh issue`, `gh repo`, `gh project` and
   `gh api --paginate` all fail; `gh api` on `repos/<owner>/<repo>/...` works
   for reads, comments, issue creation and body edits, and the GitHub MCP tools
-  work for issues and comments. Deleting a remote branch is refused, so a
-  pushed `cloud/` branch stays after its merge; that is expected.
+  work for issues and comments. Deleting a remote branch is refused, so the
+  repository's "Automatically delete head branches" setting removes a merged
+  pull request's branch; one that survives its merge is listed in the record
+  for Phillip's next local session.
 - `scripts/board.py cloud` is the queue, `board.py show N` the brief,
   `board.py closing --since origin/main` the closing check,
   `board.py residuals --land` the numbering, and `board.py audit --labels-only`
@@ -63,7 +65,9 @@ or a closing keyword in a pull request's body. A ready or blocked label, or a pr
 are derived. Anything in `.github/` unless the card is about it. A trailer of
 any kind, a co author line or a session line on a branch commit; the merge
 commit carries exactly one trailer, the closing one. A model name in any
-commit. An em dash, an en dash or a double hyphen anywhere. A literal path to
+commit. A "Generated with Claude Code" line, a session link or a co author
+line in a commit or a pull request body; Phillip asked for these to be left
+out, and his rule wins over any attribution reminder. An em dash, an en dash or a double hyphen anywhere. A literal path to
 the skills directory in any card, title, body or comment; describe it in
 words. A closing keyword next to an issue number anywhere but the merge
 commit's last line.
@@ -102,8 +106,9 @@ each review round, mutation measured.
 
 ## Telling the coordinator
 
-The lanes are filled by the coordinator, the Claude in Phillip's Claude
-project that started this thread. It wakes hourly to fill any free lane,
+The lanes are filled by the coordinator, the Claude in Phillip's building
+project that started this thread (METHOD's Sharing the board section). It
+runs at most four threads at once and counts them itself. It wakes hourly to fill any free lane,
 and whenever a thread reports; it never reads the decisions page, which is
 the relay thread's job (Asking Phillip, below). So tell it, with the
 project's tool for messaging the coordinator, right after the last comment
@@ -113,11 +118,23 @@ coordinator and skips this.
 
 ## Asking Phillip
 
-Every question for Phillip, a brainstorm's or a `Question for Phillip`, goes
-on the decisions page as well as on the card, because the page is where he
-answers: https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS
+Every question for Phillip, a brainstorm's or a `Question for Phillip`,
+reaches the decisions page, because the page is where he answers:
+https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS
 
-Write one document per question into the page's `decisions` collection with
+**A build thread posts it on its card only and never writes the page**,
+decided by Phillip on 2026-11-04 (METHOD's Sharing the board section). The
+comment is headed `Brainstorm` or `Question for Phillip`, exactly, never a
+bare `Question`, which `board.py cloud` reads as a hold. Give each question
+two to four multiple choice options with the recommendation first, and enough
+context, two or three sentences and the cost of each way, that it can be
+answered without the rest of the card. A question never stops the build:
+make the conservative call, record it, and keep going. Phillip's other
+project, which files the cards, copies the question onto the page in the form
+below and posts his answer back.
+
+**The page's form**, for the filing project, which writes it; a build
+thread never does. One document per question into the page's `decisions` collection with
 the `ArtifactData` tool (load it with ToolSearch, `select:ArtifactData`),
 action `set`, `url` the page above, `collection` `decisions`, `doc_id`
 `<card>-<short slug>-<n>`, and this body:
@@ -127,16 +144,17 @@ action `set`, `url` the page above, `collection` `decisions`, `doc_id`
      "context": "two or three sentences a reader needs, and the cost of each way",
      "options": [{"label": "...", "detail": "one line"}, ...],
      "recommended": 0, "status": "open", "answer": null,
-     "asked_by": "the lane worker on #N", "asked_session": "<your session id>",
+     "asked_by": "the lane worker on #N", "asked_session": "<the asking thread's session id>",
      "asked_at": "<now, ISO 8601 UTC>"}
 
 The recommendation is the option at index `recommended`, and the page shows
 it first and marked. Give two to four options; the page adds its own
 "something else". Write the context so the question can be answered without
-opening the card. Then end the card's comment with a line linking the page,
-and if the `PushNotification` tool is available, send one short notification
-naming the card and that a decision waits on the page. Never mark a document
-answered or relayed yourself.
+opening the card. The filing project then ends a comment on the card with a
+line linking the page and, where it has the `PushNotification` tool, sends
+one short notification naming the card and that a decision waits on the
+page. A document is marked answered by the page and relayed by the relay
+thread, never by the writer.
 
 **How his answer reaches the card.** Phillip presses Answer on the page,
 which saves his choice in the document and sets its `status` to `answered`.
@@ -145,8 +163,8 @@ decisions page answers to cards", called the relay thread here, every hour
 at 34 minutes past. It posts each answered document on its card under
 `Answer from Phillip`, or sends it to the document's `asked_session` when it
 names no card, sets the document's `status` to `relayed` with `relayed_at`
-and `relayed_note`, and tells the coordinator, which starts a thread on the
-card. `board.py cloud` reads that heading as his reply whoever posts it, and
+and `relayed_note`, and tells the building project's coordinator, which
+starts a thread on the card if none of its threads is still building it. `board.py cloud` reads that heading as his reply whoever posts it, and
 offers the card as `answered`. The coordinator's own hourly wake fills free
 lanes only and never reads the page.
 
@@ -156,8 +174,9 @@ and no project session can watch one. So while any answer is saved but not
 relayed, the page shows a "Pass on your answers" box holding a ready prompt
 that lists each one (card, question, answer, note and decision id), with a
 button that copies the prompt and opens the Cratekit project chat in a new
-window, and a button that only copies it. Phillip pastes it into the chat,
-the coordinator messages the relay thread, and the thread relays at once.
+window, and a button that only copies it. Phillip pastes it into that
+project's chat, its Claude messages the relay thread, and the thread relays
+at once.
 Without the paste an answer waits for the hourly check.
 
 ## 1. Orient
@@ -170,7 +189,12 @@ cloud's lanes are held (five by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
 as long as the queue lists it as takeable; the coordinator chose it so that
 parallel threads never pick the same card. Otherwise take the one the queue
-names. If every lane is held, or nothing is takeable, say so in one line,
+names, passing over any card held by the `grok/` builder, which belongs to
+another builder (METHOD's Sharing the board section). `board.py cloud` cannot
+see that builder's hold, since its comments carry no session footer, so
+before posting `Started` look for a `grok/` branch naming the card's number
+(`git ls-remote --heads origin 'grok/*'`) and a comment of that builder's on
+the card. If every lane is held, or nothing is takeable, say so in one line,
 tell the coordinator (above), and stop.
 
 **Post `Started` on the card at once**, before reading anything else, so the
@@ -181,8 +205,11 @@ held first, and if yours is not among them, post `Withdrawn` on your card and
 stop. A `Brainstorm` or `Needs the machine` posted later replaces the hold.
 Take the card in its state:
 
-- `answered`: Phillip replied to a brainstorm or a question. Fold his answer
-  into the brief (step 2's brainstorm paragraph) and go to step 3.
+- `answered`: Phillip replied to a brainstorm or a question. A question does
+  not stop its thread, so if a `Progress` comment or a pushed `cloud/N-...`
+  commit is newer than the question and under eight hours old, the card is
+  still that thread's: pass over it. Otherwise fold his answer into the brief
+  (step 2's brainstorm paragraph) and go to step 3.
 - `resume`: a session holding it died. Post `Resumed` rather than
   `Started`, then check out `origin/cloud/N-...` if it exists and read its
   log against the card's comments to see how far it got; otherwise start
@@ -214,8 +241,9 @@ verification, or reads as an idea rather than a specification, or carries the
 name what already does part of the job, give two or three approaches each
 with its cost and main risk, recommend one, and ask at most four questions,
 each a multiple choice with your recommendation first, so Phillip can answer
-in a word each. Put the same questions on the decisions page, as "Asking
-Phillip" below says. Then take the next card. When the card comes back
+in a word each, in the form "Asking Phillip" below gives. The thread never
+writes the decisions page; the filing project copies the questions there.
+Then take the next card. When the card comes back
 `answered`, rewrite the brief with his answers folded in
 (`gh api -X PATCH repos/<owner>/<repo>/issues/N -F body=@brief.md`), keeping
 the `**Depends on:**` line first and every field the brief form has.
@@ -232,7 +260,8 @@ and writes them to `.cloud-battery/baseline.txt`. The clone is shallow, so it
 first fetches `main`'s full history and refuses if it cannot (U200, from
 R-1191): a test the missing history holds red would otherwise be subtracted by
 its id, and every later failure of it with it. Run it as a tracked
-background job before the first edit, so it measures the base and not your
+background job with a two hour timeout from the start (a background job in a
+cloud thread is stopped at 30 minutes otherwise) before the first edit, so it measures the base and not your
 work in progress, and edit nothing under `src` or `tests` until it reports.
 
 Post `Progress`: the branch, the base commit, the session URL if you know it.
@@ -286,7 +315,8 @@ read only report or a static registry, and none for a unit that changes only
 docs or skill text, whose record says so in one line and skips the rest of
 this step. Rows target the code the unit added, in
 `docs/mutation/uN-rows.toml` in the form of `docs/mutation/u99-b-rows.toml`.
-Commit the rows, then measure them as a tracked background job, starting
+Commit the rows, then measure them as a tracked background job, given a two
+hour timeout from the start as the baseline is, starting
 nothing else against the tree until it reports:
 
     .venv/bin/python scripts/mutate.py docs/mutation/uN-rows.toml --known-failures .cloud-battery/baseline.txt
@@ -347,7 +377,7 @@ MCP `create_pull_request` tool works as well):
       -f head=cloud/N-<slug> -f base=main -F body=@pr.md --jq .number
 
 The body is short, because the record already holds the detail (U196): a
-line naming the card by its link (the issue URL, never a keyword and a
+first line reading `Requested by Phillip`, then a line naming the card by its link (the issue URL, never a keyword and a
 number), a link to `docs/restart/uN.md` on the branch, and five lines at most:
 the `cloud_battery.py compare` counts, the review rounds, the mutation table's
 result, the residual files, and what is OWED. Never restate the record. **No closing keyword anywhere in
@@ -356,7 +386,8 @@ it**: GitHub closes from a pull request body on merge, which would bypass
 
 **Wait for CI on the head commit** with one tracked background job, never a
 foreground sleep and never a poll you repeat by hand, so the session wakes
-once (U196):
+once (U196), given a two hour timeout from the start, since the script waits
+up to an hour and a background job is stopped at 30 minutes otherwise:
 
     SHA=$(git rev-parse HEAD)
     .venv/bin/python scripts/wait_ci.py $SHA      # exit 0 green, 1 red, 2 timed out, 3 unread
@@ -377,7 +408,8 @@ so green over the check runs alone can be the push's run only. **Wait until
 the second command lists a completed `success` run for the pull request**:
 that run is the one that judges the pull request's range and its card. A pull
 request that conflicts with `main` gets no `pull_request` run at all, so
-merge `origin/main` into the branch first.
+when the head shows a push run and no `pull_request` run, merge `origin/main`
+into the branch, run step 8 again, push, and wait on the new head.
 
 CI judges the pull request's own range and the card its head branch names
 (`board.py closing --pull-request-head`), so a branch whose card a register
@@ -421,7 +453,8 @@ out of scope:
 For each live check the record's OWED paragraph names (a run on the live
 library, the account, rekordbox, or the macOS battery), file one attended card
 for Phillip's Mac, titled `A<N>: <the check>` with N one past the highest `A`
-title on the board, labelled `attended` and nothing else, with a body opening
+title on the board, read just before filing because parallel threads file
+them, labelled `attended` and nothing else, with a body opening
 `**Depends on:** #<the release card or this card>` and saying what to run and
 when it is done. The attended work section of `docs/METHOD-local.md` is the
 form.

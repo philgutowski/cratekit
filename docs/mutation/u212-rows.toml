@@ -1,0 +1,228 @@
+name = "u212"
+pass_kind = "light"
+
+# U212, card #506: a sync pass does not download again a track an unlanded pass
+# staged. Rows target the guards the unit added, in the missing list, the pass,
+# the naming verb and the tail. Tests are derived by the driver from the files
+# importing each module.
+
+[[rows]]
+id = "M1_staged_match"
+description = "missing_cli._staged: never record a staged row, so a track a staged file carries is listed and downloaded again"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if held:
+            found.append((n, held[0].path))'''
+new = '''        if held and False:
+            found.append((n, held[0].path))'''
+
+[[rows]]
+id = "M2_own_rows_both"
+description = "missing_cli._staged: drop the own rows rule, so a continued pass subtracts its own staged downloads and its list is refused over its earlier copy"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if (ref and ref in ids) or token in isrcs:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "M3_own_rows_by_id"
+description = "missing_cli._staged: the own rows rule by ISRC alone, the provider id half removed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if (ref and ref in ids) or token in isrcs:'''
+new = '''        if token in isrcs:'''
+
+[[rows]]
+id = "M4_own_rows_by_isrc"
+description = "missing_cli._staged: the own rows rule by provider id alone, the ISRC half removed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if (ref and ref in ids) or token in isrcs:'''
+new = '''        if ref and ref in ids:'''
+
+[[rows]]
+id = "M5_unread_is_empty"
+description = "missing_cli._staged: an unreadable staging folder read as one holding nothing, so the staged row says nothing failed"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        return _Staged(folder, unread=str(exc.strerror or exc))'''
+new = '''        return _Staged(folder)'''
+
+[[rows]]
+id = "M6_absent_folder"
+description = "missing_cli._staged: drop the absent folder guard, so a machine with no staging folder yet reports the folder unreadable"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        if not folder.exists():'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M7_outcome_staged"
+description = "missing_cli._listed: every row staged answers no_op, so a pass ends before the landing that takes them"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        outcome=Outcome.OK if listed or unlisted or staged_rows else Outcome.NO_OP,'''
+new = '''        outcome=Outcome.OK if listed or unlisted else Outcome.NO_OP,'''
+
+[[rows]]
+id = "M8_summary_count"
+description = "missing_cli._listed: the summary's staged count read as zero, the number the pass reads"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''        "staged": len(staged_rows),'''
+new = '''        "staged": 0,'''
+
+[[rows]]
+id = "M9_unread_status"
+description = "missing_cli._staged_check: an unreadable staging folder said on an info row rather than a failing one"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''            "staged",
+            "fail",'''
+new = '''            "staged",
+            "info",'''
+
+[[rows]]
+id = "M10_left_out"
+description = "missing_cli._listed: drop the staged clause of the left out refusal, so a run with a failed job and every finished row staged refuses"
+file = "src/cratekit/intake/missing_cli.py"
+surface = "user"
+old = '''    if left_out and not listed and not unlisted and not staged_rows:'''
+new = '''    if left_out and not listed and not unlisted:'''
+
+[[rows]]
+id = "S1_missing_ends"
+description = "sync_land._missing: nothing listed ends the pass whatever is staged"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+old = '''    if (envelope.get("outcome") == str(Outcome.NO_OP) or not listed) and not staged:'''
+new = '''    if envelope.get("outcome") == str(Outcome.NO_OP) or not listed:'''
+
+[[rows]]
+id = "S2_download_refused_all"
+description = "sync_land._download: a download that landed nothing ends the pass whatever is staged, round one's F1"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+old = '''        if not listed.staged:
+            raise _Done(DOWNLOAD)
+        return 0
+    report.check('''
+new = '''        raise _Done(DOWNLOAD)
+    report.check('''
+
+[[rows]]
+id = "S3_no_list_download"
+description = "sync_land._download: no early return for a pass with no list, so it asks the download verb for a list that is not there"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+old = '''    if listed.path is None:
+        report.check(DOWNLOAD, "info", "nothing downloaded: every missing track is staged already")
+        return 0'''
+new = ''''''
+
+[[rows]]
+id = "S4_staged_said"
+description = "sync_land._missing: the missing row drops the staged clause, so the pass does not say how many it skipped"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+old = '''        + (f"; {staged} more {held}" if staged else ""),'''
+new = '''        + "",'''
+
+[[rows]]
+id = "N1_second_copy_compare"
+description = "naming_cli.second_copy: two different ISRCs read as one recording"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''    return mine if tags.isrc_token(tags.read_tag(target, "isrc")) == mine else ""'''
+new = '''    return mine if tags.isrc_token(tags.read_tag(target, "isrc")) != "" else ""'''
+
+[[rows]]
+id = "N2_second_copy_short_circuit"
+description = "naming_cli.second_copy: drop the no ISRC short circuit, round one's F9"
+file = "src/cratekit/write/naming_cli.py"
+surface = "maintainer"
+old = '''    if not mine:
+        return ""
+    return mine if'''
+new = '''    return mine if'''
+
+[[rows]]
+id = "N3_taken_plain"
+description = "naming_cli._taken: always the plain collision, never a second copy"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''    same = second_copy(path, target)
+    if same:'''
+new = '''    same = second_copy(path, target)
+    if False:'''
+
+[[rows]]
+id = "N4_plan_isrc"
+description = "naming_cli._plan_for: the plan item carries no ISRC"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''            if str(path) in seconds:
+                item["isrc"] = seconds[str(path)]'''
+new = ''''''
+
+[[rows]]
+id = "N5_claim_plain"
+description = "naming_cli.name_apply: a name taken after the plan is always the plain collision, round one's F8"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''                why, same = _taken(
+                    path, target, fallback=f"{rendered.filename} is already taken in the folder"
+                )'''
+new = '''                why, same = f"{rendered.filename} is already taken in the folder", ""'''
+
+[[rows]]
+id = "N6_cause_step"
+description = "naming_cli._incomplete_cause: the second copy step is never added"
+file = "src/cratekit/write/naming_cli.py"
+surface = "user"
+old = '''    if any(item.get("isrc") for item in incomplete):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "T1_reason_guard"
+description = "tail.second_copies: read any refusal's outstanding files, not only rename-incomplete's"
+file = "src/cratekit/cli/tail.py"
+surface = "maintainer"
+old = '''    if cause.reason != RENAME_INCOMPLETE:
+        return stop'''
+new = ''''''
+
+[[rows]]
+id = "T2_done_only"
+description = "tail._downloaded_by: a job that froze the track and never acquired it is named as its source"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+old = '''            if refs & done:'''
+new = '''            if refs:'''
+
+[[rows]]
+id = "T3_library"
+description = "tail._downloaded_by: another library's download job is named"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+old = '''            if cfg is not None and job.library_id != cfg.library.volume_id:
+                continue'''
+new = ''''''
+
+[[rows]]
+id = "T4_earliest_first"
+description = "tail._downloaded_by: the passes named newest first, though the step says earliest first"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+old = '''        for job in reversed(jobs.list_jobs(store)):'''
+new = '''        for job in jobs.list_jobs(store):'''
+
+[[rows]]
+id = "T5_name_wraps"
+description = "tail.name: the name step's stop passed on without the passes that downloaded the copy"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+old = '''        raise second_copies(stop, cfg) from None'''
+new = '''        raise stop from None'''
