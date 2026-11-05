@@ -1682,6 +1682,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-export-required',
     ],
     # 2026-10-13, U143: the account root removals' five refusal problems joined.
+    # 2026-11-05, U220: an order's first reading that never agrees, read-differs.
     'modules/outbound/tidal_account.py': [
         'internal-error',
         'ledger-claimed',
@@ -1694,6 +1695,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'outbound-remove-refused',
         'positions-unknown',
         'read-back-differs',
+        'read-differs',
     ],
     'modules/reports/aging.py': ['intake-flow-absent'],
     'modules/reports/coverage.py': ['governed-tree-absent'],
@@ -1838,13 +1840,16 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # folder side, the side a made rekordbox playlist's home is named on,
     # and the warning a run planned again carries. 2026-11-05, U210: a
     # continued run's warning, its steps unread, and the refusal a step it
-    # could not record stops the write with.
+    # could not record stops the write with. 2026-11-05, U220: the step an
+    # order refused records, and the two refusals that stop that pair alone.
     'sync/pair_cli.py': [
         'account-discovery',
         'account-folder',
         'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
+        'order-refused',
+        'outbound-remove-refused',
         'playlist-pair',
         'rekordbox-home',
         'sync-pair-ambiguous',
@@ -1867,6 +1872,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-unmatched',
         'sync-pair-withheld',
         'sync-pair-written',
+        'unavailable-transient',
     ],
     # 2026-11-04, U202: the later change calls joined.
     'sync/pair_merge.py': ['addition-later', 'removal-later', 'time-unknown'],
@@ -3079,13 +3085,16 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
     # 2026-11-05, U209: the check before the write refuses stale.
     # 2026-11-05, U210: a write step it could not record stops the write.
+    # 2026-11-05, U220: the two order refusals that stop one pair alone.
     'sync/pair_cli.py': [
         'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
+        'outbound-remove-refused',
         'sync-pair-out-of-scope',
         'sync-pair-steps-unwritten',
         'sync-pair-unknown',
+        'unavailable-transient',
     ],
     # 2026-11-04, U202: the rekordbox side of a pair made from the account.
     'sync/pair_reverse.py': ['decision-stale'],
