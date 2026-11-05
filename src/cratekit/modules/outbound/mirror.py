@@ -73,7 +73,7 @@ from typing import Any
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger
-from cratekit.modules.outbound.mirror_edits import Hold, agreed_after
+from cratekit.modules.outbound.mirror_edits import Hold
 from cratekit.modules.outbound.service import (
     AGREEING_RELEASES,
     UNREADABLE_CANDIDATE,
@@ -678,7 +678,7 @@ def plan(
     )
 
 
-def settled(planned: FolderPlan) -> dict[str, tuple[str, frozenset[str]]]:
+def settled(planned: FolderPlan) -> dict[str, tuple[str, frozenset[str], frozenset[str]]]:
     """The snapshot of each playlist with nothing to write, by title (U201).
 
     Such a playlist is already as the mirror would leave it, so its snapshot is
@@ -686,7 +686,7 @@ def settled(planned: FolderPlan) -> dict[str, tuple[str, frozenset[str]]]:
     A playlist whose listing was short records none.
     """
     return {
-        one.name: (one.remote_id, agreed_after(one.agreed, one.held, one.hold))
+        one.name: (one.remote_id, one.held, one.hold.tracks)
         for one in planned.playlists
         if one.action == REUSE and not one.writes and not one.short and one.remote_id
     }
@@ -803,11 +803,10 @@ def apply(
         {
             step.name: (
                 remote_of[step.name],
-                agreed_after(
-                    step.agreed,
-                    (set(step.held) - landed.get(step.name, set())) | added_to.get(step.name, set()),
-                    step.hold,
+                frozenset(
+                    (set(step.held) - landed.get(step.name, set())) | added_to.get(step.name, set())
                 ),
+                step.hold.tracks,
             )
             for step in planned.playlists
             if step.name in remote_of and not step.short

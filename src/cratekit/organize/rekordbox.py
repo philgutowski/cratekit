@@ -28,6 +28,11 @@ THE STEPS, each the owning verb's plan:
   its name gets one, of the library rows its tracks match, every miss named.
   A set already there is skipped, so a second run plans nothing. Listed and
   not planned when the export module, which archives sets, is off.
+* AN EDIT MADE ON THE ACCOUNT TO A MIRRORED GENRE PLAYLIST TAKEN INTO THE
+  LIBRARY (U201), :mod:`cratekit.organize.mirror_edits`: decided from the
+  run's one account mirror reading, which the account area's mirror plans from
+  too, so the edit this step takes is the edit the mirror holds. Every
+  membership it takes away is named among the area's deletions.
 
 WHAT THE AUTHOR MADE is every top level node outside the trees the taxonomy
 declares, and every node the rotation leaves alone under INBOX. Each is listed

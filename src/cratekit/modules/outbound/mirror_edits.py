@@ -149,6 +149,9 @@ class Decision:
     was: tuple[str, ...] = ()
     account: tuple[str, ...] = ()
     rekordbox: tuple[str, ...] = ()
+    #: Every genre playlist read in full, ``(folder, title, held on the
+    #: account)``, which the snapshot takes once the library took the edit.
+    settle: tuple[tuple[str, str, bool], ...] = ()
 
     def item(self) -> dict[str, object]:
         shown: dict[str, object] = {
@@ -393,7 +396,21 @@ def decide(
                 )
             )
             continue
-        decisions.append(Decision(track, kind, why, to=to, content_id=rows[0], **shown))
+        decisions.append(
+            Decision(
+                track,
+                kind,
+                why,
+                to=to,
+                content_id=rows[0],
+                settle=tuple(
+                    (one.place.folder, one.place.title, track in one.account)
+                    for one in playlists
+                    if not one.short
+                ),
+                **shown,
+            )
+        )
     return Decided(decisions=tuple(decisions), holds=_holds(playlists, decisions))
 
 
@@ -440,21 +457,22 @@ def _holds(playlists: Sequence[Mirrored], decisions: Iterable[Decision]) -> dict
 
 
 def agreed_after(
-    base: frozenset[str] | None, after: Iterable[str], hold: Hold
+    base: Iterable[str] | None, after: Iterable[str], held: Iterable[str]
 ) -> frozenset[str]:
     """The snapshot a playlist takes once the mirror finished it.
 
-    ``base`` is the snapshot it had, ``None`` for none, ``after`` the account
-    tracks it holds once the mirror's writes landed. A track the hold covers
-    keeps the snapshot's word on it, so an edit carried or held reads the same
-    way at the next refresh until both sides agree; every other track is
-    agreed as the account holds it, which is rekordbox's word once the mirror
-    wrote it, and a removal the account refused stays agreed so the next
-    refresh asks it again.
+    ``base`` is the snapshot it has, ``None`` for none, ``after`` the account
+    tracks it holds once the mirror's writes landed, and ``held`` the tracks
+    its hold covers. A held track keeps the snapshot's word on it, so an edit
+    held reads the same way at the next refresh, and an edit the library took
+    reads as the word the library step settled; every other track is agreed as
+    the account holds it, which is rekordbox's word once the mirror wrote it,
+    and a removal the account refused stays agreed so the next refresh asks it
+    again.
     """
-    held = hold.tracks
+    held = frozenset(held)
     now = frozenset(after)
-    before = now if base is None else base
+    before = now if base is None else frozenset(base)
     return frozenset(track for track in now if track not in held) | frozenset(
         track for track in before if track in held
     )

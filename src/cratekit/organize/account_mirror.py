@@ -42,6 +42,13 @@ UNREAD IS NOT NONE. A library or ledger that cannot be read refuses the whole
 kind as one step; a folder whose account side cannot be read refuses that
 folder, and no folder is planned over a listing that failed.
 
+AN EDIT MADE ON THE ACCOUNT TO A GENRE PLAYLIST IS HELD (U201). Each mirrored
+playlist keeps its snapshot, and every genre playlist is read three ways by
+:func:`read`, once per organize run for both areas through :class:`Shared`:
+the rekordbox area's ``mirror-edits`` step takes each edit into the library,
+and the mirror here neither takes such a track off nor adds it back. The
+Favorites folder and INBOX mirror one way until U204.
+
 EVERY RUN SAYS ITS REQUEST COUNT AND DURATION: the plan's in the area's facts,
 and each applied folder's in its applied totals.
 

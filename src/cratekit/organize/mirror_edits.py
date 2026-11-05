@@ -31,14 +31,18 @@ genre where rekordbox already holds a genre of the new name (an unknown one is
 named and skipped, never minted), and the track's memberships inside BY GENRE +
 ENERGY: it leaves every playlist routing filed it into that the new tags do not,
 and joins every one they do that exists (``rebuild.derive_from_taxonomy``,
-the rule ``route resort`` writes by). A playlist derived from another playlist,
-the genre Favorites, is the favourites engine's and is left, except by an
-unfile, which leaves the whole tree. The session takes the backup
+the rule ``route resort`` writes by). A playlist routing never files into,
+the genre Favorites among them, is another engine's and is left, except by an
+unfile, which leaves the whole tree so that ``route unplaced`` lists it. The session takes the backup
 acknowledgment, the session gates, a verified capture, the guarded commit, and
 a read back of every membership. A file whose tag did not take is named and
 its row is not touched. Nothing is removed from the collection, and no beat
 grid is written: the two tags are the only fields, and the writable field set
 refuses a tempo.
+
+THE SNAPSHOT TAKES EACH EDIT THE LIBRARY TOOK (:func:`settle`), once the commit
+landed, so the next refresh reads the track as agreed, and a move made in
+rekordbox after it is rekordbox's to carry to the account.
 
 THE PLAN A GATE SHOWS IS THE PLAN ITS APPLY WRITES. The apply plans again on its
 write handle from the same decisions and refuses ``decision-stale`` when the
@@ -93,11 +97,31 @@ def _primary(declared: Any, bucket_id: str) -> frozenset[str]:
     return frozenset(found)
 
 
+def _additive(declared: Any, bucket_id: str) -> frozenset[str]:
+    """The additive playlists routing files a track into beside its band.
+
+    A genre sub (U155) and the with vox class, the two ``derive_from_taxonomy``
+    writes. A class derived from another playlist, the genre Favorites, is the
+    favourites engine's, and any other class is no place routing files a track
+    into, so neither is read as an edit here.
+    """
+    from cratekit.write import trees
+
+    found = {genre.display for genre in declared.bucket(bucket_id).genre_subs}
+    found |= {
+        entry.display
+        for entry in declared.sub_classes
+        if entry.id == trees.VOX_SUB_CLASS and entry.additive
+    }
+    return frozenset(found)
+
+
 def places(declared: Any, folders: Iterable[Any]) -> dict[str, edits.Place]:
     """Each genre playlist's place by its account title, band or additive.
 
-    A folder whose name is no bucket's display, and a playlist whose title
-    does not start with its folder's name, have no place: their tracks are read
+    A folder whose name is no bucket's display, a playlist whose title does not
+    start with its folder's name, and a playlist routing never files a track
+    into (the genre Favorites among them) have no place: their tracks are read
     as before U201, every difference rekordbox's.
     """
     found: dict[str, edits.Place] = {}
@@ -106,11 +130,14 @@ def places(declared: Any, folders: Iterable[Any]) -> dict[str, edits.Place]:
         if bucket_id is None:
             continue
         primary = _primary(declared, bucket_id)
+        additive = _additive(declared, bucket_id)
         prefix = f"{folder.name} "
         for source in folder.playlists:
             if not source.name.startswith(prefix):
                 continue
             playlist = source.name[len(prefix) :]
+            if playlist not in primary and playlist not in additive:
+                continue
             found[source.name] = edits.Place(
                 title=source.name,
                 folder=folder.name,
@@ -280,15 +307,27 @@ def _memberships(db: Any, content_id: str, tree: Tree) -> list[str]:
     return sorted({str(one[0]) for one in found if str(one[0]) in tree.names})
 
 
-def _derived(declared: Any) -> frozenset[str]:
-    """The displays of every sub class derived from another playlist, which routing never files."""
-    from cratekit.core import taxonomy
+def _routed(declared: Any) -> Any:
+    """Whether a tree playlist, by its two names, is one routing files a track into.
 
-    return frozenset(
-        entry.display
-        for entry in declared.sub_classes
-        if entry.signal == taxonomy.SIGNAL_PLAYLIST
-    )
+    A band or an additive place of the folder's bucket. Any other playlist in a
+    genre folder, the genre Favorites among them, is another engine's, and a
+    move leaves the track in it.
+    """
+    known: dict[str, frozenset[str]] = {}
+
+    def routed(names: tuple[str, str]) -> bool:
+        folder, playlist = names
+        if folder not in known:
+            bucket_id = declared.bucket_for_display(folder)
+            known[folder] = (
+                frozenset()
+                if bucket_id is None
+                else _primary(declared, bucket_id) | _additive(declared, bucket_id)
+            )
+        return playlist in known[folder]
+
+    return routed
 
 
 def _resolve(cfg: config.Config, recorded: str) -> Path | None:
@@ -327,7 +366,7 @@ def plan(
     if not carried:
         return Planned(named=tuple(named))
     tree = read_tree(db, declared, registry)
-    derived = _derived(declared)
+    routed = _routed(declared)
     rows = playlist_pair.content(db, [one.content_id for one in carried])
     changes: list[Change] = []
     for decision in carried:
@@ -339,7 +378,7 @@ def plan(
         if row is None:
             skip("its library row is no longer a live row of the collection, so nothing is written")
             continue
-        shown = f"{row.artist} - {row.title}"
+        shown = f"{row.artist} - {row.title}" if row.artist else row.title
         path = _resolve(cfg, row.path)
         if path is None:
             skip("its file could not be found, so neither its tags nor its row is written")
@@ -371,13 +410,13 @@ def plan(
             )
             wanted: set[str] = set()
             for placement in placements:
-                names = routing_pass.destination(declared, placement.bucket_id, placement.sub_id)
+                names = routing_pass.destination(declared, placement.bucket, placement.sub)
                 pid = tree.playlists.get(names)
                 if pid is None:
                     missing.append(f"{names[0]} / {names[1]}")
                     continue
                 wanted.add(pid)
-            leave_ids = [pid for pid in held if pid not in wanted and tree.names[pid][1] not in derived]
+            leave_ids = [pid for pid in held if pid not in wanted and routed(tree.names[pid])]
             join = [(pid, *tree.names[pid]) for pid in sorted(wanted) if pid not in held]
         changes.append(
             Change(
@@ -563,6 +602,28 @@ def assert_read_back(db: Any, written: Sequence[Change]) -> None:
             )
 
 
+def settle(cfg: config.Config, decided: edits.Decided, written: Iterable[str]) -> None:
+    """Agree each edit the library took in the snapshot, so it is not read again (U201).
+
+    Recorded after the commit and before the mirror's own apply, whose record
+    keeps this word for a track it holds. A ledger that cannot take it leaves
+    the snapshot as it was: the next refresh reads both sides agreeing on the
+    track and settles it then, writing nothing.
+    """
+    from cratekit.modules.outbound import ledger
+
+    took = set(written)
+    ledger.settle_mirror_tracks(
+        cfg,
+        [
+            (folder, title, decision.track, on)
+            for decision in decided.carried
+            if decision.content_id in took
+            for folder, title, on in decision.settle
+        ],
+    )
+
+
 def _stale(approved: Planned, now: Planned) -> None:
     if approved.identity() != now.identity():
         raise refuse(
@@ -627,6 +688,7 @@ def add_step(cfg: config.Config, declared: Any, registry: Any, shared: Any) -> S
                 done = write(cfg, handle, planned)
             finally:
                 rb_writer.close_db(handle)
+            settle(cfg, decided, done.tagged)
             if done.untagged:
                 step.warnings.append(
                     {
@@ -667,6 +729,7 @@ __all__ = [
     "places",
     "plan",
     "read_tree",
+    "settle",
     "target_tags",
     "write",
 ]
