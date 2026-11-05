@@ -218,6 +218,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "library.paths_resolved",
         "keychain.reachable",
         "credential.bandcamp",
+        "credential.catalogue",
         "credential.provider",
         "credential.recognition",
         *(f"binary.{name}" for name in doctor.BINARY_NAMES),

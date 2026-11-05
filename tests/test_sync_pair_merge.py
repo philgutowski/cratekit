@@ -137,3 +137,168 @@ def test_order_changed_reads_only_the_tracks_both_held():
 
 def test_appended_is_removals_then_plain_appends():
     assert pair_merge.appended(("a", "b", "c"), ("b",), ("d", "a")) == ("a", "c", "d")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U202: the later of two opposite changes wins
+# ═══════════════════════════════════════════════════════════════════════════
+
+from datetime import datetime, timedelta, timezone  # noqa: E402
+
+from cratekit.sync.pair_merge import (  # noqa: E402
+    ACCOUNT,
+    ADDITION_LATER,
+    REKORDBOX,
+    REMOVAL_LATER,
+    TIME_UNKNOWN,
+)
+
+SYNCED = datetime(2026, 11, 4, 12, 0, tzinfo=timezone.utc)
+
+
+def at(minutes: int) -> datetime:
+    return SYNCED + timedelta(minutes=minutes)
+
+
+def test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_both():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(20)}),
+        Side(("a",), removed_at={"b": at(10)}),
+    )
+    assert merged.order == ("a", "b")
+    assert merged.add_rekordbox == ("b",)
+    assert merged.remove_account == ()
+    (call,) = merged.calls
+    assert (call.key, call.added_on, call.outcome) == ("b", ACCOUNT, ADDITION_LATER)
+    assert call.removed_on == REKORDBOX and call.kept
+
+
+def test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(10)}),
+        Side(("a",), removed_at={"b": at(20)}),
+    )
+    assert merged.order == ("a",)
+    assert merged.remove_account == ("b",)
+    assert merged.add_rekordbox == ()
+    assert merged.readded_over_removal == ()
+    (call,) = merged.calls
+    assert call.outcome == REMOVAL_LATER and not call.kept
+
+
+def test_an_account_addition_later_than_a_rekordbox_removal_is_added_back_there():
+    base = Base(account=("a",), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a", "b"), added_at={"b": at(30)}),
+        Side(("a",), removed_at={"b": at(5)}),
+    )
+    assert merged.add_rekordbox == ("b",)
+    assert merged.calls[0].outcome == ADDITION_LATER
+
+
+def test_a_removal_with_no_moment_never_beats_an_addition_and_is_called_unknown():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(10)}),
+        Side(("a",)),
+    )
+    assert merged.order == ("a", "b") and merged.add_rekordbox == ("b",)
+    (call,) = merged.calls
+    assert call.outcome == TIME_UNKNOWN and call.removed_at is None and call.kept
+    assert merged.readded_over_removal == ("b",)
+
+
+def test_an_account_removal_never_beats_a_rekordbox_addition():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a",)),
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(1)}),
+    )
+    assert merged.add_account == ("b",)
+    (call,) = merged.calls
+    assert (call.added_on, call.outcome) == (REKORDBOX, TIME_UNKNOWN)
+
+
+def test_a_moment_at_or_before_the_base_sync_is_no_moment():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    for removed in (SYNCED, at(-5)):
+        merged = merge(
+            base,
+            Side(("a", "b"), frozenset({"b"}), added_at={"b": at(10)}),
+            Side(("a",), removed_at={"b": removed}),
+        )
+        assert merged.calls[0].outcome == TIME_UNKNOWN, removed
+        assert merged.remove_account == ()
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": SYNCED}),
+        Side(("a",), removed_at={"b": at(20)}),
+    )
+    assert merged.calls[0].added_at is None and merged.calls[0].kept
+
+
+def test_a_moment_with_no_zone_is_no_moment():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(10)}),
+        Side(("a",), removed_at={"b": at(20).replace(tzinfo=None)}),
+    )
+    assert merged.calls[0].outcome == TIME_UNKNOWN
+    assert merged.remove_account == ()
+
+
+def test_a_tie_keeps_the_track():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(10)}),
+        Side(("a",), removed_at={"b": at(10)}),
+    )
+    assert merged.calls[0].outcome == ADDITION_LATER and merged.add_rekordbox == ("b",)
+
+
+def test_a_base_with_no_sync_moment_still_orders_two_known_moments():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"))
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(10)}),
+        Side(("a",), removed_at={"b": at(20)}),
+    )
+    assert merged.calls[0].outcome == REMOVAL_LATER
+
+
+def test_a_track_put_back_on_the_account_with_nothing_removed_is_no_call():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a", "b"), frozenset({"b"}), added_at={"b": at(10)}),
+        Side(("a", "b")),
+    )
+    assert merged.calls == () and merged.changes == 0
+
+
+def test_moments_change_nothing_where_no_side_both_added_and_removed():
+    base = Base(account=("a", "b"), rekordbox=("a", "b"), synced=SYNCED)
+    merged = merge(
+        base,
+        Side(("a",), added_at={"a": at(1)}),
+        Side(("a", "b"), added_at={"b": at(99)}, removed_at={"b": at(1)}),
+    )
+    assert merged.remove_rekordbox == ("b",) and merged.calls == ()
+
+
+def test_the_first_sync_makes_no_call_whatever_the_moments():
+    merged = merge(
+        None,
+        Side(("a",), added_at={"a": at(1)}),
+        Side(("b",), removed_at={"a": at(9)}),
+    )
+    assert merged.calls == () and set(merged.order) == {"a", "b"}

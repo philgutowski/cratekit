@@ -42,6 +42,14 @@ argues, and raises at item scope. The job engine then fails that one item and
 claims the next, rather than converting a foreign exception into an internal
 error.
 
+**CATALOGUE LOOKUPS GO UNDER THE APP WHEN IT IS SET UP (U205).** The ISRC
+lookup and the exact track read in ``match_track`` ask ``catalogue`` when the
+opener built one, the client ``acquire.provider_session.catalogue_client``
+holds under Cratekit's own app credentials, and the account session only when
+it did not. Every write, and every read of the account's own things (its
+hearts, playlists and folders), goes to the account session and to nothing
+else, so the app client is never handed a write: it has none.
+
 **ONE RETRY ON A WRITE, NO MORE**, through ``listing.fetch_with_retry``. A rate
 limit on a write is real, and a ladder of five would hold a sweep for a minute
 per item against a provider that is refusing it. Creating a playlist is not
@@ -63,12 +71,16 @@ from urllib.parse import urlsplit
 # whether THIS module imports, and the answer has to include the client library.
 import tidalapi  # noqa: F401
 
-from cratekit.acquire import listing, match, provider_session
+from cratekit.acquire import catalogue_api, listing, match, provider_session
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import account, kinds, ledger, pairs
-from cratekit.modules.outbound.service import AGREEING_RELEASES, UNREADABLE_CANDIDATE
+from cratekit.modules.outbound.service import (
+    AGREEING_RELEASES,
+    UNREADABLE_CANDIDATE,
+    PlaylistListing,
+)
 
 #: How many times a write or a single lookup is retried after its first attempt.
 WRITE_RETRIES = 1
@@ -152,6 +164,17 @@ def _row_of(title: str, artist: str) -> match.Wanted | None:
 def _count(value: Any) -> bool:
     """Whether a declared count is a whole number and not a flag."""
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
+def _added_at(track: Any) -> str:
+    """When a playlist item was added, as ISO 8601 UTC text, or ``""`` when unknown (U201)."""
+    from datetime import datetime, timezone
+
+    for name in ("user_date_added", "date_added"):
+        value = getattr(track, name, None)
+        if isinstance(value, datetime) and value.tzinfo is not None:
+            return value.astimezone(timezone.utc).isoformat()
+    return ""
 
 
 def _shown_artist(track: Any) -> str:
@@ -282,8 +305,12 @@ class TidalAccount:
         *,
         sleep: Callable[[float], None] | None = None,
         cfg: Any = None,
+        catalogue: Any = None,
     ) -> None:
         self._session = session
+        #: Where catalogue lookups go: the app client when the opener built
+        #: one (U205), else the account session, exactly as before.
+        self._lookups = catalogue if catalogue is not None else session
         #: The configuration whose outbound ledger says which playlists the
         #: product made (R-836). None refuses every removal, since a ledger
         #: that cannot be named cannot say yes.
@@ -315,6 +342,11 @@ class TidalAccount:
             return listing.fetch_with_retry(
                 attempt, limit=0, offset=0, max_retries=retries, sleep=self._sleep
             )
+        except catalogue_api.AppCredentialsRejected as exc:
+            # THE APP'S CREDENTIAL, NOT THE ACCOUNT'S. Read by the account's
+            # translation it would be a wait, and the held account would not be
+            # the thing to forget.
+            raise catalogue_api.rejected(exc, doing) from exc
         except Exception as exc:  # noqa: BLE001 - translated, never swallowed
             raise account.provider_failure(exc, doing) from exc
 
@@ -364,6 +396,10 @@ class TidalAccount:
         :func:`track_reference`. Never a text search over title and artist:
         ``title`` and ``artist`` choose among tracks the ISRC already named and
         are never sent to the provider.
+
+        BOTH READS ARE CATALOGUE QUESTIONS and go to the app client when one is
+        open (U205). The favourites :meth:`_among` asks are the account's own
+        and stay on the account session.
         """
         key = str(identity)
         self._reasons.pop(key, None)
@@ -371,7 +407,7 @@ class TidalAccount:
         if wanted:
             found = self._call(
                 f"look up the ISRC {wanted}",
-                lambda: self._session.get_tracks_by_isrc(wanted),
+                lambda: self._lookups.get_tracks_by_isrc(wanted),
             )
             if found is not _ABSENT:
                 tracks = {
@@ -396,7 +432,7 @@ class TidalAccount:
         if reference is None:
             return None
         track = self._call(
-            f"look up the track {reference}", lambda: self._session.track(reference)
+            f"look up the track {reference}", lambda: self._lookups.track(reference)
         )
         if track is _ABSENT or track is None:
             return None
@@ -881,6 +917,40 @@ class TidalAccount:
             if str(getattr(track, "id", "") or "")
         }
 
+    def playlist_listing(self, playlist_id: str) -> PlaylistListing:
+        """Every track on the playlist with its added time and the declared count (U201).
+
+        One read, as :meth:`track_names` reads, and the membership it read is
+        remembered the same way. The added time is the client's
+        ``user_date_added``, else ``date_added``, which it copies from the
+        playlist item's own ``dateAdded``; a time with no zone, or none, is
+        left out rather than guessed, since the mirror reads an absent time as
+        unknown. The declared count is the playlist's ``num_tracks``.
+        """
+        playlist = self._playlist(playlist_id)
+        tracks = self._listed(playlist_id, playlist)
+        ids = [str(getattr(track, "id", "") or "") for track in tracks]
+        self._members[playlist_id] = ids
+        names: dict[str, tuple[str, str]] = {}
+        added: dict[str, str] = {}
+        for identifier, track in zip(ids, tracks, strict=True):
+            if not identifier or identifier in names:
+                continue
+            names[identifier] = (
+                _shown_artist(track),
+                str(getattr(track, "full_name", "") or getattr(track, "name", "") or ""),
+            )
+            moment = _added_at(track)
+            if moment:
+                added[identifier] = moment
+        declared = getattr(playlist, "num_tracks", None)
+        return PlaylistListing(
+            names=names,
+            added=added,
+            listed=len(ids),
+            declared=declared if isinstance(declared, int) and not isinstance(declared, bool) else None,
+        )
+
     def _positions(self, playlist_id: str, playlist: Any) -> list[str]:
         """The playlist's tracks by position, refused when a position is unknowable.
 
@@ -1343,7 +1413,10 @@ def open_account(cfg: Any = None) -> TidalAccount:
     gate = provider_gate.Gate(
         provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
     )
-    return TidalAccount(provider_session.client_session(gate=gate), cfg=cfg)
+    client = provider_session.client_session(gate=gate)
+    return TidalAccount(
+        client, cfg=cfg, catalogue=provider_session.catalogue_client(client, gate=gate)
+    )
 
 
 __all__ = [

@@ -645,6 +645,7 @@ def plan_area(
     unfollowed: CratekitError | None = None,
     only: frozenset[str] | None = None,
     run: account_mirror.Run | None = None,
+    shared: account_mirror.Shared | None = None,
 ) -> Area:
     """Plan every account step; a step that refuses is shown and hides no other.
 
@@ -659,13 +660,16 @@ def plan_area(
 
     ``run`` is the organize run the mirror records, freezes and rebuilds its
     plan on (R-1031), or ``None`` for a mirror that does none of them.
+    ``shared`` is the run's one account and mirror reading (U201), which the
+    rekordbox area may have read already; every step here resolves the
+    account through it when given.
     """
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
 
     area = Area(name=AREA, only=selection(STEPS, only))
     catalogue_of = _Lazy(lambda: catalogue.resolve(cfg))
-    remote_of = _Lazy(lambda: account.resolve(cfg))
+    remote_of = _Lazy(shared.account if shared is not None else lambda: account.resolve(cfg))
     labels = tuple(entry.name for entry in followed)
     if area.wants(LABELS):
         _labels(cfg, area, available, followed, unfollowed, catalogue_of, remote_of)
@@ -694,7 +698,7 @@ def plan_area(
     if area.wants(ROOT):
         _root_step(cfg, area, followed, catalogue_of, remote_of, filed_of)
     if area.wants(MIRROR):
-        account_mirror.add_steps(cfg, area, remote_of.get, run)
+        account_mirror.add_steps(cfg, area, remote_of.get, run, shared=shared)
     if area.wants(YOURS):
         # AN EMPTY ROOT PLAYLIST IS THE ROOT STEP'S, not one of the author's
         # left alone, read off the filing plan so ``--only yours`` makes none
