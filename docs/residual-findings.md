@@ -44119,3 +44119,177 @@ the routing tree's membership written under that tree's root.
 **Closes when:** `derivable` allows the declared routing tree alone and the
 suites' synthesized trees are declared as the routing tree, or the cutover
 verb's set is shown to be the only producer.
+
+---
+
+## R-1305. A rejected session whose answer body is not JSON is read as the provider being unavailable
+
+**Found:** at round two's review of #543, U220, 2026-11-05.
+
+**The mechanism.** The provider client reads an error answer's body as JSON
+inside its own handler of the HTTP error, so an answer whose body is not
+JSON surfaces as the decode error, with the HTTP error as its context and
+not its cause. `account._session_refused` (src/cratekit/modules/outbound/
+account.py) and `provider_session._rejected` (src/cratekit/acquire/
+provider_session.py) walk the cause chain alone. U220 fixed the same shape
+in `tidal_account._stale_tag` by walking both chains. Measured on the
+client's own handler with mocked answers: a 401 or 403 with an HTML body
+reads as not refused and is classified `unavailable-transient`; with an
+empty or JSON body it reads `credential-missing`.
+
+**Measured cost.** A person whose stored session the provider rejected is
+told the provider is unavailable and to wait, the cost both functions'
+docstrings name. Whether the provider answers 401 with a body that is not
+JSON is unmeasured.
+
+**Closes when:** both walks read `__context__` beside `__cause__`, saying why
+they depart from `core/cause.py`'s `_chain`, with a test over a 401 whose
+body is HTML through the client's own handler. It meets the board bar under
+(b).
+
+---
+
+## R-1306. A continue of a pair this run made passes the order no reading to agree with
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `check` keys a part written pair's listing by the account
+playlist it read, which for a pair this run made is the identifier in `ours`,
+while `apply_pair` looks it up by `one.target.account_id`, empty in a made
+pair's plan. So a continue of a made pair whose order was refused orders with
+`expect=None`, and only the adapter's own guards (its memory of the adds, the
+read back) hold.
+
+**Measured cost.** Not driven: the planner derives a made pair's additions
+and order from one merged order, and 0 candidates produced a made pair that
+owes an order.
+
+**Closes when:** `apply_pair` looks the listing up by the made identifier,
+with a test, or ledger only.
+
+---
+
+## R-1307. A pair whose order is refused for a reason a continue cannot change is still offered to the continue
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `pair_cli.ORDER_REFUSALS` is keyed on the refusal's reason
+alone, so `outbound-remove-refused` for positions that can never be known (a
+playlist declaring a video, or holding a track the account cannot play) stops
+that pair alone and the stop names `crate --run RUN sync pair`, which meets
+the same refusal, after its rereads (seven seconds). Deliberately kept: the
+alternative, stopping every later pair, is the cost the card exists to end.
+The stop now carries each refusal's own steps and asks for them first.
+
+**Measured cost.** One continue that cannot succeed, driven through the verb
+with a stand in refusal; the producer through the real planner was not driven
+(0 candidates produced a video on a paired playlist).
+
+**Closes when:** the stop says which unordered pairs a continue cannot finish,
+by the refusal's problem, and the continue skips them, or ledger only.
+
+---
+
+## R-1308. A removal from a playlist whose read lags the removal is refused as not done, though it landed
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `TidalAccount.remove_tracks` reads the playlist back once
+after each removal by position and refuses at once when the reading is not
+the playlist with exactly those positions gone. U220 measured on Sitting 62
+that the provider's read can lag a write it accepted, and taught
+`order_tracks` to read again after a pause; `remove_tracks` has the same
+shape and no reread. Driven on a stand in whose read lags one write:
+removing `b` from `[a, b, c, d]` landed, leaving `[a, c, d]`, and was refused
+either "declares 3 track(s) ... nothing was taken off it" (the count current,
+the tracks lagging) or "a track other than the asked ones may have come off"
+(both lagging).
+
+**Measured cost.** The product says a removal did not happen, or may have
+taken the wrong track, when it took exactly the asked one; the person checks
+by hand and the sync stops. The lag itself is measured live for a move
+(Sitting 62), not yet for a removal.
+
+**Closes when:** `remove_tracks` reads back through the same bounded reread
+`order_tracks` uses (a reading equal to the playlist before the removal is
+read again after a pause; anything else refuses at once), with a test over a
+provider whose read lags one write. It meets the board bar under (b).
+
+---
+
+## R-1309. Three of U220's guards kill no test
+
+**Found:** at the reviews of #543, U220, 2026-11-05.
+
+**The mechanism.** `apply_pair`'s `except jobs.Parked: raise` is dead today,
+since no park reason is in `ORDER_REFUSALS`, and is there so that adding one
+cannot swallow a park. `_stale_tag`'s guard against a cyclic chain is never
+met by a test (three cyclic chains were driven by hand and terminate).
+`_pause(0)` returns the last pause, not the first; every caller passes one or
+more.
+
+**Measured cost.** None reaches a person.
+
+**Closes when:** ledger only.
+
+---
+
+## R-1310. A sync pair stopped on an unfinished order reports no totals of what it wrote
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** When an account order does not finish, `sync_pair` writes
+every other pair and then raises one refusal, whose envelope carries the
+refusal's detail (the unordered pairs, the run, how many finished) and not
+the totals a finished sync reports (tracks added and taken off each side,
+playlists made, jobs queued). The continue's totals count only its own
+command's writes.
+
+**Measured cost.** An under report, not a false one: driven through the verb,
+another pair's added track and a playlist brought into rekordbox appear in
+neither envelope.
+
+**Closes when:** the stop's detail carries the totals of the writes it made.
+Ledger only.
+
+---
+
+## R-1311. The account order's pauses and reread count are a bound, not a measurement of the provider
+
+**Found:** at the build of #543, U220, 2026-11-05.
+
+**The mechanism.** `tidal_account.ORDER_PAUSES` (1, 2 and 4 seconds) and
+`ORDER_REREADS` (3) decide how long `order_tracks` waits for a reading that
+lags a write before it refuses. They were chosen in the cloud with no live
+provider. Three facts the card asked to be measured first are still not:
+how long the provider's reads lag its writes, whether its tracks endpoint and
+its playlist endpoint issue the same version tag, and where it lands a move
+to the playlist's length. The adapter is built to be right under every
+answer (moves go to the front, a 412 is read again, a lagging read back is
+read again), so the cost of a wrong guess is a refusal that a continue
+finishes, never a wrong move.
+
+**Measured cost.** Not driven live. A provider lagging longer than seven
+seconds a step leaves the pair unordered and named in the stop.
+
+**Closes when:** the attended card U220 filed records the measurement on the
+card and the constants are set from it, or confirmed. Ledger only: it closes
+at an attended sitting.
+
+---
+
+## R-1312. The readings an account order takes again are not in the call estimate a gate shows
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `pair_calls.account_write` counts one move and one read
+back per track moved. A provider that lags, or refuses a stale tag, makes
+`order_tracks` read again: up to three more readings a read back and up to
+fifteen across the 412s of one order, each an open and its pages. The
+named `--calls` margin is what covers them.
+
+**Measured cost.** Not driven to a park. A park mid order would name a
+ceiling sized without them; each continue still makes progress.
+
+**Closes when:** the estimate counts them once the attended measurement says
+how often they happen, or ledger only.
