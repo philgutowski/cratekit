@@ -2404,12 +2404,23 @@ def _spent() -> int:
     return provider_gate.process_spend().calls
 
 
-def _held_plan(run_id: str, offered: Mapping[str, str]) -> tuple[Plan | None, int, str]:
+def _asked(wanted: Sequence[Target], every: bool) -> dict[str, Any]:
+    """What a plan was made for: the pairs asked and whether every pair was, as plain JSON."""
+    return {
+        "every": every,
+        "targets": [[one.account_id, one.rekordbox_id, one.marked] for one in wanted],
+    }
+
+
+def _held_plan(
+    run_id: str, offered: Mapping[str, str], asked: Mapping[str, Any]
+) -> tuple[Plan | None, int, str]:
     """The plan held for this run, the calls its plan took, and why not when there is none.
 
     The held plan answers only when it digests to EVERY offer this run
-    recorded, which is the plan each gate showed; any other plan is planned
-    again, digest bound, and the gates refuse it stale if it moved.
+    recorded, which is the plan each gate showed, and when it was made for the
+    pairs this command asks for; any other plan is planned again, digest
+    bound, and the gates refuse it stale if it moved.
     """
     from cratekit.core import held_plan
 
@@ -2423,11 +2434,15 @@ def _held_plan(run_id: str, offered: Mapping[str, str]) -> tuple[Plan | None, in
     moved = sorted(gate for gate, offer in offered.items() if offer != digest)
     if moved:
         return None, 0, f"the held plan is not the plan {', '.join(moved)} showed"
+    if extra.get("asked") != dict(asked):
+        # THE SAME RUN, OTHER PAIRS: a command run again under the run with
+        # another account playlist named, or a pair marked or forgotten since.
+        return None, 0, "the held plan was made for other pairs than this command asks for"
     calls = extra.get("plan_calls")
     return planned, calls if isinstance(calls, int) and calls >= 0 else 0, ""
 
 
-def _hold(run_id: str, planned: Plan, calls: int) -> str:
+def _hold(run_id: str, planned: Plan, calls: int, asked: Mapping[str, Any]) -> str:
     """Hold this command's plan under its run, and answer why not, or the empty string."""
     from cratekit.core import held_plan
 
@@ -2437,7 +2452,7 @@ def _hold(run_id: str, planned: Plan, calls: int) -> str:
         planned,
         registry=_held_classes(),
         digest=planned.digest,
-        extra={"plan_calls": calls},
+        extra={"plan_calls": calls, "asked": dict(asked)},
     )
 
 
@@ -2665,11 +2680,12 @@ def sync_pair(ctx) -> Envelope:
     notes: list[dict[str, str]] = []
     with jobs.open_store() as store:
         every = not getattr(ctx.args, "account", None)
+        asked = _asked(wanted, every)
         planned: Plan | None = None
         plan_calls = 0
         if offered:
             # A LATER COMMAND OF A RUN THAT SHOWED A GATE reads its plan back.
-            planned, plan_calls, why = _held_plan(run_id, offered)
+            planned, plan_calls, why = _held_plan(run_id, offered, asked)
             if planned is None:
                 notes.append(
                     {
@@ -2689,7 +2705,7 @@ def sync_pair(ctx) -> Envelope:
             # R-988. WHAT THE ACCOUNT SAID OF A ROW IS A FACT ABOUT THE ROW,
             # recorded before the gate, so a plan made again asks it nothing.
             store_of_pairs.remember(planned.misses, forget=planned.matched)
-            not_held = _hold(run_id, planned, plan_calls)
+            not_held = _hold(run_id, planned, plan_calls, asked)
         data = payload(planned)
         shown = facts(planned)
         if not_held:

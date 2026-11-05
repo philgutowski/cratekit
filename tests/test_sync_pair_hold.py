@@ -330,12 +330,28 @@ def test_a_held_plan_other_than_the_offer_is_planned_again(world, cfg):
     drive(["--run", run_id, *w.args()])
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, *APPLY])
     other = pair_cli.Plan()
-    assert pair_cli._hold(run_id, other, 0) == ""
+    asked = pair_cli._asked((pair_cli.Target(ACCOUNT, w.rekordbox_id, False),), False)
+    assert pair_cli._hold(run_id, other, 0, asked) == ""
     code, done = drive(["--run", run_id, *w.args()])
     assert code == int(ExitCode.OK), done
     said = next(one for one in done["warnings"] if one["code"] == pair_cli.REPLANNED)
     assert "is not the plan" in said["message"]
     assert w.on_account() == ["t1", "t2"]
+
+
+def test_a_held_plan_made_for_other_pairs_is_planned_again(world, cfg):
+    w = world(account=("1",), rekordbox=("1", "2"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    w.rekordbox_add("3")
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    run_id = first["run_id"]
+    drive(["run", "decide", run_id, _gate(first), *APPLY])
+    # The same run asked again for one pair by name, not for every pair.
+    code, second = drive(["--run", run_id, *VERB, ACCOUNT])
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    said = second["cause"]["detail"]["shown"]["planned again"]
+    assert "other pairs" in said
 
 
 def test_a_replanned_run_whose_list_moved_is_refused_by_the_gate(world):
