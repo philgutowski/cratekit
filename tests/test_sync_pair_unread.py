@@ -5,9 +5,10 @@ refuses the whole playlist for one row naming no title or no artist, so a twin
 ``crate sync twins`` made over such a playlist (U213) stopped every pair at the
 next sync. The account side is now read row by row, as the backfill reads it:
 a track the reader refuses is unread, kept by its id, never added to either
-side and never read as taken off the account, and while one is unread the
-account takes no removal and no reorder and the snapshot does not move, the
-rule a short listing already follows. A listing the reader cannot use at all
+side and never read as taken off the account. Unlike a withheld track it may
+stay that way for good, so the pair still syncs whole: removals land on both
+sides and the snapshot moves, the unread id recorded in its place, and only
+the account's order is left as it is. A listing the reader cannot use at all
 leaves its pair out of a sync of every pair, named, and the others sync.
 
 Driven end to end through the dispatcher on the twins suite's world, the
@@ -63,9 +64,11 @@ def test_an_untitled_track_never_stops_its_pair_and_the_rest_syncs_both_ways(wor
         ("t20", "Artist t20", "", "the account lists it with no title")
     ]
     assert pair_cli.UNREAD in _codes(envelope)
-    # THE SNAPSHOT DOES NOT MOVE while a track is unread, as for a short listing.
+    # THE SNAPSHOT MOVES, the unread track in its place, as the account lists it.
     after = pairs.PairStore(cfg).get(PHIL)
-    assert after is not None and after.account == held.account
+    assert after is not None and after.account == ("t3", "t1", "t20", "t2", "t4")
+    shown = envelope["data"]["totals"]
+    assert shown["unread"] == 1
 
 
 def test_a_track_naming_no_artist_is_unread_the_same_way(world, cfg):
@@ -91,19 +94,49 @@ def test_an_unread_track_the_twin_holds_is_never_removed_or_added_again(world, c
     }] == []
 
 
-def test_while_a_track_is_unread_the_account_takes_no_removal(world, cfg):
+def test_while_a_track_is_unread_a_rekordbox_removal_still_lands_on_the_account(world, cfg):
     twin_id = _backfilled(world, untitled="t20")
     world.rekordbox_remove(twin_id, "1")
     code, envelope = sync_pair()
     assert code == int(ExitCode.OK), envelope
     assert world.held(twin_id) == ["3", "2"]
-    assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2"]
-    # Once the account serves it whole, the removal the base still holds lands.
+    assert world.account.playlists[PHIL] == ["t3", "t20", "t2"]
+    # And once the account serves it whole, nothing comes back.
     world.names.pop("t20")
     code, envelope = sync_pair()
     assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[PHIL] == ["t3", "t20", "t2"]
+    assert world.held(twin_id) == ["3", "2"]
     assert pair_cli.UNREAD not in _codes(envelope)
+
+
+def test_a_track_synced_across_and_then_removed_in_rekordbox_is_not_put_back(world, cfg):
+    """From the review's round one: a snapshot held back replayed the addition."""
+    twin_id = _backfilled(world, untitled="t20")
+    world.account.playlists[PHIL].append("t4")
+    assert sync_pair()[0] == int(ExitCode.OK)
+    assert world.held(twin_id) == ["3", "1", "2", "4"]
+    world.rekordbox_remove(twin_id, "4")
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(twin_id) == ["3", "1", "2"]
+    assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2"]
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(twin_id) == ["3", "1", "2"]
+
+
+def test_a_track_synced_across_and_then_removed_on_the_account_is_not_put_back(world, cfg):
+    """The same, the other way: rekordbox's addition is not replayed over the account's removal."""
+    twin_id = _backfilled(world, untitled="t20")
+    world.rekordbox_add(twin_id, "5")
+    assert sync_pair()[0] == int(ExitCode.OK)
+    assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2", "t5"]
+    world.account.playlists[PHIL].remove("t5")
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(twin_id) == ["3", "1", "2"]
+    assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2"]
 
 
 def test_a_rekordbox_row_carrying_an_unread_tracks_isrc_is_not_added_to_the_account(world, cfg):
@@ -114,10 +147,14 @@ def test_a_rekordbox_row_carrying_an_unread_tracks_isrc_is_not_added_to_the_acco
     world.account.playlists[PHIL].append("t4")
     world.names["t4"] = ""
     world.rekordbox_add(twin_id, "4")
+    # The provider would name another release of it, which the account lacks.
+    world.account.catalog["4"] = "t24"
     code, envelope = sync_pair()
     assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[PHIL].count("t4") == 1
+    assert "t24" not in world.account.playlists[PHIL]
     assert "4" in world.held(twin_id)
+    assert dict(pairs.PairStore(cfg).get(PHIL).links)["t4"] == "4"
 
 
 def test_a_pair_whose_listing_carries_a_row_with_no_id_is_left_out_and_the_others_sync(world, cfg):
@@ -170,3 +207,39 @@ def test_a_track_turning_unreadable_between_the_plan_and_the_write_refuses_stale
     assert stale["cause"]["reason"] == "decision-stale", stale
     assert "tracks it cannot read" in stale["cause"]["message"], stale
     assert world.held(twin_id) == ["3", "1", "2"]
+
+
+def test_a_plan_whose_unread_tracks_differ_digests_differently(world, cfg):
+    _backfilled(world, untitled="t20")
+    world.account.playlists[PHIL].append("t4")
+    code, first = drive(["sync", "pair"])
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    world.account.playlists[PHIL].append("t5")
+    world.names["t5"] = ""
+    code, second = drive(["sync", "pair"])
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    assert first["cause"]["detail"]["shown"]["digest"] != second["cause"]["detail"]["shown"]["digest"]
+    world.account.playlists[PHIL].remove("t5")
+    code, third = drive(["sync", "pair"])
+    assert third["cause"]["detail"]["shown"]["digest"] == first["cause"]["detail"]["shown"]["digest"]
+
+
+def test_unread_tracks_trading_places_after_the_plan_is_not_stale(world, cfg):
+    """From the review's round one: the same set in other places moved nothing written."""
+    _backfilled(world, untitled="t20")
+    world.names["t2"] = ""
+    world.account.playlists[PHIL].append("t4")
+    code, envelope = drive(["sync", "pair"])
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    run_id = envelope["run_id"]
+    # t20 and t2 trade places; the readable tracks keep theirs.
+    world.account.playlists[PHIL] = ["t3", "t1", "t2", "t20", "t4"]
+    for _ in range(2):
+        gate = envelope["cause"]["detail"]["gate"]
+        decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
+        assert decided == int(ExitCode.OK), said
+        code, envelope = drive(["--run", run_id, "sync", "pair"])
+        if code != int(ExitCode.DECISION_REQUIRED):
+            break
+    assert code == int(ExitCode.OK), envelope
+    assert pairs.PairStore(cfg).get(PHIL).account == ("t3", "t1", "t2", "t20", "t4")
