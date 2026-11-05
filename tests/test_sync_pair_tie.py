@@ -387,6 +387,11 @@ def test_both_releases_taken_off_the_account_take_the_row_out_of_rekordbox(tied)
 
     assert w.held() == ["2"]
     _quiet(w)
+    # PUT BACK IN REKORDBOX, the row goes to the account as its one key's
+    # release, the lowest numbered linked, the same on every run.
+    w.rekordbox_add(TIED)
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    assert w.on_account() == ["92", "101"]
 
 
 def test_two_releases_already_on_the_account_take_the_lower_and_add_no_third(tied, cfg):
