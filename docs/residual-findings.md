@@ -42773,3 +42773,88 @@ between the gate and the write, and none was found that does.
 
 **Closes when:** a producer is found for one, then the check reads it. Ledger
 only.
+
+---
+
+## R-1247. A continued sync pair answers only what it wrote itself, not what the stopped command made or queued
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop is a park, and a parked envelope carries no
+totals. The continue's OK envelope counts only its own command's writes
+(`created_playlists`, `queued_jobs` and the rest in `sync_pair`,
+`sync/pair_cli.py`), so the playlists the stopped command made and the jobs it
+queued appear in no answer's totals. The continue's message says how many
+pairs finished earlier in the run, and `totals.finished_before` counts them.
+
+**Measured cost.** Driven at round one (S7): a job queued before the stop was
+in `crate job list` and not in the continue's `queued_jobs`. Nothing is lost;
+the report is incomplete.
+
+**Closes when:** each pair's done step records what it made and queued, and the
+continue's totals add the earlier commands' to its own. Ledger only.
+
+---
+
+## R-1248. A second copy of a track put on a paired account playlist reads as no change to the check before the write
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** The check before the write (U209's `check`, and U210's
+reading of a part written playlist in `_beyond`, `sync/pair_cli.py`) compares
+the account listing after `pair_merge.distinct`, and the listing seam freezes
+rows by track identifier, so a track the author put on the playlist a second
+time between the gate and the write, or between a stop and its continue, is
+the same list to both. The write goes on and the snapshot records the list
+distinct.
+
+**Measured cost.** Driven at round one (S12): the continue answered OK and the
+account kept the track twice, which is what the author did; nothing was lost
+or written over. The cost is that the check does not name the change it saw.
+
+**Closes when:** the listing the check reads keeps each copy, and a count
+that differs from the plan's refuses stale as a reorder does. Ledger only: no
+data is lost and the author's copy stands.
+
+---
+
+## R-1249. A made account playlist moved out of its folder between a stop and its continue is moved back
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop between making a discovered playlist's
+account side and putting it in its folder leaves it at the account root. The
+continue (`_made` with `resumed`, `sync/pair_cli.py`) moves it into the folder
+the plan named, since the move asks for one fixed place, and does not read
+where the playlist is now. A playlist the author moved elsewhere in that
+window, into Archive say, is moved back.
+
+**Measured cost.** Driven at round one (S2): the continue moved it back and
+answered OK. The playlist is empty in that window (it is filled after the
+move), nothing is lost, and moving it again lets the archive rule release it.
+
+**Closes when:** the continue reads the made playlist's folder first and
+refuses stale when it sits in a folder other than the root or its own. Ledger
+only.
+
+---
+
+## R-1250. The sync pair write's call forecast is held to the account adapter over a fake client and unmeasured live
+
+**Found:** at the build of #500, U210, 2026-11-05.
+
+**The mechanism.** `sync/pair_calls.py` counts a write's provider calls from
+the account adapter's shape: a playlist opened and read a page at a time,
+made with three calls, added to a hundred a request, taken off fifty a
+request with a read back each, ordered one move and read back a track. The
+check's folder reads are counted at one call each. The gates show the sum,
+and a ceiling stop names a `--calls` with a quarter's margin, rounded up to a
+hundred.
+
+**Measured cost.** Held exactly to the shipped adapter over a counting fake
+client (`tests/test_sync_pair_calls.py`), never to the live provider. A folder
+of more than fifty playlists costs the check more than one read, and a
+provider that pages differently would move every count.
+
+**Closes when:** the next attended `crate sync pair` records its answer's
+`totals.calls_expected` against `totals.calls`. Ledger only.
