@@ -218,10 +218,12 @@ def landings_since(
 
     A pull request belongs to the range when its merge commit is anywhere in
     it. Failing that, when its head is in it: it landed at the merge that took
-    the head as a later parent, a unit or residual landing before any other,
-    which is how a pull request merged by a local merge and push lands, or at
-    the head itself on a fast forward. A landing merge that took the head is
-    claimed with it, so a unit reachable both ways is listed once.
+    the head as a later parent, a landing before a branch sync, which is how a
+    pull request merged by a local merge and push lands, or at the head itself
+    on a fast forward. Every landing merge that took the head is claimed with
+    it, so a unit reachable both ways is listed once. A head outside the range
+    shipped before it, so a sibling's sync of it inside the range claims
+    nothing.
 
     A merge no pull request claimed is a landing made without one, which is
     how every unit before U158 reached `main`, when it is on the first parent
@@ -238,8 +240,12 @@ def landings_since(
         for parent in parents[1:]:
             taken_by.setdefault(parent, []).append(sha)
 
-    def is_landing_subject(sha: str) -> bool:
-        return bool(LANDING_RE.match(by_sha[sha][0]))
+    def lands(sha: str) -> bool:
+        """Whether a merge is a landing when no pull request claims it."""
+        subject = by_sha[sha][0]
+        if MAIN_SYNC_RE.match(subject):
+            return False
+        return sha in first_line or bool(LANDING_RE.match(subject))
 
     prs: list[Landing] = []
     claimed: set[str] = set()
@@ -248,9 +254,16 @@ def landings_since(
             continue
         merge_sha = pull.get("merge_commit_sha") or ""
         head_sha = (pull.get("head") or {}).get("sha") or ""
-        taking = sorted(
-            taken_by.get(head_sha, ()),
-            key=lambda sha: (not is_landing_subject(sha), order[sha]),
+        # Only a head inside the range can have landed in it: a head an
+        # earlier tag holds was taken there too, by its own merge, and a
+        # sibling branch's sync of it is no landing of it here.
+        taking = (
+            sorted(
+                taken_by.get(head_sha, ()),
+                key=lambda sha: (not lands(sha), order[sha]),
+            )
+            if head_sha in by_sha
+            else []
         )
         if merge_sha in by_sha:
             landed_at = merge_sha
@@ -261,7 +274,7 @@ def landings_since(
         else:
             continue
         claimed.add(landed_at)
-        claimed.update(sha for sha in taking if is_landing_subject(sha))
+        claimed.update(sha for sha in taking if lands(sha))
         prs.append(
             Landing(
                 title=pull.get("title", ""),
@@ -274,10 +287,7 @@ def landings_since(
     direct = [
         Landing(title=subject, sha=sha)
         for sha, subject, parents in reversed(commits)
-        if len(parents) > 1
-        and sha not in claimed
-        and not MAIN_SYNC_RE.match(subject)
-        and (sha in first_line or LANDING_RE.match(subject))
+        if len(parents) > 1 and sha not in claimed and lands(sha)
     ]
     return prs, direct
 
@@ -470,22 +480,50 @@ def gather(runner: Runner, repo: str, *, since: str | None = None, tip: str = "H
     return since, prs, direct
 
 
+def version_at(runner: Runner, ref: str) -> str:
+    """The version `pyproject.toml` carried at ``ref``, where a past range starts."""
+    found = runner(["git", "show", f"{ref}:{PYPROJECT.as_posix()}"])
+    versions = PYPROJECT_VERSION_RE.findall(found.stdout) if found.returncode == 0 else []
+    if len(versions) != 1:
+        raise ReleaseError(f"no one version line in pyproject.toml at {ref!r}")
+    parse_dotted(versions[0])
+    return versions[0]
+
+
+def refuse_a_crossed_tag(runner: Runner, since: str, tip: str) -> None:
+    """Refuse a range holding a version tag other than the one at its tip."""
+    tip_sha = git(runner, "rev-parse", f"{tip}^{{commit}}")
+    inside = git(runner, "tag", "--list", "v*", "--merged", tip, "--no-merged", since)
+    for name in sorted(inside.splitlines(), key=lambda n: parse_tag(n) or (0, 0, 0)):
+        if parse_tag(name) and git(runner, "rev-parse", f"{name}^{{commit}}") != tip_sha:
+            raise ReleaseError(
+                f"the range crosses {name}; start it there with --since {name}, "
+                f"or end it there with --tip {name}"
+            )
+
+
 def cmd_plan(args, runner: Runner = run) -> int:
     """List what landed and propose a bump; with ``--notes``, print the release body only.
 
     ``--since`` and ``--tip`` rerun a past range, `plan --since v0.6.0 --tip
-    v0.7.0`, and the bump is then read from the version ``--since`` names.
+    v0.7.0`, and the bump is then read from the version written at
+    ``--since``. A range that crosses a version tag is refused, since its
+    proposal would name a version that exists and its notes would credit one
+    release with another's units.
     """
-    sync_history(runner)
     asked_since = getattr(args, "since", None)
     tip = getattr(args, "tip", None)
     if tip and not asked_since:
         raise ReleaseError("--tip needs --since, the tag the range starts after")
     tip = tip or "HEAD"
+    sync_history(runner)
     repo = args.repo or repo_slug(runner)
     since, prs, direct = gather(runner, repo, since=asked_since, tip=tip)
-    from_tag = parse_tag(asked_since) if asked_since else None
-    current = dotted(from_tag) if from_tag else read_versions(ROOT)[0]
+    if asked_since:
+        refuse_a_crossed_tag(runner, asked_since, tip)
+        current = version_at(runner, asked_since)
+    else:
+        current = read_versions(ROOT)[0]
     bump, reasons = propose([*prs, *direct])
     if bump == "major" and parse_dotted(current)[0] == 0:
         # Below 1.0.0 a break is a minor bump with the break said first in the

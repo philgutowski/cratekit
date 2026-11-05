@@ -637,3 +637,109 @@ def test_plan_notes_over_an_empty_range_print_nothing_and_fail(repo, capsys, mon
     captured = capsys.readouterr()
     assert captured.out == ""
     assert "nothing landed" in captured.err
+
+
+def test_a_unit_shipped_in_the_last_tag_is_not_listed_again_through_a_sibling_sync(repo):
+    # cloud/3-b took cloud/2-a's final head before either landed; U2 shipped
+    # in v0.2.0, and U3 lands after it carrying that sync.
+    _git(repo, "checkout", "-q", "-b", "cloud/2-a")
+    head_a = _commit(repo, "a.txt", "feat: a")
+    _git(repo, "checkout", "-q", "-b", "cloud/3-b", "main")
+    _commit(repo, "b.txt", "feat: b")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m",
+         "Merge remote-tracking branch 'origin/cloud/2-a' into cloud/3-b", head_a)
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "merge(u2): a", "cloud/2-a")
+    merge_a = _git(repo, "rev-parse", "HEAD")
+    _git(repo, "tag", "-a", "v0.2.0", "-m", "v0.2.0")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "merge(u3): b", "cloud/3-b")
+    merge_b = _git(repo, "rev-parse", "HEAD")
+    pulls = [
+        {"number": 2, "title": "U2: a", "merged_at": "x", "merge_commit_sha": merge_a,
+         "head": {"sha": head_a}},
+        {"number": 3, "title": "R-3: b", "merged_at": "x", "merge_commit_sha": merge_b,
+         "head": {"sha": "f" * 40}},
+    ]
+    since, prs, direct = release.gather(_fake_gh(pulls)[0], "o/r")
+    assert since == "v0.2.0"
+    assert [p.number for p in prs] == [3], "a unit the last tag shipped was listed again"
+    assert direct == []
+    assert release.propose([*prs, *direct])[0] == "patch"
+
+
+def test_a_unit_merged_both_locally_and_through_its_pull_request_is_listed_once(repo):
+    # The cloud merged the pull request through the API while a local session
+    # had merged the same branch; the local pull brings both merges in.
+    _tag_and_branch_upstream(repo)
+    head_a, merge_api = _merge_into(repo, "upstream", "cloud/2-a", "merge(u2): through the API")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--no-ff", "--no-verify", "-m", "merge(u2): merged locally", head_a)
+    _pull_upstream(repo)
+    pulls = [{"number": 2, "title": "U2: a", "merged_at": "x", "merge_commit_sha": merge_api,
+              "head": {"sha": head_a}}]
+    _since, prs, direct = release.gather(_fake_gh(pulls)[0], "o/r")
+    assert [(p.number, p.sha) for p in prs] == [(2, merge_api)]
+    assert direct == [], "the local merge of a unit its pull request lists was listed again"
+
+
+def test_a_pull_request_fast_forwarded_onto_main_lands_at_its_head(repo):
+    _git(repo, "tag", "-a", "v0.1.0", "-m", "v0.1.0")
+    _git(repo, "checkout", "-q", "-b", "cloud/2-a")
+    head_a = _commit(repo, "a.txt", "feat: a")
+    _git(repo, "checkout", "-q", "main")
+    _git(repo, "merge", "-q", "--ff-only", "cloud/2-a")
+    pulls = [{"number": 2, "title": "U2: a", "merged_at": "x", "merge_commit_sha": "e" * 40,
+              "head": {"sha": head_a}}]
+    _since, prs, direct = release.gather(_fake_gh(pulls)[0], "o/r")
+    assert [(p.number, p.sha) for p in prs] == [(2, head_a)]
+    assert direct == []
+
+
+def test_a_residual_merge_behind_a_local_merge_of_main_is_listed(repo):
+    _tag_and_branch_upstream(repo)
+    _merge_into(repo, "upstream", "cloud/4-r", "merge(r-4): a repair behind the pull")
+    _pull_upstream(repo)
+    _since, prs, direct = release.gather(_fake_gh()[0], "o/r")
+    assert [d.title for d in direct] == ["merge(r-4): a repair behind the pull"]
+    assert release.propose(direct)[0] == "patch"
+
+
+def _set_version(repo: Path, version: str) -> None:
+    for path, line in (
+        (repo / "pyproject.toml", f'version = "{version}"'),
+        (repo / "src" / "cratekit" / "__init__.py", f'__version__ = "{version}"'),
+    ):
+        text = path.read_text()
+        key = line.split(" = ")[0]
+        path.write_text("\n".join(
+            line if row.startswith(f"{key} = ") else row for row in text.splitlines()
+        ) + "\n")
+    _git(repo, "commit", "-q", "--no-verify", "-am", f"release: v{version}")
+    _git(repo, "tag", "-a", f"v{version}", "-m", f"v{version}")
+
+
+def test_plan_reads_the_bump_from_the_version_the_range_starts_at(repo, capsys, monkeypatch):
+    _set_version(repo, "0.2.0")
+    _merge_into(repo, "main", "cloud/3-r", "merge(r-3): a repair")
+    _set_version(repo, "0.2.1")
+    _merge_into(repo, "main", "cloud/4-a", "merge(u4): a unit")
+    _set_version(repo, "0.3.0")
+    # The checkout reads 0.3.0; the range v0.2.0..v0.2.1 started at 0.2.0.
+    assert _plan(repo, monkeypatch, since="v0.2.0", tip="v0.2.1") == 0
+    out = capsys.readouterr().out
+    assert "current version 0.2.0" in out
+    assert "proposed bump: patch, v0.2.0 to v0.2.1" in out
+    assert "merge(u4)" not in out
+    # A range ending past the next version tag is titled by its tip.
+    assert _plan(repo, monkeypatch, since="v0.2.1", tip="v0.3.0", notes=True) == 0
+    assert capsys.readouterr().out.startswith("Cratekit v0.3.0.\n")
+
+
+def test_plan_refuses_a_range_that_crosses_a_version_tag(repo, capsys, monkeypatch):
+    _set_version(repo, "0.2.0")
+    _merge_into(repo, "main", "cloud/3-a", "merge(u3): in v0.3.0")
+    _set_version(repo, "0.3.0")
+    _merge_into(repo, "main", "cloud/4-b", "merge(u4): after v0.3.0")
+    with pytest.raises(release.ReleaseError, match="crosses v0.3.0"):
+        _plan(repo, monkeypatch, since="v0.2.0", tip="HEAD", notes=True)
+    assert capsys.readouterr().out == "", "notes were printed over a range two releases wide"
