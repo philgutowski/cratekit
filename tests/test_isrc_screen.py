@@ -398,6 +398,20 @@ def test_a_rejected_app_credential_on_a_batch_marks_nothing_and_stops_the_screen
     assert api.singles() == [code(0)]
 
 
+@pytest.mark.parametrize("status", [400, 404, 422])
+def test_a_refused_request_form_stops_the_screening_and_marks_nothing(gate, status):
+    catalogue = held_and_lacking(0, 60)
+    api = Api(catalogue)
+    api.batch = [status]
+    account = adapter(gate, api)
+
+    assert account.screen_isrcs(list(catalogue)) == 1
+    assert len(api.batches()) == 1
+
+    ask_every(account, list(catalogue)[:2])
+    assert api.singles() == list(catalogue)[:2]
+
+
 def test_the_gates_own_park_passes_through_the_screen(gate):
     api = Api(held_and_lacking(0, 2))
     parked = refuse(

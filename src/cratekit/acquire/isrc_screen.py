@@ -30,7 +30,9 @@ attribute to its codes, and here every failure marks nothing:
 * a rate limit stops the screening for the rest of the run. The gate counted
   it as it counts any call, and its breaker acts on the lookups that follow;
 * a rejected app credential stops it too, since every batch after it would be
-  refused the same way, and the lookups that follow refuse it by name;
+  refused the same way, and the lookups that follow refuse it by name; so does
+  any other refusal of the request itself, a 4xx, since every code sent is well
+  formed and the API is then refusing the form of the request;
 * the gate's own refusal, a trip, a held lock or the call ceiling, is the job
   engine's park and passes through untouched.
 
@@ -97,7 +99,13 @@ class Screen:
             except (catalogue_api.CatalogueRateLimited, catalogue_api.AppCredentialsRejected):
                 self._stopped = True
                 break
-            except catalogue_api.CatalogueError:
+            except catalogue_api.CatalogueError as exc:
+                # A REFUSAL OF THE REQUEST ITSELF STOPS IT TOO: every code sent
+                # is well formed, so a 4xx says the API will not take this form
+                # of request, and every later batch would pay to hear it again.
+                if exc.status is not None and 400 <= exc.status < 500:
+                    self._stopped = True
+                    break
                 continue
             self._absent.update(code for code in batch if code not in held)
         return made
