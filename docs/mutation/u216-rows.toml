@@ -1,0 +1,253 @@
+name = "u216"
+pass_kind = "full"
+
+[[rows]]
+id = "M1_held_record_ignored"
+description = "before_adoption: a playlist the record says the folder held reads as new, so it is made in rekordbox"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''        if account_id in held:
+            return ('''
+new = '''        if False:
+            return ('''
+
+[[rows]]
+id = "M2_created_folder_by_time"
+description = "before_adoption: drop the created folder answer, so an unrecorded created folder is read by time and its new playlists named"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if created:
+        return ""
+    unrecorded = ('''
+new = '''    unrecorded = ('''
+
+[[rows]]
+id = "M3_no_moment_reads_new"
+description = "before_adoption: an unrecorded folder with no made pair to date it reads every playlist as new"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if adopted is None:
+        return ('''
+new = '''    if adopted is None:
+        return "" if True else ('''
+
+[[rows]]
+id = "M4_no_time_reads_new"
+description = "before_adoption: a playlist with no creation time in an unrecorded folder reads as new"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if made is None or made.tzinfo is None:
+        return ('''
+new = '''    if made is None or made.tzinfo is None:
+        return "" if True else ('''
+
+[[rows]]
+id = "M5_naive_time_trusted"
+description = "before_adoption: a creation time without a zone is compared as given"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if made is None or made.tzinfo is None:'''
+new = '''    if made is None:'''
+
+[[rows]]
+id = "M6_equal_moment_new"
+description = "before_adoption: a playlist made at the adoption moment itself reads as new"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if made <= adopted:'''
+new = '''    if made < adopted:'''
+
+[[rows]]
+id = "M7_time_rule_off"
+description = "before_adoption: an unrecorded folder's playlist with a time never reads as held"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if made <= adopted:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M8_moment_latest"
+description = "adoption_moment: the latest mark rather than the earliest, so a playlist made between two marks reads as held before"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    return min(found) if found else None'''
+new = '''    return max(found) if found else None'''
+
+[[rows]]
+id = "M9_moment_naive_kept"
+description = "adoption_moment: keep a mark without a zone, which cannot be compared with the account's times"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''        if moment.tzinfo is not None:
+            found.append(moment)'''
+new = '''        found.append(moment)'''
+
+[[rows]]
+id = "M10_prefix_case"
+description = "downloaded_copy: the prefix must match its case exactly"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if text[: len(MARK_PREFIX)].casefold() != MARK_PREFIX.casefold():'''
+new = '''    if text[: len(MARK_PREFIX)] != MARK_PREFIX:'''
+
+[[rows]]
+id = "M11_paired_raw"
+description = "downloaded_copy: compare the paired title as it stands, its folder prefix kept"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''        if name_of(folder, one).casefold() == wanted:'''
+new = '''        if one.casefold() == wanted:'''
+
+[[rows]]
+id = "M12_empty_rest"
+description = "downloaded_copy: a title with nothing left after the prefix copies a playlist titled as the folder alone"
+file = "src/cratekit/sync/pair_discover.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''    if not wanted:
+        return ""
+    for one in sorted'''
+new = '''    for one in sorted'''
+
+[[rows]]
+id = "M13_unrecorded_off"
+description = "_discovered_back: no folder reads as unrecorded, so a pre U216 adoption is read as a created folder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''        unrecorded = recorded.held is None and not recorded.created'''
+new = '''        unrecorded = False'''
+
+[[rows]]
+id = "M14_moment_any_folder"
+description = "_discovered_back: the adoption moment reads made pairs in every folder, not only this one"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''                if pair.made and pair.folder == folder'''
+new = '''                if pair.made'''
+
+[[rows]]
+id = "M15_before_rule_off"
+description = "_discovered_back: the before adoption rule is not applied"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''            if before:
+                left(account_id, title, folder, pair_discover.BEFORE, before)'''
+new = '''            if False:
+                left(account_id, title, folder, pair_discover.BEFORE, before)'''
+
+[[rows]]
+id = "M16_copy_rule_off"
+description = "_discovered_back: the DOWNLOADED copy rule is not applied"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''            if copied:
+                whose = ('''
+new = '''            if False:
+                whose = ('''
+
+[[rows]]
+id = "M17_copy_paired_only"
+description = "_discovered_back: the copy check reads paired titles only, not what this sync brings in beside it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''            copied = pair_discover.downloaded_copy(folder, title, [*paired_titles, *beside])'''
+new = '''            copied = pair_discover.downloaded_copy(folder, title, [*paired_titles])'''
+
+[[rows]]
+id = "M18_copy_all_titles"
+description = "_discovered_back: the paired titles are every title in the folder, paired or not"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''            title for account_id, title in inside.items() if account_id in paired_ids
+        ]'''
+new = '''            title for account_id, title in inside.items()
+        ]'''
+
+[[rows]]
+id = "M19_place_held_empty"
+description = "_discovered: an adopted folder's plan carries an empty listing, so the adoption records it held nothing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''                        held=frozenset(inside) if action == FOLDER_ADOPT else None,'''
+new = '''                        held=frozenset() if action == FOLDER_ADOPT else None,'''
+
+[[rows]]
+id = "M20_made_drops_held"
+description = "_made: the plan's listing is not passed to the folder's reservation"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''        stale=place.stale,
+        held=place.held,
+    )'''
+new = '''        stale=place.stale,
+    )'''
+
+[[rows]]
+id = "M21_reserve_adopt_empty"
+description = "reserve_folder: an adoption records an empty set whatever the plan listed"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''                before = (
+                    None if held is None else frozenset(str(one) for one in held if str(one))
+                )'''
+new = '''                before = frozenset()'''
+
+[[rows]]
+id = "M22_write_drops_held"
+description = "_write: the folder record is written without what it held"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''                    **({"held": sorted(one.held)} if one.held is not None else {}),'''
+new = '''                    **({}),'''
+
+[[rows]]
+id = "M23_read_drops_held"
+description = "_folders: what a folder held is never read back"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''                None if held is None else frozenset(held),
+            )'''
+new = '''                None,
+            )'''
+
+[[rows]]
+id = "M24_read_unvalidated"
+description = "_folders: what a folder held is read without checking it is playlist ids"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_account.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_hold_every.py", "tests/test_sync_pair_merge.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair_tie.py"]
+old = '''            if held is not None and (
+                not isinstance(held, list) or not all(isinstance(one, str) and one for one in held)
+            ):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M25_dated_no_time"
+description = "folder_playlists_dated: every playlist reads as made at no known time"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_sync_pair_adopted.py", "tests/test_outbound_tidal_account.py", "tests/test_adapter_listing.py"]
+old = '''                made if isinstance(made, datetime) else None,'''
+new = '''                None,'''
