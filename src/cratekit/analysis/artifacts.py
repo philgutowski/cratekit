@@ -69,12 +69,16 @@ def staged_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
     resume with the source gone and no intent, and the item failed for ever
     as ``source-missing`` over a file analysed and renamed on disk (A60's live
     run, #423). The intent is dropped where it is known false instead:
-    :func:`discard_rename_intent`.
+    :func:`discard_rename_evidence`.
     """
     directory = _staging_dir(cfg, job_id, ordinal)
     if directory.is_dir() and not directory.is_symlink():
         for entry in directory.iterdir():
-            if entry.name == RENAME_INTENT_FILENAME and entry.is_file():
+            if (
+                entry.name == RENAME_INTENT_FILENAME
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
                 continue
             if entry.is_dir() and not entry.is_symlink():
                 shutil.rmtree(entry)
@@ -137,14 +141,20 @@ def rename_intent(cfg: config.Config, job, item) -> Path | None:
     return Path(str(target)) if target else None
 
 
-def discard_rename_intent(cfg: config.Config, job, item) -> None:
-    """Drop this item's intent, once the rename it recorded is known not to stand.
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
 
-    Left behind, an intent whose rename never landed names whatever later
-    sits at that target, an unrelated file a person put there, as this
-    item's twin once the source is gone.
+    Called where the rename they would prove is known not to stand: a rename
+    that did not land, and an attempt whose source is still a file. Left
+    behind, either names whatever later sits at that target, an unrelated
+    file a person put there, as this item's twin once the source is gone. The
+    report goes with the intent because :func:`staged_report` is read as the
+    same proof when the intent is missing, and the next ``staged_path`` that
+    would clear it comes only after the work, which a kill can forestall.
     """
-    intent_path(cfg, job.job_id, item.ordinal).unlink(missing_ok=True)
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    (directory / RENAME_INTENT_FILENAME).unlink(missing_ok=True)
+    (directory / _report_name(item.ordinal)).unlink(missing_ok=True)
 
 
 def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
@@ -200,7 +210,7 @@ __all__ = [
     "RENAME_INTENT_FILENAME",
     "STAGING_DIRNAME",
     "committed",
-    "discard_rename_intent",
+    "discard_rename_evidence",
     "final_path",
     "intent_path",
     "produced",

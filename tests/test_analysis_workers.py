@@ -611,9 +611,11 @@ def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
 def test_a_job_the_shipped_code_left_with_no_intent_resumes_from_its_staged_report(
     cfg, folder, silence, monkeypatch
 ):
-    """The state A60's job is in on the machine today: the file renamed, the
-    staged report naming it, and no intent. The report is this item's own
-    record of the rename, so it is the proof when the intent is gone."""
+    """A job the shipped code interrupted in this window and nobody resumed
+    yet: the file renamed, the staged report naming it, and no intent. The
+    report is this item's own record of the rename, so it is the proof when
+    the intent is gone. (A job already resumed under the shipped code failed
+    its item for good, as A60's did, and is queued again instead.)"""
     place(folder, silence, "a")
     bind_scoring(monkeypatch)
     interrupt_once_staged(monkeypatch)
@@ -712,6 +714,8 @@ def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, fold
     never leaks into it. Only the intent, the resume's evidence, is kept."""
     first = _stage(cfg, {"item": "a.flac", "status": "analyzed"})
     (first.parent / "scratch.tmp").write_text("x", encoding="utf-8")
+    (first.parent / "nested").mkdir()
+    (first.parent / "nested" / "left.json").write_text("{}", encoding="utf-8")
     intent = artifacts.record_rename_intent(cfg, _Job, _Item, folder / "08A - 124 - a.flac")
 
     second = artifacts.staged_path(cfg, _Job.job_id, _Item.ordinal)
@@ -742,6 +746,52 @@ def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
     assert artifacts.rename_intent(cfg, job, item) == folder / "08A - 124 - a.flac", (
         "the attempt's own intent replaced the stale one"
     )
+
+
+def test_a_kill_after_an_attempt_starts_leaves_no_stale_report_to_read_as_a_twin(
+    cfg, folder, silence, monkeypatch
+):
+    """Round one's residual, closed: an attempt whose source is a file drops the
+    staged report with the intent, before any work a kill can interrupt. Kept,
+    the report of an earlier attempt's rename would name whatever later sits
+    at that headed name as this item's twin once the source is deleted."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+    item = _item(job.job_id, "a.flac")
+    headed = folder / "08A - 124 - a.flac"
+    staged = artifacts.write(
+        artifacts.staged_path(cfg, job.job_id, item.ordinal),
+        {"item": "a.flac", "path": str(headed), "renamed_to": headed.name, "status": "analyzed"},
+    )
+    artifacts.record_rename_intent(cfg, job, item, headed)
+
+    def killed(path):
+        raise _Killed()
+
+    bind_scoring(monkeypatch, detect_=killed)
+    with pytest.raises(_Killed):
+        drive(resume_argv(job.job_id))
+
+    assert not staged.exists(), "the earlier attempt's report outlived this one's start"
+    assert artifacts.rename_intent(cfg, job, item) is None
+    (folder / "a.flac").unlink()
+    headed.write_bytes(b"an unrelated track")
+    assert analysis_cli._finalized_twin(cfg, job, item) is None
+
+
+def test_a_linked_intent_is_cleared_rather_than_kept_and_followed(cfg, folder, tmp_path):
+    planted = tmp_path / "planted.json"
+    planted.write_text(json.dumps({"item": "a.flac", "target": str(folder / "x.flac")}))
+    intent = artifacts.intent_path(cfg, _Job.job_id, _Item.ordinal)
+    intent.parent.mkdir(parents=True)
+    intent.symlink_to(planted)
+
+    artifacts.staged_path(cfg, _Job.job_id, _Item.ordinal)
+
+    assert not intent.is_symlink() and not intent.exists()
+    assert planted.is_file(), "the clear followed the link"
 
 
 def test_a_prefixed_source_drops_a_stale_intent_too(cfg, folder, silence, monkeypatch):

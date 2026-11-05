@@ -521,12 +521,12 @@ def _staged_twin(cfg: config.Config, job, item) -> Path | None:
     target = Path(recorded)
     status = report.get("status")
     if status == "analyzed":
-        if not report.get("renamed_to") or report.get("renamed_to") != target.name:
+        if report.get("renamed_to") != target.name:
             return None
     elif status != "skipped-prefixed" or report.get("resumed_after_rename") is not True:
         return None
     _, source = _folder_and_path(job, item)
-    if target.parent != source.parent or target == source:
+    if target.parent != source.parent:
         return None
     return target
 
@@ -674,7 +674,7 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
         # THE RENAME WILL NOT LAND, so the intent naming the file that holds
         # the name is false, and a retry after the source is deleted would
         # read that unrelated file as this item's twin (U223).
-        artifacts.discard_rename_intent(cfg, job, item)
+        artifacts.discard_rename_evidence(cfg, job, item)
         raise refuse(
             "analysis-write-failed",
             f"{path.name} could not be renamed to {rendered.filename}: that name "
@@ -687,7 +687,7 @@ def _finalize(cfg: config.Config, job, item, path: Path, scored: Mapping[str, An
         path.rename(target)
     except OSError as exc:
         target.unlink(missing_ok=True)
-        artifacts.discard_rename_intent(cfg, job, item)
+        artifacts.discard_rename_evidence(cfg, job, item)
         raise refuse(
             "analysis-write-failed",
             f"{path.name} could not be renamed to {rendered.filename}: {exc}",
@@ -729,10 +729,11 @@ def handle_run(job, item, cfg) -> jobs.Produced:
                 "resumed_after_rename": True,
             },
         )
-    # THE SOURCE IS STILL A FILE, so an intent an earlier attempt left names a
-    # rename that did not land, and nothing reads it as evidence from here on:
-    # this attempt starts clean and records its own if it renames (U223).
-    artifacts.discard_rename_intent(cfg, job, item)
+    # THE SOURCE IS STILL A FILE, so an intent or a staged report an earlier
+    # attempt left names a rename that did not land, and nothing reads either
+    # as evidence from here on: this attempt starts clean, before any work a
+    # kill could interrupt, and records its own if it renames (U223).
+    artifacts.discard_rename_evidence(cfg, job, item)
     if carries_head(path, cfg):
         return artifacts.produced(
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": "skipped-prefixed"}
