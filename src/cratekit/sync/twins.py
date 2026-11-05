@@ -191,6 +191,10 @@ class Miss:
     def said(self) -> str:
         return f"{self.artist} - {self.title} ({self.why})"
 
+    def held_as(self) -> str:
+        """The words its twin's hold records it by (U221)."""
+        return f"{self.artist} - {self.title}"
+
 
 @dataclass(frozen=True, slots=True)
 class Twin:
@@ -894,7 +898,9 @@ def pair_backfilled(cfg: config.Config, planned: Backfill, written: Written) -> 
     The backfill read the whole account playlist and wrote its twin and read
     it back, which is what a whole sync is, so the next ``sync pair`` merges
     both ways from here. A short listing marks the pair with its links alone,
-    so its first sync adds only. Answers how many pairs were marked.
+    so its first sync adds only. Each twin's misses are recorded as its hold
+    (U221), so ``sync pair`` names them and queues none until ``sync release``
+    lets that twin's go. Answers how many pairs were marked.
     """
     from cratekit.modules.outbound import pairs
 
@@ -903,7 +909,21 @@ def pair_backfilled(cfg: config.Config, planned: Backfill, written: Written) -> 
     marked = 0
     for made in written.twins:
         one = by_account[made.account_id]
-        store.mark(one.account_id, made.playlist_id, name=one.account_name, twin=True)
+        # U221. EVERY TRACK THE TWIN WAS MADE WITHOUT IS HELD for the author's
+        # choice, recorded with the mark, so no sync queues it on its own. A
+        # SHORT LISTING RECORDS NO HOLD: a track the account withheld from it
+        # is in no miss, so the pair is read by time instead, as one paired
+        # before U221, which holds every track listed before the mark (the
+        # review's round one).
+        store.mark(
+            one.account_id,
+            made.playlist_id,
+            name=one.account_name,
+            twin=True,
+            on_hold=(
+                {miss.remote_id: miss.held_as() for miss in one.misses} if one.whole else None
+            ),
+        )
         marked += 1
         store.record(
             one.account_id,
@@ -1069,7 +1089,11 @@ def pair_landed(cfg: config.Config, written: Sequence[LandedTwin]) -> list[dict[
     unpaired: list[str] = []
     for one in written:
         try:
-            store.mark(one.account_id, one.playlist_id, name=one.account_name, twin=True)
+            # U221. A LANDING'S TWIN HOLDS NOTHING: the sweep that landed it
+            # was the choice to download that playlist.
+            store.mark(
+                one.account_id, one.playlist_id, name=one.account_name, twin=True, on_hold={}
+            )
         except CratekitError as exc:
             unpaired.append(
                 f"{one.folder} / {one.name} ({exc.cause.message}); pair it with crate sync "

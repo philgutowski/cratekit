@@ -1960,6 +1960,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # One of the two playlists is already paired with another. One playlist
         # stays the same list as one other. Nothing was written.
         "sync-pair-conflict": ExitCode.PRECONDITION,
+        # ── U221's two, appended for the same reason ───────────────────────────
+        #
+        # ``sync release`` was named an account playlist no pair holds, or whose
+        # pair is no custom playlist twin, so it holds nothing to let go.
+        # PRECONDITION on ``sync-pair-unknown``'s argument. Nothing was planned.
+        "sync-release-not-a-twin": ExitCode.PRECONDITION,
+        # ``sync release`` named no twin and no ``--all``, or named twins beside
+        # ``--all``. PRECONDITION rather than USAGE, which is argparse's own
+        # band. Nothing was planned.
+        "sync-release-unnamed": ExitCode.PRECONDITION,
         # ── U147's one, appended for the same reason ───────────────────────────
         #
         # A rekordbox folder was to be mirrored onto the account and the
