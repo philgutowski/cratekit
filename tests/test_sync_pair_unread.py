@@ -107,6 +107,30 @@ def test_an_unread_track_the_twin_holds_is_never_removed_or_added_again(world, c
     }] == []
 
 
+def test_a_first_sync_never_offers_the_account_an_unread_track_it_already_lists(world, cfg):
+    # A twin made off a short listing is held with no snapshot, so its next
+    # sync is a first sync with no base to strip the unread track from.
+    _phil(world)
+    world.short.add(PHIL)
+    assert backfill()[0] == int(ExitCode.OK)
+    twin_id = world.twin("Phil 9-30-26")
+    held = pairs.PairStore(cfg).get(PHIL)
+    assert held is not None and held.first
+    world.short.discard(PHIL)
+    world.names["t3"] = ""
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert [
+        one["remote_id"]
+        for one in envelope["data"]["items"]
+        if one["side"] == "account" and one["action"] == "add"
+    ] == []
+    assert world.account.added == []
+    assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2"]
+    assert world.held(twin_id) == ["3", "1", "2"]
+    assert _unread(envelope)[0][0] == "t3"
+
+
 def test_while_a_track_is_unread_a_rekordbox_removal_still_lands_on_the_account(world, cfg):
     twin_id = _backfilled(world, untitled="t20")
     world.rekordbox_remove(twin_id, "1")
