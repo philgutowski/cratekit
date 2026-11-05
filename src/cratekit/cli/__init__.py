@@ -652,6 +652,23 @@ def _without_calls(tokens: Sequence[str]) -> list[str]:
     return kept
 
 
+def _without_run(tokens: Sequence[str]) -> list[str]:
+    """The command line with any ``--run`` taken out (U210)."""
+    kept: list[str] = []
+    skip = False
+    for token in tokens:
+        if skip:
+            skip = False
+            continue
+        if token == "--run":
+            skip = True
+            continue
+        if token.startswith("--run="):
+            continue
+        kept.append(token)
+    return kept
+
+
 def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
     """The exact command that continues a run the call ceiling stopped (U193).
 
@@ -660,18 +677,27 @@ def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
     verb run again would queue a second one. Anything else is this command line
     again with ``--calls`` raised, the global options kept, since a run that
     stopped at a gate continues by the same words.
+
+    A verb whose write records its steps under its run names the run on the
+    cause (U210), and the command carries ``--run`` for it when the command
+    line did not already, so the continue is that run and not a new one. A
+    verb that says its run cannot be continued (``fresh``) is named without
+    ``--run``, so the command starts a new run rather than one that refuses.
     """
     detail = cause.detail or {}
     higher = str(detail.get("higher") or 2 * int(detail.get("ceiling") or 1))
     job_id = detail.get("job_id")
     if job_id:
         return shlex.join(["crate", "--calls", higher, "job", "resume", str(job_id)])
-    tokens = list(argv)
+    tokens = _without_run(argv) if detail.get("fresh") else list(argv)
+    run_id = detail.get("run_id")
+    named = any(token == "--run" or token.startswith("--run=") for token in tokens)
+    run = ["--run", str(run_id)] if run_id and not named else []
     verb = _verb_argv(tokens, entry)
     if verb is None:
-        return shlex.join(["crate", "--calls", higher, *_without_calls(tokens)])
+        return shlex.join(["crate", *run, "--calls", higher, *_without_calls(tokens)])
     lead = _without_calls(tokens[: len(tokens) - len(verb)])
-    return shlex.join(["crate", *lead, "--calls", higher, *verb])
+    return shlex.join(["crate", *lead, *run, "--calls", higher, *verb])
 
 
 def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:

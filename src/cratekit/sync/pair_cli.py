@@ -117,6 +117,22 @@ never matches a track. A held plan that cannot be used is planned again, digest
 bound, and the answer says why. The answer counts each phase's provider calls,
 plan, check and write.
 
+**A WRITE STOPPED PART WAY IS FINISHED BY A CONTINUE OF THE SAME RUN (U210).**
+Sitting 54's sync of every pair stopped on its call ceiling after making 94
+of 101 account playlists, and its continue planned again and refused stale.
+So the write records each step of each pair under its run as it lands
+(``core/held_plan.Steps``): a made side begun and made, rekordbox's commit
+with the memberships it left, the queued job, the account writes begun, and
+the pair done. A continue reads the held plan and those steps, passes over
+every pair done, checks the pair part written only for what its own write
+could have done, and starts each pair at its first unfinished step, under
+the answers already given; a list moved otherwise refuses stale, naming it.
+A made side the stop left reserved is finished, never made twice. The gates
+show the provider calls the command that writes is expected to make
+(``sync/pair_calls.py``) and, when the ceiling is lower, the ``--calls`` that
+lets it finish; a stop part way names the run and the ``--calls`` its
+continue needs.
+
 **THE SNAPSHOT MOVES ONLY WHEN THE WHOLE PAIR WAS WRITTEN.** Both gates
 applied, every write landed, and the account listed the whole playlist: only
 then are both sides' snapshots recorded, together. Anything less, a side
@@ -137,6 +153,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+import shlex
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from functools import cached_property
@@ -152,7 +169,7 @@ from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest
 from cratekit.modules.outbound.pairs import ACCOUNT_SIDE, REKORDBOX_SIDE
 from cratekit.sync import cli as sync_cli
-from cratekit.sync import pair_merge, playlists
+from cratekit.sync import pair_calls, pair_merge, playlists
 from cratekit.write import playlist_pair
 
 _ORIGIN = ("sync.pair",)
@@ -2033,7 +2050,9 @@ def _record(
     return whole
 
 
-def _made(cfg: config.Config, one: PairPlan) -> PairPlan:
+def _made(
+    cfg: config.Config, one: PairPlan, *, resumed: bool = False
+) -> tuple[PairPlan, bool]:
     """Make a discovered playlist's account side in its root folder, and pair it (U198).
 
     The folder and the playlist are each reserved in the pairs document under
@@ -2041,6 +2060,15 @@ def _made(cfg: config.Config, one: PairPlan) -> PairPlan:
     write, so an unwritable document refuses before anything is made and a
     sync stopped part way leaves what it made recorded for the next one. The
     playlist is moved into its folder only when this sync made it.
+
+    ``resumed`` says an earlier command of this run began making it and
+    stopped (U210). The reservation then answers the playlist that command
+    made, and it is moved into its folder again, since the stop may have come
+    between the make and the move and the move asks for one fixed place; only
+    a pair the pairs document records as made for this rekordbox playlist in
+    this folder is moved, so a playlist the author paired by hand in between
+    is never moved into Cratekit's folder. Answers the pair and whether this
+    call made the playlist.
     """
     from dataclasses import replace
 
@@ -2063,9 +2091,21 @@ def _made(cfg: config.Config, one: PairPlan) -> PairPlan:
         folder=place.folder,
         create=lambda: remote.create_playlist(place.title),
     )
-    if made:
+    if made or (resumed and _made_here(store.get(account_id), one)):
         remote.move_to_folder(account_id, folder_id)
-    return replace(one, target=replace(one.target, account_id=account_id, marked=True))
+    return replace(one, target=replace(one.target, account_id=account_id, marked=True)), made
+
+
+def _made_here(held: Any, one: PairPlan) -> bool:
+    """Whether the pairs document records this account playlist as made for this pair here (U210)."""
+    place = one.place
+    return (
+        held is not None
+        and bool(held.made)
+        and held.rekordbox_id == one.target.rekordbox_id
+        and place is not None
+        and held.folder == place.folder
+    )
 
 
 def _made_in_rekordbox(
@@ -2150,6 +2190,112 @@ def _queue(cfg: config.Config, one: PairPlan, store) -> str:
     return job.job_id
 
 
+#: U210. The steps one pair's write records in its run, in the order they land.
+STEP_MAKING = "making"
+STEP_MADE = "made"
+STEP_REKORDBOX = "rekordbox"
+STEP_QUEUED = "queued"
+STEP_ACCOUNT = "account"
+STEP_ORDERING = "ordering"
+STEP_DONE = "done"
+
+#: U210. The refusal a write stops with when a step it took cannot be recorded.
+STEPS_UNWRITTEN = "sync-pair-steps-unwritten"
+
+
+class PairSteps:
+    """One pair's steps in its run's record (U210), or no record at all.
+
+    ``steps`` is the run's :class:`cratekit.core.held_plan.Steps`, or None for
+    a write that keeps no record, which marks nothing and has done nothing.
+    ``key`` is the pair as the gate names it, which the plan holds whatever
+    the write makes.
+    """
+
+    def __init__(self, steps: Any, key: str) -> None:
+        self.steps = steps
+        self.key = key
+
+    def has(self, step: str) -> bool:
+        return self.steps is not None and self.steps.has(self.key, step)
+
+    def get(self, step: str, default: Any = None) -> Any:
+        return default if self.steps is None else self.steps.get(self.key, step, default)
+
+    def mark(self, step: str, value: Any = True) -> None:
+        """Record one step, and stop the write when the record cannot be written."""
+        if self.steps is None:
+            return
+        try:
+            self.steps.mark(self.key, step, value)
+        except OSError as exc:
+            raise steps_unwritten(self.steps.run_id, exc) from None
+
+
+def steps_unwritten(run_id: str, exc: OSError) -> CratekitError:
+    """The refusal a write stops with when its steps cannot be recorded (U210)."""
+    return refuse(
+        STEPS_UNWRITTEN,
+        f"the steps of run {run_id} could not be recorded ({type(exc).__name__}: {exc}), "
+        f"so the write stopped rather than go on with nothing a continue could start from; "
+        f"what it wrote before that is kept",
+        steps=(
+            "make Cratekit's state directory writable, then run crate sync pair again and "
+            "answer both gates over the plan it shows",
+        ),
+        origin=_ORIGIN,
+        detail={"run_id": run_id, "error": f"{type(exc).__name__}: {exc}"},
+    )
+
+
+def _landed(playlist_id: str, rows: Sequence[playlist_pair.Row]) -> dict[str, Any]:
+    """What a rekordbox step records: the playlist and its memberships as the commit left them."""
+    return {
+        "playlist_id": str(playlist_id),
+        "rows": [[str(row.content_id), str(row.row_id)] for row in rows],
+    }
+
+
+def _members(cfg: config.Config, playlist_id: str) -> tuple[playlist_pair.Row, ...]:
+    """A rekordbox playlist's live memberships, read with nothing written (U210)."""
+    db = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        return playlist_pair.members(db, playlist_id)
+    finally:
+        rb_writer.close_db(db)
+
+
+def _with_account_id(one: PairPlan, account_id: str) -> PairPlan:
+    from dataclasses import replace
+
+    return replace(one, target=replace(one.target, account_id=account_id, marked=True))
+
+
+def _with_rekordbox_id(one: PairPlan, rekordbox_id: str) -> PairPlan:
+    from dataclasses import replace
+
+    return replace(
+        one,
+        target=replace(one.target, rekordbox_id=rekordbox_id, marked=True),
+        change=replace(one.change, playlist_id=rekordbox_id),
+    )
+
+
+def _queue_once(cfg: config.Config, one: PairPlan, store, steps: PairSteps) -> str:
+    """Queue the pair's missing tracks unless an earlier command of the run did (U210).
+
+    The job id queued now, or ``""``: a job an earlier command queued is that
+    command's to report, and queueing it again would ask for every track twice.
+    """
+    if steps.has(STEP_QUEUED):
+        return ""
+    job_id = _queue(cfg, one, store)
+    steps.mark(STEP_QUEUED, job_id)
+    return job_id
+
+
 def apply_pair(
     cfg: config.Config,
     one: PairPlan,
@@ -2158,6 +2304,7 @@ def apply_pair(
     account: bool,
     store,
     account_listed: Sequence[str] | None = None,
+    steps: PairSteps | None = None,
 ) -> Done:
     """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot.
 
@@ -2166,9 +2313,17 @@ def apply_pair(
     on the account records it as the side's snapshot rather than listing the
     playlist again; a pair that writes there lists it after the write, as
     every pair did before.
+
+    ``steps`` is this pair's record in its run (U210). Each step is recorded
+    the moment it lands, and a step a stopped command of the same run already
+    recorded is not done again: a made side is not made again, a rekordbox
+    commit that landed is read back rather than written, and a queued job is
+    not queued twice. The account writes are begun again whole, since each of
+    them skips what the playlist already holds as asked.
     """
     from cratekit.modules.outbound import pairs
 
+    steps = steps if steps is not None else PairSteps(None, one.target.key)
     done = Done(account_id=one.target.account_id)
     if not (rekordbox or account):
         return done
@@ -2180,14 +2335,21 @@ def apply_pair(
         # alone writes nothing; the next sync finds the playlist again.
         if not rekordbox:
             return done
-        one, written = _made_in_rekordbox(cfg, one)
-        if written is None:
-            return done
-        done.marked = True
-        done.created_in_rekordbox = one.target.rekordbox_id
-        done.rekordbox = written
-        rekordbox_after = written.read_back
-        done.queued = _queue(cfg, one, store)
+        landed = steps.get(STEP_REKORDBOX)
+        if isinstance(landed, dict) and landed.get("playlist_id"):
+            # U210. MADE BY AN EARLIER COMMAND OF THIS RUN, so it is read back.
+            one = _with_rekordbox_id(one, str(landed["playlist_id"]))
+            rekordbox_after = _members(cfg, one.target.rekordbox_id)
+        else:
+            one, written = _made_in_rekordbox(cfg, one)
+            if written is None:
+                return done
+            steps.mark(STEP_REKORDBOX, _landed(one.target.rekordbox_id, written.read_back))
+            done.marked = True
+            done.created_in_rekordbox = one.target.rekordbox_id
+            done.rekordbox = written
+            rekordbox_after = written.read_back
+        done.queued = _queue_once(cfg, one, store, steps)
         # Nothing further on rekordbox: the playlist was made holding the plan.
         rekordbox = False
     elif one.target.new:
@@ -2196,37 +2358,57 @@ def apply_pair(
         # alone writes nothing; the next sync finds the playlist again.
         if not account:
             return done
-        one = _made(cfg, one)
-        done.account_id = one.target.account_id
-        done.marked = True
-        done.created = one.target.account_id
+        made = steps.get(STEP_MADE)
+        if isinstance(made, str) and made:
+            # U210. MADE AND IN ITS FOLDER IN AN EARLIER COMMAND OF THIS RUN.
+            one = _with_account_id(one, made)
+            done.account_id = made
+        else:
+            resumed = steps.has(STEP_MAKING)
+            steps.mark(STEP_MAKING)
+            one, created = _made(cfg, one, resumed=resumed)
+            steps.mark(STEP_MADE, one.target.account_id)
+            done.account_id = one.target.account_id
+            done.marked = True
+            if created:
+                done.created = one.target.account_id
     else:
         pairs.PairStore(cfg).mark(one.target.account_id, one.target.rekordbox_id, name=one.name)
         done.marked = not one.target.marked
 
     if rekordbox:
-        db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
-        try:
-            if one.rekordbox_writes:
-                written = playlist_pair.apply(
-                    cfg,
-                    db,
-                    one.change,
-                    source=f"{PAIR_SOURCE}:{one.target.rekordbox_id}",
-                    analysis_roots=analysis_store.watch_roots(cfg),
-                )
-                playlist_pair.assert_read_back(written, one.change)
-                done.rekordbox = written
-                rekordbox_after = written.read_back
-            else:
-                rekordbox_after = playlist_pair.members(db, one.target.rekordbox_id)
-        finally:
-            rb_writer.close_db(db)
-        done.queued = _queue(cfg, one, store)
+        landed = steps.get(STEP_REKORDBOX)
+        if isinstance(landed, dict):
+            # U210. THE COMMIT LANDED IN AN EARLIER COMMAND OF THIS RUN, and the
+            # check before the write found the playlist as that commit left it.
+            rekordbox_after = _members(cfg, one.target.rekordbox_id)
+        else:
+            db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
+            try:
+                if one.rekordbox_writes:
+                    written = playlist_pair.apply(
+                        cfg,
+                        db,
+                        one.change,
+                        source=f"{PAIR_SOURCE}:{one.target.rekordbox_id}",
+                        analysis_roots=analysis_store.watch_roots(cfg),
+                    )
+                    playlist_pair.assert_read_back(written, one.change)
+                    done.rekordbox = written
+                    rekordbox_after = written.read_back
+                else:
+                    rekordbox_after = playlist_pair.members(db, one.target.rekordbox_id)
+            finally:
+                rb_writer.close_db(db)
+            steps.mark(STEP_REKORDBOX, _landed(one.target.rekordbox_id, rekordbox_after))
+        done.queued = _queue_once(cfg, one, store, steps)
 
     if account:
         from cratekit.modules.outbound import account as outbound_account
 
+        # BEFORE THE FIRST ACCOUNT CALL (U210), so a continue knows this
+        # playlist may hold part of this write and reads it that way.
+        steps.mark(STEP_ACCOUNT)
         remote = outbound_account.resolve(cfg)
         playlist_id = one.target.account_id
         if one.account_removes:
@@ -2234,6 +2416,8 @@ def apply_pair(
         if one.account_adds:
             done.account_added = len(set(remote.add_tracks(playlist_id, one.account_adds)))
         if one.account_order:
+            # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
+            steps.mark(STEP_ORDERING)
             account_after = tuple(remote.order_tracks(playlist_id, one.account_order))
             done.account_ordered = True
         elif account_listed is not None and not (one.account_removes or one.account_adds):
@@ -2243,6 +2427,7 @@ def apply_pair(
     done.snapshot = _record(
         cfg, one, rekordbox_after=rekordbox_after, account_after=account_after
     )
+    steps.mark(STEP_DONE, done.account_id or one.target.key)
     return done
 
 
@@ -2478,12 +2663,53 @@ def _held_plan(
     moved = sorted(gate for gate, offer in offered.items() if offer != digest)
     if moved:
         return None, 0, f"the held plan is not the plan {', '.join(moved)} showed"
-    if extra.get("asked") != dict(asked):
+    if extra.get("asked") != dict(asked) and extra.get("asked") != _asked_before(
+        run_id, asked, planned, digest
+    ):
         # THE SAME RUN, OTHER PAIRS: a command run again under the run with
         # another account playlist named, or a pair marked or forgotten since.
         return None, 0, "the held plan was made for other pairs than this command asks for"
     calls = extra.get("plan_calls")
     return planned, calls if isinstance(calls, int) and calls >= 0 else 0, ""
+
+
+def _asked_before(
+    run_id: str, asked: Mapping[str, Any], planned: Plan, digest: str
+) -> dict[str, Any]:
+    """What this command asks for, read as it was before this run's own write began (U210).
+
+    A write that stopped part way has marked pairs: every account playlist it
+    made for a rekordbox one, every rekordbox playlist it made for an account
+    one, and every pair it marked on its first sync. A sync of every pair now
+    finds those among the marked pairs, so what it asks for is no longer what
+    the held plan was made for, though nothing but this run moved it. So the
+    pairs this run's recorded steps account for are read back as the plan
+    read them: a made side's new pair left out, and a pair the write touched
+    read with the mark the plan gave it. Answers ``asked`` unchanged when the
+    run recorded no step.
+    """
+    from cratekit.core import held_plan
+
+    steps, _why = held_plan.load_steps(run_id, digest)
+    if not steps.started():
+        return dict(asked)
+    made_for: set[str] = set()
+    made_from: set[str] = set()
+    marked: dict[str, bool] = {}
+    for one in planned.pairs:
+        record = _steps_of(steps, one)
+        if one.target.new and record.has(STEP_MAKING):
+            made_for.add(one.target.rekordbox_id)
+        elif one.target.rekordbox_new and record.has(STEP_REKORDBOX):
+            made_from.add(one.target.account_id)
+        elif one.target.account_id and steps.done.get(one.target.key):
+            marked[one.target.account_id] = one.target.marked
+    targets = []
+    for account_id, rekordbox_id, mark in asked.get("targets") or ():
+        if rekordbox_id in made_for or account_id in made_from:
+            continue
+        targets.append([account_id, rekordbox_id, marked.get(account_id, mark)])
+    return {**dict(asked), "targets": targets}
 
 
 def _hold(run_id: str, planned: Plan, calls: int, asked: Mapping[str, Any]) -> str:
@@ -2541,7 +2767,9 @@ class Moved:
         return f"{named} {self.why}"
 
 
-def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, ...]]:
+def check(
+    cfg: config.Config, planned: Plan, steps: Any = None, *, store, unread: str = ""
+) -> dict[str, tuple[str, ...]]:
     """Refuse a write whose lists moved since the plan the gates showed, before anything is written.
 
     U209. A plan held across its gates is not made again, so before the first
@@ -2561,27 +2789,68 @@ def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, .
     Answers each account playlist's listing as the check read it, which equals
     the plan's, so a pair with nothing to write there records it as its
     snapshot without listing it again.
+
+    ``steps`` is the run's record of what an earlier command of it already
+    wrote (U210), read when a write that stopped part way is continued. A pair
+    it records done is not read at all. A pair part written is read for what
+    its own write could have done and nothing else: on the account, no track
+    gained but the plan's additions, none lost but its removals and the order
+    the plan read kept until the write began to order it, the playlist this
+    run made for it read in its place; in rekordbox, the memberships the
+    commit that landed left; the folder this run made, a job it queued and a
+    pair it reserved are not read as moved. Anything else moved refuses stale
+    as above, and nothing more is written.
     """
     from cratekit.label import catalogue
     from cratekit.modules.outbound import pairs
 
+    def of(one: PairPlan) -> PairSteps:
+        return PairSteps(steps, one.target.key)
+
     # THE PAIRS DOCUMENT AS THE WRITE WILL FIND IT, read once.
     document = pairs.PairStore(cfg)._document()
+    todo = [one for one in planned.pairs if not of(one).has(STEP_DONE)]
+    begun = steps is not None and steps.started()
+    # U210. THE ACCOUNT PLAYLISTS THIS RUN MADE, by the pair's key: recorded
+    # made, or begun and reserved in the pairs document for this pair here.
+    ours: dict[str, str] = {}
+    for one in planned.pairs:
+        if not one.target.new:
+            continue
+        made_id = of(one).get(STEP_MADE)
+        if isinstance(made_id, str) and made_id:
+            ours[one.target.key] = made_id
+        elif of(one).has(STEP_MAKING):
+            for pair in document.pairs.values():
+                if _made_here(pair, one):
+                    ours[one.target.key] = pair.account_id
+                    break
+    # And the root folders it made: a folder a made pair began in, recorded.
+    our_folders = {
+        one.place.folder: document.folders[one.place.folder].folder_id
+        for one in planned.pairs
+        if one.target.new
+        and one.place is not None
+        and one.place.action == FOLDER_CREATE
+        and of(one).has(STEP_MAKING)
+        and one.place.folder in document.folders
+    }
     moved: list[Moved] = []
     listed: dict[str, tuple[str, ...]] = {}
-    on_account = [one for one in planned.pairs if not one.target.new]
+    on_account = [one for one in todo if not one.target.new or one.target.key in ours]
     if on_account:
         found = catalogue.resolve(cfg)
         for one in on_account:
+            account_id = one.target.account_id or ours[one.target.key]
             try:
-                tracks, short, _dates = intake_cli.list_playlist_dated(found, one.target.account_id)
+                tracks, short, _dates = intake_cli.list_playlist_dated(found, account_id)
             except CratekitError as exc:
                 if exc.cause.reason not in BROUGHT_REASONS:
                     raise
                 moved.append(
                     Moved(
                         ACCOUNT_SIDE,
-                        one.target.account_id,
+                        account_id,
                         one.name,
                         f"could not be listed ({exc.cause.message})",
                     )
@@ -2589,24 +2858,42 @@ def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, .
                 continue
             now = pair_merge.distinct(tracks)
             withheld = short.block() if short is not None else None
-            if now != tuple(one.account_now):
+            if one.target.new or of(one).has(STEP_ACCOUNT):
+                # U210. PART WRITTEN BY THIS RUN: only its own write's doing.
+                why = _beyond(one, now, ordering=of(one).has(STEP_ORDERING))
+                if why:
+                    moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, why))
+                elif not one.target.new and withheld != one.withheld:
+                    moved.append(
+                        Moved(
+                            ACCOUNT_SIDE,
+                            account_id,
+                            one.name,
+                            "withholds a different number of tracks than the plan read",
+                        )
+                    )
+            elif now != tuple(one.account_now):
                 moved.append(
-                    Moved(ACCOUNT_SIDE, one.target.account_id, one.name, _differs(one.account_now, now))
+                    Moved(ACCOUNT_SIDE, account_id, one.name, _differs(one.account_now, now))
                 )
             elif withheld != one.withheld:
                 moved.append(
                     Moved(
                         ACCOUNT_SIDE,
-                        one.target.account_id,
+                        account_id,
                         one.name,
                         "withholds a different number of tracks than the plan read",
                     )
                 )
             else:
-                listed[one.target.account_id] = now
-    brought = [one for one in planned.pairs if one.target.rekordbox_new and one.home is not None]
+                listed[account_id] = now
+    brought = [one for one in todo if one.target.rekordbox_new and one.home is not None]
     folders = document.folders
-    made = [one for one in planned.pairs if one.target.new and one.place is not None]
+    made = [
+        one
+        for one in todo
+        if one.target.new and one.place is not None and one.target.key not in ours
+    ]
     if brought:
         from cratekit.modules.outbound import account as outbound_account
 
@@ -2631,11 +2918,11 @@ def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, .
                         f"{one.target.folder!r}",
                     )
                 )
-    if any(one.acquire for one in planned.pairs):
+    # U210. A JOB THIS RUN QUEUED is its own, never another sync's.
+    asking = [one for one in todo if one.acquire and not of(one).has(STEP_QUEUED)]
+    if asking:
         queued = pair_jobs(cfg, store)
-        for one in planned.pairs:
-            if not one.acquire:
-                continue
+        for one in asking:
             owner = one.target.account_id
             now = {
                 str(item)
@@ -2664,26 +2951,29 @@ def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, .
         for one in made:
             place = one.place
             assert place is not None
-            if place.folder_id:
+            # U210. A FOLDER THIS RUN MADE for an earlier pair is read as the
+            # folder this pair goes in, as a folder the plan found is.
+            folder_id = place.folder_id or our_folders.get(place.folder, "")
+            if folder_id:
                 if root is None:
                     root = dict(remote.folders())
-                if place.folder_id not in root:
+                if folder_id not in root:
                     moved.append(
                         Moved(
                             "account-folder",
-                            place.folder_id,
+                            folder_id,
                             place.folder,
                             "is no longer a root folder on the account",
                         )
                     )
                     continue
-                if place.folder_id not in inside:
-                    inside[place.folder_id] = dict(remote.folder_playlists(place.folder_id))
-                if place.title in inside[place.folder_id].values():
+                if folder_id not in inside:
+                    inside[folder_id] = dict(remote.folder_playlists(folder_id))
+                if place.title in inside[folder_id].values():
                     moved.append(
                         Moved(
                             "account-folder",
-                            place.folder_id,
+                            folder_id,
                             place.folder,
                             f"now holds a playlist titled {place.title!r}",
                         )
@@ -2721,11 +3011,23 @@ def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, .
                     tops=tops,
                     favorites=favorites,
                     skip=skip,
-                    paired=(pair.rekordbox_id for pair in document.pairs.values()),
+                    # U210. NOT THE PAIRS THIS RUN MADE, which discovery
+                    # found before the write paired them.
+                    paired=(
+                        pair.rekordbox_id
+                        for pair in document.pairs.values()
+                        if pair.account_id not in set(ours.values())
+                    ),
                     released=document.released.rekordbox,
                 ).found
             }
-        for one in planned.pairs:
+        for one in todo:
+            landed = of(one).get(STEP_REKORDBOX)
+            landed = landed if isinstance(landed, dict) and landed.get("playlist_id") else None
+            if landed is not None:
+                # U210. A COMMIT THIS RUN LANDED is read against what it left.
+                _landed_moved(db, one, landed, moved)
+                continue
             if one.target.rekordbox_new:
                 # U202. THE HOME IT IS MADE AT, read now rather than at its
                 # turn in the write, so a name taken or a row gone since the
@@ -2852,8 +3154,12 @@ def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, .
     if moved:
         raise refuse(
             "decision-stale",
-            f"{len(moved)} list(s) moved since the plan the gates showed, so nothing was "
-            f"written: " + "; ".join(one.said() for one in moved),
+            f"{len(moved)} list(s) moved since the plan the gates showed, so nothing "
+            f"{'more ' if begun else ''}was written: "
+            + "; ".join(one.said() for one in moved)
+            # U210. STEPS THAT COULD NOT BE READ are why a continue reads every
+            # list as the plan read it, so the refusal says so.
+            + (f"; {unread}, so every list was read as the plan read it" if unread else ""),
             steps=(
                 "run crate sync pair again and answer both gates over the plan it shows now",
             ),
@@ -2861,6 +3167,63 @@ def check(cfg: config.Config, planned: Plan, *, store) -> dict[str, tuple[str, .
             detail={"moved": [one.shown() for one in moved]},
         )
     return listed
+
+
+def _landed_moved(db: Any, one: PairPlan, landed: Mapping[str, Any], moved: list[Moved]) -> None:
+    """Read a rekordbox playlist this run's commit landed against what it left (U210)."""
+    playlist_id = str(landed["playlist_id"])
+    there = playlist_pair.read_playlist(db, playlist_id)
+    expected = tuple(tuple(row) for row in landed.get("rows") or ())
+    if there is None or there.removed or not there.plain:
+        moved.append(
+            Moved(REKORDBOX_SIDE, playlist_id, one.rekordbox_name, "is no longer a live plain playlist")
+        )
+    elif there.memberships() != expected:
+        said = _differs(
+            [content for content, _row in expected],
+            [content for content, _row in there.memberships()],
+            rows=True,
+        )
+        moved.append(
+            Moved(
+                REKORDBOX_SIDE,
+                playlist_id,
+                one.rekordbox_name,
+                said.replace("since the plan", "since this run wrote it"),
+            )
+        )
+
+
+def _beyond(one: PairPlan, now: Sequence[str], *, ordering: bool = False) -> str:
+    """What an account playlist part written by this run holds beyond its own write, or ``""``.
+
+    U210. Every track the plan read, less the ones this write takes off, must
+    still be there, and nothing may be there that the plan did not read or
+    this write does not add. Until the write began to put the playlist in
+    order (``ordering``), the order is read as well, as the write leaves it:
+    the tracks the plan read in the order it read them, then this write's
+    additions after them, so a person's reorder in between refuses rather
+    than being written over. Once the order was begun, its moves are this
+    run's own and the order is not read.
+    """
+    before = set(one.account_now)
+    held = set(now)
+    added = set(one.account_adds) - before
+    gained = held - before - added
+    lost = (before - set(one.account_removes)) - held
+    parts = []
+    if gained:
+        parts.append(f"holds {len(gained)} track(s) this run neither read nor added")
+    if lost:
+        parts.append(f"lost {len(lost)} track(s) this run was not taking off")
+    if not parts and not ordering:
+        kept = [track for track in now if track not in added]
+        tail = [track for track in now if track in added]
+        if kept != [track for track in one.account_now if track in held] or (
+            list(now) != kept + tail
+        ):
+            parts.append("was reordered")
+    return " and ".join(parts) + (" since the plan" if parts else "")
 
 
 def _reworded(message: str) -> str:
@@ -2902,6 +3265,115 @@ def _calls_said(calls: Mapping[str, int], *, held: bool) -> str:
     )
 
 
+#: U210. The warnings a continued write carries: the pairs an earlier command
+#: of the run finished, and steps that could not be read.
+RESUMED = "sync-pair-resumed"
+STEPS_UNREAD = "sync-pair-steps-unread"
+
+#: The verb's own words, for a command line named when the run kept none.
+VERB_PATH = ("sync", "pair")
+
+
+def _steps_of(steps: Any, one: PairPlan) -> PairSteps:
+    return PairSteps(steps, one.target.key)
+
+
+def _expected(planned: Plan, steps: Any) -> tuple[int, int]:
+    """The calls the command that writes is expected to make: the check's, and the write's (U210).
+
+    Read from what is LEFT, so at a continue a pair an earlier command
+    finished costs nothing and a made playlist already made costs its filling.
+    The check reads every pair left; the write counts the account side of
+    each, since a rekordbox write makes no provider call.
+    """
+    left = [one for one in planned.pairs if not _steps_of(steps, one).has(STEP_DONE)]
+    check_calls = pair_calls.check(left, create=FOLDER_CREATE)
+    # A FOLDER A MADE PAIR OF THIS RUN BEGAN IN IS MADE ALREADY, by the
+    # first pair that went in it, so the pairs still to make there make none.
+    begun_in = {
+        one.place.folder
+        for one in planned.pairs
+        if one.place is not None and _steps_of(steps, one).has(STEP_MAKING)
+    }
+    write_calls = pair_calls.folders_made(
+        [one for one in left if one.place is None or one.place.folder not in begun_in],
+        FOLDER_CREATE,
+    )
+    for one in left:
+        made = one.target.new and bool(_steps_of(steps, one).get(STEP_MADE))
+        if made:
+            # Its listing is the check's now, as any paired playlist's is.
+            check_calls += pair_calls.listing_calls(0)
+        write_calls += pair_calls.pair_write(one, made_before=made)
+    return check_calls, write_calls
+
+
+def _ceiling(cfg: config.Config) -> int:
+    """The call ceiling this command runs under: ``--calls`` when given, else the configured."""
+    from cratekit.core import provider_gate
+
+    return provider_gate.ceiling(provider_gate.GateSettings.from_config(cfg))
+
+
+def _stopped(
+    cause: Any,
+    planned: Plan,
+    steps: Any,
+    *,
+    run_id: str,
+    argv: Sequence[str] | None,
+    cfg: config.Config,
+) -> Any:
+    """A park raised part way through the check or the write, said with how far the run got (U210).
+
+    The pairs finished are counted off the run's steps, so the answer says
+    what a continue will skip. A stop on the call ceiling names the run and a
+    ``--calls`` sized from what is left (never below the ceiling it stopped
+    at), which the dispatcher writes into the one command that continues it.
+    """
+    import dataclasses
+
+    from cratekit.core import provider_gate
+
+    if steps is None:
+        # NOTHING WAS RECORDED (U210, from round one's review): the plan could
+        # not be held, so no step was, and a continue of this run would find
+        # the lists this write moved and refuse stale. Said, and no run named.
+        return dataclasses.replace(
+            cause,
+            message=(
+                f"{cause.message}; this run's plan could not be held, so the steps it "
+                f"wrote were not recorded and it cannot be continued: run crate sync "
+                f"pair again and answer both gates over the plan it shows"
+            ),
+            detail={**dict(cause.detail or {}), "fresh": True},
+        )
+    finished = sum(1 for one in planned.pairs if _steps_of(steps, one).has(STEP_DONE))
+    said = (
+        f"; run {run_id} finished {finished} of {len(planned.pairs)} pair(s) before it "
+        f"stopped and recorded each step it took, so continuing the run writes only what "
+        f"is left, with no new plan and no new answer"
+    )
+    detail = {**dict(cause.detail or {}), "run_id": run_id, "finished": finished}
+    if cause.reason != provider_gate.CEILING:
+        # ANY OTHER PARK names the command too (round two's review), to give
+        # once what parked it has passed: the same run, the same words.
+        said += ", once that has passed: " + shlex.join(
+            ["crate", "--run", run_id, *(argv or VERB_PATH)]
+        )
+    if cause.reason == provider_gate.CEILING:
+        check_calls, write_calls = _expected(planned, steps)
+        line = int(detail.get("ceiling") or _ceiling(cfg))
+        higher = pair_calls.named(check_calls + write_calls, line)
+        detail.update({"higher": higher, "expected": check_calls + write_calls})
+        said += (
+            f"; what is left is expected to take about {check_calls + write_calls} calls, "
+            f"so continue it with --calls {higher}: "
+            + shlex.join(["crate", "--calls", str(higher), "--run", run_id, *(argv or VERB_PATH)])
+        )
+    return dataclasses.replace(cause, message=f"{cause.message}{said}", detail=detail)
+
+
 def sync_pair(ctx) -> Envelope:
     """Plan every asked pair once, ask both gates, check the lists, then write each side approved.
 
@@ -2912,6 +3384,7 @@ def sync_pair(ctx) -> Envelope:
     the plan read are checked (:func:`check`); a plan made in this same
     command needs no check. The answer counts the calls of each phase.
     """
+    from cratekit.core import held_plan
     from cratekit.modules.outbound import pairs
 
     cfg = sync_cli._load()
@@ -2953,8 +3426,52 @@ def sync_pair(ctx) -> Envelope:
             # recorded before the gate, so a plan made again asks it nothing.
             store_of_pairs.remember(planned.misses, forget=planned.matched)
             not_held = _hold(run_id, planned, plan_calls, asked)
+        # U210. THE WRITE'S STEPS, recorded against the plan held now: read
+        # back when an earlier command of the run held this same plan, begun
+        # fresh when this command planned it, and none when it is not held.
+        steps: held_plan.Steps | None = None
+        steps_notes: list[dict[str, str]] = []
+        steps_unread = ""
+        if held:
+            steps, steps_why = held_plan.load_steps(run_id, planned.digest)
+            steps_unread = steps_why
+            if steps_why:
+                steps_notes.append(
+                    {
+                        "code": STEPS_UNREAD,
+                        "message": (
+                            f"{steps_why}, so every list is read as the plan read it and "
+                            f"anything an earlier command of run {run_id} wrote refuses "
+                            f"stale rather than being written twice"
+                        ),
+                    }
+                )
+        elif not not_held:
+            steps = held_plan.Steps(run_id, planned.digest)
         data = payload(planned)
         shown = facts(planned)
+        expected_check, expected_write = _expected(planned, steps)
+        line = _ceiling(cfg)
+        writing = (expected_check if not not_held else plan_calls) + expected_write
+        shown["provider calls"] = (
+            f"the plan took {plan_calls}; the command that writes is expected to make "
+            f"about {writing}, "
+            + (
+                f"{expected_check} to check the lists"
+                if not not_held
+                else f"{plan_calls} to plan the pairs again"
+            )
+            + f" and {expected_write} to write; one command may make {line}"
+        )
+        if writing > line:
+            higher = pair_calls.named(writing, line)
+            shown["call ceiling"] = (
+                f"too low for this write: about {writing} calls are expected and one "
+                f"command may make {line}, so the write would stop part way; give the "
+                f"command that writes --calls {higher}, for example "
+                + shlex.join(["crate", "--calls", str(higher), "--run", run_id, *(ctx.run.argv or VERB_PATH)])
+                + " once both gates are answered"
+            )
         if not_held:
             shown["plan held"] = (
                 f"no, {not_held}; an answer given in a later command plans the pairs again"
@@ -2962,7 +3479,7 @@ def sync_pair(ctx) -> Envelope:
         for note in notes:
             # SAID ON THE SCREEN AS WELL, since a gate's refusal carries no warning.
             shown["planned again"] = note["message"]
-        warnings = [*notes, *_warnings(planned)]
+        warnings = [*notes, *steps_notes, *_warnings(planned)]
         gates = {spec.name: spec for spec in ctx.entry.gates}
         on_rekordbox = (
             ctx.gate.require(gates[REKORDBOX_GATE], plan=data, context=shown) == APPLY
@@ -3001,27 +3518,56 @@ def sync_pair(ctx) -> Envelope:
                 ],
             )
         listed: dict[str, tuple[str, ...]] = {}
-        if held:
+        finished = [one for one in planned.pairs if _steps_of(steps, one).has(STEP_DONE)]
+        if finished:
+            warnings.append(
+                {
+                    "code": RESUMED,
+                    "message": (
+                        f"run {run_id} continued: {len(finished)} of {len(planned.pairs)} "
+                        f"pair(s) an earlier command of it finished were left as written, "
+                        f"and the rest were written from their first unfinished step "
+                        f"under the plan and the answers already given"
+                    ),
+                }
+            )
+        done: list[Done] = []
+        try:
+            if held:
+                before = _spent()
+                try:
+                    listed = check(cfg, planned, steps, store=store, unread=steps_unread)
+                finally:
+                    calls["check"] = _spent() - before
+            if steps is not None:
+                try:
+                    steps.begin()
+                except OSError as exc:
+                    raise steps_unwritten(run_id, exc) from None
             before = _spent()
             try:
-                listed = check(cfg, planned, store=store)
+                for one in planned.pairs:
+                    if _steps_of(steps, one).has(STEP_DONE):
+                        continue
+                    done.append(
+                        apply_pair(
+                            cfg,
+                            one,
+                            rekordbox=on_rekordbox,
+                            account=on_account,
+                            store=store,
+                            account_listed=listed.get(one.target.account_id),
+                            steps=_steps_of(steps, one),
+                        )
+                    )
             finally:
-                calls["check"] = _spent() - before
-        before = _spent()
-        try:
-            done = [
-                apply_pair(
-                    cfg,
-                    one,
-                    rekordbox=on_rekordbox,
-                    account=on_account,
-                    store=store,
-                    account_listed=listed.get(one.target.account_id),
-                )
-                for one in planned.pairs
-            ]
-        finally:
-            calls["write"] = _spent() - before
+                calls["write"] = _spent() - before
+        except jobs.Parked as exc:
+            # U210. A STOP PART WAY, on the ceiling or anything else that parks
+            # the run, says how far the run got and how to finish it.
+            raise jobs.Parked(
+                _stopped(exc.cause, planned, steps, run_id=run_id, argv=ctx.run.argv, cfg=cfg)
+            ) from None
     forgotten = [
         one
         for one in planned.unpaired
@@ -3082,12 +3628,17 @@ def sync_pair(ctx) -> Envelope:
         "unpaired": len(forgotten) + len(released),
         "created_playlists": [d.created for d in done if d.created],
         "created_in_rekordbox": [d.created_in_rekordbox for d in done if d.created_in_rekordbox],
+        # U210. Pairs an earlier command of this run finished, left as written,
+        # and what the gates said this command was expected to spend.
+        "finished_before": len(finished),
+        "calls_expected": {"check": expected_check, "write": expected_write},
     }
     answered = {"rekordbox": on_rekordbox, "the account": on_account}
     sides = [side for side, on in answered.items() if on]
     skipped = [side for side, on in answered.items() if not on]
     message = (
         f"{len(done)} pair(s) synced on {' and '.join(sides)}"
+        + (f" ({len(finished)} more finished earlier in this run)" if finished else "")
         + (
             f", {len(totals['created_playlists'])} account playlist(s) made"
             if totals["created_playlists"]
@@ -3107,7 +3658,9 @@ def sync_pair(ctx) -> Envelope:
         + (f"; {' and '.join(skipped)} skipped, its snapshot unchanged" if skipped else "")
     )
     message += "; " + _calls_said(calls, held=held)
-    wrote = any(d.wrote for d in done) or bool(forgotten) or bool(released)
+    wrote = (
+        any(d.wrote for d in done) or bool(forgotten) or bool(released) or bool(finished)
+    )
     _release(run_id)
     return ctx.envelope(
         data={**data, "totals": {**totals, "calls": calls}},
@@ -3118,6 +3671,18 @@ def sync_pair(ctx) -> Envelope:
 
 __all__ = [
     "ACCOUNT_GATE",
+    "RESUMED",
+    "STEPS_UNREAD",
+    "STEPS_UNWRITTEN",
+    "STEP_ACCOUNT",
+    "STEP_DONE",
+    "STEP_MADE",
+    "STEP_MAKING",
+    "STEP_ORDERING",
+    "STEP_QUEUED",
+    "STEP_REKORDBOX",
+    "PairSteps",
+    "steps_unwritten",
     "BROUGHT_REASONS",
     "GATES",
     "HELD_KIND",
