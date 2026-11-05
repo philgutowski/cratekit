@@ -26,7 +26,7 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import active_taxonomy, config, rb_writer, session, tree_registry
-from cratekit.intake import native, rotate
+from cratekit.intake import native, rotate, rotate_cli
 from cratekit.modules.outbound import mirror
 from cratekit.organize import account_mirror, mirror_frozen
 from cratekit.organize import rekordbox as rekordbox_area
@@ -223,8 +223,10 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
     _record_landing(cfg, batch, "2026-09-20 Defected", TODAY - timedelta(days=13))
     assert [name for _id, name in _live(cfg).batches] == ["2026-09-20 Defected"]
     log = Path(session.log_dir(cfg))
+    # The scan asks the listing itself since R-1255, so refusing it is enough;
+    # the glob it used to read is refused too, as an unprivileged account is.
     _refuse_under(monkeypatch, "listdir", log)
-    monkeypatch.setattr(session, "scan_log", lambda _cfg: ((), ()))
+    _refuse_under(monkeypatch, "scandir", log)
 
     (node,) = _live(cfg).left
 
@@ -235,6 +237,19 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_record(native_l
         "and a record in it may)"
     )
     assert [(one.name, one.reason) for one in _rotation(cfg).left] == [(node.name, node.reason)]
+    # THE PLAN CARRIES THE LISTING TO EVERY WARNING THAT READS IT (review round
+    # one): the verb's and crate organize's rotation step say the log could not
+    # be listed, never a count of one record.
+    plan = _rotation(cfg)
+    assert plan.log_unlisted is True
+    listed = (
+        "the session log could not be listed, so a batch a record in it names was "
+        "aged from its playlist's creation date"
+    )
+    assert [one["message"] for one in rotate_cli.records_warnings(plan)] == [listed]
+    area = Area(name="rekordbox")
+    step = rekordbox_area._rotation(cfg, active_taxonomy.load(cfg), TODAY, area)
+    assert [one["message"] for one in step.warnings] == [listed]
 
 
 def test_an_absent_session_log_is_no_record_at_all(native_library):
