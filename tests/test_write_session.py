@@ -2675,6 +2675,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # their memberships made in one commit behind one capture, recorded
         # under the twins key as rows created.
         "sync/twins.py::write",
+        # U202. A pair's rekordbox side made for an account playlist: one
+        # playlist and its memberships in one commit behind one capture,
+        # recorded under the pair's own source as rows created.
+        "sync/pair_reverse.py::create",
         # R-758. One capture before two commits, and both are recorded.
         "write/trees.py::move_tree_membership",
         "write/trees.py::write_tree_membership",

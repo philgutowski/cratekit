@@ -1805,23 +1805,35 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'sync/mark_record.py': ['sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined. 2026-11-04, U198: the
-    # not discovered and released warnings joined.
+    # not discovered and released warnings joined. 2026-11-04, U202: the
+    # account playlists not brought over and the later change calls joined,
+    # and the two listing refusals a brought playlist is listed for.
     'sync/pair_cli.py': [
+        'account-discovery',
+        'intake-list-unusable',
+        'label-playlist-unreadable',
         'playlist-pair',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
+        'sync-pair-later-change',
         'sync-pair-left-out',
+        'sync-pair-not-brought',
         'sync-pair-not-discovered',
         'sync-pair-nothing',
         'sync-pair-out-of-scope',
         'sync-pair-released',
         'sync-pair-skipped',
+        'sync-pair-time-unknown',
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',
         'sync-pair-unmatched',
         'sync-pair-withheld',
         'sync-pair-written',
     ],
+    # 2026-11-04, U202: the later change calls joined.
+    'sync/pair_merge.py': ['addition-later', 'removal-later', 'time-unknown'],
+    # 2026-11-04, U202: the rekordbox side of a pair made from the account.
+    'sync/pair_reverse.py': ['decision-stale'],
     'sync/playlists.py': [
         'already-swept',
         'favorites-placeholder',
@@ -2999,7 +3011,15 @@ PINNED_LITERAL_HOLDERS = {
     'sync/mark_record.py': ['sync-mark-record-unusable'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined.
-    'sync/pair_cli.py': ['sync-pair-out-of-scope', 'sync-pair-unknown'],
+    # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
+    'sync/pair_cli.py': [
+        'intake-list-unusable',
+        'label-playlist-unreadable',
+        'sync-pair-out-of-scope',
+        'sync-pair-unknown',
+    ],
+    # 2026-11-04, U202: the rekordbox side of a pair made from the account.
+    'sync/pair_reverse.py': ['decision-stale'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
     'sync/run.py': ['sync-source-lookups-failed'],
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.

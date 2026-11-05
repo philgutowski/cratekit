@@ -34,6 +34,16 @@ playlists a made pair left behind when its other side was deleted, so nothing
 makes that side again. A write of the pairs alone reads them again under its
 lock and keeps them.
 
+**AND THE OTHER WAY, AND THE DATES (U202).** A pair whose rekordbox side the
+product made for an account playlist is reserved the same way, under the lock
+before the playlist is made (:meth:`PairStore.reserve_made_rekordbox`), and
+is ``made`` like U198's. A snapshot also records when the account says each
+track it held was added (``Pair.account_added``), so a track taken out and put
+back on the account between two syncs can be told from one held all along
+(R-990). The document stays version 2: a copy that does not know the dates
+drops them on its next write, and the sync after reads every track as held
+all along, which is the rule before U202, never a loss.
+
 Layer: modules.
 """
 
@@ -100,6 +110,11 @@ class Pair:
     #: root folder it was made in.
     made: bool = False
     folder: str = ""
+    #: U202. When the account says each track the account side held at the
+    #: last whole sync was added there, ISO 8601 text by remote identifier,
+    #: for the tracks it dated. A later date on a track the base held is that
+    #: track taken out and put back on the account since (R-990).
+    account_added: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
 
     @property
     def first(self) -> bool:
@@ -121,6 +136,8 @@ class Pair:
             record["folder"] = self.folder
         if self.account is not None:
             record["account"] = list(self.account)
+        if self.account_added:
+            record["account_added"] = dict(sorted(self.account_added.items()))
         if self.rekordbox is not None:
             record["rekordbox"] = [member.to_json() for member in self.rekordbox]
         return record
@@ -331,6 +348,11 @@ class PairStore:
         folder = value.get("folder", "")
         if not isinstance(folder, str):
             raise self._unusable(f"the pair {account_id!r} names a folder that is not a name")
+        added = value.get("account_added") or {}
+        if not isinstance(added, Mapping) or not all(
+            isinstance(k, str) and k and isinstance(v, str) and v for k, v in added.items()
+        ):
+            raise self._unusable(f"the pair {account_id!r} has added dates that are not dates")
         return Pair(
             account_id=account_id,
             rekordbox_id=rekordbox_id,
@@ -343,6 +365,7 @@ class PairStore:
             twin=twin,
             made=made,
             folder=folder,
+            account_added=MappingProxyType(dict(added)),
         )
 
     def _write(self, pairs: Mapping[str, Pair], document: Document | None = None) -> None:
@@ -426,8 +449,13 @@ class PairStore:
         rekordbox: Sequence[Membership] | None = None,
         links: Mapping[str, str] | None = None,
         name: str | None = None,
+        account_added: Mapping[str, str] | None = None,
     ) -> Pair:
         """Record what a side holds now that it was written. A side passed None is kept.
+
+        ``account_added`` replaces the added dates held, and is recorded only
+        beside an account side, since a date is about the base it was read
+        with (U202).
 
         ``links`` is MERGED into the links held, never replacing them: a link
         is what one sync learned about one track, and a later sync that did not
@@ -446,6 +474,11 @@ class PairStore:
                 held,
                 synced=timestamp() if moved else held.synced,
                 account=tuple(account) if account is not None else held.account,
+                account_added=(
+                    MappingProxyType({str(k): str(v) for k, v in account_added.items() if k and v})
+                    if account is not None and account_added is not None
+                    else held.account_added
+                ),
                 rekordbox=tuple(rekordbox) if rekordbox is not None else held.rekordbox,
                 links=MappingProxyType(merged),
                 name=held.name if name is None else str(name),
@@ -538,6 +571,38 @@ class PairStore:
             )
             self._write(document.pairs, document)
             return account_id, True
+
+    def reserve_made_rekordbox(
+        self, account_id: str, *, name: str, folder: str, create: Callable[[], str]
+    ) -> tuple[str, bool]:
+        """The rekordbox playlist made for one account playlist, and its pair. ``(id, created)``.
+
+        U202, :meth:`reserve_made` the other way round. The lock is taken
+        before ``create`` runs, so an unwritable document refuses before the
+        playlist exists, and the pair is marked as the product's in the write
+        straight after it. An account playlist a pair already holds answers
+        that pair's rekordbox playlist, so two syncs never make two.
+        """
+        account_id = str(account_id)
+        with self._locked():
+            document = self._document()
+            held = document.pairs.get(account_id)
+            if held is not None:
+                return held.rekordbox_id, False
+            rekordbox_id = str(create())
+            for pair in document.pairs.values():
+                if pair.rekordbox_id == rekordbox_id:
+                    raise conflict(account_id, rekordbox_id, pair)
+            document.pairs[account_id] = Pair(
+                account_id=account_id,
+                rekordbox_id=rekordbox_id,
+                name=str(name),
+                marked=timestamp(),
+                made=True,
+                folder=str(folder),
+            )
+            self._write(document.pairs, document)
+            return rekordbox_id, True
 
     def remember(self, misses: Mapping[str, Miss], *, forget: Iterable[str] = ()) -> None:
         """Remember rows the account had no track for, and forget rows matched since (R-988)."""

@@ -944,6 +944,25 @@ folder is never paired either. Two playlists that would take one account title r
 until you rename one. Delete either side of such a pair and the next sync
 unpairs it, leaves the other side where it is, and does not make it again.
 
+It works the other way too. A playlist you make on the account inside one of
+those root folders comes into rekordbox at the next `crate sync pair`, in the
+rekordbox folder of the same name, named by its title less the folder:
+`GIG READY Closer` becomes `Closer` in GIG READY, and `GIG READY Halloween
+Closer` goes in GIG READY / Halloween when that subfolder is there. One in
+`Playlists` goes at the rekordbox root. It is made on the rekordbox gate,
+holding every track the library owns in the account's order, and a track it
+lacks is queued for download once. Listed on the gate and never made: one
+whose rekordbox playlist you deleted, two that would take one rekordbox name,
+one whose name its rekordbox folder already holds, and one whose rekordbox top
+folder is gone or doubled.
+
+When you add a track on one side and take it off the other between two syncs,
+the change you made later wins on both. Cratekit reads when the account says
+the track was added and when rekordbox's playlist row was made or marked
+removed. The account keeps no time for a removal, and rekordbox often keeps
+none either, so where either time is unknown the track stays on both and the
+gate names it.
+
 ### Publish a playlist
 
 ```bash

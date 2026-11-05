@@ -184,6 +184,51 @@ def members(db: Any, playlist_id: str) -> tuple[Row, ...]:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class Stamp:
+    """One membership row of a playlist, live or removed, and its two moments (U202).
+
+    ``created`` is when the row was made, which for a live row is when the
+    track was put in the playlist; ``updated`` is when it last changed, which
+    for a row marked removed is when it was taken out, if nothing touched it
+    since. Each is an aware moment, or None when the row carries none.
+    """
+
+    row_id: str
+    content_id: str
+    removed: bool
+    created: datetime | None = None
+    updated: datetime | None = None
+
+
+def _aware(value: Any) -> datetime | None:
+    """A row's moment as an aware one: the binding reads them as local naive times."""
+    if not isinstance(value, datetime):
+        return None
+    return value if value.tzinfo is not None else value.astimezone()
+
+
+def stamps(db: Any, playlist_id: str) -> dict[str, Stamp]:
+    """Every membership row of one playlist, removed ones included, by row id (U202).
+
+    Read through the binding, which reads the stored text as local time, so
+    every moment here is one clock and one zone.
+    """
+    if not str(playlist_id):
+        return {}
+    found: dict[str, Stamp] = {}
+    for song in db.get_playlist_songs(PlaylistID=str(playlist_id)):
+        row_id = str(song.ID)
+        found[row_id] = Stamp(
+            row_id=row_id,
+            content_id=str(song.ContentID),
+            removed=rb_writer.membership_removed(song),
+            created=_aware(getattr(song, "created_at", None)),
+            updated=_aware(getattr(song, "updated_at", None)),
+        )
+    return found
+
+
 def content(db: Any, content_ids: Iterable[str]) -> dict[str, Row]:
     """The live content rows among ``content_ids``, by id, with their facts.
 
@@ -445,6 +490,7 @@ __all__ = [
     "Change",
     "Playlist",
     "Row",
+    "Stamp",
     "Written",
     "apply",
     "assert_read_back",
@@ -454,4 +500,5 @@ __all__ = [
     "read_playlist",
     "renumber",
     "rows_by_isrc",
+    "stamps",
 ]
