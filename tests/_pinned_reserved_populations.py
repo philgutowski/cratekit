@@ -159,6 +159,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'refused-by-policy',
     # U134, 2026-10-12: the refill's refusal of a recorded playlist moved out of INBOX.
     'refill-playlist-outside-inbox',
+    'rekordbox-absence-unconfirmed',  # 2026-11-05, U211: a process the scan could not read.
     'removal-sequence-unreadable',
     'rename-incomplete',
     'report-as-of-invalid',
@@ -844,6 +845,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'recovery-target-refused',
         'refill-playlist-outside-inbox',
         'refused-by-policy',
+        'rekordbox-absence-unconfirmed',  # 2026-11-05, U211.
         'rekordbox-running',
         'remote-not-configured',
         'removal-sequence-unreadable',
@@ -1011,6 +1013,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'core/naming.py': ['utf-8'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],
     'core/rb_writer.py': [
@@ -2181,6 +2185,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     ],
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
@@ -2259,6 +2265,8 @@ PINNED_NAMED_WITH_OWN = {
     'acquire/bandcamp_cli.py': ['bandcamp-label-unwritten', 'not-downloadable'],
     # 2026-11-05, U205: a rejected or unreadable app credential.
     'acquire/catalogue_api.py': ['credential-missing'],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-10-28, U152: the sync pass driver's two stops and the unasked write.
     # 2026-11-01, U190: the two stops moved to ``cli/tail.py`` with the landing.
     'cli/sync_land.py': [
@@ -2661,6 +2669,8 @@ PINNED_LITERAL_HOLDERS = {
         'no-evidence',
         'unavailable-transient',
     ],
+    # 2026-11-05, U211: the scan's refusal for a process it could not read.
+    'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
     'core/rb_writer.py': [

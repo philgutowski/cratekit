@@ -34,6 +34,7 @@ from tests.test_sync_pair import _release_process_locks as _release_process_lock
 from tests.test_sync_pair import cfg as cfg  # noqa: PLC0414
 from tests.test_sync_pair import db as db  # noqa: PLC0414
 from tests.test_sync_pair import gates_pass as gates_pass  # noqa: PLC0414
+from tests.test_sync_pair import sync as sync_both
 from tests.test_sync_pair import world as world  # noqa: PLC0414
 
 #: The writer's two probes as shipped, captured before any fixture fakes them,
@@ -452,15 +453,27 @@ def _answered(w) -> str:
 def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     world, cfg, monkeypatch, table, dying_binding
 ):
-    """The brief's end to end scenario: both gates answered, the write meets the scan."""
+    """The brief's end to end scenario, on a pair already marked as the sitting's were.
+
+    Both gates are answered by a person, the write meets the scan, the run is
+    kept with both answers, and ``--run`` writes both sides once the process
+    has finished dying, with no gate asked again.
+    """
     w = world(account=("1", "2"), rekordbox=("2", "3"))
+    assert sync_both(w.args())[0] == int(ExitCode.OK)
+    before = pairs.PairStore(cfg).get(ACCOUNT)
+    w.account.playlists[ACCOUNT].append("t4")
+    w.rekordbox_add("5")
+
     code, first = drive(w.args())
+    assert code == int(ExitCode.DECISION_REQUIRED), first
     run_id = first["run_id"]
     drive(["run", "decide", run_id, pair_cli.REKORDBOX_GATE, "apply", "--actor", "a-person"])
     drive(["--run", run_id, *w.args()])
     drive(["run", "decide", run_id, pair_cli.ACCOUNT_GATE, "apply", "--actor", "a-person"])
 
-    # The writer's probes as shipped, over the dying process, at the write.
+    # The writer's probes as shipped, over a pyrekordbox walk that meets the
+    # dying process, at the write.
     for name, probe in REAL_PROBES.items():
         monkeypatch.setattr(rb_writer, name, probe)
 
@@ -477,29 +490,30 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
 
     assert code == int(ExitCode.REKORDBOX_OPEN), refused
     assert refused["cause"]["reason"] == processes.UNCONFIRMED
-    assert refused["cause"]["reason"] != "internal-error"
     assert refused["resumable"] is True
     assert refused["outcome"] == "blocked"
     assert refused["run_id"] == run_id
-    first_step = refused["cause"]["remediation"]["steps"][0]
-    assert f"crate --run {run_id} sync pair {ACCOUNT}" in first_step
-    assert refused["cause"]["detail"]["continue"].startswith(f"crate --run {run_id} sync pair")
-    # Nothing was written on either side, and the pair is not marked.
-    assert w.held() == ["2", "3"]
-    assert w.on_account() == ["t1", "t2"]
-    assert pairs.PairStore(cfg).get(ACCOUNT) is None
+    command = refused["cause"]["detail"]["continue"]
+    assert command == f"crate --run {run_id} sync pair {ACCOUNT} --rekordbox {w.rekordbox_id}"
+    assert command in refused["cause"]["remediation"]["steps"][0]
+    assert "process 300" in refused["cause"]["message"]
+    # Nothing was written on either side and the snapshot did not move.
+    assert "5" in w.held() and "4" not in w.held()
+    assert w.on_account() == ["t1", "t2", "t3", "t4"]
+    assert pairs.PairStore(cfg).get(ACCOUNT).account == before.account
     # Both answers are still on the run.
     kept = gates.load(run_id)
     assert set(kept.decisions) == {pair_cli.REKORDBOX_GATE, pair_cli.ACCOUNT_GATE}
 
-    # The process finished dying: a zombie now, which the scan and the binding skip.
+    # The process finished dying: a zombie now, which the writer's probes, the
+    # scan and the binding's own probe at commit all skip.
     table(FakeProcess(300, raises=DYING, status=psutil.STATUS_ZOMBIE), finder())
     code, done = drive(["--run", run_id, *w.args()])
 
     assert code == int(ExitCode.OK), done
-    assert w.held() == ["1", "2", "3"]
-    assert w.on_account() == ["t1", "t2", "t3"]
-    assert pairs.PairStore(cfg).get(ACCOUNT) is not None
+    assert "4" in w.held()
+    assert "t5" in w.on_account()
+    assert pairs.PairStore(cfg).get(ACCOUNT).account != before.account
 
 
 def test_a_rekordbox_running_refusal_still_ends_the_run_as_failed(world, monkeypatch):
