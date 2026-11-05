@@ -114,8 +114,8 @@ description = "_plan_playlists: the warning reworded to promise a later sync off
 file = "src/cratekit/sync/cli.py"
 surface = "user"
 tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
-old = '''                    "job succeeds no later sync offers it again, so "'''
-new = '''                    "job succeeds the next sync takes it up again, so "'''
+old = '''                    "playlist's intake job succeeds no later sync offers it again, so "'''
+new = '''                    "playlist's intake job succeeds the next sync takes it up again, so "'''
 
 [[rows]]
 id = "M13_warning_names"
