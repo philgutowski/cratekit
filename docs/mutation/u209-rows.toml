@@ -1,5 +1,5 @@
 name = "u209"
-pass_kind = "full"
+pass_kind = "light"
 
 [[rows]]
 id = "H1_offer_mismatch_ignored"
