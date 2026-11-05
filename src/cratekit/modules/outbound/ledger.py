@@ -38,6 +38,12 @@ so a track may be taken off it. ``mirror_links`` maps a library content row to
 the account track it matched and the ISRC it matched under, so a refresh does
 not ask the provider to match the same row again.
 
+SINCE U201 EACH MIRRORED PLAYLIST KEEPS ITS SNAPSHOT, under ``agreed``: the
+account tracks both sides last held, written by the mirror when it finishes a
+playlist, so a refresh tells an edit made on the account from a change made in
+rekordbox. A playlist with no ``agreed`` has never been agreed, and every
+difference on it is read as rekordbox's.
+
 SINCE R-1031 IT REMEMBERS EACH ROW THE MIRROR COULD NOT MATCH, under
 ``mirror_misses``: the reason, and what the row was asked under, its database
 code, title, artist, path and, for a row with no code, its file's size and
@@ -187,6 +193,14 @@ def _load(cfg: config.Config) -> dict[str, Any]:
                     str(title): {
                         "remote_id": str(record.get("remote_id") or ""),
                         "refused": _listed(record, "refused"),
+                        # THE SNAPSHOT, KEPT ONLY WHEN RECORDED (U201): absent
+                        # is a playlist never agreed, which is not one agreed
+                        # empty, and the mirror reads the two apart.
+                        **(
+                            {"agreed": _listed(record, "agreed")}
+                            if isinstance(record.get("agreed"), list)
+                            else {}
+                        ),
                     }
                     for title, record in (value.get("playlists") or {}).items()
                     if isinstance(record, Mapping) and record.get("remote_id")
@@ -1324,6 +1338,9 @@ class MirrorPlaylist:
     #: Tracks the provider was asked for and would not add. Not asked again,
     #: so a refresh over an unchanged playlist plans nothing.
     refused: frozenset[str] = frozenset()
+    #: The snapshot (U201): the account tracks both sides held when the mirror
+    #: last finished this playlist, or ``None`` for one never agreed.
+    agreed: frozenset[str] | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -1350,6 +1367,11 @@ def mirror_folders(cfg: config.Config) -> dict[str, MirrorFolder]:
                     name=title,
                     remote_id=str(entry["remote_id"]),
                     refused=frozenset(_listed(entry, "refused")),
+                    agreed=(
+                        frozenset(_listed(entry, "agreed"))
+                        if isinstance(entry.get("agreed"), list)
+                        else None
+                    ),
                 )
                 for title, entry in (record.get("playlists") or {}).items()
             },
@@ -1557,6 +1579,79 @@ def record_mirror_refused(
         held += [one for one in wanted if one not in held]
         entry["refused"] = held
         _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def record_mirror_agreed(
+    cfg: config.Config,
+    folder: str,
+    agreed: Mapping[str, tuple[str, Iterable[str], Iterable[str]]],
+) -> None:
+    """Record each mirrored playlist's snapshot, title to ``(remote id, after, held)`` (U201).
+
+    ``after`` is what the playlist holds once the mirror finished it and
+    ``held`` the tracks its hold covers, which keep the word the record holds
+    NOW, read under the lock, so a word the library step settled since the plan
+    (:func:`settle_mirror_tracks`) is never written back over
+    (``mirror_edits.agreed_after``).
+
+    ONLY ON THE RECORD OF THAT PLAYLIST, by its title and its identifier both,
+    :func:`forget_mirror_playlist`'s rule, so a snapshot taken of one playlist
+    never lands on another recorded under the title since. A title with no
+    record, or another identifier, is skipped: the next refresh reads it as
+    never agreed, which changes nothing in the library.
+    """
+    from cratekit.modules.outbound import mirror_edits
+
+    if not agreed:
+        return
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        playlists = (document["mirrors"].get(folder) or {}).get("playlists") or {}
+        wrote = False
+        for name, (remote_id, after, held) in agreed.items():
+            entry = playlists.get(name)
+            if not entry or str(entry.get("remote_id") or "") != str(remote_id):
+                continue
+            base = _listed(entry, "agreed") if isinstance(entry.get("agreed"), list) else None
+            tracks = mirror_edits.agreed_after(base, after, held)
+            entry["agreed"] = sorted({str(one) for one in tracks if str(one)})
+            wrote = True
+        if wrote:
+            _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
+
+
+def settle_mirror_tracks(
+    cfg: config.Config, settled: Iterable[tuple[str, str, str, bool]]
+) -> None:
+    """Agree tracks the library just took an account edit for, ``(folder, title, track, on)`` (U201).
+
+    Each says whether the account holds the track on that playlist, which is
+    now the library's word too, so the snapshot takes it and the next refresh
+    reads the track as agreed rather than as the same edit again. A playlist
+    never agreed stays never agreed.
+    """
+    wanted = list(settled)
+    if not wanted:
+        return
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        wrote = False
+        for folder, name, track, on in wanted:
+            entry = ((document["mirrors"].get(folder) or {}).get("playlists") or {}).get(name)
+            if not entry or not isinstance(entry.get("agreed"), list):
+                continue
+            held = set(_listed(entry, "agreed"))
+            held = held | {str(track)} if on else held - {str(track)}
+            entry["agreed"] = sorted(held)
+            wrote = True
+        if wrote:
+            _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)
 

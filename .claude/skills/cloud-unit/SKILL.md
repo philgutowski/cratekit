@@ -87,6 +87,11 @@ footer marks it as yours:
 | `Withdrawn` | this session lost a race for the lane and released the card |
 | `Landed` | merged and pushed on `main` |
 
+The reader forgives markdown, emphasis and punctuation around a heading, so
+`**Brainstorm.** One question waits` reads as `Brainstorm` (U203), but never a
+different word: a bare `Question`, or `Brainstorm notes`, is a heading it does
+not know, and a card under one is read as held, then as a session that died.
+
 Post with `gh api -X POST repos/<owner>/<repo>/issues/N/comments -F body=@file.md`.
 Phillip's comments, and the relay thread's `Answer from Phillip`, are read
 only as answers to a `Brainstorm` or a `Question for Phillip`. To stop the cloud building a card he labels it

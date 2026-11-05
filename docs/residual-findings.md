@@ -41749,3 +41749,195 @@ than a defect.
 **Measured cost.** Driven by the review: both gates skipped, and the document then held the miss. No user facing cost: a miss is a fact about a row and the provider, the mirror records its own the same way (R-1031), and nothing in either playlist is written. A rehearsal reading the document as untouched would be wrong.
 
 **Closes when:** the misses ride the run and are recorded only once a gate is applied, or the rule is accepted as the mirror's. Ledger only.
+
+---
+
+## R-1198. A bare Question heading on a card reads as a hold, then a resume, while it waits on Phillip
+
+**Found:** at the plan of #493, U203, 2026-11-05.
+
+**The mechanism.** `scripts/board.py` knows the question heading only as
+`Question for Phillip` (`HEAD_QUESTION`). The Sharing the board section of
+`docs/METHOD.md`, on the branch that carries it, and the coordinator's prompt
+to its build threads both tell a thread to ask "under a `Brainstorm` or
+`Question` heading". A thread that writes `**Question**` or `## Question.`
+leaves a heading the reader does not know, so `cloud_state` reads the card as
+underway, then after `STALE_HOURS` as resume, and the next thread may retake
+it before Phillip answers. It is the shape U203 fixed for punctuation, in
+spelling, which U203's brief put out of scope.
+
+**Measured cost.** Not driven on the live board: of the 1,126 comments on the
+repository on 2026-11-05, no session comment opens with a bare `Question`
+heading, so no card has paid for it yet. Reading `comment_heading("**Question.**")`
+returns `question`, which no constant matches; pinned as unknown by
+`test_a_heading_whose_words_differ_is_still_a_hold`.
+
+**Closes when:** either the two texts say `Question for Phillip`, or the reader
+takes `question` as a second spelling of `HEAD_QUESTION` with a test beside the
+U203 ones. Ledger only: maintainer facing, the board bar's four costs are a DJ's.
+
+---
+
+## R-1199. A first line that opens with a known heading word and then contradicts it moves a held card to that heading's state
+
+**Found:** at the Fable review of #493, U203, 2026-11-05.
+
+**The mechanism.** `comment_heading` in `scripts/board.py` reads the opening
+emphasised span, or the text up to the first colon, comma or sentence end, as
+the heading. So a session comment whose first line is
+`**Withdrawn**? No, I still hold this card` reads `withdrawn` and releases the
+card as ready, `Needs the machine? No, it does not.` sets it aside, and
+`Landed? No, CI is red.` reads landed-open. Before U203 these three read as a
+hold, though the same class already existed for a colon or a comma
+(`**Withdrawn**, no` read ready on `main`): U203 widens its surface.
+
+**Measured cost.** Driven through `cloud_state` by the review: a held card
+offered to a second session, or a card retired until a hand edit. The producer
+was not driven: of the 1,126 comments on the repository on 2026-11-05 and every
+template in the cloud skill, none opens this way. Reachability unmeasured.
+
+**Closes when:** the heading is read only when the first line is the heading
+alone or the heading followed by a colon, or the skill's comment forms put the
+heading on a line of its own and the reader refuses a first line that carries
+more. Ledger only: maintainer facing.
+
+---
+
+## R-1200. A bold heading closed hard against the next word, with no space, is still a hold and then a resume
+
+**Found:** at the Fable review of #493, U203, 2026-11-05.
+
+**The mechanism.** `_OPENING_EMPHASIS` in `scripts/board.py` takes an opening
+span only when its closer is followed by the line's end, whitespace or
+punctuation, so `**Brainstorms**` stays a word the reader does not know. The
+same rule leaves `**Brainstorm.**One question waits` and
+`**Question for Phillip.**One of A or B` unread: they give
+`brainstorm.**one question waits`, a hold, then a resume after `STALE_HOURS`,
+under the old reader and the new one alike.
+
+**Measured cost.** A question card retaken before Phillip answers, the cost
+U203 was filed for, driven through `cloud_state` by the review. The producer
+was not driven: none of the 1,126 comments on the repository on 2026-11-05
+opens this way. Not a regression, and inside the brief's stated contract.
+
+**Closes when:** a closer followed by a capital letter after a stop inside the
+span is also read as a span, with a test that `**Brainstorm**s` stays unknown.
+Ledger only: maintainer facing.
+
+---
+
+## R-1201. The mirror-edits write tags each file before the guarded commit, and a commit that then fails leaves the files retagged while the rows and the tree stay as they were
+
+**Found:** at the review of #489, U201, round one, 2026-11-05.
+
+**The mechanism.** `organize.mirror_edits.write` writes each file's `genre` and
+`energylevel`, reads them back, and only then writes the rows and memberships
+and calls `rb_writer.commit_guarded`, the order `tag suggest` keeps so the
+database never says what a file does not. A commit refused after the tags were
+written rolls the database back and leaves the files as written. Routing reads
+the file, so the next `route resort` or adoption reads the new genre while
+rekordbox still files the track where it was. The next organize plans the same
+edit again and writes it whole, since the snapshot was not settled.
+
+**Measured cost.** Driven by the round one reviewer with `commit_guarded`
+replaced to raise (scratchpad drive D5): the file reads Tech House at energy 4,
+the row and the tree are unchanged, and the next run completes the move. No
+product path that fails between the tag write and the commit was driven, so the
+reachability is unmeasured.
+
+**Closes when:** the write records each file's previous tags and puts them back
+when the commit fails, with a test injecting the failure.
+
+---
+
+## R-1202. A Question for Phillip posted by a thread that keeps building reads as waiting on the board, and frees that thread's lane
+
+**Found:** while building #489, U201, 2026-11-05.
+
+**The mechanism.** The project's rules have a thread post a question on its card
+and keep building to the conservative call. `scripts/board.py cloud` reads a
+`Question for Phillip` with no reply as `waiting-on-phillip`, whatever the
+thread posts after it, so a card still held and being built is counted as no
+lane's, and the coordinator may fill that lane while the thread is still
+working.
+
+**Measured cost.** Measured on #489: a `Progress` note posted after the question
+left the card read `waiting-on-phillip`. No card was taken twice, since a
+waiting card is not takeable; the lane count was short by one until the landing.
+
+**Closes when:** `board.py cloud` reads a `Progress` note after a question from
+the holding thread as underway, with a test.
+
+---
+
+## R-1203. A genre track the account listed short at the first U201 run is never agreed on its playlist, and can later be read as a person's addition and filed back
+
+**Found:** at the review of #489, U201, round two, 2026-11-05.
+
+**The mechanism.** The snapshot of a mirrored genre playlist is what the account
+listed when the mirror finished it (`mirror_edits.agreed_after`, recorded by
+`mirror.apply` and `mirror.settled`). A track the provider counts and does not
+list, an unplayable one, is absent from that listing when the first U201 run
+records the playlist, and the mirror's add of it reads back absent, so it is
+recorded as refused and never agreed. If rekordbox later takes the track out of
+the tree and the provider lists it again, `mirror_edits.decide` reads it as on
+the account and not in the snapshot, a person's addition, and the rekordbox
+area's `mirror-edits` step files it back into the playlist.
+
+**Measured cost.** Driven by the round two reviewer on the strict fake, with the
+fake's `add_tracks` answering as `tidal_account.add_tracks` does for a hidden
+track (scratchpad drive S13): a removal made by hand in rekordbox is undone by a
+write and the gate names an account edit nobody made. The producer, the
+provider listing a once unplayable track again, was not driven; one candidate
+was driven on the fake and produces it. Ledger only for that reason.
+
+**Closes when:** a track the mirror asked to add and the provider refused is
+read as agreed absent rather than unknown, for instance by recording the refused
+track in the snapshot's own word, with a test of the S13 sequence.
+
+---
+
+## R-1204. A genre playlist whose listing fails while the edit rule reads it, and reads at the mirror's own plan, lets the mirror add a moved track back for one run
+
+**Found:** at the review of #489, U201, round one, 2026-11-05.
+
+**The mechanism.** `account_mirror._read_edits` reads a genre playlist whose
+listing fails as its snapshot and short, so it carries no edit of its own, and
+caches no listing; `mirror.plan` then reads the listing again. A transient
+failure that succeeds on the second read gives the mirror a listing the edit
+rule never decided over, so a track a person moved off that playlist is not
+held there and the mirror adds it back for one run, converging on the next.
+
+**Measured cost.** Reasoned from the two functions by the round one reviewer,
+not driven: reachability unmeasured.
+
+**Closes when:** the mirror plans a playlist the edit rule could not read from
+that same failure, refused or held, rather than reading it again.
+
+---
+
+## R-1205. Guards of U201's account edit rule and its short listing fix that no test reaches
+
+**Found:** at the review of #489, U201, rounds one and two and the mutation table, 2026-11-05.
+
+**The mechanism.** Each guard below was reverted alone with the suite green.
+From the reviews: `PlaylistPlan.unlisted` (a short listing keeps its snapshot's
+word on what it did not list; the round two drive S14 kills it), `settled`
+recording a short playlist with nothing to write (drive S2 kills it),
+`Decision.settle` leaving short playlists out (one extra agreed line after a
+move into a short playlist, run 3 of S2), `_later` with two rekordbox places,
+a failed listing read as short in `_read_edits`, holds handed only to genre
+folders, memberships outside the tree in the step's plan, and two dead
+conditions in the round one fix (`gone` in `unlisted`, `not now` in the own
+genre held branch). The mutation table, `docs/mutation/u201.md`, adds its own
+zero rows: E2 (masked by the still in two bands guard, the composite C1 kills
+both), E5 (the composite C2 kills what it narrows), M3 and M4 (the short
+listing's settled snapshot), L2 (settle never mints a snapshot; C4 kills what
+it narrows) and O4 (a move leaves only routing's playlists; C5 kills what it
+narrows). The composite C3 was zero too and is now pinned by a test added
+after the table, measured by hand.
+
+**Measured cost.** None on the merged head: every guard was driven working by
+the reviewers. A later change that removed one would stay green.
+
+**Closes when:** a test drives each, the reviewers' S14 and S2 sequences first.
