@@ -435,3 +435,62 @@ def test_label_playlists_after_a_sync_listing_asks_no_listing(entry, clock, cfg)
     assert budget.calls == spent
     assert {one.id for one in again.releases} == {one.id for one in first.releases}
     assert again.kept is not None and again.kept.asked == 0
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The verb: a second label sync --next --label asks the provider nothing
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_second_label_sync_next_of_the_label_makes_no_provider_call(clock, cfg, monkeypatch):  # noqa: F811
+    """Driven through the verb over the shipped adapter. The label's releases
+    are credited to another label, so the listing confirms none and the label
+    is skipped; what is measured is that the second ask lists from the kept
+    listing and verifies from the kept copyright lines, with no call at all."""
+    from cratekit.core.exit_codes import ExitCode
+    from cratekit.label import catalogue
+    from tests.cli_drive import drive
+
+    budget = Budget()
+    own = CountedArtist(
+        budget,
+        LABEL,
+        [Release("r1", copyright="(P) 2025 Another Label", year="2025")],
+        [Release("r2", copyright="(P) 2024 Another Label", year="2024")],
+        artist_id="77",
+    )
+    client = CountedClient(budget, artists=[own], albums_by_query={})
+    monkeypatch.setattr(catalogue, "resolve", lambda cfg: tidal_catalogue.TidalCatalogue(client))
+    code, envelope = drive(["label", "registry", "add", LABEL])
+    assert code == int(ExitCode.OK), envelope
+
+    drive(["label", "sync", "--next", "--label", LABEL])
+    first = budget.calls
+    assert first > 0
+    _code, envelope = drive(["label", "sync", "--next", "--label", LABEL])
+
+    assert budget.calls == first, budget.asked[first:]
+    (line,) = [
+        one for one in envelope["data"]["checks"] if one["key"].endswith("listing.kept-recordings")
+    ]
+    assert "no provider call" in line["detail"]
+    assert "old" in line["detail"]
+
+
+def test_the_playlists_crawl_gate_says_the_listing_was_kept(entry, clock, cfg):  # noqa: F811
+    from cratekit.label import playlists_cli
+
+    found = adapter(roster_client(Budget()))
+    sweep.listed_releases(cfg, entry, found)
+    counted = playlists_cli.estimate(cfg, entry, sweep.listed_releases(cfg, entry, found))
+    assert "no provider call" in counted.shown()["listing"]
+
+
+def test_a_catalogue_that_keeps_no_listing_says_nothing_about_one(entry, cfg):  # noqa: F811
+    from cratekit.label import playlists_cli
+    from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeRelease
+
+    fake = FakeCatalogue(artists={entry.label_id: FakePagedArtist([FakeRelease("r1", year="2025")])})
+    listed = sweep.listed_releases(cfg, entry, fake)
+    assert listed.kept is None
+    assert "listing" not in playlists_cli.estimate(cfg, entry, listed).shown()
