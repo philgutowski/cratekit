@@ -43008,3 +43008,98 @@ fills it, so the producer is synthetic (1 candidate driven).
 
 **Closes when:** the reason carries `Landings.unread()` as the unrecognised one
 does. Ledger only.
+
+---
+
+## R-1258. A backup job whose database item met an unconfirmed rekordbox absence cannot be resumed, only queued again
+
+**Found:** at the review of #505, U211, 2026-11-05.
+
+**The mechanism.** `backup/cli._engine_refusal` rebuilds a portion refusal
+from the reservation table, with no `retryable`, so the database item a job
+recorded under `rekordbox-absence-unconfirmed` is permanent. The scan's own
+refusal said `retryable=True`, and that is lost on the way. Since review round
+two the dispatcher answers the job's verdict as it is, failed and not
+resumable with the job's own step, rather than as a kept run.
+
+**Measured cost.** Driven by review round two and by
+`tests/test_process_scan_jobs.py`: `crate job resume` refuses the job with
+`job-not-retryable`, and a fresh `crate backup run` once the process has
+exited takes the snapshot. The files portion mirrored on the first run either
+way. The person runs the backup again rather than resuming it.
+
+**Closes when:** the engine refusal for this slug is retryable, so `job
+resume` retakes the database item once the scan reads clean. Ledger only: the
+workflow finishes with a fresh run, and nothing is lost or misreported.
+
+---
+
+## R-1259. A first sync of a pair refused at its write is continued stale, because approving marked the pair and the digest covers the mark
+
+**Found:** at the build of #505, U211, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.apply_pair` marks a pair in the pairs
+document before it writes either side, and `PairPlan.identity` puts `marked`
+in the digest both gates bind to. So when a pair's first sync, or a pair the
+sync makes, is refused at its rekordbox write (by U211's unconfirmed absence,
+or by any refusal there), the run U211 keeps is continued with `--run` into a
+plan whose digest moved, and each gate refuses `DECISION_STALE` in turn and is
+answered again, both of them. A pair already marked, which is every pair in a sync of every
+pair and the case Sitting 54 met, digests the same and continues straight
+through, as `tests/test_process_scan.py` drives.
+
+**Measured cost.** Driven on the disposable library while building U211: the
+continued run of a new pair's first sync answered `DECISION_STALE`. The round
+one review drove it to the end: stale on `sync.pair.rekordbox`, answered,
+stale on `sync.pair.account`, answered, then written with nothing lost. That
+`marked` is the field that moved is read from the identity, not isolated. Nothing is written under a stale answer, so the
+cost is both gates answered again and two more plans, each of which asks
+the provider again.
+
+**Closes when:** a refused first sync continues without asking again, by
+marking the pair only once a side is written, or by leaving `marked` out of
+the digest of a pair the same run marked. Ledger only: nothing is lost or
+misreported, and the workflow finishes.
+
+---
+
+## R-1260. A gated write refused because rekordbox opened ends failed, though its answers are kept and --run continues it
+
+**Found:** at the build of #505, U211, 2026-11-05.
+
+**The mechanism.** U211 keeps the run of a refusal under
+`rekordbox-absence-unconfirmed` (`cli.gates.KEPT_RUN_REASONS`): resumable,
+blocked, and naming `crate --run RUN ...`. A refusal under `rekordbox-running`
+at the same guard, a person launching rekordbox between the gates and the
+write, is left as it was: outcome failed, `resumable` false, no continue
+step. The answers given with `crate run decide` are on the run's record
+either way, so `--run` does continue it; only the envelope does not say so.
+
+**Measured cost.** Not driven against a person. `tests/test_process_scan.py`
+pins the narrow set, so widening it is a decision rather than a drift.
+
+**Closes when:** Phillip decides whether a refusal for a running rekordbox at
+a gated write should keep its run the way an unconfirmed absence does, and
+the set is widened or left. Ledger only.
+
+---
+
+## R-1261. The restore session's unconfirmed absence at its database half carries both the continue step and the conditional remove step
+
+**Found:** at the review of #505, U211, 2026-11-05.
+
+**The mechanism.** `session/restore_cli._absence_unconfirmed` ends the scan's
+refusal on the rerun step every database half failure carries ("remove
+master.db and any companion if one is there"), and the dispatcher keeps the
+run and puts the continue command in place of the scan's first step. A
+process that turns unreadable between the session's own scan and the database
+half shows three steps, two of which say how to go on.
+
+**Measured cost.** Driven by the round one review: mirror landed, database not
+attempted, detail `half=database, completed_halves=[mirror]`, four steps on the head
+round one read, three after the fix round, as round two measured.
+Nothing is false, since the remove step is conditional and nothing landed; the
+list is longer than it needs to be.
+
+**Closes when:** a kept refusal at the database half carries only the
+continue step, or the two are made one sentence. Ledger only.
