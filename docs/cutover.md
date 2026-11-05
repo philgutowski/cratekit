@@ -1913,6 +1913,20 @@ From v0.8.0 (U212, U213, U215, U216 in it; U217 and the resort fix #537 not). Ba
 
 **None of the four is met.** A91's per phase counts are recorded above (plan 2,024; rekordbox answer none; account answer 330 before its stop). A92's forecast against the live count could not be read on a finished write, and its continue resumed without a new plan but could not finish. A88's tie count reads 378 on both plans; GIG READY's account count after the apply and the quiet sync wait on a finished write. All four now depend on #543 (U220), filed with this finding. **Left on the account for the next sync:** `GIG READY A86 proof` (three tracks), and Classic Soul Intro out of order; the next finished `sync pair` puts its order back to rekordbox's.
 
+
+## Sitting 63, 2026-11-05, the attended session on v0.8.0: A66 (#435), the custom playlist twins backfill
+
+U213 (#507) is in v0.8.0. No job running, rekordbox closed before each verb.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Rehearsal | `crate sync twins` on the hand copy (`scratch/copyrun`, refreshed after sitting 62), run `2026-11-05T17:52:05Z-5b44`, 267 calls | **digest `db28910589c68d0b`, count 689**: 77 twins to make, 66 into a new `Custom Playlists 2025` folder and 11 into `Custom Playlists 2026`, each named as its account playlist less `DOWNLOADED `; **612 missing tracks, each named** with its reason (most "the library holds no row for it", some "more than one library row carries it, so none was chosen"); 1 already paired. `12-24-25`, the playlist whose bracketed title refused at sitting 57, now plans with 8 tracks and none missing. Approved on the copy: 77 twins, 1,493 tracks, read back. | rehearsed |
+| Live | run `2026-11-05T17:53:35Z-e68d` | digest `db28910589c68d0b`, equal; approved as `session`: **77 twins made and paired, 1,493 tracks, 1 new folder** (`Custom Playlists 2025`), session `2026-11-05T17:54:45Z-764d`. | live |
+| Second run | `crate sync twins` | `no_op`, "no downloaded custom playlist in a year folder lacks its twin (78 already paired)", 29 calls, no gate. | checked |
+| In rekordbox | opened, tree filtered to `12-24-25` | `Custom Playlists 2025 / 12-24-25` shows 8 tracks, as on the account. The Monologue overlay then covered the tree again, so no other twin was read in the app; rekordbox quit from its menu, both processes gone in 10 s. | read in part |
+
+**A66 (#435) is met in part**: the backfill, its missing tracks named, and the NO_OP second run. **Owed:** the twins read against the account in rekordbox beyond one; the pair check (a track added each side, then `crate sync pair`), which waits on #543 (U220) since a live `sync pair` cannot finish its write; and the next landing's twin. **For Phillip:** the warning says the next `crate sync pair` "adds each one it finds in the library and queues each one the library lacks", so the 612 missing tracks of these 77 old downloaded playlists would be queued for download at the first sync pair that finishes.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
