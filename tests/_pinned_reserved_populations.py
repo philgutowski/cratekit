@@ -1739,6 +1739,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-committed-unverified',
         'two-of-one-name',
     ],
+    # 2026-11-05, U204: the mirror downloads step's kind and its job source joined.
+    'organize/mirror_downloads.py': ['account-mirror', 'mirror-downloads'],
     # 2026-11-05, U201: the mirror edits step's kind, its write refusals and
     # its untagged warning joined.
     'organize/mirror_edits.py': [

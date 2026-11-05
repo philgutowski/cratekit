@@ -42,12 +42,13 @@ UNREAD IS NOT NONE. A library or ledger that cannot be read refuses the whole
 kind as one step; a folder whose account side cannot be read refuses that
 folder, and no folder is planned over a listing that failed.
 
-AN EDIT MADE ON THE ACCOUNT TO A GENRE PLAYLIST IS HELD (U201). Each mirrored
-playlist keeps its snapshot, and every genre playlist is read three ways by
-:func:`read`, once per organize run for both areas through :class:`Shared`:
-the rekordbox area's ``mirror-edits`` step takes each edit into the library,
-and the mirror here neither takes such a track off nor adds it back. The
-Favorites folder and INBOX mirror one way until U204.
+AN EDIT MADE ON THE ACCOUNT TO A MIRRORED PLAYLIST IS HELD (U201, U204). Each
+mirrored playlist keeps its snapshot, and every playlist of a genre folder, the
+Favorites folder and INBOX is read three ways by :func:`read`, once per
+organize run for both areas through :class:`Shared`: the rekordbox area's
+``mirror-edits`` step takes each edit into the library, its ``mirror-downloads``
+step queues a track added there that the library lacks, and the mirror here
+neither takes such a track off nor adds it back.
 
 EVERY RUN SAYS ITS REQUEST COUNT AND DURATION: the plan's in the area's facts,
 and each applied folder's in its applied totals.
@@ -193,13 +194,16 @@ def _plain(row: Any) -> bool:
 
 
 def _folder(
-    db: Any, name: str, parent_id: str, titled: Callable[[str], str], *, genre: bool = False
+    db: Any, name: str, parent_id: str, titled: Callable[[str], str], *, edits: str = ""
 ) -> mirror.Folder | Cause:
     """One rekordbox folder as a mirror, or the refusal of a title two playlists take.
 
-    ``genre`` is a genre folder of the routing tree, whose rows carry their
-    membership times for the edit rule (U201).
+    ``edits`` is the edit rule that reads the folder. A genre folder's rows
+    carry their membership times for the later change rule (U201), and the
+    Favorites folder's too (U204); an INBOX batch has no such rule to ask.
     """
+    from cratekit.modules.outbound import mirror_edits
+
     playlists = sorted(
         (row for row in _children(db, parent_id) if _plain(row)),
         key=lambda row: (str(row.Name), str(row.ID)),
@@ -209,11 +213,12 @@ def _folder(
     for row in playlists:
         name_of = titled(str(row.Name))
         taken[name_of] = taken.get(name_of, 0) + 1
-        sources.append(mirror.Source(name=name_of, rows=_rows(db, str(row.ID), timed=genre)))
+        timed = edits in (mirror_edits.GENRE, mirror_edits.FAVORITES)
+        sources.append(mirror.Source(name=name_of, rows=_rows(db, str(row.ID), timed=timed)))
     twice = sorted(one for one, count in taken.items() if count > 1)
     if twice:
         return _twice(name, f"its playlists {', '.join(repr(one) for one in twice)}")
-    return mirror.Folder(name=name, playlists=tuple(sources), genre=genre)
+    return mirror.Folder(name=name, playlists=tuple(sources), edits=edits)
 
 
 def _twice(name: str, what: str) -> Cause:
@@ -243,6 +248,7 @@ def _inbox(
     from datetime import date
 
     from cratekit.intake import rotate
+    from cratekit.modules.outbound import mirror_edits
 
     try:
         live = rotate.live_batches(
@@ -265,6 +271,7 @@ def _inbox(
         playlists=tuple(sources),
         retire=True,
         present=frozenset(mirror.title(name, one) for one in live.present),
+        edits=mirror_edits.INBOX,
     )
 
 
@@ -272,6 +279,7 @@ def read_library(cfg: config.Config) -> Library:
     """Every folder to mirror, read on a read handle that is closed before returning."""
     from cratekit.core import active_taxonomy, rb_writer, tree_registry
     from cratekit.favorites import placement
+    from cratekit.modules.outbound import mirror_edits
 
     declared = active_taxonomy.load(cfg)
     registry = tree_registry.read(cfg)
@@ -298,7 +306,7 @@ def read_library(cfg: config.Config) -> Library:
                         name,
                         str(row.ID),
                         lambda shown, name=name: mirror.title(name, shown),
-                        genre=True,
+                        edits=mirror_edits.GENRE,
                     ),
                 )
             )
@@ -319,7 +327,9 @@ def read_library(cfg: config.Config) -> Library:
                 def titled(shown: str, name: str = name, source: str = home.source_name) -> str:
                     return shown if shown == source else mirror.title(name, shown)
 
-                found.append((name, _folder(db, name, home.folder_id, titled)))
+                found.append(
+                    (name, _folder(db, name, home.folder_id, titled, edits=mirror_edits.FAVORITES))
+                )
         inbox_name, inbox = _inbox(cfg, db, declared, registry)
         inbox_why = ""
         if isinstance(inbox, str):
@@ -550,25 +560,27 @@ def read(cfg: config.Config, account_of: Callable[[], Any], run: Run | None = No
 
 
 def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str, str]]) -> None:
-    """Read every genre playlist three ways and decide what a person changed on the account.
+    """Read every edited playlist three ways and decide what a person changed on the account.
 
-    A taxonomy that cannot be read reads no edit, and says so: the mirror then
-    holds nothing, as before U201. A playlist whose listing cannot be read is
-    read as its snapshot and short, so it carries no edit of its own.
+    The genre folders, the Favorites folder and INBOX (U201, U204). A taxonomy
+    that cannot be read reads no edit, and says so: the mirror then holds
+    nothing, as before U201. A playlist whose listing cannot be read is read as
+    its snapshot and short, so it carries no edit of its own.
     """
     from cratekit.core import active_taxonomy
     from cratekit.modules.outbound import mirror_edits as edits
+    from cratekit.organize import mirror_downloads
     from cratekit.organize import mirror_edits as carry
 
-    genre = [folder for folder in reading.library.folders if folder.genre]
-    if not genre:
+    edited = [folder for folder in reading.library.folders if folder.edits]
+    if not edited:
         return
     try:
         declared = active_taxonomy.load(cfg)
     except CratekitError as exc:
         reading.unread = f"edits made on the account were not read: {exc.cause.message}"
         return
-    reading.places = carry.places(declared, genre)
+    reading.places = carry.places(declared, edited)
     matcher = reading.matcher
     # EVERY ROW THE MIRROR READS IS MATCHED HERE, the plan's own requests made
     # once, so an account track is owned by any row the library mirrors.
@@ -584,12 +596,18 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
     for content_id, (remote, _isrc) in links.items():
         if content_id not in seen and remote:
             owner.setdefault(remote, set()).add(content_id)
+    # A TRACK A MIRROR DOWNLOAD QUEUED IS OWNED BY THE ROW OF ITS ISRC once it
+    # lands (U204), even where the matcher broke a tie between releases toward
+    # another one, so the addition it was queued for is read and filed.
+    for remote, rows in mirror_downloads.landed(cfg, seen).items():
+        if remote not in owner:
+            owner[remote] = set(rows)
     read: list[edits.Mirrored] = []
-    for folder in genre:
+    for folder in edited:
         held = reading.recorded.get(folder.name)
         for source in folder.playlists:
             place = reading.places.get(source.name)
-            if place is None:
+            if place is None or place.folder != folder.name:
                 continue
             wanted: set[str] = set()
             added: dict[str, str] = {}
@@ -635,6 +653,21 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
                 )
             )
     reading.decided = edits.decide(read, {remote: sorted(rows) for remote, rows in owner.items()})
+
+
+def holds_for(reading: Reading, folder: mirror.Folder) -> dict[str, Any] | None:
+    """The holds of one folder's playlists, or ``None`` for a folder no edit rule reads.
+
+    By the place's own folder, so a title two folders share never carries one
+    folder's hold onto the other's playlist (U204).
+    """
+    if not folder.edits:
+        return None
+    return {
+        title: hold
+        for title, hold in reading.decided.holds.items()
+        if (place := reading.places.get(title)) is not None and place.folder == folder.name
+    }
 
 
 class Shared:
@@ -689,16 +722,17 @@ def _edits_fact(reading: Reading) -> str:
         return reading.unread
     decisions = reading.decided.decisions
     if not decisions:
-        return "no genre playlist was changed on the account since the mirror last finished it"
+        return "no mirrored playlist was changed on the account since the mirror last finished it"
     count = {kind: 0 for kind in (*sorted(edits.CARRIED), edits.HELD, edits.REKORDBOX, edits.AGREED)}
     for one in decisions:
         count[one.outcome] = count.get(one.outcome, 0) + 1
     carried = sum(count[kind] for kind in edits.CARRIED)
     return (
-        f"{len(decisions)} track(s) changed on the account: {carried} taken into the "
+        f"{len(decisions)} edit(s) made on the account: {carried} taken into the "
         f"library by the rekordbox area's mirror-edits step, {count[edits.HELD]} held as "
-        f"the account has them, {count[edits.REKORDBOX]} where rekordbox's change stands, "
-        f"{count[edits.AGREED]} where both sides agree"
+        f"the account has them ({len(reading.decided.wanted)} of them for the "
+        f"mirror-downloads step to queue), {count[edits.REKORDBOX]} where rekordbox's "
+        f"change stands, {count[edits.AGREED]} where both sides agree"
     )
 
 
@@ -726,7 +760,6 @@ def add_steps(
     frozen, unfrozen = reading.frozen, reading.unfrozen
     library, recorded = reading.library, reading.recorded
     account, root, matcher = reading.account, reading.root, reading.matcher
-    holds = reading.decided.holds
     settled: list[tuple[str, dict[str, tuple[str, frozenset[str]]]]] = []
     for folder in library.folders:
         key = f"{MIRROR}:{folder.name}"
@@ -738,7 +771,7 @@ def add_steps(
                 recorded=recorded.get(folder.name),
                 root=root,
                 matcher=matcher,
-                holds=holds if folder.genre else None,
+                holds=holds_for(reading, folder),
                 listings=reading.listings,
             )
         except CratekitError as exc:
@@ -877,6 +910,7 @@ __all__ = [
     "Shared",
     "add_steps",
     "file_signature",
+    "holds_for",
     "identify",
     "landed_tracks",
     "read",

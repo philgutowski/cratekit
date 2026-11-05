@@ -168,10 +168,12 @@ def test_a_track_added_to_two_bands_at_once_is_held_on_both_sides():
     assert decided.hold("Tech House Low").keep == {"t1"}
 
 
-def test_a_track_the_library_does_not_own_is_held_and_named_for_u204():
+def test_a_track_the_library_does_not_own_is_held_and_queued_for_download():
     decided = edits.decide([held(THM, account=("t9",), agreed=())], OWNED)
     one = only(decided)
-    assert one.outcome == edits.HELD and "U204" in one.why
+    assert one.outcome == edits.HELD and one.acquire and "queued for download" in one.why
+    assert one.to == THM
+    assert decided.wanted == (one,)
     assert decided.hold("Tech House Mid").keep == {"t9"}
 
 
