@@ -1,0 +1,168 @@
+name = "r1289"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_sweep_reads_whole"
+description = "plan: read each swept playlist whole again (the declared reader is asked first), so one untitled row leaves the whole playlist out as unreadable"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''            listing = intake_cli.list_playlist_readable(found, playlist.playlist_id)'''
+new = '''            intake_cli.list_playlist_declared(found, playlist.playlist_id)
+            listing = intake_cli.list_playlist_readable(found, playlist.playlist_id)'''
+
+[[rows]]
+id = "M2_unread_not_kept"
+description = "plan: keep no unread track on the sweep, so the summary names none and a playlist with every track unread reads as empty"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''        if listing.unread:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M3_all_unread_branch"
+description = "plan: drop the every track unread branch, so such a playlist is excluded as empty rather than unreadable"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''            if not tracks:
+                # EVERY TRACK UNREAD'''
+new = '''            if False:
+                # EVERY TRACK UNREAD'''
+
+[[rows]]
+id = "M4_unread_why_dropped"
+description = "plan: record an unread track without the reader's why"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''                ref: {**one.said(), "why": one.why} for ref, one in listing.unread.items()'''
+new = '''                ref: {**one.said()} for ref, one in listing.unread.items()'''
+
+[[rows]]
+id = "M5_all_unread_message"
+description = "plan: the every track unread playlist's unreadable message reworded so it names no track"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''                    "no track on it could be queued: "
+                    + ", ".join(f"{ref} ({one.why})" for ref, one in listing.unread.items())'''
+new = '''                    "the playlist could not be read"'''
+
+[[rows]]
+id = "M6_report_unread_emptied"
+description = "report: the unread block names each playlist with no tracks under it"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''            identity: {"name": names.get(identity, ""), "tracks": dict(tracks)}'''
+new = '''            identity: {"name": names.get(identity, ""), "tracks": {}}'''
+
+[[rows]]
+id = "M7_per_playlist_reraise"
+description = "plan (existing guard, sample): take any refusal as one playlist's, so an expired session reads as one unreadable playlist and the sweep goes on"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''            if exc.cause.reason not in PER_PLAYLIST_REASONS:
+                raise
+            sweep.excluded[playlist.playlist_id] = Excluded.UNREADABLE'''
+new = '''            if False:
+                raise
+            sweep.excluded[playlist.playlist_id] = Excluded.UNREADABLE'''
+
+[[rows]]
+id = "M8_per_playlist_set"
+description = "PER_PLAYLIST_REASONS (existing guard, sample): drop the reader's refusal, so a row with no provider id stops the whole sweep"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''PER_PLAYLIST_REASONS = frozenset({"label-playlist-unreadable", "intake-list-unusable"})'''
+new = '''PER_PLAYLIST_REASONS = frozenset({"label-playlist-unreadable"})'''
+
+[[rows]]
+id = "M9_short_check"
+description = "plan (existing guard, sample): drop the declared count check, so a short listing is queued without saying what the provider withheld"
+file = "src/cratekit/sync/playlists.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_sync_mark.py", "tests/test_incremental_sync.py"]
+old = '''        if listing.short is not None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M10_warning_ready_filter"
+description = "_plan_playlists: the unread warning covers a playlist that was not queued, saying its other tracks are"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''        identity: tracks for identity, tracks in sweep.unread.items() if identity in sweep.ready'''
+new = '''        identity: tracks for identity, tracks in sweep.unread.items() if True'''
+
+[[rows]]
+id = "M11_warning_absent"
+description = "_plan_playlists: no unread warning at all"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''    if left:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M12_warning_promise"
+description = "_plan_playlists: the warning reworded to promise a later sync offers the playlist again, which is false once its job succeeds"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''                    "job succeeds no later sync offers it again, so "'''
+new = '''                    "job succeeds the next sync takes it up again, so "'''
+
+[[rows]]
+id = "M13_warning_names"
+description = "_plan_playlists: the warning names each playlist but not its unread tracks"
+file = "src/cratekit/sync/cli.py"
+surface = "user"
+tests = ["tests/test_sync_all.py", "tests/test_incremental_sync.py"]
+old = '''                        + ", ".join(f"{ref} ({one['why']})" for ref, one in tracks.items())'''
+new = '''                        + "some tracks"'''
+
+[[rows]]
+id = "M14_mirror_unread_branch"
+description = "mirror_downloads.plan: drop the unread branch, so an unread wanted track is named as one the provider did not list"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py"]
+old = '''            if track in unread:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M15_mirror_reads_whole"
+description = "mirror_downloads._catalogue_listing: read the playlist whole again (the declared reader is asked first), so one untitled row names every wanted track on it"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py"]
+old = '''        return intake_cli.list_playlist_readable(found[0], playlist_id)'''
+new = '''        intake_cli.list_playlist_declared(found[0], playlist_id)
+        return intake_cli.list_playlist_readable(found[0], playlist_id)'''
+
+[[rows]]
+id = "M16_mirror_why"
+description = "mirror_downloads.plan: the unread track's why reworded so it does not carry the reader's words"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py"]
+old = '''                            f"added on the account, but {unread[track].why}, so the "'''
+new = '''                            f"added on the account, but it could not be read, so the "'''
+
+[[rows]]
+id = "M17_mirror_listing_refusal"
+description = "mirror_downloads.plan (existing guard, sample): a playlist the provider cannot list names nothing for its tracks"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py"]
+old = '''                    "why": f"the provider could not list the playlist: {exc.cause.message}",
+                }
+                for track in sorted(set(tracks))'''
+new = '''                    "why": f"the provider could not list the playlist: {exc.cause.message}",
+                }
+                for track in ()'''
