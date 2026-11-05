@@ -22,6 +22,11 @@ is given a body from its artist and title tags (R-669). That is the one stem
 this verb composes; a stem carrying any text is carried as it is (R-168). An
 identifier file whose tags cannot compose a body is held back and listed in the
 plan as ``unnamed``, never renamed to a title alone.
+
+A file held back because its name is taken by a file carrying the SAME ISRC is
+said to be a second copy of one recording (U212), with the ISRC on its item, so
+the verb that ran this step can name the passes that downloaded it. Sitting 55
+met two such copies and had to compare their audio by hand to know it.
 """
 
 from __future__ import annotations
@@ -480,6 +485,32 @@ def held_collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
     return _collisions(movers)
 
 
+def second_copy(path: Path, target: Path) -> str:
+    """The ISRC ``path`` and ``target`` both carry when they are one recording, else ``""``.
+
+    READ FROM BOTH FILES through the one fold (U212). Absence of a read is not a
+    match: a file with no ISRC, a malformed one, or tags that cannot be read
+    is a second copy of nothing, so the collision is said as it always was.
+    """
+    mine = tags.isrc_token(tags.read_tag(path, "isrc"))
+    if not mine:
+        return ""
+    return mine if tags.isrc_token(tags.read_tag(target, "isrc")) == mine else ""
+
+
+def _taken(path: Path, target: Path, *, fallback: str) -> tuple[str, str]:
+    """Why ``path`` cannot take ``target``'s name, and the ISRC when it is a second copy."""
+    same = second_copy(path, target)
+    if same:
+        return (
+            f"{target.name} is already taken in the folder by a file carrying the "
+            f"same ISRC {same}, a second copy of one recording, so this one is not "
+            f"renamed",
+            same,
+        )
+    return fallback, ""
+
+
 def _collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
     """Each mover that must not be renamed, mapped to why, keyed by path.
 
@@ -543,9 +574,13 @@ def _collisions(movers: list[tuple[Path, str]]) -> dict[str, str]:
                     f"is renamed"
                 )
             elif _key(str(target)) not in sources and target.exists():
-                found[str(path)] = (
-                    f"{target.name} is already taken in the folder by a file nothing "
-                    f"here is renaming"
+                found[str(path)], _same = _taken(
+                    path,
+                    target,
+                    fallback=(
+                        f"{target.name} is already taken in the folder by a file "
+                        f"nothing here is renaming"
+                    ),
                 )
         if not found:
             return held
@@ -622,15 +657,21 @@ def _plan_for(root: Path, *, cfg: config.Config) -> dict:
                 {"action": REFERENCED, "from": path.name, "path": str(path), "why": REFERENCED_WHY}
             )
         elif str(path) in collides:
-            items.append(
-                {
-                    "action": COLLIDES,
-                    "from": path.name,
-                    "to": filename,
-                    "path": str(path),
-                    "why": collides[str(path)],
-                }
-            )
+            item = {
+                "action": COLLIDES,
+                "from": path.name,
+                "to": filename,
+                "path": str(path),
+                "why": collides[str(path)],
+            }
+            # THE ISRC ON THE ITEM (U212), read again here rather than threaded
+            # out of the fixpoint, for the one collision that names a file on
+            # disk: a target another mover renders to is no second copy.
+            target = path.with_name(filename)
+            same = second_copy(path, target) if target.exists() else ""
+            if same:
+                item["isrc"] = same
+            items.append(item)
         else:
             items.append(
                 {"action": RENAME, "from": path.name, "to": filename, "path": str(path)}
@@ -799,6 +840,12 @@ def _incomplete_cause(
             "a file marked unnamed is named for its provider identifier and needs "
             "an artist tag and a title tag written before this can name it"
         )
+    if any(item.get("isrc") for item in incomplete):
+        steps.append(
+            "a file held back as a second copy carries the same ISRC as the file "
+            "whose name it would take, so it is one recording downloaded twice: "
+            "compare the two and move the newer copy out of the folder"
+        )
     return refuse(
         "rename-incomplete",
         f"{renamed} file(s) were renamed, and {count} file(s) this plan named were "
@@ -834,7 +881,12 @@ def name_apply(ctx) -> Envelope:
     # over it means every later sweep answers ok over it as well. So does an
     # identifier file with no body to compose (R-669), for the same reason.
     incomplete: list[dict[str, str]] = [
-        {"from": item["from"], "path": item["path"], "why": item["why"]}
+        {
+            "from": item["from"],
+            "path": item["path"],
+            "why": item["why"],
+            **({"isrc": item["isrc"]} if item.get("isrc") else {}),
+        }
         for item in plan["items"]
         if item["action"] in (COLLIDES, UNNAMED)
     ]
@@ -844,7 +896,9 @@ def name_apply(ctx) -> Envelope:
     # collisions start the count and a claim that failed after the gate joins it.
     collided = plan["totals"]["collides"]
 
-    def _owed(item: dict[str, str], why: str, *, at: Path | None = None) -> None:
+    def _owed(
+        item: dict[str, str], why: str, *, at: Path | None = None, isrc: str = ""
+    ) -> None:
         """One outstanding item, named where the file IS rather than where it was.
 
         ``at`` is the file's path now, and only the tag write needs it: that
@@ -852,7 +906,10 @@ def name_apply(ctx) -> Envelope:
         name a file nobody can go and look at.
         """
         where = item["path"] if at is None else str(at)
-        incomplete.append({"from": Path(where).name, "path": where, "why": why})
+        owed = {"from": Path(where).name, "path": where, "why": why}
+        if isrc:
+            owed["isrc"] = isrc
+        incomplete.append(owed)
 
     # READ AGAIN AFTER THE GATE, because the gate can wait on a person for as
     # long as they like and rekordbox can import a file in that time. The plan's
@@ -897,7 +954,12 @@ def name_apply(ctx) -> Envelope:
         if target != path:
             if not naming.claim_target(target):
                 collided += 1
-                _owed(item, f"{rendered.filename} is already taken in the folder")
+                # THE SAME READING AS THE PLAN'S (U212): a file that took the
+                # name while the gate waited may be the same recording too.
+                why, same = _taken(
+                    path, target, fallback=f"{rendered.filename} is already taken in the folder"
+                )
+                _owed(item, why, isrc=same)
                 continue
             try:
                 path.rename(target)
