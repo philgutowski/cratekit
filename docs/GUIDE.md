@@ -943,8 +943,10 @@ one of them: the one you heart, else the lowest numbered after the file's
 album has narrowed them, as the mirror chooses, and it stays on that one; the
 gate counts how many rows were paired that way. A release of it you add on the
 account by hand is read as the same track, never queued for download: take
-one release off the account and the track stays while the other is there,
-take the track out in rekordbox and every release of it leaves the account. A
+one release off the account and the track stays while the other is there, at
+the other's place, and take the track out in rekordbox and every release of it
+leaves the account. When the account already holds two or more releases of a
+track, the lowest numbered of those is taken rather than any other. A
 track the account cannot carry stays in rekordbox, counted on the gate, and is
 not asked about again until its ISRC changes. Another app's
 folder is never paired either. Two playlists that would take one account title refuse that title

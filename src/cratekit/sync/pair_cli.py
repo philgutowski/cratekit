@@ -83,7 +83,8 @@ them, linked like any match, and counted on the gate; when the account
 already holds several releases of it, the lowest numbered of those, so no
 third is added. Every release linked to one row is that row's one key in the
 merge, so removing the row takes each of them off the account, and taking one
-off the account while another stays changes nothing. An account track with
+off the account while another stays keeps the row, at the place on the
+account of the release that stayed. An account track with
 no link is looked for in the library: a live row carrying its ISRC, a row of
 this playlist whose file carries it (U208), a row an intake job this pair
 queued resolved it to, or a row of the INBOX playlist a landing made for this
@@ -794,7 +795,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # release linked to a row is read as that row's one key, the lowest
     # numbered release's, so the merge sees one track on each side: a removal
     # on either side takes every release of it, and a release taken off the
-    # account while another stays changes nothing.
+    # account while another stays keeps the row.
     by_row: dict[str, str] = {}
     for remote, row in links.items():
         if row not in by_row or _lower(remote, by_row[row]):
@@ -882,11 +883,20 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             tied.append(names[key])
     known = {**links, **made}
     canon = {**by_row, **{row: remote for remote, row in made.items()}}
+    # FROZEN HERE, BEFORE THE MERGE, and never read from ``known`` again: the
+    # library lookup below links more account tracks into ``known`` after the
+    # merge has decided, and a removal or an order computed under those new
+    # links would be in another key space than the one the merge decided in
+    # (U208, the review's round two).
+    aliased = {
+        remote_id: remote_key(canon[row])
+        for remote_id, row in known.items()
+        if row in canon and canon[row] != remote_id
+    }
 
     def alias(remote_id: str) -> str:
         """The key an account track is read as: its row's one key when linked."""
-        row = known.get(remote_id)
-        return remote_key(canon[row]) if row in canon else remote_key(remote_id)
+        return aliased.get(remote_id) or remote_key(remote_id)
 
     # ── the account now, as keys ────────────────────────────────────────────
     account_keys = list(pair_merge.distinct(alias(remote_id) for remote_id in account_now))

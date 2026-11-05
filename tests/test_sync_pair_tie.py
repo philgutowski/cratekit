@@ -406,3 +406,57 @@ def test_two_releases_already_on_the_account_take_the_lower_and_add_no_third(tie
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert isrc(TIED) not in w.account.client.isrc_asked
     _quiet(w)
+
+
+def test_a_release_added_on_the_account_as_the_row_leaves_rekordbox_is_never_taken_off(tied):
+    """The review's round two, row 1: removals were expanded under links made after the merge."""
+    w = tied([release("202"), release("101")], rekordbox=(TIED, "2"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    assert w.on_account() == ["101", "92"]
+    w.rekordbox_remove(TIED)
+    _sibling_added(w)
+
+    code, envelope = sync([*VERB, ACCOUNT])
+
+    assert code == int(ExitCode.OK), envelope
+    assert "202" in w.on_account() and "101" not in w.on_account()
+    settled = (sorted(w.held()), w.on_account())
+    _quiet(w)
+    _quiet(w)
+    assert (sorted(w.held()), w.on_account()) == settled
+
+
+def test_a_sibling_placed_at_the_top_of_the_account_is_left_where_the_person_put_it(tied):
+    """The review's round two, row 2: the order grouped a row's releases in another key space."""
+    w = tied([release("202"), release("101")], rekordbox=("2", TIED))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    assert w.on_account() == ["92", "101"]
+    w.account.playlists[ACCOUNT].insert(0, "202")
+    ordered = list(w.account.ordered)
+
+    code, envelope = sync([*VERB, ACCOUNT])
+
+    assert code == int(ExitCode.OK), envelope
+    assert w.on_account() == ["202", "92", "101"]
+    assert w.account.ordered == ordered
+    held = w.held()
+    _quiet(w)
+    _quiet(w)
+    assert w.held() == held
+    assert w.account.ordered == ordered
+
+
+def test_the_first_release_taken_off_while_a_later_one_stays_keeps_the_row(tied):
+    """The review's round two, row 3: the drop of the first release, the half the suite missed."""
+    w = tied([release("202"), release("101")], rekordbox=(TIED, "2", "3"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _sibling_added(w)
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    w.account.playlists[ACCOUNT].remove("101")
+
+    code, envelope = sync([*VERB, ACCOUNT])
+
+    assert code == int(ExitCode.OK), envelope
+    assert sorted(w.held()) == [TIED, "2", "3"]
+    assert w.on_account() == ["92", "93", "202"]
+    _quiet(w)
