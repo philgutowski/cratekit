@@ -356,7 +356,8 @@ def _read(found: Any, playlist_id: str) -> _Listed:
     A row the engine will not read, naming no title or no artist, is set aside
     by the reader's own rule (``intake_cli.set_aside``) and named, and every
     other row reads as it always did. Such a row carrying no provider id
-    raises the engine's own refusal, so the set is shown unread in its words.
+    raises the engine's own refusal with that said after it, so the set is
+    shown unread and the reason names the missing id as what held it back.
     """
     from cratekit.intake import cli as intake_cli
     from cratekit.label import cli as label_cli
