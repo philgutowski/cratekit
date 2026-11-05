@@ -209,6 +209,124 @@ def test_headings_are_read_through_markdown_and_emphasis(board):
     assert board.comment_heading("") == ""
 
 
+# ── a heading that ends in punctuation, U203 ─────────────────────────────────
+
+# The first line of the comment that nearly lost #489 on 2026-11-04, verbatim:
+# a bold heading with a full stop inside the emphasis and prose after it on the
+# same line. Cut at the comma alone it read `brainstorm.** one question waits
+# on phillip`, a heading the reader did not know, so a hold, then a resume.
+_CARD_489_FIRST_LINE = (
+    "**Brainstorm.** One question waits on Phillip, and the brief above is written "
+    "to the recommended answer:"
+)
+
+
+def _mine_as_written(first_line: str, hours_ago: float, body: str = "") -> dict:
+    """A session comment whose first line is exactly what the session typed."""
+    return {"body": f"{first_line}\n\n{body}{FOOTER}", "created_at": _stamp(hours_ago)}
+
+
+def _known_headings(board):
+    return (
+        board.HEAD_STARTED, board.HEAD_RESUMED, board.HEAD_PLAN, board.HEAD_PROGRESS,
+        board.HEAD_BRAINSTORM, board.HEAD_QUESTION, board.HEAD_MACHINE,
+        board.HEAD_LANDED, board.HEAD_WITHDRAWN, board.HEAD_ANSWER,
+    )
+
+
+def _spellings(words: str) -> list[str]:
+    title = words[:1].upper() + words[1:]
+    return [
+        f"{title}.", f"{title}?", f"{title}!", f"{title};", f"{title}...", f"{title}…",
+        f"**{title}.**", f"**{title}**.", f"*{title}.*", f"__{title}.__", f"_{title}_!",
+        f"## {title}.", f"## {title}?", f"### **{title}.**", f"**{title}?!**",
+        f"**_{title}._**", f"{title}.**", f"**{title}.** And then a sentence, with a comma.",
+        f"{title}. And then a sentence", f"{title}! Then more", f"**{title}**, then more.",
+    ]
+
+
+def test_a_known_heading_reads_through_trailing_punctuation_and_emphasis(board):
+    for constant in _known_headings(board):
+        for spelling in _spellings(constant):
+            assert board.comment_heading(f"{spelling}\n\nbody") == constant, spelling
+
+
+def test_the_489_comment_reads_as_a_brainstorm(board):
+    assert board.comment_heading(_CARD_489_FIRST_LINE + "\n\n1. Which?") == board.HEAD_BRAINSTORM
+    node = _node(board, _issue(1, "U1: a"))
+    asked = [_mine_as_written(_CARD_489_FIRST_LINE, 2, "which of A or B?")]
+    assert board.cloud_state(node, asked)[0] == "waiting-on-phillip"
+
+
+def test_a_sentence_after_a_heading_on_its_line_is_cut(board):
+    assert board.comment_heading("Needs the machine. The card needs rekordbox") == board.HEAD_MACHINE
+    assert board.comment_heading("Question for Phillip? Which one") == board.HEAD_QUESTION
+    assert board.comment_heading("Landed; merge 5c8b26a") == board.HEAD_LANDED
+
+
+def test_a_punctuated_question_waits_on_phillip_however_old(board):
+    node = _node(board, _issue(1, "U1: a"))
+    for first_line in ("**Brainstorm.**", "**Question for Phillip.**", "## Brainstorm?", "Brainstorm!"):
+        for hours in (1, board.STALE_HOURS + 6):
+            asked = [_mine_as_written(first_line, hours, "which of A or B?")]
+            state = board.cloud_state(node, asked)[0]
+            assert state == "waiting-on-phillip", (first_line, hours, state)
+            replied = asked + [_theirs("B, please", hours - 0.5)]
+            state = board.cloud_state(node, replied)[0]
+            assert state == "answered", (first_line, hours, state)
+
+
+def test_a_punctuated_relayed_answer_is_phillips_reply_not_a_hold(board):
+    node = _node(board, _issue(1, "U1: a"))
+    old = board.STALE_HOURS + 6
+    asked = [_mine_as_written("**Brainstorm.**", old)]
+    relayed = asked + [_mine_as_written("**Answer from Phillip.**", old - 1, "B, because")]
+    assert board.cloud_state(node, relayed)[0] == "answered"
+    alone = [_mine_as_written("**Answer from Phillip.**", old)]
+    assert board.cloud_state(node, alone)[0] == "ready", "a relayed answer alone holds nothing"
+
+
+def test_punctuated_landings_and_set_asides_keep_their_states(board):
+    node = _node(board, _issue(1, "U1: a"))
+    start = _mine("Started", board.STALE_HOURS + 4)
+    for first_line, expected in (
+        ("**Landed.**", "landed-open"),
+        ("Landed on main as abc.", "landed-open"),
+        ("**Needs the machine.** It reads the live library.", "set-aside"),
+        ("Withdrawn.", "ready"),
+    ):
+        state = board.cloud_state(node, [start, _mine_as_written(first_line, board.STALE_HOURS + 2)])[0]
+        assert state == expected, (first_line, state)
+
+
+def test_progress_with_a_full_stop_still_only_refreshes_the_hold(board):
+    node = _node(board, _issue(1, "U1: a"))
+    old = board.STALE_HOURS + 4
+    asked = [_mine_as_written("**Brainstorm.**", old), _mine_as_written("**Progress.**", 1)]
+    assert board.cloud_state(node, asked)[0] == "waiting-on-phillip", "a note is not a new state"
+
+
+def test_a_heading_whose_words_differ_is_still_a_hold(board):
+    node = _node(board, _issue(1, "U1: a"))
+    for first_line in (
+        "**Brainstorms**", "**Brainstorm notes**", "**Brainstorms.**", "Brainstorm notes.",
+        "**Brainstorm**s", "Question.", "**Pre brainstorm.**",
+    ):
+        assert board.comment_heading(first_line) not in _known_headings(board), first_line
+        assert board.cloud_state(node, [_mine_as_written(first_line, 1)])[0] == "underway", first_line
+        stale = [_mine_as_written(first_line, board.STALE_HOURS + 2)]
+        assert board.cloud_state(node, stale)[0] == "resume", first_line
+
+
+def test_the_old_readings_stand(board):
+    assert board.comment_heading("**Started**, 2026-10-13.") == "started"
+    assert board.comment_heading("\n\nLanded: 5c8b26a\n") == "landed"
+    assert board.comment_heading("Landed on main as abc") == "landed on main as abc"
+    assert board.comment_heading("") == ""
+    assert board.comment_heading("\n***\n\nStarted\n") == "started", "a rule line is not a heading"
+    assert board.comment_heading("Landed v0.6.0 today") == "landed v0.6.0 today", "a dot inside a word is no stop"
+
+
 # ── the queue ────────────────────────────────────────────────────────────────
 
 
