@@ -183,16 +183,16 @@ def test_the_tracks_before_the_kept_tail_are_moved_last_first(installed):
 
 
 def test_a_move_that_lands_anywhere_else_refuses_at_once_with_every_track_kept(installed):
-    provider = Provider(["a", "b", "c"])
+    provider = Provider(["a", "b", "c", "d"])
     provider.elsewhere = True
     slept: list[float] = []
     with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).order_tracks("mine", ("c", "b", "a"))
+        _adapter(installed, provider, slept).order_tracks("mine", ("d", "a", "b", "c"))
     assert refused.value.cause.reason == "outbound-remove-refused"
     assert refused.value.cause.detail["problem"] == "read-back-differs"
     assert len(provider.moves) == 1
     assert slept == [], "a read back that is neither before nor after was read again"
-    assert sorted(provider.members) == ["a", "b", "c"]
+    assert provider.members == ["a", "d", "b", "c"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -205,9 +205,9 @@ def test_a_412_on_a_stale_tag_is_read_again_and_the_move_made_on_the_new_reading
     after = _adapter(installed, provider).order_tracks("mine", ("c", "a", "b"))
     assert after == ("c", "a", "b")
     assert provider.refused == 1
-    # The move the provider refused changed nothing, and the one after it was
-    # sent with the tag of the reading its position came from.
-    assert [tag for _asked, _to, tag in provider.moves] == [1, 1]
+    # The move the provider refused carried the stale tag and changed nothing;
+    # the one after it was sent with the tag of the new reading.
+    assert [tag for _asked, _to, tag in provider.moves] == [0, 1]
 
 
 def test_a_tag_that_never_comes_fresh_refuses_with_nothing_moved(installed):

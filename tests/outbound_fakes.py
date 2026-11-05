@@ -117,6 +117,8 @@ class FakeAccount:
         #: asserted through the path that rebuilds the cause and merges totals.
         self.provider_error = provider_error
         self._writes = 0
+        #: U220. Every order asked, as ``(playlist, expect)``.
+        self.expected: list[tuple[str, tuple[str, ...] | None]] = []
         #: Every match asked, as the keyword arguments it was asked with, so a
         #: test can say what an engine handed the account to choose by.
         self.matches: list[dict[str, str]] = []
@@ -341,13 +343,23 @@ class FakeAccount:
         self.taken.append((playlist_id, tuple(remote_ids)))
         return tuple(one for one in remote_ids if one not in members)
 
-    def order_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Put the asked tracks it holds once in the asked order, the rest first. One write."""
+    def order_tracks(
+        self,
+        playlist_id: str,
+        remote_ids: tuple[str, ...],
+        *,
+        expect: tuple[str, ...] | None = None,
+    ) -> tuple[str, ...]:
+        """Put the asked tracks it holds once in the asked order, the rest after (U220). One write.
+
+        ``expect`` is recorded in :attr:`expected`, by playlist (U220).
+        """
+        self.expected.append((playlist_id, None if expect is None else tuple(expect)))
         self._bump(playlist_id)
         members = self.playlists.setdefault(playlist_id, [])
         once = {one for one in members if members.count(one) == 1}
         asked = [one for one in dict.fromkeys(remote_ids) if one in once]
-        members[:] = [one for one in members if one not in set(asked)] + asked
+        members[:] = asked + [one for one in members if one not in set(asked)]
         self.ordered.append((playlist_id, tuple(remote_ids)))
         return tuple(members)
 

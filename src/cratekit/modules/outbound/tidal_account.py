@@ -115,6 +115,55 @@ _TRACK_ID = re.compile(r"[0-9]+")
 NOT_FOUND_NAMES = frozenset({"ObjectNotFound", "InvalidISRC"})
 
 
+#: U220. How many times a reading of a playlist being put in order is taken
+#: again: when the first reading does not agree with what is known of the
+#: playlist, when a read back still shows the playlist as it was before the
+#: move, and when the provider refuses a move's version tag as stale.
+ORDER_REREADS = 3
+
+#: U220. The pause before each reading taken again, the first before the first.
+#: Unmeasured: how long the provider's reads lag its writes is owed to an
+#: attended sitting, and these bound the wait at seven seconds a step.
+ORDER_PAUSES = (1.0, 2.0, 4.0)
+
+#: U220. The status the provider answers a write whose version tag is not the
+#: playlist's current one, having changed nothing (Sitting 62).
+PRECONDITION_FAILED = 412
+
+
+def _stale_tag(exc: BaseException) -> bool:
+    """Whether a failure, or one it was raised from, is the provider's 412 (U220)."""
+    seen: BaseException | None = exc
+    while seen is not None:
+        status = getattr(getattr(seen, "response", None), "status_code", None)
+        if status == PRECONDITION_FAILED:
+            return True
+        seen = seen.__cause__
+    return False
+
+
+def _to_the_front(before: list[str], remote_ids: Iterable[str]) -> list[str]:
+    """The tracks to move to the front, in the order to move them, to stand as asked (U220).
+
+    A track the playlist does not hold, or holds twice, is not asked. The
+    longest run at the tail of the asked order already standing in that order
+    in ``before`` stays; every asked track before that run is moved, the last
+    of them first, so each lands in front of the one after it.
+    """
+    counts: dict[str, int] = {}
+    for one in before:
+        counts[one] = counts.get(one, 0) + 1
+    wanted = [
+        str(one) for one in dict.fromkeys(remote_ids) if str(one) and counts.get(str(one)) == 1
+    ]
+    asked = set(wanted)
+    keep = 0
+    for one in reversed([one for one in before if one in asked]):
+        if keep < len(wanted) and one == wanted[len(wanted) - 1 - keep]:
+            keep += 1
+    return list(reversed(wanted[: len(wanted) - keep]))
+
+
 class _Absent:
     """The answer a lookup gives for an explicit not found, kept off the retry."""
 
@@ -1140,74 +1189,200 @@ class TidalAccount:
             detail={"playlist_id": identifier, "problem": "not-product-made"},
         )
 
-    def order_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Put the playlist's tracks in this order, one move at a time. NEVER RETRIED.
+    def order_tracks(
+        self,
+        playlist_id: str,
+        remote_ids: tuple[str, ...],
+        *,
+        expect: tuple[str, ...] | None = None,
+    ) -> tuple[str, ...]:
+        """Put the playlist's tracks in this order, one move at a time. NO MOVE IS SENT TWICE.
 
         THE SAME TWO RECORDS ARE ASKED FIRST as :meth:`remove_tracks` asks,
         before the playlist is opened.
 
-        EVERY MOVE IS TO THE END, the one position whose meaning does not
-        depend on how the provider counts a move's target. The longest run at
-        the head of ``remote_ids`` already standing in that order stays where
-        it is, and every track after it is moved to the end in turn, which
-        leaves the playlist in exactly the asked order.
+        EVERY MOVE IS TO THE FRONT (U220), the one kind of move whose landing
+        does not depend on how the provider counts a move's target: a track
+        moved to an earlier position lands there whether the target is
+        counted before the track is taken out or after. A move to the end is
+        not: Sitting 62's brief names a provider whose move to the length lands
+        one short. The longest run at the TAIL of ``remote_ids`` already
+        standing in that order stays where it is, and the tracks before it are
+        moved to the front, the last of them first, which leaves the asked
+        tracks in exactly the asked order with every track not asked after
+        them. The moves are worked out again from each reading, so a reading
+        taken again is planned from as it is.
+
+        THE FIRST READING MUST AGREE WITH WHAT IS KNOWN OF THE PLAYLIST, see
+        :meth:`_settled`: ``expect``, a reading the caller took, or else what
+        this adapter's own writes and reads in this command left on it. A
+        reading that does not agree is taken again after a pause, at most
+        :data:`ORDER_REREADS` times, and then refused with nothing moved.
 
         BY POSITION, through :meth:`_positions`, which refuses a playlist whose
-        positions cannot be trusted, and READ BACK after every move, which must
-        be what it held with that one track moved to the end. Any other answer
-        is refused, ``outbound-remove-refused``, and nothing more is sent: a
-        move by position that landed elsewhere would make every later one
-        wrong. A move changes no membership, so a refusal part way leaves every
-        track on the playlist.
+        positions cannot be trusted. The version tag the client sends with a
+        move is the one the reading of those positions came with, so a reading
+        the provider has moved on from is answered 412 with nothing changed
+        (Sitting 62's first failure). That answer, and only that one, is met
+        by reading the playlist again and planning from the new reading, at
+        most :data:`ORDER_REREADS` times. Any other failure of a move is raised
+        and nothing is sent again: a move that reached the provider and then
+        timed out, sent again, would move whatever stands at that position.
+
+        READ BACK after every move, see :meth:`_read_back`, which must be what
+        it held with that one track moved to the front. A reading still equal
+        to the playlist before the move is a read that lags the move (Sitting
+        62's continues) and is taken again after a pause, at most
+        :data:`ORDER_REREADS` times; anything else is refused at once,
+        ``outbound-remove-refused``, and nothing more is sent. A move changes
+        no membership, so a refusal part way leaves every track on the
+        playlist.
 
         A track the playlist does not hold, or holds twice, is not moved. The
         return is the playlist's order once the moves are done.
         """
         identifier = str(playlist_id)
         self._vouched(identifier, "no track was moved")
-        playlist = self._playlist(identifier)
-        before = self._positions(identifier, playlist)
-        counts: dict[str, int] = {}
-        for one in before:
-            counts[one] = counts.get(one, 0) + 1
-        wanted = [
-            str(one)
-            for one in dict.fromkeys(remote_ids)
-            if str(one) and counts.get(str(one)) == 1
-        ]
-        asked = set(wanted)
-        standing = [one for one in before if one in asked]
-        keep = 0
-        for one in standing:
-            if keep < len(wanted) and one == wanted[keep]:
-                keep += 1
+        known = self._members.get(identifier)
+        playlist, before = self._settled(
+            identifier,
+            tuple(expect) if expect is not None else (tuple(known) if known is not None else None),
+            exact=expect is not None,
+        )
         doing = f"put the playlist {identifier} in order"
-        for one in wanted[keep:]:
+        stale = 0
+        while True:
+            pending = _to_the_front(before, remote_ids)
+            if not pending:
+                return tuple(before)
+            one = pending[0]
             at = before.index(one)
-            accepted = self._call(
-                doing,
-                lambda at=at, playlist=playlist: playlist.move_by_indices([at], len(before)),
-                retries=0,
-            )
+            try:
+                accepted = self._call(
+                    doing,
+                    lambda at=at, playlist=playlist: playlist.move_by_indices([at], 0),
+                    retries=0,
+                )
+            except CratekitError as exc:
+                if stale >= ORDER_REREADS or not _stale_tag(exc):
+                    raise
+                # A 412 CHANGED NOTHING, so the playlist is read again and the
+                # moves planned from that reading, with the tag it came with.
+                self._sleep(ORDER_PAUSES[stale])
+                stale += 1
+                playlist = self._playlist(identifier)
+                before = self._positions(identifier, playlist)
+                continue
             if accepted is False or accepted is _ABSENT:
                 raise account.provider_failure(
                     RuntimeError("the provider did not accept the move"), doing
                 )
-            expected = [*before[:at], *before[at + 1 :], one]
+            playlist, before = self._read_back(
+                identifier, before, [one, *before[:at], *before[at + 1 :]]
+            )
+
+    def _settled(
+        self, identifier: str, known: tuple[str, ...] | None, *, exact: bool
+    ) -> tuple[Any, list[str]]:
+        """The playlist opened and read for an order, once the reading agrees with ``known`` (U220).
+
+        ``known`` is what the caller or this adapter last knew the playlist to
+        hold, or None when nothing is known, and then the first reading is
+        taken as it is. ``exact`` compares the distinct tracks in order, for a
+        reading the caller took itself; otherwise the tracks held are compared
+        and not where they stand, since a provider may put an added track
+        somewhere other than where this adapter appended it.
+
+        A READING THAT LAGS A WRITE IS WHAT THIS IS FOR. Sitting 62's order ran
+        straight after six additions, and a reading that does not yet show
+        them puts every later position in the wrong place. A reading that
+        disagrees, or that is short of the playlist's declared count while
+        something is known, is taken again after each pause of
+        :data:`ORDER_PAUSES`, and once :data:`ORDER_REREADS` are spent the last
+        refusal is raised with nothing moved. With nothing known a reading
+        short of its count refuses at once, as :meth:`_positions` always has,
+        since there is no write for it to lag.
+        """
+
+        def agrees(reading: list[str]) -> bool:
+            if known is None:
+                return True
+            if exact:
+                return list(dict.fromkeys(reading)) == list(dict.fromkeys(known))
+            return sorted(reading) == sorted(known)
+
+        last: CratekitError | None = None
+        for attempt in range(ORDER_REREADS + 1):
+            if attempt:
+                self._sleep(ORDER_PAUSES[attempt - 1])
             playlist = self._playlist(identifier)
-            before = self._positions(identifier, playlist)
-            if before != expected:
-                raise refuse(
-                    "outbound-remove-refused",
-                    f"the playlist {identifier} read back after a move is not what it "
-                    f"held with that track moved to the end, so nothing more was "
-                    f"moved; every track is still on it",
-                    steps=("check the playlist's order by hand in the provider's own player",),
-                    scope=Scope.RUN,
-                    origin=("outbound", "account"),
-                    detail={"playlist_id": identifier, "problem": "read-back-differs"},
-                )
-        return tuple(before)
+            try:
+                reading = self._positions(identifier, playlist)
+            except CratekitError as exc:
+                if known is None or (exc.cause.detail or {}).get("problem") != "positions-unknown":
+                    raise
+                last = exc
+                continue
+            if agrees(reading):
+                return playlist, reading
+            last = refuse(
+                "outbound-remove-refused",
+                f"the playlist {identifier} read {attempt + 1} time(s) does not hold "
+                f"what was last known of it, so the reading may lag a write and no "
+                f"track was moved",
+                steps=(
+                    "check the playlist by hand in the provider's own player, then "
+                    "run the sync again",
+                ),
+                scope=Scope.RUN,
+                origin=("outbound", "account"),
+                detail={"playlist_id": identifier, "problem": "read-differs"},
+            )
+        assert last is not None
+        raise last
+
+    def _read_back(
+        self, identifier: str, before: list[str], expected: list[str]
+    ) -> tuple[Any, list[str]]:
+        """The playlist opened and read after a move, which must be ``expected`` (U220).
+
+        A reading still equal to ``before`` lags the move and is taken again
+        after each pause of :data:`ORDER_PAUSES`, at most
+        :data:`ORDER_REREADS` times. A reading that is neither is refused at
+        once, since a move that landed elsewhere would make every later one
+        wrong. The move is never sent again from here.
+        """
+        reading: list[str] = []
+        attempt = 0
+        for attempt in range(ORDER_REREADS + 1):
+            if attempt:
+                self._sleep(ORDER_PAUSES[attempt - 1])
+            playlist = self._playlist(identifier)
+            reading = self._positions(identifier, playlist)
+            if reading == expected:
+                return playlist, reading
+            if reading != before:
+                break
+        lagged = reading == before
+        raise refuse(
+            "outbound-remove-refused",
+            f"the playlist {identifier} read back after a move is not what it held "
+            f"with that track moved to the front"
+            + (
+                f" (it still read as it was before the move after {attempt + 1} readings)"
+                if lagged
+                else ""
+            )
+            + ", so nothing more was moved; every track is still on it",
+            steps=("check the playlist's order by hand in the provider's own player",),
+            scope=Scope.RUN,
+            origin=("outbound", "account"),
+            detail={
+                "playlist_id": identifier,
+                "problem": "read-back-differs",
+                "lagged": "yes" if lagged else "no",
+            },
+        )
 
     def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
         """Take tracks off one playlist the product made or the author paired. NEVER RETRIED.
