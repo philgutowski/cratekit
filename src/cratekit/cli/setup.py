@@ -94,7 +94,7 @@ from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import doctor, output, prompt, registry, render
 from cratekit.cli.output import Envelope
-from cratekit.core import config, preflight, profiles, rb_writer, secrets, taxonomy
+from cratekit.core import config, preflight, processes, profiles, rb_writer, secrets, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
 from cratekit.core.exit_codes import Remedy
 
@@ -1142,7 +1142,12 @@ def _refuse_a_database_that_is_not_one(cfg: config.Config) -> None:
             return
     except OSError:
         return
-    if rb_writer.rekordbox_processes_running():
+    try:
+        if rb_writer.rekordbox_processes_running():
+            return
+    except processes.AbsenceUnconfirmed:
+        # U211. No whole copy over an absence nobody confirmed either, so
+        # nothing about the file is known, as with rekordbox running.
         return
     try:
         with rb_writer.read_only_copy(source, cfg=cfg):
@@ -1292,7 +1297,20 @@ def _propose_prefix_map(wizard: _Wizard, document: dict[str, Any], cfg: config.C
             ),
         )
         return False
-    running = rb_writer.rekordbox_processes_running()
+    try:
+        running = rb_writer.rekordbox_processes_running()
+    except processes.AbsenceUnconfirmed as exc:
+        # U211, the same answer as rekordbox running, said as unknown.
+        wizard.note(
+            "setup.prefix_map",
+            "location prefix map",
+            doctor.Status.INFO,
+            (
+                f"{exc.cause.message}, so no copy of the database was taken and no "
+                f"drive rule was offered; run setup again once it clears"
+            ),
+        )
+        return False
     if running:
         wizard.note(
             "setup.prefix_map",

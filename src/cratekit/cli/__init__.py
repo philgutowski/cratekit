@@ -652,6 +652,33 @@ def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:
     )
 
 
+def run_continue_command(state: gates.RunState) -> str:
+    """The command that continues a kept run with every answer it holds (U211).
+
+    The verb's own command line as its first invocation gave it, under
+    ``--run``, which is what ``run decide --continue`` dispatches. A run
+    recorded before U168 keeps no command line, so the verb's words stand
+    with an ellipsis for its arguments, as ``run decide`` says it then.
+    """
+    if state.argv is not None:
+        return shlex.join(["crate", "--run", state.run_id, *state.argv])
+    return f"crate --run {state.run_id} {state.verb.replace('.', ' ')} ..."
+
+
+def _with_run_continue(cause: Cause, state: gates.RunState) -> Cause:
+    """A kept refusal's cause with its first step naming the command that continues the run."""
+    command = run_continue_command(state)
+    steps = (
+        f"once it clears, continue this run with its answers: {command}",
+        *cause.remediation.steps,
+    )
+    return dataclasses.replace(
+        cause,
+        remediation=dataclasses.replace(cause.remediation, steps=steps),
+        detail={**dict(cause.detail or {}), "continue": command, "run_id": state.run_id},
+    )
+
+
 def _dispatched(
     args: argparse.Namespace, argv: Sequence[str], entry: Entry, *, as_json: bool, stderr
 ) -> Envelope:
@@ -734,7 +761,13 @@ def _dispatched_in_scope(
         # out of a verb that drives no job. What the run did is kept, so it is
         # blocked at a line the person set and not failed.
         parked = isinstance(exc, JobBlocked) or ceiling_stop
-        resumable = cause.code in gates.GATE_CODES and not parked
+        # A REFUSAL THAT KEEPS ITS RUN (U211). Raised before the step it
+        # guards and clearing on its own, so the run is saved with its answers
+        # and the cause names the command that continues it.
+        kept = cause.reason in gates.KEPT_RUN_REASONS and not parked
+        if kept and state is not None:
+            cause = _with_run_continue(cause, state)
+        resumable = (cause.code in gates.GATE_CODES or kept) and not parked
         if state is not None and resumable:
             gates.save(state)
         if resumable or parked:
