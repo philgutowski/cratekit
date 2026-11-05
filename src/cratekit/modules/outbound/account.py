@@ -37,7 +37,11 @@ from __future__ import annotations
 import importlib
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
-from cratekit.acquire.provider_session import ProviderUnavailable
+from cratekit.acquire.provider_session import (
+    ProviderUnavailable,
+    answered_status,
+    failure_links,
+)
 from cratekit.core import config, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -92,15 +96,20 @@ SESSION_REFUSED_STATUSES = frozenset({401, 403})
 
 
 def _session_refused(exc: BaseException) -> bool:
-    """Whether a failure after login is the provider refusing the session."""
-    seen: BaseException | None = exc
-    while seen is not None:
-        status = getattr(getattr(seen, "response", None), "status_code", None)
-        if status in SESSION_REFUSED_STATUSES:
+    """Whether a failure after login is the provider refusing the session.
+
+    The walk is the login's, ``provider_session.failure_links``, which departs
+    from ``core.cause._chain`` by following context too (R-1305): the client
+    decodes an error answer's body inside its own handler of the HTTP error,
+    so a 401 whose body is not JSON arrives as the decode error with the 401
+    as its context. A status counts on any link it reaches; the client's
+    authentication error by name only on the declared cause chain.
+    """
+    for link, declared in failure_links(exc):
+        if answered_status(link) in SESSION_REFUSED_STATUSES:
             return True
-        if type(seen).__name__ == "AuthenticationError":
+        if declared and type(link).__name__ == "AuthenticationError":
             return True
-        seen = seen.__cause__
     return False
 
 
