@@ -26,7 +26,7 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Sequence
+from collections.abc import Callable, Iterable, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -105,11 +105,14 @@ def create(
     *,
     source: str,
     analysis_roots: Iterable[Path | str],
+    on_commit: Callable[[str], None] | None = None,
 ) -> playlist_pair.Written:
     """Make the playlist at ``home`` holding ``rows`` in order, in one guarded commit.
 
     ``source`` is the stable identifier the session records the commit under.
-    The playlist is read back after the commit; the caller checks it.
+    ``on_commit`` is told the new playlist's identifier the moment the commit
+    lands, so a caller can pair it even when a later step fails. The playlist
+    is read back after the commit; the caller checks it.
     """
     watched = [Path(root) for root in analysis_roots]
     if not watched:
@@ -147,6 +150,8 @@ def create(
                     playlists={playlist_id: (home.name, home.parent, frozenset(order))},
                 )
                 rb_writer.commit_guarded(db)
+                if on_commit is not None:
+                    on_commit(playlist_id)
             except BaseException:
                 trees._rollback_quietly(db)
                 if witness.landed:

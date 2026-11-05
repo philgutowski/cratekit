@@ -1798,9 +1798,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined. 2026-11-04, U198: the
     # not discovered and released warnings joined. 2026-11-04, U202: the
-    # account playlists not brought over and the later change calls joined.
+    # account playlists not brought over and the later change calls joined,
+    # and the two listing refusals a brought playlist is listed for.
     'sync/pair_cli.py': [
         'account-discovery',
+        'intake-list-unusable',
+        'label-playlist-unreadable',
         'playlist-pair',
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
@@ -2998,7 +3001,13 @@ PINNED_LITERAL_HOLDERS = {
     'sync/mark_record.py': ['sync-mark-record-unusable'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined.
-    'sync/pair_cli.py': ['sync-pair-out-of-scope', 'sync-pair-unknown'],
+    # 2026-11-04, U202: the two listing refusals a brought playlist is listed for.
+    'sync/pair_cli.py': [
+        'intake-list-unusable',
+        'label-playlist-unreadable',
+        'sync-pair-out-of-scope',
+        'sync-pair-unknown',
+    ],
     # 2026-11-04, U202: the rekordbox side of a pair made from the account.
     'sync/pair_reverse.py': ['decision-stale'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],

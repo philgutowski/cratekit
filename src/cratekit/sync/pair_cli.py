@@ -176,6 +176,11 @@ UNPAIRED = "sync-pair-twin-unpaired"
 #: The refusals that are about one pair's own playlists, which a sync of every
 #: pair names and passes over rather than stopping at.
 PER_PAIR_REASONS = frozenset({"sync-pair-unknown", "sync-pair-out-of-scope"})
+#: U202. The refusals one account playlist brought from a synced folder may
+#: raise about itself, which list it rather than refuse the sync.
+BROUGHT_REASONS = PER_PAIR_REASONS | frozenset(
+    {"label-playlist-unreadable", "intake-list-unusable"}
+)
 
 #: The item states an intake job's report gives a track the library holds.
 OWNED_STATE = "owned"
@@ -1343,7 +1348,25 @@ def plan(
                 planned.append(one)
             backs, listed_back = _discovered_back(cfg, reader, db, document)
             for target, home in backs:
-                planned.append(plan_pair(reader, target, None, home=home))
+                try:
+                    planned.append(plan_pair(reader, target, None, home=home))
+                except CratekitError as exc:
+                    # ONE ACCOUNT PLAYLIST THE PROVIDER CANNOT LIST DOES NOT HOLD
+                    # EVERY PAIR (U202, from the review): it is listed, never made.
+                    if exc.cause.reason not in BROUGHT_REASONS:
+                        raise
+                    from cratekit.sync import pair_discover
+
+                    listed_back.append(
+                        pair_discover.Listed(
+                            "",
+                            target.title,
+                            (target.folder, target.title),
+                            pair_discover.TAKEN,
+                            exc.cause.message,
+                            account_id=target.account_id,
+                        )
+                    )
         return Plan(
             tuple(planned),
             left_out,
@@ -1693,10 +1716,17 @@ def facts(planned: Plan) -> dict[str, Any]:
             }[one.place.action]
             made = f"made on the account in {folder} {one.place.folder!r}, "
         if one.home is not None:
-            made = f"made in rekordbox in {one.home.where!r}, "
+            # U202, from the review: the rekordbox side has no identifier yet.
+            head = (
+                f"{one.name!r} on the account, made in rekordbox as {one.home.where!r}; "
+            )
+        else:
+            head = (
+                f"{one.name!r} {made}on the account with {one.rekordbox_name!r} "
+                f"({one.target.rekordbox_id}) in rekordbox; "
+            )
         shown[f"pair {one.target.key}"] = (
-            f"{one.name!r} {made}on the account with {one.rekordbox_name!r} "
-            f"({one.target.rekordbox_id}) in rekordbox; "
+            head
             + (
                 "first sync, additions only, and it completes only when both sides "
                 "are applied; "
@@ -1864,7 +1894,10 @@ def _made_in_rekordbox(
 
     home = one.home
     assert home is not None
-    holder: dict[str, playlist_pair.Written] = {}
+    holder: dict[str, Any] = {}
+
+    def landed(playlist_id: str) -> None:
+        holder["landed"] = playlist_id
 
     def create() -> str:
         db = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
@@ -1876,7 +1909,16 @@ def _made_in_rekordbox(
                 one.change.order,
                 source=f"{PAIR_SOURCE}:{one.target.account_id}",
                 analysis_roots=analysis_store.watch_roots(cfg),
+                on_commit=landed,
             )
+        except BaseException as exc:
+            # A FAILURE AFTER THE COMMIT LANDED still pairs what landed (U202,
+            # from the review), so the playlist is never left in rekordbox
+            # unpaired; the failure is raised once the pair is recorded.
+            if not holder.get("landed"):
+                raise
+            holder["failed"] = exc
+            return holder["landed"]
         finally:
             rb_writer.close_db(db)
         return holder["written"].playlist_id
@@ -1884,6 +1926,8 @@ def _made_in_rekordbox(
     rekordbox_id, made = pairs.PairStore(cfg).reserve_made_rekordbox(
         one.target.account_id, name=one.name, folder=home.folder, create=create
     )
+    if "failed" in holder:
+        raise holder["failed"]
     if not made:
         return one, None
     change = replace(one.change, playlist_id=rekordbox_id)
@@ -2108,7 +2152,7 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                     + "; ".join(
                         called(one, call)
                         + (
-                            ", kept, the addition was later"
+                            ", kept, the removal was not later"
                             if call.kept
                             else ", taken off both, the removal was later"
                         )
@@ -2304,6 +2348,7 @@ def sync_pair(ctx) -> Envelope:
 
 __all__ = [
     "ACCOUNT_GATE",
+    "BROUGHT_REASONS",
     "INTAKE_HANDLER",
     "PAIR_SOURCE",
     "REKORDBOX_GATE",

@@ -367,7 +367,7 @@ def test_a_track_put_back_on_the_account_after_rekordbox_took_it_out_stays_on_bo
     assert world.account.playlists[account_id] == ["t4", "t5"]
     (call,) = _items(envelope["data"], "merge", pair_merge.ADDITION_LATER)
     assert call["added_on"] == "account" and call["removed_at"] and call["added_at"]
-    assert "the addition was later" in _said(envelope, pair_cli.LATER_CHANGE)
+    assert "the removal was not later" in _said(envelope, pair_cli.LATER_CHANGE)
 
 
 def test_a_rekordbox_removal_later_than_the_account_putting_it_back_takes_it_off_both(
@@ -433,3 +433,135 @@ def test_a_track_put_back_in_rekordbox_after_the_account_took_it_out_stays_and_i
     assert world.account.playlists[account_id] == ["t4", "t5"]
     (call,) = _items(envelope["data"], "merge", pair_merge.TIME_UNKNOWN)
     assert call["added_on"] == "rekordbox" and call["added_at"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# From the review, round one
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_failure_after_the_commit_still_pairs_the_playlist_made(world, cfg, gig, monkeypatch):
+    from cratekit.core import convergence
+
+    closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    real = convergence.record_fingerprint
+
+    def broken(*args, **kwargs):
+        raise OSError("the fingerprint could not be recorded")
+
+    monkeypatch.setattr(convergence, "record_fingerprint", broken)
+    code, _envelope = sync()
+    assert code != int(ExitCode.OK)
+    made = in_rekordbox(world, gig)["Closer"]
+    held = pairs.PairStore(cfg).get(closer)
+    assert held is not None and held.rekordbox_id == made and held.made
+    monkeypatch.setattr(convergence, "record_fingerprint", real)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert list(in_rekordbox(world, gig)).count("Closer") == 1
+    assert pairs.PairStore(cfg).get(closer).account == ("t4",)
+
+
+def test_one_account_playlist_the_provider_cannot_list_is_named_and_the_rest_sync(world, gig):
+    broken = on_account(world, "GIG READY Broken", "GIG READY", "t4")
+    on_account(world, "GIG READY Closer", "GIG READY", "t5")
+    real = world.catalogue.playlist_for
+
+    def playlist_for(reference):
+        if reference == broken:
+            raise LookupError("the provider would not list it")
+        return real(reference)
+
+    world.catalogue.playlist_for = playlist_for
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    inside = in_rekordbox(world, gig)
+    assert "Closer" in inside and "Broken" not in inside
+    (left,) = _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
+    assert left["account_id"] == broken
+    assert "GIG READY Broken" in _said(envelope, pair_cli.NOT_BROUGHT)
+
+
+def test_a_playlist_a_pair_may_not_hold_is_named_and_the_rest_sync(world, gig, monkeypatch):
+    from cratekit.modules.outbound import ledger
+
+    built = on_account(world, "GIG READY Set 1", "GIG READY", "t4")
+    on_account(world, "GIG READY Closer", "GIG READY", "t5")
+    monkeypatch.setattr(ledger, "set_playlist_ids", lambda cfg: frozenset({built}))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    inside = in_rekordbox(world, gig)
+    assert "Closer" in inside and "Set 1" not in inside
+    (left,) = _items(envelope["data"], "account-discovery", pair_discover.TAKEN)
+    assert left["account_id"] == built and "set's playlist" in left["why"]
+
+
+def test_a_root_folder_gone_from_the_account_brings_nothing_back(world, gig):
+    on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    folder_id = next(fid for fid, n in world.account.folders().items() if n == "GIG READY")
+    del world.account.folder_names[folder_id]
+    plan = plan_only()
+    assert not _items(plan, "rekordbox", "create")
+    assert not _items(plan, "account-discovery", pair_discover.TAKEN)
+
+
+def test_the_gate_line_for_a_playlist_made_in_rekordbox_names_where(world, gig):
+    closer = on_account(world, "GIG READY Closer", "GIG READY", "t4")
+    code, envelope = sync(rekordbox="skip", account="skip")
+    assert code == int(ExitCode.OK)
+    code, envelope = pair_cli_gate_context()
+    del code
+    line = envelope.get(f"pair {closer}", "")
+    assert "made in rekordbox as 'GIG READY / Closer'" in line and "()" not in line
+
+
+def pair_cli_gate_context():
+    """The facts one plan shows beside the gate, read from the plan itself."""
+    from cratekit.core import config as config_module
+    from cratekit.core import jobs
+
+    cfg = config_module.load()
+    store = pairs.PairStore(cfg)
+    with jobs.open_store() as queue:
+        planned = pair_cli.plan(cfg, pair_cli.targets(store, None, None), store=queue, every=True)
+    return 0, pair_cli.facts(planned)
+
+
+def test_a_put_back_dated_before_the_last_sync_is_no_put_back(world, gig):
+    playlist, account_id = _paired_on_both(world, gig)
+    world.dates["t5"] = LONG_AGO + timedelta(days=30)
+    _rekordbox_removed(world, playlist, "5", soon(1))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == ["t4"]
+    assert not _items(envelope["data"], "merge", pair_merge.TIME_UNKNOWN)
+    assert not _items(envelope["data"], "merge", pair_merge.ADDITION_LATER)
+
+
+def test_the_write_refuses_a_parent_gone_or_a_row_gone_since_the_plan(world, cfg, gig):
+    home = _home(world, "GIG READY", "GIG READY Closer")
+    handle = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        with pytest.raises(Exception) as gone_row:
+            pair_reverse.recheck(handle, home, ("4", "999"))
+    finally:
+        rb_writer.close_db(handle)
+    assert gone_row.value.cause.reason == "decision-stale"
+    world.delete_rekordbox(gig)
+    handle = rb_writer.open_db(
+        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    )
+    try:
+        with pytest.raises(Exception) as gone_parent:
+            pair_reverse.recheck(handle, home, ("4",))
+    finally:
+        rb_writer.close_db(handle)
+    assert gone_parent.value.cause.reason == "decision-stale"
+    assert "no longer a live folder" in gone_parent.value.cause.message
+
+
+def test_home_of_refuses_the_twins_folder(world):
+    world.folder("Custom Playlists 2026")
+    assert "twins" in _home(world, "Custom Playlists 2026", "Custom Playlists 2026 X")
