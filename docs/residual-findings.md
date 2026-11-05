@@ -44395,3 +44395,98 @@ reading and none produces it.
 **Closes when:** the limit also names `AdapterError`, with a test raising a
 provider failure inside a handler of `AdapterAuthFailed`, or a unit adds such a
 handler and pins it. Ledger only, a maintainer facing shape.
+
+---
+
+## R-1317. A twin paired before U221 reads a naive account date as UTC, so a track dated before its mark in a zone east of UTC can read as added after it and be queued
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.held_for_choice` reads a twin that recorded
+no hold by time: a track is held unless the account dates its addition after
+the pair's mark. The dates come through `intake_cli._added_dates`, whose
+`hearted_on` reads `user_date_added` with `placeholders.parse_hearted`, and
+that reads a date with no zone as UTC (`as_utc`). A wall clock date one hour
+before the mark in a zone at +05:00, served with no zone, reads as four hours
+after it.
+
+**Measured cost.** Driven on the twins world by round one of U221's review:
+with `on_hold` dropped from the pairs document and the track dated as a naive
++05:00 wall clock an hour before the mark, `sync pair` queued it. No live
+producer was driven: the provider's client parses `dateAdded` into an aware
+datetime, and `tidal_account._added_at` drops naive ones, so the reachability
+on the live account is unmeasured. A track queued this way is a download
+Phillip did not choose, among sitting 63's twins only.
+
+**Closes when:** the time rule reads a date the account gave with no zone as
+unknown, which holds, rather than as UTC. Ledger only while no producer of a
+naive date is found.
+
+---
+
+## R-1318. The release gate counts a held track the library has since gained, so it can name more than the next sync pair queues
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `crate sync release` (`sync/release_cli.plan`) counts every
+id a twin's recorded hold carries. Once the library gains one of them, by a
+hand import, `crate sync pair` links it and adds it to the twin, but the
+pairs document still holds its id, so the release gate names and counts it.
+Fix round one subtracted the pair's recorded links; round two found that read
+raw links the document never prunes, so a link whose row left the library hid
+a held track and could make a twin unreleasable, and fix round two put back
+the count of every recorded id.
+
+**Measured cost.** Driven on the twins world by round one of U221's review:
+three held, a row carrying one track's ISRC inserted, `sync pair` added it to
+the twin; the release gate said "3 track(s)" and the next `sync pair` queued
+two. A count on the release screen one or more above what the sync pair gate
+then shows and queues; nothing is downloaded, lost or blocked by it.
+
+**Closes when:** the release plan subtracts only a held id whose link names a
+live library row, read as `sync pair` reads it, or `sync pair` drops from the
+recorded hold an id it has linked. Ledger only: a count the next gate corrects.
+
+---
+
+## R-1319. A twin read by time holds a track the account lists with no date, even one added by hand after the twin was made
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.held_for_choice` reads a twin that recorded
+no hold (paired before U221, or made from a short listing) by time, and an
+undated track reads as held, the conservative way, since the time rule cannot
+tell it from one listed before the mark. So a track Phillip adds to the
+account playlist by hand after the twin was made, if the account serves it
+with no date, waits for `crate sync release` rather than being queued.
+
+**Measured cost.** Driven on the twins world by round two of U221's review: a
+short listing backfill, then t22 appended dated after the mark and t23
+appended undated; `sync pair` queued t22 and held t23. `docs/GUIDE.md` says
+so. Whether the live account ever serves an undated track is unmeasured. The
+cost is a wanted download that waits for one release, never one made unasked.
+
+**Closes when:** the account is shown always to date an addition, or the hold
+is recorded for a short listing too, so the time rule is never read for a
+twin made since U221. Ledger only.
+
+---
+
+## R-1320. A twin a landing makes holds nothing, so a track the landing missed is queued again at the next sync pair without a release, until Phillip says whether it should be held too
+
+**Found:** at the build of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/twins.pair_landed` marks a landing's twin with an
+empty hold, so `crate sync pair` queues a track that twin lacks as any pair's,
+through intake. Only `crate sync twins` (the backfill) records a hold. The
+card asked Phillip, under "Question for Phillip" on #549, whether a landing's
+twin should hold its misses too; no answer had come by the landing, and the
+build took the recommended option, leaving it as it was.
+
+**Measured cost.** None new: before U221 a landing's misses were queued again
+the same way. The sweep that made the twin was Phillip's choice to download
+that playlist, so a retry of its misses is a download he chose. Driven by
+`tests/test_sync_twins_hold.py`, the landing test records an empty hold.
+
+**Closes when:** Phillip answers. If he picks holding a landing's misses,
+`pair_landed` records them as the backfill does, a small card. Ledger only.
