@@ -689,3 +689,178 @@ def test_the_ledger_keeps_a_snapshot_apart_from_none_and_only_on_its_own_playlis
     }
     ledger.record_mirror_agreed(installed, "Deep House", {"Deep House Low": ("p1", set(), set())})
     assert ledger.mirror_folders(installed)["Deep House"].playlists["Deep House Low"].agreed == frozenset()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. Round one's findings, each driven
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_short_playlists_snapshot_advances_so_a_rekordbox_move_is_never_read_as_an_edit(
+    machine,
+):
+    """Finding 1: Deep House Low lists short, rekordbox moves the track, nobody touches the account."""
+    low = machine.remote("Deep House Low")
+    machine.account.playlists[low].append("r9")
+    machine.account.hidden[low] = ("r9",)
+    machine.move_in_rekordbox("1", ("Deep House", "Med"), "2026-11-05 10:00:00.000 +00:00")
+
+    machine.run()
+    assert machine.held("Deep House Med") == ["r2", "r1"]
+
+    _area, step, shared = machine.plan()
+    assert step.state == NOTHING
+    assert shared.reading().decided.decisions == ()
+    # AND A REAL EDIT ON A WHOLE PLAYLIST IS CARRIED, not held.
+    machine.take_off("Deep House Med", "r1")
+    _area, step = machine.run()
+    assert step.state == PLANNED
+    assert machine.places("1") == set()
+
+
+def test_a_track_moved_to_its_own_genres_with_vox_is_held_and_nothing_is_written(machine):
+    """Finding 3: no genre changed, so no write and no false gate line."""
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Deep House with vox", "r1")
+
+    _area, step = machine.run()
+
+    assert step.state == NOTHING
+    (named,) = step.items
+    assert named["outcome"] == edits.HELD
+    assert machine.places("1") == {("Deep House", "Low")}
+    assert machine.held("Deep House with vox") == ["r1"]
+    assert machine.held("Deep House Low") == []
+
+
+def test_a_tree_the_product_latched_refuses_the_write_before_any_file_is_tagged(
+    machine, monkeypatch
+):
+    """Finding 2: the tree's own latch, before a tag, a row or a membership."""
+    from cratekit.core import convergence
+    from cratekit.core.cause import refuse
+
+    asked: list[str] = []
+
+    def latched(_cfg, _db, tree_id, _registry, **_kwargs):
+        asked.append(tree_id)
+        raise refuse("tree-unconverged", "the tree is latched", origin=("test",))
+
+    monkeypatch.setattr(convergence, "assert_tree_writable", latched)
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Tech House Med", "r1")
+    _area, step, _shared = machine.plan()
+
+    with pytest.raises(CratekitError) as caught:
+        step.apply()
+
+    assert caught.value.cause.reason == "tree-unconverged"
+    assert asked == [taxonomy.default_taxonomy().tree.id]
+    assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
+    assert machine.places("1") == {("Deep House", "Low")}
+
+
+def test_a_row_whose_genre_disagrees_with_its_file_takes_the_new_genre(machine):
+    """The row is asked whatever its file said before (round one, finding 7)."""
+    assert tags.write_tags(machine.files["1"], {"genre": "Tech House"})
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Tech House Med", "r1")
+
+    machine.run()
+
+    assert machine.genre_row("1") == GENRES["Tech House"]
+
+
+def test_a_track_whose_file_is_gone_is_named_and_nothing_of_it_is_written(machine):
+    machine.files["1"].unlink()
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Tech House Med", "r1")
+
+    _area, step = machine.run()
+
+    assert step.state == NOTHING
+    (named,) = step.items
+    assert named["outcome"] == "not taken" and "could not be found" in named["why"]
+    assert machine.places("1") == {("Deep House", "Low")}
+    assert machine.held("Tech House Med") == ["r1"]
+
+
+def test_a_track_whose_row_left_the_collection_is_named_and_nothing_is_written(machine):
+    conn = sqlite3.connect(machine.db)
+    conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = '1'")
+    conn.commit()
+    conn.close()
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Tech House Med", "r1")
+
+    _area, step, _shared = machine.plan()
+
+    assert step.state == NOTHING
+    (named,) = step.items
+    assert named["outcome"] == "not taken" and "no longer a live row" in named["why"]
+    assert tags.read_genre_from_file(machine.files["1"]) == "Deep House"
+
+
+def test_a_file_that_does_not_take_its_tags_keeps_its_row_and_tree_as_they_were(
+    machine, monkeypatch
+):
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Tech House Med", "r1")
+    _area, step, _shared = machine.plan()
+    monkeypatch.setattr(tags, "write_tags", lambda _path, _fields: False)
+
+    done = step.apply()
+
+    assert done["tagged"] == 0 and len(done["untagged"]) == 1
+    assert machine.places("1") == {("Deep House", "Low")}
+    assert machine.genre_row("1") == GENRES["Deep House"]
+    assert step.warnings[0]["code"] == "organize-mirror-edits-untagged"
+
+
+def test_a_read_back_that_differs_from_the_plan_is_refused():
+    change = mirror_edits.Change(
+        content_id="1",
+        track="r1",
+        outcome=edits.MOVE,
+        shown="a track",
+        path="x",
+        genre_was="Deep House",
+        genre="Tech House",
+        energy_was=2,
+        energy=4,
+        leave=(("p-low", "Deep House", "Low"),),
+        join=(("p-med", "Tech House", "Med"),),
+    )
+
+    class Held:
+        def __init__(self, rows):
+            self.rows = rows
+
+        def fetchall(self):
+            return self.rows
+
+    class Session:
+        def execute(self, *_args, **_kwargs):
+            return Held([("p-low",)])
+
+    class Db:
+        session = Session()
+
+    with pytest.raises(CratekitError) as caught:
+        mirror_edits.assert_read_back(Db(), [change])
+    assert caught.value.cause.reason == "session-committed-unverified"
+    assert caught.value.cause.detail == {"content_id": "1", "stayed": ["p-low"], "absent": ["p-med"]}
+
+
+def test_a_vocal_calibration_that_cannot_be_read_refuses_the_step_alone(machine, monkeypatch):
+    from cratekit.core.cause import refuse
+    from cratekit.write import metadata_cli
+
+    def unreadable(_cfg):
+        raise refuse("vocal-calibration-unreadable", "not json", origin=("test",))
+
+    monkeypatch.setattr(metadata_cli, "load_vocal_threshold", unreadable)
+    machine.take_off("Deep House Low", "r1")
+    machine.put_in("Tech House Med", "r1")
+    _area, step, _shared = machine.plan()
+    assert step.state == REFUSED and step.cause.reason == "vocal-calibration-unreadable"

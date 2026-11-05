@@ -356,3 +356,30 @@ def test_a_decision_shows_its_places_on_the_gate():
         "to": "Tech House Mid",
         "content_id": "c1",
     }
+
+
+def test_a_track_taken_off_its_band_and_put_in_its_own_genres_with_vox_is_held():
+    """Round one, finding 3: the genre is unchanged and the band is gone."""
+    decided = edits.decide(
+        [
+            held(DHL, account=(), rekordbox=("t1",), agreed=("t1",)),
+            held(DHV, account=("t1",), rekordbox=(), agreed=()),
+        ],
+        OWNED,
+    )
+    one = only(decided)
+    assert one.outcome == edits.HELD and "of its own genre" in one.why
+    assert decided.carried == ()
+
+
+def test_a_short_listing_reads_a_track_it_lists_and_holds_only_one_it_leaves_out():
+    """Round one, finding 1: a listed track is on the account whatever the count says."""
+    decided = edits.decide(
+        [
+            held(DHL, account=(), rekordbox=("t1",), agreed=("t1",)),
+            held(THM, account=("t1",), rekordbox=(), agreed=(), short=True),
+        ],
+        OWNED,
+    )
+    one = only(decided)
+    assert (one.outcome, one.to) == (edits.MOVE, THM)

@@ -54,7 +54,7 @@ it, recorded by the apply, or by the plan for a playlist with nothing to write.
 The caller reads each genre playlist three ways (:mod:`mirror_edits`) and hands
 in a HOLD per playlist: a track whose edit on the account the library takes, or
 one held, is never taken off nor added back here. A playlist whose listing came
-back short records no snapshot.
+back short keeps its snapshot's word on every track it did not list.
 
 MEMBERSHIP, NOT ORDER. Added tracks are appended; the order inside a mirrored
 playlist is not kept equal to rekordbox's, which the plan left to this unit and
@@ -377,6 +377,12 @@ class PlaylistPlan:
     #: Tracks held on the account rather than taken off or added back (U201).
     kept: int = 0
 
+    def unlisted(self, gone: frozenset[str] = frozenset()) -> frozenset[str]:
+        """Tracks a short listing's snapshot keeps its word on: agreed, not listed, not taken off."""
+        if not self.short or self.agreed is None:
+            return frozenset()
+        return frozenset(self.agreed) - self.held - gone
+
     @property
     def writes(self) -> bool:
         if self.action in (LEFT, UNREADABLE):
@@ -683,12 +689,13 @@ def settled(planned: FolderPlan) -> dict[str, tuple[str, frozenset[str], frozens
 
     Such a playlist is already as the mirror would leave it, so its snapshot is
     taken at the plan, which the apply of a folder with no write never reaches.
-    A playlist whose listing was short records none.
+    A playlist whose listing was short keeps the snapshot's word on every
+    track it did not list.
     """
     return {
-        one.name: (one.remote_id, one.held, one.hold.tracks)
+        one.name: (one.remote_id, one.held, one.hold.tracks | one.unlisted())
         for one in planned.playlists
-        if one.action == REUSE and not one.writes and not one.short and one.remote_id
+        if one.action == REUSE and not one.writes and one.remote_id
     }
 
 
@@ -806,10 +813,11 @@ def apply(
                 frozenset(
                     (set(step.held) - landed.get(step.name, set())) | added_to.get(step.name, set())
                 ),
-                step.hold.tracks,
+                step.hold.tracks
+                | step.unlisted(frozenset(landed.get(step.name, set()))),
             )
             for step in planned.playlists
-            if step.name in remote_of and not step.short
+            if step.name in remote_of
         },
     )
     # A RETIRED PLAYLIST GOES LAST, AND ITS RECORD AFTER IT (U150). Removed

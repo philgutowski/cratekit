@@ -1043,7 +1043,8 @@ held when it last finished it, so it tells your edit from a change made in
 rekordbox. Where both sides changed one track, an addition beats a removal, and
 two moves follow the later one; when either time is unknown rekordbox's
 stands. A track added to two band playlists at once, one the library does not
-own, and one in a playlist the account listed short is left on the account as
+own, one taken off its band and left only in a with vox playlist, and one
+missing from a playlist the account listed short is left on the account as
 you put it and named, never taken off. The rekordbox step is `mirror-edits`,
 on the rekordbox area's gate, each track named with its genre, energy and
 playlists from and to. The first organize after this arrives changes nothing in

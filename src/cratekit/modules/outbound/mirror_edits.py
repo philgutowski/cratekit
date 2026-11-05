@@ -48,8 +48,10 @@ person did is lost to a refresh that could not read what they meant.
 A PLAYLIST NEVER AGREED READS ITS ACCOUNT SIDE AS ITS SNAPSHOT, so every
 difference on it is rekordbox's and nothing in the library changes: the first
 refresh after U201 lands, and a playlist the mirror made since. A SHORT LISTING
-CARRIES NO EDIT, since a track it leaves out is no evidence that a person took
-it off; each track it reads differently from the snapshot is held.
+CARRIES NO REMOVAL, since a track it leaves out is no evidence that a person
+took it off: each track the snapshot holds that it does not list is held. Its
+snapshot still advances, keeping its word on every track it did not list and
+the mirror did not take off, so a change the mirror carried is not read again.
 
 Layer: modules.
 """
@@ -264,6 +266,17 @@ def _intent(
             f"({', '.join(_titles(added_more))}), so which genre it takes is not "
             f"something the account says",
         )
+    if removed and not now and folders[0] in {place.folder for place in removed}:
+        # TAKEN OFF ITS BAND AND LEFT IN A DERIVED PLAYLIST OF ITS OWN GENRE:
+        # the genre is unchanged and the band is gone, so the account says
+        # neither where it goes nor that it leaves.
+        return (
+            HELD,
+            None,
+            f"taken off {', '.join(_titles(removed))} on the account and left only in "
+            f"{', '.join(_titles(added_more | now_more))}, which is derived from a band "
+            f"of its own genre, so where it goes is not something the account says",
+        )
     if not removed and folders[0] in {place.folder for place in now}:
         # A DERIVED PLAYLIST OF ITS OWN GENRE: the band already says the
         # genre, so this is no edit, and the mirror writes rekordbox's side.
@@ -293,10 +306,13 @@ def decide(
     ``owner`` is each account track to the library rows matched to it, which a
     carried edit needs exactly one of.
     """
+    # A SHORT LISTING SAYS NOTHING OF A TRACK IT LEAVES OUT: one the snapshot
+    # holds and the listing does not may be counted and unlisted, so it is
+    # neither a removal nor anything else. A track it lists is on the account.
     unread: set[str] = set()
     for one in playlists:
         if one.short and one.agreed is not None:
-            unread |= one.account ^ one.agreed
+            unread |= one.agreed - one.account
     tracks = sorted(
         set().union(*((one.base | one.account | one.rekordbox) for one in playlists))
         if playlists
@@ -324,8 +340,8 @@ def decide(
                 Decision(
                     track,
                     HELD,
-                    "a playlist it is in listed short on the account, so what a "
-                    "person did to it there cannot be read",
+                    "a playlist the snapshot has it in listed short on the account "
+                    "without it, so whether a person took it off there cannot be read",
                     **shown,
                 )
             )

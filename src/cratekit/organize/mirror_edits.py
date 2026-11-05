@@ -487,12 +487,22 @@ class Applied:
         }
 
 
-def write(cfg: config.Config, db: Any, approved: Planned) -> Applied:
-    """Write every change in one guarded session on the write handle ``db``, and read it back."""
+def write(
+    cfg: config.Config, db: Any, approved: Planned, *, tree_id: str, registry: Any
+) -> Applied:
+    """Write every change in one guarded session on the write handle ``db``, and read it back.
+
+    THE TREE'S OWN LATCH FIRST, as every tree writer's
+    (``convergence.assert_tree_writable``): a database restored out of band is
+    detected before this write's fingerprint overwrites the evidence, and a
+    tree marked unconverged is refused before any file or row is written.
+    """
     from cratekit.core import analysis_store, convergence, rb_writer, session, snapshot
     from cratekit.write import metadata, trees
 
     done = Applied()
+    if approved.changes:
+        convergence.assert_tree_writable(cfg, db, tree_id, registry)
     watched = list(analysis_store.watch_roots(cfg))
     with (
         session.assert_gates(cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD)
@@ -513,11 +523,10 @@ def write(cfg: config.Config, db: Any, approved: Planned) -> Applied:
             else:
                 done.untagged.append(f"{change.shown} ({change.path})")
         try:
-            genres = {
-                one.content_id: one.genre
-                for one in taken
-                if one.genre and one.genre != one.genre_was
-            }
+            # EVERY ROW TAKING A GENRE IS ASKED, not only one whose file's genre
+            # changed: the row may say another genre than its file, and the
+            # writer's own policy skips a row that already holds it.
+            genres = {one.content_id: one.genre for one in taken if one.genre}
             if genres:
                 metadata.enable((metadata.RETAG_GENRE,))
                 found = {cid: db.get_content(ID=cid) for cid in genres}
@@ -651,10 +660,15 @@ def add_step(cfg: config.Config, declared: Any, registry: Any, shared: Any) -> S
     if reading.unread:
         return Step(key=KIND, title=TITLE, state=LISTED, detail=reading.unread)
     decided = reading.decided
-    threshold = metadata_cli.load_vocal_threshold(cfg)
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
-    )
+    # EVERY READ THIS STEP MAKES REFUSES THIS STEP ALONE, as each sibling's:
+    # the vocal calibration, the read handle and the plan.
+    try:
+        threshold = metadata_cli.load_vocal_threshold(cfg) if decided.carried else None
+        db = rb_writer.open_db(
+            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        )
+    except CratekitError as exc:
+        return refused(KIND, TITLE, exc.cause)
     try:
         planned = plan(cfg, db, declared, registry, decided, threshold)
     except CratekitError as exc:
@@ -685,7 +699,7 @@ def add_step(cfg: config.Config, declared: Any, registry: Any, shared: Any) -> S
             handle = rb_writer.open_db(rb_writer.live_db_path(cfg), require_closed=True, cfg=cfg)
             try:
                 _stale(planned, plan(cfg, handle, declared, registry, decided, threshold))
-                done = write(cfg, handle, planned)
+                done = write(cfg, handle, planned, tree_id=declared.tree.id, registry=registry)
             finally:
                 rb_writer.close_db(handle)
             settle(cfg, decided, done.tagged)
