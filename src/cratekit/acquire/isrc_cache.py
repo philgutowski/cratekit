@@ -14,6 +14,14 @@ file sits beside ``provider_gate.json`` under the installation's state
 directory. A copy run that redirects ``library.state_dirname`` therefore
 shares it with the live run, which is the whole saving.
 
+AND A COPY RUN THAT REDIRECTS THE INSTALLATION STATE TOO KEEPS IT. Every copy
+run since sitting 39 also copies the installation state and redirects
+``CRATEKIT_STATE_DIR``, and so does ``core.rehearsal``, which would put this
+file in the scratch area and throw its answers away with it. So
+``CRATEKIT_ISRC_CACHE_DIR``, when set, names the directory the file and its
+lock live in: ``core.rehearsal.redirected`` sets it to the live one for the
+body it redirects, and a copy run by hand sets it the same way.
+
 READ AND WRITTEN AT TWO SEAMS AND NOWHERE ELSE: the outbound account's
 ``match_track`` and the catalogue's ``tracks_for_isrc``. No caller above them
 learns the cache exists, and ``sync pair``'s links and remembered misses on
@@ -27,6 +35,13 @@ HTTP error but 404 and 429 arrives as, so it may hide any of the others
 (``docs/solutions``, the InvalidISRC entry). Each seam decides what was an
 answer, because each reads its client's failures its own way, and hands this
 module only the answers.
+
+AND ONLY AN ANSWER EVERY TRACK OF WHICH CAN BE READ. A track with no
+identifier, or naming no artist or no title as the matcher reads it, is
+something the provider may still fill in, and the callers already refuse to
+choose beside one (``tidal_account._among``, ``intake.missing_cli``) and
+``sync pair`` and the mirror never remember such an answer (R-988, U198). So
+the answer is asked again next time rather than kept with the gap in it.
 
 KEYED BY THE FOLDED ISRC AND THE COUNTRY THE CATALOGUE WAS ASKED IN, since one
 recording can be filed differently in two countries. A spelling that is not
@@ -196,6 +211,17 @@ def _kept(track: Any) -> dict[str, Any]:
     }
 
 
+def _readable(track: Any) -> bool:
+    """Whether a track carries an identifier and names an artist and a title."""
+    if not str(getattr(track, "id", "") or "").strip():
+        return False
+    try:
+        match.read_row(track, origin=match.TIDAL, position=1)
+    except match.UnreadableList:
+        return False
+    return True
+
+
 def _remembered(kept: Any) -> Remembered:
     """A kept track back as one a caller reads. Raises on a shape this module never writes."""
     if not isinstance(kept, Mapping):
@@ -241,6 +267,19 @@ def country_of(session: Any) -> str:
     return country.strip().upper() if isinstance(country, str) else ""
 
 
+def _resolved(key: str) -> Path:
+    """Where one of the two entries lives: under ``CRATEKIT_ISRC_CACHE_DIR`` when
+    it is set, else where the state inventory puts it.
+
+    The override keeps the entry's own file name, so the two never disagree
+    about what the file is called, and only its directory moves.
+    """
+    override = os.environ.get(config.ENV_ISRC_CACHE_DIR)
+    if override:
+        return Path(override) / config.state_file(key).relative
+    return config.state_path(key)
+
+
 def _stamp(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y%m%dT%H%M%SZ")
 
@@ -263,9 +302,9 @@ class Cache:
 
     def __post_init__(self) -> None:
         if self.path is None:
-            self.path = config.state_path(STATE_KEY)
+            self.path = _resolved(STATE_KEY)
         if self.lock_path is None:
-            self.lock_path = config.state_path(LOCK_KEY)
+            self.lock_path = _resolved(LOCK_KEY)
 
     @classmethod
     def from_config(cls, cfg: Any) -> Cache:
@@ -439,7 +478,9 @@ class Cache:
             return None
         if self._parse(text) is not None:
             return None
-        aside = self.path.with_name(f"{self.path.name}{SET_ASIDE}{_stamp(self.clock())}")
+        aside = self.path.with_name(
+            f"{self.path.name}{SET_ASIDE}{_stamp(self.clock())}-{os.getpid()}"
+        )
         try:
             os.replace(self.path, aside)
         except OSError:
@@ -450,6 +491,9 @@ class Cache:
     def remember(self, isrc: str, country: str, tracks: Iterable[Any]) -> bool:
         """Keep one answer, ``()`` for a not found. True when it was written.
 
+        An answer holding a track that cannot be read is not kept, see the
+        module's docstring.
+
         Under the lock the file is read again and only this entry changes, so
         another process's answers written since this one read survive. Entries
         past their time are dropped in the same write, so the file holds what
@@ -459,6 +503,9 @@ class Cache:
             return False
         key = _key(isrc, country)
         if key is None:
+            return False
+        tracks = list(tracks)
+        if not all(_readable(track) for track in tracks):
             return False
         kept = [_kept(track) for track in tracks]
         with self._locked() as had:
@@ -478,9 +525,13 @@ class Cache:
             try:
                 config._mkdir_private(self.path.parent)
                 config.atomic_write_bytes(payload.encode("utf-8"), self.path)
+                written = self._signature()
             except OSError:
+                self._held = None
                 return False
-            self._held = None
+            # Held as written, so the next lookup in this run reads it without
+            # parsing it again; another process's write changes the signature.
+            self._held = (written, merged) if written is not None else None
             return True
 
     # ── what doctor reads ──────────────────────────────────────────────────

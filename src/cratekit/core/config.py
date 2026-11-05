@@ -214,6 +214,15 @@ def template_name_is_usable(value: object) -> bool:
 ENV_CONFIG_DIR = "CRATEKIT_CONFIG_DIR"
 ENV_STATE_DIR = "CRATEKIT_STATE_DIR"
 ENV_LIBRARY_ROOT = "CRATEKIT_LIBRARY_ROOT"
+
+#: The directory the ISRC cache and its lock live in, when set (U206). Unset,
+#: they are installation state like any other. A copy run redirects
+#: ``CRATEKIT_STATE_DIR`` so nothing it does marks live state, and the ISRC
+#: answers it pays for are the one thing it should keep: they are facts about
+#: the provider's catalogue, so the copy run points this at the live state
+#: directory and its lookups are not paid for twice. ``core.rehearsal`` does
+#: that for every rehearsal it redirects.
+ENV_ISRC_CACHE_DIR = "CRATEKIT_ISRC_CACHE_DIR"
 ENV_DOWNLOAD_STAGING = "CRATEKIT_DOWNLOAD_STAGING"
 
 _APP_NAME = "cratekit"

@@ -416,16 +416,25 @@ def test_missing_tracks_none_named_and_none_writable_refuse_rather_than_no_op(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+class _ProviderTrack:
+    """A provider track the matcher can read: an identifier, an artist, a title."""
+
+    def __init__(self, track_id: str) -> None:
+        self.id = track_id
+        self.name = f"Track {track_id}"
+        self.artist = "Aurora Bloom"
+
+
 class _CountingClient:
     """A provider client the SHIPPED catalogue adapter asks, counting every ISRC."""
 
     country_code = "GB"
 
-    def __init__(self, answers: dict[str, list[FakeTrack]]) -> None:
+    def __init__(self, answers: dict[str, list[_ProviderTrack]]) -> None:
         self.answers = answers
         self.asked: list[str] = []
 
-    def get_tracks_by_isrc(self, code: str) -> list[FakeTrack]:
+    def get_tracks_by_isrc(self, code: str) -> list[_ProviderTrack]:
         from tidalapi.exceptions import ObjectNotFound
 
         self.asked.append(code)
@@ -441,7 +450,9 @@ def test_a_second_run_over_the_same_set_asks_the_provider_no_isrc_again(
     from cratekit.label import tidal_catalogue
 
     job_id = finished_set(library, recognised, monkeypatch, *three())
-    client = _CountingClient({ONE: [FakeTrack("9001")], TWO: [FakeTrack("9002"), FakeTrack("9003")]})
+    client = _CountingClient(
+        {ONE: [_ProviderTrack("9001")], TWO: [_ProviderTrack("9002"), _ProviderTrack("9003")]}
+    )
     monkeypatch.setattr(
         catalogue,
         "resolve",

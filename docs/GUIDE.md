@@ -901,7 +901,10 @@ limit or a rejected session is asked again next time. Every run that looked an
 ISRC up says how many lookups the cache answered and how many went to the
 service. `crate doctor` notes how many answers are kept, and names any copy of
 the file it could not read and set aside; nothing reads those, and they may be
-removed.
+removed. A rehearsal keeps using the live answers even though it
+redirects everything else; a copy run made by hand that redirects
+`CRATEKIT_STATE_DIR` sets `CRATEKIT_ISRC_CACHE_DIR` to the live state folder
+first, or its lookups are paid for again on the live run.
 
 ### Keep your custom playlists in rekordbox for good
 

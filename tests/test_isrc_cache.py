@@ -13,6 +13,7 @@ D1 applies. Every ISRC here is in a registrant range nobody holds.
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 import textwrap
@@ -469,14 +470,14 @@ def test_a_file_that_cannot_be_read_answers_nothing_and_is_left_alone(clock, mon
             raise PermissionError(13, "Permission denied", str(self))
         return real(self, *args, **kwargs)
 
-    monkeypatch.setattr(Path, "read_text", refused)
     client = Client({ONE: single()})
     made = cache(clock)
+    with monkeypatch.context() as scoped:
+        scoped.setattr(Path, "read_text", refused)
+        assert account(client, made).match_track(identity="1", isrc=ONE) == "9001"
+        assert account(client, made).match_track(identity="1", isrc=ONE) == "9001"
 
-    assert account(client, made).match_track(identity="1", isrc=ONE) == "9001"
-    assert account(client, made).match_track(identity="1", isrc=ONE) == "9001"
     assert client.asked == [ONE, ONE]
-    monkeypatch.undo()
     assert path.read_text(encoding="utf-8") == "{}"
     assert made.set_aside() == ()
 
@@ -501,6 +502,7 @@ WRITER = textwrap.dedent(
         def __init__(self, track_id):
             self.id = track_id
             self.name = "Sun Path"
+            self.artist = "Aurora Bloom"
             self.artists = []
 
     path, lock, first, count = Path(sys.argv[1]), Path(sys.argv[2]), int(sys.argv[3]), int(sys.argv[4])
@@ -517,7 +519,7 @@ def test_two_writer_processes_leave_one_readable_file_holding_both(tmp_path):
     script.write_text(WRITER, encoding="utf-8")
     path, lock = tmp_path / "isrc_cache.json", tmp_path / "isrc_cache.lock"
     env = {"PYTHONPATH": str(SRC_ROOT), "PYTHONDONTWRITEBYTECODE": "1"}
-    import os
+
 
     children = [
         subprocess.Popen(
@@ -670,3 +672,68 @@ def test_doctor_says_when_the_cache_is_off(tmp_path):
 
     assert finding.status.name == "INFO"
     assert "isrc_cache_days is 0" in finding.detail
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# An answer with a track that cannot be read is asked again
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize(
+    "gap",
+    [Track("9002", "", artists=("Aurora Bloom",)), Track("9002", "Sun Path"), Track("0", "Sun Path", artists=("Aurora Bloom",))],
+    ids=["no-title", "no-artist", "no-identifier"],
+)
+def test_an_answer_holding_a_track_that_cannot_be_read_is_asked_again(clock, monkeypatch, gap):
+    client = Client({ONE: [*single(), gap]})
+    made = cache(clock)
+    catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
+
+    catalogue(client, made, monkeypatch).tracks_for_isrc(ONE)
+
+    assert client.asked == [ONE, ONE]
+    assert not config.state_path(isrc_cache.STATE_KEY).exists()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# A copy run that redirects the installation state too keeps the live answers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_copy_run_redirecting_installation_state_shares_answers_through_the_override(
+    clock, tmp_path, monkeypatch
+):
+    live_dir = config.state_path(isrc_cache.STATE_KEY).parent
+    account(Client({ONE: single()}), cache(clock)).match_track(identity="1", isrc=ONE)
+    monkeypatch.setenv(config.ENV_STATE_DIR, str(tmp_path / "copy-run-state"))
+    config.reset_cache()
+    stranded = Client({ONE: single()})
+    account(stranded, cache(clock)).match_track(identity="1", isrc=ONE)
+    assert stranded.asked == [ONE], "without the override the copy run is on its own"
+
+    monkeypatch.setenv(config.ENV_ISRC_CACHE_DIR, str(live_dir))
+    shared = Client({ONE: single()})
+
+    assert account(shared, cache(clock)).match_track(identity="1", isrc=ONE) == "9001"
+    assert shared.asked == []
+
+
+def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_path, monkeypatch):
+    from cratekit.core import rehearsal
+
+    live = config.state_path(isrc_cache.STATE_KEY)
+    area = rehearsal.Area(
+        run_id="r1",
+        volume=tmp_path / "volume",
+        local=tmp_path / "local",
+        database=tmp_path / "volume" / "db" / "master.db",
+        cfg=None,
+    )
+    assert config.ENV_ISRC_CACHE_DIR not in os.environ
+
+    with rehearsal.redirected(area):
+        assert config.state_path("provider_gate").parent == tmp_path / "local" / "state"
+        assert isrc_cache.Cache().path == live
+
+    assert config.ENV_ISRC_CACHE_DIR not in os.environ
+    assert isrc_cache.Cache().path == live
