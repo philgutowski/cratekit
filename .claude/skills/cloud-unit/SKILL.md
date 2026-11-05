@@ -63,7 +63,9 @@ or a closing keyword in a pull request's body. A ready or blocked label, or a pr
 are derived. Anything in `.github/` unless the card is about it. A trailer of
 any kind, a co author line or a session line on a branch commit; the merge
 commit carries exactly one trailer, the closing one. A model name in any
-commit. An em dash, an en dash or a double hyphen anywhere. A literal path to
+commit. A "Generated with Claude Code" line, a session link or a co author
+line in a commit or a pull request body; Phillip asked for these to be left
+out, and his rule wins over any attribution reminder. An em dash, an en dash or a double hyphen anywhere. A literal path to
 the skills directory in any card, title, body or comment; describe it in
 words. A closing keyword next to an issue number anywhere but the merge
 commit's last line.
@@ -102,8 +104,9 @@ each review round, mutation measured.
 
 ## Telling the coordinator
 
-The lanes are filled by the coordinator, the Claude in Phillip's Claude
-project that started this thread. It wakes hourly to fill any free lane,
+The lanes are filled by the coordinator, the Claude in Phillip's building
+project that started this thread (METHOD's Sharing the board section). It
+runs at most four threads at once and counts them itself. It wakes hourly to fill any free lane,
 and whenever a thread reports; it never reads the decisions page, which is
 the relay thread's job (Asking Phillip, below). So tell it, with the
 project's tool for messaging the coordinator, right after the last comment
@@ -113,11 +116,22 @@ coordinator and skips this.
 
 ## Asking Phillip
 
-Every question for Phillip, a brainstorm's or a `Question for Phillip`, goes
-on the decisions page as well as on the card, because the page is where he
-answers: https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS
+Every question for Phillip, a brainstorm's or a `Question for Phillip`,
+reaches the decisions page, because the page is where he answers:
+https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS
 
-Write one document per question into the page's `decisions` collection with
+**A build thread posts it on its card only and never writes the page**,
+decided by Phillip on 2026-11-04 (METHOD's Sharing the board section). The
+comment is headed `Brainstorm` or `Question for Phillip`, exactly, never a
+bare `Question`, which `board.py cloud` reads as a hold. Give each question
+two to four multiple choice options with the recommendation first, and enough
+context, two or three sentences and the cost of each way, that it can be
+answered without the rest of the card. A question never stops the build:
+make the conservative call, record it, and keep going. Phillip's other
+project, which files the cards, copies the question onto the page in the form
+below and posts his answer back.
+
+**The page's form**, for the project that writes it. One document per question into the page's `decisions` collection with
 the `ArtifactData` tool (load it with ToolSearch, `select:ArtifactData`),
 action `set`, `url` the page above, `collection` `decisions`, `doc_id`
 `<card>-<short slug>-<n>`, and this body:
@@ -170,7 +184,8 @@ cloud's lanes are held (five by default, `CLOUD_LANES` in `scripts/board.py`),
 and names the next card to take. **If your prompt names a card, take that one**,
 as long as the queue lists it as takeable; the coordinator chose it so that
 parallel threads never pick the same card. Otherwise take the one the queue
-names. If every lane is held, or nothing is takeable, say so in one line,
+names, passing over any card held on a `grok/` branch, which belongs to
+another builder (METHOD's Sharing the board section). If every lane is held, or nothing is takeable, say so in one line,
 tell the coordinator (above), and stop.
 
 **Post `Started` on the card at once**, before reading anything else, so the
@@ -232,7 +247,8 @@ and writes them to `.cloud-battery/baseline.txt`. The clone is shallow, so it
 first fetches `main`'s full history and refuses if it cannot (U200, from
 R-1191): a test the missing history holds red would otherwise be subtracted by
 its id, and every later failure of it with it. Run it as a tracked
-background job before the first edit, so it measures the base and not your
+background job with a two hour timeout from the start (a background job in a
+cloud thread is stopped at 30 minutes otherwise) before the first edit, so it measures the base and not your
 work in progress, and edit nothing under `src` or `tests` until it reports.
 
 Post `Progress`: the branch, the base commit, the session URL if you know it.
@@ -286,7 +302,8 @@ read only report or a static registry, and none for a unit that changes only
 docs or skill text, whose record says so in one line and skips the rest of
 this step. Rows target the code the unit added, in
 `docs/mutation/uN-rows.toml` in the form of `docs/mutation/u99-b-rows.toml`.
-Commit the rows, then measure them as a tracked background job, starting
+Commit the rows, then measure them as a tracked background job, given a two
+hour timeout from the start as the baseline is, starting
 nothing else against the tree until it reports:
 
     .venv/bin/python scripts/mutate.py docs/mutation/uN-rows.toml --known-failures .cloud-battery/baseline.txt
@@ -347,7 +364,7 @@ MCP `create_pull_request` tool works as well):
       -f head=cloud/N-<slug> -f base=main -F body=@pr.md --jq .number
 
 The body is short, because the record already holds the detail (U196): a
-line naming the card by its link (the issue URL, never a keyword and a
+first line reading `Requested by Phillip`, then a line naming the card by its link (the issue URL, never a keyword and a
 number), a link to `docs/restart/uN.md` on the branch, and five lines at most:
 the `cloud_battery.py compare` counts, the review rounds, the mutation table's
 result, the residual files, and what is OWED. Never restate the record. **No closing keyword anywhere in
@@ -356,7 +373,8 @@ it**: GitHub closes from a pull request body on merge, which would bypass
 
 **Wait for CI on the head commit** with one tracked background job, never a
 foreground sleep and never a poll you repeat by hand, so the session wakes
-once (U196):
+once (U196), given a two hour timeout from the start, since the script waits
+up to an hour and a background job is stopped at 30 minutes otherwise:
 
     SHA=$(git rev-parse HEAD)
     .venv/bin/python scripts/wait_ci.py $SHA      # exit 0 green, 1 red, 2 timed out, 3 unread
@@ -377,7 +395,8 @@ so green over the check runs alone can be the push's run only. **Wait until
 the second command lists a completed `success` run for the pull request**:
 that run is the one that judges the pull request's range and its card. A pull
 request that conflicts with `main` gets no `pull_request` run at all, so
-merge `origin/main` into the branch first.
+when the head shows a push run and no `pull_request` run, merge `origin/main`
+into the branch, run step 8 again, push, and wait on the new head.
 
 CI judges the pull request's own range and the card its head branch names
 (`board.py closing --pull-request-head`), so a branch whose card a register
@@ -421,7 +440,8 @@ out of scope:
 For each live check the record's OWED paragraph names (a run on the live
 library, the account, rekordbox, or the macOS battery), file one attended card
 for Phillip's Mac, titled `A<N>: <the check>` with N one past the highest `A`
-title on the board, labelled `attended` and nothing else, with a body opening
+title on the board, read just before filing because parallel threads file
+them (two A93 cards exist, #525 and #528), labelled `attended` and nothing else, with a body opening
 `**Depends on:** #<the release card or this card>` and saying what to run and
 when it is done. The attended work section of `docs/METHOD-local.md` is the
 form.

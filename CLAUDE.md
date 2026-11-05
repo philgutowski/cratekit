@@ -22,8 +22,9 @@ vocabulary; grep it for a term that is unclear, never read it whole.
 ## How a session runs
 
 **The cloud is where Cratekit is built**, decided by Phillip on 2026-10-27.
-The coordinator of Phillip's Claude project turns his ideas and bugs into
-cards with the `file-card` skill and keeps build threads going, each running
+Of Phillip's two Claude projects, one turns his ideas and bugs into cards
+with the `file-card` skill and keeps the decisions page, and the coordinator
+of the other, the building project, keeps build threads going, each running
 the `cloud-unit` skill on its card: plan, build, Fable's review to the merge
 bar, the mutation table, the record, a pull request merged to `main` with the
 closing trailer once CI is green. A session does the whole of a unit itself;
@@ -31,9 +32,10 @@ the compound engineering plugin is not used. **Only a card that cannot be
 built without the machine is built locally**, set aside by the cloud with a
 comment carrying the steps; `docs/METHOD-local.md` is how.
 
-Every question for Phillip goes on the decisions page,
+Every question for Phillip reaches the decisions page,
 https://claude.ai/artifact/FUqChoK5qKhztLdzzEADaS, where he answers with a
-tap. Nobody is watching a session while it runs, so a question is a stop:
+tap; a build thread asks on its card only, and the other project copies the
+question to the page and his answer back. Nobody is watching a session while it runs, so a question is a stop:
 make the conservative call, record it as a residual, and keep going.
 
 ## The board is the queue
@@ -144,8 +146,13 @@ a green suite cannot see, as METHOD lists.
   judged on its range, and its close on the push to `main`. **A cloud session merges
   itself**, attended or not, authorized by Phillip on 2026-10-27 ("I
   authorize you to merge to main here in the cloud now and going forward").
-  A cloud session cannot delete a remote branch, so merged `cloud/` branches
-  are pruned locally.
+  A cloud session cannot delete a remote branch, so "Automatically delete
+  head branches" stays on and a merged pull request takes its branch with it;
+  any other stale `cloud/` branch is listed for Phillip's next local session.
+- **Other builders share the board**, decided by Phillip on 2026-11-04. Never
+  take a card or touch a branch held on `grok/`. One Claude project builds
+  and the other files cards and keeps the decisions page. METHOD's Sharing the
+  board section has the rules, the limits and the definition of done.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.
