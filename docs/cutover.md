@@ -1823,6 +1823,15 @@ From v0.6.0. Backup ages one day, no job running, rekordbox closed.
 
 **A73 (#449) and A46 (#370) are met.** The macOS battery is cited from the v0.6.0 cut on 40a501d8.
 
+## Sitting 57, 2026-11-05, the attended session, A66 (#435): the custom playlist twins backfill, stopped before its gate
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Rehearsal | `crate sync twins` on the hand copy, run `2026-11-05T02:45:53Z-014b`, 85 calls | **Refused `PRECONDITION`, `intake-list-unusable`**: "track 5 names no title". Nothing planned, nothing written. | stopped |
+| Live plan | `crate sync twins`, live | The same refusal before any gate, source account playlist `2974f8ca-f511-43b8-a881-686f3067a515`, read through the product's account client as `DOWNLOADED 12-24-25`, whose fifth track is Glass Animals' `[Premade Sandwiches]`: a title written wholly in brackets, which the title reader strips to nothing. One track refuses the whole backfill. | stopped |
+
+**A66 (#435) is not met** and now depends on #507 (U213), filed with this finding. Nothing was written by either run.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
