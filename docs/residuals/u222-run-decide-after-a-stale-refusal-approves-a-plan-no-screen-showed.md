@@ -18,7 +18,8 @@ of U222: a playlist made under a mirrored folder between the acts, a stale
 refusal, `run decide` again, and the resume created the playlist on the
 account. A person did type the second decide, against a refusal that told
 them to replan (`REPLAN_THEN_DECIDE`) and showed nothing. Meets the board bar
-(b): a write is applied that no gate screen declared.
+(b) and (d): a write is applied that no gate screen declared, past a gate
+whose stale guard the second decide answers. Driven again at round two.
 
 **Closes when:** a decision recorded after a stale refusal is refused until
 the moved plan has been shown (a resume that leaves the gate open over it), or

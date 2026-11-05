@@ -1217,9 +1217,9 @@ run and the mirror applies the plan you were shown: a landing, a split, or a
 Tidal edit the rekordbox step took into your library in between is left for
 the next organize, and no track is asked of Tidal again. A change made on Tidal
 itself since the plan, or to what another account step reads, refuses the
-answer as stale; when the mirror was planned, the refusal names each step and
-playlist that moved and says whether the mirror's plan was rebuilt. Run organize
-again for the new plan. Every other playlist you made yourself,
+answer as stale; when the mirror was planned, the refusal says whether its plan
+was rebuilt from the one you were shown and, where it was, names each step and
+playlist that moved. Run organize again for the new plan. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
 removes, a track that left a mirrored playlist's rekordbox playlist, and the
