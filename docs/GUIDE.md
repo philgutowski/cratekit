@@ -922,7 +922,14 @@ playlist it lands, beside its INBOX playlist and in the same write, and pairs th
 two with no hand step. `crate sync twins` does the same once for every
 `DOWNLOADED` playlist the account already holds in a year folder, shows every
 twin and every track it will not hold on one gate, and plans nothing the second
-time. From then on `crate sync pair` keeps each twin and its account playlist
+time. One playlist never stops the others: a playlist the account cannot list
+is left and named on the gate with the reason, and read again on the next run,
+and a track the account lists with no title or no artist is still placed when a
+recorded link or its ISRC finds its row, and otherwise named on the gate as a
+track the twin will not hold. A title written wholly in brackets, such as
+`[Premade Sandwiches]`, reads as its words; `crate intake playlist` on one
+playlist still refuses a track that names no title, so you see it before
+anything is queued. From then on `crate sync pair` keeps each twin and its account playlist
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
 
