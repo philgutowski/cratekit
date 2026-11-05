@@ -325,6 +325,19 @@ def frozen(row: Wanted) -> dict[str, Any]:
     return _frozen(row)
 
 
+def _refuse_unidentified(missing: list[int]) -> None:
+    """Refuse a listing whose rows at ``missing`` carry no provider identifier."""
+    if missing:
+        raise _unusable(
+            f"{len(missing)} track(s) in this playlist carry no provider identifier "
+            f"(positions {', '.join(str(p) for p in missing[:5])}"
+            f"{', ...' if len(missing) > 5 else ''}), so nothing could ever be asked "
+            f"about them",
+            "fetch the playlist again so every row carries its id",
+            positions=missing,
+        )
+
+
 def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
     """The items, as the listing identifies them, in order and folded once.
 
@@ -340,20 +353,13 @@ def frozen_rows(rows: tuple[Wanted, ...]) -> dict[str, dict[str, Any]]:
     reads back, so the worker's view of a track is the queue's and not the
     disk's.
     """
-    missing = [
-        position
-        for position, row in enumerate(rows, start=1)
-        if row.origin != match.TEXT and not row.ref
-    ]
-    if missing:
-        raise _unusable(
-            f"{len(missing)} track(s) in this playlist carry no provider identifier "
-            f"(positions {', '.join(str(p) for p in missing[:5])}"
-            f"{', ...' if len(missing) > 5 else ''}), so nothing could ever be asked "
-            f"about them",
-            "fetch the playlist again so every row carries its id",
-            positions=missing,
-        )
+    _refuse_unidentified(
+        [
+            position
+            for position, row in enumerate(rows, start=1)
+            if row.origin != match.TEXT and not row.ref
+        ]
+    )
     frozen: dict[str, dict[str, Any]] = {}
     for row in rows:
         key = item_key(row)
@@ -1466,6 +1472,90 @@ def list_playlist_declared(
     return frozen_rows(_read_rows(rows, reference)), short
 
 
+@dataclass(frozen=True, slots=True)
+class Unreadable:
+    """One track of a listing the reader would not read, named by its id (U213)."""
+
+    ref: str
+    artist: str
+    #: The title as the row spells it, unsplit, which may be empty.
+    title: str
+    isrc: str
+    #: What the reader found wanting, in the words a gate screen shows.
+    why: str
+
+    def said(self) -> dict[str, str]:
+        """The track in the keys a frozen row names it by, for naming it beside them."""
+        return {"artist": self.artist, "title": self.title, "isrc": self.isrc}
+
+
+@dataclass(frozen=True, slots=True)
+class Readable:
+    """One playlist read row by row, the tracks the reader refused set aside (U213).
+
+    ``tracks`` is exactly what :func:`list_playlist_declared` freezes, less the
+    refused rows, so it can be queued as it stands. ``unread`` holds each
+    track no row of which the reader read, by id, and ``order`` every id the
+    listing holds, each once at its first position, refused ones included.
+    """
+
+    tracks: dict[str, dict[str, Any]]
+    short: catalogue.ListingShortfall | None
+    unread: dict[str, Unreadable]
+    order: tuple[str, ...]
+
+
+def _absent(title: str) -> str:
+    """The half a refused row names nothing for, read as the reader reads it."""
+    return "artist" if match.split_title(title)[0] else "title"
+
+
+def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readable:
+    """:func:`list_playlist_declared`, with a row the reader refuses set aside, not fatal (U213).
+
+    FOR A CALLER THAT PLANS MANY PLAYLISTS IN ONE RUN and needs only a
+    track's identity to place it, which is ``crate sync twins``: one track the
+    account lists with no title stopped the whole backfill, so no twin
+    anywhere could be made. Here that track is named where it stood and every
+    other track reads as it always did. A single playlist verb keeps
+    :func:`list_playlist_declared`, whose refusal is the answer when that
+    playlist is all it was asked.
+
+    THE LISTING AS A WHOLE STILL REFUSES where the declared reader does: the
+    provider unable to list it, or a row carrying no provider identifier,
+    since a track with no id cannot be named, set aside or asked about.
+    """
+    rows, short = label_cli.playlist_listing_or_refuse(found, reference)
+    read: list[Wanted] = []
+    refused: dict[str, Unreadable] = {}
+    order: dict[str, None] = {}
+    nameless: list[int] = []
+    for position, row in enumerate(rows, start=1):
+        ref, artist, title = match.listed_names(row)
+        if not ref:
+            nameless.append(position)
+            continue
+        order.setdefault(ref, None)
+        try:
+            read.append(match.read_row(row, origin=match.TIDAL, position=position))
+        except match.UnreadableList:
+            if ref not in refused:
+                code = match.row_isrc(row)
+                refused[ref] = Unreadable(
+                    ref=ref,
+                    artist=artist,
+                    title=title,
+                    isrc=str(code).strip() if code else "",
+                    # THE READER'S OWN RULE for which half it names, so the
+                    # gate and a single playlist verb say the same word.
+                    why=f"the account lists it with no {_absent(title)}",
+                )
+    _refuse_unidentified(nameless)
+    tracks = frozen_rows(tuple(read))
+    unread = {ref: one for ref, one in refused.items() if ref not in tracks}
+    return Readable(tracks=tracks, short=short, unread=unread, order=tuple(order))
+
+
 def list_playlist_dated(
     found: catalogue.Catalogue, reference: str
 ) -> tuple[
@@ -1813,7 +1903,9 @@ __all__ = [
     "TRACKLIST_WRITTEN",
     "TRACKS",
     "UNREACHED",
+    "Readable",
     "SetRecording",
+    "Unreadable",
     "build_identify",
     "build_playlist",
     "build_set",
@@ -1829,6 +1921,7 @@ __all__ = [
     "list_favorites",
     "list_playlist",
     "list_playlist_declared",
+    "list_playlist_readable",
     "playlist_withheld_warning",
     "PLAYLIST_WITHHELD",
     "playlist_argv",

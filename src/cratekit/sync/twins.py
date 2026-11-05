@@ -50,8 +50,8 @@ from typing import Any
 from cratekit.acquire import match
 from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, rb_writer, session, snapshot, tree_registry
-from cratekit.core.cause import refuse
-from cratekit.sync.playlists import SWEPT_PREFIX
+from cratekit.core.cause import CratekitError, refuse
+from cratekit.sync.playlists import PER_PLAYLIST_REASONS, SWEPT_PREFIX
 from cratekit.write import playlist_pair, trees
 
 #: The folder's name before its year, decided on 2026-10-15.
@@ -73,6 +73,8 @@ LEFT = "left"
 #: Why a track of the account playlist is not in its twin.
 NOT_OWNED = "the library holds no row for it"
 AMBIGUOUS = "more than one library row carries it, so none was chosen"
+#: Said after what the reader found wanting in a track it would not read (U213).
+UNREAD_NOT_FOUND = "and no recorded link or ISRC finds its row"
 
 _ORIGIN = ("sync", "twins")
 
@@ -210,6 +212,10 @@ class Twin:
     whole: bool = True
     #: Why it is not made, when ``action`` is :data:`LEFT`.
     why: str = ""
+    #: The refusal that left it, when its listing was refused (U213). The plan's
+    #: digest carries this and not ``why``, whose words are the provider's own
+    #: and may differ between the run that asked and the run that writes.
+    refused: str = ""
 
     def identity(self) -> dict[str, Any]:
         return {
@@ -223,7 +229,7 @@ class Twin:
             "account": list(self.account),
             "misses": [one.identity() for one in self.misses],
             "whole": self.whole,
-            "why": self.why,
+            "why": self.refused or self.why,
         }
 
 
@@ -317,13 +323,22 @@ def read_library(cfg: config.Config, db: Any, account_ids: Iterable[str]) -> Lib
 
 
 def matched(
-    account_id: str, tracks: Mapping[str, Mapping[str, Any]], library: Library
+    account_id: str,
+    tracks: Mapping[str, Mapping[str, Any]],
+    library: Library,
+    unread: Mapping[str, str] | None = None,
 ) -> tuple[tuple[str, ...], tuple[tuple[str, str], ...], tuple[Miss, ...]]:
     """The account playlist's tracks as rows in its order, the links, and the misses.
 
     ``tracks`` is the listing as the intake reader folds it, each track once,
     so a miss's position counts the folded listing, a track listed twice once.
+
+    ``unread`` names, by id, each track the reader would not read and what it
+    found wanting (U213). Such a track is still found by its recorded link
+    and its ISRC, which never needed its title, and joins its twin when one
+    row answers; when none does, its miss says why it could not be read.
     """
+    unread = unread or {}
     rows: list[str] = []
     links: list[tuple[str, str]] = []
     misses: list[Miss] = []
@@ -340,7 +355,13 @@ def matched(
                 remote_id=remote_id,
                 artist=str(said.get("artist") or ""),
                 title=str(said.get("title") or ""),
-                why=AMBIGUOUS if found else NOT_OWNED,
+                why=(
+                    AMBIGUOUS
+                    if found
+                    else f"{unread[remote_id]}, {UNREAD_NOT_FOUND}"
+                    if remote_id in unread
+                    else NOT_OWNED
+                ),
             )
         )
     return tuple(rows), tuple(links), tuple(misses)
@@ -436,9 +457,38 @@ def plan_backfill(
         if folder is None:
             folder = folders[year] = find_folder(db, year)
         name = twin_name(account_name)
+        # ONE PLAYLIST'S LISTING NEVER STOPS THE OTHERS (U213). A playlist the
+        # provider cannot list, or whose rows carry no id, is left and named,
+        # the refusals the sweep of every playlist already takes per playlist;
+        # a track the reader would not read is named in its twin, below.
+        try:
+            listing = intake_cli.list_playlist_readable(found, account_id)
+        except CratekitError as exc:
+            if exc.cause.reason not in PER_PLAYLIST_REASONS:
+                raise
+            twins.append(
+                Twin(
+                    account_id=account_id,
+                    account_name=account_name,
+                    name=name,
+                    folder=folder,
+                    action=LEFT,
+                    why=f"the account playlist could not be read: {exc.cause.message}",
+                    refused=exc.cause.reason,
+                )
+            )
+            continue
         why = place(name, folder, taken.setdefault(year, set()))
-        tracks, short = intake_cli.list_playlist_declared(found, account_id)
-        rows, links, misses = matched(account_id, tracks, library)
+        tracks = {
+            ref: listing.tracks[ref] if ref in listing.tracks else listing.unread[ref].said()
+            for ref in listing.order
+        }
+        rows, links, misses = matched(
+            account_id,
+            tracks,
+            library,
+            {ref: one.why for ref, one in listing.unread.items()},
+        )
         twins.append(
             Twin(
                 account_id=account_id,
@@ -450,7 +500,7 @@ def plan_backfill(
                 links=links,
                 account=pair_merge.distinct(tracks),
                 misses=misses,
-                whole=short is None,
+                whole=listing.short is None,
                 why=why,
             )
         )
