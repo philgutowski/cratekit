@@ -1944,6 +1944,21 @@ Phillip answered in the session: the session makes the edits through the product
 
 **A85 (#504) is met**, read from the database rather than in the rekordbox window (the Monologue overlay has covered the tree at both earlier visits today). The macOS battery is sitting 59's.
 
+
+## Sitting 65, 2026-11-05, the attended session on v0.8.0: A90 (#518), edits on Tidal to Favorites and INBOX carried into the library, then undone
+
+Made and reversed through the product's account client, as Phillip answered at sitting 64; the one queued download cancelled before it fetched, by the same answer. Each live pass was rehearsed on a refreshed hand copy for its digest and answered `abort` there (the step writes the files' colour and tags), then applied live on an equal digest as `session`.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The edits | account client | Chris Luno `Night Thoughts`, no favourite, put in `All Favorites`; Skeewiff `Man of Constant Sorrow` moved from `Favorites 2026-10` to `Favorites 2026-09`; Paul Cut `The Joy` taken off `All Favorites`; Mark Barrott `Island Life` put in `INBOX Phil 10_8_26` and Geto Boys `Mind Playing Tricks on Me` taken off it; ANOTR `Unlock`, which the library lacks, put in `Deep House Med`. A read straight after two removals still listed them; a second read five seconds later did not. | done |
+| Plan | rehearsal digest `50b77dd04082e110`, live run `2026-11-05T19:47:41Z-773d` equal | Night Thoughts `favourite`, joins All Favorites and 2026-11, colour Pink; Skeewiff `favourite` leaves 2026-10, joins 2026-09; The Joy `unfavourite`, leaves All Favorites and 2026-10, with the note that it stays hearted on the account; Island Life `join`; Geto Boys `leave`; Unlock `held`, "the library holds no track matched to it, so it is queued for download". | gate |
+| Live | both gates | `mirror-edits: applied: 2 favourited, 1 unfavourited, 1 joined to and 1 taken off an INBOX batch`; `mirror-downloads: queue 1 track(s)`, job `2026-11-05T19:51:57Z-7e71`, **cancelled** with `crate job cancel` before anything ran. | live |
+| Read back | a copy of the live database | Night Thoughts in All Favorites and 2026-11, Pink; Skeewiff in 2026-09 only among the months; The Joy in no Favorites folder playlist, still Pink and still in `BY GENRE + ENERGY / Deep House / Favorites` (it stays hearted); Island Life in INBOX / Phil 10_8_26; Geto Boys in no INBOX batch. A further report planned no edit, but `mirror-downloads` would queue Unlock again while it stood on the account. | read |
+| Undo | account edits reversed, then passes `2026-11-05T19:56:50Z-7d67` (`6a9ebe8fb1912c41`), `20:03:47Z-89d5` (`ef1d4b1e3e7f074c`), `20:11:44Z-9c9a` (`3f8b60d3aa5eab16`) | The first pass restored Skeewiff, The Joy's All Favorites, and both INBOX edits, and **kept Night Thoughts as a favourite**: "placed in the favourites in rekordbox since: an addition beats a removal, whose time is never known"; its mirror put it back on the account. Taking it off All Favorites again then read as a true `unfavourite` (it was never hearted on the account). The Joy came back to All Favorites but not to `2026-10`; taking it off and back onto the account's 2026-10 carried it in. Final read: every track in its original Favorites and INBOX playlists; **Night Thoughts keeps the Pink colour the favourite gave it**; Unlock off the account; a further organize `no_op` on both steps. | undone |
+
+**A90 (#518) is met except its download half**: the queued track was cancelled by Phillip's choice rather than landed and filed, so "the download" step is owed, and the read was from the database rather than the rekordbox window. Two small findings, no card: an unfavourite leaves the row's Pink colour; and undoing a favourite on the account loses to rekordbox's newer placement until the mirror has written it back, by the stated rule.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
