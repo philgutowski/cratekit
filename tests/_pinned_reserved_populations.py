@@ -1806,10 +1806,12 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'skills/cli.py': ['path-permission-denied'],
     'sync/artifacts.py': ['sync-artifacts-unusable', 'utf-8'],
+    # 2026-11-05, R-1289: the sweep's warning naming each unread track.
     'sync/cli.py': [
         'config-unusable',
         'not-built',
         'nothing-new',
+        'sync-playlists-unread',
         'sync-playlists-unreadable',
         'sync-playlists-withheld',
         'sync-source-not-queued',

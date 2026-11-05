@@ -847,7 +847,12 @@ def test_a_playlist_the_provider_cannot_list_is_named_and_the_others_queue():
     def listed(pid):
         if pid == "p1":
             raise refuse("label-playlist-unreadable", "down", origin=("test",))
-        return {"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}}, None
+        return intake_cli.Readable(
+            tracks={"r8": {"isrc": "ISRC00000008", "artist": "A", "title": "T"}},
+            short=None,
+            unread={},
+            order=("r8",),
+        )
 
     cfg = SimpleNamespace(library=SimpleNamespace(volume_id="v"))
     from unittest import mock
