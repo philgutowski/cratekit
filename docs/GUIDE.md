@@ -1029,7 +1029,28 @@ which no account playlist holds, fills from the provider track each file was
 downloaded as. A track whose ISRC names several releases that all agree with
 it, a single and its album cut, goes onto the mirror as one of them and stays
 on that one; `crate sync favorites` still hearts none of them until you heart
-one yourself, since a heart is a choice of release. Approve one area and abort the other
+one yourself, since a heart is a choice of release.
+
+An edit you make on the account to a mirrored genre playlist is kept, and
+your library follows it. Move a track from `Deep House Low` to `Tech House Med`
+on Tidal and the next organize retags it, genre Tech House and the energy
+nearest its own that files into Med, and moves it there in BY GENRE + ENERGY;
+take a track off its genre playlist and add it nowhere and its genre and energy
+are cleared, so `crate route unplaced` lists it for placing again, and it stays
+in your collection. Adding a track to another genre's `with vox` playlist gives
+it that genre and keeps its energy. The mirror remembers what each playlist
+held when it last finished it, so it tells your edit from a change made in
+rekordbox. Where both sides changed one track, an addition beats a removal, and
+two moves follow the later one; when either time is unknown rekordbox's
+stands. A track added to two band playlists at once, one the library does not
+own, one taken off its band and left only in a with vox playlist, and one
+missing from a playlist the account listed short is left on the account as
+you put it and named, never taken off. The rekordbox step is `mirror-edits`,
+on the rekordbox area's gate, each track named with its genre, energy and
+playlists from and to. The first organize after this arrives changes nothing in
+your library: it reads every difference as rekordbox's and remembers each
+playlist from then on. The Favorites folder and INBOX still mirror one way
+until U204 brings them, and a track the library lacks with them. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
@@ -1046,7 +1067,7 @@ crate organize --report --only file
 crate organize --only file
 ```
 
-The kinds are `adopt`, `rotate`, `record-labels` and `inspiration` on the rekordbox side,
+The kinds are `adopt`, `rotate`, `record-labels`, `inspiration` and `mirror-edits` on the rekordbox side,
 `labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the

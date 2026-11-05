@@ -2637,6 +2637,10 @@ def test_every_capture_taken_in_src_is_attached_to_a_record_and_its_commit_recor
         # playlists and their memberships under the declared INSPIRATION folder
         # behind one capture, recorded under that folder's own id.
         "organize/inspiration.py::apply",
+        # U201. An edit made on the account to a mirrored genre playlist: the
+        # file tags, the row's genre and the tree memberships behind one
+        # capture, recorded under the step's own kind.
+        "organize/mirror_edits.py::write",
         # R-816. A row's genre written from its file, recorded under the
         # content genre key as rows updated.
         "tagging/rows.py::apply_rows",

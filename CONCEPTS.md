@@ -687,6 +687,17 @@ same base. A pair with no snapshot is on its first sync, which adds only.
 
 *Avoid:* reading it as a database snapshot, which is a backup of the library.
 
+### Mirror snapshot
+
+The account tracks a mirrored playlist held when `crate organize`'s account mirror
+last finished it, kept per playlist in the outbound ledger under `agreed` (U201).
+It is what tells an edit a person made on the account (held there now, not in the
+snapshot, or the reverse) from a change made in rekordbox, so the mirror holds the
+first and the rekordbox area's `mirror-edits` step takes it into the library. A
+playlist with no snapshot has never been agreed, and every difference on it is
+read as rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
+side of a pair the author made.
+
 ### Rotation
 `crate inbox rotate` (U111), the write `report intake-aging` only describes.
 A BATCH is a playlist directly under INBOX or under its Old folder that a

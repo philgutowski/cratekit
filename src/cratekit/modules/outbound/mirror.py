@@ -48,6 +48,14 @@ never one per call as ``export playlist`` adds them. Removals run last, so a
 track moving from one band to another is on its new playlist before it leaves
 its old one.
 
+AN EDIT MADE ON THE ACCOUNT IS NOT UNDONE (U201). Each mirrored playlist keeps
+its snapshot, the account tracks both sides held when a refresh last finished
+it, recorded by the apply, or by the plan for a playlist with nothing to write.
+The caller reads each genre playlist three ways (:mod:`mirror_edits`) and hands
+in a HOLD per playlist: a track whose edit on the account the library takes, or
+one held, is never taken off nor added back here. A playlist whose listing came
+back short keeps its snapshot's word on every track it did not list.
+
 MEMBERSHIP, NOT ORDER. Added tracks are appended; the order inside a mirrored
 playlist is not kept equal to rekordbox's, which the plan left to this unit and
 this unit leaves out, since membership is the requirement.
@@ -65,9 +73,11 @@ from typing import Any
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger
+from cratekit.modules.outbound.mirror_edits import Hold
 from cratekit.modules.outbound.service import (
     AGREEING_RELEASES,
     UNREADABLE_CANDIDATE,
+    PlaylistListing,
     RemoteAccount,
 )
 
@@ -128,6 +138,9 @@ class Row:
     artist: str = ""
     isrc: str = ""
     path: str = ""
+    #: When the membership was made in rekordbox, as the database writes it,
+    #: or ``""``; read for a genre folder only, where an edit's time is asked (U201).
+    added: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -154,6 +167,9 @@ class Folder:
     playlists: tuple[Source, ...] = ()
     retire: bool = False
     present: frozenset[str] = frozenset()
+    #: A genre folder of the routing tree, whose edits on the account the
+    #: library takes (U201); the Favorites folder and INBOX are not, yet.
+    genre: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -351,6 +367,21 @@ class PlaylistPlan:
     #: Matched tracks the provider refused before, not asked again.
     refused: int = 0
     why: str = ""
+    #: What the snapshot is taken from (U201): the account tracks the playlist
+    #: held when planned, its snapshot then, ``None`` for none, the hold the
+    #: caller handed in, and whether its listing came back short.
+    held: frozenset[str] = frozenset()
+    agreed: frozenset[str] | None = None
+    hold: Hold = field(default_factory=Hold)
+    short: bool = False
+    #: Tracks held on the account rather than taken off or added back (U201).
+    kept: int = 0
+
+    def unlisted(self, gone: frozenset[str] = frozenset()) -> frozenset[str]:
+        """Tracks a short listing's snapshot keeps its word on: agreed, not listed, not taken off."""
+        if not self.short or self.agreed is None:
+            return frozenset()
+        return frozenset(self.agreed) - self.held - gone
 
     @property
     def writes(self) -> bool:
@@ -376,6 +407,10 @@ class PlaylistPlan:
             shown["unmatched"] = list(self.unmatched)
         if self.refused:
             shown["refused before"] = self.refused
+        if self.kept:
+            shown["held as the account has them"] = self.kept
+        if self.short:
+            shown["short"] = True
         if self.why:
             shown["why"] = self.why
         return shown
@@ -489,13 +524,19 @@ def plan(
     recorded: ledger.MirrorFolder | None,
     root: Mapping[str, str],
     matcher: Matcher,
+    holds: Mapping[str, Hold] | None = None,
+    listings: Mapping[str, PlaylistListing] | None = None,
 ) -> FolderPlan:
     """Decide one mirrored folder and every playlist in it. Reads only.
 
     ``root`` is the account's root folders, identifier to name, read once by
     the caller for every folder. Raises :func:`ambiguous` for two root folders
-    of the name.
+    of the name. ``holds`` is each playlist's hold by title (U201), and
+    ``listings`` each recorded playlist's listing the caller already read, by
+    remote identifier, so it is not read twice.
     """
+    holds = holds or {}
+    listings = listings or {}
     stale = ""
     held_id = recorded.folder_id if recorded is not None else ""
     if held_id and held_id in root:
@@ -526,7 +567,9 @@ def plan(
             # shows a removal by, and the adapter keeps the membership it read
             # for the add that follows.
             try:
-                names = account.track_names(mine.remote_id)
+                listing = listings.get(mine.remote_id)
+                if listing is None:
+                    listing = account.playlist_listing(mine.remote_id)
             except CratekitError as exc:
                 if placed or exc.cause.reason != "unavailable-transient":
                     raise
@@ -543,17 +586,23 @@ def plan(
                     )
                 )
                 continue
+            names = listing.names
+            hold = holds.get(source.name, Hold())
             wanted, unmatched = _wanted(source, matcher)
             on = set(names)
             keep = set(wanted)
-            remove = tuple(one for one in names if one not in keep)
+            remove = tuple(one for one in names if one not in keep and one not in hold.keep)
             steps.append(
                 PlaylistPlan(
                     name=source.name,
                     action=REUSE,
                     remote_id=mine.remote_id,
                     move=not placed,
-                    add=tuple(one for one in wanted if one not in on and one not in mine.refused),
+                    add=tuple(
+                        one
+                        for one in wanted
+                        if one not in on and one not in mine.refused and one not in hold.skip
+                    ),
                     remove=remove,
                     tracks=len(wanted),
                     unmatched=unmatched,
@@ -561,6 +610,14 @@ def plan(
                         f"{names[one][0]} - {names[one][1]} ({one})" for one in remove
                     ),
                     refused=sum(1 for one in wanted if one in mine.refused and one not in on),
+                    held=frozenset(on),
+                    agreed=mine.agreed,
+                    hold=hold,
+                    short=listing.short,
+                    kept=len(
+                        [one for one in names if one not in keep and one in hold.keep]
+                        + [one for one in wanted if one not in on and one in hold.skip]
+                    ),
                 )
             )
             continue
@@ -625,6 +682,21 @@ def plan(
         links=matcher.links_of(rows),
         retire=tuple(retire),
     )
+
+
+def settled(planned: FolderPlan) -> dict[str, tuple[str, frozenset[str], frozenset[str]]]:
+    """The snapshot of each playlist with nothing to write, by title (U201).
+
+    Such a playlist is already as the mirror would leave it, so its snapshot is
+    taken at the plan, which the apply of a folder with no write never reaches.
+    A playlist whose listing was short keeps the snapshot's word on every
+    track it did not list.
+    """
+    return {
+        one.name: (one.remote_id, one.held, one.hold.tracks | one.unlisted())
+        for one in planned.playlists
+        if one.action == REUSE and not one.writes and one.remote_id
+    }
 
 
 @dataclass
@@ -693,6 +765,7 @@ def apply(
         )
     done.folder_id, done.folder_created = folder_id, created
     remote_of: dict[str, str] = {}
+    added_to: dict[str, set[str]] = {}
     for step in planned.playlists:
         if step.action in (LEFT, UNREADABLE):
             continue
@@ -708,11 +781,15 @@ def apply(
         for start in range(0, len(step.add), CHUNK):
             chunk = step.add[start : start + CHUNK]
             held = set(account.add_tracks(remote_id, chunk))
+            added_to.setdefault(step.name, set()).update(
+                str(one) for one in chunk if one in held
+            )
             refused = [one for one in chunk if one not in held]
             ledger.record_mirror_refused(cfg, planned.name, step.name, refused)
             done.added[step.name] = done.added.get(step.name, 0) + len(chunk) - len(refused)
             if refused:
                 done.refused[step.name] = done.refused.get(step.name, 0) + len(refused)
+    landed: dict[str, set[str]] = {}
     for step in planned.playlists:
         if not step.remove or step.name not in remote_of:
             continue
@@ -724,6 +801,25 @@ def apply(
             done.kept.append((step.name, exc.cause.message))
             continue
         done.removed[step.name] = len(gone)
+        landed[step.name] = {str(one) for one in gone}
+    # THE SNAPSHOT, ONCE EVERY WRITE OF THE FOLDER LANDED (U201): what each
+    # playlist held, less what came off, with what went on.
+    ledger.record_mirror_agreed(
+        cfg,
+        planned.name,
+        {
+            step.name: (
+                remote_of[step.name],
+                frozenset(
+                    (set(step.held) - landed.get(step.name, set())) | added_to.get(step.name, set())
+                ),
+                step.hold.tracks
+                | step.unlisted(frozenset(landed.get(step.name, set()))),
+            )
+            for step in planned.playlists
+            if step.name in remote_of
+        },
+    )
     # A RETIRED PLAYLIST GOES LAST, AND ITS RECORD AFTER IT (U150). Removed
     # first, so a ledger write that fails leaves a record the next plan
     # retires again, and the adapter answers a playlist already gone as
@@ -767,5 +863,6 @@ __all__ = [
     "ambiguous",
     "apply",
     "plan",
+    "settled",
     "title",
 ]

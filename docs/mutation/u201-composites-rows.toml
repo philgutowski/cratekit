@@ -1,0 +1,85 @@
+name = "u201-composites"
+pass_kind = "full"
+
+[[rows]]
+id = "C1_two_bands_composite"
+description = "E2 with the guard after it: neither the two bands guard nor the still in two bands guard, so a track added to two bands at once is moved to one"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if len(added) > 1:
+        return (
+            HELD,
+            None,
+            f"added on the account to {len(added)} band playlists at once "
+            f"({', '.join(_titles(added))}), so which one it belongs in is not "
+            f"something the account says",
+        )
+    if removed and len(now) == 1:
+        (place,) = now
+        return MOVE, place, f"taken off {', '.join(_titles(removed))} on the account, left in {place.title}"
+    if removed and len(now) > 1:
+        return (
+            HELD,
+            None,
+            f"taken off {', '.join(_titles(removed))} on the account and still in "
+            f"{len(now)} band playlists there, so which one it belongs in is not "
+            f"something the account says",
+        )
+'''
+new = '''    if False:
+        return (
+            HELD,
+            None,
+            f"added on the account to {len(added)} band playlists at once "
+            f"({', '.join(_titles(added))}), so which one it belongs in is not "
+            f"something the account says",
+        )
+    if removed and len(now) == 1:
+        (place,) = now
+        return MOVE, place, f"taken off {', '.join(_titles(removed))} on the account, left in {place.title}"
+    if False:
+        return (
+            HELD,
+            None,
+            f"taken off {', '.join(_titles(removed))} on the account and still in "
+            f"{len(now)} band playlists there, so which one it belongs in is not "
+            f"something the account says",
+        )
+'''
+
+[[rows]]
+id = "C2_agrees_never"
+description = "_agrees: a MOVE never agrees with rekordbox, the thing E5's exactness narrows"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        return now == frozenset({to})'''
+new = '''        return False'''
+
+[[rows]]
+id = "C3_settled_none"
+description = "settled: no playlist with nothing to write records its snapshot, the thing M3 narrows"
+file = "src/cratekit/modules/outbound/mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if one.action == REUSE and not one.writes and one.remote_id'''
+new = '''        if False'''
+
+[[rows]]
+id = "C4_settle_none"
+description = "settle_mirror_tracks: the library step settles nothing, the thing L2 narrows"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    wanted = list(settled)'''
+new = '''    wanted = []'''
+
+[[rows]]
+id = "C5_leave_nothing"
+description = "plan: a move leaves no tree playlist, the thing O4 narrows"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            leave_ids = [pid for pid in held if pid not in wanted and routed(tree.names[pid])]'''
+new = '''            leave_ids = []'''
