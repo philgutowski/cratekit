@@ -64,6 +64,7 @@ from __future__ import annotations
 import re
 import time
 from collections.abc import Callable, Iterable
+from datetime import datetime
 from typing import Any
 from urllib.parse import urlsplit
 
@@ -943,6 +944,32 @@ class TidalAccount:
             for playlist in found
             if str(getattr(playlist, "id", "") or "")
         }
+
+    def folder_playlists_dated(
+        self, folder_id: str
+    ) -> dict[str, tuple[str, datetime | None]]:
+        """Each playlist one folder holds, with when the account says it was made (U216).
+
+        The walk :meth:`folder_playlists` makes, and the creation time the
+        client's playlist parser reads off the same item, so it costs the
+        folder's pages and nothing more. A time the item does not carry, or
+        one the parser gave as something other than a moment, is None.
+        """
+        handle = self._folder(folder_id)
+        found = self._read(
+            f"read the folder {folder_id}", lambda: listing.folder_playlists(handle)
+        )
+        dated: dict[str, tuple[str, datetime | None]] = {}
+        for playlist in found:
+            identifier = str(getattr(playlist, "id", "") or "")
+            if not identifier:
+                continue
+            made = getattr(playlist, "created", None)
+            dated[identifier] = (
+                str(getattr(playlist, "name", "") or ""),
+                made if isinstance(made, datetime) else None,
+            )
+        return dated
 
     def folder_folders(self, folder_id: str) -> dict[str, str]:
         handle = self._folder(folder_id)
