@@ -1009,6 +1009,26 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="held_plans",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.DIRECTORY,
+        relative="runs-held",
+        why=(
+            "One plan per run, held by a verb whose gates are answered in later "
+            "commands (U209), so the gate a person answers and the write that "
+            "follows use the plan the first command showed rather than planning "
+            "again, which for crate sync pair over a hundred playlists cost "
+            "thousands of provider calls a gate. A sibling of the run records "
+            "and not inside them, because every reader of a run record would "
+            "otherwise read the whole plan, and because that directory's files "
+            "are each read as a run. NEVER_RESTORED for the run records' reason: "
+            "a plan is about one run's work, and a rolled back one would answer "
+            "for a library that moved. Losing it costs a plan, never a write: a "
+            "run whose plan is not held plans again, digest bound."
+        ),
+    ),
+    StateFile(
         key="app_token",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,
