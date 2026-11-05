@@ -209,6 +209,13 @@ class Machine:
         path.write_text(json.dumps(document), encoding="utf-8")
 
 
+@pytest.fixture(autouse=True)
+def _field_policies():
+    """The genre operation the write registers is the process's, so it is undone after each test."""
+    yield
+    rb_writer.reset_field_policies()
+
+
 @pytest.fixture
 def machine(acknowledged, tmp_path) -> Machine:
     scratch = tmp_path / "scratch"

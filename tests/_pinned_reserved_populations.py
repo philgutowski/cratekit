@@ -1739,6 +1739,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-committed-unverified',
         'two-of-one-name',
     ],
+    # 2026-11-05, U201: the mirror edits step's kind, its write refusals and
+    # its untagged warning joined.
+    'organize/mirror_edits.py': [
+        'decision-stale',
+        'mirror-edits',
+        'organize-mirror-edits-untagged',
+        'session-committed-unverified',
+    ],
     # 2026-10-27, R-1031: the frozen mirror plan's encoding name joined.
     'organize/mirror_frozen.py': ['utf-8'],
     'organize/rekordbox.py': ['organize-inspiration-unread', 'record-labels', 'tree-unconverged'],
@@ -2962,6 +2970,8 @@ PINNED_LITERAL_HOLDERS = {
     'organize/cli.py': ['internal-error'],
     # 2026-10-13, U144: the INSPIRATION parity step's two write refusals.
     'organize/inspiration.py': ['decision-stale', 'session-committed-unverified'],
+    # 2026-11-05, U201: the mirror edits step's two write refusals joined.
+    'organize/mirror_edits.py': ['decision-stale', 'session-committed-unverified'],
     'organize/rekordbox.py': ['tree-unconverged'],
     'session/cli.py': ['backup-facts-unreadable', 'config-unusable', 'internal-error'],
     'session/restore_cli.py': [
