@@ -28,11 +28,14 @@ THE STEPS, each the owning verb's plan:
   its name gets one, of the library rows its tracks match, every miss named.
   A set already there is skipped, so a second run plans nothing. Listed and
   not planned when the export module, which archives sets, is off.
-* AN EDIT MADE ON THE ACCOUNT TO A MIRRORED GENRE PLAYLIST TAKEN INTO THE
-  LIBRARY (U201), :mod:`cratekit.organize.mirror_edits`: decided from the
-  run's one account mirror reading, which the account area's mirror plans from
-  too, so the edit this step takes is the edit the mirror holds. Every
-  membership it takes away is named among the area's deletions.
+* AN EDIT MADE ON THE ACCOUNT TO A MIRRORED PLAYLIST TAKEN INTO THE LIBRARY,
+  a genre playlist (U201), the Favorites folder or INBOX (U204),
+  :mod:`cratekit.organize.mirror_edits`: decided from the run's one account
+  mirror reading, which the account area's mirror plans from too, so the edit
+  this step takes is the edit the mirror holds. Every membership it takes away
+  is named among the area's deletions;
+* A TRACK ADDED THERE THAT THE LIBRARY LACKS QUEUED FOR DOWNLOAD, once (U204),
+  :mod:`cratekit.organize.mirror_downloads`, off the same reading.
 
 WHAT THE AUTHOR MADE is every top level node outside the trees the taxonomy
 declares, and every node the rotation leaves alone under INBOX. Each is listed
@@ -64,7 +67,7 @@ from cratekit.core import (
 from cratekit.core.cause import CratekitError, Remedy, refuse
 from cratekit.intake import rotate, rotate_cli
 from cratekit.organize import account as account_area
-from cratekit.organize import inspiration, mirror_edits, own
+from cratekit.organize import inspiration, mirror_downloads, mirror_edits, own
 from cratekit.organize.steps import LISTED, NOTHING, PLANNED, Area, Step, refused, selection
 
 AREA = "rekordbox"
@@ -85,11 +88,12 @@ RECORD_LABELS = "record-labels"
 YOURS = "yours"
 INSPIRATION = "inspiration"
 MIRROR_EDITS = mirror_edits.KIND
+MIRROR_DOWNLOADS = mirror_downloads.KIND
 
 #: Every step kind this area plans, in its order, each one ``--only`` may name.
 #: The edits made on the account to a mirrored genre playlist (U201) run after
 #: adoption, whose worker plans again and would refuse a tree moved under it.
-STEPS = (ADOPT, ROTATE, RECORD_LABELS, INSPIRATION, MIRROR_EDITS, YOURS)
+STEPS = (ADOPT, ROTATE, RECORD_LABELS, INSPIRATION, MIRROR_EDITS, MIRROR_DOWNLOADS, YOURS)
 
 #: The module that archives sets, whose sets the INSPIRATION step reads, the
 #: account area's own word for it.
@@ -221,6 +225,10 @@ def _rotation(cfg: config.Config, declared, today: date, area: Area) -> Step:
         return refused(ROTATE, title, exc.cause)
     shown = rotate_cli.plan_payload(plan)
     for node in plan.left:
+        # OLD IS THE ROTATION'S OWN FOLDER, not one of the author's (U214):
+        # the plan names it left, and the screen does not list it as yours.
+        if node.kind == rotate.LEFT_OLD:
+            continue
         area.yours.append(
             {
                 "name": node.name,
@@ -501,6 +509,18 @@ def plan_area(
             # EVERY MEMBERSHIP TAKEN AWAY IS NAMED ON THE GATE, as a removal is.
             area.deletes.extend(mirror_edits.deletes(edited.items))
             area.steps.append(edited)
+    if area.wants(MIRROR_DOWNLOADS):
+        if shared is None:
+            area.steps.append(
+                Step(
+                    key=MIRROR_DOWNLOADS,
+                    title=mirror_downloads.TITLE,
+                    state=LISTED,
+                    detail="no account mirror was read on this run, so nothing is queued",
+                )
+            )
+        else:
+            area.steps.append(mirror_downloads.add_step(cfg, shared))
     if area.wants(YOURS):
         area.steps.append(_yours(cfg, declared, labels, area))
     area.facts["rehearse"] = (
@@ -518,6 +538,7 @@ __all__ = [
     "AREA",
     "EXPORT_MODULE",
     "INSPIRATION",
+    "MIRROR_DOWNLOADS",
     "MIRROR_EDITS",
     "RECORD_LABELS",
     "ROTATE",

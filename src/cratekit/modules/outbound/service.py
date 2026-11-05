@@ -59,6 +59,7 @@ applying it when the run merely started.
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from dataclasses import dataclass, field
 from typing import Protocol
 
@@ -69,8 +70,8 @@ UNREADABLE_CANDIDATE = "could not be read"
 
 #: The words an unmatched reason carries when several releases agree with the
 #: row and nothing told them apart (R-572), formatted into the reason by the
-#: adapter. The mirror reads it to ask such a miss again, since under
-#: ``any_agreeing`` a tie no longer misses (R-1032).
+#: adapter. The mirror and the pairs read it to ask such a miss again, since
+#: under ``any_agreeing`` a tie no longer misses (R-1032, U208).
 AGREEING_RELEASES = "of them agree with this row's artist, title and version"
 
 
@@ -136,16 +137,30 @@ class RemoteAccount(Protocol):
         that agree with the row and that the account hearts none of, the one
         whose album name is the file's is the match (R-572). Never a search.
 
-        ``any_agreeing`` TAKES ONE OF A TIE rather than refusing it, for a
-        caller that writes nothing back as the row's identity (R-1032): the
-        mirror, whose playlist is a listening copy where releases spelled alike
-        are the same thing to hear. It narrows by the account's hearts and the
+        ``any_agreeing`` TAKES ONE OF A TIE rather than refusing it (R-1032):
+        the mirror passes it, whose playlist is a listening copy where releases
+        spelled alike are the same thing to hear, and since U208 the pairs,
+        decided by Phillip at Sitting 54, so a paired playlist carries the
+        tracks rekordbox holds. It narrows by the account's hearts and the
         file's album first, as without it, and then takes the lowest provider
         identifier, so every run takes the same one. It changes nothing but a
         tie: a release that does not agree is never taken, and a tie beside a
-        candidate that could not be read still refuses. A heart and a pair
-        never pass it, since there the chosen release becomes the row's
-        identity and R-572's refusal stands.
+        candidate that could not be read still refuses. A heart never passes
+        it, since there the heart is the person's own choice of release and
+        R-572's refusal stands.
+        """
+
+    def screen_isrcs(self, codes: Iterable[str]) -> int:
+        """Ask, in as few requests as the provider allows, which codes it files nothing under.
+
+        Called by a plan before its first ``match_track``, with every code the
+        plan will ask (U207). A later ``match_track`` of a code the provider
+        answered as filed under nothing is answered unmatched with no request;
+        every other code is asked as before, since a batch answer names one
+        release per code and never says which release a row is. It writes
+        nothing, raises nothing for a batch the provider could not answer (the
+        codes are then asked one at a time), and returns the requests it made,
+        zero for an account that has no batch form.
         """
 
     def unmatched_reason(self, identity: str) -> str:
@@ -154,6 +169,16 @@ class RemoteAccount(Protocol):
         Words for a person, carried on the unmatched row. Empty when the account
         has nothing more to say than "unmatched", and empty after a match. It
         reads and writes nothing on the account.
+        """
+
+    def tie_broken(self, identity: str) -> bool:
+        """Whether the last ``match_track`` of this identity took one of a tie (U208).
+
+        True only when ``any_agreeing`` chose among releases that all agree
+        with the row and that nothing else told apart, a match that without it
+        would have been refused; false after any other match and after a miss.
+        The pairs count it for the gate. It reads and writes nothing on the
+        account.
         """
 
     def add_heart(self, remote_id: str) -> None:

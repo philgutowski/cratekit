@@ -29,7 +29,8 @@ the provider only about rows it has not matched before, and a row it could not
 match is remembered with what it was asked under and not asked again until that
 changes (R-1031). Several releases that all agree with a row are a tie the
 mirror breaks by taking one of them, since a listening copy writes nothing
-back as the row's identity, where a heart or a pair refuses it (R-1032). What
+back as the row's identity (R-1032), and a pair breaks the same way since
+U208, where a heart refuses it. What
 exists is reused,
 by the ledger's record first and by exact name second, never made twice:
 
@@ -48,11 +49,12 @@ never one per call as ``export playlist`` adds them. Removals run last, so a
 track moving from one band to another is on its new playlist before it leaves
 its old one.
 
-AN EDIT MADE ON THE ACCOUNT IS NOT UNDONE (U201). Each mirrored playlist keeps
-its snapshot, the account tracks both sides held when a refresh last finished
-it, recorded by the apply, or by the plan for a playlist with nothing to write.
-The caller reads each genre playlist three ways (:mod:`mirror_edits`) and hands
-in a HOLD per playlist: a track whose edit on the account the library takes, or
+AN EDIT MADE ON THE ACCOUNT IS NOT UNDONE (U201, U204). Each mirrored playlist
+keeps its snapshot, the account tracks both sides held when a refresh last
+finished it, recorded by the apply, or by the plan for a playlist with nothing
+to write. The caller reads each playlist of a genre folder, the Favorites
+folder and INBOX three ways (:mod:`mirror_edits`) and hands in a HOLD per
+playlist: a track whose edit on the account the library takes, or
 one held, is never taken off nor added back here. A playlist whose listing came
 back short keeps its snapshot's word on every track it did not list.
 
@@ -66,7 +68,7 @@ Layer: modules.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -167,9 +169,15 @@ class Folder:
     playlists: tuple[Source, ...] = ()
     retire: bool = False
     present: frozenset[str] = frozenset()
-    #: A genre folder of the routing tree, whose edits on the account the
-    #: library takes (U201); the Favorites folder and INBOX are not, yet.
-    genre: bool = False
+    #: Which edit rule reads this folder, so an edit made on the account to it
+    #: is held and taken into the library: ``mirror_edits.GENRE`` for a genre
+    #: folder of the routing tree (U201), ``FAVORITES`` and ``INBOX`` since
+    #: U204, ``""`` for a folder mirrored one way.
+    edits: str = ""
+    #: Each node the rekordbox folder holds that is not mirrored, as
+    #: ``(label, reason)`` (U214): INBOX names every direct child that is not
+    #: a live batch, so one skipped by rule reads apart from one missed.
+    unmirrored: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -184,6 +192,11 @@ class Identity:
     #: provider and a file tagged with another recording's code would name the
     #: wrong track (R-879).
     agree: bool = False
+
+
+#: Members that return the requests they made, counted by that number rather
+#: than as one call (U207).
+SCREENS = frozenset({"screen_isrcs"})
 
 
 class Counted:
@@ -207,6 +220,13 @@ class Counted:
             return member
 
         def counted(*args: Any, **kwargs: Any) -> Any:
+            if name in SCREENS:
+                # A SCREEN SAYS WHAT IT SPENT (U207): none without a batch form,
+                # one per batch with one, never one per call.
+                made = member(*args, **kwargs)
+                self.requests += int(made or 0)
+                self.by_member[name] = self.by_member.get(name, 0) + int(made or 0)
+                return made
             self.requests += 1
             self.by_member[name] = self.by_member.get(name, 0) + 1
             return member(*args, **kwargs)
@@ -252,7 +272,8 @@ class Matcher:
     row is matched as one of them, linked like any match and so kept by every
     later refresh. A miss remembered with the tie's words before that is asked
     again rather than reused, once, since asking again no longer misses on it.
-    The hearts and the pairs keep R-572's refusal; they never pass it.
+    The pairs break a tie the same way since U208 (``sync/pair_cli._ask``);
+    the hearts keep R-572's refusal and never pass it.
     """
 
     def __init__(
@@ -280,6 +301,8 @@ class Matcher:
         self.missed: dict[str, tuple[str, tuple[str, ...]]] = {}
         #: How many rows a remembered miss answered, never asked of the provider.
         self.remembered = 0
+        #: Each content row's identity, read once (U207).
+        self._identities: dict[str, Identity] = {}
 
     @property
     def seen(self) -> dict[str, tuple[str, str, str]]:
@@ -297,6 +320,21 @@ class Matcher:
             self.fresh[row.content_id] = (remote, isrc)
         return remote, reason
 
+    def adopt(self, content_id: str, remote: str) -> None:
+        """Answer one row as the account track a mirror download fetched it as (U204).
+
+        The row a download's landing made is that very track, as a label
+        landing's ``known`` track is, so it is answered and linked as it even
+        where the provider broke a tie between releases toward another one;
+        otherwise the mirror would swap the track a person added for another
+        release of it. Called once every row is matched and before any plan
+        reads them, so every plan of the run reads the one answer.
+        """
+        _remote, isrc, _reason = self._seen.get(str(content_id), ("", "", ""))
+        self._seen[str(content_id)] = (str(remote), isrc, "")
+        if self._links.get(str(content_id)) != (str(remote), isrc):
+            self.fresh[str(content_id)] = (str(remote), isrc)
+
     def under(self, row: Row) -> tuple[str, ...]:
         """What a miss of this row is remembered under, and reused while it holds."""
         return (
@@ -307,20 +345,58 @@ class Matcher:
             "" if row.isrc else self._signature(row),
         )
 
-    def _match(self, row: Row) -> tuple[str, str, str]:
+    def _settled(self, row: Row) -> tuple[str, tuple[str, str, str]] | None:
+        """How a row is answered with no request, ``(kind, answer)``, or None.
+
+        Reads only, so the screen asks it of a row before any match and
+        :meth:`_match` asks it again: the rows the screen leaves out are
+        exactly the rows the match never asks the provider about (U207).
+        """
+        if row.content_id in self._seen:
+            return "seen", self._seen[row.content_id]
         linked = self._links.get(row.content_id)
         if linked is not None and (not row.isrc or row.isrc == linked[1]):
-            return linked[0], linked[1], ""
+            return "linked", (linked[0], linked[1], "")
         own = self._known.get(row.content_id)
         if own:
-            self.known += 1
-            return own, row.isrc, ""
-        under = self.under(row)
+            return "known", (own, row.isrc, "")
         missed = self._misses.get(row.content_id)
-        if missed is not None and tuple(missed[1]) == under and TIED not in missed[0]:
-            self.remembered += 1
-            return "", "", missed[0]
-        said = self._identify(row)
+        if missed is not None and tuple(missed[1]) == self.under(row) and TIED not in missed[0]:
+            return "remembered", ("", "", missed[0])
+        return None
+
+    def _identity(self, row: Row) -> Identity:
+        """What the row is matched by, read once per content row, a file's tag included."""
+        held = self._identities.get(row.content_id)
+        if held is None:
+            held = self._identities[row.content_id] = self._identify(row)
+        return held
+
+    def screen(self, rows: Iterable[Row]) -> int:
+        """Screen every code these rows will ask the provider, before any is asked (U207).
+
+        Only a row :meth:`_settled` cannot answer and whose identity carries a
+        code is screened, so a link, a recorded track, a remembered miss and a
+        frozen plan's answer cost nothing here. Returns the requests made.
+        """
+        codes = [
+            said.isrc
+            for row in rows
+            if self._settled(row) is None and (said := self._identity(row)).isrc
+        ]
+        return self._account.screen_isrcs(codes) if codes else 0
+
+    def _match(self, row: Row) -> tuple[str, str, str]:
+        settled = self._settled(row)
+        if settled is not None:
+            kind, answer = settled
+            if kind == "known":
+                self.known += 1
+            elif kind == "remembered":
+                self.remembered += 1
+            return answer
+        under = self.under(row)
+        said = self._identity(row)
         if not said.isrc:
             return self._missed(row, under, NO_ISRC)
         remote = self._account.match_track(
@@ -425,7 +501,8 @@ class FolderPlan:
     folder_id: str = ""
     stale_folder: str = ""
     playlists: tuple[PlaylistPlan, ...] = ()
-    #: Mirrored playlists the folder no longer declares, named and left.
+    #: Mirrored playlists the folder no longer declares, and each node of the
+    #: rekordbox folder that is not mirrored (U214), named and left.
     left: tuple[str, ...] = ()
     #: The links this folder's rows used that the ledger does not hold yet.
     links: Mapping[str, tuple[str, str]] = field(default_factory=dict)
@@ -651,7 +728,9 @@ def plan(
             )
         )
     declared = {source.name for source in folder.playlists}
-    left: list[str] = []
+    # EVERY NODE THE FOLDER LEAVES OFF IS NAMED (U214), so a batch skipped by
+    # rule reads apart from one missed, and the step's ``left`` count holds it.
+    left: list[str] = [f"{label}: not mirrored, {reason}" for label, reason in folder.unmirrored]
     retire: list[tuple[str, str]] = []
     for name, entry in sorted(made.items()):
         if name in declared:

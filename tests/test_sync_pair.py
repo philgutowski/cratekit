@@ -897,3 +897,103 @@ def test_skipping_the_only_side_with_changes_answers_no_op(world):
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "no_op"
     assert w.held() == ["1"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U206: a rehearsal and its live run pay for their ISRC lookups once
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class _Named:
+    def __init__(self, name: str) -> None:
+        self.name = name
+
+
+class _ProviderTrack:
+    """A provider track in the client's own shape, the one answer to its ISRC."""
+
+    def __init__(self, track_id: str) -> None:
+        self.id = track_id
+        self.name = self.title = f"Title {track_id}"
+        self.version = None
+        self.artists = [_Named(f"Artist {track_id}")]
+        self.artist = self.artists[0]
+        self.album = None
+        self.available = True
+
+
+class _IsrcClient:
+    """The provider client the real account adapter asks, counting every ISRC."""
+
+    country_code = "GB"
+
+    def __init__(self) -> None:
+        self.asked: list[str] = []
+
+    def get_tracks_by_isrc(self, code: str) -> list[_ProviderTrack]:
+        self.asked.append(code)
+        index = str(int(code[-5:]))
+        return [_ProviderTrack(remote(index))]
+
+
+def _through_the_shipped_lookup(w: World, client: _IsrcClient) -> None:
+    """The fake account's match goes through the shipped adapter's, ISRC cache
+    and all, built afresh for every row as a new process would build it, over
+    the configuration the run itself loaded."""
+    from cratekit.modules.outbound import tidal_account
+
+    def match_track(**kwargs):
+        made = tidal_account.TidalAccount(client, sleep=lambda _: None, cfg=config.load())
+        return made.match_track(**kwargs)
+
+    w.account.match_track = match_track
+
+
+def _loading(monkeypatch, loaded) -> None:
+    """Every load in the run answers ``loaded``, as the suite's fixture does."""
+    monkeypatch.setattr(config, "load", lambda *args, **kwargs: loaded)
+
+
+@pytest.mark.parametrize("days", [30, 0], ids=["kept", "cache-off"])
+def test_a_live_plan_after_its_rehearsal_asks_the_provider_no_isrc_again(
+    world, cfg, monkeypatch, days
+):
+    """The sitting's rule for a copy run: the library's state directory copied to
+    a scratch name and ``state_dirname`` naming it. The rehearsal's own state is
+    thrown away with it, and the ISRC answers are not."""
+    import dataclasses
+    import shutil
+
+    from cratekit.cli import ISRC_LOOKUPS
+
+    live_cfg = dataclasses.replace(
+        cfg, provider=dataclasses.replace(cfg.provider, isrc_cache_days=days)
+    )
+    scratch = ".cratekit-rehearsal"
+    rehearsal = dataclasses.replace(
+        live_cfg, library=dataclasses.replace(live_cfg.library, state_dirname=scratch)
+    )
+    w = world(account=("1",), rekordbox=("1", "2", "3"))
+    client = _IsrcClient()
+    _through_the_shipped_lookup(w, client)
+    root = Path(cfg.library.root)
+    shutil.copytree(root / cfg.library.state_dirname, root / scratch)
+    _loading(monkeypatch, rehearsal)
+
+    code, rehearsed = drive(w.args())
+    assert code == int(ExitCode.DECISION_REQUIRED), rehearsed
+    assert sorted(client.asked) == [isrc("2"), isrc("3")]
+    assert (root / scratch) in config.state_path("playlist_pairs", rehearsal).parents
+    _loading(monkeypatch, live_cfg)
+
+    code, live = drive(w.args())
+
+    assert code == int(ExitCode.DECISION_REQUIRED), live
+    assert live["cause"]["detail"]["shown"]["digest"] == rehearsed["cause"]["detail"]["shown"]["digest"]
+    said = [one["message"] for one in live["warnings"] if one["code"] == ISRC_LOOKUPS]
+    if days:
+        assert sorted(client.asked) == [isrc("2"), isrc("3")], "the live plan asked again"
+        assert said == ["2 ISRC lookups answered from the cache, 0 asked of the streaming provider"]
+    else:
+        assert sorted(client.asked) == sorted([isrc("2"), isrc("3")] * 2)
+        assert said == ["0 ISRC lookups answered from the cache, 2 asked of the streaming provider"]

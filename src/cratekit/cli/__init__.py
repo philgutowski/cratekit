@@ -413,6 +413,12 @@ def _run_state_for(entry: Entry, args: argparse.Namespace) -> gates.RunState:
 #: becomes a block.
 PROVIDER_SPEND = "provider-spend"
 
+#: The warning code every run that looked an ISRC up carries (U206): how many
+#: lookups a remembered answer settled and how many went to the provider. A
+#: warning for the reason the spend is one, and beside it, so a rehearsal and
+#: its live run can be read against each other.
+ISRC_LOOKUPS = "isrc-lookups"
+
 
 def _with_sibling_runs(envelope: Envelope, state: gates.RunState) -> Envelope:
     """The envelope of a run persisted at its gate, with every sibling run named (U186).
@@ -498,6 +504,36 @@ def _with_provider_spend(envelope: Envelope, before: provider_gate.Spend) -> Env
             f"{spent.account_calls} on the account and {app} under Cratekit's app "
             f"credentials{why}"
         ),
+    }
+    return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))
+
+
+def _isrc_lookups() -> tuple[int, int]:
+    """Lookups the ISRC cache settled and lookups asked of the provider, so far (U206).
+
+    READ OFF THE MODULE ONLY WHEN SOMETHING LOADED IT, rather than imported
+    here: the dispatcher imports nothing a verb does not need, and the counts
+    move only inside that module, so a run that never loaded it looked
+    nothing up. This process's own counts, for the reason the spend line gives.
+    """
+    module = sys.modules.get("cratekit.acquire.isrc_cache")
+    if module is None:
+        return (0, 0)
+    done = module.process_lookups()
+    return (done.remembered, done.asked)
+
+
+def _with_isrc_lookups(envelope: Envelope, before: tuple[int, int]) -> Envelope:
+    """The envelope with one line added when this run looked any ISRC up (U206)."""
+    now = _isrc_lookups()
+    remembered = max(0, now[0] - before[0])
+    asked = max(0, now[1] - before[1])
+    if remembered == 0 and asked == 0:
+        return envelope
+    lookups = "1 ISRC lookup" if remembered == 1 else f"{remembered} ISRC lookups"
+    entry = {
+        "code": ISRC_LOOKUPS,
+        "message": f"{lookups} answered from the cache, {asked} asked of the streaming provider",
     }
     return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))
 
@@ -616,6 +652,23 @@ def _without_calls(tokens: Sequence[str]) -> list[str]:
     return kept
 
 
+def _without_run(tokens: Sequence[str]) -> list[str]:
+    """The command line with any ``--run`` taken out (U210)."""
+    kept: list[str] = []
+    skip = False
+    for token in tokens:
+        if skip:
+            skip = False
+            continue
+        if token == "--run":
+            skip = True
+            continue
+        if token.startswith("--run="):
+            continue
+        kept.append(token)
+    return kept
+
+
 def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
     """The exact command that continues a run the call ceiling stopped (U193).
 
@@ -624,18 +677,27 @@ def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
     verb run again would queue a second one. Anything else is this command line
     again with ``--calls`` raised, the global options kept, since a run that
     stopped at a gate continues by the same words.
+
+    A verb whose write records its steps under its run names the run on the
+    cause (U210), and the command carries ``--run`` for it when the command
+    line did not already, so the continue is that run and not a new one. A
+    verb that says its run cannot be continued (``fresh``) is named without
+    ``--run``, so the command starts a new run rather than one that refuses.
     """
     detail = cause.detail or {}
     higher = str(detail.get("higher") or 2 * int(detail.get("ceiling") or 1))
     job_id = detail.get("job_id")
     if job_id:
         return shlex.join(["crate", "--calls", higher, "job", "resume", str(job_id)])
-    tokens = list(argv)
+    tokens = _without_run(argv) if detail.get("fresh") else list(argv)
+    run_id = detail.get("run_id")
+    named = any(token == "--run" or token.startswith("--run=") for token in tokens)
+    run = ["--run", str(run_id)] if run_id and not named else []
     verb = _verb_argv(tokens, entry)
     if verb is None:
-        return shlex.join(["crate", "--calls", higher, *_without_calls(tokens)])
+        return shlex.join(["crate", *run, "--calls", higher, *_without_calls(tokens)])
     lead = _without_calls(tokens[: len(tokens) - len(verb)])
-    return shlex.join(["crate", *lead, "--calls", higher, *verb])
+    return shlex.join(["crate", *lead, *run, "--calls", higher, *verb])
 
 
 def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:
@@ -687,6 +749,7 @@ def _dispatched_in_scope(
     started = output.timestamp()
     state: gates.RunState | None = None
     spent_before = _provider_spend()
+    looked_before = _isrc_lookups()
 
     try:
         stub = getattr(args, "_stub", None)
@@ -807,6 +870,7 @@ def _dispatched_in_scope(
     # AFTER EVERY BRANCH ABOVE, the refusals included: the sitting's failed
     # downloads spent calls into a live limit and nothing on the screen said so.
     envelope = _with_provider_spend(envelope, spent_before)
+    envelope = _with_isrc_lookups(envelope, looked_before)
     return envelope
 
 

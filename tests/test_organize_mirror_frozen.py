@@ -590,3 +590,47 @@ def test_a_plan_that_cannot_be_frozen_stands_and_the_apply_plans_afresh(installe
     assert shown.facts[account_mirror.FROZEN_FACT].startswith("not frozen (")
     assert "so it was planned afresh" in applied.facts[account_mirror.FROZEN_FACT]
     assert applied.digest() == shown.digest()
+
+
+
+def test_each_folders_edit_rule_survives_the_freeze_and_a_version_3_record_is_planned_afresh(
+    installed,
+):
+    """U204: the run that applies reads the Favorites folder and INBOX as edited too."""
+    from cratekit.modules.outbound import mirror_edits
+
+    library = account_mirror.Library(
+        folders=tuple(
+            mirror.Folder(name=name, edits=rule)
+            for name, rule in (
+                ("Techno", mirror_edits.GENRE),
+                ("Favorites", mirror_edits.FAVORITES),
+                ("INBOX", mirror_edits.INBOX),
+                ("Mine", ""),
+            )
+        )
+    )
+    mirror_frozen.freeze(installed, RUN, library, {})
+    frozen, _said = mirror_frozen.load(installed, RUN)
+    assert [folder.edits for folder in frozen.library.folders] == [
+        "genre",
+        "favorites",
+        "inbox",
+        "",
+    ]
+
+    path = _frozen_path(installed)
+    document = json.loads(open(path, encoding="utf-8").read())
+    for changed in (
+        {"version": 3},
+        {
+            "library": {
+                **document["library"],
+                "folders": [{**document["library"]["folders"][0], "edits": "somewhere"}],
+            }
+        },
+    ):
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump({**document, **changed}, handle)
+        frozen, said = mirror_frozen.load(installed, RUN)
+        assert frozen is None, changed

@@ -1,0 +1,227 @@
+name = "u204"
+pass_kind = "full"
+
+[[rows]]
+id = "P1_known_snapshots"
+description = "decide: a track a snapshot once held is not known, so a removed track the library lost is queued for download"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        known |= one.base'''
+new = '''        known |= set()'''
+
+[[rows]]
+id = "P2_acquire_only_unknown"
+description = "_carry: an addition the library lacks is queued whatever the snapshots held"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if kind in ADDITIONS and track not in known:'''
+new = '''        if kind in ADDITIONS:'''
+
+[[rows]]
+id = "P3_off_and_into_month_held"
+description = "_decide_favorites: a track taken off All Favorites and put in a month at once is unfavourited rather than held"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if removed_s and added_m:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P4_two_months_held"
+description = "_decide_favorites: a track added to two months at once is favourited into one of them rather than held"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        elif len(added_m) > 1:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "P5_month_move_leaves"
+description = "_decide_favorites: a month move no longer leaves the month it was taken off"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''                extra = {"away": tuple(sorted(removed_m, key=lambda one: one.title))}'''
+new = '''                extra = {"away": ()}'''
+
+[[rows]]
+id = "P6_filed_no_month"
+description = "_decide_favorites: a track put in All Favorites that sits in a month is given a second month by its time"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''                "filed": bool(now_m or there_m),'''
+new = '''                "filed": False,'''
+
+[[rows]]
+id = "P7_unfavourite_agreed"
+description = "_decide_favorites: an unfavourite rekordbox made only in All Favorites is agreed, the month left"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''                if not there_s and not there_m:'''
+new = '''                if not there_s:'''
+
+[[rows]]
+id = "P8_addition_beats_unfavourite"
+description = "_decide_favorites: an unfavourite is carried over rekordbox's addition to the favourites since"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''                if (there_s and not was_s) or (there_m - was_m):'''
+new = '''                if False:'''
+
+[[rows]]
+id = "P9_unfavourite_settles_out"
+description = "_decide_favorites: the settle after an unfavourite reads rekordbox as still holding the track"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            if kind == UNFAVOURITE or one.place in extra.get("away", ()):'''
+new = '''            if one.place in extra.get("away", ()):'''
+
+[[rows]]
+id = "P10_inbox_agreed"
+description = "_decide_inbox: a change both sides made to a batch is carried again rather than agreed"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            if (track in one.rekordbox) is added:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "P11_inbox_hold_per_batch"
+description = "_holds: an INBOX edit holds every batch rather than its own"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            key = one.to.title if one.tree == INBOX and one.to is not None else one.tree'''
+new = '''            key = one.tree'''
+
+[[rows]]
+id = "P12_favorites_stay"
+description = "_holds: a Favorites edit keeps no snapshot word on a playlist the plan finds level"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        stay = frozenset(mine) if one.place.tree == FAVORITES else frozenset()'''
+new = '''        stay = frozenset()'''
+
+[[rows]]
+id = "O1_filing_places"
+description = "_favourite_places: every playlist in the Favorites folder is read as a month, not only a filing one"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if placeholders.is_filing(name):'''
+new = '''        if True:'''
+
+[[rows]]
+id = "O2_unfavourite_leaves_months"
+description = "_plan_favourites: an unfavourite leaves All Favorites alone and stays in its months"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            leave += [(pid, folder, name) for name, pid in filing if pid in held]'''
+new = '''            leave += []'''
+
+[[rows]]
+id = "O3_quarter_refused"
+description = "_plan_favourites: a favourite put in a quarter is filed into it"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            if placeholders.MONTH_LABEL.fullmatch(month) is None and month != placeholders.UNDATED:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "O4_colour"
+description = "_plan_favourites: a favourite with no colour is not coloured Pink"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        takes = bool(pink) and decision.content_id in colour.sort_rows(db, pink, [decision.content_id]).to_colour'''
+new = '''        takes = False'''
+
+[[rows]]
+id = "O5_batch_live"
+description = "_plan_inbox: a batch no longer directly under INBOX is written as if it were"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if len(found) != 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "O6_inbox_latch"
+description = "write: an INBOX edit asks no intake tree latch"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if edits.INBOX in touched:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "O7_restore_detected"
+description = "write: a favourites only write detects no out of band restore"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''    if touched and not touched & {edits.GENRE, edits.INBOX}:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "O8_favourite_read_back"
+description = "assert_read_back: a favourite the placement did not write passes the read back"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if change.outcome == edits.FAVOURITE and home is not None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D1_one_queue_per_track"
+description = "mirror_downloads.plan: a track two playlists want is queued twice"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''        if decision.track in taken:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D2_write_rereads_queue"
+description = "mirror_downloads.write: two plans approved one after the other queue a track twice"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            fresh = {track: frozen for track, frozen in tracks.items() if track not in already}'''
+new = '''            fresh = dict(tracks)'''
+
+[[rows]]
+id = "D3_owned_recording"
+description = "mirror_downloads.plan: another release of an owned recording is queued"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            rows = owned(frozen[track].get("isrc")) if track in frozen else ()'''
+new = '''            rows = ()'''
+
+[[rows]]
+id = "D4_never_lands_named"
+description = "mirror_downloads.outcomes: a finished download that found the track owned is said to await its landing"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''                why = _NEVER_LANDS.get(str(report.get("state")))'''
+new = '''                why = None'''
+
+[[rows]]
+id = "A1_adopt_landed"
+description = "_read_edits: a landed row tied by its ISRC is not answered as the track the account holds"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror.py", "tests/test_organize_mirror_inbox.py", "tests/test_organize_mirror_frozen.py"]
+old = '''            matcher.adopt(content_id, remote)'''
+new = '''            pass'''

@@ -1,0 +1,278 @@
+name = "u206"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_recall_never_hits"
+description = "Cache.recall: never answer from the file, so every lookup asks the provider again"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        held = self._fresh(entries.get(key), self.clock())'''
+new = '''        held = None'''
+
+[[rows]]
+id = "M2_disabled_still_recalls"
+description = "Cache.recall: drop the days 0 guard, so a cache turned off still answers"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        global _PROCESS_HITS
+        if not self.enabled:
+            return None'''
+new = '''        global _PROCESS_HITS
+        if False:
+            return None'''
+
+[[rows]]
+id = "M3_disabled_still_remembers"
+description = "Cache.remember: drop the days 0 guard, so a cache turned off still writes the file"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        if not self.enabled:
+            return False
+        key = _key(isrc, country)
+        if key is None:
+            return False
+        tracks = list(tracks)'''
+new = '''        key = _key(isrc, country)
+        if key is None:
+            return False
+        tracks = list(tracks)'''
+
+[[rows]]
+id = "M4_unfolded_spelling_kept"
+description = "_key: keep a spelling that is not its own fold under the folded key"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    if not folded or folded != isrc:'''
+new = '''    if not folded:'''
+
+[[rows]]
+id = "M5_country_ignored"
+description = "_key: leave the country out, so an answer in one country answers another"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    return f"{folded}|{country}"'''
+new = '''    return f"{folded}|"'''
+
+[[rows]]
+id = "M6_not_found_lives_as_found"
+description = "_fresh: a not found lives as long as a found answer"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        days = self.days if tracks else min(NOT_FOUND_DAYS, self.days)'''
+new = '''        days = self.days'''
+
+[[rows]]
+id = "M7_not_found_ignores_shorter_setting"
+description = "_fresh: a not found lives a week even when the setting is shorter"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        days = self.days if tracks else min(NOT_FOUND_DAYS, self.days)'''
+new = '''        days = self.days if tracks else NOT_FOUND_DAYS'''
+
+[[rows]]
+id = "M8_expiry_off_by_one"
+description = "_fresh: an entry exactly its lifetime old is still used"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        if age < 0 or age >= days * DAY_S:'''
+new = '''        if age < 0 or age > days * DAY_S:'''
+
+[[rows]]
+id = "M9_future_stamp_trusted"
+description = "_fresh: an entry stamped later than now is used"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        if age < 0 or age >= days * DAY_S:'''
+new = '''        if age >= days * DAY_S:'''
+
+[[rows]]
+id = "M10_day_coefficient_halved"
+description = "_fresh: half a day per configured day, so answers expire early"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''DAY_S = 86_400'''
+new = '''DAY_S = 43_200'''
+
+[[rows]]
+id = "M11_unreadable_answer_kept"
+description = "Cache.remember: keep an answer holding a track that cannot be read"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        if not all(_readable(track) for track in tracks):
+            return False'''
+new = '''        if False:
+            return False'''
+
+[[rows]]
+id = "M12_corrupt_file_not_set_aside"
+description = "Cache._entries: a file that does not parse is read as empty and overwritten, never set aside"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        if entries is None:
+            if locked:
+                self._set_aside_held()
+            else:
+                self._set_aside()
+            return {}'''
+new = '''        if entries is None:
+            return {}'''
+
+[[rows]]
+id = "M13_write_without_merge"
+description = "Cache.remember: write only this entry, dropping what another process wrote since"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''            merged = {
+                name: entry for name, entry in entries.items() if self._fresh(entry, now) is not None
+            }'''
+new = '''            merged = {}'''
+
+[[rows]]
+id = "M14_account_keeps_invalid_isrc"
+description = "TidalAccount._isrc_tracks: keep any no match as a not found, InvalidISRC included"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''            if last["said_not_found"]:
+                self._cache.remember(wanted, country, ())'''
+new = '''            if True:
+                self._cache.remember(wanted, country, ())'''
+
+[[rows]]
+id = "M15_account_flag_not_reset"
+description = "TidalAccount._isrc_tracks: the not found flag is not reset per attempt, so a retried 404 keeps a later InvalidISRC"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        def ask() -> Any:
+            last["said_not_found"] = False
+            try:'''
+new = '''        def ask() -> Any:
+            try:'''
+
+[[rows]]
+id = "M16_said_not_found_widened"
+description = "said_not_found: read InvalidISRC as a said not found too"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    if type(exc).__name__ == "ObjectNotFound":'''
+new = '''    if type(exc).__name__ in ("ObjectNotFound", "InvalidISRC"):'''
+
+[[rows]]
+id = "M17_account_hit_ignored"
+description = "TidalAccount._isrc_tracks: never use a remembered answer"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''        if held is not None:
+            return held if held else _ABSENT
+        # What the LAST attempt said'''
+new = '''        if False:
+            return held if held else _ABSENT
+        # What the LAST attempt said'''
+
+[[rows]]
+id = "M18_catalogue_keeps_any_gone"
+description = "TidalCatalogue.tracks_for_isrc: keep every failure _gone reads as a not found, a FileNotFoundError among them"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''                    if isrc_cache.said_not_found(exc):
+                        answered.append(())'''
+new = '''                    if True:
+                        answered.append(())'''
+
+[[rows]]
+id = "M19_catalogue_answer_reset_dropped"
+description = "TidalCatalogue.tracks_for_isrc: the answered list is not cleared per attempt, so a not found the ladder retried past is kept"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''            del limit, offset
+            answered.clear()
+            try:
+                found = lookup(wanted)'''
+new = '''            del limit, offset
+            try:
+                found = lookup(wanted)'''
+
+[[rows]]
+id = "M20_rehearsal_cache_not_kept_live"
+description = "rehearsal.redirected: do not point the ISRC cache at the live directory, so a rehearsal's answers are thrown away"
+file = "src/cratekit/core/rehearsal.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    os.environ[config.ENV_ISRC_CACHE_DIR] = saved[config.ENV_ISRC_CACHE_DIR] or str(
+        config.state_path("isrc_cache").parent
+    )'''
+new = '''    os.environ.pop(config.ENV_ISRC_CACHE_DIR, None)'''
+
+[[rows]]
+id = "M21_override_ignored"
+description = "_resolved: ignore CRATEKIT_ISRC_CACHE_DIR, so a hand copy run cannot share the live answers"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    if override:
+        return Path(override) / config.state_file(key).relative'''
+new = '''    if False:
+        return Path(override) / config.state_file(key).relative'''
+
+[[rows]]
+id = "M22_days_validation_dropped"
+description = "_validate_provider: accept a negative isrc_cache_days"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    if days is not None and (not isinstance(days, int) or isinstance(days, bool) or days < 0):'''
+new = '''    if days is not None and (not isinstance(days, int) or isinstance(days, bool)):'''
+
+[[rows]]
+id = "M23_lookup_line_dropped"
+description = "_with_isrc_lookups: never add the isrc-lookups line"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    if remembered == 0 and asked == 0:
+        return envelope'''
+new = '''    if True:
+        return envelope'''
+
+[[rows]]
+id = "M24_doctor_set_aside_unnamed"
+description = "_check_isrc_cache: leave the set aside files out of the note"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''    aside = cache.set_aside()
+    if aside:'''
+new = '''    aside = cache.set_aside()
+    if False:'''
+
+[[rows]]
+id = "M25_lock_skipped"
+description = "Cache._locked: yield as held without taking the lock"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "maintainer"
+tests = ["tests/test_isrc_cache.py", "tests/test_sync_pair.py", "tests/test_intake_missing_isrc.py", "tests/test_outbound_tidal_account.py", "tests/test_label_tidal_catalogue.py", "tests/test_organize_mirror_tie.py", "tests/test_intake_land_rehearse.py", "tests/test_doctor.py", "tests/test_config.py"]
+old = '''                    try:
+                        fcntl.flock(fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        had = True
+                        break'''
+new = '''                    try:
+                        had = True
+                        break'''

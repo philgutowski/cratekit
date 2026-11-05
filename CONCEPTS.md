@@ -83,6 +83,23 @@ often than their authors realize, since each side of a collision has its own
 reason to write one, so a merge reads both branches' records rather than only the
 one it is standing on.
 
+### Held plan
+The plan a verb's first command made, kept under its run until the run writes,
+so the later commands that answer its explicit gates use the plan the person
+was shown rather than planning again (U209). It is read back only when it
+digests to every offer the run recorded; otherwise the verb plans again and its
+gates compare. Because nothing is planned again, the write checks first that the
+lists the plan read have not moved, and refuses stale naming them if they have.
+
+### Write steps
+What a run's write recorded as each step of each item landed, beside its held
+plan and bound to the plan's digest (U210). A continue of a run that stopped
+part way passes over every item done and starts each other at its first
+unfinished step, and its check before the write reads a part written list
+only for what that write could have done. Steps that cannot be read are no
+steps, so a continue reads every list as the plan read it and refuses stale
+rather than writing anything twice.
+
 ### Board bar
 The test a residual finding has to pass to earn an issue, decided 2026-09-18. A
 finding passes when it is open and a person using the shipped verbs pays for it
@@ -703,9 +720,12 @@ The account tracks a mirrored playlist held when `crate organize`'s account mirr
 last finished it, kept per playlist in the outbound ledger under `agreed` (U201).
 It is what tells an edit a person made on the account (held there now, not in the
 snapshot, or the reverse) from a change made in rekordbox, so the mirror holds the
-first and the rekordbox area's `mirror-edits` step takes it into the library. A
-playlist with no snapshot has never been agreed, and every difference on it is
-read as rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
+first and the rekordbox area's `mirror-edits` step takes it into the library,
+for a genre playlist (U201), the Favorites folder and an INBOX batch (U204). A
+track added on the account that the library lacks and no snapshot ever held is
+queued for download by the `mirror-downloads` step instead. A playlist with no
+snapshot has never been agreed, and every difference on it is read as
+rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
 side of a pair the author made.
 
 ### Rotation
@@ -2227,8 +2247,9 @@ longer under INBOX at all. A row a label landing recorded its provider track
 for is matched to that track with no request. A row whose ISRC names several
 releases that all agree with it is matched as one of them, the lowest provider
 identifier after the account's hearts and the file's album have narrowed them,
-and kept on that one by every later refresh (R-1032), where a heart or a pair
-refuses the same tie, since there the release becomes the row's identity.
+and kept on that one by every later refresh (R-1032). A pair breaks the same
+tie the same way since U208; a heart refuses it, since there the release is
+the person's own choice.
 
 *Avoid:* reading it as an export (`crate export playlist`, add only, filed in
 `Exports`) or as a pair (`crate sync pair`, merged both ways).
@@ -2244,6 +2265,19 @@ is not an answer about the row.
 
 *Avoid:* reading it as a refusal recorded on a mirrored playlist (`refused`
 under `mirrors`), which is a track the provider would not ADD, already matched.
+
+### ISRC screen
+A batch question asked before a plan's ISRC lookups, built by U207: up to
+twenty codes in one request to the provider's catalogue API, under the app
+credentials only, asking which of them it files anything under. A code the
+answer leaves out is answered not found with no lookup of its own; every code
+it names is still looked up alone, because given several codes the API answers
+one release per code, and which release a row means is decided from every
+release. `sync pair`, the account mirror and `intake missing` screen. A batch
+that fails, or an answer that cannot be attributed whole, marks nothing.
+
+*Avoid:* reading it as a batched lookup, or as the ISRC cache, which keeps
+answers across runs.
 
 ### Frozen mirror plan
 The library and the matches the account mirror's plan read on the organize run

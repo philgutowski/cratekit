@@ -168,10 +168,12 @@ def test_a_track_added_to_two_bands_at_once_is_held_on_both_sides():
     assert decided.hold("Tech House Low").keep == {"t1"}
 
 
-def test_a_track_the_library_does_not_own_is_held_and_named_for_u204():
+def test_a_track_the_library_does_not_own_is_held_and_queued_for_download():
     decided = edits.decide([held(THM, account=("t9",), agreed=())], OWNED)
     one = only(decided)
-    assert one.outcome == edits.HELD and "U204" in one.why
+    assert one.outcome == edits.HELD and one.acquire and "queued for download" in one.why
+    assert one.to == THM
+    assert decided.wanted == (one,)
     assert decided.hold("Tech House Mid").keep == {"t9"}
 
 
@@ -383,3 +385,252 @@ def test_a_short_listing_reads_a_track_it_lists_and_holds_only_one_it_leaves_out
     )
     one = only(decided)
     assert (one.outcome, one.to) == (edits.MOVE, THM)
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U204. The Favorites folder and INBOX, each by its own rule
+# ═══════════════════════════════════════════════════════════════════════════
+
+AF = edits.Place("All Favorites", "Favorites", "All Favorites", True, edits.FAVORITES)
+OCT = edits.Place("Favorites 2026-10", "Favorites", "2026-10", False, edits.FAVORITES)
+NOV = edits.Place("Favorites 2026-11", "Favorites", "2026-11", False, edits.FAVORITES)
+BA = edits.Place("INBOX A", "INBOX", "A", True, edits.INBOX)
+BB = edits.Place("INBOX B", "INBOX", "B", True, edits.INBOX)
+
+
+def test_a_track_put_in_all_favorites_is_favourited_with_its_added_time():
+    decided = edits.decide(
+        [
+            held(AF, account=("t1",), agreed=(), account_added={"t1": "2026-09-14T10:00:00+00:00"}),
+            held(OCT),
+        ],
+        OWNED,
+    )
+    one = only(decided)
+    assert (one.outcome, one.to, one.content_id, one.tree) == (
+        edits.FAVOURITE,
+        AF,
+        "c1",
+        edits.FAVORITES,
+    )
+    assert (one.when, one.filed) == ("2026-09-14T10:00:00+00:00", False)
+    assert decided.hold("All Favorites").keep == {"t1"}
+    # Settled where both sides will agree: All Favorites, and the month it is not in.
+    assert set(one.settle) == {
+        ("Favorites", "All Favorites", True),
+        ("Favorites", "Favorites 2026-10", False),
+    }
+
+
+def test_a_track_put_in_all_favorites_that_sits_in_a_month_takes_no_month():
+    one = only(
+        edits.decide(
+            [
+                held(AF, account=("t1",)),
+                held(OCT, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            ],
+            OWNED,
+        )
+    )
+    assert one.outcome == edits.FAVOURITE and one.filed is True
+
+
+def test_a_track_put_in_a_month_is_favourited_there():
+    one = only(edits.decide([held(AF), held(OCT, account=("t1",))], OWNED))
+    assert (one.outcome, one.to) == (edits.FAVOURITE, OCT)
+
+
+def test_a_track_taken_off_all_favorites_is_unfavourited_and_settled_out_of_the_folder():
+    one = only(
+        edits.decide(
+            [
+                held(AF, rekordbox=("t1",), agreed=("t1",)),
+                held(OCT, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            ],
+            OWNED,
+        )
+    )
+    assert (one.outcome, one.to, one.content_id) == (edits.UNFAVOURITE, None, "c1")
+    # The month the account still holds it in keeps the snapshot's word, so the
+    # next refresh reads rekordbox's removal there and takes it off.
+    assert one.settle == (("Favorites", "All Favorites", False),)
+
+
+@pytest.mark.parametrize(
+    ("af", "oct_", "nov", "why"),
+    [
+        (
+            dict(account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            dict(rekordbox=("t1",), agreed=("t1",)),
+            {},
+            "listed and not carried",
+        ),
+        (
+            dict(account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            dict(account=("t1",)),
+            dict(account=("t1",)),
+            "2 month playlists",
+        ),
+        (dict(rekordbox=("t1",), agreed=("t1",)), {}, dict(account=("t1",)), "at once"),
+    ],
+)
+def test_a_favorites_edit_the_account_does_not_decide_is_held(af, oct_, nov, why):
+    decided = edits.decide([held(AF, **af), held(OCT, **oct_), held(NOV, **nov)], OWNED)
+    one = only(decided)
+    assert one.outcome == edits.HELD and why in one.why
+    assert one.tree == edits.FAVORITES and decided.carried == ()
+
+
+def test_an_unfavourite_against_a_month_rekordbox_added_since_keeps_rekordboxs():
+    one = only(
+        edits.decide(
+            [
+                held(AF, rekordbox=("t1",), agreed=("t1",)),
+                held(NOV, rekordbox=("t1",), agreed=()),
+            ],
+            OWNED,
+        )
+    )
+    assert one.outcome == edits.REKORDBOX and "addition beats a removal" in one.why
+
+
+def test_an_unfavourite_rekordbox_made_too_is_agreed():
+    one = only(edits.decide([held(AF, agreed=("t1",)), held(OCT, agreed=("t1",))], OWNED))
+    assert one.outcome == edits.AGREED
+
+
+def test_a_favourite_rekordbox_made_too_is_agreed():
+    one = only(edits.decide([held(AF, account=("t1",), rekordbox=("t1",))], OWNED))
+    assert one.outcome == edits.AGREED
+
+
+def test_two_months_follow_the_later_addition():
+    later = edits.decide(
+        [
+            held(AF, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            held(OCT, account=("t1",), account_added={"t1": "2026-11-04T10:00:00+00:00"}),
+            held(NOV, rekordbox=("t1",), rekordbox_added={"t1": "2026-11-03 10:00:00.000 +00:00"}),
+        ],
+        OWNED,
+    )
+    assert only(later).outcome == edits.FAVOURITE
+    earlier = edits.decide(
+        [
+            held(AF, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            held(OCT, account=("t1",), account_added={"t1": "2026-11-02T10:00:00+00:00"}),
+            held(NOV, rekordbox=("t1",), rekordbox_added={"t1": "2026-11-03 10:00:00.000 +00:00"}),
+        ],
+        OWNED,
+    )
+    assert only(earlier).outcome == edits.REKORDBOX
+
+
+def test_a_short_favorites_listing_holds_what_it_left_out():
+    one = only(edits.decide([held(AF, rekordbox=("t1",), agreed=("t1",), short=True)], OWNED))
+    assert one.outcome == edits.HELD and "short" in one.why
+
+
+def test_an_inbox_track_put_in_joins_and_one_taken_off_leaves():
+    decided = edits.decide(
+        [
+            held(BA, account=("t1", "t2"), rekordbox=("t1",), agreed=("t1",)),
+            held(BB, rekordbox=("t2",), agreed=("t2",)),
+        ],
+        OWNED,
+    )
+    found = {(one.outcome, one.to.title) for one in decided.decisions}
+    assert found == {(edits.JOIN, "INBOX A"), (edits.LEAVE, "INBOX B")}
+    join = next(one for one in decided.decisions if one.outcome == edits.JOIN)
+    assert join.settle == (("INBOX", "INBOX A", True),)
+    assert decided.hold("INBOX A").keep == {"t2"}
+    assert decided.hold("INBOX B").skip == {"t2"}
+
+
+def test_an_inbox_change_both_sides_made_is_agreed():
+    decided = edits.decide(
+        [held(BA, account=("t2",), rekordbox=("t2",), agreed=()), held(BB, agreed=("t1",))], OWNED
+    )
+    assert {one.outcome for one in decided.decisions} == {edits.AGREED}
+    assert decided.holds == {}
+
+
+def test_a_hold_in_one_tree_is_never_a_hold_in_another():
+    decided = edits.decide(
+        [
+            held(DHL, account=(), rekordbox=("t1",), agreed=("t1",)),
+            held(THM, account=("t1",), agreed=()),
+            held(AF, account=(), rekordbox=("t1",), agreed=()),
+        ],
+        OWNED,
+    )
+    one = only(decided)
+    assert one.tree == edits.GENRE
+    # All Favorites differs (rekordbox has it, the account does not) and the
+    # genre move holds t1, but the Favorites tree's own rule holds nothing.
+    assert decided.hold("All Favorites") == edits.Hold()
+
+
+def test_an_addition_the_library_lacks_is_queued_in_favorites_and_inbox_and_a_known_one_never():
+    decided = edits.decide(
+        [
+            held(AF, account=("t9",)),
+            held(BA, account=("t9",)),
+            held(BB, account=("t8",)),
+            held(DHL, account=("t8",), agreed=("t8",)),
+        ],
+        OWNED,
+    )
+    assert {(one.tree, one.acquire) for one in decided.decisions if one.track == "t9"} == {
+        (edits.FAVORITES, True),
+        (edits.INBOX, True),
+    }
+    assert [one.track for one in decided.wanted] == ["t9", "t9"]
+    # t8 sits in a genre snapshot, so the library held it once: it left the
+    # collection, and is held, never fetched again.
+    gone = next(one for one in decided.decisions if one.track == "t8")
+    assert gone.outcome == edits.HELD and not gone.acquire
+
+
+def test_an_inbox_edit_holds_its_own_batch_and_no_other():
+    """Review round one, finding 6: a join on A no longer holds rekordbox's addition to B."""
+    decided = edits.decide(
+        [held(BA, account=("t1",), agreed=()), held(BB, rekordbox=("t1",), agreed=())], OWNED
+    )
+    assert only(decided).outcome == edits.JOIN
+    assert decided.hold("INBOX A").keep == {"t1"}
+    assert decided.hold("INBOX B") == edits.Hold()
+
+
+def test_a_month_move_leaves_the_month_it_was_taken_off():
+    """Review round one, finding 1."""
+    one = only(
+        edits.decide(
+            [
+                held(AF, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+                held(OCT, rekordbox=("t1",), agreed=("t1",)),
+                held(NOV, account=("t1",)),
+            ],
+            OWNED,
+        )
+    )
+    assert (one.outcome, one.to, one.away) == (edits.FAVOURITE, NOV, (OCT,))
+    assert set(one.settle) == {
+        ("Favorites", "All Favorites", True),
+        ("Favorites", "Favorites 2026-10", False),
+        ("Favorites", "Favorites 2026-11", True),
+    }
+
+
+def test_an_unfavourite_rekordbox_made_in_all_favorites_alone_is_still_carried():
+    """Mutation row P7: rekordbox took it off All Favorites and kept its month, so not agreed."""
+    one = only(
+        edits.decide(
+            [
+                held(AF, agreed=("t1",)),
+                held(OCT, account=("t1",), rekordbox=("t1",), agreed=("t1",)),
+            ],
+            OWNED,
+        )
+    )
+    assert one.outcome == edits.UNFAVOURITE

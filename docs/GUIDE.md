@@ -889,6 +889,23 @@ rather than at the bottom. A folder made before that reads oldest first, and
 playlist's position now and after, asks one gate, and writes positions and
 nothing else, no membership and no name. A folder already in order asks nothing.
 
+An ISRC the service has answered is not asked again for a while, by any verb.
+The answer is kept in one file of the installation, beside the service's pacing
+state and never under the library, so a rehearsal on a library copy with its
+state redirected and the live run after it pay for their lookups once, and a
+mirror after a pair, or `intake missing` after a sync, pay nothing. A found
+answer is kept for `[provider] isrc_cache_days` days, 30 unless set; an ISRC
+the service files nothing under is kept for a week, or for fewer days if the
+setting is lower; 0 turns it off. Only an answer is kept: an outage, a rate
+limit or a rejected session is asked again next time. Every run that looked an
+ISRC up says how many lookups the cache answered and how many went to the
+service. `crate doctor` notes how many answers are kept, and names any copy of
+the file it could not read and set aside; nothing reads those, and they may be
+removed. A rehearsal keeps using the live answers even though it
+redirects everything else; a copy run made by hand that redirects
+`CRATEKIT_STATE_DIR` sets `CRATEKIT_ISRC_CACHE_DIR` to the live state folder
+first, or its lookups are paid for again on the live run.
+
 ### Keep your custom playlists in rekordbox for good
 
 ```bash
@@ -937,9 +954,18 @@ a smart playlist, and every playlist under a top folder
 `outbound.pair_skip_folders` names, which is `["ARCHIVE"]` unless you change
 it. A made pair whose rekordbox playlist you move into such a folder, another
 app's folder or the Favorites folder is unpaired, and its account playlist
-stays. A track the account cannot carry stays in
-rekordbox, counted on the gate, and is not asked about again until its ISRC
-changes, except a tie between releases, which is asked again. Another app's
+stays. A track whose ISRC names several releases on
+the account that all agree with it, a single and its album cut, is paired as
+one of them: the one you heart, else the lowest numbered after the file's
+album has narrowed them, as the mirror chooses, and it stays on that one; the
+gate counts how many rows were paired that way. A release of it you add on the
+account by hand is read as the same track, never queued for download: take
+one release off the account and the track stays while the other is there, at
+the other's place, and take the track out in rekordbox and every release of it
+leaves the account. When the account already holds two or more releases of a
+track, the lowest numbered of those is taken rather than any other. A
+track the account cannot carry stays in rekordbox, counted on the gate, and is
+not asked about again until its ISRC changes. Another app's
 folder is never paired either. Two playlists that would take one account title refuse that title
 until you rename one. Delete either side of such a pair and the next sync
 unpairs it, leaves the other side where it is, and does not make it again.
@@ -962,6 +988,28 @@ the track was added and when rekordbox's playlist row was made or marked
 removed. The account keeps no time for a removal, and rekordbox often keeps
 none either, so where either time is unknown the track stays on both and the
 gate names it.
+
+A sync plans once. The first command reads both sides and shows the rekordbox
+gate; answering it, and then the account gate, reuses that plan rather than
+reading every playlist and asking the provider about every track again, even
+when you answer a day later. Just before writing, Cratekit reads each paired
+playlist on both sides once more, and only to see that it is as the plan read
+it: if you changed one in between, nothing is written, the answer names each
+playlist that moved, and you run `crate sync pair` again to see the plan as it
+is now. The answer says how many provider calls the plan, that check and the
+write each took.
+
+A long sync can stop part way through its write: the provider's call ceiling
+for one command, a cooldown, or anything else that parks it. What it wrote is
+kept and each step is recorded under its run, so the stop's answer names the
+run and the command that finishes it, `crate --calls N --run RUN sync pair`
+for a ceiling stop. That continue writes only what is left, with no new plan
+and no new answers: a playlist the stop left made and empty is filled, never
+made twice. If you changed a playlist the write had not finished with, by hand
+on Tidal or in rekordbox, it refuses as stale and names it, and a fresh
+`crate sync pair` is the way on. Before you answer, the gates show how many
+provider calls the write is expected to make, and when that is more than one
+command may make, the `--calls` value that lets it finish in one go.
 
 ### Publish a playlist
 
@@ -1043,7 +1091,11 @@ account: every genre folder of BY GENRE + ENERGY, the Favorites folder and
 INBOX each become one root folder of the same name, holding one private
 playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
 Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
-live batches, the playlists `inbox rotate` moves, never Old. A label batch,
+live batches, the playlists `inbox rotate` moves, never Old, and its step
+names every other playlist or folder directly under INBOX that it leaves off
+the account, with the reason and, for a plain playlist, its row count, so a
+playlist no rule reads as a batch is named rather than missing; `inbox rotate`
+names the same ones the same way. A label batch,
 which no account playlist holds, fills from the provider track each file was
 downloaded as. A track whose ISRC names several releases that all agree with
 it, a single and its album cut, goes onto the mirror as one of them and stays
@@ -1068,8 +1120,28 @@ you put it and named, never taken off. The rekordbox step is `mirror-edits`,
 on the rekordbox area's gate, each track named with its genre, energy and
 playlists from and to. The first organize after this arrives changes nothing in
 your library: it reads every difference as rekordbox's and remembers each
-playlist from then on. The Favorites folder and INBOX still mirror one way
-until U204 brings them, and a track the library lacks with them. Approve one area and abort the other
+playlist from then on.
+
+The Favorites folder and INBOX follow your edits the same way. Put a track in
+`All Favorites` on Tidal and the next organize favourites it as a heart is:
+into All Favorites and the month you added it in (`Undated` when Tidal gives no
+time, and no month when it already sits in one), coloured Pink when it carries
+no colour. Put it in a month playlist and it goes into that month and All
+Favorites. Take it off `All Favorites` and it leaves All Favorites and every
+month playlist in rekordbox; its colour is left, and it stays hearted on Tidal,
+so the next sync places it back unless you un-heart it there too, the same two
+steps as before. Taking a track off a month playlist alone, or adding it to two
+months at once, is listed and not carried. In INBOX, a track you add on Tidal
+to a batch joins that batch in rekordbox and one you take off leaves it; Old is
+never touched: when the rotation moves an edited batch into Old in the same
+run, the step writes nothing that run and the next organize takes the other
+edits again, while the edit to that batch goes with its retired playlist. A track you add on Tidal to any mirrored
+playlist that your library does not have is queued for download once, by the
+rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one; it
+stays on Tidal meanwhile, and once it lands the next organize files it where
+you put it. A track whose recording you already own as another release is not
+queued, and one the download found you own, or could not fetch, is named as
+such and left on Tidal as you put it. Approve one area and abort the other
 and only the approved one is written. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
@@ -1086,7 +1158,7 @@ crate organize --report --only file
 crate organize --only file
 ```
 
-The kinds are `adopt`, `rotate`, `record-labels`, `inspiration` and `mirror-edits` on the rekordbox side,
+The kinds are `adopt`, `rotate`, `record-labels`, `inspiration`, `mirror-edits` and `mirror-downloads` on the rekordbox side,
 `labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
 area with no kind named is not planned and not asked, so `--only file` files
 the playlists at the account root into their folders without reading the
@@ -1507,6 +1579,12 @@ store), never in the config file, and `crate doctor` reports which are recorded.
   `crate login catalogue-app-key --from-file PATH`. `crate doctor` says where
   lookups are going and how many calls the account and the app have each made,
   and every verb that reached the provider says the same of its own run.
+  Under the app, `crate sync pair`, the account mirror and `intake missing`
+  first ask up to twenty ISRCs in one request which of them the provider
+  files anything under, so a code it lacks costs no request of its own; every
+  code it holds is still looked up alone, since one ISRC is often a single, an
+  album cut and several compilations, and the batch answer names only one of
+  them.
 
 `crate login NAME --from-file PATH` records one. It refuses a value on the
 command line, since that would sit in your shell history and in the process list
@@ -1525,6 +1603,7 @@ the provider". Delete the plaintext token file once it is in the keychain.
 | Configuration | `~/Library/Application Support/cratekit/config.toml` |
 | Library state, active taxonomy, write sessions and snapshots | `.cratekit/` under the library root |
 | Credentials | the OS keychain |
+| The service's pacing state and the ISRC answers it gave | the installation's state directory, `crate doctor` names the file |
 | Backups | the rclone remote named in `[backup]` |
 
 You never need to open a run or job record by hand. `crate status`,

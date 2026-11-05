@@ -42219,3 +42219,792 @@ wrong answer.
 
 **Closes when:** the token, or the client, is held once per process and the
 second opener reuses it. Ledger only.
+
+---
+
+## R-1219. A pair's row held as two releases keys on the lowest numbered release ever linked, so a remove and re-add cycle brings back the release the person dropped, and releases already held ignore the heart
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** `sync/pair_cli.plan_pair` reads every account release
+linked to one rekordbox row as that row's one key, the lowest numbered linked
+release's (`by_row`, `_lower`). Links are kept while the row lives in the
+collection, so the canonical release is the lowest of every link ever made,
+with no memory of which release the person kept or hearted. The same rule
+chooses among two or more unlinked releases the account already holds
+(`held_there`), and it never asks whether one is hearted.
+
+**Measured cost.** Driven by the review: links to 101 and 202, the person
+drops 101 and keeps 202, later the row leaves rekordbox and both leave the
+account, then the row is put back in rekordbox: the account gains 101, not
+202. Same with a heart: hearted 202 linked first, 101 added by hand, after a
+remove and re-add cycle the account gets 101. Both releases agree with the
+row; nothing is lost and nothing false is said. Which held release is taken
+is unpinned by the suite (the add loop links the other release either way).
+
+**Closes when:** the canonical release prefers a linked release the account
+still holds, and then a hearted one, before the number, or a link the account
+lost is dropped once the row's other release stays; and a test pins which of
+two held releases is taken. Ledger only: a preference between agreeing
+releases, reachable only through a remove and re-add cycle.
+
+---
+
+## R-1220. A pair's tie broken in favour of a release the account already holds is counted on the gate's line and in totals but named on no item
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** `sync/pair_cli._items` marks `tied: True` only on account
+add items. A tie whose chosen release is already on the account adds nothing,
+so the row is counted in the facts line and `totals.tied` and appears on no
+item.
+
+**Measured cost.** Driven by the review: account holding 101 and 202 before
+the first sync, the facts line says one row matched by a tie and no item
+carries the flag, so a reader of the gate cannot find which row. Nothing is
+written wrong.
+
+**Closes when:** the gate names the tied rows themselves, for instance as the
+facts line's list, with a test. Ledger only.
+
+---
+
+## R-1221. Taking a pair's first release of a row off the account while a later release stays moves the row in rekordbox to the later release's place
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** A row held on the account as two releases is one key in
+the merge, and a key's place on the account side is its first occurrence.
+When the earlier release is taken off and the later stays, the key's place
+moves to the later release's, and rekordbox follows the account's order.
+
+**Measured cost.** Driven: rekordbox (1, 2, 3), account [101, 92, 93, 202];
+the person removes 101; the sync reorders rekordbox to [2, 3, 1], then stays.
+No track is lost and the account's visible order is mirrored faithfully;
+whether the row should keep its place is a judgment the brief does not make.
+`test_the_first_release_taken_off_while_a_later_one_stays_keeps_the_row`
+pins that the row stays, not its place.
+
+**Closes when:** the brief says whether a row's place survives the removal of
+one of its releases; if it should, the key's place is the place of the
+release the base held first. Ledger only.
+
+---
+
+## R-1222. The hearts' refusal of a tie between agreeing releases is pinned at the adapter and through the favourites sweep, and nothing asserts the hearts never pass any_agreeing
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** U208 lets the pairs pass `any_agreeing` to
+`match_track`. The hearts (`modules/outbound/hearts.py`) must not; the
+refusal is pinned by the adapter test without the flag and by the favourites
+sweep over `_releases_for_three_rows` in `tests/test_outbound_tidal_account.py`,
+whose row 2 is the tie. No test watches the hearts path's own call for the
+flag.
+
+**Measured cost.** None today: grep finds no `any_agreeing` in hearts.py,
+export.py or set_cli.py, and the branch does not touch them. Reachability of
+a regression unmeasured; no mutation of hearts.py was run.
+
+**Closes when:** a test drives a heart over a tie with a recording fake and
+asserts the flag absent, or a mutation of hearts.py passing it is killed.
+Ledger only.
+
+---
+
+## R-1223. A pair's linked rows with no database ISRC are read from their files in each of the three plans a sync makes whenever an account track the library lacks has a code no row's database ISRC names
+
+**Found:** at the review of #498, U208, 2026-11-05, round one.
+
+**The mechanism.** `here()` in `sync/pair_cli.plan_pair`, the lookup that
+finds a sibling release's row among the pair's own rows, reads the audio tags
+of every row with no database ISRC that the plan did not already read, once
+per plan, and a sync makes three plans. `_Reader` is per plan, so nothing
+carries the reads across.
+
+**Measured cost.** Driven by the review: four linked file ISRC rows and one
+hand added track the library lacks, 12 file reads in one sync; a quiet sync
+reads none. Time only, proportional to the playlist's file ISRC rows; no
+wrong answer.
+
+**Closes when:** the file identities are read once per sync (a cache carried
+across the gates' plans) or recorded with the link. Ledger only.
+
+---
+
+## R-1224. Two rows of one pair carrying one ISRC, with two unlinked releases of it on the account, leave the second row unmatched and the free release named ambiguous
+
+**Found:** at the review of #498, U208, 2026-11-05, round two.
+
+**The mechanism.** The `held_there` branch in `sync/pair_cli.plan_pair`
+takes the lowest of the account's unlinked releases of a row's ISRC, and does
+not exclude a release another row of the same playlist already took
+(`seen_remote`), so the second row takes the same release and is refused as
+"another row of this playlist ... is already the account track it matches".
+The free release then finds two library rows by ISRC and is named ambiguous.
+
+**Measured cost.** Driven by the review: row 2 given row 1's ISRC and words,
+account [101, 202]: links {101: row 1}, row 2 unmatched, 202 ambiguous, every
+sync. The provider path before U208 reached the same outcome for two such
+rows (reasoned from `_ask` to `_lowest`, not driven on main).
+
+**Closes when:** `held_there` leaves out releases another row of the plan
+took, so the second row takes the free release, with a test. Ledger only: two
+rows of one recording in one playlist is a duplicate the person made.
+
+---
+
+## R-1225. A Favorites month move that loses to rekordbox's own addition lists the old month as a lone month removal on every run
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** When the account moves a track between month playlists and
+rekordbox also added it to the new month with the account's time earlier or
+unknown, the later change rule answers REKORDBOX. The account no longer holds
+the old month and rekordbox still does, so every later run reads the old month
+as a month removal alone, which the brief lists and does not carry.
+
+**Measured cost.** Driven by review round two (two of three parametrisations):
+the old month is kept in the library and named on every run until a person
+takes it off one side.
+
+**Closes when:** a REKORDBOX answer on a month move settles the old month as
+rekordbox has it, or Phillip decides a lone month removal is carried. Ledger
+only: the brief's rule.
+
+---
+
+## R-1226. A downloaded row the ledger already links to another account track is never tied to the track it was queued for
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** `account_mirror._read_edits` ties a queued track to the row
+of its frozen ISRC (`mirror_downloads.landed`) and answers the row as that
+track, unless the ledger links the row to another track, which round one's
+fix made the rule so an owned row's release is never swapped. A landed row that
+some other engine linked before organize read it is therefore never adopted.
+
+**Measured cost.** Driven by review round two with a direct ledger write: the
+account track stays named as awaiting its landing on every run. The real
+producer, another engine linking a freshly landed row first, was not driven.
+
+**Closes when:** the tie tells a row the download made from one the library
+held before it, by the landing record that names the row. Ledger only.
+
+---
+
+## R-1227. A rotation approved in the same organize run moves an edited INBOX batch into Old and refuses the whole mirror-edits step
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** The rekordbox area applies `rotate` before `mirror-edits`
+(`organize/rekordbox.py` STEPS). An INBOX batch a person edited on the account
+that the rotation moves into Old in the same run is no longer a live batch
+when `mirror-edits` plans again on its write handle, so the plan the gate
+showed differs and `_stale` refuses the step, with every other edit of the run.
+Old is never touched.
+
+**Measured cost.** Driven by review round one: nothing written that run; the
+next organize takes the other edits again, while the edit to that batch goes
+with its retired mirrored playlist. Round two's drive did not reach the
+refusal, so its producer is not always met.
+
+**Closes when:** the step plans an INBOX edit only for a batch the rotation
+will not move this run, or drops a moved batch's change alone rather than
+refusing the step. Ledger only: an honest refusal that heals on the next run.
+
+---
+
+## R-1228. A track added on the account that the download job finds owned by a rule mirror-downloads cannot see is queued, then named and never carried
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** `mirror_downloads._owned` reads the database's ISRC column
+and the mirror matcher's codes. The `intake playlist` job owns a track by
+`intake_cli.resolve_track`'s rules over the files: ISRC_EXACT, EXACT artist and
+title and version, CREDITED_EXACT. A row whose code is only in its file and that
+sits in no mirrored playlist, one with no code at all, or the same artist and
+title under another code, is missed by the step, so the track is queued; the job
+resolves it owned and lands nothing. Since round two the step names it as
+found owned rather than awaiting a landing, but the account's edit is never
+carried, since no library row is tied to the account track.
+
+**Measured cost.** Driven by review round two through the real handler (three
+populations): one queued job and one request per such track, the edit named
+on every run and never taken. The file only population is unmeasured; the
+untagged one is the matcher's count, 1691 of 9868 live files with no ISRC tag,
+measured on the tree by an earlier unit.
+
+**Closes when:** the step asks the job's own rule (`match_cli.library_view`
+with `resolve_one`) before queueing, and ties an owned answer to its row so the
+edit is carried. Ledger only: the product says what happened.
+
+---
+
+## R-1229. Several U204 guards are killed by no test in the touched files
+
+**Found:** at the review of #494, U204, 2026-11-05.
+
+**The mechanism.** The reviewers' guard sweeps reverted each guard alone over
+the touched test files. Pinned after round one: the INBOX latch, the
+favourites restore detection, the favourite read back, the quarter refusal, the
+queue's second read and a failed job freeing its track. Still killed by no test
+after round two: the AGREED clause's `not there_m & away`, the month move's
+`pid in held`, the ledger link guard on adoption in `_read_edits`, the matcher's
+codes in `_owned`, the folder guard on a title two folders share
+(`_read_edits`, `holds_for`), `Applied.wrote` counting a colour and a made
+month, the settle keyed by tree, a month already held, and the source at the
+playlist root refusal. The second fix round, `Hold.stay` and the finished job
+outcomes, was not reviewed, since both rounds were spent; each has a test that
+fails without it.
+
+**Measured cost.** None to a user named; the behaviour is unpinned. The
+mutation table, `docs/mutation/u204.md`, is the author's measure of the rest.
+
+**Closes when:** each has a test that kills its revert. Ledger only.
+
+---
+
+## R-1230. The account mirror screens the ISRCs of a playlist its plan then leaves, a person's playlist of the same title
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `organize.account_mirror.read` hands `Matcher.screen` every row of every mirrored folder before any plan runs. A playlist the plan then leaves, because a person's playlist of the same title already sits in the folder, has its rows screened though none of them is ever matched. Rows with no database code also have their file's tag read for the screen.
+
+**Measured cost.** Driven by the round two review on the mirror's fixture world: a library mirroring one playlist that the account already holds under a person's title planned no match and screened all three codes. With the app client that is one batch request per twenty such rows where `main` sent none. It costs request budget only: no data and no false report.
+
+**Closes when:** the screen runs per folder after the plan has decided which playlists it reuses or creates, or the rows of a left playlist are left out of it. Ledger only.
+
+---
+
+## R-1231. A code a batch of ISRCs leaves out is read as filed under nothing on the provider's document alone, never on a live answer
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `acquire.isrc_screen` reads a code that a multi code answer of `GET /tracks?filter[isrc]=` does not name as filed under nothing, and `TidalAccount.match_track` and `TidalCatalogue.tracks_for_isrc` then answer it not found with no request. Two things say an omitted code is lacking: the platform's published document (version 1.10.224), which says several codes return one track per code, and the screen's refusal of any answer it cannot attribute whole. No live request has confirmed it, because the container that built U207 had no app credential.
+
+**Measured cost.** Not driven against the live API. Driven on fixtures by the round one review: a screened absence is remembered by `sync pair` as a `pairs.Miss` and by the mirror as a ledger miss. Both carry the same reason and key the account session path writes, and both are reused until the row's code changes. If the live answer ever omits a held code, up to twenty rows per request would be remembered as unmatched, where before U207 one wrong empty answer cost one row. Until the app credentials are recorded at the attended sitting U205 owes, the screen makes no request at all.
+
+**Closes when:** the attended live read compares one batch answer against the same codes asked one at a time and they agree, recorded in the sitting record. Ledger only; the screen is off until the app is registered, and the read is owed as an attended card.
+
+---
+
+## R-1232. Under a token service outage the ISRC screen asks for a token once a batch and reports each batch as a request made
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `Screen.screen` treats a failed batch as nothing learned and goes on to the next one, unless the failure was a rate limit, a rejected credential or a 4xx. A token service answering 503 fails every batch before its read, so each batch spends one token request. Each one is also counted in the number `screen_isrcs` returns, though no catalogue request was sent.
+
+**Measured cost.** Driven by the round one review: 45 codes with the token endpoint answering 503 cost three token requests, no catalogue request and nothing marked absent. `screen_isrcs` returned 3. The lookups that follow then refuse as they did before U207. That is three wasted calls on the gate, and a request count in the mirror's plan fact that is three high.
+
+**Closes when:** a failure that never reached the catalogue stops the screening for the run, and a batch that sent no read is not counted. Ledger only.
+
+---
+
+## R-1233. One rejected app credential on an ISRC batch stops the screening for the run, though the next lookup refetches the token and succeeds
+
+**Found:** at the review of #497, U207, 2026-11-05.
+
+**The mechanism.** `Screen.screen` stops for the rest of the run on `AppCredentialsRejected`, on the reasoning that every later batch would be refused the same way. The app client drops its token on a 401 or 403, though, and the next request asks for a fresh one, so a token that lapsed inside its margin or was revoked mid run is refused once and then works. The lookups after it succeed, and the screening that would have saved them is off.
+
+**Measured cost.** Driven by the round two review with a fake answering one batch 401: sixty codes the catalogue files nothing under cost 62 app reads, against 3 with no failure and 23 with a 503 on one batch. A real lapse or revocation was not driven against the provider. It costs request budget only: no false answer.
+
+**Closes when:** a rejection on a batch is retried once with a fresh token before the screening stops. Ledger only.
+
+---
+
+## R-1234. Without the app credentials an ISRC lookup still costs one request plus one per release, through the client library
+
+**Found:** at the plan of #497, U207, 2026-11-05.
+
+**The mechanism.** Under the app client (U205) an ISRC lookup is one request, with the artists and releases included. Without it, `TidalAccount.match_track` and `TidalCatalogue.tracks_for_isrc` call the client library's `Session.get_tracks_by_isrc`. At 0.8.11 that makes one catalogue v2 call and then a `session.track(id)` for every release the answer names. The account path also has no batch form, so the U207 screen makes no request there.
+
+**Measured cost.** Read from the library's source, not driven live. A code filed under a single, an album cut and three compilations costs six account calls rather than one. This is the live path until the app is registered.
+
+**Closes when:** the app credentials are recorded at the attended sitting U205 owes, which moves every lookup to the one request path. Alternatively, a later card moves the account path to a v2 request of its own after a live probe of what the account token's answer includes. Ledger only.
+
+---
+
+## R-1235. Under the app credentials a track's streamability is read off availability, a field the provider marks deprecated and due for removal
+
+**Found:** at the plan of #497, U207, 2026-11-05.
+
+**The mechanism.** `catalogue_api._available` reads a track's `availability` array for `STREAM`, and `tidal_account._streamable` leaves a track that cannot stream out of the choice. The platform's published document (version 1.10.224) marks `availability` deprecated in favour of `usageRules` and says it will be removed. Once it is gone, every app answer reads as `None`, which is streamable, so a withdrawn release becomes a candidate again.
+
+**Measured cost.** Not driven. Nothing today is affected, since the field is still documented and the app is not registered yet. On removal, a heart or a pair could land on a release nobody can play wherever it is the one release that agrees.
+
+**Closes when:** a live probe reads `usageRules` values and `_available` reads them when `availability` is absent. Ledger only.
+
+---
+
+## R-1236. The ISRC cache's re-read under the lock before a set aside kills no test
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** `Cache._set_aside_held` in `src/cratekit/acquire/isrc_cache.py`
+reads the file again under the lock and renames it aside only if it still does
+not parse, so a good file another process wrote between this process's read and
+its lock is never set aside on an old reading. Replacing it with a rename that
+skips the re-read killed none of 153 tests (Fable round one, in process).
+
+**Measured cost.** None driven. The race it covers, a second writer landing a
+good file inside that window, was not produced. If it happened without the
+guard, the cost is calls, never data: the good file is set aside and rebuilt.
+
+**Closes when:** a two process test lands a good file between the read and the
+lock and shows it kept. Ledger only.
+
+---
+
+## R-1237. An ISRC spelled lower case or hyphenated is asked of the provider on every run and never kept
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** The ISRC cache keeps and recalls only a spelling that is
+already its own fold (`_key` in `src/cratekit/acquire/isrc_cache.py`), because
+the provider may answer another spelling differently and that answer must not
+stand for the folded code. Four callers of `match_track` fold through
+`match.isrc_token` first. `export set` (`src/cratekit/export/set_cli.py`) hands
+over a list document's own `Wanted.isrc`, stripped but not folded.
+
+**Measured cost.** Driven at the seam: `qzaaa2600001` and `QZ-AAA-26-00001`
+asked twice each, four calls, nothing written. `export set` was not driven end
+to end. A set exported from a list carrying such spellings pays every lookup on
+every run, as it did before U206; nothing is wrong, only unsaved.
+
+**Closes when:** `export set` folds the code before asking, as the other
+callers do, and a test shows its second run asks nothing. Ledger only.
+
+---
+
+## R-1238. A copy run made by hand saves its ISRC lookups only if it exports CRATEKIT_ISRC_CACHE_DIR, and the sitting steps do not say so yet
+
+**Found:** at the review of #496, U206, 2026-11-05.
+
+**The mechanism.** Every copy run since sitting 39 copies the installation
+state and redirects `CRATEKIT_STATE_DIR`, which puts the ISRC cache in the
+scratch area. `core.rehearsal.redirected` keeps it live by itself; a copy run
+by hand keeps it live only by exporting `CRATEKIT_ISRC_CACHE_DIR` to the live
+state folder first. `docs/GUIDE.md` and the solutions entry on it say so;
+`docs/cutover.md`'s sitting steps and the `crate-sync` skill do not.
+
+**Measured cost.** Driven in process: without the variable a redirected copy
+run asks again, with it the copy run asks nothing. Whether the next sitting
+exports it is not measurable here. A hand rehearsal of `sync pair` that follows
+the old steps pays its lookups twice, the cost #496 was filed for.
+
+**Closes when:** the next attended sitting that rehearses a lookup heavy verb by
+hand exports the variable and records its live run's `isrc-lookups` line, and
+the sitting steps carry it. Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1239. The per attempt reset of what an ISRC lookup said kills no test at either seam and guards a state neither can reach
+
+**Found:** at the second review of #496, U206, 2026-11-05.
+
+**The mechanism.** `TidalAccount._isrc_tracks` in
+`src/cratekit/modules/outbound/tidal_account.py` resets `last["said_not_found"]`
+at the start of every attempt, so a not found on an attempt the ladder retried
+past is not read as the settling answer. But `_call` returns `_ABSENT` on the
+same attempt for every failure `isrc_cache.said_not_found` accepts, so no
+attempt that set the flag is ever retried past.
+
+The catalogue's `answered.clear()` in `TidalCatalogue.tracks_for_isrc`
+(`src/cratekit/label/tidal_catalogue.py`) is the same shape: a not found returns
+the empty answer on the attempt that raised it, so no retried attempt follows
+one that appended.
+
+**Measured cost.** None. Removing the account's reset passed all 57 tests in
+`tests/test_isrc_cache.py` (Fable round two), and rows M15 and M19 of
+`docs/mutation/u206.md` measure zero over the full suite for both seams.
+
+**Closes when:** both resets are removed with a comment saying why, or a seam
+starts retrying past a said not found and a test drives it. Ledger only.
+
+---
+
+## R-1240. Doctor says a cache file that does not parse needs nothing done, also when the lock cannot be opened and no lookup will set it aside
+
+**Found:** at the second review of #496, U206, 2026-11-05.
+
+**The mechanism.** The `provider.isrc-cache` note in `src/cratekit/cli/doctor.py`
+says of a cache file that does not parse that the next lookup sets it aside and
+starts afresh, so there is nothing to do. The set aside needs the sibling lock.
+When the lock file cannot be opened, `Cache._locked` yields not held, nothing is
+set aside, and every lookup asks the provider while the note still says there
+is nothing to do.
+
+**Measured cost.** Driven with a hand made producer, a directory at the lock
+path: three lookups asked three times and the note unchanged. The realistic
+producer, a state directory this account cannot write, could not be driven on
+a container that runs as root, so reachability is unmeasured. The cost is calls
+and a note that reads clean over them, never data.
+
+**Closes when:** the note asks whether the lock can be taken and, when it
+cannot, says every lookup asks the provider until the folder is writable.
+Ledger only.
+
+---
+
+## R-1241. A made pair released because its account playlist was not listed is released at the write even when the account lists it again
+
+**Found:** at round two of the review of #499, U209, 2026-11-05.
+
+**The mechanism.** U209's check reads again, before the write, that a made
+pair let go for its rekordbox side is still let go, and skips an unpaired
+pair whose gone side is the account (`if lost.gone != REKORDBOX_SIDE:
+continue`). A made pair the plan unpaired because the account did not list
+its playlist is released at the write, its rekordbox side recorded as
+released for good, even when the account lists the playlist again by then.
+A custom playlist twin takes the same path and is forgotten.
+
+**Measured cost.** Round two drove it in the fake by removing the playlist
+and restoring it under the same identifier between the plan and the write:
+the pair was released and the next sync said its account playlist was
+deleted while the account listed it. Whether the real account can list a
+playlist absent at the plan and present at the write is unmeasured, so no
+live producer is known.
+
+**Closes when:** the check lists the author's playlists once when the plan
+unpairs any for a gone account side, and refuses stale naming one that is
+back. Ledger only until a live producer is found.
+
+---
+
+## R-1242. A sync pair with nothing to change still lists every account playlist once more to check it and record its snapshot
+
+**Found:** at the build of #499, U209, 2026-11-05.
+
+**The mechanism.** With both gates applied, U209's check lists each paired
+account playlist once before the write, and a pair with nothing to write
+records that listing as its snapshot. So a no change sync of every pair costs
+one plan plus one listing per pair, against three plans plus one listing per
+pair before. Skipping the check and the write when the plan writes nothing
+would save the listings, but the snapshot and its sync moment would then stay
+where they were, and a pair whose first sync never completed would stay
+first, so a later removal on one side would be added back from the other.
+Kept as the conservative call.
+
+**Measured cost.** One listing per pair per no change sync, about one to two
+provider calls each at a hundred tracks a page; not measured live.
+
+**Closes when:** Phillip asks for a no change sync to stop after its plan, and
+the skip excludes any pair that is first or unmarked. Ledger only.
+
+---
+
+## R-1243. A run planned again under its own run reports only the last plan's provider calls
+
+**Found:** at the review of #499, U209, 2026-11-05.
+
+**The mechanism.** `sync_pair` holds the plan with the calls its plan took,
+and the write reports that count under `totals.calls.plan`. When a later
+command of the run cannot use the held plan (unreadable, older than thirty
+days, made for other pairs) it plans again and holds the new plan with the
+new count, so the first plan's calls are in no answer. The reason for the
+replan is on that command's gate screen, under `planned again`, and not on
+the write's answer when the write was a later command still.
+
+**Measured cost.** Round one drove it with a held file made unreadable before
+the second command: the fake counted four plan calls across the run and the
+answer said two. The live producer at the person's level, another playlist
+named under the same run, was not driven.
+
+**Closes when:** the held document carries the run's running plan count, added
+to by each command that plans again. Ledger only: a count in an answer, no
+write.
+
+---
+
+## R-1244. A rekordbox row whose ISRC matches a track another row of the playlist already holds is asked about on every sync
+
+**Found:** while recording U209's no change cost, #499, 2026-11-05.
+
+**The mechanism.** `plan_pair` asks the account about an unlinked row
+(`_ask`) before it checks whether the track the answer names is already the
+match of another row of the same playlist (`seen_remote`). The second row is
+then named unmatched with "another row of this playlist ... is already the
+account track it matches", is neither linked nor remembered as a miss, and the
+next plan asks again. A row whose answer named an unreadable candidate is
+likewise never remembered, by R-988's own rule.
+
+**Measured cost.** Read from the code, not driven live. One lookup per such
+row per sync; since U209 a sync plans once, so it is one per sync rather than
+three. How many such rows Sitting 54's library holds is unmeasured.
+
+**Closes when:** a row matching a track another row holds is checked against
+the held remote ids before the account is asked, or remembered with that
+reason until either row changes. Ledger only.
+
+---
+
+## R-1245. The check before a sync pair write does not read again that an unpaired twin's account playlist is still gone
+
+**Found:** at the build of #499, U209, 2026-11-05.
+
+**The mechanism.** U209's `check` reads, before the write, every list the
+held plan's writes are merged from, and that a made pair let go for its
+rekordbox side is still let go. A twin or made pair the plan unpaired because
+its account playlist was gone is forgotten at the write without reading the
+account's playlists again, which would cost the catalogue's listing of every
+playlist of the author's.
+
+**Measured cost.** Not driven. A playlist deleted on the account does not
+come back under its identifier, so no producer is known; the write touches
+only the pairs document, no list.
+
+**Closes when:** a producer is found, then the check lists the author's
+playlists once when the plan unpairs any for a gone account side. Ledger only.
+
+---
+
+## R-1246. The check before a held sync pair plan writes reads the lists, places and queued jobs, and not every premise the plan read
+
+**Found:** at the build and round two of #499, U209, 2026-11-05.
+
+**The mechanism.** A plan held across its gates is not made again, so what
+it read can move before the write. The check reads the premises a write is
+made from: each pair's two lists, the rows it adds, a self paired playlist's
+place as discovery and `home_of` read it now, a made side's account folder,
+a brought playlist's folder and title on the account, and the jobs queued
+for its acquisitions. It does not read again whether an account playlist is
+still one a pair may hold (a label, set or mirrored playlist since), the
+pairs document's released sets, or whether two account playlists now take
+one rekordbox name, each of which the plan reads and a plan made now could
+decide differently.
+
+**Measured cost.** Not driven: each needs another verb or a hand edit to move
+between the gate and the write, and none was found that does.
+
+**Closes when:** a producer is found for one, then the check reads it. Ledger
+only.
+
+---
+
+## R-1247. A continued sync pair answers only what it wrote itself, not what the stopped command made or queued
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop is a park, and a parked envelope carries no
+totals. The continue's OK envelope counts only its own command's writes
+(`created_playlists`, `queued_jobs` and the rest in `sync_pair`,
+`sync/pair_cli.py`), so the playlists the stopped command made and the jobs it
+queued appear in no answer's totals. The continue's message says how many
+pairs finished earlier in the run, and `totals.finished_before` counts them.
+
+**Measured cost.** Driven at round one (S7): a job queued before the stop was
+in `crate job list` and not in the continue's `queued_jobs`. Nothing is lost;
+the report is incomplete.
+
+**Closes when:** each pair's done step records what it made and queued, and the
+continue's totals add the earlier commands' to its own. Ledger only.
+
+---
+
+## R-1248. A second copy of a track put on a paired account playlist reads as no change to the check before the write
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** The check before the write (U209's `check`, and U210's
+reading of a part written playlist in `_beyond`, `sync/pair_cli.py`) compares
+the account listing after `pair_merge.distinct`, and the listing seam freezes
+rows by track identifier, so a track the author put on the playlist a second
+time between the gate and the write, or between a stop and its continue, is
+the same list to both. The write goes on and the snapshot records the list
+distinct.
+
+**Measured cost.** Driven at round one (S12): the continue answered OK and the
+account kept the track twice, which is what the author did; nothing was lost
+or written over. The cost is that the check does not name the change it saw.
+
+**Closes when:** the listing the check reads keeps each copy, and a count
+that differs from the plan's refuses stale as a reorder does. Ledger only: no
+data is lost and the author's copy stands.
+
+---
+
+## R-1249. A made account playlist moved out of its folder between a stop and its continue is moved back
+
+**Found:** at the review of #500, U210, 2026-11-05.
+
+**The mechanism.** A ceiling stop between making a discovered playlist's
+account side and putting it in its folder leaves it at the account root. The
+continue (`_made` with `resumed`, `sync/pair_cli.py`) moves it into the folder
+the plan named, since the move asks for one fixed place, and does not read
+where the playlist is now. A playlist the author moved elsewhere in that
+window, into Archive say, is moved back.
+
+**Measured cost.** Driven at round one (S2): the continue moved it back and
+answered OK. The playlist is empty in that window (it is filled after the
+move), nothing is lost, and moving it again lets the archive rule release it.
+
+**Closes when:** the continue reads the made playlist's folder first and
+refuses stale when it sits in a folder other than the root or its own. Ledger
+only.
+
+---
+
+## R-1250. The sync pair write's call forecast is held to the account adapter over a fake client and unmeasured live
+
+**Found:** at the build of #500, U210, 2026-11-05.
+
+**The mechanism.** `sync/pair_calls.py` counts a write's provider calls from
+the account adapter's shape: a playlist opened and read a page at a time,
+made with three calls, added to a hundred a request, taken off fifty a
+request with a read back each, ordered one move and read back a track. The
+check's folder reads are counted at one call each. The gates show the sum,
+and a ceiling stop names a `--calls` with a quarter's margin, rounded up to a
+hundred.
+
+**Measured cost.** Held exactly to the shipped adapter over a counting fake
+client (`tests/test_sync_pair_calls.py`), never to the live provider. A folder
+of more than fifty playlists costs the check more than one read, and a
+provider that pages differently would move every count.
+
+**Closes when:** the next attended `crate sync pair` records its answer's
+`totals.calls_expected` against `totals.calls`. Ledger only.
+
+---
+
+## R-1251. A mirrored INBOX playlist still in INBOX but no longer read as a batch is named twice on the step, and counted twice in its left count
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `mirror.plan` names a playlist the ledger records as
+mirrored, whose title is still present in INBOX but no longer reads as a
+batch, with its "still in INBOX but no longer read as one to mirror" line.
+Since U214 the same node is also one of `Folder.unmirrored`, so the step
+carries two left lines for it and its `left` count counts it twice: "2 left as
+they are; 1 node(s) in INBOX not mirrored".
+
+**Measured cost.** Both lines are true. A person reconciling the left count
+against INBOX reads one too many. Driven on the account side through the
+organize step's fake account; the library side producer, a batch folder
+removed after the batch was mirrored, was not driven end to end.
+
+**Closes when:** the step names such a node once, the recorded line folded
+into its unmirrored line, or the count counts nodes rather than lines. Ledger
+only: a wording and count fix, nothing false.
+
+---
+
+## R-1252. An INBOX step refused for two batches of one title shows the refusal only, and none of the nodes it would leave off
+
+**Found:** at the plan and the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `account_mirror._inbox` returns the `_twice` refusal when
+two live batches take one account title, before the unmirrored lines are
+built, so the refused INBOX step names neither the batches it would mirror
+nor the nodes it would leave off.
+
+**Measured cost.** The brief's "never dropped without a line" does not hold
+while the step is refused. Nothing is mirrored and nothing is skipped
+silently: the refusal names the title to fix, and once it is fixed the next
+refresh names every node. Driven on a disposable database with two
+`2026-09-23 Tidal playlists` batches and a label playlist beside them. The
+author's call at the plan, the conservative one, since the refusal stops the
+step whole.
+
+**Closes when:** the refusal's detail carries the unmirrored lines too.
+Ledger only.
+
+---
+
+## R-1253. Two live folders named Old under INBOX are both named the Old folder by the mirror, while the rotation refuses the tree
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `plan_rotation` refuses `intake-old-undeclared` when INBOX
+holds two live folders of the declared Old's name, since a rotation that
+targets the folder by name cannot tell them apart. `live_batches` refuses
+nothing there and the mirror's INBOX step names both as "the Old folder".
+
+**Measured cost.** Nothing false: neither folder is mirrored and both are
+named. The mirror and the rotation disagree on whether INBOX is readable, and
+only the rotation's refusal says why. Driven on a disposable database.
+
+**Closes when:** the mirror's line for a second Old says the rotation refuses
+the pair. Ledger only.
+
+---
+
+## R-1254. The Old check in the rotation's classifier carries a guard that kills no test, because a name is never None
+
+**Found:** at the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `rotate._classify` tests `old_display is not None and name
+== old_display`. A node's name is always text, so the first clause decides
+nothing the second does not already decide.
+
+**Measured cost.** None. Removed in a mutation run, every test passed. It
+documents the undeclared case and costs nothing.
+
+**Closes when:** the clause is dropped or kept on purpose. Ledger only,
+maintainer facing.
+
+---
+
+## R-1255. The session scan reads a log directory it cannot list as no record and no unreadable one, for every consumer but the rotation's classifier
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `session.scan_log` globs the log directory, and a glob over
+a directory the account cannot list yields nothing rather than raising, so it
+returns `(), ()`: no record read and none unreadable. U214 made the rotation's
+classifier ask the listing itself (`rotate.Landings.unlisted`), so its
+unrecognised reason says the log could not be listed. Every other consumer of
+`scan_log` still reads the unlistable log as empty, the gates included, and the
+rotation's own `rotate-records-unreadable` warning does not fire on it, so a
+batch recognised by its name rather than its record is aged from its playlist's
+creation date with no warning.
+
+**Measured cost.** Driven at the review as an unprivileged account with the
+log directory's mode set to none: the scan answered no record and no unreadable
+one, and nothing warned. The producer was a permission change made outside the
+tool, so the natural producer is unmeasured; the repository treats a directory
+it cannot list as a reachable class. A gate that reads the log through the
+scan fails open on it, which the scan's own docstring names as the shape it
+exists to prevent.
+
+**Closes when:** `scan_log` asks the listing and reports an unlistable log as
+unread, each gate consumer refuses on it, and the rotation warns on it as it
+warns on an unreadable record. Earns an issue under the board bar's (b) and
+(d): a clean report over state it could not read, and a guard on a gated path
+that reads unread as none.
+
+---
+
+## R-1256. A landing record whose start is not a date is read as readable and then skipped, so its batch reads as named by no record with no warning
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `SessionRecord.from_json` keeps a `started` that is not a
+date as text, so the record counts as read, and `rotate.landings` skips it when
+`_local_date` returns nothing. The batch it names then reads "no landing record
+names it" and `unreadable_records` stays at 0.
+
+**Measured cost.** A false reason with no warning on the rotation's plan and
+the mirror's INBOX step. Driven with a hand edited record; the writer always
+writes an ISO date, so no Cratekit verb was found to produce it (1 candidate
+driven).
+
+**Closes when:** `landings` counts such a record as unreadable. Ledger only.
+
+---
+
+## R-1257. A batch with no record and no creation date is said to have no landing record while a session record could not be read
+
+**Found:** at round two of the review of #512, U214, 2026-11-05.
+
+**The mechanism.** `rotate._classify` names a recognised batch with nothing to
+age it from "no landing record and no creation date to age it from", without
+the unread clause U214 gave the unrecognised reason. The gate's
+`rotate-records-unreadable` warning still fires beside it.
+
+**Measured cost.** A reason that overclaims, with a true warning beside it.
+Driven with the playlist's creation column set empty in SQL; rekordbox always
+fills it, so the producer is synthetic (1 candidate driven).
+
+**Closes when:** the reason carries `Landings.unread()` as the unrecognised one
+does. Ledger only.
