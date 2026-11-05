@@ -243,6 +243,11 @@ def test_a_download_that_lands_nothing_still_lands_what_is_staged(machine, monke
     )
     assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings + 1
     assert summary["stopped_at"] == sync_land.LAND_GATE
+    # REVIEW ROUND TWO, finding 5: the sentence read first says nothing landed.
+    said_first = second["pending_human_action"]["summary"]
+    assert said_first.startswith(
+        "the pass downloaded nothing and is tagged, analysed and named over what is staged; "
+    ), said_first
 
 
 def _download_job(cfg, list_name: str, isrc: str, *, finish: bool) -> str:

@@ -904,9 +904,11 @@ def _listed(
         origins = [origins[n] for n in kept]
         # STAGED AFTER THE LIBRARY IS ASKED (U212): a row the library holds now
         # is owned, whatever the staging folder also holds.
-        staged = _staged(missing, out=out, name=name)
-        gone = {n for n, _path in staged.found}
-        staged_rows = [(missing[n], path) for n, path in staged.found]
+        # NOTHING STILL MISSING ASKS NOTHING (review round two, finding 2), and
+        # the row then says no track is missing rather than giving a reason.
+        staged = _staged(missing, out=out, name=name) if missing else None
+        gone = {n for n, _path in staged.found} if staged else set()
+        staged_rows = [(missing[n], path) for n, path in staged.found] if staged else []
         missing = [one for n, one in enumerate(missing) if n not in gone]
         origins = [job for n, job in enumerate(origins) if n not in gone]
         counts["missing"] = len(missing)

@@ -264,3 +264,25 @@ def test_each_half_of_the_own_rows_rule_keeps_a_row_alone(
     found = missing_cli._staged([_wanted("204", SALT)], out=out, name="own")
 
     assert (found.found == ()) is kept, found
+
+
+def test_a_track_held_since_the_job_is_never_said_to_carry_no_isrc(
+    cfg, library, tmp_path, monkeypatch
+):
+    """Review round two, finding 2: the one missing track is in the library now,
+    so nothing is missing and nothing was asked of the staging folder; the row
+    says that, not that no missing track carries an ISRC."""
+    salt = Track("204", "Lumen Drift", "Salt Road")
+    salt.isrc = SALT
+    job_id = finished(monkeypatch, [salt])
+    (library / "Music" / "Lumen Drift - Salt Road.flac").write_bytes(b"")
+    staged(tmp_path, library, "a.flac", artist="Lumen Drift", title="Salt Road", isrc=SALT)
+
+    code, envelope = missing(job_id)
+
+    assert code == int(ExitCode.OK), envelope
+    summary = envelope["data"]["summary"]
+    assert (summary["missing"], summary["owned_since"], summary["staged"]) == (0, 1, 0)
+    assert check(envelope, "staged")["detail"] == (
+        "no track is missing, so none was asked whether it is staged"
+    )

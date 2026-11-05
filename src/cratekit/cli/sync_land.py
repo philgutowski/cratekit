@@ -941,7 +941,15 @@ def _attended(ctx: Context, report: _Pass, stop: _Attend) -> Envelope:
     said = tail.attended(report, stop, after=after)
     summary = "the pass " + said.summary
     if stop.step == LAND:
-        summary = "the pass is downloaded, tagged, analysed and named; " + summary
+        # WHAT THE DOWNLOAD DID, said first (review round two, finding 5): a
+        # pass that landed only what was staged downloaded nothing.
+        if report.summary.get("downloaded") == 0:
+            summary = (
+                "the pass downloaded nothing and is tagged, analysed and named over "
+                "what is staged; " + summary
+            )
+        else:
+            summary = "the pass is downloaded, tagged, analysed and named; " + summary
     pending = PendingHumanAction(
         kind=said.kind,
         id=f"sync-land-{report.summary['pass_run'] or ctx.run.run_id}",
@@ -1045,7 +1053,7 @@ def sync_land(ctx: Context) -> Envelope:
             raise _Done(SYNC)
         without = _intake(report, run_id, cfg)
         listed = _missing(report, run_id, without_cancelled=without)
-        _download(report, listed, cfg)
+        report.summary["downloaded"] = _download(report, listed, cfg)
         staging = cfg.paths.download_staging.expanduser().absolute()
         tail.run(report, staging, cfg, ["--pass", listed.land_name], listed.land_name)
     except _Done as done:
