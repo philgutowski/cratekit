@@ -358,6 +358,18 @@ def test_a_server_error_on_a_batch_falls_back_to_singles_and_finds_the_one_bad_a
     assert [one for one in api.singles() if one != code(2)] == [code(0), code(1), code(3)]
 
 
+def test_a_batch_that_failed_is_not_sent_again_by_the_next_plan(gate):
+    catalogue = held_and_lacking(0, 3)
+    api = Api(catalogue)
+    api.batch = [503]
+    account = adapter(gate, api)
+
+    assert account.screen_isrcs(list(catalogue)) == 1
+    assert account.screen_isrcs(list(catalogue)) == 0
+
+    assert len(api.batches()) == 1
+
+
 def test_a_failed_batch_does_not_stop_the_next_one(gate):
     catalogue = held_and_lacking(0, 40)
     api = Api(catalogue)

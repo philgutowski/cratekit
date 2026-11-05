@@ -618,6 +618,26 @@ def test_a_sync_screens_every_code_it_will_ask_and_never_a_linked_row_or_a_remem
     assert world.account.screened == first
 
 
+def test_a_code_the_account_playlist_already_holds_is_never_screened(world, cfg):
+    """U207. A row whose code exactly one track of the account playlist carries
+    is taken from the playlist with no lookup, so its code is not screened."""
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", under=gig)
+    assert sync()[0] == int(ExitCode.OK)
+    made = world.titled("GIG READY Opener")
+    # Rows 3 and 4 are added in rekordbox, and row 4's track on the account by
+    # hand, so on the next sync row 4's code is held by the account playlist.
+    world.rekordbox_add(opener, "3", "4")
+    world.account.playlists[made].append(remote("4"))
+    before = len(world.account.screened)
+
+    assert sync()[0] == int(ExitCode.OK)
+
+    later = [code for screened in world.account.screened[before:] for code in screened]
+    assert isrc("3") in later
+    assert isrc("4") not in later
+
+
 def test_a_remembered_miss_is_asked_again_when_the_rows_isrc_changes(world, cfg):
     del world.account.catalog["3"]
     gig = world.folder("GIG READY")
