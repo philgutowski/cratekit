@@ -2076,6 +2076,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # ACKNOWLEDGED_BEFORE_THE_GATE. The backfill is driven in
         # tests/test_sync_twins.py.
         "sync.twins": _an_account_with_no_year_folder,
+        # U221. One twin holding one track, seeded in the pairs document, so
+        # the explicit gate is asked and approving it empties that hold, which
+        # writes this product's own state and no database. The verb is driven
+        # in tests/test_sync_twins_hold.py.
+        "sync.release": _a_twin_holding_one_track,
     }[entry.name]
     if not callable(sample):
         return sample
@@ -2202,6 +2207,16 @@ def _an_account_with_no_year_folder(monkeypatch) -> list[str]:
     monkeypatch.setattr(catalogue, "resolve", catalogue_factory(FakeCatalogue(account=[])))
     bind_account(monkeypatch, outbound_fakes.FakeAccount())
     return []
+
+
+def _a_twin_holding_one_track() -> list[str]:
+    """One custom playlist twin's pair holding one track, for ``sync release`` to let go."""
+    from cratekit.core import config
+    from cratekit.modules.outbound import pairs
+
+    store = pairs.PairStore(config.load())
+    store.mark("acc-twin", "901", name="DOWNLOADED Twin", twin=True, on_hold={"t1": "A - B"})
+    return ["acc-twin"]
 
 
 def _a_pass_with_no_vocal_model_and_nothing_new(monkeypatch) -> list[str]:

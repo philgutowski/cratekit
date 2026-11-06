@@ -972,6 +972,27 @@ anything is queued. From then on `crate sync pair` keeps each twin and its accou
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
 
+A track a twin was made without is held for your choice, never downloaded on
+its own, as a label's releases are not. `crate sync twins` records each twin's
+missing tracks with its pair, and `crate sync pair` names every one of them on
+its gate as on hold, counts them per twin playlist and queues none:
+
+```bash
+crate sync release ACCOUNT_ID     # let one twin's held tracks go
+crate sync release --all          # every twin's
+```
+
+`crate sync release` shows each twin and the tracks it holds on one gate, and
+once you approve, the next `crate sync pair` queues what that twin lacks; a
+second twin you did not name stays held. A track you put on the account
+playlist by hand after its twin was made is not held and is queued as usual. A
+twin made before this hold existed, or from a listing the account served
+short, recorded no list, so `crate sync pair`
+holds every track the account added to it before the twin was made, and one
+the account gives no date for, and `crate sync release` names that twin as
+holding those. A twin a landing makes holds nothing: the sweep that landed it
+was your choice to download that playlist.
+
 A track the account lists with no title or no artist never stops `crate sync
 pair`. It is left where it is on both sides and named on the gate, and every
 other track of that playlist syncs both ways, removals and order included; a

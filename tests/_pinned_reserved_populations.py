@@ -209,6 +209,9 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'sync-pair-steps-unwritten',  # 2026-11-05, U210: a write step it could not record.
     'sync-pair-store-unusable',
     'sync-pair-unknown',
+    # 2026-11-05, U221: sync release names no twin, or a name that is no twin's.
+    'sync-release-not-a-twin',
+    'sync-release-unnamed',
     'sync-source-lookups-failed',
     'sync-watermark-unusable',
     'tag-folder-unwritten',  # 2026-10-31, U178: a file that would not take its genre.
@@ -919,6 +922,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-steps-unwritten',  # 2026-11-05, U210.
         'sync-pair-store-unusable',
         'sync-pair-unknown',
+        'sync-release-not-a-twin',  # 2026-11-05, U221.
+        'sync-release-unnamed',  # 2026-11-05, U221.
         'sync-source-lookups-failed',
         'sync-watermark-unusable',
         'tag-folder-unwritten',
@@ -1860,6 +1865,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
+        'on-hold',  # 2026-11-05, U221.
         'order-refused',
         'outbound-remove-refused',
         'playlist-pair',
@@ -1871,6 +1877,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-not-brought',
         'sync-pair-not-discovered',
         'sync-pair-nothing',
+        'sync-pair-on-hold',  # 2026-11-05, U221.
         'sync-pair-out-of-scope',
         'sync-pair-released',
         'sync-pair-replanned',
@@ -1902,6 +1909,15 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'resolved-not-acquired',
         'set-playlist',
         'sync-source-lookups-failed',
+    ],
+    # 2026-11-05, U221: sync release lets a twin's held tracks go.
+    'sync/release_cli.py': [
+        'nothing-held',
+        'sync-release-left',
+        'sync-release-not-a-twin',
+        'sync-release-nothing',
+        'sync-release-released',
+        'sync-release-unnamed',
     ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
     # 2026-11-01, U149: the custom playlist twins and their backfill.
@@ -2245,6 +2261,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-05, U210: the refusal a write step it could not record stops it with.
     'sync/pair_cli.py': ['sync-pair-steps-unwritten'],
+    # 2026-11-05, U221.
+    'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
@@ -2500,6 +2518,8 @@ PINNED_NAMED_WITH_OWN = {
         'label-folder',
         'set-playlist',
     ],
+    # 2026-11-05, U221.
+    'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
     'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
@@ -3121,6 +3141,8 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-11-04, U202: the rekordbox side of a pair made from the account.
     'sync/pair_reverse.py': ['decision-stale'],
     'sync/playlists.py': ['intake-list-unusable', 'label-playlist-unreadable', 'sync-source-lookups-failed'],
+    # 2026-11-05, U221.
+    'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     'sync/run.py': ['sync-source-lookups-failed'],
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
     'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],

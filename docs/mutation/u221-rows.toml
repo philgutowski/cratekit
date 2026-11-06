@@ -1,0 +1,259 @@
+name = "u221"
+pass_kind = "light"
+
+# The suites that drive the hold: the new one, the twins backfill and its
+# sync, the landing's twins, the pair suites and the contract sample.
+
+[[rows]]
+id = "R1_hold_only_a_twin"
+description = "held_for_choice: drop the twin test, so a pair that is no twin reads by time and holds every undated track the library lacks"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair.py", "tests/test_sync_pair_unread.py"]
+old = '''    if pair is None or not getattr(pair, "twin", False):
+        return False'''
+new = '''    if pair is None:
+        return False'''
+
+[[rows]]
+id = "R2_recorded_hold_never_holds"
+description = "held_for_choice: a recorded hold holds nothing, so a twin made since U221 queues its missing tracks"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''    if recorded is not None:
+        return remote_id in recorded'''
+new = '''    if recorded is not None:
+        return False'''
+
+[[rows]]
+id = "R3_recorded_hold_holds_everything"
+description = "held_for_choice: a recorded hold holds every track, so a track added later and a released twin's tracks are never queued"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''    if recorded is not None:
+        return remote_id in recorded'''
+new = '''    if recorded is not None:
+        return True'''
+
+[[rows]]
+id = "R4_undated_not_held"
+description = "held_for_choice: a pre U221 twin's undated track is read as added after the mark and queued"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''    if marked is None or added is None:
+        return True'''
+new = '''    if marked is None or added is None:
+        return False'''
+
+[[rows]]
+id = "R5_time_rule_never_holds"
+description = "held_for_choice: a pre U221 twin's dated track is never held, so a track dated before the mark is queued"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''    return not added > marked'''
+new = '''    return False'''
+
+[[rows]]
+id = "R6_time_rule_always_holds"
+description = "held_for_choice: a pre U221 twin holds a track dated after the mark, so one put on by hand since is never queued"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''    return not added > marked'''
+new = '''    return True'''
+
+[[rows]]
+id = "R7_plan_ignores_the_hold"
+description = "plan_pair: drop the hold branch, so every held track is queued as before U221"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''        elif held_for_choice(held, remote_id, dates):'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "R8_hold_before_awaiting"
+description = "plan_pair: read the hold before the queued before check, so a track an earlier sync queued is named on hold rather than awaiting"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''        if remote_id in queued_before:
+            awaiting.append(names[key])
+        elif held_for_choice(held, remote_id, dates):'''
+new = '''        if held_for_choice(held, remote_id, dates):
+            on_hold.append(names[key])
+        elif remote_id in queued_before:
+            awaiting.append(names[key])
+        elif held_for_choice(held, remote_id, dates):'''
+
+[[rows]]
+id = "R9_gate_names_no_held_track"
+description = "_items: drop the on-hold rows, so the gate names no held track"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''    for named in one.on_hold:
+        items.append(row("library", ON_HOLD_ACTION, named))'''
+new = '''    for named in ():
+        items.append(row("library", ON_HOLD_ACTION, named))'''
+
+[[rows]]
+id = "R10_digest_without_the_hold"
+description = "PairPlan.identity: leave the held tracks out of the digest, so an approval over one hold is read as approving another"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair.py"]
+old = '''                {"on_hold": sorted(named.remote_id for named in self.on_hold)}
+                if self.on_hold
+                else {}'''
+new = '''                {}'''
+
+[[rows]]
+id = "R11_no_warning_per_twin"
+description = "_warnings: drop the on hold warning, so the answer never counts the held tracks per twin or names the release command"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''    holding = [one for one in planned.pairs if one.on_hold]'''
+new = '''    holding = []'''
+
+[[rows]]
+id = "R12_hold_not_written"
+description = "Pair.to_json: write no hold, so the next read finds none and a twin made since U221 falls to the time rule"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair.py"]
+old = '''        if self.on_hold is not None:
+            record["on_hold"] = dict(sorted(self.on_hold.items()))'''
+new = '''        if False:
+            record["on_hold"] = dict(sorted(self.on_hold.items()))'''
+
+[[rows]]
+id = "R13_hold_not_read"
+description = "PairStore._pair: read no hold, so every twin falls to the time rule and a released one is held again"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair.py"]
+old = '''            on_hold=None if on_hold is None else MappingProxyType(dict(on_hold)),'''
+new = '''            on_hold=None,'''
+
+[[rows]]
+id = "R14_hold_unvalidated"
+description = "PairStore._pair: accept a hold that is not ids to words, so a damaged document is read rather than refused"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair.py"]
+old = '''        if on_hold is not None and not ('''
+new = '''        if False and not ('''
+
+[[rows]]
+id = "R15_mark_drops_the_hold"
+description = "PairStore.mark: record no hold on a new pair, so a backfilled twin falls to the time rule"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_intake_land_twins.py"]
+old = '''                on_hold=(
+                    None
+                    if on_hold is None
+                    else MappingProxyType({str(k): str(v) for k, v in on_hold.items() if k})
+                ),'''
+new = '''                on_hold=None,'''
+
+[[rows]]
+id = "R16_release_any_rekordbox_side"
+description = "PairStore.release_hold: drop the rekordbox check, so a twin paired again since the plan is released"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py"]
+old = '''                    or held.rekordbox_id != str(rekordbox_id)'''
+new = '''                    or False'''
+
+[[rows]]
+id = "R17_release_a_pair_that_is_no_twin"
+description = "PairStore.release_hold: drop the twin check, so a pair that is no twin records a hold"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins_hold.py"]
+old = '''                    or not held.twin
+                    or held.rekordbox_id'''
+new = '''                    or held.rekordbox_id'''
+
+[[rows]]
+id = "R18_release_writes_nothing"
+description = "PairStore.release_hold: never write, so an approved release answers released and the next sync still holds"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py"]
+old = '''            if released:
+                self._write(pairs)
+            return released'''
+new = '''            return released'''
+
+[[rows]]
+id = "R19_short_listing_records_its_misses"
+description = "pair_backfilled: record a short listing's misses as its hold, so a track the account withheld and serves later is queued with no choice"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_sync_twins.py"]
+old = '''                {miss.remote_id: miss.held_as() for miss in one.misses} if one.whole else None'''
+new = '''                {miss.remote_id: miss.held_as() for miss in one.misses}'''
+
+[[rows]]
+id = "R20_landing_records_no_hold"
+description = "pair_landed: mark a landing's twin with no hold, so it is read by time and its misses are held"
+file = "src/cratekit/sync/twins.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_intake_land_twins.py"]
+old = '''                one.account_id, one.playlist_id, name=one.account_name, twin=True, on_hold={}'''
+new = '''                one.account_id, one.playlist_id, name=one.account_name, twin=True, on_hold=None'''
+
+[[rows]]
+id = "R21_unknown_name_not_refused"
+description = "release plan: drop the refusal of a name that is no twin's, so it reaches the lookup"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '''        if missing:
+            raise _not_a_twin(missing)'''
+new = '''        if False:
+            raise _not_a_twin(missing)'''
+
+[[rows]]
+id = "R22_all_beside_names"
+description = "sync_release: drop the refusal of names beside --all"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '''    if every and named:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R23_nothing_named"
+description = "sync_release: drop the refusal of a run naming nothing, so it plans nothing silently"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '''    if not every and not named:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "R24_abort_releases"
+description = "sync_release: read an abort as an approval, so the hold is emptied without the choice"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '''    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(planned)) != "approve":'''
+new = '''    if ctx.gate.require(_gate(ctx.entry), plan=data, context=facts(planned)) == "never":'''
+
+[[rows]]
+id = "R25_released_twin_asks_again"
+description = "Planned.action: a twin holding nothing reads as one to release, so a second run asks again over nothing"
+file = "src/cratekit/sync/release_cli.py"
+surface = "user"
+tests = ["tests/test_sync_twins_hold.py", "tests/test_cli_contract.py"]
+old = '''        return NOTHING_HELD if self.held is not None and not self.held else RELEASE'''
+new = '''        return RELEASE'''
