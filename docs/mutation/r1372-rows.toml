@@ -1,0 +1,229 @@
+name = "r1372"
+pass_kind = "full"
+
+[[rows]]
+id = "K1_no_carry"
+description = "write: the pair's steps are not carried past the run as its order begins"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        # whatever its age until the pair's snapshot passes it.
+        steps.carry()'''
+new = '''        # whatever its age until the pair's snapshot passes it.
+        pass'''
+
+[[rows]]
+id = "K2_carry_writes_nothing"
+description = "carry: the record is built and never written"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''    config.atomic_write_bytes(payload, carried_path(steps.run_id, key))'''
+new = '''    payload = payload'''
+
+[[rows]]
+id = "K3_carry_empty_steps"
+description = "carry: the record keeps an empty item, so its ordering detail is lost"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''        "steps": dict(steps.done.get(str(key), {})),'''
+new = '''        "steps": {},'''
+
+[[rows]]
+id = "K4_carry_unwritten_not_refused"
+description = "PairSteps.carry: a carry that cannot be written is swallowed and the moves go on"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            held_plan.carry(self.steps, self.key)
+        except OSError as exc:
+            raise steps_unwritten(self.steps.run_id, exc) from None'''
+new = '''            held_plan.carry(self.steps, self.key)
+        except OSError as exc:
+            exc = exc'''
+
+[[rows]]
+id = "K5_carried_under_held_plans"
+description = "carried_dir: the records are kept beside the held plans, where prune takes them"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''    return config.state_path(STATE_KEY) / CARRIED_DIR'''
+new = '''    return config.state_path(STATE_KEY)'''
+
+[[rows]]
+id = "K6_reader_ignores_carried"
+description = "reader: the carried records are not read, only the kept steps"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        records = [*records, *(one for one in kept if (one.run_id, one.digest) not in current)]'''
+new = '''        records = [*records]'''
+
+[[rows]]
+id = "K7_copy_never_gives_way"
+description = "reader: a carried copy is read beside its own run's steps kept under the same plan"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        current = {(one.run_id, one.digest) for one in records}'''
+new = '''        current = set()'''
+
+[[rows]]
+id = "K8_copy_gives_way_to_any_plan"
+description = "reader: a carried copy gives way to its run's steps under any plan, so a replanned run's fresh steps hide it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        current = {(one.run_id, one.digest) for one in records}
+        records = [*records, *(one for one in kept if (one.run_id, one.digest) not in current)]'''
+new = '''        current = {one.run_id for one in records}
+        records = [*records, *(one for one in kept if one.run_id not in current)]'''
+
+[[rows]]
+id = "K9_carried_unread_unsaid"
+description = "reader: a carried record that cannot be read is not named"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        problems = [*problems, *unread]'''
+new = '''        problems = [*problems]'''
+
+[[rows]]
+id = "K10_carried_read_error_silent"
+description = "carried: a record that cannot be read is skipped without a word"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''            problems.append(
+                f"run {run_id}'s carried steps could not be read ({type(exc).__name__}: {exc})"
+            )
+            continue'''
+new = '''            continue'''
+
+[[rows]]
+id = "K11_carried_place_unchecked"
+description = "carried: a record not at the place its run and key name is read"
+file = "src/cratekit/core/held_plan.py"
+surface = "maintainer"
+old = '''            or carried_path(run_id, key) != one'''
+new = '''            or False'''
+
+[[rows]]
+id = "K12_carried_run_unchecked"
+description = "carried: a record naming another run than its file is read under its file's run"
+file = "src/cratekit/core/held_plan.py"
+surface = "maintainer"
+old = '''            raw.get("run_id") != run_id
+            or not isinstance(key, str)'''
+new = '''            not isinstance(key, str)'''
+
+[[rows]]
+id = "K13_carried_version_unchecked"
+description = "carried: a record of another version is read"
+file = "src/cratekit/core/held_plan.py"
+surface = "maintainer"
+old = '''        if not isinstance(raw, dict) or raw.get("version") != CARRIED_VERSION:'''
+new = '''        if not isinstance(raw, dict):'''
+
+[[rows]]
+id = "K14_unlistable_read_as_none"
+description = "carried: a directory that cannot be listed reads as no record"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''    except OSError as exc:
+        return [], [f"the carried steps could not be listed ({type(exc).__name__}: {exc})"]'''
+new = '''    except OSError:
+        return [], []'''
+
+[[rows]]
+id = "K15_let_go_keeps"
+description = "let_go: the record is never removed"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''        carried_path(run_id, key).unlink(missing_ok=True)'''
+new = '''        carried_path(run_id, key).exists()'''
+
+[[rows]]
+id = "K16_no_let_go_at_done"
+description = "apply_pair: a pair done does not let its own carried record go"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    steps.mark(STEP_DONE, done.account_id or one.target.key)
+    steps.let_go()'''
+new = '''    steps.mark(STEP_DONE, done.account_id or one.target.key)'''
+
+[[rows]]
+id = "K17_no_let_go_at_snapshot"
+description = "_record: a snapshot recorded whole lets go of no carried record of its pair"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if whole:
+        _let_go_passed(one.target.account_id, recorded.synced)'''
+new = '''    if False:
+        _let_go_passed(one.target.account_id, recorded.synced)'''
+
+[[rows]]
+id = "K18_let_go_on_any_record"
+description = "_record: a snapshot of one side alone also lets go of the pair's carried records"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if whole:
+        _let_go_passed(one.target.account_id, recorded.synced)'''
+new = '''    if True:
+        _let_go_passed(one.target.account_id, recorded.synced)'''
+
+[[rows]]
+id = "K19_passed_by_strict"
+description = "passed_by: a write that began at the snapshot's very moment is not passed"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''            if began is not None and not began > moment:'''
+new = '''            if began is not None and began < moment:'''
+
+[[rows]]
+id = "K20_passed_by_any_pair"
+description = "passed_by: a snapshot lets go of every pair's carried records, not its own"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''            if _account_of(key, steps, new=new, made=made) != account_id:
+                continue
+            began = placeholders.parse_hearted(steps.get(account))
+            if began is not None'''
+new = '''            began = placeholders.parse_hearted(steps.get(account))
+            if began is not None'''
+
+[[rows]]
+id = "K21_made_pair_unmapped"
+description = "_account_of: a made pair is read under its key, not the account playlist it was made as"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''    if key.startswith(new):
+        return steps.get(made) if isinstance(steps.get(made), str) else ""
+    return key'''
+new = '''    return key'''
+
+[[rows]]
+id = "K22_mark_guard_gone"
+description = "stopped_write: a stop that began before the pair was marked is read as the pair's"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if marked is not None and began < marked:
+            return None'''
+new = '''        if False:
+            return None'''
+
+[[rows]]
+id = "K23_mark_guard_inclusive"
+description = "stopped_write: a stop that began at the very moment the pair was marked is refused"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if marked is not None and began < marked:'''
+new = '''        if marked is not None and began <= marked:'''
+
+[[rows]]
+id = "K24_null"
+description = "null control: a comment changed, which no test can see"
+file = "src/cratekit/core/held_plan.py"
+surface = "maintainer"
+old = '''#: A carried record's own schema version.'''
+new = '''#: The carried record's schema version.'''
+
+[[rows]]
+id = "K25_name_filter_gone"
+description = "carried: every entry in the directory is read, a leftover temporary file among them"
+file = "src/cratekit/core/held_plan.py"
+surface = "maintainer"
+old = '''            one for one in carried_dir().iterdir() if one.name.endswith(".json")'''
+new = '''            one for one in carried_dir().iterdir()'''

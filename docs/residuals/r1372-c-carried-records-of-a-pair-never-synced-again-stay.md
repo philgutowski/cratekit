@@ -6,6 +6,6 @@ issue: no
 
 **The mechanism.** R-1372 lets a carried record go when its own run marks the pair done, or when a snapshot of the pair taken after it is recorded. A pair unpaired after a stop, or synced only on one side from then on, never reaches either, and nothing ages the record out, by design, since a stop must be remembered while its pair is unfinished. An unreadable carried record is likewise named on every gate until it is removed by hand.
 
-**Measured cost.** Not driven as a cost: each record is a small file, read by nothing once the pair's mark is later than its write (`_Reader.stopped_write`'s mark guard). An unreadable one says so on every gate, which is noise rather than a wrong write.
+**Measured cost.** A readable record the mark guard or a snapshot passes is a small file read by nothing (`_Reader.stopped_write`). An unreadable one is not noise while its pair is unfinished: driven by the round two reviewer, the U225 stop with its steps aged and pruned and its carried record overwritten by hand, a fresh sync planned the pair as if nothing stopped and, with both gates applied, wrote rekordbox 2, 7, 1, 3, 4, 5, 6. The gate said so under `sync-pair-stopped-unread` before the approval. The one producer driven was a hand edit; a crash part way through a carry cannot leave one, since the record is replaced whole.
 
 **Closes when:** forgetting or releasing a pair lets go of its carried records, and a verb or a doctor check offers to clear one that cannot be read.
