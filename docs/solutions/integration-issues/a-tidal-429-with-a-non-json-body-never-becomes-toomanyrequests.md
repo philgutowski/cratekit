@@ -2,7 +2,7 @@
 title: "A Tidal 429 with a non JSON body never becomes TooManyRequests"
 date: 2026-09-24
 category: integration-issues
-module: "src/cratekit/label, src/cratekit/core/cause.py, src/cratekit/acquire/provider_session.py, src/cratekit/modules/outbound/account.py"
+module: "src/cratekit/label, src/cratekit/core/cause.py, src/cratekit/acquire/provider_session.py, src/cratekit/acquire/adapter.py, src/cratekit/acquire/isrc_cache.py, src/cratekit/modules/outbound/account.py"
 problem_type: integration_issue
 component: tooling
 severity: medium
@@ -21,6 +21,7 @@ tags:
   - exception-chain
   - r-704
   - r-1305
+  - r-1313
 ---
 
 # A Tidal 429 with a non JSON body never becomes TooManyRequests
@@ -38,5 +39,7 @@ tidalapi builds its own error class by reading the response body as JSON first. 
 - Test a rate limit check by driving `http_error_to_tidal_error` with a hand built `Response` that has a non JSON body, not by raising `TooManyRequests` directly.
 - Walk implicit context as well as declared cause when looking for the 429.
 - The mutation driver's leak guard halts every batch while the installed copy's analyze vocals job writes the real state folder. Point `CRATEKIT_STATE_DIR` and `CRATEKIT_CONFIG_DIR` at an empty temp folder for the driver, and say so in the notes.
-- **It is every status, not only the 429** (R-1305, 2026-11-05). A 401 or 403 whose body is a page reached both readers of a rejected session as the decode error, and the person was told to wait. `provider_session.failure_links` is the walk for a status off a client failure: declared causes first, then context, never into a `CratekitError` off the declared chain, cycle guarded. Read a status on any link it yields, and a type or name only where it says the link was declared. A 404 page has the same shape and four readers still miss it (the residual filed with R-1305).
+- **It is every status, not only the 429** (R-1305, 2026-11-05). A 401 or 403 whose body is a page reached both readers of a rejected session as the decode error, and the person was told to wait. `core.cause.failure_links` (moved there from `provider_session` by R-1313, which still imports it) is the walk for a status off a client failure: declared causes first, then context, never into a `CratekitError` off the declared chain, cycle guarded. Read a status on any link it yields, and a type or name only where it says the link was declared.
+- **A 404 page too, and read the NEAREST status** (R-1313, 2026-11-06). The four readers of a not found (`adapter.classify_unavailable`, the outbound account's `_not_found` through it, `isrc_cache.said_not_found`, the catalogue's `_gone`) read `core.cause.answered_not_found`, the status on the first link the walk reaches that carries one. Not any 404 on any link: a 503 met while handling a 404 is the outage, and a not found read beneath it would be kept in the ISRC cache for a week. A walk helper cannot live in `acquire/provider_session.py` if the adapter needs it, since that module imports the adapter.
+- **A test that raises an already raised failure inside a handler rewrites its context.** Raising an exception object inside an `except` block sets its `__context__` to the handled one, so a fixture that does `raise client_failure(...)` there cuts the client's own chain off at the top. Return the failure `client_failure` raised as it came.
 - **Build the failure through the client, not by hand.** `tests/provider_answers.client_failure(status, body)` drives the installed client's own request handler over a canned answer and returns what it raises, so the chain under test is the client's. A cycle test whose walk has no guard spins rather than fails; count the link reads (the `Looping` failure in `tests/test_provider_rejection_bodies.py`) instead of a thread with a time limit, which leaves a spinner holding whatever lock the walk was inside.

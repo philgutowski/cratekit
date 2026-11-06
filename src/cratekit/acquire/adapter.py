@@ -51,6 +51,7 @@ from enum import StrEnum
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
+from cratekit.core.cause import answered_not_found
 from cratekit.core.provider_gate import GateSettings
 
 # ---------------------------------------------------------------------------
@@ -512,7 +513,15 @@ def classify_unavailable(exc: BaseException) -> TrackOutcome:
 
     A ``NoFileLanded`` is transient before any reading of its text, because its
     text is a swallowed cause quoted for a person to read, not the answer to
-    this track's lookup (R-703).
+    this track's lookup (R-703). It is raised FROM that cause, so it is asked
+    before the status below, which would otherwise find the cause's 404.
+
+    THE 404 IS READ OFF THE STATUS NEAREST THE FAILURE, ``core.cause``'s
+    ``answered_not_found`` (R-1313). The provider client decodes an error
+    answer's body inside its handler of the HTTP error, so a 404 whose body is
+    a page arrives as the decode error with the 404 three context links down,
+    and read off the failure alone a delisted track was retried on every run.
+    The class name and the text are still read off the failure alone.
     """
     if isinstance(exc, NoFileLanded):
         return TrackOutcome.UNAVAILABLE_TRANSIENT
@@ -521,8 +530,7 @@ def classify_unavailable(exc: BaseException) -> TrackOutcome:
         return TrackOutcome.UNAVAILABLE_TRANSIENT
     if "notfound" in type(exc).__name__.lower():
         return TrackOutcome.UNAVAILABLE_PERMANENT
-    status = getattr(getattr(exc, "response", None), "status_code", None)
-    if status == 404:
+    if answered_not_found(exc):
         return TrackOutcome.UNAVAILABLE_PERMANENT
     if "404" in text or "not found" in text:
         return TrackOutcome.UNAVAILABLE_PERMANENT

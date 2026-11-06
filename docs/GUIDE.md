@@ -1724,6 +1724,13 @@ whatever the answer's body held, a gateway's page and an empty answer
 included. When the provider fails or cannot be reached it says to wait and
 resume, and keeps the stored session, because nothing judged it.
 
+When the provider answers that it has no such track, release or ISRC, that
+answer is taken as given whatever the answer's body held, a gateway's page
+included: the track is reported as one the provider lacks rather than retried
+as an outage, a release is gone, and an ISRC it files nothing under is kept
+for a week like any other answer. A server error stays a wait, even one met
+while a not found was being handled.
+
 ## Where things live
 
 | What | Where |

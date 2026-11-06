@@ -59,7 +59,7 @@ import tidalapi
 
 from cratekit.acquire import catalogue_api, isrc_cache, isrc_screen, listing, provider_session
 from cratekit.core import provider_gate
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, answered_not_found
 from cratekit.label import harvest, kept_listing, registry
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
@@ -129,10 +129,15 @@ def _gone(exc: BaseException) -> bool:
     release would then be answered once, as gone, and a person would be told to
     revoke an acceptance over a login problem. A release that is gone is
     PERMANENT and is never retried, because R-380 is what the other order costs.
+
+    The status is the one nearest the failure, ``core.cause.answered_not_found``
+    (R-1313), since a 404 whose body is a page arrives as the client's decode
+    error with the 404 three context links down; the class name is read off
+    the failure alone.
     """
     if "notfound" in type(exc).__name__.lower():
         return True
-    return getattr(getattr(exc, "response", None), "status_code", None) == 404
+    return answered_not_found(exc)
 
 
 def _year(release: Any) -> int | None:
