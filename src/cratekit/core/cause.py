@@ -999,6 +999,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # again, and the answer is already recorded. The fix is the verb run
         # again by hand under ``--run``, which the steps name.
         "run-not-continuable": ExitCode.PRECONDITION,
+        # R-1349. ``run decide`` named a gate that binds a plan, and the run has
+        # not reached it, so no plan of it was shown for the answer to bind to.
+        # Deliberately NOT ``decision-required``, which the human output prints
+        # as a gate screen and verbs read as an open gate, inviting the very
+        # answer refused. The fix is the run continued to the gate, which the
+        # steps name.
+        "gate-not-reached": ExitCode.PRECONDITION,
         # U11, the review queue. Six slugs on one code, and the code is right for
         # all six: none of them is the library refusing, none is upstream, and
         # none is a command line the parser could have rejected. What differs is

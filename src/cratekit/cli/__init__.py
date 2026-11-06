@@ -714,19 +714,6 @@ def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:
     )
 
 
-def run_continue_command(state: gates.RunState) -> str:
-    """The command that continues a kept run with every answer it holds (U211).
-
-    The verb's own command line as its first invocation gave it, under
-    ``--run``, which is what ``run decide --continue`` dispatches. A run
-    recorded before U168 keeps no command line, so the verb's words stand
-    with an ellipsis for its arguments, as ``run decide`` says it then.
-    """
-    if state.argv is not None:
-        return shlex.join(["crate", "--run", state.run_id, *state.argv])
-    return f"crate --run {state.run_id} {state.verb.replace('.', ' ')} ..."
-
-
 def _with_run_continue(cause: Cause, state: gates.RunState) -> Cause:
     """A kept refusal's cause with its first step naming the command that continues the run.
 
@@ -734,7 +721,7 @@ def _with_run_continue(cause: Cause, state: gates.RunState) -> Cause:
     because that one says to run it again, and a person who follows it
     literally starts a fresh run and loses the answers this run keeps.
     """
-    command = run_continue_command(state)
+    command = gates.continue_command(state)
     steps = (
         f"wait a moment for the process to finish exiting, then continue this "
         f"run with its answers: {command}",

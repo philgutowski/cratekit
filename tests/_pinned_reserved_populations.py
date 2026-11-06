@@ -77,6 +77,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'favorites-class-undeclared',
     'favorites-pink-colour-missing',
     'favorites-source-missing',
+    'gate-not-reached',  # 2026-11-06, R-1349: a decide on a gate its run has not reached.
     'governed-tree-absent',
     'inspiration-folder-undeclared',
     'intake-export-is-stub',
@@ -561,6 +562,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',
+        'gate-not-reached',  # 2026-11-06, R-1349: a decide on a gate its run has not reached.
         'gate-sibling-run',  # 2026-11-01, U186: the sibling run warning joined.
         'internal-error',
     ],
@@ -783,6 +785,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'favorites-class-undeclared',
         'favorites-pink-colour-missing',
         'favorites-source-missing',
+        'gate-not-reached',  # 2026-11-06, R-1349
         'governed-tree-absent',
         'inspiration-folder-undeclared',
         'intake-export-is-stub',
@@ -2693,6 +2696,7 @@ PINNED_LITERAL_HOLDERS = {
         'decision-required',
         'decision-stale',
         'decision-unknown-gate',
+        'gate-not-reached',  # 2026-11-06, R-1349
         'internal-error',
     ],
     'cli/handlers.py': ['internal-error'],
