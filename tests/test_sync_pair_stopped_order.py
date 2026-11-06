@@ -497,3 +497,130 @@ def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_
     records, _problems = held_plan.carried()
     assert [one.run_id for one in records] == [run_id]
     assert envelope["run_id"] != run_id
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1376: a pair released after a stopped order and paired again
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _released(world, intro: str, account_id: str) -> str:
+    """The stopped pair's rekordbox playlist deleted, a sync releasing it, and a new one in rekordbox's order.
+
+    Answers the new rekordbox playlist, made at the root, where no sync of
+    every pair discovers it, holding the stopped pair's tracks in the order
+    rekordbox held them, as a person rebuilding the playlist would.
+    """
+    world.delete_rekordbox(intro)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.RELEASED in _codes(envelope)
+    assert pairs.PairStore(world.cfg).get(account_id) is None
+    # The release wrote nothing on the account: it still holds the scramble.
+    assert world.account.playlists[account_id] == ["t2", "t7", "t1", "t3", "t4", "t5", "t6"]
+    return world.playlist("Rebuilt", *LED)
+
+
+def test_a_pair_released_after_a_stop_and_paired_again_never_takes_the_scramble(
+    world, stopped
+):
+    intro, account_id, run_id = stopped
+    rebuilt = _released(world, intro, account_id)
+    paired = [*VERB, account_id, "--rekordbox", rebuilt]
+    code, first = drive(paired)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    line = first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    assert f"finishes run {run_id}" in line, line
+    assert "order follows rekordbox's" in line, line
+    code, envelope = sync(paired)
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(rebuilt) == list(LED), "rekordbox took the stopped write's scramble"
+    assert world.account.playlists[account_id] == _ids(*LED)
+    assert run_id in _said(envelope, pair_cli.FINISHING)
+    # Finished, the stop is let go and the next sync plans nothing.
+    code, again = sync()
+    assert code == int(ExitCode.OK), again
+    assert pair_cli.FINISHING not in _codes(again)
+    assert [item for item in again["data"]["items"] if item["pair"] == account_id] == []
+
+
+def test_a_released_pair_paired_again_after_its_steps_were_pruned_never_takes_the_scramble(
+    world, stopped
+):
+    """Only the carried record is left, and it outlives the release."""
+    from cratekit.core import held_plan
+
+    intro, account_id, run_id = stopped
+    rebuilt = _released(world, intro, account_id)
+    _aged(run_id)
+    held_plan.prune()
+    assert not held_plan.steps_path(run_id).exists()
+    paired = [*VERB, account_id, "--rekordbox", rebuilt]
+    plan = plan_only(paired)
+    pair = [item for item in plan["items"] if item["pair"] == account_id]
+    assert [item for item in pair if item["side"] == "rekordbox"] == [], (
+        "the first sync writes rekordbox the stopped write's scramble"
+    )
+    assert [item["action"] for item in pair if item["side"] == "account"] == ["order"]
+    code, envelope = sync(paired)
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(rebuilt) == list(LED), "rekordbox took the stopped write's scramble"
+    assert world.account.playlists[account_id] == _ids(*LED)
+
+
+def test_a_first_sync_whose_account_side_was_skipped_still_never_takes_the_scramble(
+    world, stopped
+):
+    """Marked with no snapshot, the pair's next sync is still a first one, and the stop predates the mark."""
+    intro, account_id, run_id = stopped
+    rebuilt = _released(world, intro, account_id)
+    paired = [*VERB, account_id, "--rekordbox", rebuilt]
+    code, envelope = sync(paired, account="skip")
+    assert code == int(ExitCode.OK), envelope
+    held = pairs.PairStore(world.cfg).get(account_id)
+    assert held is not None and held.first, "the skipped account left a snapshot"
+    assert world.held(rebuilt) == list(LED)
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert f"finishes run {run_id}" in first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(rebuilt) == list(LED), "rekordbox took the stopped write's scramble"
+    assert world.account.playlists[account_id] == _ids(*LED)
+
+
+def test_a_released_pair_reordered_on_the_account_since_is_paired_as_any_first_sync(
+    world, stopped
+):
+    """A move off the stopped write's path is somebody's, so the account leads as on any first sync."""
+    intro, account_id, run_id = stopped
+    rebuilt = _released(world, intro, account_id)
+    world.account.playlists[account_id] = _ids("7", "6", "5", "4", "3", "2", "1")
+    paired = [*VERB, account_id, "--rekordbox", rebuilt]
+    code, first = drive(paired)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert "finishes run" not in first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    code, envelope = sync(paired)
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.FINISHING not in _codes(envelope)
+    assert world.held(rebuilt) == ["7", "6", "5", "4", "3", "2", "1"]
+
+
+def test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before(world):
+    gig = world.folder("GIG READY")
+    world.playlist("Intro", "1", "2", "3", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    theirs = world.account.create_playlist("Theirs")
+    world.account.playlists[theirs] = _ids("3", "1", "2")
+    mine = world.playlist("Mine", "1", "2", "3")
+    paired = [*VERB, theirs, "--rekordbox", mine]
+    code, first = drive(paired)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert "finishes run" not in first["cause"]["detail"]["shown"][f"pair {theirs}"]
+    code, envelope = sync(paired)
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.FINISHING not in _codes(envelope)
+    # The first sync's account leads, as it always has.
+    assert world.held(mine) == ["3", "1", "2"]
+    assert world.account.playlists[theirs] == _ids("3", "1", "2")
