@@ -244,14 +244,17 @@ def test_through_the_dispatcher_the_stale_refusal_shows_the_moved_plan_and_a_dec
     assert _drive(["run", "decide", run_id, "profile.set.apply", "apply"])[0] == 0
     _switch_off_by_hand("analysis")
 
-    code, out, err = _drive(["--output", "json", "--run", run_id, "profile", "set", "slim"])
+    code, out, _ = _drive(["--output", "json", "--run", run_id, "profile", "set", "slim"])
 
     assert code == int(ExitCode.DECISION_STALE)
     detail = json.loads(out)["cause"]["detail"]
     assert detail["shown"]["digest"] == detail["actual"]
     # A person at a terminal is shown the same plan.
+    code, _, err = _drive(["--run", run_id, "profile", "set", "slim"])
+    assert code == int(ExitCode.DECISION_STALE)
     assert "The plan moved since this gate was answered" in err
     assert f"digest: {detail['actual']}" in err
+    assert f"answer:  crate run decide {run_id} profile.set.apply <option>" in err
 
     assert _drive(["run", "decide", run_id, "profile.set.apply", "apply"])[0] == 0
     assert gates.load(run_id).decisions["profile.set.apply"].digest == detail["shown"]["digest"]

@@ -1523,6 +1523,15 @@ and as `session` when nothing is, which is how a session working for you is told
 apart; the summary says which. An explicit gate still takes no answer on the
 verb's own command line, so `--continue` is always the second command.
 
+When the plan moves between your answer and the run that applies it, the run
+refuses as stale and writes nothing. The refusal shows the plan the run reads
+now, every item, under the same question, the way the gate first did, and an
+answer you record on the run after it is taken over that plan: the next run
+applies what that screen showed, and refuses as stale again if the plan has
+moved once more. Read it before you answer again, or start a fresh run. An
+answer on the verb's own command line is compared with the one already
+recorded, so after a stale refusal answer with `crate run decide`.
+
 When a verb that writes the rekordbox database stops at its gate, it also names
 every other run of the same verb that holds its gate open or answered it in the
 last twelve hours, one `gate-sibling-run` warning per run with its identifier,

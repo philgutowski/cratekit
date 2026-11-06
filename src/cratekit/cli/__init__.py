@@ -359,7 +359,7 @@ def _emit(envelope: Envelope, *, as_json: bool, stdout, stderr) -> None:
         return
     stream = stdout if envelope.exit_code is ExitCode.OK else stderr
     print(render.render(envelope, drive=_drive_argv(envelope)), end="", file=stream)
-    if envelope.cause is not None and envelope.cause.reason == "decision-required":
+    if envelope.cause is not None and render.is_gate_screen(envelope.cause):
         print(render.render_gate(envelope.cause), end="", file=stderr)
 
 

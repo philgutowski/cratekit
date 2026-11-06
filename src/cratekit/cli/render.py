@@ -957,6 +957,25 @@ def _shown_value(value: Any) -> str:
     return str(value)
 
 
+#: The line a stale answer's screen opens with (R-1334).
+STALE_SCREEN = (
+    "The plan moved since this gate was answered. This is the plan this run "
+    "reads now, and an answer recorded on the run now is taken over it:"
+)
+
+
+def is_gate_screen(cause: Cause) -> bool:
+    """Whether a refusal carries a gate's screen, which :func:`render_gate` prints.
+
+    An open gate always does. A stale answer does when the gate itself raised
+    it over the plan it now offers (R-1334), which its options mark; a stale a
+    verb raised on its write handle binds no new offer and carries none.
+    """
+    if cause.reason == "decision-required":
+        return True
+    return cause.reason == "decision-stale" and "options" in (cause.detail or {})
+
+
 def render_gate(cause: Cause) -> str:
     """The decision screen: the question, the options, and how to answer it.
 
@@ -977,7 +996,11 @@ def render_gate(cause: Cause) -> str:
     gate = detail.get("gate", "?")
     options = detail.get("options") or []
     run_id = detail.get("run_id", "<run>")
-    lines = [
+    stale = cause.reason == "decision-stale"
+    # A STALE ANSWER'S SCREEN IS THE MOVED PLAN (R-1334): an answer recorded on
+    # the run after it is taken over that plan, so it says so first.
+    lines = [STALE_SCREEN, ""] if stale else []
+    lines += [
         detail.get("prompt", "A decision is required."),
         "",
         f"  gate:    {gate}",
@@ -994,7 +1017,11 @@ def render_gate(cause: Cause) -> str:
         "  then:    add --continue to answer and carry on the run in one command",
     ]
     if not detail.get("explicit"):
-        lines.append(f"  or:      rerun with -d {gate}=<option>")
+        # NO INLINE ANSWER ON A STALE SCREEN: an inline one is compared with
+        # the answer already recorded, the one that moved, so it would refuse
+        # again.
+        if not stale:
+            lines.append(f"  or:      rerun with -d {gate}=<option>")
     else:
         lines.append(
             "  this gate takes no inline answer: it must be asserted on its own, "
@@ -1006,6 +1033,7 @@ def render_gate(cause: Cause) -> str:
 __all__ = [
     "access_note",
     "install_command",
+    "is_gate_screen",
     "remediation_line",
     "remedy_text",
     "render",
