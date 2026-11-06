@@ -45021,3 +45021,138 @@ handler of either, and none was found;
 **Closes when:** the walk's limit also stops at a `NoFileLanded` and an
 `AdapterError`, or a test shows no reader is ever handed a failure raised
 inside a handler of one. Ledger only: no producer.
+
+---
+
+## R-1343. A removal refused as possibly landed under a lagging read is recorded by no caller as taken off
+
+**Found:** at the build of #558, R-1308, 2026-11-06.
+
+**The mechanism.** When `remove_tracks` refuses with `lagged: yes`, the
+removal may have landed, but prune, the mirror, `label heard` and
+`sync pair` each record only what a returned removal said, so a removal that
+did land is not in their records. A run again plans from a fresh reading of
+the playlist and does not ask for it again once the read shows it.
+
+**Measured cost.** Not driven past the adapter. A record of what was taken
+off is short by the asked tracks until the next run reads the playlist.
+
+**Closes when:** a caller records a possibly landed removal as such, or the
+next run is shown to settle it. Ledger only.
+
+---
+
+## R-1344. A removal's read back whose declared count or videos cannot be read now stops the mirror apply as a possibly wrong track
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** Before R-1308 a read back whose count or video count could
+not be read, or declared a video, was refused `positions-unknown` at
+`Scope.SOURCE`, which the mirror's apply keeps as "nothing was taken off it"
+and carries on past, although the removal had been sent. R-1308's read back
+refuses it at `Scope.RUN` as `read-back-differs`, "a track other than the
+asked ones may have come off", which stops the apply.
+
+**Measured cost.** The new answer is the more conservative and the old one
+was false; no provider was driven that changes its declared counts' shape
+between the first reading and the read back.
+
+**Closes when:** a provider is seen to do so; ledger only, a seam note.
+
+---
+
+## R-1345. A removal run again while the read still lags takes the wrong track off if the lagging listing carries the current version tag
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** `TidalAccount.remove_tracks` plans its positions from its
+first reading and sends them with the version tag that reading came with. The
+safety of a removal run again after R-1308's "may have landed" refusal rests
+on the provider answering 412 to a removal whose tag is the one a stale
+listing came with; the client takes the tag from the tracks response's own
+header, so a lagging body and its tag should come from one response. Driven
+on a stand in whose lagging listing keeps the playlist's CURRENT tag instead:
+after a refused lagged removal of `b` from `[a, b, c, d]`, a fresh run reads
+`[a, b, c, d]` stale, removes position 1, which is now `c`, and its read back,
+lagging one write, shows `[a, c, d]`, equal to what it expected, so it
+reports `b` taken off while `c` is gone.
+
+**Measured cost.** Not reached on the live provider: the one live observation,
+Sitting 62's 412 on a move after adds (U220's record), points to a stale read
+carrying a stale tag, under which the same drive is answered 412 and nothing
+comes off. Pre existing on main; R-1308's refusal and the GUIDE advise looking
+by hand before anything runs again.
+
+**Closes when:** an attended sitting reads a playlist straight after a
+removal and compares the listing's tag with the playlist's, or the first
+reading of a removal is held to what is known of the playlist (the residual
+beside this one). Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1346. label heard adds run it again after a removal's read back refusal that says to check the playlist by hand first
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** prune's refusal wrapper drops its "run again" step when
+the account's problem is `read-back-differs`; `label heard`'s
+`_failed_part_way` appends "run crate label heard again" after it whatever
+the problem. Driven at round one's review on the adapter's read back refusal.
+
+**Measured cost.** A heard user is told in one answer to check by hand and to
+run again; no data is lost, since a run again's removal is planned from a
+fresh reading (see the residual beside this one on a lagging read's tag).
+
+**Closes when:** heard's wrapper keeps the account's steps alone on a
+`read-back-differs`, as prune's does. Ledger only, a wording fix.
+
+---
+
+## R-1347. An order's refusal and a removal's provider failure leave what the adapter remembers of the playlist as it was before
+
+**Found:** at round two's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** R-1308's read back forgets `TidalAccount._members` for
+the playlist on every refusal, since what it holds is not known. The same
+shape one method over does not: `order_tracks`'s `_read_back` and
+`_settled` refuse with the entry holding the last reading `_positions`
+took, lagging or not, and `remove_tracks`'s provider failures (a removal
+not accepted, or a call that raised) leave the reading from before the
+removal. Round two drove what a stale entry does on round one's head: a
+later `add_tracks` on the same adapter answered a track as held and added
+nothing while the provider did not hold it.
+
+**Measured cost.** None reached: the four callers (prune, the mirror's
+apply, `label heard`, `sync pair`) each raise out of the command on these
+refusals, read and not driven, so no later call on the same adapter reads
+the entry.
+
+**Closes when:** every refusal and failure after a write forgets the entry,
+or a caller is found that continues on the same adapter. Ledger only.
+
+---
+
+## R-1348. The first reading of a removal is not held to what the same command's writes left, so a mirror apply or a prune's second chunk stops over a lag
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** `order_tracks` holds its first reading to what this
+adapter's writes left (`_settled`, U220); `remove_tracks` takes its first
+reading through `_positions` as it comes. The mirror's apply adds then
+removes on one playlist (`mirror.py`, the add before the removal), and
+prune takes a playlist's removals off in chunks of 50, one `remove_tracks`
+call each, so either can meet a first reading that lags its own earlier
+write. Driven on the U220 stand in: add `x` then remove `b` under a whole
+lag of one is answered 412 and raised as `unavailable-transient`; under a
+tracks only lag it is refused `positions-unknown` at source. A removal
+answered 412 changed nothing but is raised rather than read again, which
+R-1308's brief kept out of scope.
+
+**Measured cost.** A mirror apply or a prune stops after its adds or its
+first chunk landed, with a true message; running it again does the rest.
+
+**Closes when:** the first reading of a removal is held to `_members` when
+this adapter wrote the playlist in this process, read again on the order's
+pauses as `_settled` does, and a removal answered 412 is read again and
+planned afresh as a move answered 412 is. Ledger only: the run again
+finishes the workflow.
