@@ -151,30 +151,27 @@ def test_an_order_planned_after_a_lagging_window_is_planned_from_the_unpaged_rea
     assert provider.members == ["a", "c", "b"]
 
 
-def test_a_window_that_lags_beside_a_first_page_unpaged_read_refuses_saying_so(installed):
+def test_a_window_that_lags_beside_a_first_page_is_not_read_back_between_moves(installed):
+    """U231: a window that lags every move no longer stops the order; its settle reading says so."""
     provider = _window_lagging(["a", "b", "c", "d"], 99, unpaged=2, walk_lags=True)
     slept: list[float] = []
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).order_tracks("mine", ("d", "c", "a", "b"))
-    cause = refused.value.cause
-    assert cause.reason == "outbound-remove-refused"
-    assert cause.detail["problem"] == "read-back-differs"
-    assert cause.detail["lagged"] == "yes"
-    assert cause.detail["readings"] == str(tidal_account.ORDER_REREADS + 1)
-    assert cause.detail["waited"] == f"{sum(tidal_account.ORDER_PAUSES):g}"
-    assert "unpaged" in cause.message
-    assert f"after {tidal_account.ORDER_REREADS + 1} readings" in cause.message
-    assert len(provider.moves) == 1, "a move was sent twice"
-    assert len(slept) == tidal_account.ORDER_REREADS
+    account = _adapter(installed, provider, slept)
+    after = account.order_tracks("mine", ("d", "c", "a", "b"))
+    assert after == ("d", "c", "a", "b")
+    assert len(provider.moves) == 2, "a move was sent twice"
+    assert slept == []
+    assert account.settled_order("mine") is None
+    assert account.read_backs()[-1]["window_lagged"] == 1
 
 
-def test_a_window_that_catches_up_beside_a_first_page_is_taken_as_done(installed):
+def test_a_window_that_catches_up_beside_a_first_page_settles_as_done(installed):
     provider = _window_lagging(["a", "b", "c", "d"], 1, unpaged=2, walk_lags=True)
-    slept: list[float] = []
-    after = _adapter(installed, provider, slept).order_tracks("mine", ("d", "a", "b", "c"))
+    account = _adapter(installed, provider)
+    after = account.order_tracks("mine", ("d", "a", "b", "c"))
     assert after == ("d", "a", "b", "c")
     assert len(provider.moves) == 1
-    assert slept == [tidal_account.ORDER_PAUSES[0]]
+    assert account.settled_order("mine") is None, "the first reading after the move lags"
+    assert account.settled_order("mine") == ("d", "a", "b", "c")
 
 
 def test_a_first_reading_whose_window_lags_is_read_again_before_any_move(installed):
@@ -290,45 +287,34 @@ def test_a_window_short_of_the_declared_total_still_refuses_with_nothing_sent(in
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_every_read_back_records_its_readings_and_wait(installed):
+def test_every_judged_reading_records_its_readings_and_wait(installed):
     provider = _window_lagging(["a", "b", "c", "d"], 1, unpaged=2, walk_lags=True)
     account = _adapter(installed, provider)
     account.order_tracks("mine", ("d", "a", "b", "c"))
+    assert account.settled_order("mine", wait=3.0) is None
     account.remove_tracks("mine", ("b",))
     assert [(one["after"], one["outcome"]) for one in account.read_backs()] == [
         ("order", "done"),
-        ("move", "done"),
+        ("moves", "done"),
+        ("settle", "lags"),
         ("removal positions", "done"),
         ("removal", "done"),
     ]
-    move = account.read_backs()[1]
-    assert move["playlist_id"] == "mine"
-    assert move["readings"] == 2
-    assert move["waited"] == tidal_account.ORDER_PAUSES[0]
-    assert move["window_lagged"] == 1
+    moves, settle = account.read_backs()[1:3]
+    assert (moves["playlist_id"], moves["moved"], moves["stale"]) == ("mine", 1, 0)
+    assert (settle["readings"], settle["waited"], settle["window_lagged"]) == (1, 3.0, 1)
 
 
-def test_a_refused_read_back_is_recorded_as_refused(installed):
-    provider = _window_lagging(["a", "b", "c", "d"], 99, unpaged=2, walk_lags=True)
-    account = _adapter(installed, provider)
-    with pytest.raises(CratekitError):
-        account.order_tracks("mine", ("d", "a", "b", "c"))
-    last = account.read_backs()[-1]
-    assert (last["after"], last["outcome"]) == ("move", "refused")
-    assert last["readings"] == tidal_account.ORDER_REREADS + 1
-    assert last["window_lagged"] == tidal_account.ORDER_REREADS + 1
-    assert last["waited"] == sum(tidal_account.ORDER_PAUSES)
-
-
-def test_the_pause_after_a_412_is_counted_in_the_readings_record(installed):
-    """Round two's review: the one pause outside every record is now in one."""
+def test_the_pause_after_a_412_is_counted_in_the_moves_record(installed):
+    """Round two's review of U226: the one pause outside every record is now in one."""
     provider = Provider(["a", "b", "c"], stale_tags=1)
     slept: list[float] = []
     account = _adapter(installed, provider, slept)
     account.order_tracks("mine", ("c", "a", "b"))
     assert slept == [tidal_account.ORDER_PAUSES[0]]
     assert sum(one["waited"] for one in account.read_backs()) == sum(slept)
-    assert [one["after"] for one in account.read_backs()][:2] == ["order", "order"]
+    assert [one["after"] for one in account.read_backs()] == ["order", "moves"]
+    assert account.read_backs()[1]["stale"] == 1
 
 
 # ═══════════════════════════════════════════════════════════════════════════

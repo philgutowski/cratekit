@@ -19,9 +19,11 @@ residual's own driver.
 from __future__ import annotations
 
 import sqlite3
+from dataclasses import replace
 
 import pytest
 
+from cratekit.core import config
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
@@ -52,6 +54,14 @@ def _unread(envelope) -> list[tuple[str, str, str, str]]:
         for one in envelope["data"]["items"]
         if one["side"] == "account" and one["action"] == "unread"
     ]
+
+
+@pytest.fixture
+def every_order(cfg, monkeypatch):
+    """U231: a twin sits outside GIG READY, so these orders are kept by the key that keeps every pair's."""
+    every = replace(cfg, outbound=replace(cfg.outbound, pair_order_every_pair=True))
+    monkeypatch.setattr(config, "load", lambda *args, **kwargs: every)
+    return every
 
 
 def _backfilled(world, *, untitled: str = "", nameless: str = "") -> str:
@@ -301,7 +311,9 @@ def _rekordbox_move_last(world, twin_id: str, content_id: str) -> None:
         conn.close()
 
 
-def test_a_rekordbox_reorder_while_a_track_is_unread_reaches_the_account_and_stands(world, cfg):
+def test_a_rekordbox_reorder_while_a_track_is_unread_reaches_the_account_and_stands(
+    world, cfg, every_order
+):
     """From the review's round two: a withheld account order let the next sync undo it."""
     twin_id = _backfilled(world, untitled="t20")
     _rekordbox_move_last(world, twin_id, "1")
@@ -337,7 +349,9 @@ def _siblings(world, listing: list[str]) -> str:
         (["t3", "t24", "t1", "t20", "t2", "t4"], "t24"),
     ],
 )
-def test_a_release_turning_unread_beside_a_readable_one_moves_nothing(world, cfg, listing, unread):
+def test_a_release_turning_unread_beside_a_readable_one_moves_nothing(
+    world, cfg, every_order, listing, unread
+):
     """From the review's round two: the row's key sat at the readable release's place."""
     twin_id = _siblings(world, listing)
     held = world.held(twin_id)

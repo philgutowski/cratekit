@@ -260,35 +260,36 @@ def test_the_tracks_before_the_kept_tail_are_moved_last_first(installed):
     assert provider.members == ["d", "c", "a", "b"]
 
 
-def test_a_move_that_lands_anywhere_else_refuses_at_once_with_every_track_kept(installed):
+def test_a_move_that_lands_anywhere_else_is_not_read_back_and_the_settle_reading_shows_it(
+    installed,
+):
+    """U231: no read back between moves, so the order's one later reading is what tells."""
     provider = Provider(["a", "b", "c", "d"])
     provider.elsewhere = True
     slept: list[float] = []
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).order_tracks("mine", ("d", "a", "b", "c"))
-    assert refused.value.cause.reason == "outbound-remove-refused"
-    assert refused.value.cause.detail["problem"] == "read-back-differs"
+    account = _adapter(installed, provider, slept)
+    after = account.order_tracks("mine", ("d", "a", "b", "c"))
+    assert after == ("d", "a", "b", "c"), "the return is the order as sent"
     assert len(provider.moves) == 1
-    assert slept == [], "a read back that is neither before nor after was read again"
-    assert provider.members == ["a", "d", "b", "c"]
+    assert slept == []
+    assert account.settled_order("mine") == ("a", "d", "b", "c")
+    assert sorted(provider.members) == ["a", "b", "c", "d"]
 
 
-def test_moves_that_never_reach_the_order_stop_at_one_per_track_asked(installed, monkeypatch):
-    """A planner that never runs out of moves is refused, not followed without end.
+def test_each_planned_move_is_sent_once_however_the_planner_answers(installed, monkeypatch):
+    """A planner that never runs out of moves cannot keep the order writing (U231).
 
-    Every move to the front grows the kept tail by one, so no reading needs
-    more moves than tracks asked. The mutation table's planner that keeps no
-    tail moved the playlist until the run was killed; a write loop on the
-    account with no bound is the hazard, so the bound is held here.
+    The moves are planned once from one reading and each is sent once, so a
+    planner that keeps no tail sends no more moves than it named. The
+    mutation table's planner that kept no tail once moved the playlist until
+    the run was killed; a write loop on the account with no bound is the
+    hazard, so the bound is held here.
     """
     monkeypatch.setattr(
         tidal_account, "_to_the_front", lambda before, remote_ids: list(reversed(remote_ids))
     )
     provider = Provider(["a", "b", "c"])
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider).order_tracks("mine", ("c", "a", "b"))
-    assert refused.value.cause.reason == "outbound-remove-refused"
-    assert refused.value.cause.detail["problem"] == "no-progress"
+    _adapter(installed, provider).order_tracks("mine", ("c", "a", "b"))
     assert len(provider.moves) == 3
     assert sorted(provider.members) == ["a", "b", "c"]
 
@@ -308,13 +309,38 @@ def test_a_412_on_a_stale_tag_is_read_again_and_the_move_made_on_the_new_reading
     assert [tag for _asked, _to, tag in provider.moves] == [0, 1]
 
 
-def test_a_tag_that_never_comes_fresh_refuses_with_nothing_moved(installed):
-    provider = Provider(["a", "b", "c"], stale_tags=99)
+class Refusing(Movable):
+    """An opened playlist whose every move the provider answers 412, a tag that never comes fresh."""
+
+    def move_by_indices(self, indices, position: int) -> bool:
+        self.provider.moves.append((tuple(indices), position, self._etag))
+        self.provider.refused += 1
+        raise Stale()
+
+
+class RefusingClient(Client):
+    def playlist(self, playlist_id: str) -> Movable:
+        return Refusing(self.provider, playlist_id)
+
+
+def test_a_move_whose_tag_never_comes_fresh_is_sent_a_bounded_number_of_times(installed):
+    provider = Provider(["a", "b", "c"])
+    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
+    slept: list[float] = []
+    account = tidal_account.TidalAccount(RefusingClient(provider), sleep=slept.append, cfg=installed)
     with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider).order_tracks("mine", ("c", "a", "b"))
+        account.order_tracks("mine", ("c", "a", "b"))
     assert refused.value.cause.reason == "unavailable-transient"
     assert provider.members == ["a", "b", "c"]
     assert provider.refused == len(provider.moves) == tidal_account.ORDER_REREADS + 1
+    assert {asked for asked, _to, _tag in provider.moves} == {(2,)}, "another move was sent"
+    assert slept == list(tidal_account.ORDER_PAUSES)
+    record = account.read_backs()[-1]
+    assert (record["after"], record["outcome"], record["stale"]) == (
+        "moves",
+        "refused",
+        tidal_account.ORDER_REREADS,
+    )
 
 
 def test_a_failure_other_than_a_stale_tag_is_never_sent_again(installed):
@@ -342,27 +368,6 @@ def test_a_failure_other_than_a_stale_tag_is_never_sent_again(installed):
 # ═══════════════════════════════════════════════════════════════════════════
 # A read that lags a write
 # ═══════════════════════════════════════════════════════════════════════════
-
-
-def test_a_read_back_that_lags_one_move_is_read_again_not_refused(installed):
-    provider = Provider(["a", "b", "c", "d"], lag=1)
-    slept: list[float] = []
-    after = _adapter(installed, provider, slept).order_tracks("mine", ("d", "c", "a", "b"))
-    assert after == ("d", "c", "a", "b")
-    assert provider.members == ["d", "c", "a", "b"]
-    assert len(provider.moves) == 2, "a move was sent twice"
-    assert slept, "a lagging read was read again with no pause"
-
-
-def test_a_read_back_that_never_catches_up_refuses_after_one_move(installed):
-    provider = Provider(["a", "b", "c"], lag=99)
-    slept: list[float] = []
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).order_tracks("mine", ("c", "a", "b"))
-    assert refused.value.cause.detail["problem"] == "read-back-differs"
-    assert len(provider.moves) == 1
-    assert len(slept) == tidal_account.ORDER_REREADS
-    assert sorted(provider.members) == ["a", "b", "c"]
 
 
 def test_the_reading_after_adds_that_lags_them_is_read_again_before_the_first_move(installed):
@@ -464,12 +469,14 @@ def test_a_412_whose_body_is_not_json_is_still_read_as_a_stale_tag():
     assert not tidal_account._stale_tag(RuntimeError("a 500"))
 
 
-def test_more_readings_than_pauses_repeat_the_last_pause(installed, monkeypatch):
+def test_more_412s_than_pauses_repeat_the_last_pause(installed, monkeypatch):
     monkeypatch.setattr(tidal_account, "ORDER_REREADS", 5)
-    provider = Provider(["a", "b", "c"], lag=99)
+    provider = Provider(["a", "b", "c"])
+    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
     slept: list[float] = []
+    account = tidal_account.TidalAccount(RefusingClient(provider), sleep=slept.append, cfg=installed)
     with pytest.raises(CratekitError):
-        _adapter(installed, provider, slept).order_tracks("mine", ("c", "a", "b"))
+        account.order_tracks("mine", ("c", "a", "b"))
     assert slept == [*tidal_account.ORDER_PAUSES, tidal_account.ORDER_PAUSES[-1], tidal_account.ORDER_PAUSES[-1]]
 
 
@@ -493,29 +500,24 @@ def test_the_fake_account_orders_by_the_adapters_rule(installed, before, order):
     assert fake.order_tracks("mine", order) == live
 
 
-def test_the_readings_after_a_412_start_their_pauses_where_the_412_left_them(installed):
-    """Round two: a reading after a 412 waits longer than a first reading does."""
-    provider = Provider(["a", "b", "c"], whole=True)
+def test_the_pauses_after_a_412_start_again_for_each_move(installed, monkeypatch):
+    """U231: a 412 on one move does not shorten the pauses another move's 412 is given."""
+    provider = Provider(["a", "b", "c", "d"])
+    real = Movable.move_by_indices
+    sent: list[int] = []
+
+    def stale_each_first(self, indices, position):
+        sent.append(1)
+        if len(sent) in (1, 3):
+            self._etag = -1
+        return real(self, indices, position)
+
+    monkeypatch.setattr(Movable, "move_by_indices", stale_each_first)
     slept: list[float] = []
-    account = _adapter(installed, provider, slept)
-    account.add_tracks("mine", ("x",))
-    provider.stale_tags = 1
-    provider.lag_after_refusal = 2
-    assert account.order_tracks("mine", ("x", "a", "b", "c")) == ("x", "a", "b", "c")
-    assert slept == [1.0, 2.0, 4.0]
-
-
-def test_a_reading_after_a_412_that_never_agrees_does_not_say_no_track_was_moved(installed):
-    provider = Provider(["a", "b", "c"], whole=True)
-    account = _adapter(installed, provider)
-    account.add_tracks("mine", ("x",))
-    provider.stale_tags = 1
-    provider.lag_after_refusal = 99
-    with pytest.raises(CratekitError) as refused:
-        account.order_tracks("mine", ("x", "a", "b", "c"))
-    assert refused.value.cause.detail["problem"] == "read-differs"
-    assert "no track was moved" not in refused.value.cause.message
-    assert "every track is still on it" in refused.value.cause.message
+    after = _adapter(installed, provider, slept).order_tracks("mine", ("d", "c", "a", "b"))
+    assert after == ("d", "c", "a", "b")
+    assert provider.refused == 2
+    assert slept == [tidal_account.ORDER_PAUSES[0], tidal_account.ORDER_PAUSES[0]]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
