@@ -277,3 +277,27 @@ def test_an_addition_the_provider_left_out_is_never_read_as_taken_off(world, mon
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert "6" in world.held(intro), "a track the provider never added was taken out of rekordbox"
+
+
+def test_a_stopped_write_that_skipped_rekordbox_leaves_the_accounts_removal_to_be_made(
+    world, monkeypatch
+):
+    """Record both or neither: a base moved for the account alone loses its removal."""
+    gig = world.folder("GIG READY")
+    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    account_id = world.titled("GIG READY Intro")
+    world.account.playlists[account_id].remove("t2")
+    world.rekordbox_add(intro, "5", "6", "7")
+    _reordered(world, intro, *LED)
+    stops = _stopping(world, monkeypatch, account_id, 2)
+    code, refused = sync(rekordbox="skip")
+    assert code != int(ExitCode.OK), refused
+    assert stops == [2]
+    assert "2" in world.held(intro), "the skipped side was written"
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert "t2" not in world.account.playlists[account_id], "the account's removal was undone"
+    assert world.held(intro) == ["4", "5", "1", "6", "7", "3"]
+    assert world.account.playlists[account_id] == _ids("4", "5", "1", "6", "7", "3")
