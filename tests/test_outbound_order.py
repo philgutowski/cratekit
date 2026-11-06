@@ -54,6 +54,14 @@ class Provider:
     the asked ones, once; ``remove_fails`` raises before anything changes;
     ``shown`` is the ``(num_tracks, num_videos)`` every opening after a
     removal declares; ``drift`` is what the tracks become once a lag is spent.
+
+    U226 reads every playlist twice, its window and then the client's unpaged
+    read, so a lag is counted per READING, one opened playlist, decided at its
+    first read and held for every read of that object. ``window_only`` makes a
+    lag hold for the window read alone, the unpaged read serving the playlist
+    as it is, as Sitting 84 measured; ``unpaged_size`` is how many tracks the
+    unpaged read serves, a first page, None for all of them; ``declared``
+    overrides the count every opening declares.
     """
 
     def __init__(
@@ -91,6 +99,9 @@ class Provider:
         self.remove_fails: list[Exception] = []
         self.shown: tuple[object, object] | None = None
         self.drift: list[str] | None = None
+        self.window_only = False
+        self.unpaged_size: int | None = None
+        self.declared: int | None = None
 
     def wrote(self, before: list[str]) -> None:
         self.previous = (before, self.version)
@@ -114,20 +125,36 @@ class Movable:
         self.num_tracks = len(provider.previous[0] if lagging else provider.members)
         if provider.shown is not None and provider.removals:
             self.num_tracks, self.num_videos = provider.shown
+        if provider.declared is not None:
+            self.num_tracks = provider.declared
         self._etag = provider.version
+        #: Whether this reading lags and whether it carries the previous tag,
+        #: decided at its first read.
+        self._read_as: tuple[bool, bool] | None = None
+
+    def _reading(self) -> tuple[bool, bool]:
+        provider = self.provider
+        if self._read_as is None:
+            behind = provider.lagging > 0
+            stale = not behind and provider.stale_tags > 0
+            if behind:
+                provider.lagging -= 1
+                if not provider.lagging and provider.drift is not None:
+                    provider.members[:] = provider.drift
+            elif stale:
+                provider.stale_tags -= 1
+            self._read_as = (behind, stale)
+        return self._read_as
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[SimpleNamespace]:
         provider = self.provider
         provider.reads += 1
-        size = 100 if limit is None else limit
-        if provider.lagging:
-            if offset + size >= len(provider.previous[0]):
-                provider.lagging -= 1
-                if not provider.lagging and provider.drift is not None:
-                    provider.members[:] = provider.drift
+        unpaged = limit is None
+        size = limit if not unpaged else (provider.unpaged_size or 100)
+        behind, stale = self._reading()
+        if behind and not (unpaged and provider.window_only):
             seen, self._etag = provider.previous
-        elif provider.stale_tags:
-            provider.stale_tags -= 1
+        elif stale:
             seen, self._etag = provider.members, provider.version - 1
         else:
             seen, self._etag = provider.members, provider.version

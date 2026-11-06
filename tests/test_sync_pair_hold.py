@@ -45,9 +45,9 @@ class Counted:
         self.reads = 0
         real = intake_cli.list_playlist_readable
 
-        def listing(found, reference):
+        def listing(found, reference, **kwargs):
             self.listings += 1
-            return real(found, reference)
+            return real(found, reference, **kwargs)
 
         monkeypatch.setattr(pair_cli.intake_cli, "list_playlist_readable", listing)
         tracks = w.account.playlist_tracks

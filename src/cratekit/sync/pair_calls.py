@@ -20,6 +20,10 @@ fixed shape, and each count here follows it:
 * tracks are TAKEN OFF :data:`REMOVE_CHUNK` a request by position: the
   positions are read once, and each request is followed by a fresh open and
   read, which the next request reuses;
+* a reading a removal or an order is JUDGED by, the positions read, the
+  first reading of an order and every read back, reads the playlist twice,
+  its pages and then the client's unpaged read (U226), so it costs one call
+  more than a listing, :data:`UNPAGED_READ`;
 * an ORDER moves one track to the front per request, each followed by a
   fresh open and read, after the longest run at the tail of the asked order
   already standing is kept (U220). A reading the adapter takes again, after a
@@ -43,6 +47,9 @@ from cratekit.acquire import listing
 
 #: Tracks one page of a playlist listing reads, the listing seam's own size.
 PLAYLIST_PAGE = listing.PAGE_SIZES["playlist_tracks"]
+#: U226. The one request the client's unpaged read of a playlist makes, beside
+#: its pages, wherever a write is judged or an order planned.
+UNPAGED_READ = 1
 #: Tracks one add request carries and one removal request takes off, the
 #: account adapter's ``ADD_CHUNK`` and ``REMOVE_CHUNK``, pinned by a test.
 ADD_CHUNK = 100
@@ -77,6 +84,11 @@ def pages(count: int) -> int:
 def listing_calls(count: int) -> int:
     """One playlist opened and read whole: the open and its pages."""
     return 1 + pages(count)
+
+
+def judged_calls(count: int) -> int:
+    """One playlist opened and read for a write to be judged by: its pages and its unpaged read (U226)."""
+    return listing_calls(count) + UNPAGED_READ
 
 
 def _moves(before: Sequence[str], order: Sequence[str]) -> int:
@@ -124,7 +136,7 @@ def account_write(
     taking = [one for one in dict.fromkeys(str(one) for one in removes) if one in set(now)]
     if removes:
         # The positions are read once; each request is a send and a read back.
-        calls += listing_calls(len(now))
+        calls += judged_calls(len(now))
         if taking:
             # Each request takes up to a chunk of positions off, then reads
             # the playlist back at its new length.
@@ -134,7 +146,7 @@ def account_write(
                 taken = min(owed, REMOVE_CHUNK)
                 owed -= taken
                 length -= taken
-                calls += 1 + listing_calls(length)
+                calls += 1 + judged_calls(length)
             now = [one for one in now if one not in gone]
         known = True
     lacking = [one for one in dict.fromkeys(str(one) for one in adds) if one not in set(now)]
@@ -146,8 +158,8 @@ def account_write(
             calls += 1 + math.ceil(len(lacking) / ADD_CHUNK)
             now = [*now, *lacking]
     if order:
-        calls += listing_calls(len(now))
-        calls += _moves(now, order) * (1 + listing_calls(len(now)))
+        calls += judged_calls(len(now))
+        calls += _moves(now, order) * (1 + judged_calls(len(now)))
     elif not known:
         # The write lists the playlist once to record its snapshot.
         calls += listing_calls(len(now))
@@ -197,7 +209,8 @@ def check(pairs: Iterable[Any], *, create: str) -> int:
     root = False
     for one in pairs:
         if not one.target.new:
-            calls += listing_calls(len(one.account_now))
+            # Listed with its unpaged read beside the window (U226).
+            calls += judged_calls(len(one.account_now))
             continue
         place = one.place
         if place is None:
@@ -224,9 +237,11 @@ __all__ = [
     "READ_FOLDER",
     "REMOVE_CHUNK",
     "ROUND_TO",
+    "UNPAGED_READ",
     "account_write",
     "check",
     "folders_made",
+    "judged_calls",
     "listing_calls",
     "named",
     "pages",

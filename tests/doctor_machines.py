@@ -118,8 +118,9 @@ def green(**overrides) -> _Probes:
         ),
         release_tags=lambda _url: ("v0.1.0",),
         # U185. No DEADCA7 on the green machine, so no run reads this account's
-        # own support folder.
+        # own support folder, nor (U224) its Applications or state folders.
         deadca7_home=lambda: None,
+        deadca7_installed=lambda: (),
         # U181. A copy whose vocal model can score, so no green run imports
         # torch, and a library never scored, so no upgrade adds an extra.
         vocal_requirement=lambda: None,

@@ -84,6 +84,7 @@ import json
 import os
 import re
 import shlex
+import stat
 import subprocess
 import sys
 from collections.abc import Callable, Mapping, Sequence
@@ -629,11 +630,45 @@ def _vocals_scored(cfg: config.Config | None) -> bool:
 
 
 def _deadca7_home() -> Path | None:
-    """DEADCA7's support folder under this account, where its app keeps state."""
+    """DEADCA7's support folder under this account, where its push backups land.
+
+    Read from the app's source (the 2026-10-26 assessment), not from a push:
+    DEADCA7 0.2.3 as shipped makes no such folder on launch (U224), so this is
+    the folder a push would make, and its absence alone says nothing about
+    whether the app is installed. :func:`_deadca7_installed` says that.
+    """
     try:
         return Path.home() / "Library" / "Application Support" / "deadca7"
     except RuntimeError:  # no home directory to resolve
         return None
+
+
+#: DEADCA7's app bundle, as its disk image installs it (U224).
+DEADCA7_BUNDLE = "DEADCA7.app"
+#: The folder DEADCA7 keeps its state in under Application Support, as shipped:
+#: version 0.2.3 (build 0345c1db) holds its engine in a ``runtime`` folder
+#: there and logs to ``Library/Logs/deadca7`` (U224, read at sitting 68).
+DEADCA7_STATE = "deadcatalog"
+
+
+def _deadca7_installed() -> tuple[Path, ...]:
+    """The places whose presence says DEADCA7 is installed on this machine (U224).
+
+    Its app bundle in the system's Applications folder and in this account's,
+    and the state folder the app keeps once it has run. Any one present is an
+    install; a machine with no home to resolve is asked about the system's
+    folder only.
+    """
+    system = Path("/Applications") / DEADCA7_BUNDLE
+    try:
+        home = Path.home()
+    except RuntimeError:  # no home directory to resolve
+        return (system,)
+    return (
+        system,
+        home / "Applications" / DEADCA7_BUNDLE,
+        home / "Library" / "Application Support" / DEADCA7_STATE,
+    )
 
 
 @dataclass(frozen=True, slots=True)
@@ -702,6 +737,11 @@ class Probes:
     #: with no such place (U185). A seam so a test describes an install, a push
     #: and its age without the app.
     deadca7_home: Callable[[], Path | None] = _deadca7_home
+    #: The places whose presence says DEADCA7 is installed here, its bundle and
+    #: its state folder (U224). A second seam rather than a richer first one,
+    #: because the shipped app makes the state folder and never the support
+    #: folder the push backups land in, so the two answer different questions.
+    deadca7_installed: Callable[[], tuple[Path, ...]] = _deadca7_installed
     #: Every call the provider gate has counted, per identity, off its state
     #: file, or None when the file could not be read (U205). A seam so a test
     #: describes an installation's history without writing the real file.
@@ -2455,6 +2495,68 @@ def _newest_entry(folder: Path) -> datetime | None:
     return datetime.fromtimestamp(max(times), tz=timezone.utc)
 
 
+def _folder_presence(path: Path) -> OSError | bool:
+    """Whether ``path`` is a folder here, or the error that kept it from being read (U224).
+
+    By its own ``os.stat`` rather than ``Path.is_dir``, which raises a refused
+    stat on 3.12 and answers False for one on later versions, so a folder the
+    account cannot read would read as absent there. Not found, and a path
+    through a file, are absent; any other refusal is unread, never absent.
+    """
+    try:
+        mode = os.stat(path).st_mode
+    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as exc:
+        return exc
+    return stat.S_ISDIR(mode)
+
+
+def _said(exc: BaseException) -> str:
+    return f"{type(exc).__name__}: {exc}"
+
+
+def _deadca7_presence(
+    probes: Probes,
+) -> tuple[Path | None, bool | None, list[Path], list[str]]:
+    """DEADCA7's support folder, whether it is here, the install signals found,
+    and every place that could not be read (U224).
+
+    A probe that raises is a place that could not be read, never an absent one,
+    and the support folder unread, or its probe broken, answers None. The
+    install signals are asked only when the support folder is not here, since
+    that folder alone says the app is installed.
+    """
+    unread: list[str] = []
+    support: bool | None = False
+    try:
+        home = probes.deadca7_home()
+    except Exception as exc:  # noqa: BLE001 - a broken probe is unread, never absent
+        home, support = None, None
+        unread.append(f"its support folder could not be located ({_said(exc)})")
+    if home is not None:
+        state = _folder_presence(home)
+        if isinstance(state, OSError):
+            support = None
+            unread.append(f"{home} could not be read ({_said(state)})")
+        else:
+            support = state
+    found: list[Path] = []
+    if not support:
+        try:
+            places = tuple(probes.deadca7_installed())
+        except Exception as exc:  # noqa: BLE001 - a broken probe is unread, never absent
+            places = ()
+            unread.append(f"where its app is installed could not be located ({_said(exc)})")
+        for place in places:
+            state = _folder_presence(place)
+            if isinstance(state, OSError):
+                unread.append(f"{place} could not be read ({_said(state)})")
+            elif state:
+                found.append(place)
+    return home, support, found, unread
+
+
 def _check_deadca7_push(inputs: _Inputs) -> Finding:
     """Whether DEADCA7 is here, when it last pushed into the database, and against what.
 
@@ -2474,40 +2576,59 @@ def _check_deadca7_push(inputs: _Inputs) -> Finding:
     key, title = "deadca7.push", "DEADCA7 pushes into the library"
     if inputs.cfg is None:
         return _unchecked(key, title)
-    home = inputs.probes.deadca7_home()
-    if home is None or not home.is_dir():
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.INFO,
-            detail="DEADCA7 is not installed here, so nothing else writes the library beside rekordbox",
+    home, support, found, unread = _deadca7_presence(inputs.probes)
+
+    def said(detail: str) -> Finding:
+        return Finding(key=key, title=title, status=Status.INFO, detail=detail)
+
+    # INSTALLED IS THE SUPPORT FOLDER OR ANY INSTALL SIGNAL (U224): the shipped
+    # app makes its state folder and never the support folder, so the support
+    # folder's absence alone is not the app's.
+    if not support and not found:
+        if unread:
+            return said("whether DEADCA7 is installed here cannot be said: " + "; ".join(unread))
+        return said(
+            "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox"
         )
-    backups = home / DEADCA7_BACKUPS
+    backups = None if home is None else home / DEADCA7_BACKUPS
+    unconfirmed = (
+        "Where it backs rekordbox's database up before a push is unconfirmed until a "
+        "push is read"
+        if backups is None
+        else (
+            f"{backups} is where its source says it backs rekordbox's database up "
+            f"before a push, unconfirmed until a push is read"
+        )
+    )
+    no_push = "DEADCA7 is installed here and has recorded no push into rekordbox's database: "
+    if support is None:
+        # Unread is not none: the folder a push would be found in could not be
+        # read, so the answer says it could not look, never that nothing was pushed.
+        return said(
+            f"DEADCA7 is installed here ({', '.join(map(str, found))}), and when it last "
+            f"pushed into rekordbox's database cannot be said: " + "; ".join(unread)
+        )
+    if not support:
+        return said(
+            f"{no_push}{', '.join(map(str, found))} is here, and no push backup folder is. "
+            f"{unconfirmed}"
+        )
+    assert backups is not None  # the support folder is here, so it was named
+    presence = _folder_presence(backups)
     try:
-        pushed = _newest_entry(backups) if backups.is_dir() else None
+        if isinstance(presence, OSError):
+            raise presence
+        pushed = _newest_entry(backups) if presence else None
     except OSError as exc:
         # Unread is not none: the answer says it could not look, never that
         # nothing was pushed.
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.INFO,
-            detail=(
-                f"DEADCA7 is installed here, and when it last pushed into rekordbox's "
-                f"database cannot be said: its backup folder could not be read "
-                f"({type(exc).__name__}: {exc})"
-            ),
+        return said(
+            f"DEADCA7 is installed here, and when it last pushed into rekordbox's "
+            f"database cannot be said: its backup folder could not be read ({_said(exc)})"
         )
     if pushed is None:
-        return Finding(
-            key=key,
-            title=title,
-            status=Status.INFO,
-            detail=(
-                "DEADCA7 is installed here and has recorded no push into rekordbox's "
-                "database: its backup folder holds no entry"
-            ),
-        )
+        held = "holds no entry" if presence else "does not exist"
+        return said(f"{no_push}its backup folder {held}. {unconfirmed}")
     when = pushed.strftime("%Y-%m-%d %H:%M UTC")
     run_one = "Run one with: crate backup run"
     try:

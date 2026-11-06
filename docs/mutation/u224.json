@@ -1,0 +1,357 @@
+{
+  "name": "u224",
+  "pass_kind": "light",
+  "branch": "cloud/576-crate-doctor-names-deadca7-as-in",
+  "head": "48e7c114",
+  "when": "2026-11-06 14:37 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 17076,
+  "baseline_exit": 1,
+  "pytest_runs": 13,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 161,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/cli/doctor.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/cli/doctor.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "01abc9569d9d9fbf",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 17076,
+    "baseline_collected": 17076,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_found_ignored",
+      "description": "_deadca7_presence: never count a present install place as found, so a bundle reads not installed again",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5c38853c3a696c4f",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 7,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_probe_that_raises_beside_a_present_bundle_still_reads_installed",
+        "tests/test_doctor.py::test_a_real_probes_value_asks_the_installed_probe",
+        "tests/test_doctor.py::test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said",
+        "tests/test_doctor.py::test_installed_with_no_home_to_resolve_says_where_its_backups_land_is_unconfirmed",
+        "tests/test_doctor.py::test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_no_push",
+        "tests/test_doctor.py::test_the_bundle_in_the_accounts_own_applications_folder_reads_installed",
+        "tests/test_doctor.py::test_the_deadcatalog_state_folder_alone_reads_installed_with_no_push"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            elif state:\n                found.append(place)",
+      "new": "            elif False:\n                found.append(place)"
+    },
+    {
+      "id": "M2_unread_place_dropped",
+      "description": "_deadca7_presence: drop an install place the account cannot stat, so it reads absent",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b24f727088eaeb65",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                unread.append(f\"{place} could not be read ({_said(state)})\")",
+      "new": "                pass"
+    },
+    {
+      "id": "M3_broken_installed_probe_silent",
+      "description": "_deadca7_presence: an install probe that raises adds nothing, so it reads not installed",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "df7c41a153f32786",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_probe_that_raises_reads_unread_rather_than_not_installed[deadca7_installed]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            unread.append(f\"where its app is installed could not be located ({_said(exc)})\")",
+      "new": "            pass"
+    },
+    {
+      "id": "M4_unread_support_read_absent",
+      "description": "_deadca7_presence: a support folder whose stat is refused answers absent, so an installed app reads no push",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "53dd79e8c8ac0c81",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            support = None\n            unread.append(f\"{home} could not be read",
+      "new": "            support = False\n            unread.append(f\"{home} could not be read"
+    },
+    {
+      "id": "M5_refused_stat_read_absent",
+      "description": "_folder_presence: any refused stat answers absent, the Path.is_dir shape on later Pythons",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fb2d449ae438a6fd",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push",
+        "tests/test_doctor.py::test_a_support_folder_that_cannot_be_read_is_unread_never_not_installed",
+        "tests/test_doctor.py::test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed",
+        "tests/test_doctor.py::test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except OSError as exc:\n        return exc\n    return stat.S_ISDIR(mode)",
+      "new": "    except OSError as exc:\n        return False\n    return stat.S_ISDIR(mode)"
+    },
+    {
+      "id": "M6_unread_folded_into_not_installed",
+      "description": "_check_deadca7_push: nothing found and something unread reads not installed",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1f8e5d2f68c29ab6",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_probe_that_raises_reads_unread_rather_than_not_installed[deadca7_home]",
+        "tests/test_doctor.py::test_a_probe_that_raises_reads_unread_rather_than_not_installed[deadca7_installed]",
+        "tests/test_doctor.py::test_a_support_folder_that_cannot_be_read_is_unread_never_not_installed",
+        "tests/test_doctor.py::test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if unread:\n            return said(\"whether DEADCA7 is installed here cannot be said: \"",
+      "new": "        if False:\n            return said(\"whether DEADCA7 is installed here cannot be said: \""
+    },
+    {
+      "id": "M7_install_signals_always_asked",
+      "description": "_deadca7_presence: ask the install signals even with the support folder here",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0c01f425fa372359",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_with_its_support_folder_here_the_install_signals_are_not_asked"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if not support:\n        try:\n            places = tuple(probes.deadca7_installed())",
+      "new": "    if True:\n        try:\n            places = tuple(probes.deadca7_installed())"
+    },
+    {
+      "id": "M8_default_probe_empty",
+      "description": "Probes: the install probe's default answers nothing, the regression that re-creates the bug",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "5dad40bcb17d7428",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_real_probes_value_asks_the_installed_probe"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    deadca7_installed: Callable[[], tuple[Path, ...]] = _deadca7_installed",
+      "new": "    deadca7_installed: Callable[[], tuple[Path, ...]] = lambda: ()"
+    },
+    {
+      "id": "M9_path_through_a_file_unread",
+      "description": "_folder_presence: a stat through a file reads unread rather than absent",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d5b827ea810cdb30",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_an_install_place_reached_through_a_file_is_absent_not_unread"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    except (FileNotFoundError, NotADirectoryError):\n        return False\n    except OSError as exc:\n        return exc",
+      "new": "    except FileNotFoundError:\n        return False\n    except OSError as exc:\n        return exc"
+    },
+    {
+      "id": "M10_refused_backups_read_no_push",
+      "description": "_check_deadca7_push: a backup folder whose stat is refused reads as absent, so no push",
+      "file": "src/cratekit/cli/doctor.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "536e0842ac7e8345",
+      "subset": [
+        "tests/test_doctor.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 413,
+      "baseline_collected": 413,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_doctor.py::test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        if isinstance(presence, OSError):\n            raise presence",
+      "new": "        if isinstance(presence, OSError):\n            presence = False"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "D1_user_bundle_dropped",
+      "description": "_deadca7_installed: leave the account's Applications folder out",
+      "reason": "pinned by the literal tuple in the probe test; the reviewer's round one mutation died on it"
+    },
+    {
+      "id": "D2_unconfirmed_sentence_dropped",
+      "description": "_check_deadca7_push: drop the unconfirmed location sentence",
+      "reason": "pinned by literal substrings in four cases; the reviewer's round one mutation died on it"
+    }
+  ]
+}

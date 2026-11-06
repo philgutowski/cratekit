@@ -45336,3 +45336,209 @@ the test covers, and the dispatcher test checks only the human text.
 **Closes when:** the readers are enumerated from the tree, and the dispatcher
 drive reaches its unreached gate through a verb with two digest gates. Ledger
 only, maintainer facing.
+
+---
+
+## R-1354. crate doctor's deadca7.push check leaves out a DEADCA7 state folder it could not read when it found the app's bundle
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_deadca7_presence` in `src/cratekit/cli/doctor.py` gathers every install place it could not stat into its unread list, and `_check_deadca7_push` says that list only when nothing was found or the support folder itself was unread. With `DEADCA7.app` present and the `deadcatalog` state folder refused, the detail reads "installed here and has recorded no push ... is here, and no push backup folder is", and the refused folder is never named, though `docs/GUIDE.md` now says a folder doctor cannot read is said as unread.
+
+**Measured cost.** Driven by the round one review in process, with the real `Probes`, a scratch home and `os.stat` refused under the state folder: the reading is true, since the bundle alone proves the install and the push backups are not under the state folder, so the cost is an unsaid refusal, not a false sentence. No producer of a state folder closed to its own account was driven.
+
+**Closes when:** the detail names every place it could not read in each reading, or the GUIDE line is narrowed to the readings that turn on the unread place. Ledger only.
+
+---
+
+## R-1355. A symlink loop at a DEADCA7 install place reads as whether DEADCA7 is installed cannot be said, where Path.is_dir answers absent
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_folder_presence` in `src/cratekit/cli/doctor.py` reads absent only for `FileNotFoundError` and `NotADirectoryError`; a stat that fails with ELOOP is unread. So `~/Applications/DEADCA7.app` linked to itself makes `crate doctor` say whether DEADCA7 is installed cannot be said, on a Mac with no DEADCA7. A dangling link reads absent.
+
+**Measured cost.** Driven by the round one review through `crate doctor` with a self linked bundle path, the reviewer's own construction: one INFO line that hedges where "not installed" is true. The conservative side of the unread rule. No natural producer of such a link was driven.
+
+**Closes when:** ELOOP is read as absent, or left as unread on purpose with the reason in the docstring. Ledger only.
+
+---
+
+## R-1356. A regular file where DEADCA7's push backup folder belongs is said as a backup folder that does not exist
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_folder_presence` answers False for a path that is there and not a folder, and `_check_deadca7_push` words False as "its backup folder does not exist". With a file at `deadca7/rekordbox-backups`, the sub clause is false. Before U224 the same input read "its backup folder holds no entry", false the same way.
+
+**Measured cost.** Driven by the round one review through `crate doctor` with a file at that path: the INFO line's sub clause is false; its claim that no push is recorded holds, since no entry can be read. Nothing known writes a file there; no producer was driven.
+
+**Closes when:** a path that is there and not a folder is worded as such. Ledger only.
+
+---
+
+## R-1357. Whether DEADTRAX alone makes the deadcatalog folder crate doctor reads as DEADCA7 installed is unmeasured
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** U224 reads the `deadcatalog` folder under Application Support as DEADCA7 installed, as the brief requires, from sitting 68's reading of DEADCA7 0.2.3. The same disk image carries a second app, DEADTRAX, seen beside it at a later sitting in `docs/cutover.md`. If DEADTRAX alone makes that folder, a Mac with only DEADTRAX is told an app that can push into rekordbox's database is installed.
+
+**Measured cost.** Not driven: no Mac here, and neither app is run by a cloud session. The reading is INFO and says no push is recorded, so the cost would be a hedge where none is due, never a missed push.
+
+**Closes when:** an attended sitting reads which app makes `deadcatalog`, and the install signal is narrowed if DEADTRAX does. Ledger only; it closes only at an attended sitting.
+
+---
+
+## R-1358. The U224 test helper that refuses os.stat replaces it process wide and assumes every caller passes a path
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_refuse_stat_under` in `tests/test_doctor.py` patches `os.stat` for the whole process during `doctor.run` and builds `Path(path)` from every argument before deciding, so a caller inside the run that passes a file descriptor or bytes would raise TypeError rather than see a refusal or a real stat.
+
+**Measured cost.** Maintainer facing. The 28 U185 and U224 cases pass on this container, so no such caller is reached today; a later check that stats a descriptor would fail those tests for a reason they do not name.
+
+**Closes when:** the helper refuses only a `str` or `PathLike` argument under the path and passes everything else to the real call. Ledger only.
+
+---
+
+## R-1359. test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask failed once under the full parallel suite on the cloud container and passes alone
+
+**Found:** at the battery of #576, U224, 2026-11-06.
+
+**The mechanism.** Unmeasured. `tests/test_sync_land.py::test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask` failed in one `cloud_battery.py compare` run of the whole suite at cb92bbfd, U224's branch with `main` merged in, and passed in the run before it at cf7cd4fd. Alone it passed three times, and its file passed whole under `-n auto`. U224 changes only `crate doctor`'s DEADCA7 check, which that file never names; the merge brought only `docs/cutover.md`.
+
+**Measured cost.** Maintainer facing: one run in two of the full suite on this container. Its failure output was not kept, so the cause is not known.
+
+**Closes when:** a run that keeps the failure's output names what it shares under the parallel run, and the test is made independent of it. Ledger only.
+
+---
+
+## R-1360. A playlist of more than a hundred tracks is still judged by a window that lags a change past its first hundred
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** U226 judges every account removal and order, and the
+`crate sync pair` plan and check, by the window read beside the client's
+unpaged read (`acquire.listing.judge_window`). The unpaged read is taken as
+the playlist only when it holds every track the playlist declares. The
+client fills the unpaged read's missing limit with its session's
+`item_limit`, 1000, and `listing.PAGE_SIZES` records the provider's ceiling
+for this shape as 100, so a playlist of more than a hundred tracks is most
+likely served its first hundred alone. The judge then reads an unpaged read
+that is the window's first part as agreeing, and takes the window as the
+playlist, as every read did before U226: a change past the first hundred
+that the window lags is not seen.
+
+**Measured cost.** Driven on the stand ins at round one: a person's move in
+the tail of a playlist whose unpaged read is capped (members a, b, d, c;
+window serving a, b, c, d; unpaged capped at 2) made `order_tracks` move the
+wrong track on the account and refuse `read-back-differs`, `lagged: no`;
+through the verb, a four track pair whose window served an old order past
+the cap wrote that order into rekordbox and recorded it as the snapshot,
+with `totals.read_backs` empty. Round two drove the degenerate case: an unpaged read
+that comes back empty agrees with any window, so a landed removal behind a
+lagging window was refused "may have landed" after 4 readings. No worse than main, which read every
+playlist this way. The live cap was not measured: 0 live candidates driven.
+
+**Closes when:** the next attended sitting reads `len(p.tracks())` beside
+`p.num_tracks` on the longest paired playlist. If the unpaged read is capped
+below a paired playlist's length, the judge reads past its first page the
+same way (a walk of the unpaged kind with an offset, or a prefix read as a
+lag for the pairs it touches), with a test on a stand in of the measured
+cap. Earns an issue: a write path whose guard is blind for every paired
+playlist past the cap, board bar (a) and (d).
+
+---
+
+## R-1361. A window that starts lagging between the sync pair plan and its write stops every pair's write as moved
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** `crate sync pair`'s plan holds a pair whose account
+window lags a partial unpaged read (`sync-pair-account-lagging`) and syncs
+every other pair. The check before the write reads the same lag as a moved
+list (`pair_cli.check`), and a moved list stops the whole write as
+`decision-stale` with nothing written, as any list moved since the plan
+does.
+
+**Measured cost.** Driven at round one through the verb: two pairs planned
+clean, the second's window lagging from inside the check, exit 11, "1
+list(s) moved since the plan ... nothing was written", the first pair's add
+unwritten too. A fresh `crate sync pair` a few minutes later is the way on,
+as the answer and the guide say. The producer, a partial unpaged read whose
+window starts lagging in the seconds between plan and check, was not driven
+live.
+
+**Closes when:** the check leaves a lagging pair out of the write as the
+plan does, the rest written, if a sitting shows the lag reaching the check.
+Ledger only: the run refuses with nothing written and names the way on.
+
+---
+
+## R-1362. A playlist holding a track the account cannot play never has a whole unpaged read, so its window is judged as before U226
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** `acquire.listing.judge_window` takes the unpaged read as
+the playlist only when it holds the declared count, which keeps the declared
+total rule. A track the account cannot play is left out of both reads and
+still counted, so for such a playlist neither read is ever whole: a window
+that lags is a lag (the pair held, the read back refused after its pauses)
+and an order or removal is refused `positions-unknown`, as on main.
+
+**Measured cost.** Read at round one, not driven live: whether a paired
+playlist on the account carries such a track was not measured. No new cost
+against main, which refused the same writes; the pair is held for the lag's
+length rather than planned from a stale window.
+
+**Closes when:** a reading can place the unplayable track (the items
+endpoint, which counts it), if a sitting finds a paired playlist carrying
+one. Ledger only.
+
+---
+
+## R-1363. A removal stopped by a window that never caught up carries a wrong removal's cause and stops every later pair's write
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** When a removal's positions read or read back still finds
+the window disagreeing with a partial unpaged read after the last pause,
+`TidalAccount` refuses `outbound-remove-refused`, problem `window-lags` or
+`read-back-differs` with `lagged: yes`. That cause is the one a removal
+that may have taken the wrong track carries, exit 30 and not retryable,
+though this one is a wait. `crate sync pair`'s `_write_account` stops one
+pair alone only for an order's refusal, so the removal's refusal stops the
+write of every pair after it.
+
+**Measured cost.** Driven at round one through the verb with the fake
+account raising the adapter's refusal: exit 30, the second pair's add
+unwritten, the steps saying to wait and run it again. Since the fix round a
+lag at the positions read is read again three times first. The live
+producer, a partial unpaged read whose window lags for longer than the
+pauses at a removal, was not driven.
+
+**Closes when:** a lag refusal carries a cause of its own that a run reads
+as a wait, and a pair's lagging removal stops that pair alone, as an
+order's does. Ledger only: the run says to wait and run it again, and R-1343
+records what the callers do not record of such a removal.
+
+---
+
+## R-1364. A provider client that cannot read a playlist with no window is reported as a wait to retry, and refuses a whole sync pair run
+
+**Found:** at round two of U226's review (#578), 2026-11-06.
+
+**The mechanism.** `acquire.listing.playlist_tracks_unpaged` turns a
+`TypeError` from the client's `tracks()` into `ListingNotPaginated`, "the
+provider client changed shape", at once rather than climbing the retry
+ladder. Through the account adapter that is translated to
+`unavailable-transient`, whose remedy is to resume the job to retry; through
+`label_cli._listed` it is `label-playlist-unreadable`, which `crate sync
+pair` does not leave out per pair, so one pair refuses the whole run.
+
+**Measured cost.** Driven at round two on stand ins whose `tracks` requires a
+limit: exit 41 with a retry remedy, and a sync of every pair refused for one
+pair. The installed client, tidalapi 0.8.11, accepts the bare call, so the
+producer is a client upgrade that changes the signature: 0 live candidates.
+
+**Closes when:** a signature fault from the unpaged read carries the
+adapter-broken remedy the paged walk's own `ListingNotPaginated` should, the
+same rule for both. Ledger only.

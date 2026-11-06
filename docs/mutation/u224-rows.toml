@@ -1,0 +1,124 @@
+name = "u224"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_found_ignored"
+description = "_deadca7_presence: never count a present install place as found, so a bundle reads not installed again"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            elif state:
+                found.append(place)'''
+new = '''            elif False:
+                found.append(place)'''
+
+[[rows]]
+id = "M2_unread_place_dropped"
+description = "_deadca7_presence: drop an install place the account cannot stat, so it reads absent"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''                unread.append(f"{place} could not be read ({_said(state)})")'''
+new = '''                pass'''
+
+[[rows]]
+id = "M3_broken_installed_probe_silent"
+description = "_deadca7_presence: an install probe that raises adds nothing, so it reads not installed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            unread.append(f"where its app is installed could not be located ({_said(exc)})")'''
+new = '''            pass'''
+
+[[rows]]
+id = "M4_unread_support_read_absent"
+description = "_deadca7_presence: a support folder whose stat is refused answers absent, so an installed app reads no push"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            support = None
+            unread.append(f"{home} could not be read'''
+new = '''            support = False
+            unread.append(f"{home} could not be read'''
+
+[[rows]]
+id = "M5_refused_stat_read_absent"
+description = "_folder_presence: any refused stat answers absent, the Path.is_dir shape on later Pythons"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    except OSError as exc:
+        return exc
+    return stat.S_ISDIR(mode)'''
+new = '''    except OSError as exc:
+        return False
+    return stat.S_ISDIR(mode)'''
+
+[[rows]]
+id = "M6_unread_folded_into_not_installed"
+description = "_check_deadca7_push: nothing found and something unread reads not installed"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''        if unread:
+            return said("whether DEADCA7 is installed here cannot be said: "'''
+new = '''        if False:
+            return said("whether DEADCA7 is installed here cannot be said: "'''
+
+[[rows]]
+id = "M7_install_signals_always_asked"
+description = "_deadca7_presence: ask the install signals even with the support folder here"
+file = "src/cratekit/cli/doctor.py"
+surface = "maintainer"
+tests = ["tests/test_doctor.py"]
+old = '''    if not support:
+        try:
+            places = tuple(probes.deadca7_installed())'''
+new = '''    if True:
+        try:
+            places = tuple(probes.deadca7_installed())'''
+
+[[rows]]
+id = "M8_default_probe_empty"
+description = "Probes: the install probe's default answers nothing, the regression that re-creates the bug"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    deadca7_installed: Callable[[], tuple[Path, ...]] = _deadca7_installed'''
+new = '''    deadca7_installed: Callable[[], tuple[Path, ...]] = lambda: ()'''
+
+[[rows]]
+id = "M9_path_through_a_file_unread"
+description = "_folder_presence: a stat through a file reads unread rather than absent"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''    except (FileNotFoundError, NotADirectoryError):
+        return False
+    except OSError as exc:
+        return exc'''
+new = '''    except FileNotFoundError:
+        return False
+    except OSError as exc:
+        return exc'''
+
+[[rows]]
+id = "M10_refused_backups_read_no_push"
+description = "_check_deadca7_push: a backup folder whose stat is refused reads as absent, so no push"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''        if isinstance(presence, OSError):
+            raise presence'''
+new = '''        if isinstance(presence, OSError):
+            presence = False'''
+
+[[dropped]]
+id = "D1_user_bundle_dropped"
+description = "_deadca7_installed: leave the account's Applications folder out"
+reason = "pinned by the literal tuple in the probe test; the reviewer's round one mutation died on it"
+
+[[dropped]]
+id = "D2_unconfirmed_sentence_dropped"
+description = "_check_deadca7_push: drop the unconfirmed location sentence"
+reason = "pinned by literal substrings in four cases; the reviewer's round one mutation died on it"

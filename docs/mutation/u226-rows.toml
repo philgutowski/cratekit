@@ -1,0 +1,289 @@
+name = "u226"
+pass_kind = "full"
+
+[[rows]]
+id = "M1_equal_not_agreed"
+description = "judge_window: two equal reads are not read as agreeing first"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py"]
+old = '''    if unpaged == paged:
+        return WINDOW_AGREES'''
+new = '''    if False:
+        return WINDOW_AGREES'''
+
+[[rows]]
+id = "M2_whole_at_most"
+description = "judge_window: an unpaged read at most the declared count is read as whole"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py"]
+old = '''        and len(unpaged) == declared
+'''
+new = '''        and len(unpaged) <= declared
+'''
+
+[[rows]]
+id = "M3_no_prefix_rule"
+description = "judge_window: an unpaged first page the window begins with is a lag, not agreement"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py"]
+old = '''    if len(unpaged) < len(paged) and paged[: len(unpaged)] == unpaged:
+        return WINDOW_AGREES'''
+new = '''    if False:
+        return WINDOW_AGREES'''
+
+[[rows]]
+id = "M4_prefix_as_subset"
+description = "judge_window: any unpaged read whose tracks the window holds agrees, wherever they stand"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py"]
+old = '''paged[: len(unpaged)] == unpaged'''
+new = '''set(unpaged) <= set(paged)'''
+
+[[rows]]
+id = "M5_unpaged_with_window"
+description = "playlist_tracks_unpaged: ask the client with the window's own limit"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py"]
+old = '''            return playlist.tracks()
+'''
+new = '''            return playlist.tracks(limit=100)
+'''
+
+[[rows]]
+id = "M6_signature_climbs"
+description = "playlist_tracks_unpaged: a client signature fault climbs the retry ladder"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py"]
+old = '''        except TypeError as exc:
+            # A signature fault'''
+new = '''        except KeyError as exc:
+            # A signature fault'''
+
+[[rows]]
+id = "M7_reading_takes_window"
+description = "_reading: the window read is the reading even when the unpaged read is whole"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''            unpaged if window == listing.WINDOW_UNPAGED else paged,'''
+new = '''            paged,'''
+
+[[rows]]
+id = "M8_unpaged_first"
+description = "_reading: the unpaged read taken before the window, so the window's tag is carried"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''        tracks = self._listed(playlist_id, playlist)
+        paged = [listing.row_id(track) for track in tracks]
+        unpaged = [
+            listing.row_id(track)
+            for track in self._read(
+                f"read the playlist {playlist_id}",
+                lambda: listing.playlist_tracks_unpaged(playlist),
+            )
+        ]'''
+new = '''        unpaged = [
+            listing.row_id(track)
+            for track in self._read(
+                f"read the playlist {playlist_id}",
+                lambda: listing.playlist_tracks_unpaged(playlist),
+            )
+        ]
+        tracks = self._listed(playlist_id, playlist)
+        paged = [listing.row_id(track) for track in tracks]'''
+
+[[rows]]
+id = "M9_positions_no_lag_refusal"
+description = "_positions: a lagging window is not refused, its positions taken"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''        if window == listing.WINDOW_LAGS:
+            raise _window_lags(str(playlist_id), "nothing was sent on that reading")'''
+new = '''        if False:
+            raise _window_lags(str(playlist_id), "nothing was sent on that reading")'''
+
+[[rows]]
+id = "M10_settle_lag_known_only"
+description = "_settled: a lagging window is read again only when something is known"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''                if problem == "window-lags":
+'''
+new = '''                if problem == "window-lags" and known is not None:
+'''
+
+[[rows]]
+id = "M11_settle_kept_ignored"
+description = "_settled: a caller's kept wording is ignored for the order's"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''        if kept is None:
+            kept = ('''
+new = '''        if True:
+            kept = ('''
+
+[[rows]]
+id = "M12_read_back_lag_raises"
+description = "_read_back: a lagging window refuses at once rather than being read again"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''                if (exc.cause.detail or {}).get("problem") != "window-lags":
+                    raise
+                # U226. THE WINDOW STILL DISAGREES'''
+new = '''                if True:
+                    raise
+                # U226. THE WINDOW STILL DISAGREES'''
+
+[[rows]]
+id = "M13_removal_window_wrong"
+description = "_removal_read_back: a lagging window is read as a wrong track gone, refused at once"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''                tracks = "window"
+'''
+new = '''                tracks = None
+'''
+
+[[rows]]
+id = "M14_move_outcome_unset"
+description = "_read_back: a move read back that landed is recorded as refused"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''            if reading == expected:
+                note["outcome"] = "done"
+                return playlist, reading'''
+new = '''            if reading == expected:
+                return playlist, reading'''
+
+[[rows]]
+id = "M15_wait_uncounted"
+description = "_paused: the pause is taken and not counted in the record"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''        self._sleep(seconds)
+        note["waited"] += seconds
+'''
+new = '''        self._sleep(seconds)
+'''
+
+[[rows]]
+id = "M16_lag_uncounted"
+description = "_read_back: a lagging window's reading is not counted in the record"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''                note["window_lagged"] += 1
+                lagged = window = True'''
+new = '''                lagged = window = True'''
+
+[[rows]]
+id = "M17_removal_positions_unsettled"
+description = "remove_tracks: the positions read once with no reread of a lag, as before round one's fix"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''            playlist, before = self._settled(
+                identifier,
+                None,
+                exact=False,
+                after="removal positions",
+                kept="nothing was taken off it",
+            )'''
+new = '''            playlist = self._playlist(identifier)
+            before = self._positions(identifier, playlist)'''
+
+[[rows]]
+id = "M18_waited_unformatted"
+description = "_waited: seconds named as 7.0 rather than 7"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py"]
+old = '''    return f"{seconds:g}"'''
+new = '''    return f"{seconds}"'''
+
+[[rows]]
+id = "M19_plan_no_hold"
+description = "plan_pair: a lagging pair is planned from its window rather than held"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_account.py"]
+old = '''        if listing.window == provider_listing.WINDOW_LAGS:
+            raise _lagging(target.account_id, name)'''
+new = '''        if False:
+            raise _lagging(target.account_id, name)'''
+
+[[rows]]
+id = "M20_check_no_lag"
+description = "check: a lagging listing is compared as read rather than named as moved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_account.py"]
+old = '''            if listing.window == provider_listing.WINDOW_LAGS:
+                # U226. Neither read'''
+new = '''            if False:
+                # U226. Neither read'''
+
+[[rows]]
+id = "M21_plan_window_only"
+description = "plan_pair: the account side listed from its window alone"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_account.py"]
+old = '''            reader.found, target.account_id, current=True
+'''
+new = '''            reader.found, target.account_id, current=False
+'''
+
+[[rows]]
+id = "M22_lagging_not_per_pair"
+description = "PER_PAIR_REASONS: a lagging pair refuses the whole sync of every pair"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_account.py"]
+old = '''        # U226. Its account playlist's window read lags its unpaged read.
+        LAGGING,
+'''
+new = ''''''
+
+[[rows]]
+id = "M23_totals_no_read_backs"
+description = "sync_pair: the run's totals carry no read backs"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_calls.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_account.py"]
+old = '''        "read_backs": [record for d in done for record in d.read_backs],'''
+new = '''        "read_backs": [],'''
+
+[[rows]]
+id = "M24_estimate_no_unpaged"
+description = "pair_calls: a judged reading forecast at a listing's cost"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair.py"]
+old = '''UNPAGED_READ = 1
+'''
+new = '''UNPAGED_READ = 0
+'''
+
+[[rows]]
+id = "M25_null"
+description = "null control: a comment changed, which no test can see"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py"]
+old = '''# ── U226: the window read beside the client's unpaged read'''
+new = '''# ── U226: the window read beside the unpaged read'''
