@@ -247,3 +247,33 @@ def test_a_runs_steps_that_cannot_be_read_are_named_never_read_as_no_write(world
     assert "2026-11-05T17:42:49Z-5ddd" in said
     # The record that can be read is still read.
     assert pair_cli.FINISHING in _codes(envelope)
+
+
+def test_an_addition_the_provider_left_out_is_never_read_as_taken_off(world, monkeypatch):
+    """The adapter leaves out of its answer a track the provider would not add, and raises nothing.
+
+    A base built from the additions the write asked for would read that track
+    as taken off the account since, and take it out of rekordbox.
+    """
+    gig = world.folder("GIG READY")
+    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    account_id = world.titled("GIG READY Intro")
+    world.rekordbox_add(intro, "5", "6", "7")
+    _reordered(world, intro, *LED)
+    real_add = world.account.add_tracks
+
+    def add_tracks(playlist_id, remote_ids):
+        return real_add(playlist_id, tuple(one for one in remote_ids if one != "t6"))
+
+    monkeypatch.setattr(world.account, "add_tracks", add_tracks)
+    stops = _stopping(world, monkeypatch, account_id, 2)
+    code, refused = sync()
+    assert code != int(ExitCode.OK), refused
+    assert stops == [2]
+    assert "t6" not in world.account.playlists[account_id]
+    monkeypatch.setattr(world.account, "add_tracks", real_add)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert "6" in world.held(intro), "a track the provider never added was taken out of rekordbox"

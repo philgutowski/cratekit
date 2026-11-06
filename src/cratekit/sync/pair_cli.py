@@ -560,7 +560,7 @@ class PairPlan:
     account_dates: dict[str, str] = field(default_factory=dict)
     #: U225. The account playlist as the removals and additions leave it,
     #: before any move, when the plan orders it: what the order starts from.
-    account_after: tuple[str, ...] = ()
+    account_start: tuple[str, ...] = ()
     #: U225. The run whose write on this pair stopped part way through its
     #: order and that this plan finishes, or empty; and whether the account
     #: stood where that write's moves left it, so its order was finished.
@@ -1457,7 +1457,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     )
     account_removes: tuple[str, ...] = ()
     account_order: tuple[str, ...] | None = None
-    account_after: tuple[str, ...] = ()
+    account_start: tuple[str, ...] = ()
     if short is None:
         # EVERY RELEASE OF A REMOVED TRACK GOES (U208), the one a tie linked
         # and any other of it the account holds.
@@ -1482,7 +1482,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             account_order = _with_unread_placed(
                 [one for key in wanted_keys for one in after if alias(one) == key], after
             )
-            account_after = tuple(after)
+            account_start = tuple(after)
 
     return PairPlan(
         target=target,
@@ -1520,7 +1520,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         ),
         home=home,
         account_dates=dict(dates),
-        account_after=account_after,
+        account_start=account_start,
         finishing=stopped_write.run_id if (folded or stopped is not None) else "",
         finishing_order=stopped is not None,
     )
@@ -2948,21 +2948,34 @@ def _write_account(
     the pair's readings is read whether the write finishes, stops or raises.
     """
     account_after: tuple[str, ...]
+    removed: tuple[str, ...] = ()
+    added: tuple[str, ...] = ()
     if one.account_removes:
-        done.account_removed = len(remote.remove_tracks(playlist_id, one.account_removes))
+        removed = tuple(remote.remove_tracks(playlist_id, one.account_removes))
+        done.account_removed = len(removed)
     if one.account_adds:
-        done.account_added = len(set(remote.add_tracks(playlist_id, one.account_adds)))
+        added = tuple(remote.add_tracks(playlist_id, one.account_adds))
+        done.account_added = len(set(added))
     if one.account_order:
         # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
         # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
         # it stopped reads its moves as this write's: the order it starts
         # from, the order it asks, the side that led, and rekordbox as it
-        # stands, committed by this write or as the plan read it.
+        # stands, committed by this write or as the plan read it. ONLY WHEN
+        # EVERY REMOVAL AND ADDITION LANDED AS ASKED: the adapter leaves out
+        # of its answer a track the provider would not add, and a plan that
+        # took the asked additions as landed would read that track as taken
+        # off the account and take it out of rekordbox.
+        landed = set(removed) == set(one.account_removes) and set(added) == set(
+            one.account_adds
+        )
         steps.mark(
             STEP_ORDERING,
-            pair_stopped.ordering_step(
+            True
+            if not landed
+            else pair_stopped.ordering_step(
                 at=timestamp(),
-                start=one.account_after
+                start=one.account_start
                 or pair_merge.appended(one.account_now, one.account_removes, one.account_adds),
                 target=one.account_order,
                 leader=one.merged.leader,
