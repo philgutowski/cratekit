@@ -2275,6 +2275,30 @@ From v0.11.1, which carries U190 and R-1056. No Cratekit job running and `rekord
 
 **A57 (#415) waits on Phillip**: a sitting he is present for decides how a DEADCA7 push reaches a disposable copy (the agent settings redirected and put back with him watching, or an app build that takes a library path), then takes the brief from the push on. The doctor's false "not installed" is #576.
 
+## Sitting 83, 2026-11-06, the attended session on v0.11.1, with desktop control: the first Bandcamp run, A44 (#368), A45 (#369) and A62 (#427), with A72 (#446) left nothing to fetch
+
+Phillip recorded the Bandcamp session himself (`crate doctor`: `credential.bandcamp` ok, 14:01Z). Conditions as at sitting 81. The four PULS purchases are releases Phillip bought, so fetching them took no per-label decision; no other label was answered or registered.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The account (A44) | `crate acquire bandcamp`, run `2026-11-06T14:04:57Z-088c` | 26 purchases new, 154 owned, 2 held (Dafs `El Capitán's DJ Tools vol.8`); most purchases are listed twice. **13 sellers unregistered**, each named with its `crate label registry add <label name> --bandcamp SELLER` command, among them `pulsromania`. | read |
+| Register (A62) | `crate label registry set PULS --bandcamp pulsromania` | ok; `crate acquire bandcamp --seller PULS` then read **5 new (4 releases, `Over Me EP` twice): Space-Time VA, Summer EP, Love EP, Over Me EP**, and "staged under their label: pulsromania as PULS". | live |
+| Fetch (A44, A62) | `crate acquire bandcamp-fetch --seller PULS`, job `2026-11-06T14:06:20Z-a5da`, **43 s** | 4 of 4 settled, **8 FLAC files, 357 MB**, into `Downloads/Bandcamp 2026-11-06`; `bandcamp-land-by-label` names the `--label-from-tags` landing. **Every file carries `label` PULS and a `date`** (2021 or 2026), no genre, no ISRC. The verb reports nothing about the download page, the stat answer or the file host, so the first run measures only the count and the time; no surprise met. | live |
+| Split | by hand in staging | `Over Me EP` (2 files) moved to `Downloads/Bandcamp 2026-11-06 Over Me`, so A45 lands with `--label` and A62 with `--label-from-tags`, one batch each. | done |
+| Tail | per folder: `tag folder`, `analyze run`, `analyze vocals --unscored`, `analyze restamp`, `name apply` | Tagged **Rominimal** on all 8 by PULS's registered genre; analysed and named (`01A - 123 - Cojoc - Over Me EP - 02 Tres Bien.flac` and so on), every job succeeded. | done |
+| A45, rehearsal | `crate intake land "<Over Me folder>" --label PULS --rehearse` | First plan digest `cb359bb97d67eccf`, batch named **`2026-11-06 Downloads`**, the staging root's name, not the folder's or the label's; aborted, and planned again with `--name "2026-11-06 Bandcamp PULS Over Me"`: rehearsal `2026-11-06T14:16:21Z-be6b`, **digest `13a7111c1c57b423`**, added 2, integrity ok, refused 0. | rehearsed |
+| A45, live | run `2026-11-06T14:16:47Z-cdb8` | The gate: "labels filed from: --label PULS, each file's year from its date tag", label playlists `PULS 2021 (2 file(s), added to)`, rehearsal "equal to this plan's". Approved as `session`: landed. | live |
+| A62, rehearsal | `crate intake land "<the six>" --label-from-tags --name "2026-11-06 Bandcamp PULS" --rehearse`, run `2026-11-06T14:17:56Z-258c` | **digest `4b76fc07fbb2b997`**, added 6, integrity ok. | rehearsed |
+| A62, live | run `2026-11-06T14:18:19Z-3075` | "labels filed from: each file's own label tag, its year from its date tag", **`PULS 2026 (4 file(s), added to)` and `PULS 2021 (2 file(s), added to)`**, one per release year; equal digest, approved as `session`: landed. | live |
+| Label column (A62) | rekordbox, INBOX / Analyze, the Label column shown | **Empty after the landing; after Reload Tags on the 8 rows, `PULS` on every one.** rekordbox reads the Vorbis `label` comment Cratekit writes, so no card moves the field. | read |
+| Visit | Normal on all 8, read back (Normal, high precision off, BPM / Grid, Phrase, KEY on, Vocal and CUE off); none marked dyn | Wait done, 8 of 8, ended 26 s after OK; quit, both processes gone in 6 s. `crate analyze check` **exit 0**: 8 constant grids, keys 7 equal and 1 far. Clear rehearsed and live, **digest `d10de34f566cf958`**, equal; INBOX / Analyze reads 0. | done |
+| In rekordbox | Record Labels / PULS | `PULS 2021` holds `Tres Bien`, `Walking Over Me` and `Arrival`, `PULS 2026` the Love EP and Summer EP tracks, each with Label PULS. | read |
+| Genre sub | `crate route resort`, rehearsed (`2026-11-06T14:22:00Z-d567`) and live (`14:23:00Z-8ef0`), **digest `d9fedc1c16682fc6`, 8 adds**, equal | A landing files a Rominimal row into its band but not into the Rominimal genre sub, which only a resort or a rebuild files. After the resort, Rominimal holds 104, each still in exactly one band. | live |
+| A72 | `crate sync bandcamp --seller PULS`, run `2026-11-06T14:24:15Z-bee5` | **`no_op`**, "the account has nothing new to fetch (182 purchase(s), 85 owned, 5 fetched before)": this sitting's fetch took PULS's new purchases, and no other followed label has a seller registered. | waiting |
+| macOS battery | cited | Sitting 78's on `049c973c`, v0.11.1, which carries U156, U176, U177 and U179. | cited |
+
+**Met:** A44 (#368), the first Bandcamp run from login to landing; A45 (#369), a label batch landed natively with `--label PULS`; A62 (#427), the seller registered, the batch fetched tagged PULS, landed by its tags into one year playlist per year, and rekordbox's Label column read as `label`. **A72 (#446) waits** on a new purchase from a followed label with its seller registered: Phillip's next PULS purchase, or his registering another label's seller. Small findings, no card: a batch landed with `--label` and no `--name` is named after the staging root, `<date> Downloads`; and a landing does not file the genre sub.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
