@@ -160,7 +160,11 @@ def test_a_continued_pass_takes_no_mirror_download_and_names_it(machine, monkeyp
 def test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none(
     machine, monkeypatch, tail
 ):
-    """Sync all queued nothing and one earlier pass is open: that pass is continued."""
+    """Sync all queued nothing and one earlier pass is open: that pass is continued.
+
+    The left open row names the mirror job as the next new pass's, never as
+    one queued by hand to drive outside a pass (the review of U227, S12).
+    """
     cfg, script = machine
     _account(monkeypatch, script, "101")
     code, earlier = drive(["sync", "all"])
@@ -173,6 +177,9 @@ def test_a_pass_continuing_an_earlier_one_over_nothing_new_takes_none(
     assert _summary(envelope)["pass_run"] == earlier["run_id"]
     assert "run_id" not in _job(queued.job_id).payload
     assert queued.job_id in _left_open(envelope)
+    (row,) = [said for said in _said(envelope, "left-open") if queued.job_id in said]
+    assert "the next new pass takes it: crate sync land" in row
+    assert "queued by hand" not in row.split(queued.job_id, 1)[1].split(" | ")[0]
 
 
 def test_a_hand_queued_playlist_job_and_a_cancelled_mirror_job_are_not_taken(
@@ -213,21 +220,23 @@ def test_join_run_gives_a_queued_job_with_no_run_the_run_and_nothing_else(machin
     assert joined.state is jobs.JobState.QUEUED
 
 
-@pytest.mark.parametrize("why", ["has-a-run", "running", "succeeded", "blank"])
+@pytest.mark.parametrize(
+    "why",
+    ["has-a-run", "blank"]
+    + [str(state) for state in jobs.JobState if state is not jobs.JobState.QUEUED],
+)
 def test_join_run_refuses_every_other_job(machine, monkeypatch, why):
+    """Every state but QUEUED, read off the enum, and a job that carries a run."""
     cfg, _script = machine
     queued = _mirror_job(monkeypatch, cfg, "301")
     run_id = "run-2"
     with jobs.open_store() as store:
         if why == "has-a-run":
             jobs.join_run(store, queued.job_id, "run-1")
-        elif why == "running":
-            jobs.transition(store, queued.job_id, jobs.JobState.RUNNING)
-        elif why == "succeeded":
-            jobs.transition(store, queued.job_id, jobs.JobState.RUNNING)
-            jobs.transition(store, queued.job_id, jobs.JobState.SUCCEEDED)
-        else:
+        elif why == "blank":
             run_id = "  "
+        else:
+            store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", (why, queued.job_id))
         before = jobs.get(store, queued.job_id).payload
         with pytest.raises(CratekitError):
             jobs.join_run(store, queued.job_id, run_id)
@@ -240,3 +249,22 @@ def test_join_run_refuses_a_job_the_queue_does_not_hold(machine):
             jobs.join_run(store, "no-such-job", "run-1")
     assert refused.value.cause.reason == "job-unknown"
     assert _all_jobs() == []
+
+
+def test_a_mirror_download_another_library_queued_is_not_taken(machine, monkeypatch, tail):
+    """The queue is installation wide: a job of another library is never given this pass's run."""
+    import dataclasses
+
+    cfg, script = machine
+    elsewhere = dataclasses.replace(
+        cfg, library=dataclasses.replace(cfg.library, volume_id="another-library-volume")
+    )
+    queued = _mirror_job(monkeypatch, elsewhere, "301")
+    assert queued.library_id != cfg.library.volume_id
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert "run_id" not in _job(queued.job_id).payload
+    assert "mirror_downloads_taken" not in _summary(envelope)

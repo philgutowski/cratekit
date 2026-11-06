@@ -196,10 +196,14 @@ def filed(
 
     ``owner`` is each account track to the library rows matched to it; a track
     owned by exactly one row is read. The places are the adoption ledger's
-    entries for that row in the routing tree, applied no earlier than the
-    track was queued, so a row the library held before the download is never
-    read as one the landing made. Each is ``(folder, playlist)`` as the
-    taxonomy names it now. A queue or a ledger that cannot be read gives
+    entries for that row in the routing tree that the LANDING'S FILING wrote:
+    the earliest entry applied no earlier than the track was queued, and every
+    entry of the same approval (its digest). So a row the library held before
+    the download is never read as one the landing made, and a re-filing a
+    person drives after the landing, ``crate adopt apply`` over a retagged
+    file above all, is a later approval and never read as the landing's (the
+    review of U227). Each is ``(folder, playlist)`` as the taxonomy names it
+    now. A queue or a ledger that cannot be read gives
     none, and the edit is read by the later change rule as before U227, which
     leaves the library as it is.
     """
@@ -226,10 +230,19 @@ def filed(
             continue
         (content_id,) = rows
         after = edits.moment(queued_when)
+        since_queued = [
+            (at, entry)
+            for entry in by_row.get(content_id, ())
+            if (at := edits.moment(entry.applied)) is not None
+            and after is not None
+            and at >= after
+        ]
+        if not since_queued:
+            continue
+        first = min(since_queued, key=lambda pair: (pair[0], pair[1].entry_id))[1]
         places: set[tuple[str, str]] = set()
-        for entry in by_row.get(content_id, ()):
-            at = edits.moment(entry.applied)
-            if at is None or after is None or at < after:
+        for _at, entry in since_queued:
+            if entry.digest != first.digest:
                 continue
             try:
                 places.add(routing_pass.destination(declared, entry.bucket, entry.sub))

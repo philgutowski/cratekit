@@ -17,8 +17,9 @@ from __future__ import annotations
 import sqlite3
 
 from cratekit.adopt import apply as adoption
+from cratekit.adopt import apply_cli, collection
 from cratekit.cli.output import timestamp
-from cratekit.core import taxonomy
+from cratekit.core import tags, taxonomy
 from cratekit.modules.outbound import mirror_edits as edits
 from tests.test_organize_mirror_edits_u204 import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import _items, _land_and_file, _queued
@@ -139,3 +140,64 @@ def test_a_filing_recorded_before_the_download_was_queued_is_not_the_landings(wo
 
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The real producer of the landing's filing, and a re-filing after it
+# (the review of U227, round one)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _file_through_adoption(world, content_id: str, genre: str, genre_id: str, energy: int) -> None:
+    """The filing ``intake.filing.file_landed`` makes, and ``crate adopt apply`` makes again.
+
+    The file and the row take ``genre`` and ``energy``; the adoption plan over
+    the row is filed by ``apply_cli.file_plan``, which writes the band
+    membership and marks the adoption ledger.
+    """
+    assert tags.write_tags(world.files[content_id], {"genre": genre, "energylevel": energy})
+    conn = sqlite3.connect(world.db)
+    try:
+        conn.execute("UPDATE djmdContent SET GenreID = ? WHERE ID = ?", (genre_id, content_id))
+        conn.commit()
+    finally:
+        conn.close()
+    collection.reset_cache()
+    plan = apply_cli.current_plan(world.cfg, DECLARED, scope=frozenset({content_id}))
+    apply_cli.file_plan(world.cfg, plan, DECLARED, actor="session", refuse_unplaced=lambda _m: None)
+
+
+def test_the_landings_filing_by_the_real_producer_is_read_as_the_landings(world):
+    world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
+    world.run_all()
+    _land_and_file(world, matched_as="r3")
+    _file_through_adoption(world, "3", "Deep House", "100", 2)
+    assert world.places("3") == {("Deep House", "Low")}
+
+    _area, step, _queue = world.run_all()
+
+    (change,) = _items(step)
+    assert change["edit"] == edits.MOVE and "landed for the account's edit" in change["why"]
+    assert world.places("3") == {("Tech House", "Med")}
+    _area, step, _queue = world.run_all()
+    assert _items(step) == []
+
+
+def test_a_refiling_through_adoption_after_the_landing_is_not_the_landings(world):
+    """A person retags the landed file and files it again: their filing stands."""
+    world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
+    world.run_all()
+    _land_and_file(world, matched_as="r3")
+    _file_through_adoption(world, "3", "Deep House", "100", 2)
+    _file_through_adoption(world, "3", "Tech House", "101", 7)
+    assert ("Tech House", "High") in world.places("3")
+
+    _area, step, _queue = world.run_all()
+
+    assert _items(step) == []
+    (kept,) = [one for one in step.items if one.get("track") == "r3"]
+    assert kept["outcome"] == edits.REKORDBOX
+    assert "landed for the account's edit" not in kept["why"]
+    assert ("Tech House", "High") in world.places("3")
+    # The energy the person filed it with is never rewritten toward the edit.
+    assert tags.read_energy_checked(world.files["3"]) == 7

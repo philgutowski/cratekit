@@ -647,11 +647,17 @@ def _way_on(hold: cli_jobs.Hold) -> str:
     if hold.same_tracks:
         facts.append("the same tracks as " + ", ".join(hold.same_tracks))
     run_id = _run_of(job)
-    way = (
-        f"continue its pass with: {_continue_command(run_id)}"
-        if run_id
-        else "queued by hand, drive it with: crate " + " ".join(tail.argv_for(job))
-    )
+    if run_id:
+        way = f"continue its pass with: {_continue_command(run_id)}"
+    elif _mirror_download(job):
+        # U227: queued by organize for an edit made on the account, and the
+        # next new pass takes it, so driving it by hand would land it outside one.
+        way = (
+            "queued by crate organize for a track added on the account; the next new "
+            "pass takes it: crate sync land"
+        )
+    else:
+        way = "queued by hand, drive it with: crate " + " ".join(tail.argv_for(job))
     return f"{job.job_id} ({', '.join(facts)}), {way}"
 
 
@@ -694,6 +700,16 @@ def _sync(report: _Pass, cfg: config.Config) -> str | None:
     return run_id
 
 
+def _mirror_download(job: jobs.Job) -> bool:
+    """Whether ``job`` is a download the ``mirror-downloads`` step queued (U227)."""
+    from cratekit.organize import mirror_downloads  # noqa: PLC0415 - one module's keys
+
+    return (
+        job.handler_key == mirror_downloads.HANDLER
+        and (job.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
+    )
+
+
 def _take_mirror_downloads(report: _Pass, cfg: config.Config, run_id: str) -> list[str]:
     """Take every download ``crate organize`` queued for an account edit into the pass (U227).
 
@@ -702,15 +718,12 @@ def _take_mirror_downloads(report: _Pass, cfg: config.Config, run_id: str) -> li
     lists, downloads and lands it with its own. A job another pass took in
     between is refused by the write and left as it is. Answers the jobs taken.
     """
-    from cratekit.organize import mirror_downloads  # noqa: PLC0415 - one module's keys
-
     taken: list[str] = []
     with jobs.open_store() as store:
         for job in jobs.list_jobs(store, states=[jobs.JobState.QUEUED]):
             if (
-                job.handler_key != mirror_downloads.HANDLER
+                not _mirror_download(job)
                 or job.library_id != cfg.library.volume_id
-                or (job.payload or {}).get("source_id") != mirror_downloads.SOURCE_ID
                 or _run_of(job)
             ):
                 continue

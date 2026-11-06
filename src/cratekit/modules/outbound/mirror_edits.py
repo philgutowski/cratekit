@@ -389,12 +389,12 @@ def _agrees(kind: str, to: Place | None, now: frozenset[Place]) -> bool:
 def decide(
     playlists: Sequence[Mirrored],
     owner: Mapping[str, Sequence[str]],
-    landed: Mapping[str, Iterable[tuple[str, str]]] | None = None,
+    filed: Mapping[str, Iterable[tuple[str, str]]] | None = None,
 ) -> Decided:
     """Decide every track a person changed on the account, tree by tree. Pure.
 
     ``owner`` is each account track to the library rows matched to it, which a
-    carried edit needs exactly one of. ``landed`` is each track a mirror
+    carried edit needs exactly one of. ``filed`` is each track a mirror
     download queued to the ``(folder, playlist)`` places its landing filed its
     row into (U227), none when absent. Each tree is read by its own rule, and
     each playlist's hold covers only the tracks its own tree held (U204).
@@ -404,14 +404,14 @@ def decide(
     known: set[str] = set()
     for one in playlists:
         known |= one.base
-    filed = {track: frozenset(places) for track, places in (landed or {}).items()}
+    by_landing = {track: frozenset(places) for track, places in (filed or {}).items()}
     decisions: list[Decision] = []
     for tree, rule in ((GENRE, _decide_genre), (FAVORITES, _decide_favorites), (INBOX, _decide_inbox)):
         mine = [one for one in playlists if one.place.tree == tree]
         if not mine:
             continue
         if tree == GENRE:
-            decisions.extend(_decide_genre(mine, owner, frozenset(known), filed))
+            decisions.extend(_decide_genre(mine, owner, frozenset(known), by_landing))
         else:
             decisions.extend(rule(mine, owner, frozenset(known)))
     return Decided(decisions=tuple(decisions), holds=_holds(playlists, decisions))

@@ -138,3 +138,28 @@ def test_a_folder_edit_for_a_landed_track_takes_the_folder_over_the_landings_ban
     one = _only(edits.decide(playlists, OWNED, FILED))
     assert (one.outcome, one.to) == (edits.FOLDER, JZV)
     assert one.landed
+
+
+def test_a_hand_move_back_into_the_landings_band_after_the_edit_was_carried_stands():
+    """ONCE, pinned (the review of U227, K1): once the snapshot holds the track,
+    a person's move back into the band its landing first filed is rekordbox's
+    change, even though the ledger still names that band."""
+    jzh = edits.Place("Jazz High", "Jazz", "High", True)
+    playlists = [
+        edits.Mirrored(place=JZM, account=frozenset(), agreed=frozenset({"t9"})),
+        edits.Mirrored(
+            place=jzh,
+            account=frozenset({"t9"}),
+            agreed=frozenset(),
+            account_added={"t9": "2026-11-07T17:00:00+00:00"},
+        ),
+        edits.Mirrored(
+            place=AHH,
+            agreed=frozenset(),
+            rekordbox=frozenset({"t9"}),
+            rekordbox_added={"t9": "2026-11-07 18:00:00.000 +00:00"},
+        ),
+    ]
+    one = _only(edits.decide(playlists, OWNED, FILED))
+    assert one.outcome == edits.REKORDBOX
+    assert not one.landed and "rekordbox's place stands" in one.why
