@@ -2216,6 +2216,21 @@ From the installed v0.11.1, which carries U194 and U219. No Cratekit job running
 
 **A80 (#474) is met**: the alias applied with its one copy edit and its kept copy, the file and the row of each of the three tracks read Organic House, and each track reads in Organic House in rekordbox. The resort also filed the 1,061 adds that had waited since the last resort and the 35 favourites they made due; it never removes, so nothing left any playlist.
 
+## Sitting 80, 2026-11-06, the attended session on v0.11.1, with desktop control: A69 (#440), the Rominimal genre sub, resorted with INBOX left alone
+
+Straight after sitting 79, on its conditions and its copy procedure. The acknowledgment of sitting 77 expired at 13:40Z partway through the rehearsal; both backup ages read two days, so the session minted a new one (`crate session ack --as session`, valid to 2026-11-07T01:41Z).
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Hand edit | the library's `coupled/taxonomy.toml`, kept first as `taxonomy.toml.2026-11-06-before-rominimal.bak` beside it | `schema_version` 4 to 5, `"Rominimal"` added to Minimal / Deep Tech's `aliases`, and the `[[bucket.genre_sub]]` table (`id = "rominimal"`, `display = "Rominimal"`, `sources = ["Rominimal"]`) after that bucket, as the shipped template has it; `diff` shows those lines only, on top of sitting 79's alias. `crate doctor`: `taxonomy.active` ok, **`taxonomy.schema` ok, schema 5**. | done |
+| Rehearsal, first try | `crate route resort` on the refreshed copy, run `2026-11-06T13:39:42Z-368a` | digest `e27b72f5e938d453`, 96 adds; the job **failed `backup-acknowledgment-missing`** on the one item, the acknowledgment having expired seconds before; nothing written. | failed, nothing written |
+| Rehearsal | the copy refreshed after the new acknowledgment, run `2026-11-06T13:41:15Z-079f`, job `2026-11-06T13:41:55Z-a9f4` | Gate `route.resort.apply`, **digest `e27b72f5e938d453`, 96 adds, every one into `Minimal / Deep Tech / Rominimal`**, and **"left alone: INBOX (inbox), which holds what the verbs that write it put there and not anything a tag decides"**. Applied: the copy's Minimal / Deep Tech reads Low Energy 141, Med Energy 236, High Energy 129, Candy, Unsorted, with vox, Favorites and **Rominimal 96**; all 96 are rows of `Music/2026-10-27 PULS` with the genre Rominimal, and **each is also in exactly one band** (Low 39, Med 41, High 16). **INBOX read three levels deep before and after: equal, no genre folder.** | rehearsed |
+| Live | run `2026-11-06T13:42:51Z-9a7c`, as the brief gives it: `crate run decide RUN route.resort.apply apply --actor session`, then `crate --run RUN route resort` (job `2026-11-06T13:43:33Z-5160`) and its printed drive | Digest `e27b72f5e938d453`, **its items equal line for line to the rehearsal's**. Job succeeded; warnings `tree-not-derived` (INBOX left alone, as quoted above) and `membership-left-behind` (the same 450 as at sitting 79). A copy of the live database read after: Rominimal 96, the same band split, INBOX equal to before. | live |
+| In rekordbox | opened, `BY GENRE + ENERGY / Minimal / Deep Tech` expanded, quit from its menu, both processes gone in 8 s | **Rominimal (96) beside Low Energy 141, Med Energy 186, High Energy 127, Candy 21, Unsorted 0, with vox 11, Favorites 18**; the list opens with Bernar `Black Woman Experience`, Alineat `San Chi`, Surrender Dis `Brain Dead`, all added 10/27/26. Bernar's track is in High Energy (#111) and not in Low or Med. rekordbox counts Med Energy 186 where the database holds 236 rows, the same kind of gap sitting 79 found in Organic House. | read |
+| macOS battery | cited | Sitting 78's on `049c973c`, v0.11.1, which carries U155 and U219. | cited |
+
+**A69 (#440) is met**: 96 filed into the genre sub, none in the wrong place, each still in its band; the gate answered `apply` as `session` on a digest equal to the rehearsal's; INBOX gained nothing, on the copy and live, and the gate names it as left alone.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
