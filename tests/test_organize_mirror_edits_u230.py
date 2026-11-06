@@ -93,25 +93,24 @@ def test_a_never_agreed_playlist_holding_the_track_files_it_where_the_account_pu
     assert world.held(EDITED) == ["r3"]
 
 
-def test_an_agreed_snapshot_holding_the_track_files_it_where_the_account_put_it(world):
+def test_an_agreed_snapshot_holding_the_track_is_the_librarys_word(world):
+    """An agreed snapshot of the queuing playlist takes a queued track only
+    once the library took the edit, so it is never lifted, and the account
+    side reads as no change, U227's reading."""
     _landed_with_base(world, {"r3"})
 
     _area, step, _queue = world.run_all()
 
-    (change,) = _items(step)
-    assert change["edit"] == edits.MOVE and "landed for the account's edit" in change["why"]
-    assert world.places("3") == {("Tech House", "Med")}
-    assert world.held(EDITED) == ["r3"]
-    _area, step, _queue = world.run_all()
     assert _items(step) == []
-    assert world.places("3") == {("Tech House", "Med")}
+    assert world.places("3") == {("Deep House", "Low")}
 
 
 def test_a_move_in_rekordbox_after_the_carry_still_stands(world):
     """Once: the library took the edit, and a person's move in rekordbox after
     it is rekordbox's, mirrored onto the account."""
-    _landed_with_base(world, {"r3"})
-    world.run_all()
+    _landed_with_base(world, None)
+    _area, step, _queue = world.run_all()
+    assert [one["edit"] for one in _items(step)] == [edits.MOVE]
     world.move_in_rekordbox("3", ("Deep House", "Med"), MOVED_AT)
 
     _area, step, _queue = world.run_all()
@@ -123,7 +122,7 @@ def test_a_move_in_rekordbox_after_the_carry_still_stands(world):
 
 def test_another_playlists_snapshot_holding_the_track_keeps_rekordboxs_place(world):
     """A row another mirrored playlist's snapshot held is never read as landed."""
-    _landed_with_base(world, {"r3"})
+    _landed_with_base(world, None)
     _set_base(world, "Deep House Med", {"r3"})
 
     _area, step, _queue = world.run_all()
@@ -140,7 +139,7 @@ def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(w
     from cratekit.intake import cli as intake_cli
     from cratekit.organize import mirror_downloads
 
-    _landed_with_base(world, {"r3"})
+    _landed_with_base(world, None)
     with jobs.open_store() as store:
         (real,) = [
             one

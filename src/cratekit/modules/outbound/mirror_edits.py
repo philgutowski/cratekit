@@ -82,12 +82,13 @@ playlist the person edited holding the track in its own base, its account
 side for a playlist never agreed or a snapshot that took it, so the account
 side read as no change and the landing's rule never fired. ``decide`` is also
 handed, for each such track, the playlists whose mirror job queued it. While
-the landing's filing stands and the account still lists the track there,
-that playlist's base is read without it, as it stood at the queue, which a
-download is queued only for a track no snapshot held. Every other playlist's
-base counts as before, so a row another playlist held is never read as
-landed, and once the library holds the track where the account put it the
-base is the library's word again.
+the landing's filing stands and the account still lists the track there, a
+NEVER AGREED queuing playlist's base, its account side, is read without the
+track, as it stood at the queue, since a download is queued only for a track
+no snapshot held. An agreed snapshot is the library's word and is never
+lifted: on this tree it takes a queued track only once the library took the
+edit. Every other playlist's base counts as before, so a row another
+playlist held is never read as landed.
 
 HELD IS NEITHER CARRIED NOR UNDONE. A track added on the account to two band
 playlists at once, one taken off its band and left in a derived playlist only,
@@ -681,18 +682,23 @@ def _as_queued(
 ) -> frozenset[str]:
     """The playlists whose base is read without ``track``, as it stood at the queue (U230).
 
-    A mirror download is queued only for a track no snapshot held (U204), so a
-    base of the playlist whose job queued it that holds the track now took it
-    since: the account side of a playlist never agreed, read as its base, or a
-    snapshot that took the held track (sitting 86). Read as it stood, the
-    account's addition there is the edit it is, and the landing's filing is
-    read as the landing's. ONLY WHILE THE LANDING'S FILING STANDS, every band
-    rekordbox holds it in one its landing filed it into, AND THE EDIT DOES, the
-    account still listing it on that playlist and rekordbox not: once the
-    library holds it where the account put it, or a person moved it on either
-    side, the base is the library's word as U227 reads it. Every other
-    playlist's base counts as before, so a row another playlist held is never
-    read as landed.
+    A mirror download is queued only for a track no snapshot held (U204), so
+    when the playlist whose job queued it is NEVER AGREED, its base is its
+    account side, which says nothing of the library's history: sitting 86's
+    shape. Read as it stood at the queue, the account's addition there is the
+    edit it is, and the landing's filing is read as the landing's.
+
+    AN AGREED SNAPSHOT IS NEVER LIFTED. A held track keeps the snapshot's word
+    (:func:`agreed_after`), so the queuing playlist's snapshot takes the track
+    only once the library took the edit, and lifting it then would carry a
+    person's later move back into the landing's band back again (the review
+    of U230, round one, driven once the landing's batch left INBOX). Nor a
+    SHORT listing, which carries no edit of its own.
+
+    ONLY WHILE THE LANDING'S FILING STANDS, every band rekordbox holds it in
+    one its landing filed it into, AND THE EDIT DOES, the account still listing
+    it on that playlist and rekordbox not. Every other playlist's base counts
+    as before, so a row another playlist held is never read as landed.
     """
     titles = queued.get(track)
     places = filed.get(track)
@@ -705,6 +711,8 @@ def _as_queued(
         one.place.title
         for one in playlists
         if one.place.title in titles
+        and one.agreed is None
+        and not one.short
         and track in one.base
         and track in one.account
         and track not in one.rekordbox

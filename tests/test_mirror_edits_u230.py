@@ -96,10 +96,12 @@ def test_a_never_agreed_playlist_whose_account_side_holds_the_track_carries_it()
     assert "landed for the account's edit" in one.why and "Afro House High" in one.why
 
 
-def test_an_agreed_snapshot_that_holds_the_track_carries_it():
-    one = _only(edits.decide(_read(agreed=frozenset({"t9"})), OWNED, FILED, QUEUED))
-    assert (one.outcome, one.to) == (edits.MOVE, JZM)
-    assert one.landed
+def test_an_agreed_snapshot_that_holds_the_track_is_the_librarys_word():
+    """The brief asked for this carried; the review of U230, round one, drove
+    the producers and found an agreed snapshot of the queuing playlist takes
+    a queued track only once the library took the edit, so lifting it carried
+    a person's later move back. It is read as U227 reads it."""
+    assert edits.decide(_read(agreed=frozenset({"t9"})), OWNED, FILED, QUEUED).decisions == ()
 
 
 def test_the_same_reading_without_the_queue_is_no_edit_at_all_as_before():
@@ -211,12 +213,13 @@ def test_a_landing_filed_where_the_account_asked_is_no_edit():
 def test_a_short_listing_of_the_queuing_playlist_lifts_nothing():
     """The review of U230, round one: a listing that could not be read is read
     as its snapshot and short, and carries no edit of its own."""
-    playlists = _read(agreed=frozenset({"t9"}))
-    playlists[0] = edits.Mirrored(
-        place=JZM,
-        account=frozenset({"t9"}),
-        agreed=frozenset({"t9"}),
-        short=True,
-        account_added={"t9": ACCOUNT_AT},
-    )
-    assert edits.decide(playlists, OWNED, FILED, QUEUED).decisions == ()
+    for agreed in (None, frozenset({"t9"})):
+        playlists = _read(agreed=agreed)
+        playlists[0] = edits.Mirrored(
+            place=JZM,
+            account=frozenset({"t9"}),
+            agreed=agreed,
+            short=True,
+            account_added={"t9": ACCOUNT_AT},
+        )
+        assert edits.decide(playlists, OWNED, FILED, QUEUED).decisions == (), agreed
