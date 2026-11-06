@@ -142,6 +142,25 @@ def test_a_track_added_later_on_the_account_is_queued_and_the_held_stay_held(wor
     assert sorted(remote for _pair, remote in _on_hold(envelope)) == ["t20", "t21", "t22"]
 
 
+def test_a_held_track_another_account_playlist_landed_is_added_and_the_rest_stay_held(
+    world, cfg, tmp_path
+):
+    """U229. A held track the library now holds is that row; one it does not hold stays held."""
+    from tests.test_sync_pair import _landed_for, _untagged_row
+
+    _three_missing(world)
+    assert backfill()[0] == int(ExitCode.OK)
+    # Another account playlist's landing brought t22 in as row nine, whose
+    # code is in its file only.
+    _untagged_row(cfg, "9", tmp_path, file_isrc=LACKING["t22"])
+    _landed_for(world, cfg, "acc-daily", ("9",), session_id="s-daily", name="Daily")
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21")]
+    assert "9" in world.held(world.twin(PHIL_NAME))
+
+
 def test_a_second_twin_stays_held_when_the_first_is_released(world, cfg):
     _two_twins(world)
     assert backfill()[0] == int(ExitCode.OK)
