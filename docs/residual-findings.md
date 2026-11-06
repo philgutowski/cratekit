@@ -45156,3 +45156,96 @@ this adapter wrote the playlist in this process, read again on the order's
 pauses as `_settled` does, and a removal answered 412 is read again and
 planned afresh as a move answered 412 is. Ledger only: the run again
 finishes the workflow.
+
+---
+
+## R-1349. A decide on a gate the run has not yet shown records no digest, and the resume applies whatever plan it then reads
+
+**Found:** while building #567, R-1334, 2026-11-06.
+
+**The mechanism.** `gates.record` takes the answer's digest from the run's
+`offers`, which `Gates.require` fills only when the gate is reached. A `crate
+run decide RUN GATE OPTION` on a gate the run has not reached yet, the second
+of two gates for one, records a decision whose digest is `None`, and
+`require` compares a recorded digest only when it is not `None`. So the
+resume applies the plan it reads at that gate without its screen ever being
+shown, and no later move of that plan can make the answer stale. The same
+class as R-1334, an answer bound to a plan no screen showed, one door over:
+R-1334's door was the stale refusal, this one is the gate never reached.
+
+**Measured cost.** Driven through `crate organize` on the organize suite's
+world: the rekordbox gate open, `run decide RUN organize.account.apply
+apply` before the account gate was ever shown, then the rekordbox gate
+answered, and the resume applied the whole account area with no account
+gate: three folders created on the account, the label folder, the
+downloaded sets folder and the INBOX mirror. Meets the board bar (b) and
+(d): writes applied that no gate screen declared, past a digest guard the
+early answer is never compared by.
+
+**Why it was not closed with R-1334.** The fix is a new refusal on `crate run
+decide` (refuse a digest bound gate the run holds no offer for and has not
+left open), which changes what `run decide` accepts rather than what a stale
+refusal shows, and it needs its own reason and screen: the gate screen
+`decision-required` prints invites the very decide it would refuse. Whether
+anything decides a gate ahead on purpose was not surveyed.
+
+**Closes when:** a decide on a digest bound gate the run has neither offered
+nor left open is refused, naming the run to continue to reach the gate, and a
+test drives organize's two gates with the account answered first.
+
+---
+
+## R-1350. A pinned stale answer cannot be answered again on its run, since a decide never replaces the pin
+
+**Found:** while building #567, R-1334, 2026-11-06.
+
+**The mechanism.** U161's pins are recorded while a gate is open and never
+replaced once it is answered, and `gates.record` does not touch them. After a
+stale refusal over a pinned fact (the database file a native landing names),
+a second `crate run decide` records the same digest beside the old pin, so
+every resume of that run is refused stale over the same fact again. R-1334's
+screen is deliberately not carried on this refusal, since a decide after it
+cannot apply anything. When the plan and a pin move together, the digest's
+stale comes first and does carry the screen, whose header says the next run
+applies the plan it shows; the decide after it binds the new digest beside the
+old pin, and the next run is refused on the pin, which no screen named (found
+at R-1334's review, driven at the gate layer, no verb producer driven).
+
+**Measured cost.** None to the library: nothing is written. A person who
+answers again on the run is refused again, and has to start a fresh run,
+which the remedy, replan then decide, already says. Read from the source and
+the unit tests in `tests/test_gate_stale_screen.py` and `tests/test_gate_pins.py`;
+not driven through a verb.
+
+**Closes when:** a pinned stale refusal either says a fresh run is the only
+way on, or a decide after it records the pins the refusing run read, shown on
+its screen. Ledger only.
+
+---
+
+## R-1351. The stale screen sits under a fix line naming crate run show with a placeholder, and an unknown option's screen names no run
+
+**Found:** at the review of #567, R-1334, 2026-11-06.
+
+**The mechanism.** A stale refusal's remedy, replan then decide, renders as
+`fix: crate run show <run>` with the placeholder left in, directly above the
+gate's screen R-1334 now prints, which names the run and the decide. After the
+refusal `crate run show` lists the gate as answered with no open gate, since
+the answer that moved is still recorded, so sibling warnings and U170's
+retirement read the run as answered. An unknown inline option's screen
+(`-d gate=bogus`) shows the plan since R-1334, but its answer line reads
+`crate run decide <run> ...`, because `UnknownOption` carries no run
+identifier, while the run is printed one line above, and its question reads
+the default "A decision is required." rather than the gate's own prompt,
+since it carries no prompt.
+
+**Measured cost.** Driven at R-1334's review through the dispatcher in human
+mode with `profile set`: two instructions on one screen, the first with a
+placeholder, and a person copying the second placeholder types a command that
+fails; the run is saved with its offer, so a decide with the right run works.
+Nothing is written either way. Pre-existing on main, made visible by the
+screen.
+
+**Closes when:** the stale remedy line names the run or is left out under a
+gate screen, and `UnknownOption` carries the run identifier its screen names.
+Ledger only.
