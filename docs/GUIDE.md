@@ -5,24 +5,7 @@ How to run Cratekit day to day. When this file and `crate --help` (or
 
 ## Install and set up
 
-Needs macOS, Python 3.12 or 3.13, rekordbox 7.x and the OS keychain. Some
-modules need command line programs: `ffmpeg` and `ffprobe`, `yt-dlp`, `rclone`
-for backup, `keyfinder-cli` for key detection. `crate doctor` names each one
-missing.
-
-Install a release tag with pipx (the README has the details and the release
-list):
-
-```bash
-pipx install --python python3.12 "cratekit @ git+https://github.com/philgutowski/cratekit@vX.Y.Z"
-pipx install --force "cratekit[analysis,vocals] @ git+https://github.com/philgutowski/cratekit@vX.Y.Z"
-```
-
-The second line adds the extras: `analysis` for key, tempo and energy,
-`vocals` for vocal scoring. A module switched on without its extra prints the
-install command and exits non zero. `crate doctor`'s `install.release` line
-says when a newer release exists and prints the upgrade command, keeping your
-extras.
+The [README](../README.md) covers requirements, install, extras and upgrade.
 
 ```bash
 crate setup
@@ -31,10 +14,11 @@ crate doctor
 
 - `setup` records the library root, the rekordbox database, the volume's
   identity, download staging, the profile, the taxonomy and the backup
-  destinations. Every answer is also a flag (`crate setup --help`). Re-running
-  keeps earlier answers unless a flag changes one, and ends by running doctor.
+  destinations, and proposes a rekordbox version pin that only a yes adopts.
+  Every answer is also a flag (`crate setup --help`). Re-running keeps earlier
+  answers unless a flag changes one, and ends by running doctor.
 - `doctor` writes nothing. Each line is `ok`, `fail` (blocks a verb, names the
-  fix) or `note` (no action needed).
+  fix) or `note` (no action).
 - `crate profile show` lists the modules the profile switches on; `crate
   profile set slim|full|custom` changes the preset and nothing else. A verb
   whose module is off does not exist. Adoption is on in every profile.
@@ -75,11 +59,12 @@ Cratekit reaches your rekordbox library three ways:
                                                          route, adopt, organize, restore ...
 ```
 
-- **A collection export** is a rekordbox XML of the whole collection. Verbs
-  that take one never read the live database. A stale export answers wrongly
-  and confidently, so take a fresh one when it matters.
-- **An importable file** (`*_inboxed.xml`) is what a landing writes while the
-  intake tree is on the xml bridge. You import it into rekordbox.
+- **A collection export** (a Fresh Export) is a rekordbox XML of the whole
+  collection. Verbs that take one never read the live database. A stale export
+  answers wrongly and confidently, so take a fresh one when it matters.
+- **An importable file** (the intake file, `*_inboxed.xml`) is what a landing
+  writes while the intake tree is on the xml bridge. You import it into
+  rekordbox.
 - **The guarded write** is the only path to the live database. It refuses
   unless the recorded library volume is mounted, rekordbox and
   `rekordboxAgent` are both closed, the pinned versions match and a backup
@@ -899,9 +884,8 @@ valid is reported, not minted again. The record says which rule minted it,
 
 - **No beat grid, ever.** No tempo element, BPM tag, average BPM field or
   ANLZ grid, in any container. rekordbox does its own analysis.
-- **The live database** is written only through the guarded write: rekordbox
-  closed, volume mounted, versions pinned, acknowledgment on record, snapshot
-  first, read back after. Verbs that only read take a copy.
+- **The live database** is written only through the guarded write (see [How it
+  works](#how-it-works)). Verbs that only read take a copy.
 - **Files** are trashed only by `delete review`, to the system Trash.
   Renames go through `name apply` and `repair paths --apply`, behind gates.
 - **The account** is written behind explicit gates. Exports and label
@@ -923,11 +907,10 @@ named DEADCA7 below the top level is yours.
 
 ## When something refuses or stalls
 
-Read the refusal's reason and remedy before retrying.
+Read the refusal's reason and remedy before retrying, then `crate doctor`.
 
 | Symptom | Do |
 |---|---|
-| Any refusal | Read its remedy, then `crate doctor`. |
 | "Decision required" | `crate run show RUN_ID`. |
 | A job that never moves | `crate job show JOB_ID`; queued work needs `crate job resume`. |
 | A blocked job | `job show` gives the cause, usually a review item or a credential. |

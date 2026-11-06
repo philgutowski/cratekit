@@ -272,7 +272,8 @@ variable row the `dyn` My Tag, so the rekordbox visit analyses it Dynamic and
 
 ### The tail
 The verbs run over staged files before a landing, in order: `tag folder`,
-`tag guess`, `analyze run`, `analyze restamp`, `name apply` (`cratekit.cli.tail`).
+`tag guess`, `analyze run` (then `analyze vocals --unscored`), `analyze restamp`,
+`name apply` (`cratekit.cli.tail`).
 `crate sync land`, `label sync --go` and `sync bandcamp` run it; no landing is
 planned unless every step succeeded, and a stale tail job is replaced, not
 resumed.

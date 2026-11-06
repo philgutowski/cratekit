@@ -69,31 +69,29 @@ crate setup
 crate doctor
 ```
 
-`crate setup` records the library location, rekordbox version pin, taxonomy and
-profile. It asks only what it cannot work out, takes every answer as a flag
-too, keeps earlier answers when re-run, and ends by running `crate doctor`.
-
-`crate doctor` writes nothing. Each line is `ok`, `fail` (blocks a verb, names
-the fix) or `note` (worth knowing, no action).
+`crate setup` asks only what it cannot work out, takes every answer as a flag,
+keeps earlier answers when re-run and ends by running `crate doctor`, which
+writes nothing. Each doctor line is `ok`, `fail` (blocks a verb, names the fix)
+or `note` (no action). [`docs/GUIDE.md`](docs/GUIDE.md) says what setup records.
 
 `crate login NAME --from-file PATH` records a credential in the keychain.
-Signing in to the streaming account takes two commands, set out in
+Signing in to the streaming account is set out in
 [`docs/adapters.md`](docs/adapters.md).
 
 ## Using it
 
 [`docs/GUIDE.md`](docs/GUIDE.md) is the user guide: how the pieces fit, the
-pre-session checks, gates, the backup acknowledgment, a recipe per workflow,
-and running Cratekit with an AI assistant. `crate --help` lists every verb.
+pre-session checks, a recipe per workflow, gates, the backup acknowledgment and
+running Cratekit with an AI assistant. `crate --help` lists every verb.
 
 ## Safety posture
 
 - **Beat grids are never written**: no tempo element, BPM tag or average-BPM
   field. Not configurable; tests fail the build on any code path that could.
 - **Database writes go through one guarded layer**: version pins, refusal while
-  rekordbox or its background agent runs, a cloud-sync canary, a snapshot
-  before writing, an additive whitelist, a cross-process lock and a read-back
-  after the commit. Any refusal stops the write.
+  rekordbox or its background agent runs, a backup acknowledgment, a cloud-sync
+  canary, a snapshot before writing, an additive whitelist, a cross-process
+  lock and a read-back after the commit. Any refusal stops the write.
 - **Music files change only by** tag writes, content-preserving renames, and a
   move to the system Trash once no library row references the file.
 
