@@ -100,9 +100,9 @@ def test_the_refusal_names_the_open_gate_first_and_then_the_run_that_reaches_thi
 
     assert steps == [
         "answer the gate the run waits at first: crate run decide r probe.first <option>",
-        "then continue the run, which stops at probe.second with its plan on the screen: "
-        "crate --run r probe --all",
-        "then answer probe.second: crate run decide r probe.second <option>",
+        "then continue the run: crate --run r probe --all; it puts probe.second and its "
+        "plan on the screen if it reaches it, and its report says why if it does not",
+        "then, once the run shows probe.second, answer it: crate run decide r probe.second <option>",
     ]
 
 
@@ -112,9 +112,9 @@ def test_a_run_waiting_at_no_gate_is_told_to_continue_to_this_one():
 
     # A run recorded before it kept a command line names the verb's words.
     assert steps == [
-        "continue the run, which stops at probe.second with its plan on the screen: "
-        "crate --run r probe ...",
-        "then answer probe.second: crate run decide r probe.second <option>",
+        "continue the run: crate --run r probe ...; it puts probe.second and its plan on "
+        "the screen if it reaches it, and its report says why if it does not",
+        "then, once the run shows probe.second, answer it: crate run decide r probe.second <option>",
     ]
 
 

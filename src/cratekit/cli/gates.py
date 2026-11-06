@@ -231,18 +231,26 @@ class GateNotReached(CratekitError):
     the one and verbs recognise an unanswered gate by the other, and either
     would invite the very answer this refuses. The steps say what reaches
     the gate instead: the answer on the gate the run waits at, if it waits at
-    one, then the run continued under ``--run``, which stops at this gate
-    with its plan on the screen, then the answer.
+    one, then the run continued under ``--run``, which shows this gate and its
+    plan if it reaches it, then the answer once it has.
     """
 
     def __init__(self, state: RunState, spec: GateSpec) -> None:
         command = continue_command(state)
         waiting = state.open_gate
+        # NO STOP IS PROMISED (R-1349 round one). A continued run reaches the
+        # gate only if nothing before it refuses: organize's rekordbox area
+        # refuses before it plans while the backup acknowledgment is missing,
+        # and its gate is never asked. So the steps say what the run does if it
+        # reaches the gate, and that its own report says why if it does not.
         reach = (
-            f"continue the run, which stops at {spec.name} with its plan on the "
-            f"screen: {command}"
+            f"continue the run: {command}; it puts {spec.name} and its plan on the "
+            f"screen if it reaches it, and its report says why if it does not"
         )
-        answer = f"then answer {spec.name}: crate run decide {state.run_id} {spec.name} <option>"
+        answer = (
+            f"then, once the run shows {spec.name}, answer it: crate run decide "
+            f"{state.run_id} {spec.name} <option>"
+        )
         if waiting is not None:
             steps: tuple[str, ...] = (
                 f"answer the gate the run waits at first: crate run decide "

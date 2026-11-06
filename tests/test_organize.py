@@ -2128,3 +2128,35 @@ def test_a_gate_with_no_digest_source_still_takes_an_answer_before_it_is_reached
     assert state.decisions[cloud.name].option == "abort"
     assert state.decisions[cloud.name].digest is None
     assert state.open_gate == DB_GATE
+
+
+def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_there(world):
+    """Round one's drive: the acknowledgment lapsed, so the rekordbox area refuses before it plans.
+
+    The run stops at the account gate alone, and a decide on the rekordbox
+    gate is refused. Its steps used to promise that the continued run stops at
+    the rekordbox gate with its plan on the screen, and it never does: the
+    area refuses again, and the decide those steps end on is refused again.
+    """
+    cfg, _fake, _held, _inbox, _ids = world
+    session.ack_path(cfg).unlink()
+    collection.reset_cache()
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
+    run_id = first["run_id"]
+
+    code, early = drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])
+
+    assert code == int(ExitCode.PRECONDITION), early
+    steps = early["cause"]["remediation"]["steps"]
+    assert not any(f"stops at {DB_GATE}" in step for step in steps)
+    assert any("its report says why if it does not" in step for step in steps)
+    assert drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"])[0] == 0
+    collection.reset_cache()
+    code, done = drive(["--run", run_id, *VERB])
+    # The continue reaches no rekordbox gate, and says why.
+    assert code == int(ExitCode.OK), done
+    assert done["data"]["summary"]["areas"][rekordbox.AREA]["refused"]["reason"] == (
+        "backup-acknowledgment-missing"
+    )
