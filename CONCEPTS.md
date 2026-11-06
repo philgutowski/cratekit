@@ -752,7 +752,10 @@ snapshot, or the reverse) from a change made in rekordbox, so the mirror holds t
 first and the rekordbox area's `mirror-edits` step takes it into the library,
 for a genre playlist (U201), the Favorites folder and an INBOX batch (U204). A
 track added on the account that the library lacks and no snapshot ever held is
-queued for download by the `mirror-downloads` step instead. A playlist with no
+queued for download by the `mirror-downloads` step instead, and the next new
+`crate sync land` pass takes that job as its own (U227). Once it lands, the band
+its landing filed it into by its tags is not read as a change made in rekordbox:
+the track is landed for the account's edit, and the edit is carried once. A playlist with no
 snapshot has never been agreed, and every difference on it is read as
 rekordbox's. Not a [pair snapshot](#pair-snapshot), which is one base per
 side of a pair the author made.

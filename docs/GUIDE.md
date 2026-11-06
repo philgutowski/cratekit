@@ -1251,8 +1251,13 @@ edits again, while the edit to that batch goes with its retired playlist. A trac
 playlist that your library does not have is queued for download once, by the
 rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one (a
 track Tidal lists with no title or no artist is named and not queued, and the
-playlist's other tracks still are); it stays on Tidal meanwhile, and once it lands the next organize files it where
-you put it. A track whose recording you already own as another release is not
+playlist's other tracks still are); it stays on Tidal meanwhile. The next
+`crate sync land` takes that download into its own pass, when the pass is a new
+one, and lands it with the rest; a continued pass leaves it on its left open row
+for the next. Once it lands, the next organize files it where you put it, even
+though the landing first filed it by its own tags: its gate says the track was
+landed for the account's edit. A move you make in rekordbox after the landing
+still wins over the edit, as any later change does. A track whose recording you already own as another release is not
 queued, and one the download found you own, or could not fetch, is named as
 such and left on Tidal as you put it. Approve one area and abort the other
 and only the approved one is written. Answer the account's question on a later
@@ -1699,7 +1704,7 @@ treated like any other.
 | "rekordbox-absence-unconfirmed" | A process the check for rekordbox could not read, named by its pid, so whether rekordbox is closed was not established and the step that needed it closed did not run. It is usually a process that is still exiting: wait a moment, then continue the run with the command the refusal prints, `crate --run RUN_ID` and the verb's own words, which keeps every gate already answered. A process that has finished exiting, a zombie, is skipped and never refuses. If it refuses again, look at the pid with `ps -p PID -o pid,stat,comm`. `crate doctor` shows the same thing as a note under `rekordbox.closed`. |
 | A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
 | `sync land` stops at `name apply` over a "second copy of one recording" | Two files in the staging folder carry one ISRC, so one would take the other's name. The refusal names the passes whose downloads it was, earliest first. Keep one copy, move the other out of the folder, and continue the pass with the command it prints. |
-| `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
+| `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. A download `crate organize` queued for a track you put on a mirrored playlist on Tidal is taken by the next new pass, so `crate sync land` with no `--pass-run` lands it. |
 | A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |
 | A tree "unconverged" | `crate converge`, then `crate rebuild`, then `crate converge` again. |
 | A stale lock from a machine that is gone | `crate session release`, explicitly. |
