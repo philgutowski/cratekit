@@ -1155,19 +1155,17 @@ class TidalAccount:
         so a playlist declaring any video, or declaring no video count, is
         refused as well.
         """
-        tracks = self._listed(playlist_id, playlist)
-        declared = getattr(playlist, "num_tracks", None)
-        videos = getattr(playlist, "num_videos", None)
+        members, declared, videos = self._reading(playlist_id, playlist)
         if (
             not _count(declared)
-            or declared != len(tracks)
+            or declared != len(members)
             or not _count(videos)
             or videos != 0
         ):
             raise refuse(
                 "outbound-remove-refused",
                 f"the playlist {playlist_id} declares {declared!r} track(s) and "
-                f"{videos!r} video(s), and {len(tracks)} track(s) could be read, so "
+                f"{videos!r} video(s), and {len(members)} track(s) could be read, so "
                 f"which position holds which track is not known and nothing was "
                 f"taken off it",
                 steps=(
@@ -1178,9 +1176,21 @@ class TidalAccount:
                 origin=("outbound", "account"),
                 detail={"playlist_id": str(playlist_id), "problem": "positions-unknown"},
             )
-        members = [str(getattr(track, "id", "") or "") for track in tracks]
         self._members[playlist_id] = members
         return members
+
+    def _reading(self, playlist_id: str, playlist: Any) -> tuple[list[str], Any, Any]:
+        """One reading of an opened playlist: its tracks by position, its declared tracks and videos.
+
+        Nothing is judged or remembered here; :meth:`_positions` and
+        :meth:`_removal_read_back` each judge a reading by their own rule.
+        """
+        tracks = self._listed(playlist_id, playlist)
+        return (
+            [str(getattr(track, "id", "") or "") for track in tracks],
+            getattr(playlist, "num_tracks", None),
+            getattr(playlist, "num_videos", None),
+        )
 
     def _vouched(self, identifier: str, kept: str) -> None:
         """Refuse, before any provider call, a playlist nothing vouches for changing.
@@ -1464,10 +1474,13 @@ class TidalAccount:
         would take off whatever moved into those positions.
 
         READ BACK, NOT TRUSTED. After each request the playlist is read again
-        and must equal what it held with exactly those positions gone. Any
-        other answer is refused, ``outbound-remove-refused`` and not retryable,
-        since a removal that took the wrong track is the one outcome this
-        member exists to rule out.
+        and must equal what it held with exactly those positions gone, see
+        :meth:`_removal_read_back`. A reading that still shows the playlist as
+        it was before the removal lags it (R-1308) and is read again after a
+        pause, bounded as the order's read back is; any other answer is
+        refused at once, ``outbound-remove-refused`` and not retryable, since a
+        removal that took the wrong track is the one outcome this member
+        exists to rule out.
         """
         identifier = str(playlist_id)
         wanted = [str(one) for one in dict.fromkeys(remote_ids) if str(one)]
@@ -1491,27 +1504,84 @@ class TidalAccount:
             expected = [one for i, one in enumerate(before) if i not in gone]
             # THE READ BACK IS THE NEXT REQUEST'S READ, so a second chunk opens
             # and reads the playlist once rather than twice.
-            playlist = self._playlist(identifier)
-            before = self._positions(identifier, playlist)
-            if before != expected:
-                # NOT ``provider_failure``, whose remedy is to run it again: a
-                # playlist that did not change as asked may have lost the wrong
-                # track, and another removal by position would compound it.
-                raise refuse(
-                    "outbound-remove-refused",
-                    f"the playlist {identifier} read back after a removal is not "
-                    f"what it held with the asked positions gone, so a track other "
-                    f"than the asked ones may have come off, and nothing more was sent",
-                    steps=(
-                        "check the playlist by hand in the provider's own player "
-                        "before running the prune again",
-                    ),
-                    scope=Scope.RUN,
-                    origin=("outbound", "account"),
-                    detail={"playlist_id": identifier, "problem": "read-back-differs"},
-                )
+            playlist, before = self._removal_read_back(identifier, before, expected)
         held = set(self._members.get(identifier, ()))
         return tuple(one for one in wanted if one not in held)
+
+    def _removal_read_back(
+        self, identifier: str, before: list[str], expected: list[str]
+    ) -> tuple[Any, list[str]]:
+        """The playlist opened and read after a removal, which must be ``expected`` (R-1308).
+
+        EACH READING IS JUDGED ON ITS TWO HALVES, the tracks read and the
+        declared count, and each must be the playlist BEFORE the removal or
+        AFTER it, with no video declared. A removal always takes a track off,
+        so the two counts differ and each half is one or the other, never
+        both. Both after is done, and only that reading is remembered as the
+        playlist's membership and carried as the next request's positions and
+        version tag.
+
+        EITHER HALF STILL BEFORE, THE OTHER BEFORE OR AFTER, IS A READ THAT
+        LAGS THE REMOVAL, as U220 measured a read lag a move on Sitting 62: it
+        is read again after each pause of :data:`ORDER_PAUSES`, at most
+        :data:`ORDER_REREADS` times, and once they are spent it is refused,
+        saying the removal may have landed. Anything else, a wrong track gone
+        or a count that is neither, is refused at once with no pause. The
+        removal is never sent again from here: one that reached the provider,
+        sent again, would take off whatever stands at those positions now.
+        """
+        reading: list[str] = []
+        lagged = False
+        attempt = 0
+        for attempt in range(ORDER_REREADS + 1):
+            if attempt:
+                self._sleep(_pause(attempt))
+            playlist = self._playlist(identifier)
+            reading, declared, videos = self._reading(identifier, playlist)
+            tracks = "before" if reading == before else "after" if reading == expected else None
+            counted = (
+                None
+                if not _count(declared) or not _count(videos) or videos != 0
+                else "before"
+                if declared == len(before)
+                else "after"
+                if declared == len(expected)
+                else None
+            )
+            if tracks == counted == "after":
+                self._members[identifier] = reading
+                return playlist, reading
+            lagged = tracks is not None and counted is not None
+            if not lagged:
+                break
+        # NOT ``provider_failure``, whose remedy is to run it again: a playlist
+        # that did not change as asked may have lost the wrong track, and
+        # another removal by position would compound it.
+        raise refuse(
+            "outbound-remove-refused",
+            (
+                f"the playlist {identifier} still read as it was before a removal "
+                f"after {attempt + 1} readings, so the removal may have landed with the "
+                f"read lagging it; nothing more was sent"
+            )
+            if lagged
+            else (
+                f"the playlist {identifier} read back after a removal is not "
+                f"what it held with the asked positions gone, so a track other "
+                f"than the asked ones may have come off, and nothing more was sent"
+            ),
+            steps=(
+                "check the playlist by hand in the provider's own player "
+                "before running the prune again",
+            ),
+            scope=Scope.RUN,
+            origin=("outbound", "account"),
+            detail={
+                "playlist_id": identifier,
+                "problem": "read-back-differs",
+                "lagged": "yes" if lagged else "no",
+            },
+        )
 
     def remove_playlist(self, playlist_id: str) -> None:
         """Remove one playlist the product made (U123). NEVER RETRIED.

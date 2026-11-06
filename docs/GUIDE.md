@@ -1085,6 +1085,13 @@ the playlists left out of order and the `crate --run RUN sync pair` that
 finishes them. Look at each in the Tidal app first; the continue moves nothing
 until its reading agrees with the one it took just before.
 
+Taking tracks off a Tidal playlist is read back the same way. When the
+provider is slow to show the removal, Cratekit waits a few seconds and reads
+again, and never sends the removal twice. If the playlist still reads as it
+was before after the last wait, the answer says the removal may have landed:
+look at the playlist in the Tidal app before you run anything again. A
+reading that shows some other track gone stops at once.
+
 ### Publish a playlist
 
 ```bash
