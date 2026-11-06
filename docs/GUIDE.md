@@ -514,8 +514,10 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   order or checks a write, `sync pair` reads both and takes the plain read
   when it holds every track. If the two disagree and it does not, the pair is
   left out of the run, or the write stops as moved if that starts after the
-  plan; sync again a few minutes later. Past a playlist's first hundred
-  tracks such a change is not seen until Tidal catches up. The answer's
+  plan; sync again a few minutes later. A playlist longer than the plain
+  read's first page is read on past it, and is left out the same way when
+  that longer read cannot be taken whole while the paged read holds every
+  track. The answer's
   `read_backs` say how many readings each write took and how long it waited.
 
 ### Publish a playlist

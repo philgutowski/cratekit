@@ -1279,7 +1279,10 @@ class TidalAccount:
         THE UNPAGED READ IS TAKEN LAST, so the version tag the client keeps
         from it is the one the next write carries: a window served from before
         a write carries the tag it had then, and a write sent with it is
-        answered 412.
+        answered 412. Past a capped first page the unpaged read walks on
+        (R-1360), and the tag kept is its last request's; a walk that broke on
+        a page carrying an older tag is not whole, so its reading lags beside
+        a whole window and nothing is written from it.
 
         Nothing is judged or remembered here; :meth:`_positions` and
         :meth:`_removal_read_back` each judge a reading by their own rule.
