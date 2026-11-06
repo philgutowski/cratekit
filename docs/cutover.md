@@ -2264,6 +2264,17 @@ From v0.11.1, which carries U190 and R-1056. No Cratekit job running and `rekord
 
 **A correction to sittings 79 and 80.** The counts read there from a copy of the database came from a reader that counted soft-deleted playlist rows too: INBOX / Analyze read 40 rows that way and 0 live. rekordbox's counts (Organic House Low 362, Med 403, High 329; Minimal / Deep Tech Med Energy 186) are the live rows, and the gaps those sittings left untraced are the deleted rows. The INBOX comparisons and the Rominimal band read stand: read again on live rows only, each of the 96 is in exactly one band (39, 41, 16).
 
+## Sitting 82, 2026-11-06, the attended session on v0.11.1, with desktop control: A57 (#415), DEADCA7 installed, its push not aimed at a copy
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Installed? | `/Applications`, the home folder's `Library` | **`DEADCA7.app` is installed** (0.2.3, build `0345c1db`, its settings read), with `DEADTRAX.app` beside it. It has run: its state is in `Library/Application Support/deadcatalog` (a `runtime/ml-v0.3.3` engine, made 2026-10-26) and its logs in `Library/Logs/deadca7`. There is no `deadca7` support folder and no `rekordbox-backups` folder, so it has never pushed. `crate doctor`'s `deadca7.push` reads "DEADCA7 is not installed here", because it probes the `deadca7` folder only: filed as #576 (U224), P2. | read |
+| Where a push would go | launched once, the Catalog, Export and Settings screens read, nothing pressed that writes | No catalog is open; Settings' `Library` section reads "No library" and offers no database chooser. The launch log reads **"rekordbox found" and the live database's path on the library volume**: the app resolves the live database by itself, from the rekordbox agent's settings as the 2026-10-26 assessment read in its source. | read |
+| Decision | the session's call | **No push was made.** From its own window a push writes the live database, which the brief forbids. The one way to aim it at a copy is to point the rekordbox agent's own settings at the copy for the push and back afterwards, which also points rekordbox itself there, and a slip writes the live library or leaves rekordbox on the copy. That is not a step for a session nobody is watching. | held |
+| After | DEADCA7 quit from its menu | The live database read sha256 `d92feb314cd0a4b4` before the launch and after the quit: nothing written. | checked |
+
+**A57 (#415) waits on Phillip**: a sitting he is present for decides how a DEADCA7 push reaches a disposable copy (the agent settings redirected and put back with him watching, or an app build that takes a library path), then takes the brief from the push on. The doctor's false "not installed" is #576.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
