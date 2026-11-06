@@ -596,7 +596,7 @@ plans just those steps; a side with no kind named is not asked.
   mirror exists reads every difference as rekordbox's.
 - A track downloaded for your edit is filed where you put it, though its
   landing first filed it by its tags ("landed for the account's edit"), even
-  when the playlist you put it in already lists it in the mirror's record; a
+  when the mirror has no snapshot of the playlist you put it in yet; a
   change you make in rekordbox after the landing still wins.
 - An answer given on a later run applies the plan you were shown; a change
   on Tidal since refuses as stale.

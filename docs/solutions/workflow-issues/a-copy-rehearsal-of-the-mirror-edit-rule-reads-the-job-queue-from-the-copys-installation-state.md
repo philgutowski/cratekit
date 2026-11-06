@@ -55,9 +55,11 @@ addition, so the edited playlist's base did not hold the track at that read,
 and driven on U204's disposable world with U227's real producers no snapshot
 takes the queued track after the queue or the landing. Which input the copy
 lacked was not measured, since the copy's state was not read; a copy whose
-state predates the queue or the landing fits every observed line. U230 built
-the brief's rule anyway (the edited playlist's base read as it stood at the
-queue), so a base that does hold the track no longer stops it.
+state predates the queue or the landing fits every observed line. U230
+built the brief's rule for the one shape it can lift safely, a never agreed
+queuing playlist read as it stood at the queue; an agreed snapshot holding
+the track is the library's word, since on this tree it takes a queued track
+only once the library took the edit.
 
 ## The rule
 
