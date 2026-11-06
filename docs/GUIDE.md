@@ -763,8 +763,8 @@ Without `--actor` the answer is recorded as `cli` at a terminal and `session`
 without one.
 
 - A gate that shows a plan is answered only once its run has shown it. On a
-  verb with two (organize, sync pair), answering the second early is refused
-  as `gate-not-reached`.
+  verb with two gates (organize, sync pair, intake land, export set, label
+  playlists), answering the second early is refused as `gate-not-reached`.
 - If the plan moves between the answer and the apply, the run refuses as stale
   and writes nothing. When the gate found the move, the refusal shows the new
   plan; an answer recorded after it applies that plan. Otherwise start a fresh
@@ -772,7 +772,7 @@ without one.
 - A database writer's gate names other runs of the same verb open or answered
   in the last twelve hours (`gate-sibling-run`). It refuses nothing.
 - Every gate offers `abort`, a recorded answer that ends the run with no
-  writes, except `sync.land.without-vocals` (`go` or `stop`) and the two
+  further writes, except `sync.land.without-vocals` (`go` or `stop`) and the two
   `sync pair` gates (`apply` or `skip`).
 
 | Gate | Go | Verb |
