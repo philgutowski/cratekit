@@ -1554,14 +1554,29 @@ class TidalAccount:
             lagged = tracks is not None and counted is not None
             if not lagged:
                 break
+        # WHAT THE PLAYLIST HOLDS IS NOT KNOWN NOW, so what this adapter
+        # remembered of it before the removal is forgotten rather than kept as
+        # though the read back had not disagreed with it (round one's review).
+        self._members.pop(identifier, None)
+        shown = {
+            ("before", "before"): "still read as it was before a removal",
+            ("before", "after"): (
+                "read after a removal with its declared count changed and its "
+                "tracks still as they were before"
+            ),
+            ("after", "before"): (
+                "read after a removal with its tracks changed as asked and its "
+                "declared count still as it was before"
+            ),
+        }
         # NOT ``provider_failure``, whose remedy is to run it again: a playlist
         # that did not change as asked may have lost the wrong track, and
         # another removal by position would compound it.
         raise refuse(
             "outbound-remove-refused",
             (
-                f"the playlist {identifier} still read as it was before a removal "
-                f"after {attempt + 1} readings, so the removal may have landed with the "
+                f"the playlist {identifier} {shown[(tracks, counted)]} after "
+                f"{attempt + 1} readings, so the removal may have landed with the "
                 f"read lagging it; nothing more was sent"
             )
             if lagged
@@ -1572,7 +1587,7 @@ class TidalAccount:
             ),
             steps=(
                 "check the playlist by hand in the provider's own player "
-                "before running the prune again",
+                "before running anything on it again",
             ),
             scope=Scope.RUN,
             origin=("outbound", "account"),

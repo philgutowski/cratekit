@@ -66,9 +66,31 @@ def test_a_read_that_never_catches_up_refuses_saying_the_removal_may_have_landed
     assert cause.retryable is False
     assert "may have landed" in cause.message
     assert "may have come off" not in cause.message
+    assert f"after {tidal_account.ORDER_REREADS + 1} readings" in cause.message
+    assert SAID[how] in cause.message
+    assert all(said not in cause.message for half, said in SAID.items() if half != how)
     assert len(slept) == tidal_account.ORDER_REREADS
     assert provider.removals == [(1,)], "a removal was sent twice"
     assert provider.members == ["a", "c", "d"]
+
+
+#: What a refusal over a read that never caught up says of each half (round one's review).
+SAID = {
+    "whole": "still read as it was before a removal",
+    "tracks": "its declared count changed and its tracks still as they were before",
+    "count": "its tracks changed as asked and its declared count still as it was before",
+}
+
+
+@pytest.mark.parametrize("lag", [99, 0])
+def test_a_refused_read_back_forgets_what_was_remembered_of_the_playlist(installed, lag):
+    """After any refusal what the playlist holds is not known, so nothing is remembered of it."""
+    provider = _lagging(["a", "b", "c", "d"], lag, "whole")
+    provider.wrong = None if lag else 0
+    account = _adapter(installed, provider)
+    with pytest.raises(CratekitError):
+        account.remove_tracks("mine", ("b",))
+    assert "mine" not in account._members
 
 
 def test_a_read_that_catches_up_on_the_last_reading_is_taken_as_done(installed):
@@ -139,6 +161,17 @@ def test_a_count_that_is_neither_before_nor_after_refuses_at_once(installed, dec
 def test_a_lagging_reading_then_a_wrong_one_refuses_without_spending_the_bound(installed):
     provider = _lagging(["a", "b", "c", "d"], 1, "whole")
     provider.drift = ["a", "d"]
+    slept: list[float] = []
+    with pytest.raises(CratekitError) as refused:
+        _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
+    assert refused.value.cause.detail["lagged"] == "no"
+    assert slept == [tidal_account.ORDER_PAUSES[0]]
+
+
+def test_a_reading_as_long_as_before_with_another_track_is_not_a_lag(installed):
+    """Before is judged by the tracks read, not by how many: a swapped track refuses at once."""
+    provider = _lagging(["a", "b", "c", "d"], 1, "whole")
+    provider.drift = ["a", "x", "c", "d"]
     slept: list[float] = []
     with pytest.raises(CratekitError) as refused:
         _adapter(installed, provider, slept).remove_tracks("mine", ("b",))

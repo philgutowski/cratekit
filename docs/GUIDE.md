@@ -1087,10 +1087,11 @@ until its reading agrees with the one it took just before.
 
 Taking tracks off a Tidal playlist is read back the same way. When the
 provider is slow to show the removal, Cratekit waits a few seconds and reads
-again, and never sends the removal twice. If the playlist still reads as it
-was before after the last wait, the answer says the removal may have landed:
-look at the playlist in the Tidal app before you run anything again. A
-reading that shows some other track gone stops at once.
+again, and never sends the removal twice. If the playlist's tracks or its
+count still read as they were before after the last wait, the answer says
+which, and that the removal may have landed: look at the playlist in the
+Tidal app before you run anything again. A reading that shows some other
+track gone stops at once.
 
 ### Publish a playlist
 
