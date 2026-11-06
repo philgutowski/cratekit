@@ -52,6 +52,18 @@ before U216, and a sync reads it by time, every unknown as held, so a copy
 that drops the field on its next write costs a playlist named rather than one
 made twice.
 
+**AND WHAT A TWIN HOLDS FOR THE AUTHOR'S CHOICE (U221).** Decided by
+Phillip on 2026-11-05: the account tracks a custom playlist twin was made
+without are never queued for download on their own. ``crate sync twins``
+records them on the twin's pair (``Pair.on_hold``), ``crate sync pair`` names
+them and queues none, and ``crate sync release`` empties one twin's hold, or
+every twin's, so the next sync queues them (:meth:`PairStore.release_hold`).
+A landing's twin records an empty hold. A twin with no hold recorded was
+paired before U221, and a sync reads it by time, every track the account
+listed before the pair was marked held. Still version 2: a copy that drops the
+field on its next write leaves a twin that is read by time, which holds the
+same tracks, never one that queues them.
+
 Layer: modules.
 """
 
@@ -123,6 +135,12 @@ class Pair:
     #: for the tracks it dated. A later date on a track the base held is that
     #: track taken out and put back on the account since (R-990).
     account_added: Mapping[str, str] = field(default_factory=lambda: MappingProxyType({}))
+    #: U221. The account tracks a twin was made without, held for the author's
+    #: choice and never queued, remote identifier to the words a person reads.
+    #: Empty for a twin holding nothing, a landing's or one released. None when
+    #: the pair recorded no hold: no twin, a twin paired before U221, or one
+    #: made from a short listing, which ``sync pair`` reads by time.
+    on_hold: Mapping[str, str] | None = None
 
     @property
     def first(self) -> bool:
@@ -148,6 +166,8 @@ class Pair:
             record["account_added"] = dict(sorted(self.account_added.items()))
         if self.rekordbox is not None:
             record["rekordbox"] = [member.to_json() for member in self.rekordbox]
+        if self.on_hold is not None:
+            record["on_hold"] = dict(sorted(self.on_hold.items()))
         return record
 
 
@@ -373,6 +393,12 @@ class PairStore:
             isinstance(k, str) and k and isinstance(v, str) and v for k, v in added.items()
         ):
             raise self._unusable(f"the pair {account_id!r} has added dates that are not dates")
+        on_hold = value.get("on_hold")
+        if on_hold is not None and not (
+            isinstance(on_hold, Mapping)
+            and all(isinstance(k, str) and k and isinstance(v, str) for k, v in on_hold.items())
+        ):
+            raise self._unusable(f"the pair {account_id!r} holds tracks that are not ids")
         return Pair(
             account_id=account_id,
             rekordbox_id=rekordbox_id,
@@ -386,6 +412,7 @@ class PairStore:
             made=made,
             folder=folder,
             account_added=MappingProxyType(dict(added)),
+            on_hold=None if on_hold is None else MappingProxyType(dict(on_hold)),
         )
 
     def _write(self, pairs: Mapping[str, Pair], document: Document | None = None) -> None:
@@ -433,14 +460,22 @@ class PairStore:
         return self._load().get(str(account_id))
 
     def mark(
-        self, account_id: str, rekordbox_id: str, *, name: str, twin: bool = False
+        self,
+        account_id: str,
+        rekordbox_id: str,
+        *,
+        name: str,
+        twin: bool = False,
+        on_hold: Mapping[str, str] | None = None,
     ) -> Pair:
         """Record the pair, or return it unchanged when it is already this pair.
 
         REFUSED when either identifier is paired with something else, read and
         written under one lock, so two syncs marking at once cannot each pair
         one rekordbox playlist with a different account playlist. ``twin`` says
-        the product made the rekordbox side as a custom playlist twin (U149).
+        the product made the rekordbox side as a custom playlist twin (U149),
+        and ``on_hold`` the tracks it was made without, held for the author's
+        choice (U221); a pair already marked keeps the hold it has.
         """
         account_id = str(account_id)
         rekordbox_id = str(rekordbox_id)
@@ -460,6 +495,11 @@ class PairStore:
                 name=str(name),
                 marked=timestamp(),
                 twin=bool(twin),
+                on_hold=(
+                    None
+                    if on_hold is None
+                    else MappingProxyType({str(k): str(v) for k, v in on_hold.items() if k})
+                ),
             )
             pairs[account_id] = pair
             self._write(pairs)
@@ -528,6 +568,32 @@ class PairStore:
             del pairs[str(account_id)]
             self._write(pairs)
             return held
+
+    def release_hold(self, wanted: Mapping[str, str]) -> dict[str, Pair]:
+        """Empty the hold of each twin named, account id to the rekordbox id the plan read (U221).
+
+        Read and written under one lock. Only a twin still paired with the
+        rekordbox playlist named is released, so one unpaired or paired again
+        since the plan keeps what it holds. A twin holding nothing already is
+        passed over. Answers each pair released, as it was before.
+        """
+        with self._locked():
+            pairs = self._load()
+            released: dict[str, Pair] = {}
+            for account_id, rekordbox_id in wanted.items():
+                held = pairs.get(str(account_id))
+                if (
+                    held is None
+                    or not held.twin
+                    or held.rekordbox_id != str(rekordbox_id)
+                    or (held.on_hold is not None and not held.on_hold)
+                ):
+                    continue
+                pairs[held.account_id] = replace(held, on_hold=MappingProxyType({}))
+                released[held.account_id] = held
+            if released:
+                self._write(pairs)
+            return released
 
     # ── U198: what a sync of every pair makes, remembers and lets go ────────
 

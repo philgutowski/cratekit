@@ -1927,6 +1927,7 @@ U213 (#507) is in v0.8.0. No job running, rekordbox closed before each verb.
 
 **A66 (#435) is met in part**: the backfill, its missing tracks named, and the NO_OP second run. **Owed:** the twins read against the account in rekordbox beyond one; the pair check (a track added each side, then `crate sync pair`), which waits on #543 (U220) since a live `sync pair` cannot finish its write; and the next landing's twin. **For Phillip:** the warning says the next `crate sync pair` "adds each one it finds in the library and queues each one the library lacks", so the 612 missing tracks of these 77 old downloaded playlists would be queued for download at the first sync pair that finishes.
 
+**Since U221 (#549, 2026-11-05)** those 612 are held, not queued: the 77 twins were paired before U221 and carry no recorded hold, so `crate sync pair` reads each by time and names every track the account listed before the twin was made as on hold, queueing none, until `crate sync release ACCOUNT_ID` (or `--all`) lets a twin's go. Only once the installed copy carries U221; a build without it still queues them.
 
 ## Sitting 64, 2026-11-05, the attended session on v0.8.0: A85 (#504), an edit on Tidal to a mirrored genre playlist carried into the library, then undone
 

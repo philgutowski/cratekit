@@ -3768,6 +3768,38 @@ ENTRIES: tuple[Entry, ...] = (
             CLOUD_SYNC_UNREADABLE_GATE,
         ),
     ),
+    # ── A twin's held tracks, let go at the author's choice (U221) ──────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.release",
+        summary="let a custom playlist twin's held tracks be queued at the next "
+        "crate sync pair, one twin by its account playlist or every twin",
+        module="cratekit.sync.release_cli",
+        builder="build",
+        handler_key="sync.release",
+        # NO FEATURE ROW. The source system queued a custom playlist's every
+        # missing track and asked nobody.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: NO WRITE SURFACE, and not destructive: the pairs document is this
+        #: product's own state, and the write only empties a twin's hold.
+        #: Nothing is queued here; ``sync pair`` queues at its own gate.
+        writes=frozenset(),
+        doctor_checks=("library.mounted",),
+        gates=(
+            GateSpec(
+                name="sync.release.approve",
+                options=("approve", "abort"),
+                prompt="Let these twins' held tracks be queued for download at the "
+                "next crate sync pair?",
+                #: EXPLICIT: the answer decides what the downloader is next
+                #: asked to fetch, which Phillip chooses per playlist (U221).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
     # ── A genre for the files every catalogue missed (U172) ─────────────────
     #
     # Appended, for the reason the deferred routing block above gives.

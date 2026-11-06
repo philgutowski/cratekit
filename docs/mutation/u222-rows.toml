@@ -1,0 +1,238 @@
+name = "u222"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_overlay_not_read"
+description = "read: never overlay the frozen snapshots, so the decided run reads the ledger's live snapshot as before U222 (sitting 66)"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''    if frozen is not None:
+        # THE GATE'S SNAPSHOTS'''
+new = '''    if False:
+        # THE GATE'S SNAPSHOTS'''
+
+[[rows]]
+id = "M2_overlay_never_replaces"
+description = "overlay: keep the live snapshot of every playlist, the frozen one never taken"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''                one = replace(one, agreed=held[1])'''
+new = '''                one = one'''
+
+[[rows]]
+id = "M3_overlay_any_remote_id"
+description = "overlay: take the frozen snapshot for a playlist made again under another remote id"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            if held is not None and held[0] == one.remote_id:'''
+new = '''            if held is not None:'''
+
+[[rows]]
+id = "M4_freeze_recorded_after"
+description = "_record: freeze the ledger after the gate's own plan time record, not the snapshot the plan read"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            recorded=reading.recorded,'''
+new = '''            recorded=ledger.mirror_folders(cfg),'''
+
+[[rows]]
+id = "M5_agreed_none_lost"
+description = "_agreed_json: freeze a never agreed snapshot as an empty one"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            title: [one.remote_id, None if one.agreed is None else sorted(one.agreed)]'''
+new = '''            title: [one.remote_id, sorted(one.agreed or ())]'''
+
+[[rows]]
+id = "M6_load_drops_agreed"
+description = "load: read no frozen snapshot, so the overlay has nothing to take"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''        agreed = _agreed_of(data["agreed"])'''
+new = '''        agreed = {}'''
+
+[[rows]]
+id = "M7_version_kept_at_5"
+description = "VERSION: stay at 5, so a record gated before U222 is rebuilt over a live snapshot"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''VERSION = 6'''
+new = '''VERSION = 5'''
+
+[[rows]]
+id = "M8_agreed_list_check"
+description = "_agreed_of: accept a snapshot that is not a list of text"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            if agreed is not None and ('''
+new = '''            if False and ('''
+
+[[rows]]
+id = "M9_text_check"
+description = "_text: accept anything as text"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''    if not isinstance(value, str):
+        raise ValueError(f"{what} is {value!r}, not text")'''
+new = '''    if False:
+        raise ValueError(f"{what} is {value!r}, not text")'''
+
+[[rows]]
+id = "M10_shown_flag_check"
+description = "load: accept a shown flag that is not true or false"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''        if not isinstance(shown, bool):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M11_decided_freeze_shown"
+description = "_record: freeze a decided run's fresh plan as shown by its gate (review round one's BLOCKING)"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            shown=not run.decided,'''
+new = '''            shown=True,'''
+
+[[rows]]
+id = "M12_unshown_not_said"
+description = "_stale: read a record no gate showed as one it did"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''    if frozen is not None and not frozen.shown:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M13_moved_equal_named"
+description = "moved: name every step, moved or not"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''        if digest_of(step.identity()) == then.digest:
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "M14_moved_new_step_silent"
+description = "moved: say nothing of a step the gate did not show"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            said.append(f"{step.title}, which the gate did not show")
+            continue'''
+new = '''            continue'''
+
+[[rows]]
+id = "M15_moved_gone_step_silent"
+description = "moved: say nothing of a step the gate showed and this run did not plan"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            said.append(f"{then.title}, which the gate showed and this run did not plan")'''
+new = '''            pass'''
+
+[[rows]]
+id = "M16_lines_inverted"
+description = "moved: name the lines that did NOT move"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''                if lines.get(label) != then.lines.get(label)'''
+new = '''                if lines.get(label) == then.lines.get(label)'''
+
+[[rows]]
+id = "M17_refused_named_by_every_line"
+description = "moved: name a refused step by every line the gate showed (review round one)"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            if lines and then.lines
+            else []'''
+new = '''            if lines or then.lines
+            else []'''
+
+[[rows]]
+id = "M18_label_no_folder"
+description = "_label: read no folder line, so a folder that moved is never named"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''    for key in ("playlist", "folder"):'''
+new = '''    for key in ("playlist",):'''
+
+[[rows]]
+id = "M19_stale_on_every_run"
+description = "add_steps: carry stale lines on a gate's own run too"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''    if run is not None and run.decided:
+        area.stale.extend'''
+new = '''    if run is not None:
+        area.stale.extend'''
+
+[[rows]]
+id = "M20_every_step_reworded"
+description = "_stale: reword the line said when nothing moved"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            else "every step plans as the gate showed it"'''
+new = '''            else "every step plans as its gate showed it"'''
+
+[[rows]]
+id = "M21_cli_message_unchanged"
+description = "_ask: keep the gate's bare message on a stale answer"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''                message=f"{cause.message}; {area.name}: " + "; ".join(area.stale),'''
+new = '''                message=cause.message,'''
+
+[[rows]]
+id = "M22_cli_detail_unchanged"
+description = "_ask: carry no stale lines in the refusal's detail"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''                detail={**dict(cause.detail or {}), "stale": list(area.stale)},'''
+new = '''                detail=cause.detail,'''
+
+[[rows]]
+id = "M23_cli_empty_stale_reworded"
+description = "_ask: reword a stale refusal whose area has nothing to add"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''        if exc.cause.code != ExitCode.DECISION_STALE or not area.stale:'''
+new = '''        if exc.cause.code != ExitCode.DECISION_STALE:'''
+
+[[rows]]
+id = "M24_cli_any_code_reworded"
+description = "_ask: reword any refusal of a decided area, whatever its code"
+file = "src/cratekit/organize/cli.py"
+surface = "maintainer"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''        if exc.cause.code != ExitCode.DECISION_STALE or not area.stale:'''
+new = '''        if not area.stale:'''
+
+[[rows]]
+id = "M25_steps_not_frozen"
+description = "_record: freeze no step, so a stale answer names every step as one the gate did not show"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_frozen_u222.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize.py", "tests/test_inbox_unmirrored.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits.py"]
+old = '''            steps=area.steps,'''
+new = '''            steps=(),'''

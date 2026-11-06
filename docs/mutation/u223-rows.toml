@@ -1,0 +1,495 @@
+name = "u223"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_keep_intent"
+description = "staged_path: clear the rename intent with everything else, the shipped behaviour"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''                entry.name == RENAME_INTENT_FILENAME
+                and entry.is_file()'''
+new = '''                entry.name == "never-kept.json"
+                and entry.is_file()'''
+
+[[rows]]
+id = "M1_composite"
+description = "What M1 holds with the staged report fallback gone too: the shipped bug, through the verb and the printed resume"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+pairs_with = "M1_keep_intent"
+tests = ["tests/test_analysis_workers.py"]
+old = '''                entry.name == RENAME_INTENT_FILENAME
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    elif directory.is_symlink() or directory.exists():
+        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:
+        # ``rmtree`` refuses a link and a plain file, loudly, rather than this
+        # call deciding to remove or follow one.
+        shutil.rmtree(directory)
+    config._mkdir_private(directory)
+    return directory / _report_name(ordinal)
+
+
+def write(path: Path, payload: dict[str, Any]) -> Path:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    """Where one item's rename intent lives: in its staging directory.
+
+    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is
+    the pre rename name and the rename lands inside the handler, before the
+    engine flips the row to done, so a kill in that window leaves a finished
+    file under its head and a pending row under its old name. The intent is
+    what lets the resume find the file the item BECAME rather than guessing
+    from the folder, because a guess matched any headed file whose stripped
+    stem equalled the item, which is an unrelated file when the source was
+    deleted, and matched nothing when the template deduped or truncated the
+    stem.
+
+    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it
+    when it clears the directory for a report, so the attempt that renamed
+    the file, and a resume interrupted in the same window, both leave it for
+    the next. It is removed only where it is known false: a rename that did
+    not land, and an attempt whose source is still a file.
+    """
+    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
+
+
+def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    config._mkdir_private(path.parent)
+    return write(path, {"item": item.item_id, "target": str(target)})
+
+
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: this module writes the intent as a plain file, and
+    a link would name whatever its far end says as this item's twin.
+    """
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    target = loaded.get("target")
+    return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename they would prove is known not to stand: a rename
+    that did not land, and an attempt whose source is still a file. Left
+    behind, either names whatever later sits at that target, an unrelated
+    file a person put there, as this item's twin once the source is gone. The
+    report goes with the intent because :func:`staged_report` is read as the
+    same proof when the intent is missing, and the next ``staged_path`` that
+    would clear it comes only after the work, which a kill can forestall.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at
+        # the link's far end is not this item's staging, and ``staged_path``
+        # refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which
+        # removes its tree; an ``unlink`` would fail the item for good on a
+        # shape the clear before U223 healed.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place and never cleared here. A report that says it renamed is
+    staged only after the rename, so it is the item's own record of the
+    rename when the intent is gone, which is the state the shipped
+    ``staged_path`` left every job interrupted in that window (U223); which
+    reports say so is the caller's check. A report for another item, one
+    that does not parse to a mapping, or a link, is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None'''
+new = '''                entry.name == "never-kept.json"
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    elif directory.is_symlink() or directory.exists():
+        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:
+        # ``rmtree`` refuses a link and a plain file, loudly, rather than this
+        # call deciding to remove or follow one.
+        shutil.rmtree(directory)
+    config._mkdir_private(directory)
+    return directory / _report_name(ordinal)
+
+
+def write(path: Path, payload: dict[str, Any]) -> Path:
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    return path
+
+
+def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    """Where one item's rename intent lives: in its staging directory.
+
+    THE INTENT IS WRITTEN BEFORE THE RENAME AND OUTLIVES A KILL. The item is
+    the pre rename name and the rename lands inside the handler, before the
+    engine flips the row to done, so a kill in that window leaves a finished
+    file under its head and a pending row under its old name. The intent is
+    what lets the resume find the file the item BECAME rather than guessing
+    from the folder, because a guess matched any headed file whose stripped
+    stem equalled the item, which is an unrelated file when the source was
+    deleted, and matched nothing when the template deduped or truncated the
+    stem.
+
+    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it
+    when it clears the directory for a report, so the attempt that renamed
+    the file, and a resume interrupted in the same window, both leave it for
+    the next. It is removed only where it is known false: a rename that did
+    not land, and an attempt whose source is still a file.
+    """
+    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
+
+
+def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    config._mkdir_private(path.parent)
+    return write(path, {"item": item.item_id, "target": str(target)})
+
+
+def rename_intent(cfg: config.Config, job, item) -> Path | None:
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: this module writes the intent as a plain file, and
+    a link would name whatever its far end says as this item's twin.
+    """
+    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    target = loaded.get("target")
+    return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename they would prove is known not to stand: a rename
+    that did not land, and an attempt whose source is still a file. Left
+    behind, either names whatever later sits at that target, an unrelated
+    file a person put there, as this item's twin once the source is gone. The
+    report goes with the intent because :func:`staged_report` is read as the
+    same proof when the intent is missing, and the next ``staged_path`` that
+    would clear it comes only after the work, which a kill can forestall.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at
+        # the link's far end is not this item's staging, and ``staged_path``
+        # refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which
+        # removes its tree; an ``unlink`` would fail the item for good on a
+        # shape the clear before U223 healed.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place and never cleared here. A report that says it renamed is
+    staged only after the rename, so it is the item's own record of the
+    rename when the intent is gone, which is the state the shipped
+    ``staged_path`` left every job interrupted in that window (U223); which
+    reports say so is the caller's check. A report for another item, one
+    that does not parse to a mapping, or a link, is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if True:
+        return None'''
+
+[[rows]]
+id = "M5_discard_keeps_report"
+description = "discard_rename_evidence: drop the intent only, round one's residual"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):'''
+new = '''    for name in (RENAME_INTENT_FILENAME,):'''
+
+[[rows]]
+id = "M6_discard_keeps_intent"
+description = "discard_rename_evidence: drop the report only, keeping the intent"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):'''
+new = '''    for name in (_report_name(item.ordinal),):'''
+
+[[rows]]
+id = "M21_discard_through_link"
+description = "discard_rename_evidence: reach through a linked staging directory"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK'''
+new = '''    if not directory.exists():
+        # NOT THROUGH A LINK'''
+
+[[rows]]
+id = "M22_discard_unlinks_directory"
+description = "discard_rename_evidence: unlink a directory at the report name, failing the item for good"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)'''
+new = '''        if True:
+            entry.unlink(missing_ok=True)'''
+
+[[rows]]
+id = "M23_intent_link_followed"
+description = "rename_intent: read an intent that is a link"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    path = intent_path(cfg, job.job_id, item.ordinal)
+    if path.is_symlink() or not path.is_file():'''
+new = '''    path = intent_path(cfg, job.job_id, item.ordinal)
+    if not path.is_file():'''
+
+[[rows]]
+id = "M24_report_link_followed"
+description = "staged_report: read a report that is a link"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None'''
+new = '''    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if not path.is_file():
+        return None'''
+
+[[rows]]
+id = "M2_keep_linked_intent"
+description = "staged_path: keep an intent that is a link, so the clear keeps it and rename_intent follows it"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''                and entry.is_file()
+                and not entry.is_symlink()
+            ):'''
+new = '''                and entry.is_file()
+            ):'''
+
+[[rows]]
+id = "M3_no_clear"
+description = "staged_path: clear nothing, so a stale report and scratch leak into the next attempt"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py", "tests/test_tag_workers.py"]
+old = '''            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()'''
+new = '''            continue'''
+
+[[rows]]
+id = "M4_subdir_unlinked"
+description = "staged_path: unlink a subdirectory entry instead of removing its tree"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)'''
+new = '''            if False:
+                shutil.rmtree(entry)'''
+
+[[rows]]
+id = "M7_report_any_item"
+description = "staged_report: accept a report for another item"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+new = '''    if not isinstance(loaded, dict):
+        return None
+    return loaded'''
+
+[[rows]]
+id = "M8_report_not_mapping"
+description = "staged_report: drop the mapping check, so a list report raises"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+new = '''    if loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+
+[[rows]]
+id = "M9_report_unparsed"
+description = "staged_report: let a report that is not JSON raise"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+new = '''    except OSError:
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded'''
+
+[[rows]]
+id = "M10_report_wrong_name"
+description = "staged_report: read the report under a name staged_path never writes"
+file = "src/cratekit/analysis/artifacts.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)'''
+new = '''    path = _staging_dir(cfg, job.job_id, item.ordinal) / f"{item.ordinal}.json"'''
+
+[[rows]]
+id = "M11_no_fallback"
+description = "_finalized_twin: no staged report fallback when the intent is gone"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if target is None:
+        target = _staged_twin(cfg, job, item)'''
+new = ''''''
+
+[[rows]]
+id = "M12_renamed_to_unchecked"
+description = "_staged_twin: accept an analysed report whatever its renamed_to says"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        if report.get("renamed_to") != target.name:
+            return None'''
+new = '''        pass'''
+
+[[rows]]
+id = "M13_resumed_unchecked"
+description = "_staged_twin: accept any prefixed skip, not only a resume's"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    elif status != "skipped-prefixed" or report.get("resumed_after_rename") is not True:'''
+new = '''    elif status != "skipped-prefixed":'''
+
+[[rows]]
+id = "M14_any_status"
+description = "_staged_twin: accept a report of any status"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    elif status != "skipped-prefixed" or report.get("resumed_after_rename") is not True:
+        return None'''
+new = '''    elif False:
+        return None'''
+
+[[rows]]
+id = "M15_folder_unchecked"
+description = "_staged_twin: accept a path outside the item's own folder"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if target.parent != source.parent:
+        return None
+    return target'''
+new = '''    return target'''
+
+[[rows]]
+id = "M16_path_type_unchecked"
+description = "_staged_twin: drop the check that path is a non empty string"
+file = "src/cratekit/analysis/cli.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if not isinstance(recorded, str) or not recorded:
+        return None
+    target = Path(recorded)'''
+new = '''    target = Path(str(recorded))'''
+
+[[rows]]
+id = "M17_claim_failure_keeps_evidence"
+description = "_finalize: keep the intent when the target name is taken"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        # read that unrelated file as this item's twin (U223).
+        artifacts.discard_rename_evidence(cfg, job, item)'''
+new = '''        # read that unrelated file as this item's twin (U223).'''
+
+[[rows]]
+id = "M18_refused_rename_keeps_evidence"
+description = "_finalize: keep the intent when the rename is refused"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''        target.unlink(missing_ok=True)
+        artifacts.discard_rename_evidence(cfg, job, item)'''
+new = '''        target.unlink(missing_ok=True)'''
+
+[[rows]]
+id = "M19_attempt_start_keeps_evidence"
+description = "handle_run: keep stale evidence when the source is still a file"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    # it renames (U223).
+    artifacts.discard_rename_evidence(cfg, job, item)'''
+new = '''    # it renames (U223).'''
+
+[[rows]]
+id = "M20_twin_target_unchecked"
+description = "_finalized_twin: an existing guard, accept a target that is not a file"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_workers.py"]
+old = '''    if target is None or not target.is_file():
+        return None
+    return target'''
+new = '''    if target is None:
+        return None
+    return target'''

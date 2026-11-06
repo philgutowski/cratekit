@@ -56,7 +56,8 @@ Four words carry most of the rest.
   without repeating finished work. Three verbs of the acquisition tail, `tag
   folder`, `analyze run` and `analyze restamp`, queue their job and then work
   through it before they return, so each step is one command. Stop one with
-  Ctrl-C and its answer names the `--job` command that finishes the rest; pass
+  Ctrl-C at any moment and its answer names the `--job` command that finishes
+  the rest, a track `analyze run` had already renamed included; pass
   `--queue-only` to have it queue and return like the others. An intake job
   names the playlist it was made for in both `job list` and `job show`. An
   open intake job holds its playlist out of every sync pass, so an old one
@@ -971,6 +972,27 @@ anything is queued. From then on `crate sync pair` keeps each twin and its accou
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
 
+A track a twin was made without is held for your choice, never downloaded on
+its own, as a label's releases are not. `crate sync twins` records each twin's
+missing tracks with its pair, and `crate sync pair` names every one of them on
+its gate as on hold, counts them per twin playlist and queues none:
+
+```bash
+crate sync release ACCOUNT_ID     # let one twin's held tracks go
+crate sync release --all          # every twin's
+```
+
+`crate sync release` shows each twin and the tracks it holds on one gate, and
+once you approve, the next `crate sync pair` queues what that twin lacks; a
+second twin you did not name stays held. A track you put on the account
+playlist by hand after its twin was made is not held and is queued as usual. A
+twin made before this hold existed, or from a listing the account served
+short, recorded no list, so `crate sync pair`
+holds every track the account added to it before the twin was made, and one
+the account gives no date for, and `crate sync release` names that twin as
+holding those. A twin a landing makes holds nothing: the sweep that landed it
+was your choice to download that playlist.
+
 A track the account lists with no title or no artist never stops `crate sync
 pair`. It is left where it is on both sides and named on the gate, and every
 other track of that playlist syncs both ways, removals and order included; a
@@ -1233,7 +1255,14 @@ playlist's other tracks still are); it stays on Tidal meanwhile, and once it lan
 you put it. A track whose recording you already own as another release is not
 queued, and one the download found you own, or could not fetch, is named as
 such and left on Tidal as you put it. Approve one area and abort the other
-and only the approved one is written. Every other playlist you made yourself,
+and only the approved one is written. Answer the account's question on a later
+run and the mirror applies the plan you were shown: a landing, a split, or a
+Tidal edit the rekordbox step took into your library in between is left for
+the next organize, and no track is asked of Tidal again. A change made on Tidal
+itself since the plan, or to what another account step reads, refuses the
+answer as stale; when the mirror was planned, the refusal says whether its plan
+was rebuilt from the one you were shown and, where it was, names each step and
+playlist that moved. Run organize again for the new plan. Every other playlist you made yourself,
 on either side, is listed with a suggested home where one is obvious, and is
 never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
 removes, a track that left a mirrored playlist's rekordbox playlist, and the

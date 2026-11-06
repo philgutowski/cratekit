@@ -47,21 +47,55 @@ def final_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
     return directory / f"{ordinal:04d}.json"
 
 
+RENAME_INTENT_FILENAME = "rename-intent.json"
+
+
+def _staging_dir(cfg: config.Config, job_id: str, ordinal: int) -> Path:
+    return _job_dir(STAGING_DIRNAME, cfg, job_id) / str(ordinal)
+
+
+def _report_name(ordinal: int) -> str:
+    return f"{ordinal:04d}.json"
+
+
 def staged_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
-    """A cleared staging directory for one attempt at one item."""
-    directory = _job_dir(STAGING_DIRNAME, cfg, job_id) / str(ordinal)
-    if directory.exists():
+    """A cleared staging directory for one attempt at one item.
+
+    CLEARED OF EVERYTHING BUT THE RENAME INTENT (U223). A stale report from an
+    earlier attempt never leaks into this one, but the intent is the resume's
+    evidence and this call comes AFTER the rename, in the very attempt that
+    renamed the file. The first version removed the whole directory here, so
+    an interrupt landing between the staged report and the commit left a
+    resume with the source gone and no intent, and the item failed for ever
+    as ``source-missing`` over a file analysed and renamed on disk (A60's live
+    run, #423). The intent is dropped where it is known false instead:
+    :func:`discard_rename_evidence`.
+    """
+    directory = _staging_dir(cfg, job_id, ordinal)
+    if directory.is_dir() and not directory.is_symlink():
+        for entry in directory.iterdir():
+            if (
+                entry.name == RENAME_INTENT_FILENAME
+                and entry.is_file()
+                and not entry.is_symlink()
+            ):
+                continue
+            if entry.is_dir() and not entry.is_symlink():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    elif directory.is_symlink() or directory.exists():
+        # WHAT THE FIRST VERSION DID WITH ANYTHING ELSE AT THIS PATH, kept:
+        # ``rmtree`` refuses a link and a plain file, loudly, rather than this
+        # call deciding to remove or follow one.
         shutil.rmtree(directory)
     config._mkdir_private(directory)
-    return directory / f"{ordinal:04d}.json"
+    return directory / _report_name(ordinal)
 
 
 def write(path: Path, payload: dict[str, Any]) -> Path:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     return path
-
-
-RENAME_INTENT_FILENAME = "rename-intent.json"
 
 
 def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
@@ -75,10 +109,15 @@ def intent_path(cfg: config.Config, job_id: str, ordinal: int) -> Path:
     from the folder, because a guess matched any headed file whose stripped
     stem equalled the item, which is an unrelated file when the source was
     deleted, and matched nothing when the template deduped or truncated the
-    stem. ``staged_path`` clears the directory on the next attempt, which is
-    after the resume has read it.
+    stem.
+
+    IT OUTLIVES THE ATTEMPT THAT WROTE IT (U223). ``staged_path`` keeps it
+    when it clears the directory for a report, so the attempt that renamed
+    the file, and a resume interrupted in the same window, both leave it for
+    the next. It is removed only where it is known false: a rename that did
+    not land, and an attempt whose source is still a file.
     """
-    return _job_dir(STAGING_DIRNAME, cfg, job_id) / str(ordinal) / RENAME_INTENT_FILENAME
+    return _staging_dir(cfg, job_id, ordinal) / RENAME_INTENT_FILENAME
 
 
 def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
@@ -88,9 +127,13 @@ def record_rename_intent(cfg: config.Config, job, item, target: Path) -> Path:
 
 
 def rename_intent(cfg: config.Config, job, item) -> Path | None:
-    """The target this item's last attempt meant to rename it to, if recorded."""
+    """The target this item's last attempt meant to rename it to, if recorded.
+
+    A link is no record: this module writes the intent as a plain file, and
+    a link would name whatever its far end says as this item's twin.
+    """
     path = intent_path(cfg, job.job_id, item.ordinal)
-    if not path.is_file():
+    if path.is_symlink() or not path.is_file():
         return None
     try:
         loaded = json.loads(path.read_text(encoding="utf-8"))
@@ -100,6 +143,54 @@ def rename_intent(cfg: config.Config, job, item) -> Path | None:
         return None
     target = loaded.get("target")
     return Path(str(target)) if target else None
+
+
+def discard_rename_evidence(cfg: config.Config, job, item) -> None:
+    """Drop this item's intent AND its staged report, once neither can be true.
+
+    Called where the rename they would prove is known not to stand: a rename
+    that did not land, and an attempt whose source is still a file. Left
+    behind, either names whatever later sits at that target, an unrelated
+    file a person put there, as this item's twin once the source is gone. The
+    report goes with the intent because :func:`staged_report` is read as the
+    same proof when the intent is missing, and the next ``staged_path`` that
+    would clear it comes only after the work, which a kill can forestall.
+    """
+    directory = _staging_dir(cfg, job.job_id, item.ordinal)
+    if directory.is_symlink() or not directory.is_dir():
+        # NOT THROUGH A LINK, the rule ``staged_path`` keeps: whatever sits at
+        # the link's far end is not this item's staging, and ``staged_path``
+        # refuses the link loudly when the attempt reaches it.
+        return
+    for name in (RENAME_INTENT_FILENAME, _report_name(item.ordinal)):
+        entry = directory / name
+        # A DIRECTORY AT EITHER NAME IS LEFT for ``staged_path``, which
+        # removes its tree; an ``unlink`` would fail the item for good on a
+        # shape the clear before U223 healed.
+        if entry.is_symlink() or not entry.is_dir():
+            entry.unlink(missing_ok=True)
+
+
+def staged_report(cfg: config.Config, job, item) -> dict[str, Any] | None:
+    """This item's report, staged by an attempt whose row never moved, if any.
+
+    Read in place and never cleared here. A report that says it renamed is
+    staged only after the rename, so it is the item's own record of the
+    rename when the intent is gone, which is the state the shipped
+    ``staged_path`` left every job interrupted in that window (U223); which
+    reports say so is the caller's check. A report for another item, one
+    that does not parse to a mapping, or a link, is no report.
+    """
+    path = _staging_dir(cfg, job.job_id, item.ordinal) / _report_name(item.ordinal)
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    if not isinstance(loaded, dict) or loaded.get("item") != item.item_id:
+        return None
+    return loaded
 
 
 def produced(cfg: config.Config, job, item, report: dict[str, Any]) -> jobs.Produced:
@@ -134,11 +225,13 @@ __all__ = [
     "RENAME_INTENT_FILENAME",
     "STAGING_DIRNAME",
     "committed",
+    "discard_rename_evidence",
     "final_path",
     "intent_path",
     "produced",
     "record_rename_intent",
     "rename_intent",
     "staged_path",
+    "staged_report",
     "write",
 ]

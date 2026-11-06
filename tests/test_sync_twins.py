@@ -54,12 +54,19 @@ class Listed:
     """A provider track in the shape the playlist reader reads."""
 
     def __init__(
-        self, track_id: str, code: str, name: str | None = None, artist: str | None = None
+        self,
+        track_id: str,
+        code: str,
+        name: str | None = None,
+        artist: str | None = None,
+        added: str | None = None,
     ) -> None:
         self.id = track_id
         self.name = f"Title {track_id}" if name is None else name
         self.artist = {"name": f"Artist {track_id}" if artist is None else artist}
         self.isrc = code
+        #: When the account says the track was put on the playlist, if it says.
+        self.user_date_added = added
 
 
 class LivePlaylist:
@@ -88,6 +95,7 @@ class LivePlaylist:
                 self.world.codes.get(one, ""),
                 self.world.names.get(one),
                 self.world.artists.get(one),
+                self.world.dates.get(one),
             )
             for one in members[offset : offset + size]
         ]
@@ -111,6 +119,8 @@ class World:
         self.artists: dict[str, str] = {}
         #: What listing a playlist raises, by id, for one the provider cannot list.
         self.broken: dict[str, Exception] = {}
+        #: When the account dates each track's addition, by id, ISO text (U221).
+        self.dates: dict[str, str] = {}
         self.catalogue = FakeCatalogue(playlists={}, account=[])
         self.account.folder_names[YEAR_FOLDER] = "2026"
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.catalogue))
@@ -355,7 +365,10 @@ def test_a_backfilled_pair_merges_both_ways_and_queues_the_added_track_once(worl
     assert len(queued) == 1
     with jobs.open_store() as store:
         job = jobs.get(store, queued[0])
-    assert sorted((job.payload or {}).get("tracks") or {}) == ["t20", "t21"]
+    # U221. t20, which the twin was made without, is held for a choice and
+    # named; t21, put on the account after the twin was made, is queued.
+    assert sorted((job.payload or {}).get("tracks") or {}) == ["t21"]
+    assert envelope["data"]["totals"]["on_hold"] == 1
     code, again = sync_pair()
     assert code == int(ExitCode.OK), again
     assert again["data"]["totals"]["queued_jobs"] == []

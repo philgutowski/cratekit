@@ -44395,3 +44395,448 @@ reading and none produces it.
 **Closes when:** the limit also names `AdapterError`, with a test raising a
 provider failure inside a handler of `AdapterAuthFailed`, or a unit adds such a
 handler and pins it. Ledger only, a maintainer facing shape.
+
+---
+
+## R-1317. A twin paired before U221 reads a naive account date as UTC, so a track dated before its mark in a zone east of UTC can read as added after it and be queued
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.held_for_choice` reads a twin that recorded
+no hold by time: a track is held unless the account dates its addition after
+the pair's mark. The dates come through `intake_cli._added_dates`, whose
+`hearted_on` reads `user_date_added` with `placeholders.parse_hearted`, and
+that reads a date with no zone as UTC (`as_utc`). A wall clock date one hour
+before the mark in a zone at +05:00, served with no zone, reads as four hours
+after it.
+
+**Measured cost.** Driven on the twins world by round one of U221's review:
+with `on_hold` dropped from the pairs document and the track dated as a naive
++05:00 wall clock an hour before the mark, `sync pair` queued it. No live
+producer was driven: the provider's client parses `dateAdded` into an aware
+datetime, and `tidal_account._added_at` drops naive ones, so the reachability
+on the live account is unmeasured. A track queued this way is a download
+Phillip did not choose, among sitting 63's twins only.
+
+**Closes when:** the time rule reads a date the account gave with no zone as
+unknown, which holds, rather than as UTC. Ledger only while no producer of a
+naive date is found.
+
+---
+
+## R-1318. The release gate counts a held track the library has since gained, so it can name more than the next sync pair queues
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `crate sync release` (`sync/release_cli.plan`) counts every
+id a twin's recorded hold carries. Once the library gains one of them, by a
+hand import, `crate sync pair` links it and adds it to the twin, but the
+pairs document still holds its id, so the release gate names and counts it.
+Fix round one subtracted the pair's recorded links; round two found that read
+raw links the document never prunes, so a link whose row left the library hid
+a held track and could make a twin unreleasable, and fix round two put back
+the count of every recorded id.
+
+**Measured cost.** Driven on the twins world by round one of U221's review:
+three held, a row carrying one track's ISRC inserted, `sync pair` added it to
+the twin; the release gate said "3 track(s)" and the next `sync pair` queued
+two. A count on the release screen one or more above what the sync pair gate
+then shows and queues; nothing is downloaded, lost or blocked by it.
+
+**Closes when:** the release plan subtracts only a held id whose link names a
+live library row, read as `sync pair` reads it, or `sync pair` drops from the
+recorded hold an id it has linked. Ledger only: a count the next gate corrects.
+
+---
+
+## R-1319. A twin read by time holds a track the account lists with no date, even one added by hand after the twin was made
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.held_for_choice` reads a twin that recorded
+no hold (paired before U221, or made from a short listing) by time, and an
+undated track reads as held, the conservative way, since the time rule cannot
+tell it from one listed before the mark. So a track Phillip adds to the
+account playlist by hand after the twin was made, if the account serves it
+with no date, waits for `crate sync release` rather than being queued.
+
+**Measured cost.** Driven on the twins world by round two of U221's review: a
+short listing backfill, then t22 appended dated after the mark and t23
+appended undated; `sync pair` queued t22 and held t23. `docs/GUIDE.md` says
+so. Whether the live account ever serves an undated track is unmeasured. The
+cost is a wanted download that waits for one release, never one made unasked.
+
+**Closes when:** the account is shown always to date an addition, or the hold
+is recorded for a short listing too, so the time rule is never read for a
+twin made since U221. Ledger only.
+
+---
+
+## R-1320. A twin a landing makes holds nothing, so a track the landing missed is queued again at the next sync pair without a release, until Phillip says whether it should be held too
+
+**Found:** at the build of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/twins.pair_landed` marks a landing's twin with an
+empty hold, so `crate sync pair` queues a track that twin lacks as any pair's,
+through intake. Only `crate sync twins` (the backfill) records a hold. The
+card asked Phillip, under "Question for Phillip" on #549, whether a landing's
+twin should hold its misses too; no answer had come by the landing, and the
+build took the recommended option, leaving it as it was.
+
+**Measured cost.** None new: before U221 a landing's misses were queued again
+the same way. The sweep that made the twin was Phillip's choice to download
+that playlist, so a retry of its misses is a download he chose. Driven by
+`tests/test_sync_twins_hold.py`, the landing test records an empty hold.
+
+**Closes when:** Phillip answers. If he picks holding a landing's misses,
+`pair_landed` records them as the backfill does, a small card. Ledger only.
+
+---
+
+## R-1321. A file put back at an analyze run item's source name after an interrupt fails the item on the headed name the interrupted attempt took
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** An interrupt after the rename and before the commit
+leaves the headed file and the evidence for it. If a person then puts a file
+back at the source name (a second copy of the same track), the resume reads
+the present source first, drops the evidence, analyses the new file, and
+fails it `analysis-write-failed` because the headed name is taken by the
+first attempt's file. The same outcome on main before U223.
+
+**Measured cost.** Driven by the round two reviewer: the item failed, the
+printed resume cannot finish the job, the first attempt's headed file intact
+and analysed, the new file carrying the head in its title only. The person
+deletes the duplicate and queues the folder again. Producer is a person's
+action between the interrupt and the resume.
+
+**Closes when:** the resume compares the present source with the evidence's
+target (the same recording reading) and settles the item as resumed when
+the target is there. Ledger only.
+
+---
+
+## R-1322. A kill between analyze run's name claim and its rename leaves a zero byte stub the resume then fails on for good
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` in `src/cratekit/analysis/cli.py` claims the
+headed name with `naming.claim_target`, an exclusive create of a zero byte
+file, and then renames the source onto it. A process death between the two
+leaves the stub. The resume finds the source still a file, analyses it again,
+and fails the item `analysis-write-failed`, "that name is already taken",
+against the job's own stub, a permanent cause. Present on main before U223.
+
+**Measured cost.** Driven by the round one reviewer with a kill after
+`claim_target`: resume exit 1, the cause not retryable, the stub at 0 bytes
+under an audio name. The producer is a hard kill in a window of
+microseconds; a Ctrl-C is deferred to the engine's checkpoint and does not
+land there.
+
+**Closes when:** the claim is recorded with the intent so a resume can tell
+its own stub from another file, or the rename replaces a zero byte stub the
+intent names. Ledger only: a SIGKILL in a microsecond window.
+
+---
+
+## R-1323. A rename that lands and then reports an error makes analyze run delete the analysed track under its new name
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` in `src/cratekit/analysis/cli.py` removes the
+claimed target on any `OSError` from `path.rename(target)`, to drop its own
+zero byte claim. A filesystem that completes the rename and then reports an
+error (the retransmitted rename shape of a network mount) leaves the analysed
+file at the target, and that removal deletes it: the folder holds neither
+name, and the next attempt refuses `source-missing` over a deleted track.
+The removal predates U223; U223 only drops the intent and report beside it.
+The same shape sits in `write/naming_cli.py` and `intake/repair_cli.py`.
+
+**Measured cost.** Driven by the round two reviewer with `Path.rename`
+patched to rename and then raise EIO: the folder empty, the item
+`analysis-write-failed`. Reachability unmeasured: no candidate on a local
+disk produces a rename that lands and raises, and no network mount was
+driven.
+
+**Closes when:** the error path removes the target only when it is still the
+zero byte claim (its size is 0 and the source is still a file), in all three
+places. Ledger only until a producer is driven; then it meets the board bar
+as lost files.
+
+---
+
+## R-1324. An intent left by a kill before analyze run's rename names an unrelated file as the twin once the source is deleted
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` records the rename intent before it claims
+the name and renames. A process death between the intent and the rename
+leaves an intent whose rename never landed. U223 drops it at the start of the
+next attempt whose source is still a file, but if the source is deleted
+first and another file is put at the intent's exact headed name, the resume
+reads that file as this item's twin and reports it `resumed_after_rename`.
+Present on main before U223, narrowed by it.
+
+**Measured cost.** Driven by the round one reviewer: a kill after
+`record_rename_intent`, the source deleted and a different file placed at
+the target by the test in the person's place; resume exit 0 over the
+unrelated file. Told something false, but the producer is a hard kill plus
+two moves by a person into the exact name.
+
+**Closes when:** the intent carries something that identifies the source's
+content (its size and modification time, or a digest) and the twin is
+accepted only when the target matches it. Ledger only.
+
+---
+
+## R-1325. A job whose analyze run item already failed source-missing under the shipped code cannot be finished by any resume
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** U223's staged report fallback finishes a job the shipped
+code interrupted between the staged report and the commit, if nobody resumed
+it under the shipped code. A60's job on the machine was resumed then, its
+item failed `source-missing`, a permanent cause, and every `analyze.run`
+failure is permanent, so both `crate analyze run ... --job` and
+`crate job resume` refuse it as not retryable.
+
+**Measured cost.** Driven by the round one reviewer: the shipped attempt and
+resume, then the branch, printed command exit 30 "every failure is
+permanent", `crate job resume` exit 30 `job-not-retryable`. The person queues
+the folder again, which the refusal already names, and the renamed track is
+skipped by its head.
+
+**Closes when:** A60 (#423) retakes its interrupt on a fresh folder. Ledger
+only: the requeue is the remedy shown.
+
+---
+
+## R-1326. Every renamed analyze run item leaves its rename intent in the job store's analysis staging for good
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** Since U223 `staged_path` keeps `rename-intent.json` so it
+outlives the attempt that renamed the file, and the engine's commit moves
+only the staged report. Nothing removes the intent once the row is done, so
+`analysis-staging/<job>/<ordinal>/rename-intent.json` stays for every renamed
+track, as the empty staging directories did before.
+
+**Measured cost.** Driven by the round one reviewer: a one item run to done
+leaves the staging directory listing only the intent. A small file per
+renamed track; no reader is harmed, since a done row is never driven again.
+
+**Closes when:** a job store prune removes the staging of a finished job, or
+the commit hook drops the item's staging once its row is done. Ledger only.
+
+---
+
+## R-1327. analyze run writes its rename intent through a linked staging directory that staged_path then refuses
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `record_rename_intent` in
+`src/cratekit/analysis/artifacts.py` makes the item's staging directory and
+writes into it without checking for a link, so an ordinal directory that is a
+link has the intent written at its far end, after which `staged_path`
+refuses the link and the item fails `internal-error` for good. U223 stopped
+the discard and the readers following such a link; the writer predates it.
+
+**Measured cost.** Driven by the round two reviewer with a link planted in
+the private job store. No verb writes a link there: zero producers.
+
+**Closes when:** the writer refuses a linked staging directory the way
+`staged_path` does. Ledger only.
+
+---
+
+## R-1328. A decided organize run whose frozen mirror plan cannot be read still plans the mirror afresh before it can say stale
+
+**Found:** at the build of #552, U222, 2026-11-05.
+
+**The mechanism.** The card asked that the mirror's apply never pay a full
+plan before saying stale. With its frozen plan read, the apply asks the
+provider about no row and reads only the account listing, which it must, since
+a change on the account is what a stale answer is for. By the cause driven
+on the card, sitting 66's 677 requests were that listing of every mirrored
+playlist rather than matches; that was not measured live. With no
+frozen plan to read (a record of another version, every run gated before U222
+among them, one pruned after a week, or a plans directory that could not be
+written at the gate), the run plans afresh as R-1031 chose, matching rows the
+links and misses do not answer, and only then compares. U222's refusal now
+says which happened and what it cost.
+
+**Measured cost.** Not driven live. On the fakes the fresh plan asks only rows
+the ledger's links and misses do not answer, so after a first build the cost
+is close to a refresh.
+
+**Closes when:** a decided run with no readable frozen plan refuses before it
+plans, naming why, or the record shows the fresh plan is the right cost.
+Ledger only.
+
+---
+
+## R-1329. A library change to a mirrored playlist between the account gate and its apply is applied as decided, a choice built while Phillip's answer waits
+
+**Found:** at the build of #552, U222, 2026-11-05.
+
+**The mechanism.** Since R-1031 the run that answers the account gate rebuilds
+the mirror from the library as the gate read it, and since U222 from the
+snapshot as the gate read it too, so any library change made between the two
+acts, to a mirrored playlist or not, is left for the next organize. The card
+asked Phillip whether a change he makes in rekordbox to a mirrored playlist
+between the acts should instead refuse the answer as stale (the card's
+"Question for Phillip", answer 1 recommended). U222 built answer 1, the
+behaviour already shipped and proven at sitting 58, as the conservative call.
+
+**Measured cost.** None lost under answer 1: a track the library added or took
+off between the acts reaches the account at the next organize, one run late.
+Not driven live; driven on U204's disposable library for the edits the
+rekordbox area takes from the account.
+
+**Closes when:** Phillip answers on the decisions page. Answer 1 closes it as
+is; answer 2 or 3 is a follow up card that reads the live library on the apply
+and compares it with the frozen one. Ledger only.
+
+---
+
+## R-1330. An apply that rebuilds a mirror plan a decided run made afresh says it rebuilt the frozen plan, with no word that no gate showed it
+
+**Found:** at the review of #552, U222, round two, 2026-11-05.
+
+**The mechanism.** Since U222 a decided run that could not read its frozen
+mirror plan freezes its fresh plan marked as shown by no gate. A later decided
+resume rebuilds from it, and when nothing moved its facts say "rebuilt from the
+plan frozen on run X", the same words as a rebuild of the gate's own plan; only
+a stale refusal says what moved cannot be named.
+
+**Measured cost.** Driven at the unit level on U204's world (a version 5
+record, two decided resumes); not driven through the verb, where the producer
+is a second decide after a stale refusal or an apply that failed part way over
+a record gated before U222. The words are literally true and nothing false is
+written.
+
+**Closes when:** the rebuild's fact says the frozen plan was made afresh by a
+run that applies whenever the record says so. Ledger only.
+
+---
+
+## R-1331. A short account listing at the mirror's apply drops a track the rekordbox area settled between the acts from the snapshot, and the next gate plans to add it
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** U222 hands the snapshot the gate's plan read to the
+decided run's whole mirror plan, so `PlaylistPlan.agreed` is the gate's word
+there too, and `mirror.settled()` and `PlaylistPlan.unlisted()` take the
+tracks a short listing did not list from it. When the rekordbox area's
+`mirror-edits` step settled a track into the snapshot between the acts and
+the apply's listing comes back short without that track, the decided run's
+plan time `record_mirror_agreed` writes the snapshot without it, where main's
+live reading kept it. The next run reads the track as rekordbox's own and its
+gate shows "add 1" for a track the playlist already holds unlisted.
+
+**Measured cost.** Unmeasured, and contested. Round one of U222's review
+reported it driven on U204's world with the fake hiding the track from the
+listing (the snapshot after the decided run `['r1']` against `['r1', 'r2']`
+with the live reading, and the next gate planning "add 1"). Round two drove
+four candidates of that input (the listing short with its count whole, both
+short, and the track hidden from the catalogue and from the account fake) and
+none produced it: the settle record makes the decided run hold the track, so
+`agreed_after` keeps its word. Four candidates were driven and none produces
+it; the exact input of round one was not recovered. If it is reachable, the
+cost is one wasted request and a false "add 1" on one gate, since the Tidal
+adapter reads membership before adding, after which the snapshot repairs
+itself.
+
+**Closes when:** the decided run takes the gate's snapshot for the edit rule
+alone and the live one for `unlisted()` and the plan time record, or a test
+shows the short case keeps the settled word. Ledger only.
+
+---
+
+## R-1332. A stale mirror answer can name a playlist whose plan did not move, since each line's digest covers the names the gate shows
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** `mirror_frozen._lines` digests each playlist's whole gate
+item, the removed tracks' names and the kept and unmatched counts among it,
+not only what the step's digest covers, so a playlist whose writes are
+unchanged but whose shown names changed is named beside the one that moved.
+
+**Measured cost.** Driven on the plain mirror world: a removal planned on
+Techno Med, then a track added to Techno Low on the account and the removed
+track retitled; the refusal named both playlists. The decision is still
+refused correctly; only the naming overreaches. The producer, a retitle on the
+account of a track whose removal is planned, was not driven on the provider.
+
+**Closes when:** each line is digested over the fields its playlist's plan
+identity carries. Ledger only.
+
+---
+
+## R-1333. A stale account answer over a changed --only selection says every step plans as the gate showed it and names no mover
+
+**Found:** at the review of #552, U222, round two, 2026-11-05.
+
+**The mechanism.** The account area's digest covers its `--only` selection as
+well as its steps (`Area.identity`), but `mirror_frozen.moved` compares the
+steps alone. A resume whose selection differs from the gate's, with the same
+steps, is refused stale, and U222's lines say "every step plans as the gate
+showed it" beside "a plan that has since changed", without naming the
+selection that moved.
+
+**Measured cost.** Driven through the dispatcher at round two: a gate on the
+mirror kind alone, `run decide`, a resume naming the mirror and `marks`; exit
+11 with that line, nothing asked and nothing written. The refusal is correct
+and the replan works; the cost is a naming gap.
+
+**Closes when:** the frozen plan carries the gate's selection and the stale
+lines name a selection that differs. Ledger only.
+
+---
+
+## R-1334. After a stale refusal, run decide records an answer over the moved plan's digest, which no screen showed
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** `gates.Gates.require` records the digest it is offered in
+`offers` before it compares a recorded answer, and the dispatcher saves the
+run on a `decision-stale` refusal. So after a stale refusal, `crate run decide
+RUN GATE OPTION` is accepted over the new digest, and the next resume applies
+that plan, although the stale refusal showed no items and the person never saw
+it. Pre-existing on `main` for every gate; U222's version bump makes every
+open organize run gated on v0.8.0 a producer, since its frozen mirror plan is
+no longer read and the resume plans afresh.
+
+**Measured cost.** Driven through `crate organize --only mirror` at the review
+of U222: a playlist made under a mirrored folder between the acts, a stale
+refusal, `run decide` again, and the resume created the playlist on the
+account. A person did type the second decide, against a refusal that told
+them to replan (`REPLAN_THEN_DECIDE`) and showed nothing. Meets the board bar
+(b) and (d): a write is applied that no gate screen declared, past a gate
+whose stale guard the second decide answers. Driven again at round two.
+
+**Closes when:** a decision recorded after a stale refusal is refused until
+the moved plan has been shown (a resume that leaves the gate open over it), or
+the stale refusal carries the moved plan's items as an open gate does, and a
+test drives the two acts with a second decide.
+
+---
+
+## R-1335. Freezing the snapshot the gate's plan read rather than the one it then recorded kills no test
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** `account_mirror._record` freezes `reading.recorded`, the
+ledger as the gate's plan read it, never the ledger after that plan's own
+`record_mirror_agreed`. Freezing the recorded one instead kills zero tests:
+in the worlds the suite builds, that record leaves a held track's word as it
+was, so the two readings are equal and the test written for the claim cannot
+tell them apart.
+
+**Measured cost.** None observed. By `agreed_after`, the two readings decide
+the same plan in every case the reviewer and the author constructed; the cost
+is an untested claim, not a write.
+
+**Closes when:** a world is found where the gate's own record changes a word
+the edit rule reads, and a test pins the frozen one, or the claim is shown to
+hold by construction and the docstring says so. Ledger only.
