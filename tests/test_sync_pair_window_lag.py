@@ -82,6 +82,30 @@ def test_a_window_that_serves_an_old_order_plans_no_rekordbox_order(world, monke
     assert held is not None and held.account == ("t1", "t2", "t3")
 
 
+def test_a_window_that_lags_an_order_past_the_unpaged_reads_first_page_plans_no_order(
+    world, monkeypatch, cfg
+):
+    """R-1360: the unpaged read capped at a first page the window begins with, the window lagging past it.
+
+    On main the first page agreed with the window and the plan wrote
+    rekordbox the order 1, 2, 5, 3, 4, which nobody holds. The unpaged read
+    is walked on past its first page and read whole, so nothing is planned.
+    """
+    gig = world.folder("GIG READY")
+    long = world.playlist("Long", "1", "2", "3", "4", "5", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    account_id = world.titled("GIG READY Long")
+    monkeypatch.setattr(LivePlaylist, "page_size", 2)
+    _lagging_window(world, monkeypatch, {account_id: ["t1", "t2", "t5", "t3", "t4"]}, whole=True)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(long) == ["1", "2", "3", "4", "5"], "rekordbox took an order nobody holds"
+    assert world.account.playlists[account_id] == ["t1", "t2", "t3", "t4", "t5"]
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == ("t1", "t2", "t3", "t4", "t5")
+
+
 def test_a_window_that_lags_beside_a_partial_unpaged_read_holds_the_pair_and_says_why(
     world, monkeypatch, cfg
 ):

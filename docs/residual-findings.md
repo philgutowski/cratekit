@@ -45542,3 +45542,187 @@ producer is a client upgrade that changes the signature: 0 live candidates.
 **Closes when:** a signature fault from the unpaged read carries the
 adapter-broken remedy the paged walk's own `ListingNotPaginated` should, the
 same rule for both. Ledger only.
+
+---
+
+## R-1365. A track hearted on the account and put in an older month, landed into another month, reads that landing's month as a change made in rekordbox
+
+**Found:** at the review of #579, U227, 2026-11-06.
+
+**The mechanism.** U227 reads a landing's own filing as the landing's only in
+the genre rule (`mirror_edits._decide_genre`, with `filed`). The Favorites
+rule's later change path (`_decide_favorites` through `_later`) has the same
+shape. Suppose a track the library lacks is put in month `2026-10` on the
+account and is also hearted, and its landing then places it in All Favorites
+and `2026-11` as a heart of the pass. The next refresh reads `2026-11` as
+rekordbox's later change, keeps it, and the mirror takes the track off
+`2026-10` on the account.
+
+**Measured cost.** The rule was driven over `decide` by Fable's round one: the
+result is REKORDBOX, "placed in Favorites 2026-11 in rekordbox at ..., so
+rekordbox's place stands". The producer, a hearts landing whose month differs
+from the one the person chose, was not driven, so reachability is unmeasured.
+It is outside the card's genre scope.
+
+**Closes when:** a landing's placed hearts (the landing record's
+`placement.PLACED_KEY`) are handed to the Favorites rule as `filed` is to the
+genre rule, and a test drives the month case. Ledger only.
+
+---
+
+## R-1366. A mirror download driven to its end outside a pass is taken by no pass, and its track is never listed or downloaded
+
+**Found:** at the plan of #579, U227, 2026-11-06.
+
+**The mechanism.** A sync pass takes a download `crate organize` queued for an
+account edit only while the job is QUEUED and carries no run
+(`cli.sync_land._take_mirror_downloads`). Until U227 the left open row told
+the person to drive such a job by hand with `crate intake playlist ... --job`.
+A job driven that way ends SUCCEEDED with no run. `intake missing --run`
+lists only the jobs of a run, so no pass lists its missing track. The
+downloads step keeps naming the track as awaiting its landing.
+
+**Measured cost.** Not driven. Since U227 the left open row names the next
+new pass as the way on, so no new job reaches the state through the product's
+own advice. A job driven by hand before U227 may still be in it. Sitting 85's
+job `2026-11-06T15:02:36Z-40b0` was left queued, so it is not in that state.
+
+**Closes when:** a pass also takes a succeeded mirror job with no run whose
+tracks the library still lacks, listing them afresh, or the downloads step
+names such a job with the command that frees it (`crate job retry`). Ledger
+only.
+
+---
+
+## R-1367. An adoption ledger the account mirror cannot read reads as no landing, and the landed track's account edit is undone with no word of the ledger
+
+**Found:** at the review of #579, U227, 2026-11-06.
+
+**The mechanism.** `organize.mirror_downloads.filed` answers `{}` when the
+job queue or the adoption applied ledger cannot be read, or when an entry
+names a sub the taxonomy no longer declares. The edit rule then reads a
+landed track's filing by its tags as a change made in rekordbox, as before
+U227. The plan says "so rekordbox's place stands" and the mirror takes the
+track off the playlist the person put it in on the account. Neither step names
+the ledger it could not read.
+
+**Measured cost.** Driven on U204's world by Fable's round one (P1, P3).
+After the queue, the landing and its filing, the ledger's `applied` field was
+made a string, or the entry's sub was made one the taxonomy lacks. The plan
+then kept rekordbox's place, and the apply emptied the account's Tech House
+Med. The producer was not driven: the ledger is written atomically under a
+lock by `adopt.apply.write`, and one candidate, the tool's own writer, was
+driven and wrote a readable ledger. So whether a real library reaches an
+unreadable ledger is unmeasured.
+
+**Closes when:** `filed` returns why it read nothing, and the edit rule holds
+each queued track whose landing it could not read, with that reason, rather
+than reading it as rekordbox's. Ledger only until a producer is driven.
+
+---
+
+## R-1368. A long playlist's walk past the unpaged read's first page rests on two unmeasured facts about the provider's version tag
+
+**Found:** at round one of R-1360's review (#585), 2026-11-06.
+
+**The mechanism.** `acquire.listing.playlist_tracks_unpaged` walks past a
+first page short of the declared count, one track back per request, and
+takes a later page only while it starts on the last track read, is no
+longer than the first page and carries the first page's version tag
+(`_etag`, which the installed client overwrites on every response). A
+change wholly past the first page leaves the start and length checks
+passing, so the tag is the walk's one defence against a stale later page.
+Two facts were not measured live. If a stale later page carries the
+CURRENT tag, the walk reads the stale tail as whole and the window is
+agreed with, as main read every long playlist. If the tag is one per
+response rather than the playlist's version, every walk breaks, and since a
+first part beside a whole window is now a lag, every paired playlist past
+the cap is held on every run (`sync-pair-left-out`, exit 41 when named) and
+never syncs, while the guide's "sync again a few minutes later" cannot help.
+An empty unpaged read beside a whole window is a lag for the same reason.
+
+**Measured cost.** Driven at round one on three producers each (the U220
+stand in, the verb on the discovery world, the installed client with its
+HTTP stubbed): a stale page with the current tag took a removal off by its
+stale position, t129 for t130, and reported `sync-pair-nothing` over a
+stale read; a tag per response held a 150 track playlist nobody changed,
+`window-lags` after 4 readings and 7 seconds, and left a five track pair out
+of the run. 0 live candidates driven. Writes succeed with the tag the
+window read and the unpaged read each leave whatever limit they asked with,
+which a tag per response would not allow, but no two pages of one playlist
+were compared.
+
+**Closes when:** the attended sitting filed with R-1360's landing reads,
+on the longest paired playlist, the tag of `p.tracks()` beside that of
+`p.tracks(offset=99)`, before and after a move made past the first hundred
+in the Tidal app, and whether that later page is current. Ledger only:
+it closes at an attended sitting.
+
+---
+
+## R-1369. The sync pair forecast counts a long playlist's unpaged walk as if the provider caps it at a hundred
+
+**Found:** at round one of R-1360's review (#585), 2026-11-06.
+
+**The mechanism.** `sync.pair_calls.unpaged_calls` counts the unpaged
+read's walk as one request and one more for every 99 tracks past the first
+hundred, the listing seam's recorded page size. The cap of the client's no
+window read was not measured live, and the forecast test holds it only to a
+stand in capped at a hundred.
+
+**Measured cost.** None driven: a provider serving more a request spends
+fewer calls than forecast, so a run's expected calls read high for long
+playlists; one serving fewer, which nothing suggests, spends more than
+forecast and the ceiling's margin covers it.
+
+**Closes when:** the cap is measured at the attended sitting R-1360's
+landing filed, and the forecast follows it. Ledger only.
+
+---
+
+## R-1370. A walk that broke on a page carrying an older tag leaves the client holding that tag
+
+**Found:** at the build of R-1360 (#585), 2026-11-06.
+
+**The mechanism.** The client overwrites its `_etag` on every response, so
+after a walk that broke on a later page carrying an older tag the client
+holds that older tag, and the adapter's rule that the unpaged read is taken
+last, so the next write carries the current tag, no longer holds. Beside a
+whole window such a reading lags and nothing is written from it. Beside a
+window short of the declared count (R-1362, a track the account cannot
+play) it agrees, and a write sent from it carries the older tag.
+
+**Measured cost.** Not driven. A write sent with an older tag is answered
+412, which the adapter already reads again and retries (U220), so the cost
+is one refused request and a pause, and a removal from such a playlist is
+refused `positions-unknown` before anything is sent.
+
+**Closes when:** R-1362 is built, or the walk reads its first page again
+after breaking. Ledger only.
+
+---
+
+## R-1371. The unpaged walk's request ceiling kills no test, ends a walk silently, and is credited with what the cap of one guard holds
+
+**Found:** at round two of R-1360's review (#585), 2026-11-06.
+
+**The mechanism.** The fix round bounded `playlist_tracks_unpaged`'s walk
+at one request per declared track (`for _ask in range(declared)`), so that
+removing the cap of one guard or the short page stop fails a test rather
+than hanging the suite. With both of those guards in place the bound is
+unreachable: each request either ends the walk or adds a track. Reverted to
+an unbounded loop, halved, or cut to two requests, it leaves all 203 tests
+of the touched files green. Were it reached, it would end the walk silently
+with a first part, where the module's other walks spend their budget loudly
+with `ListingTruncated`. The docstring says the walk asks at most one
+request a declared track whatever a page holds; that ceiling rests on the
+first page holding two tracks, since with that guard loosened a cap of one
+asks one request more than the count.
+
+**Measured cost.** None to a DJ: 20520 driven shapes at round two (nine
+page behaviours, six caps, nineteen sizes, twenty declared values) never
+reach the bound, and a first part ending a walk is read as a lag beside a
+whole window, never as the playlist. Maintainer facing.
+
+**Closes when:** the bound raises as the other walks' budgets do, with a
+test that reaches it, or the docstring credits the guard. Ledger only.

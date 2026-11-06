@@ -133,6 +133,15 @@ def test_a_listings_pages_are_what_the_listing_seam_asks(client, count, requests
     assert client.counter.requests == requests == pair_calls.pages(count)
 
 
+@pytest.mark.parametrize(
+    ("count", "requests"), [(0, 1), (1, 1), (100, 1), (101, 2), (199, 2), (200, 3), (250, 3)]
+)
+def test_an_unpaged_reads_requests_are_what_its_walk_asks(client, count, requests):
+    """R-1360: the unpaged read, capped at a page, walks on one track back per request."""
+    listing.playlist_tracks_unpaged(Playlist(client.counter, "acc", ids(1, count)))
+    assert client.counter.requests == requests == pair_calls.unpaged_calls(count)
+
+
 def test_the_estimators_chunks_are_the_adapters():
     assert pair_calls.ADD_CHUNK == tidal_account.ADD_CHUNK
     assert pair_calls.REMOVE_CHUNK == tidal_account.REMOVE_CHUNK

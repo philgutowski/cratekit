@@ -1,0 +1,239 @@
+name = "u227"
+pass_kind = "light"
+
+[[rows]]
+id = "R1_landed_branch"
+description = "decide genre: never read a filing as the landing's, so rekordbox's later filing beats the account edit (sitting 85)"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            if there and _landed_there(track, there, known, filed):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "R2_known_guard"
+description = "_landed_there: a track a snapshot held is still read as landed, so a hand move back into the landing's band loses"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    if not places or track in known:'''
+new = '''    if not places:'''
+
+[[rows]]
+id = "R3_all_to_any"
+description = "_landed_there: one band the landing filed is enough, so a second band a person added loses"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    return bool(there) and all((place.folder, place.playlist) in places for place in there)'''
+new = '''    return bool(there) and any((place.folder, place.playlist) in places for place in there)'''
+
+[[rows]]
+id = "R4_folder_compare"
+description = "_landed_there: compare the playlist alone, so another genre's band of the same name reads as the landing's"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    return bool(there) and all((place.folder, place.playlist) in places for place in there)'''
+new = '''    return bool(there) and all(any(place.playlist == one[1] for one in places) for place in there)'''
+
+[[rows]]
+id = "R5_landed_flag"
+description = "decide genre: carry the landed edit without its landed flag on the plan"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''                extra = {"landed": True}'''
+new = '''                extra = {}'''
+
+[[rows]]
+id = "R6_landed_item"
+description = "Decision.item: drop the landed flag from what the gate shows"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            shown["landed"] = True'''
+new = '''            pass'''
+
+[[rows]]
+id = "R7_filed_ignored"
+description = "decide: hand the genre rule no landing places"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            decisions.extend(_decide_genre(mine, owner, frozenset(known), by_landing))'''
+new = '''            decisions.extend(_decide_genre(mine, owner, frozenset(known), {}))'''
+
+[[rows]]
+id = "R8_reader_not_passed"
+description = "_read_edits: decide without the landing places"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        read, {remote: sorted(rows) for remote, rows in owner.items()}, landings'''
+new = '''        read, {remote: sorted(rows) for remote, rows in owner.items()}'''
+
+[[rows]]
+id = "R9_before_queue"
+description = "filed: an entry applied before the track was queued is read as the landing's"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            and at >= after'''
+new = '''            and True'''
+
+[[rows]]
+id = "R10_one_approval"
+description = "filed: every entry since the queue is the landing's, whatever its approval (round one's F1)"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            if entry.digest != first.digest:
+                continue'''
+new = '''            if False:
+                continue'''
+
+[[rows]]
+id = "R11_latest_not_first"
+description = "filed: the latest entry since the queue is the landing's approval, not the earliest"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        first = min(since_queued, key=lambda pair: (pair[0], pair[1].entry_id))[1]'''
+new = '''        first = max(since_queued, key=lambda pair: (pair[0], pair[1].entry_id))[1]'''
+
+[[rows]]
+id = "R12_tree_filter"
+description = "filed: read ledger entries of every tree, not the routing tree's alone"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        if entry.tree == tree and entry.digest not in by_person:'''
+new = '''        if entry.digest not in by_person:'''
+
+[[rows]]
+id = "R13_two_rows"
+description = "filed: a track two rows own is read by one of them"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        if len(rows) != 1:
+            continue
+        (content_id,) = rows'''
+new = '''        if not rows:
+            continue
+        content_id = sorted(rows)[0]'''
+
+[[rows]]
+id = "R14_earliest_job"
+description = "_queued_at: the latest mirror job holding a track dates its queue, not the earliest"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            if was is None or made < was:'''
+new = '''            if was is None or made > was:'''
+
+[[rows]]
+id = "R15_way_on_wording"
+description = "_way_on: name a mirror download as queued by hand, to be driven outside a pass (round one's S12)"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
+old = '''    elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:'''
+new = '''    elif False:'''
+
+[[rows]]
+id = "R16_join_state"
+description = "join_run: write a job in any state, so a running or finished job is moved into a pass"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_sync_land_mirror_downloads.py", "tests/test_jobs.py", "tests/test_export_set_rename.py"]
+old = '''        if current.state is not JobState.QUEUED or held:'''
+new = '''        if held:'''
+
+[[rows]]
+id = "R17_join_held"
+description = "join_run: write a job that already carries a run, moving it between passes"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_sync_land_mirror_downloads.py", "tests/test_jobs.py", "tests/test_export_set_rename.py"]
+old = '''        if current.state is not JobState.QUEUED or held:'''
+new = '''        if current.state is not JobState.QUEUED:'''
+
+[[rows]]
+id = "R18_join_blank"
+description = "join_run: accept a blank run"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_sync_land_mirror_downloads.py", "tests/test_jobs.py", "tests/test_export_set_rename.py"]
+old = '''    if not wanted:
+        raise refuse('''
+new = '''    if False:
+        raise refuse('''
+
+[[rows]]
+id = "R19_take_library"
+description = "_take_mirror_downloads: take another library's mirror job"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
+old = '''                or job.library_id != cfg.library.volume_id
+'''
+new = ''''''
+
+[[rows]]
+id = "R20_take_source"
+description = "_mirror_download: any intake.playlist job is a mirror download, a hand queued one included"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
+old = '''        and (job.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
+'''
+new = ''''''
+
+[[rows]]
+id = "R21_take_continued"
+description = "sync_land: take mirror jobs into a continued earlier pass"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
+old = '''            if fresh and run_id in (None, fresh) and _take_mirror_downloads(report, cfg, fresh):'''
+new = '''            if fresh and _take_mirror_downloads(report, cfg, run_id or fresh):'''
+
+[[rows]]
+id = "R22_take_not_driven"
+description = "sync_land: give the jobs the run but keep driving the pass sync all named nothing for"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
+old = '''                run_id = fresh
+                report.summary["pass_run"] = fresh'''
+new = '''                pass'''
+
+[[rows]]
+id = "R23_person_digest"
+description = "filed: read an approval a person gave adopt apply as the landing's (round two's F2)"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        if entry.tree == tree and entry.digest not in by_person:'''
+new = '''        if entry.tree == tree:'''
+
+[[rows]]
+id = "R24_adopted_library"
+description = "_adopted: read another library's adopt apply approvals as this one's"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            if job.handler_key == rekordbox.ADOPT_HANDLER
+            and job.library_id == cfg.library.volume_id'''
+new = '''            if job.handler_key == rekordbox.ADOPT_HANDLER'''
+
+[[rows]]
+id = "R25_way_on_state"
+description = "_way_on: name a blocked mirror download as the next pass's, which takes queued jobs only (round two's R3)"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
+old = '''    elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:'''
+new = '''    elif _mirror_download(job):'''

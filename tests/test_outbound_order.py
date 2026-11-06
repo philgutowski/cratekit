@@ -60,7 +60,9 @@ class Provider:
     first read and held for every read of that object. ``window_only`` makes a
     lag hold for the window read alone, the unpaged read serving the playlist
     as it is, as Sitting 84 measured; ``unpaged_size`` is how many tracks the
-    unpaged read serves, a first page, None for all of them; ``declared``
+    unpaged read serves, a first page, None for all of them; ``walk_lags``
+    makes the unpaged read's later pages, asked with an offset, lag as the
+    window does (R-1360), so only its first page is current; ``declared``
     overrides the count every opening declares.
     """
 
@@ -101,6 +103,7 @@ class Provider:
         self.drift: list[str] | None = None
         self.window_only = False
         self.unpaged_size: int | None = None
+        self.walk_lags = False
         self.declared: int | None = None
 
     def wrote(self, before: list[str]) -> None:
@@ -152,7 +155,8 @@ class Movable:
         unpaged = limit is None
         size = limit if not unpaged else (provider.unpaged_size or 100)
         behind, stale = self._reading()
-        if behind and not (unpaged and provider.window_only):
+        current = unpaged and provider.window_only and not (offset and provider.walk_lags)
+        if behind and not current:
             seen, self._etag = provider.previous
         elif stale:
             seen, self._etag = provider.members, provider.version - 1
