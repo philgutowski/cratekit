@@ -1,0 +1,194 @@
+name = "r1313"
+pass_kind = "light"
+
+# The tests that read the four readers and the walk. Each row's subset.
+# A zero on a subset is promoted to the full suite by the driver.
+
+[[rows]]
+id = "N1_any_404_not_nearest"
+description = "nearest_status: return the first 404 on any link rather than the first status, so a server error met while handling a not found is read as the not found and kept"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py"]
+old = '''        status = answered_status(link)
+        if status is not None:
+            return status
+    return None'''
+new = '''        status = answered_status(link)
+        if status == NOT_FOUND_STATUS:
+            return status
+    return None'''
+
+[[rows]]
+id = "N2_failure_alone"
+description = "nearest_status: read the failure alone, as before R-1313, so a 404 whose body is a page is an outage again at all four readers"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py"]
+old = '''    for link, _declared in failure_links(exc):
+        status = answered_status(link)'''
+new = '''    for link, _declared in [(exc, True)]:
+        status = answered_status(link)'''
+
+[[rows]]
+id = "N3_declared_links_only"
+description = "nearest_status: read a status on declared links only, so the 404 three context links under a decode error is never reached"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py"]
+old = '''        status = answered_status(link)
+        if status is not None:
+            return status'''
+new = '''        status = answered_status(link)
+        if status is not None and _declared:
+            return status'''
+
+[[rows]]
+id = "N4_not_found_status_moved"
+description = "NOT_FOUND_STATUS: 410 rather than 404, so no 404 is a not found through the nearest status"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py"]
+old = '''NOT_FOUND_STATUS = 404'''
+new = '''NOT_FOUND_STATUS = 410'''
+
+[[rows]]
+id = "N5_any_status_is_not_found"
+description = "answered_not_found: any status nearest the failure reads as a not found, so an outage is remembered as gone"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py"]
+old = '''    return nearest_status(exc) == NOT_FOUND_STATUS'''
+new = '''    return nearest_status(exc) is not None'''
+
+[[rows]]
+id = "A1_classifier_failure_alone"
+description = "classify_unavailable: read the 404 off the failure alone, as before R-1313, so a track answered with a 404 page is retried for ever"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_vendor_import.py"]
+old = '''    if answered_not_found(exc):
+        return TrackOutcome.UNAVAILABLE_PERMANENT'''
+new = '''    if getattr(getattr(exc, "response", None), "status_code", None) == 404:
+        return TrackOutcome.UNAVAILABLE_PERMANENT'''
+
+[[rows]]
+id = "A2_status_before_no_file_landed"
+description = "classify_unavailable: ask the nearest status before NoFileLanded, so a download whose swallowed cause was a 404 page quarantines a live track"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_vendor_import.py"]
+old = '''    if isinstance(exc, NoFileLanded):
+        return TrackOutcome.UNAVAILABLE_TRANSIENT
+    text = str(exc).lower()'''
+new = '''    if answered_not_found(exc):
+        return TrackOutcome.UNAVAILABLE_PERMANENT
+    if isinstance(exc, NoFileLanded):
+        return TrackOutcome.UNAVAILABLE_TRANSIENT
+    text = str(exc).lower()'''
+
+[[rows]]
+id = "A3_classifier_name_on_any_link"
+description = "classify_unavailable: read a not found class name on any link the walk reaches, so a name met only as context is read as the provider's answer"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_vendor_import.py"]
+old = '''    if "notfound" in type(exc).__name__.lower():
+        return TrackOutcome.UNAVAILABLE_PERMANENT
+    if answered_not_found(exc):'''
+new = '''    from cratekit.core.cause import failure_links  # noqa: PLC0415
+
+    if any("notfound" in type(one).__name__.lower() for one, _ in failure_links(exc)):
+        return TrackOutcome.UNAVAILABLE_PERMANENT
+    if answered_not_found(exc):'''
+
+[[rows]]
+id = "I1_cache_failure_alone"
+description = "said_not_found: read the 404 off the failure alone, as before R-1313, so an ISRC answered with a 404 page is never kept"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py"]
+old = '''    return answered_not_found(exc)'''
+new = '''    return getattr(getattr(exc, "response", None), "status_code", None) == 404'''
+
+[[rows]]
+id = "I2_cache_keeps_any_status"
+description = "said_not_found: keep any failure carrying a status, so an outage is remembered for a week as filed under nothing"
+file = "src/cratekit/acquire/isrc_cache.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py", "tests/test_outbound_tidal_account.py"]
+old = '''    return answered_not_found(exc)'''
+new = '''    return answered_not_found(exc) or getattr(getattr(exc, "response", None), "status_code", None) is not None'''
+
+[[rows]]
+id = "C1_catalogue_failure_alone"
+description = "_gone: read the 404 off the failure alone, as before R-1313, so a release answered with a 404 page climbs the ladder and fails as an outage"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    if "notfound" in type(exc).__name__.lower():
+        return True
+    return answered_not_found(exc)'''
+new = '''    if "notfound" in type(exc).__name__.lower():
+        return True
+    return getattr(getattr(exc, "response", None), "status_code", None) == 404'''
+
+[[rows]]
+id = "C2_catalogue_name_on_any_link"
+description = "_gone: read a not found class name on any link, so a parse failure met while handling a not found reads the release as gone"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    if "notfound" in type(exc).__name__.lower():
+        return True
+    return answered_not_found(exc)'''
+new = '''    if any("notfound" in type(one).__name__.lower() for one, _ in provider_session.failure_links(exc)):
+        return True
+    return answered_not_found(exc)'''
+
+[[rows]]
+id = "T1_account_skips_the_classifier"
+description = "tidal_account._not_found: read the class names alone and stop asking classify_unavailable, so a 404 the account reads by status is retried"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_isrc_cache.py", "tests/test_outbound_tidal_account.py"]
+old = '''    return classify_unavailable(exc) is TrackOutcome.UNAVAILABLE_PERMANENT
+'''
+new = '''    return False
+'''
+
+[[rows]]
+id = "W1_walk_no_context"
+description = "failure_links, moved to core.cause: walk the declared causes alone, so a 404 or a 401 whose body is a page is an outage again"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_provider_rejection_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py"]
+old = '''    pending = [one.__context__ for one in reversed(declared)]'''
+new = '''    pending: list[BaseException | None] = []'''
+
+[[rows]]
+id = "W2_walk_no_refusal_boundary"
+description = "failure_links, moved to core.cause: follow a context link into a product refusal, so a failure met while handling a refusal raised from a 404 is read as a not found"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_provider_rejection_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        if one is None or id(one) in walked or isinstance(one, CratekitError):'''
+new = '''        if one is None or id(one) in walked:'''
+
+[[rows]]
+id = "W3_walk_context_cycle"
+description = "failure_links, moved to core.cause: drop the walked check off the declared chain, so a context cycle is walked without end"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_provider_rejection_bodies.py"]
+old = '''        if one is None or id(one) in walked or isinstance(one, CratekitError):'''
+new = '''        if one is None or isinstance(one, CratekitError):'''
+
+[[rows]]
+id = "W4_walk_context_before_cause"
+description = "failure_links, moved to core.cause: off the declared chain take a link's context before its own cause, as before round one's fix, so a wrapper raised from a 404 while handling a 503 is read as the outage"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_provider_not_found_bodies.py", "tests/test_provider_rejection_bodies.py", "tests/test_isrc_cache.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        pending.extend((one.__context__, one.__cause__))'''
+new = '''        pending.extend((one.__cause__, one.__context__))'''
