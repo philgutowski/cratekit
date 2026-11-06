@@ -34,7 +34,7 @@ crate login NAME --from-file PATH
 
 | NAME | What |
 |---|---|
-| `provider-session` | The streaming account session, used to list and download. Obtaining it is two commands at a browser: see [`adapters.md`](adapters.md). Delete the plaintext token file afterwards. |
+| `provider-session` | The streaming account session, used to list and download. Obtaining it is two commands at a browser: see [`adapters.md`](adapters.md). Delete the plaintext token file afterwards, and after a download run, which can write it back. |
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
@@ -772,7 +772,8 @@ without one.
 - A database writer's gate names other runs of the same verb open or answered
   in the last twelve hours (`gate-sibling-run`). It refuses nothing.
 - Every gate offers `abort`, a recorded answer that ends the run with no
-  writes.
+  writes, except `sync.land.without-vocals` (`go` or `stop`) and the two
+  `sync pair` gates (`apply` or `skip`).
 
 | Gate | Go | Verb |
 |---|---|---|

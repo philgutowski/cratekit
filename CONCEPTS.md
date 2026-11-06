@@ -408,6 +408,10 @@ that has no dated playlist yet, skipping hearts the person took back, and
 colours uncoloured All Favorites members. `crate favorites split` turned the old
 quarter playlists into months.
 
+### Month playlist
+See **Landed heart**: the playlist under the Favorites folder for the UTC month
+a track was hearted (`2026-10`, or `Undated`).
+
 ### Pink favourite
 A track coloured Pink in rekordbox, the standing favourite signal. Outbound,
 `crate sync favorites` sends pink rows and All Favorites members as hearts.

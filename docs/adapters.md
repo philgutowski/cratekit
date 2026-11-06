@@ -131,6 +131,9 @@ login command does.
    rm ~/.config/cratekit-downloader/token.json
    ```
 
+   Nothing enforces the erase, and a later download has been measured writing
+   this file back (R-212). Check for it after a run.
+
 The patched login reuses a stored token only when it is already PKCE, so a
 device-flow token in that file does not stop step 1. A state directory left
 under the upstream name, `tidal-dl-ng`, is moved into place the first time the
