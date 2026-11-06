@@ -45726,3 +45726,57 @@ whole window, never as the playlist. Maintainer facing.
 
 **Closes when:** the bound raises as the other walks' budgets do, with a
 test that reaches it, or the docstring credits the guard. Ledger only.
+
+---
+
+## R-1372. A write stopped part way through its order is forgotten once its run's steps are older than a held plan is kept, and the next sync pair writes its scramble into rekordbox
+
+**Found:** at the review of #577, U225, round two, 2026-11-06.
+
+**The mechanism.** `core/held_plan.recorded_steps` reads a run's steps only while they are younger than `KEEP`, thirty days, the age a held plan is kept for its continue. U225's fresh plan finds a write stopped part way through a pair's order only through those steps. A pair left scrambled by such a write and not synced for thirty days is planned as before U225: the stopped write's own moves read as the person's reorder on the account, the account leads, and rekordbox is put in the scramble. Nothing says a record aged out.
+
+**Measured cost.** Driven by the round two reviewer on the fake account: the fixture's stop, its steps file's time set 31 days back, then a fresh `crate sync pair`. The gate said "order follows the account's", the plan carried a rekordbox `order` item, and rekordbox became 2, 7, 1, 3, 4, 5, 6, the brief's exact cost, with only `sync-pair-written` said. The producer, thirty days without a sync after a stop, was simulated by the file's time and not produced by the system.
+
+**Closes when:** a stopped write's ordering record is kept until the pair's snapshot passes it, whatever its age, or a plan that finds a pair's ordering record aged out says so on the gate and leaves the pair's order alone.
+
+---
+
+## R-1373. A sync pair that finished a stopped order without moving the snapshot leaves the next gate saying the pair finishes that stopped run again
+
+**Found:** at the review of #577, U225, round two, 2026-11-06.
+
+**The mechanism.** A run that finishes a pair releases its own steps on success. When it finished the pair's order but did not move the pair's snapshot, on the account gate alone or over a short account listing, the stopped run's ordering record is still the latest the next plan reads, and it began after the snapshot, so the next gate's pair line and the `sync-pair-finishing` warning name the pair as finishing that run again.
+
+**Measured cost.** Driven by the round two reviewer: the fixture's stop, then `sync pair` with rekordbox skipped (the account in rekordbox's order, the steps file gone, the snapshot still the four tracks), then a fresh gate. The sentence is false; the plan held no item and both sides ended in rekordbox's order, so nothing wrong was written. A short listing after a stop says the same while nothing is planned.
+
+**Closes when:** a finished pair's order is recorded where the next plan reads it, for example a run's finished pairs kept as a record of their own once its plan is released, or the sentence is said only when the plan writes the pair's order.
+
+---
+
+## R-1374. A track the account playlist holds twice puts a stopped order off the path its moves are read along, and the next sync pair reads the stopped write's moves as the person's
+
+**Found:** at the review of #577, U225, round one, 2026-11-06.
+
+**The mechanism.** The ordering step's start is the plan's listing, each id once at its first place, with the write's removals and additions. The adapter does not move a track the playlist holds twice; `pair_stopped.front_moves` over the distinct start plans a move of it. From that move's turn on, the orders `passed()` gives differ from the ones the adapter leaves, so a stop at or after it is read as a move somebody made, and the account leads as before U225.
+
+**Measured cost.** Driven by the round one reviewer on the fake account: `t1` held twice on the account, rekordbox gaining three tracks and reordered, the order stopped after five moves, then a fresh `crate sync pair`. The gate said the account was reordered since, and rekordbox was rewritten to 4, 5, 6, 2, 7, 1, 3. The producer, a duplicate copy on a live paired account playlist with a stop at or after its turn, was not measured.
+
+**Closes when:** the start is recorded as the adapter will read it, duplicates kept, or a track the start holds twice is left out of the comparison and of the moves.
+
+---
+
+## R-1375. Five guards U225 added to the stopped order read kill no test
+
+**Found:** at the reviews of #577, U225, rounds one and two, 2026-11-06.
+
+**The mechanism.** Each was mutated alone by the reviewers and the U225 test files stayed green:
+
+- `plan_pair`'s folded base takes the stopped write's moment as its sync time (`synced = stopped_write.at if folded`); no scenario dates a change between the old snapshot and the stopped write's begin.
+- `_Reader.stopped_write` returns None for a pair with no record (`held is None`) or a write with no begin time; neither input was produced.
+- `_Reader.stopped_write` drops the stopped write when the snapshot's time cannot be read; the pair store always writes `timestamp()`.
+- `stopped_writes` picks the latest stopped write by its ordering time, not its begin; the two differ only for a continue that fails before its order beside a second stopped run.
+- `_write_account`'s start falls back to `account_now` for a plan held before U225, and `stopped_writes` compares a finish to a begin with `>`, where microseconds make `>=` the same.
+
+**Measured cost.** None measured: 0 candidates were driven that reach a different outcome.
+
+**Closes when:** a test reaches each, or the guard is removed as dead.
