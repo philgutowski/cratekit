@@ -130,3 +130,36 @@ def test_another_playlists_snapshot_holding_the_track_keeps_rekordboxs_place(wor
 
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
+
+
+def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(world):
+    """The queue names its playlist by its remote identifier, read back to the
+    title the mirror recorded it under: a job from another playlist lifts
+    nothing here."""
+    from cratekit.core import jobs
+    from cratekit.intake import cli as intake_cli
+    from cratekit.organize import mirror_downloads
+
+    _landed_with_base(world, {"r3"})
+    with jobs.open_store() as store:
+        (real,) = [
+            one
+            for one in jobs.list_jobs(store)
+            if (one.payload or {}).get("source_id") == mirror_downloads.SOURCE_ID
+        ]
+        jobs.cancel(store, real.job_id)
+        other = intake_cli.queue_playlist(
+            store,
+            world.cfg,
+            handler_key=mirror_downloads.HANDLER,
+            reference=world.remote("Deep House Low"),
+            tracks={"r3": {"isrc": "ISRC00000003"}},
+            source_id=mirror_downloads.SOURCE_ID,
+        )
+        store.conn.execute("UPDATE jobs SET created = ? WHERE job_id = ?", (real.created, other.job_id))
+    assert mirror_downloads.queued_from(world.cfg) == {"r3": frozenset({world.remote("Deep House Low")})}
+
+    _area, step, _queue = world.run_all()
+
+    assert _items(step) == []
+    assert world.places("3") == {("Deep House", "Low")}

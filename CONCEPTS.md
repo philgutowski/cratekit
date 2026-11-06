@@ -330,7 +330,8 @@ mirror last finished it, in the outbound ledger under `agreed`. It tells an
 account edit (taken into rekordbox by the `mirror-edits` step) from a rekordbox
 change; a new account track the library lacks goes to `mirror-downloads`, whose
 job the next new sync pass takes. Its landing's own filing by tags is not a
-rekordbox change: the edit is carried once (U227).
+rekordbox change: the edit is carried once (U227), reading the queuing
+playlist's snapshot as it stood at the queue (U230).
 
 *Avoid:* a pair snapshot.
 
