@@ -759,7 +759,7 @@ class _Reader:
     #: U229. Each landed INBOX playlist's codes and rows, and each intake
     #: job's reports, read once per plan whichever pair asks for them.
     landed_codes: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
-    reports: dict[str, tuple[dict[str, Any], ...] | None] = field(default_factory=dict)
+    reports: dict[str, tuple[dict[str, Any], ...] | Exception] = field(default_factory=dict)
 
     @cached_property
     def remote(self):
@@ -866,16 +866,27 @@ class _Reader:
             every.update(ids)
         return landed_isrcs(self.cfg, self.db, every, read=self.mirror_codes)
 
-    def job_reports(self, job: jobs.Job) -> tuple[dict[str, Any], ...] | None:
-        """One finished intake job's reports, None when they cannot be read, read once per plan."""
+    def job_reports(
+        self, job: jobs.Job, *, own: bool = True
+    ) -> tuple[dict[str, Any], ...] | None:
+        """One finished intake job's reports, None when they cannot be read, read once per plan.
+
+        A job whose frozen configuration no longer reads refuses the plan of
+        the pair that queued it, as it always has, and is passed over by every
+        other pair's (``own`` false, U229), since one pair's old job is no
+        reason to stop every pair's plan.
+        """
         from cratekit.intake import missing_cli
 
         if job.job_id not in self.reports:
             try:
                 self.reports[job.job_id] = tuple(missing_cli.job_reports(self.store, job))
-            except CratekitError:
-                self.reports[job.job_id] = None
-        return self.reports[job.job_id]
+            except (CratekitError, config.ConfigError) as error:
+                self.reports[job.job_id] = error
+        held = self.reports[job.job_id]
+        if isinstance(held, config.ConfigError) and own:
+            raise held
+        return None if isinstance(held, Exception) else held
 
     def jobs_for(self, account_id: str) -> tuple[jobs.Job, ...]:
         return tuple(
@@ -922,7 +933,7 @@ def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
 
 
 def _owned_by_jobs(
-    reader: _Reader, found: Sequence[jobs.Job], wanted: set[str]
+    reader: _Reader, found: Sequence[jobs.Job], wanted: set[str], *, own: bool = True
 ) -> dict[str, str]:
     """Remote id to content id, for each wanted track a pair's intake job found owned.
 
@@ -934,7 +945,7 @@ def _owned_by_jobs(
     for job in found:
         if job.state != jobs.JobState.SUCCEEDED:
             continue
-        reports = reader.job_reports(job)
+        reports = reader.job_reports(job, own=own)
         if reports is None:
             continue
         for report in reports:
@@ -1760,7 +1771,9 @@ def _owned(
     # every track they answer is answered as before, and read once per plan.
     rest = {remote_id for remote_id in lacking if remote_id not in found}
     if rest:
-        for remote_id, content_id in _owned_by_jobs(reader, reader.pair_jobs, rest).items():
+        mine = {job.job_id for job in reader.jobs_for(account_id)}
+        others = tuple(job for job in reader.pair_jobs if job.job_id not in mine)
+        for remote_id, content_id in _owned_by_jobs(reader, others, rest, own=False).items():
             found[remote_id] = (content_id,)
     rest = {remote_id for remote_id in lacking if remote_id not in found and codes.get(remote_id)}
     if rest:
