@@ -1057,50 +1057,102 @@ def row_id(row: Any) -> str:
     return str(getattr(row, "id", "") or "")
 
 
+def _declared_count(declared: Any) -> bool:
+    """Whether a playlist's declared track total is a count a read can be held to."""
+    return isinstance(declared, int) and not isinstance(declared, bool) and declared >= 0
+
+
 def playlist_tracks_unpaged(playlist: Any, **retry: Any) -> list[Any]:
-    """The client's own read of a playlist with no window: one request, as it is served now (U226).
+    """The client's own read of a playlist with no window, as it is served now (U226), walked past a capped first page (R-1360).
 
     MEASURED ON THE LIVE ACCOUNT on 2026-11-06 (Sitting 84): after a move,
     this read returned the new order at once while the window read
     :func:`playlist_tracks` walks returned the old one, and sometimes the
     new, for at least thirteen minutes.
 
-    NOT A READ OF EVERY TRACK. The client fills a missing limit with its
-    session's own ``item_limit``, 1000 by default, and :data:`PAGE_SIZES`
-    records the provider's ceiling for this shape as 100, so a playlist of
-    more than 100 tracks is most likely served its first hundred alone (the
-    count was not measured live). It is never trusted as whole on its own:
-    :func:`judge_window` holds it to the declared count. Put through the same
-    retry ladder a page gets; a client that cannot be called with no window
-    raises :class:`ListingNotPaginated` at once.
-    """
-    def call(_limit: int, _offset: int) -> Any:
-        try:
-            return playlist.tracks()
-        except TypeError as exc:
-            # A signature fault, not a wait (round one's review): the ladder
-            # would sleep 31 seconds on an answer it has at the first attempt.
-            raise ListingNotPaginated(
-                f"{type(playlist).__name__}.tracks cannot be called with no "
-                f"window, so the playlist cannot be read as the provider serves "
-                f"it unpaged; the provider client changed shape"
-            ) from exc
+    ONE REQUEST, AND MORE ONLY PAST A FIRST PAGE. The client fills a missing
+    limit with its session's own ``item_limit``, 1000 by default, and
+    :data:`PAGE_SIZES` records the provider's ceiling for this shape as 100,
+    so a playlist of more than 100 tracks is most likely served its first
+    hundred alone (the cap was not measured live). When the first request
+    holds fewer tracks than the playlist declares, the read walks on with an
+    offset and still no limit, each request starting ONE TRACK BACK, so its
+    first track must be the last one already read. A page is taken only
+    while it holds together with what came before: it starts on that track,
+    it is no longer than the first page, and it carries the version tag the
+    first page carried, when the client keeps one (``_etag``, which a page
+    served from before a write carries as it was then). The walk stops at
+    the declared count, at a page shorter than the first, or at the first
+    page that does not hold together, and returns only the pages that did,
+    so a walk that broke reads as a first part, which :func:`judge_window`
+    does not take as the playlist when the window is whole. Not measured
+    live: whether a later page is current after a move as the first is
+    (owed at an attended sitting). The cap is not assumed, so a provider
+    that serves the read whole is read with one request, as before.
 
-    page = fetch_with_retry(call, limit=0, offset=0, **retry)
-    return list(page or [])
+    NEVER WHOLE ON ITS OWN WORD. :func:`judge_window` holds the result to the
+    declared count. A track the account cannot play is left out of a page
+    and still counted (R-1362), so a page after it starts one track late,
+    and the walk stops there; one left out of the last stretch only leaves
+    the read short of the count. Each request goes through
+    the retry ladder a page gets; a client that cannot be called with no
+    window raises :class:`ListingNotPaginated` at once.
+    """
+    def call(offset: int) -> Callable[[int, int], Any]:
+        def ask(_limit: int, _offset: int) -> Any:
+            try:
+                return playlist.tracks(offset=offset) if offset else playlist.tracks()
+            except TypeError as exc:
+                # A signature fault, not a wait (round one's review): the ladder
+                # would sleep 31 seconds on an answer it has at the first attempt.
+                raise ListingNotPaginated(
+                    f"{type(playlist).__name__}.tracks cannot be called with no "
+                    f"window, so the playlist cannot be read as the provider serves "
+                    f"it unpaged; the provider client changed shape"
+                ) from exc
+
+        return ask
+
+    rows = list(fetch_with_retry(call(0), limit=0, offset=0, **retry) or [])
+    declared = getattr(playlist, "num_tracks", None)
+    if not _declared_count(declared) or len(rows) >= declared or len(rows) < 2:
+        return rows
+    step = len(rows)
+    tag = getattr(playlist, "_etag", None)
+    while len(rows) < declared:
+        offset = len(rows) - 1
+        page = list(fetch_with_retry(call(offset), limit=0, offset=offset, **retry) or [])
+        if (
+            not page
+            or len(page) > step
+            or row_id(page[0]) != row_id(rows[-1])
+            or getattr(playlist, "_etag", None) != tag
+        ):
+            break
+        rows.extend(page[1:])
+        if len(page) < step:
+            break
+    return rows
 
 
 def judge_window(paged: Sequence[str], unpaged: Sequence[str], declared: Any) -> str:
     """How the window read of a playlist stands beside its unpaged read (U226).
 
-    :data:`WINDOW_AGREES` when the two are the same, or the unpaged read is
-    shorter than the window read and is its first part while holding fewer
-    tracks than the playlist declares, which is a provider serving an unpaged
-    read its first page alone. THAT AGREEMENT IS AS BLIND AS MAIN WAS: a
-    window that lags a change past the unpaged read's first page agrees, and
-    is taken as the playlist, as every read was before U226 (a residual). :data:`WINDOW_UNPAGED` when they differ and
-    the unpaged read holds exactly the declared count, so it is the playlist
-    as it stands. :data:`WINDOW_LAGS` otherwise.
+    :data:`WINDOW_AGREES` when the two are the same. :data:`WINDOW_UNPAGED`
+    when they differ and the unpaged read holds exactly the declared count,
+    so it is the playlist as it stands. :data:`WINDOW_LAGS` otherwise, with
+    one exception kept from U226.
+
+    A FIRST PART AGREES ONLY BESIDE A WINDOW SHORT OF THE COUNT (R-1360). An
+    unpaged read shorter than the window and its first part is agreement
+    when the window holds fewer tracks than the playlist declares, a track
+    the account cannot play left out of both (R-1362), or when nothing is
+    declared. Beside a window holding every declared track, or more, it is
+    :data:`WINDOW_LAGS`: :func:`playlist_tracks_unpaged` walks past a capped
+    first page, so a read that still stops short of a whole window is one
+    whose walk broke, and the window may lag a change past where it reached.
+    Before R-1360 that agreement took a window lagging a change past the
+    first hundred tracks as the playlist.
 
     THE DECLARED TOTAL RULE STANDS. A track the account cannot play is left
     out of both reads and still counted, so two reads short of the declared
@@ -1110,16 +1162,11 @@ def judge_window(paged: Sequence[str], unpaged: Sequence[str], declared: Any) ->
     paged, unpaged = list(paged), list(unpaged)
     if unpaged == paged:
         return WINDOW_AGREES
-    whole = (
-        isinstance(declared, int)
-        and not isinstance(declared, bool)
-        and declared >= 0
-        and len(unpaged) == declared
-    )
-    if whole:
+    counted = _declared_count(declared)
+    if counted and len(unpaged) == declared:
         return WINDOW_UNPAGED
     if len(unpaged) < len(paged) and paged[: len(unpaged)] == unpaged:
-        return WINDOW_AGREES
+        return WINDOW_LAGS if counted and len(paged) >= declared else WINDOW_AGREES
     return WINDOW_LAGS
 
 

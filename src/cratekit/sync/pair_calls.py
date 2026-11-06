@@ -23,7 +23,9 @@ fixed shape, and each count here follows it:
 * a reading a removal or an order is JUDGED by, the positions read, the
   first reading of an order and every read back, reads the playlist twice,
   its pages and then the client's unpaged read (U226), so it costs one call
-  more than a listing, :data:`UNPAGED_READ`;
+  more than a listing, :data:`UNPAGED_READ`, and more past a page, since the
+  unpaged read walks on past a capped first page one track back per request
+  (R-1360), :func:`unpaged_calls`;
 * an ORDER moves one track to the front per request, each followed by a
   fresh open and read, after the longest run at the tail of the asked order
   already standing is kept (U220). A reading the adapter takes again, after a
@@ -48,7 +50,8 @@ from cratekit.acquire import listing
 #: Tracks one page of a playlist listing reads, the listing seam's own size.
 PLAYLIST_PAGE = listing.PAGE_SIZES["playlist_tracks"]
 #: U226. The one request the client's unpaged read of a playlist makes, beside
-#: its pages, wherever a write is judged or an order planned.
+#: its pages, wherever a write is judged or an order planned, when its first
+#: request holds the playlist whole; :func:`unpaged_calls` counts the rest.
 UNPAGED_READ = 1
 #: Tracks one add request carries and one removal request takes off, the
 #: account adapter's ``ADD_CHUNK`` and ``REMOVE_CHUNK``, pinned by a test.
@@ -86,9 +89,25 @@ def listing_calls(count: int) -> int:
     return 1 + pages(count)
 
 
+def unpaged_calls(count: int) -> int:
+    """The requests the client's unpaged read of ``count`` tracks makes (U226, R-1360).
+
+    One, and past a page as many more as its walk asks: each later request
+    starts one track back, so it reads one page less a track that is new.
+    Counted as if the provider caps the unpaged read at the window's page,
+    which is what the listing seam records and was not measured live; a
+    provider serving more a request spends less than counted here.
+    Measured on the listing seam itself (``tests/test_sync_pair_calls.py``).
+    """
+    beyond = max(0, count) - PLAYLIST_PAGE
+    if beyond <= 0:
+        return UNPAGED_READ
+    return UNPAGED_READ + math.ceil(beyond / (PLAYLIST_PAGE - 1))
+
+
 def judged_calls(count: int) -> int:
     """One playlist opened and read for a write to be judged by: its pages and its unpaged read (U226)."""
-    return listing_calls(count) + UNPAGED_READ
+    return listing_calls(count) + unpaged_calls(count)
 
 
 def _moves(before: Sequence[str], order: Sequence[str]) -> int:
@@ -246,4 +265,5 @@ __all__ = [
     "named",
     "pages",
     "pair_write",
+    "unpaged_calls",
 ]
