@@ -45280,3 +45280,59 @@ screen.
 **Closes when:** the stale remedy line names the run or is left out under a
 gate screen, and `UnknownOption` carries the run identifier its screen names.
 Ledger only.
+
+---
+
+## R-1352. A recorded answer with no digest on a digest bound gate is never compared, so a run record from before R-1349 still applies its early answer unshown
+
+**Found:** at the review of #574, R-1349, 2026-11-06.
+
+**The mechanism.** R-1349 closed the door that wrote such an answer:
+`gates.record` now refuses a digest bound gate its run has not reached. The
+checking side is unchanged: `Gates.require` compares a recorded digest only
+when it is not `None`, so an answer already holding no digest passes whatever
+plan the gate reads. Three inputs hold one. A run record written by the verb
+installed before R-1349 with an answer given ahead of its gate; that answer
+also stays re answerable, since `record` admits a gate that already holds an
+answer, and the new answer still binds no offer. And a gate reached with no
+digest and left open, or answered, which `record` admits as the brief asks;
+an AST walk of the 64 `require` calls in `src` found four that pass neither a
+plan nor a digest, all on gates that declare no digest source, so no shipped
+verb produces this one today.
+
+**Measured cost.** Driven by round one's review on the organize suite's world
+with the account decision written into the run record as the earlier verb
+wrote it (no offer, no digest): `run decide` on it again exits 0 with the
+digest still `None`, and after the rekordbox answer the resume applied the
+account area with no account gate shown, five playlists created, three folders
+and six moves. Reachability on the installed copy is unmeasured: it needs a
+run left at its first gate with an early answer from before the install.
+
+**Closes when:** `require` treats a recorded answer with no digest on a gate
+that declares a digest source, reached with a digest, as stale, showing the
+plan the offer was just taken over, so the next decide binds it. Ledger only:
+no verb shipped after R-1349 writes the input, and the remaining records age
+out under `run retire`.
+
+---
+
+## R-1353. Two of R-1349's tests list the readers of an open gate by hand and author the unreached run they drive
+
+**Found:** at the review of #574, R-1349, 2026-11-06.
+
+**The mechanism.** `test_the_refusal_is_not_an_open_gate_to_any_reader` in
+`tests/test_gate_not_reached.py` checks four readers, the reason, the remedy
+token, `render.is_gate_screen` and the exit code, by name; a fifth reader of an
+open gate added later is not covered. And
+`test_through_the_dispatcher_the_refusal_saves_nothing_and_prints_no_gate_screen`
+makes its unreached state by clearing a `profile set` run's offer and open gate
+by hand, a state the test authors rather than one a verb produced. The organize
+drives in `tests/test_organize.py` carry the real producer.
+
+**Measured cost.** None: round one's grep found no reader of
+`decision-required` or `ExitCode.DECISION_REQUIRED` outside the four modules
+the test covers, and the dispatcher test checks only the human text.
+
+**Closes when:** the readers are enumerated from the tree, and the dispatcher
+drive reaches its unreached gate through a verb with two digest gates. Ledger
+only, maintainer facing.
