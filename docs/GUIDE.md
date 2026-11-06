@@ -1537,9 +1537,10 @@ that plan on the screen, never ahead of it. A verb with two such gates, such as
 only after the first is answered and the run continued, so `crate run decide`
 on the second gate while the run still waits at the first is refused as
 `gate-not-reached` and records nothing. The refusal names the gate the run
-waits at, the command that continues the run to the gate you named, and the
-answer to give once it stops there. A gate that shows no plan, such as the
-cloud sync gate, can still be answered ahead.
+waits at, the command that continues the run, which shows the gate you named
+and its plan if it reaches it and says why in its report if it does not, and
+the answer to give once that gate is shown. A gate that shows no plan, such as
+the cloud sync gate, can still be answered ahead.
 
 When the plan moves between your answer and the run that applies it, the run
 refuses as stale and writes nothing. Where the gate itself finds the move, the

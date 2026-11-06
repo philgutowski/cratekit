@@ -1003,8 +1003,8 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # not reached it, so no plan of it was shown for the answer to bind to.
         # Deliberately NOT ``decision-required``, which the human output prints
         # as a gate screen and verbs read as an open gate, inviting the very
-        # answer refused. The fix is the run continued to the gate, which the
-        # steps name.
+        # answer refused. The fix is the run continued, which reaches the gate
+        # or says in its report why it did not, as the steps name.
         "gate-not-reached": ExitCode.PRECONDITION,
         # U11, the review queue. Six slugs on one code, and the code is right for
         # all six: none of them is the library refusing, none is upstream, and
