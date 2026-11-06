@@ -351,9 +351,10 @@ album, album artist, genre and year from the file's tags, puts the batch
 playlist under INBOX and every row in `INBOX / Analyze`, and asks the explicit
 gate `intake.land.native`, answered only by `crate run decide`. Nothing about
 the audio is written: no tempo, grid, key or waveform. Files go straight to
-`Music/Processed_Tracks/<year>/<MM_DD_YY subject>`, so no shelve follows. A
-row whose tempo moves (drift from `analyze run` at or over
-`analysis.drift_cut`, 1.5 by default) carries the `dyn` My Tag.
+`Music/<processed folder>/<year>/<MM_DD_YY subject>` (`Processed_Tracks` by
+default), so no shelve follows. A row whose tempo moves (drift from `analyze
+run` at or over `analysis.drift_cut`, 1.5 by default) carries the `dyn` My
+Tag.
 
 - `--rehearse` copies the database and library state to a scratch folder,
   applies the landing to the copy over clones of the staged files, reports the
@@ -667,8 +668,9 @@ acquired again.
 
 **Review queue.** `crate review list [--queue Q] [--kind K]`, `review show
 ID`, `review resolve ID --verdict accepted|rejected [--option X]` (or
-`--where FIELD=VALUE` for many), `review clear ID` to ask again, `review
-export PATH` and `review import PATH` (never overwrites a local verdict).
+`--where FIELD=VALUE` for many), `review clear ID` to ask again,
+`review export PATH` and `review import PATH` (never overwrites a local
+verdict).
 
 ### Analyse audio and score vocals
 
@@ -684,11 +686,12 @@ crate metadata mytags-vocals [--apply]
 - Needs the `analysis` and `vocals` extras. Cratekit never writes a beat
   grid, tempo element or average BPM field, in any container; no flag turns
   that on.
-- `analyze run` writes key, energy and a drift to the file's tags (`drift`
-  reads `steady`, `variable` or `unknown`; `driftlevel` is the spread), and
-  renames each finished track with its Camelot head. It skips a file with the
-  head, so `analyze vocals --unscored` scores files it finished with no
-  `voxlevel`. Doctor's `install.extras` row says when vocals cannot score.
+- `analyze run` writes key, energy, vocal scores and a drift to the file's
+  tags (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
+  spread), then renames the file to the naming template's Camelot head. It
+  skips a file already carrying the head, so `analyze vocals --unscored`
+  scores the ones it finished with no `voxlevel`. Doctor's `install.extras`
+  row says when vocals cannot score.
 - `--recursive` queues every folder under the one named as one resumable
   job; linked folders are not walked. `analyze run` has no such flag.
 - `analyze calibrate` fits only over the whole library walked recursively;
@@ -709,9 +712,10 @@ crate master /path/to/REC001.wav /path/to/REC002.wav --lufs -16 --output-dir /pa
 ```
 
 `setbuild` ranks owned tracks compatible with the anchor in key and energy,
-offline. `master` joins the parts in the order given, levels to `--lufs` (-14
-by default) and encodes lossless as `<first part>_set`; it never touches the
-source and refuses to replace a master without `--overwrite`.
+offline. `master` joins a split recording's parts in the order given (named
+for the first part plus `_set`), levels it to `--lufs` (-14 by default) and
+writes `<name>_mastered.flac` beside it or in `--output-dir`. It never touches
+the source and refuses to replace a master without `--overwrite`.
 
 ### Back up and restore
 
@@ -1000,7 +1004,7 @@ it refreshes stale copies.
 |---|---|
 | run `doctor`, `status`, reports and audits | run anything that writes |
 | read a refusal and name the remedy | answer a gate by name |
-| propose the verbs and the order | record the backup acknowledgment |
+| propose the verbs and the order | record the backup acknowledgment once either backup is five days old |
 | read back what a run reports | quit rekordbox and its agent |
 
 ## Going deeper
