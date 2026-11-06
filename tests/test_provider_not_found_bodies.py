@@ -173,6 +173,38 @@ def test_the_nearest_status_is_the_first_the_walk_reaches():
     assert cause.nearest_status(ValueError("no status anywhere")) is None
 
 
+def a_wrapper_of_a_404_raised_while_handling_a_503() -> Exception:
+    """A failure met while handling a wrapper raised FROM a 404 page while a 503 page was handled.
+
+    The wrapper says it is the 404 and was merely raised while the 503 was
+    being handled, so off the declared chain the walk reads a link's own
+    declared cause before what it was handling (round one's review: the other
+    order read the 503 first and every reader called the not found an outage).
+    """
+    outage = client_failure(503, HTML)
+    gone = client_failure(404, HTML)
+    try:
+        raise outage
+    except Exception:  # noqa: BLE001 - the context is the point
+        try:
+            raise RuntimeError("the read failed") from gone
+        except RuntimeError:
+            try:
+                raise ValueError("a parse in the handler failed")
+            except ValueError as exc:
+                return exc
+    raise AssertionError("unreachable")
+
+
+def test_off_the_declared_chain_a_links_cause_is_nearer_than_what_it_was_handling():
+    later = a_wrapper_of_a_404_raised_while_handling_a_503()
+
+    assert cause.nearest_status(later) == 404
+    assert {name: reader(later) for name, reader in READERS.items()} == dict.fromkeys(
+        READERS, True
+    )
+
+
 def test_a_name_reached_only_as_context_is_not_a_not_found():
     """A status is the provider's word; a class reached only as context is a guess."""
 
