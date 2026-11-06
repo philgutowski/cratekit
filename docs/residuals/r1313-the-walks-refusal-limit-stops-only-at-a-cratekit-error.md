@@ -16,8 +16,9 @@ failure itself and not one hop out.
 **Measured cost.** Driven by the review: a `ValueError` raised while handling
 `NoFileLanded(cause=gone)` raised from a 404 page, and the same under
 `AdapterBroken`, read `nearest_status` 404 and all four readers true. No
-producer: the except handlers of 15 modules were read (8 of Cratekit's, 7 of
-the client's) and none calls the provider again inside a handler of either;
+producer: the except handlers of 15 modules (8 of Cratekit's, 7 of the
+client's) were grepped with a six line window for a provider call inside a
+handler of either, and none was found;
 `acquire_with_source` classifies the handled failure itself and
 `fetch_with_retry` retries outside its handler.
 
