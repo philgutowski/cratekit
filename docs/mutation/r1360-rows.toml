@@ -196,6 +196,28 @@ old = '''    return listing_calls(count) + unpaged_calls(count)'''
 new = '''    return listing_calls(count) + UNPAGED_READ'''
 
 [[rows]]
+id = "W14_cap_of_one_walked"
+description = "playlist_tracks_unpaged: a first page of one track is walked, which reads no new track a request"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''or len(rows) >= declared or len(rows) < 2:'''
+new = '''or len(rows) >= declared or len(rows) < 1:'''
+
+[[rows]]
+id = "W15_short_page_walked_past"
+description = "playlist_tracks_unpaged: a page shorter than the first does not end the walk"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''        rows.extend(page[1:])
+        if len(page) < step:
+            break
+'''
+new = '''        rows.extend(page[1:])
+'''
+
+[[rows]]
 id = "N1_null"
 description = "null control: a comment changed, which no test can see"
 file = "src/cratekit/acquire/listing.py"

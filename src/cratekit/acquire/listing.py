@@ -1085,10 +1085,24 @@ def playlist_tracks_unpaged(playlist: Any, **retry: Any) -> list[Any]:
     the declared count, at a page shorter than the first, or at the first
     page that does not hold together, and returns only the pages that did,
     so a walk that broke reads as a first part, which :func:`judge_window`
-    does not take as the playlist when the window is whole. Not measured
-    live: whether a later page is current after a move as the first is
-    (owed at an attended sitting). The cap is not assumed, so a provider
-    that serves the read whole is read with one request, as before.
+    does not take as the playlist when the window is whole. The cap is not
+    assumed, so a provider that serves the read whole is read with one
+    request, as before, and the walk asks at most one request a declared
+    track, whatever a page holds.
+
+    WHAT IT RESTS ON, NOT MEASURED LIVE (owed at an attended sitting).
+    Whether a later page is served current after a move as the first page
+    is. If it is served stale, the walk takes it only when it carries the
+    current tag: a change wholly past the first page leaves the start check
+    and the length check passing, so the tag is the one defence, and a stale
+    page carrying the current tag is read whole, as main read every long
+    playlist. Measured for the window read only: a stale window carries the
+    tag it had then (a write sent with it is answered 412). And that the tag
+    is the playlist's version, not one per response: writes succeed with the
+    tag the window read and the unpaged read each leave, whatever limit they
+    asked with, which a tag per response would not allow, but no two pages
+    of one playlist were compared. A tag per response breaks every walk, and
+    a long playlist is then held on every run rather than read stale.
 
     NEVER WHOLE ON ITS OWN WORD. :func:`judge_window` holds the result to the
     declared count. A track the account cannot play is left out of a page
@@ -1119,7 +1133,9 @@ def playlist_tracks_unpaged(playlist: Any, **retry: Any) -> list[Any]:
         return rows
     step = len(rows)
     tag = getattr(playlist, "_etag", None)
-    while len(rows) < declared:
+    for _ask in range(declared):
+        if len(rows) >= declared:
+            break
         offset = len(rows) - 1
         page = list(fetch_with_retry(call(offset), limit=0, offset=offset, **retry) or [])
         if (
