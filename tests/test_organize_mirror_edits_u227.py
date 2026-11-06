@@ -20,8 +20,8 @@ from cratekit.adopt import apply as adoption
 from cratekit.cli.output import timestamp
 from cratekit.core import taxonomy
 from cratekit.modules.outbound import mirror_edits as edits
-from tests.test_organize_mirror_edits_u204 import _items, _land_and_file, _queued
 from tests.test_organize_mirror_edits_u204 import _field_policies as _field_policies  # noqa: PLC0414
+from tests.test_organize_mirror_edits_u204 import _items, _land_and_file, _queued
 from tests.test_organize_mirror_edits_u204 import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
