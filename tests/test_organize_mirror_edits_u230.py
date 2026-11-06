@@ -163,3 +163,43 @@ def test_a_job_queued_from_another_playlist_does_not_lift_the_edited_ones_base(w
 
     assert _items(step) == []
     assert world.places("3") == {("Deep House", "Low")}
+
+
+def _rotate_landed_batch(world) -> None:
+    """The landing's batch leaves INBOX for INBOX / Old, as ``inbox rotate`` moves it."""
+    import sqlite3
+
+    conn = sqlite3.connect(world.db)
+    try:
+        conn.execute(
+            "UPDATE djmdPlaylist SET ParentID = ? WHERE Name = ? AND ParentID = ?",
+            (world.old, "2026-11-02 Landed", world.inbox),
+        )
+        assert conn.total_changes == 1
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_drag_back_into_the_landings_band_after_the_batch_left_inbox_stands(world):
+    """The review of U230, round one, BLOCKING: once the edit was carried the
+    mirror agrees the edited playlist with the track, and once the landing's
+    batch left INBOX no other snapshot holds it, so a person's drag in
+    rekordbox back into the band the landing's tags chose must stand, not be
+    carried back as the landing's."""
+    _landed_with_base(world, None)
+    _area, step, _queue = world.run_all()
+    assert [one["edit"] for one in _items(step)] == [edits.MOVE]
+    assert _snapshot(world, EDITED) == frozenset({"r3"})
+    _rotate_landed_batch(world)
+    world.run_all()
+    world.move_in_rekordbox("3", ("Deep House", "Low"), MOVED_AT)
+
+    _area, step, _queue = world.run_all()
+
+    assert _items(step) == []
+    assert world.places("3") == {("Deep House", "Low")}
+    assert "r3" not in world.held(EDITED)
+    _area, step, _queue = world.run_all()
+    assert _items(step) == []
+    assert world.places("3") == {("Deep House", "Low")}

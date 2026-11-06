@@ -206,3 +206,17 @@ def test_a_landing_filed_where_the_account_asked_is_no_edit():
         _read(agreed=None, rekordbox_in=(JZM,)), OWNED, {"t9": frozenset({("Jazz", "Med")})}, QUEUED
     )
     assert decided.decisions == ()
+
+
+def test_a_short_listing_of_the_queuing_playlist_lifts_nothing():
+    """The review of U230, round one: a listing that could not be read is read
+    as its snapshot and short, and carries no edit of its own."""
+    playlists = _read(agreed=frozenset({"t9"}))
+    playlists[0] = edits.Mirrored(
+        place=JZM,
+        account=frozenset({"t9"}),
+        agreed=frozenset({"t9"}),
+        short=True,
+        account_added={"t9": ACCOUNT_AT},
+    )
+    assert edits.decide(playlists, OWNED, FILED, QUEUED).decisions == ()
