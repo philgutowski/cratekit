@@ -119,9 +119,9 @@ file = "src/cratekit/acquire/listing.py"
 surface = "user"
 tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
 old = '''    tag = getattr(playlist, "_etag", None)
-    while'''
+    for _ask'''
 new = '''    tag = None
-    while'''
+    for _ask'''
 
 [[rows]]
 id = "W13_declared_unread"
