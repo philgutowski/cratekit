@@ -417,3 +417,47 @@ def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
     assert read("").run_id == "run-1"
     assert read("", synced=(_WHEN - timedelta(seconds=1)).isoformat()).run_id == "run-1"
     assert read("", synced=(_WHEN + timedelta(seconds=1)).isoformat()) is None
+
+
+def test_a_carried_record_naming_another_run_is_named(cfg):
+    where = held_plan.carried_path("run-f", "pl-6")
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text(
+        json.dumps(
+            {
+                "version": held_plan.CARRIED_VERSION,
+                "run_id": "run-x",
+                "digest": "d",
+                "key": "pl-6",
+                "steps": {},
+            }
+        )
+    )
+    records, problems = held_plan.carried()
+    assert records == []
+    assert len(problems) == 1 and "run-f" in problems[0], problems
+
+
+def test_a_carried_directory_that_cannot_be_listed_is_named_never_read_as_none(cfg):
+    """No directory is no record; one that cannot be listed says so (the round one review)."""
+    assert held_plan.carried() == ([], [])
+    where = held_plan.carried_dir()
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text("not a directory")
+    records, problems = held_plan.carried()
+    assert records == []
+    assert len(problems) == 1 and "could not be listed" in problems[0], problems
+
+
+def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan(cfg):
+    """The run's steps say whether the pair finished, which the copy, taken before, cannot."""
+    began = {"account": _WHEN.isoformat(), "ordering": _ordering()}
+    held_plan.Steps("run-1", "d1", {"pl-1": {**began, "done": "pl-1"}}).begin()
+    held_plan.carry(held_plan.Steps("run-1", "d1", {"pl-1": dict(began)}), "pl-1")
+    stopped, unread = pair_cli._Reader.stopped.func(None)
+    assert unread == ()
+    assert stopped == {}, "a pair its own run finished is read as stopped from its copy"
+    # Steps under another plan of the same run are not the copy's run as it wrote.
+    held_plan.Steps("run-1", "d2", {"pl-1": {**began, "done": "pl-1"}}).begin()
+    stopped, _unread = pair_cli._Reader.stopped.func(None)
+    assert stopped["pl-1"][1].run_id == "run-1"

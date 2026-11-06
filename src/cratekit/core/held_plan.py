@@ -491,8 +491,15 @@ def carried() -> tuple[list[Steps], list[str]]:
     so the caller can say it did not look there. One let go between the
     listing and the read was never there.
     """
+    # LISTED WITH ``iterdir``, which raises what it meets: ``glob`` swallows
+    # an OSError and answers an unlistable directory as an empty one (the
+    # round one review), which would read a stop it could not see as none.
     try:
-        found = sorted(carried_dir().glob("*.json"))
+        found = sorted(
+            one for one in carried_dir().iterdir() if one.name.endswith(".json")
+        )
+    except FileNotFoundError:
+        return [], []
     except OSError as exc:
         return [], [f"the carried steps could not be listed ({type(exc).__name__}: {exc})"]
     records: list[Steps] = []

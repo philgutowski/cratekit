@@ -481,3 +481,19 @@ def test_a_stop_that_cannot_be_kept_past_its_run_moves_nothing(world, monkeypatc
     assert envelope["cause"]["reason"] == pair_cli.STEPS_UNWRITTEN, envelope["cause"]
     # The additions landed and not one track was moved.
     assert world.account.playlists[account_id] == _ids("1", "2", "3", "4", "5", "6", "7")
+
+
+def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_of_its_own(
+    world, stopped
+):
+    """Its own carried record is let go when the pair is done, whatever the snapshot did."""
+    from cratekit.core import held_plan
+
+    _intro, account_id, run_id = stopped
+    code, envelope = sync(rekordbox="skip")
+    assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids(*LED)
+    # The stopped run is still kept, since no snapshot passed it; the finishing run is not.
+    records, _problems = held_plan.carried()
+    assert [one.run_id for one in records] == [run_id]
+    assert envelope["run_id"] != run_id
