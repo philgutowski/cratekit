@@ -1,0 +1,272 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ideation: a new DJ product from what Cratekit learned</title>
+<style>
+:root{--bg:#fbfaf7;--fg:#1d1f21;--muted:#55595e;--card:#ffffff;--line:#e2ded6;--tint:#eef3f0;--tintfg:#1f5137;--warn:#f6efe2;--warnfg:#6b4a12;--accent:#2f6f4f}
+@media (prefers-color-scheme:dark){:root{--bg:#16181a;--fg:#e8e6e1;--muted:#a3a7ab;--card:#1e2124;--line:#33373b;--tint:#1d2c25;--tintfg:#a7d9bd;--warn:#2e2618;--warnfg:#e8cf9c;--accent:#7cc39c}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:16px/1.6 -apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif}
+main{max-width:46rem;margin:0 auto;padding:2rem 1rem 4rem}
+h1{font-size:1.9rem;line-height:1.25;margin:0 0 .4rem}
+h2{font-size:1.35rem;margin:2.6rem 0 .8rem;padding-bottom:.3rem;border-bottom:1px solid var(--line)}
+h3{font-size:1.1rem;margin:0 0 .5rem}
+.sub{color:var(--muted);margin:0 0 1rem}
+details.meta{margin:0 0 1.5rem;color:var(--muted);font-size:.9rem}
+details.meta dl{display:grid;grid-template-columns:max-content 1fr;gap:.2rem 1rem;margin:.5rem 0 0}
+article.idea{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:1.2rem 1.3rem;margin:1.2rem 0}
+article.idea dl{margin:.6rem 0 0}
+article.idea dt{font-weight:600;margin-top:.7rem}
+article.idea dd{margin:.15rem 0 0}
+.chips{display:flex;flex-wrap:wrap;gap:.4rem;margin:.2rem 0 .4rem}
+.chip{background:var(--tint);color:var(--tintfg);border-radius:999px;padding:.1rem .65rem;font-size:.82rem;font-weight:600}
+p.pitch{font-size:1.05rem;margin:.6rem 0 .2rem;padding:.7rem .9rem;background:var(--tint);color:var(--tintfg);border-radius:8px}
+.callout{background:var(--warn);color:var(--warnfg);border-radius:8px;padding:.8rem 1rem;margin:1rem 0}
+ul.jump{columns:2;padding-left:1.1rem}
+.tablewrap{overflow-x:auto}
+table{border-collapse:collapse;width:100%;font-size:.93rem}
+th,td{text-align:left;vertical-align:top;padding:.45rem .5rem;border-bottom:1px solid var(--line)}
+svg{max-width:100%;height:auto;display:block;margin:1rem auto}
+svg text{fill:var(--fg);font:13px -apple-system,Helvetica,Arial,sans-serif}
+svg .box{fill:var(--card);stroke:var(--accent);stroke-width:1.5}
+svg .arrow{stroke:var(--muted);stroke-width:1.5;fill:none}
+footer.composition-signal{margin-top:3rem;color:var(--muted);font-size:.85rem}
+a{color:var(--accent)}
+@media (max-width:560px){ul.jump{columns:1}}
+</style>
+</head>
+<body>
+<main>
+<header>
+<h1>Ideation: a new DJ product from what Cratekit learned</h1>
+<p class="sub"><time datetime="2026-11-06">2026-11-06</time>. Focus: a separate product that breaks no provider's terms of service and can make money.</p>
+</header>
+<details class="meta"><summary>Document metadata</summary>
+<dl><dt>date</dt><dd>2026-11-06</dd><dt>topic</dt><dd>dj-library-product</dd><dt>focus</dt><dd>new, separate, money making product built from Cratekit's know how, breaking no provider's terms</dd><dt>mode</dt><dd>elsewhere-software</dd></dl>
+</details>
+
+<section id="grounding-context">
+<h2>Grounding Context</h2>
+<h3>Topic Context</h3>
+<p><strong>What Cratekit knows.</strong> Cratekit is a private tool for one DJ couple. It has paid for hard knowledge of rekordbox libraries: the encrypted master.db and its traps (ContentLink, stored path spellings, soft deletes), the XML import that appends instead of replacing and sets fields only on rows it creates, the analysis share folder that most backups miss, safe writes through a rehearsal on a disposable copy and a gate bound to the exact plan, duplicate and owned track detection by ISRC, genre taxonomy, playlist merging, and local measurement of key, tempo, energy and vocals without ever writing a beat grid.</p>
+<p><strong>What the terms rule out.</strong></p>
+<ul>
+<li><strong>TIDAL Developer Terms 3.0:</strong> no stream ripping, no TIDAL content with AI tools, no stored catalogue databases, no scraping, non commercial only.</li>
+<li><strong>Bandcamp's terms (May 2026) and Acceptable Use Policy (June 2026):</strong> no scripts or bots on the site, including on a fan's own purchases, and no Bandcamp data in any AI model. Purchases are for personal, non commercial use.</li>
+<li><strong>Spotify:</strong> no commercial use of streaming, and metadata may not be a product of its own.</li>
+<li><strong>Beatport:</strong> its API is for approved partners only.</li>
+<li><strong>rekordbox licence, clause g:</strong> bars reverse engineering, so the documented XML export and import is the clean path.</li>
+</ul>
+<p><strong>What is open.</strong> Discogs allows commercial API use, and its monthly dumps are public domain. MusicBrainz core data is public domain.</p>
+<p><strong>The market.</strong></p>
+<ul>
+<li><strong>Lexicon:</strong> free conversion, $10.49 and $20.99 a month, play history since version 1.10.</li>
+<li><strong>MIXO:</strong> rising to $15 a month.</li>
+<li><strong>Rekordcloud:</strong> about $17 a month.</li>
+<li><strong>Recurring complaints:</strong> duplicates rekordbox never flags, a corrupted master.db that takes every cue with it, cues lost in conversion, and more time cleaning than mixing.</li>
+<li><strong>Thin areas:</strong> a DJ side promo aggregator, and anything linking a booking to its prep crate and played set.</li>
+</ul>
+<p><strong>The owner.</strong> A working DJ moving into AI engineering who wants products that run and can be handed off without his ongoing maintenance, and whose day job is in marine electrical systems, so that field is off limits.</p>
+</section>
+
+<section id="topic-axes">
+<h2>Topic Axes</h2>
+<ol>
+<li>Library safety and integrity</li>
+<li>Getting music in legitimately</li>
+<li>The gig lifecycle</li>
+<li>Who pays</li>
+<li>How it spreads and runs itself</li>
+</ol>
+</section>
+
+<section id="ranked-ideas">
+<h2>Ranked Ideas</h2>
+<ul class="jump">
+<li><a href="#idea1">1. Library Black Box</a></li>
+<li><a href="#idea2">2. Library Doctor in a Tab</a></li>
+<li><a href="#idea3">3. Promo Sieve</a></li>
+<li><a href="#idea4">4. Gig Stick Check</a></li>
+<li><a href="#idea5">5. Gig Thread</a></li>
+<li><a href="#idea6">6. Set Tracklist and Play Report</a></li>
+</ul>
+
+<p>Ideas 1 and 2 work as one product. The free Doctor is the way in, and the paid Black Box is what a DJ keeps paying for.</p>
+<svg viewBox="0 0 620 150" role="img" aria-label="The free Doctor scan leads to the paid Black Box, which protects and restores the library">
+<rect class="box" x="10" y="40" width="170" height="70" rx="8"/>
+<text x="95" y="68" text-anchor="middle">Doctor in a Tab</text>
+<text x="95" y="88" text-anchor="middle">free scan, health card</text>
+<path class="arrow" d="M182 75 H 262"/><path class="arrow" d="M252 69 L262 75 L252 81"/>
+<rect class="box" x="264" y="40" width="170" height="70" rx="8"/>
+<text x="349" y="68" text-anchor="middle">Black Box</text>
+<text x="349" y="88" text-anchor="middle">paid backups and diffs</text>
+<path class="arrow" d="M436 75 H 516"/><path class="arrow" d="M506 69 L516 75 L506 81"/>
+<rect class="box" x="518" y="40" width="96" height="70" rx="8"/>
+<text x="566" y="68" text-anchor="middle">Proven</text>
+<text x="566" y="88" text-anchor="middle">restore</text>
+</svg>
+
+<article class="idea" id="idea1">
+<h3>1. Library Black Box</h3>
+<div class="chips"><span class="chip">Axis: Library safety and integrity</span><span class="chip">Confidence 70%</span><span class="chip">Complexity Medium</span></div>
+<p class="pitch"><strong>Elevator pitch.</strong> Your rekordbox library is years of cues, grids and playlists, and one corrupted file erases them. Black Box quietly keeps every version of it on your own cloud drive and proves each month that a restore actually works, so a crash before a gig costs you minutes, not years.</p>
+<dl>
+<dt>Description</dt>
+<dd>A flight recorder for a DJ's rekordbox library. On a schedule it makes versioned, deduplicated copies of three things to the DJ's own cloud drive: the XML export, the analysis share folder that holds every grid and cue, and master.db as an unopened byte copy. It compares each export with the last one and warns when cue counts drop, playlists balloon, or tracks vanish. Once a month it rehearses a full restore on a disposable copy and proves it by hash, and it stays silent unless something fails. A DJ buys it once, for about $39 to $59, or pays $4 to $8 a month.</dd>
+<dt>Basis</dt>
+<dd>direct: backup and integrity tools are a recurring DJ ask; a corrupted master.db takes all cues and history; Cratekit's own backups skipped the share folder that holds every beat grid, and one rclone flag took a backup from 40 minutes to 190 seconds; 28k duplicated playlist nodes made rekordbox hang for weeks. external: Rekordcloud charges about $17 a month for backup and sync.</dd>
+<dt>Rationale</dt>
+<dd>This is the one pain every DJ fears and few tools prove they solve. Cratekit already worked out what a complete backup is, how to rehearse a restore without touching the live library, and which files matter. The product never writes to the library and never opens the encrypted database, so it is clean under the rekordbox licence and cheap to support.</dd>
+<dt>Downsides</dt>
+<dd>The comparison is only as fresh as the DJ's last XML export, because nothing documented produces one without opening rekordbox. A restore is whole library or whole playlist, never one track's cues, since XML import changes only the rows it creates. Each rekordbox release has to be checked for changed file layouts. Lexicon or MIXO could add the same thing.</dd>
+<dt>Confidence</dt><dd>70%</dd>
+<dt>Complexity</dt><dd>Medium</dd>
+</dl>
+</article>
+
+<article class="idea" id="idea2">
+<h3>2. Library Doctor in a Tab</h3>
+<div class="chips"><span class="chip">Axis: How it spreads and runs itself</span><span class="chip">Confidence 65%</span><span class="chip">Complexity Low</span></div>
+<p class="pitch"><strong>Elevator pitch.</strong> Drop your rekordbox export into a web page and in a minute see every duplicate, broken path and track you were about to buy twice, without uploading a thing. Free to scan, and the natural first step toward protecting the library it just diagnosed.</p>
+<dl>
+<dt>Description</dt>
+<dd>A static web page. The DJ drops in their rekordbox XML export, and it checks everything in the browser, uploading nothing. It finds:
+<ul>
+<li>duplicates rekordbox never flags</li>
+<li>tracks recorded under old drive names</li>
+<li>titles hidden by a "KEY - BPM -" prefix</li>
+<li>playlist bloat</li>
+<li>owned tracks a DJ is about to buy again, from a pasted list</li>
+</ul>
+It ends with a shareable health card. The scan is free, and a paid tier gives step by step fixes, then leads to the Black Box.</dd>
+<dt>Basis</dt>
+<dd>direct: duplicates rekordbox never flags are a recurring complaint; real libraries carry rows under old volume names; 96 owned tracks were hidden by a title prefix and would have been bought again; the owner wants products that run without his maintenance. external: Lexicon's free conversion shows DJs expect to try before paying.</dd>
+<dt>Rationale</dt>
+<dd>Static files on a free host cost nothing to run and can be handed off. A health card posted in DJ forums is the distribution the other ideas lack. It turns Cratekit's best checks into a front door.</dd>
+<dt>Downsides</dt>
+<dd>A corrected XML cannot simply be reimported, because import appends, so fixes have to be guided steps rather than one file. Checking for orphan files needs the File System Access API, which only Chromium browsers have. On its own it is a one time use, so it earns only as the way into idea 1. Whether Lexicon already flags duplicates was not checked.</dd>
+<dt>Confidence</dt><dd>65%</dd>
+<dt>Complexity</dt><dd>Low</dd>
+</dl>
+</article>
+
+<article class="idea" id="idea3">
+<h3>3. Promo Sieve</h3>
+<div class="chips"><span class="chip">Axis: Getting music in legitimately</span><span class="chip">Confidence 50%</span><span class="chip">Complexity Medium</span></div>
+<p class="pitch"><strong>Elevator pitch.</strong> Promo pools bury you in the same tracks from five places. Promo Sieve turns everything that lands in your downloads folder into one crate, with no repeats, nothing you already own, and the rest ranked by your own taste.</p>
+<dl>
+<dt>Description</dt>
+<dd>A desktop app that watches the folder where a DJ's promo pool downloads land. It does six things, all on the DJ's own machine:
+<ul>
+<li>dedupes across pools, by tags, ISRC, duration and audio hash</li>
+<li>removes what the DJ already owns</li>
+<li>measures key, energy and vocals</li>
+<li>ranks the rest by the DJ's own genre and energy rules</li>
+<li>files one crate as rekordbox XML, without a tempo element</li>
+<li>keeps a feedback note the DJ edits and sends</li>
+</ul>
+About $6 to $8 a month.</dd>
+<dt>Basis</dt>
+<dd>direct: a DJ side aggregator that dedupes promos across pools into one crate is thin; the hidden owned tracks show how often a DJ re acquires what they have. external: Inflyte, Promoly and FatDrop all serve labels, not the DJ's inbox.</dd>
+<dt>Rationale</dt>
+<dd>It logs in to nothing and scrapes nothing, so no provider's terms are touched, and it reuses Cratekit's ownership check, taxonomy and analysis directly. It attacks the time DJs say they lose cleaning rather than mixing.</dd>
+<dt>Downsides</dt>
+<dd>Promo pool terms on downloaded files were not read. Demand is shown only as a gap, not as anyone paying. A small monthly price churns. It could ship first as a module of idea 2 to test demand.</dd>
+<dt>Confidence</dt><dd>50%</dd>
+<dt>Complexity</dt><dd>Medium</dd>
+</dl>
+</article>
+
+<article class="idea" id="idea4">
+<h3>4. Gig Stick Check</h3>
+<div class="chips"><span class="chip">Axis: The gig lifecycle</span><span class="chip">Confidence 45%</span><span class="chip">Complexity Low</span></div>
+<p class="pitch"><strong>Elevator pitch.</strong> The night before the gig, plug in your USB and get a green light or a list of exactly what will fail: missing tracks, corrupt files, paths the venue's decks cannot read.</p>
+<dl>
+<dt>Description</dt>
+<dd>A go or no go check the night before a gig. It confirms every track in the prep playlists is on the USB, fully decodes each file to catch corrupt ones, matches each file to the master library by hash, and checks the stick against the venue deck's file system, codec and path limits. Each failure comes with its fix. A one time $29, or a per seat price for booking agencies.</dd>
+<dt>Basis</dt>
+<dd>direct: rekordbox 7.2.12 was pulled over a USB export bug; real libraries carry paths under old drive names; Cratekit lost three sittings to a row that loaded but was refused a deck.</dd>
+<dt>Rationale</dt>
+<dd>Few things a DJ fears more than a dead track mid set, and the check costs little to build or run. It is also a natural add on to idea 1.</dd>
+<dt>Downsides</dt>
+<dd>To stay clean it does not read the USB's own export database, so it cannot see the deeper failures that make the strongest case for it, only file level ones. The venue booth profile network the generators proposed was cut: it has no evidence of supply.</dd>
+<dt>Confidence</dt><dd>45%</dd>
+<dt>Complexity</dt><dd>Low</dd>
+</dl>
+</article>
+
+<article class="idea" id="idea5">
+<h3>5. Gig Thread</h3>
+<div class="chips"><span class="chip">Axis: The gig lifecycle</span><span class="chip">Confidence 25%</span><span class="chip">Complexity Medium</span></div>
+<p class="pitch"><strong>Elevator pitch.</strong> For wedding and event DJs: each booking carries its own crate, built from the client's must play list against what you own, and after the night it hands back the tracklist and a recap for the client.</p>
+<dl>
+<dt>Description</dt>
+<dd>A local app for wedding, corporate and mobile DJs where the booking is the root object. The client's must play and do not play lists are matched against the DJ's own files, and a prep crate is built as rekordbox XML. After the night, the DJ's exported history gives a clean tracklist and a recap page for the client. About $15 a month, or a one time licence.</dd>
+<dt>Basis</dt>
+<dd>direct: nobody links a booking to that gig's prep crate and played set. external: DJ Event Planner ($30 and up), EMP DJ ($19) and Gigbuilder are CRMs that never touch the library.</dd>
+<dt>Rationale</dt>
+<dd>It is the one idea that connects the DJ's income to the library, which is where paying is easiest to justify, and the owner is a target user himself.</dd>
+<dt>Downsides</dt>
+<dd>Whether rekordbox exports a usable play history was not verified, and the tracklist depends on it. Booking software is a crowded market, and invoicing would pull it into accounting, so it stays out. A hosted version would mean ongoing operation, so it ships as a local app.</dd>
+<dt>Research, 2026-11-06</dt>
+<dd><p><strong>The prep crate is already sold.</strong> Vibo ($149 to $179 a month), Releventful, SongBoard ($49.99), DJ Intelligence ($15 to $45) and Gigbuilder ($25 to $50) all match client requests to the DJ's own files and export M3U or crates to Serato, rekordbox and VirtualDJ.</p>
+<p><strong>Spotify blocks a newcomer.</strong> An app in development mode is capped at 5 users, and since May 2025 full access needs an organization with 250,000 monthly active users. So a new product cannot read client Spotify links at scale, and intake would be a file or pasted text. The policy's carve out for "the metadata of the user's playlists" probably permits matching, but that is unconfirmed.</p>
+<p><strong>The recap looks unclaimed.</strong> No competitor found turns the night's play history into a recap for the client. Every major DJ program exports a session: rekordbox history to .txt or .m3u8, Serato to CSV, Traktor to NML, Engine to CSV, VirtualDJ to m3u and tracklist.txt. Formats differ, timestamps are unreliable, none carries ISRC, and no evidence was found that DJs or couples ask for it.</p>
+<p><strong>Cheapest test.</strong> Offer the recap alone, made by hand, before any code: a DJ uploads a Serato CSV or rekordbox .txt and gets a branded recap for the couple. Post it in DJ groups, count uploads and repeat use, and try a $10 pre order.</p>
+<p>Sources: vibodj.com/pricing; djintelligence.com/integrations; gigbuilder.com compare page; releventful.com; developer.spotify.com/policy and its quota modes and February 2026 migration pages; Pioneer DJ community, Serato, Native Instruments and Engine DJ documentation.</p></dd>
+<dt>Confidence</dt><dd>25% after research; the recap alone holds about 35%</dd>
+<dt>Complexity</dt><dd>Medium</dd>
+</dl>
+</article>
+
+<article class="idea" id="idea6">
+<h3>6. Set Tracklist and Play Report</h3>
+<div class="chips"><span class="chip">Axis: Who pays</span><span class="chip">Confidence 30%</span><span class="chip">Complexity Medium</span></div>
+<p class="pitch"><strong>Elevator pitch.</strong> Venues have to report what was played, and nobody makes that easy for club nights. This turns a DJ's own play history into a clean tracklist and a report a collecting society can use, with no microphones in the room.</p>
+<dl>
+<dt>Description</dt>
+<dd>It turns a DJ's own play history into a clean tracklist, identified through MusicBrainz and Discogs, plus a performance report in the form a collecting society asks for. The DJ or venue does the submitting. Start on the DJ side, a few dollars per gig, and pitch venues ($29 to $100 a room a month) only after one society accepts the reports.</dd>
+<dt>Basis</dt>
+<dd>direct: club plays have no reporting standard, and a DJ's own play history turned into a clean report is compliant by design. external: Buma/Stemra pays DJ Monitor to fingerprint rooms, and US societies have no recognition partner.</dd>
+<dt>Rationale</dt>
+<dd>A venue has a legal reporting duty and no good tool, so it is the only payer with an obligation rather than a preference. The critic rated this weak. It stays as the long bet because the payoff is large if one society says yes.</dd>
+<dt>Downsides</dt>
+<dd>It stacks two unverified assumptions, a usable history export and a society accepting DJ supplied reports. Each territory has its own rules to keep up with, and societies already pay fingerprinting firms.</dd>
+<dt>Confidence</dt><dd>30%</dd>
+<dt>Complexity</dt><dd>Medium</dd>
+</dl>
+</article>
+</section>
+
+<section id="rejection-summary">
+<h2>Rejection Summary</h2>
+<p>42 raw ideas from five lenses merged into 17 candidates and 3 combinations. A critic that had not seen how the ideas were generated reviewed every one, and the cut below weighs its verdicts.</p>
+<div class="tablewrap">
+<table>
+<thead><tr><th>#</th><th>Idea</th><th>Reason Rejected</th></tr></thead>
+<tbody>
+<tr><td>1</td><td>Round Trip Certifier (conversion loss audits and a cue safe mark)</td><td>Its buyers give conversion away free, coverage is thin without a public format spec, and a business to business sale needs the owner's constant attention.</td></tr>
+<tr><td>2</td><td>Already Owned (ownership check as its own product)</td><td>Too small to price alone; folded into idea 2.</td></tr>
+<tr><td>3</td><td>Purchase Ledger (receipt emails to a chain of custody)</td><td>An inbound mail server holding purchase data is ongoing operation, and receipts that include Bandcamp purchases sit in a grey area.</td></tr>
+<tr><td>4</td><td>Library Rescue Desk (fixed price human rescues)</td><td>Paid human rescues are the owner's time by definition, against the brief.</td></tr>
+<tr><td>5</td><td>rekordbox Airworthiness Directives (safe to update page)</td><td>Prior art was not in the grounding, the telemetry it needs contradicts the Doctor's uploads nothing promise, and a safety claim carries liability.</td></tr>
+<tr><td>6</td><td>Taxonomy Exchange (sold genre packs)</td><td>Its basis is Cratekit's own taxonomy, not demand, and a creator marketplace is heavy to run.</td></tr>
+<tr><td>7</td><td>Offline Atlas (packaged public domain metadata)</td><td>The data is free, so the product is packaging with no moat, and the cited call counts were TIDAL's, not these sources'.</td></tr>
+<tr><td>8</td><td>Grid Second Opinion (flag bad grids)</td><td>Report only, so the DJ fixes each track by hand, and downbeat accuracy carries liability.</td></tr>
+<tr><td>9</td><td>Change Gate for marine power systems</td><td>Collides with the owner's employer and its confidentiality, and battery settings carry safety liability.</td></tr>
+<tr><td>10</td><td>Gate Kernel (the guarded write method as a library)</td><td>Unproven market with clear prior art (plan then apply tools); a portfolio piece, not a money product.</td></tr>
+<tr><td>11</td><td>Label Play Signal (verified plays sold to small labels)</td><td>A two sided cold start on an unverified history export, and Inflyte already sells set sightings.</td></tr>
+<tr><td>12</td><td>Played Set Exchange (one set record sold to venues and labels)</td><td>Stacks the three weakest dependencies and raises consent questions.</td></tr>
+<tr><td>13</td><td>Local Identity Layer</td><td>Shared plumbing, not a product.</td></tr>
+<tr><td>14</td><td>Venue booth profile network (part of Gig Preflight)</td><td>Cold start with no evidence of supply; the file level check survives as idea 4.</td></tr>
+</tbody>
+</table>
+</div>
+</section>
+
+<footer class="composition-signal">Composed 2026-11-06T15:01Z by ce-ideate from Phillip's request to build a separate, terms safe, money making product from what Cratekit learned.</footer>
+</main>
+</body>
+</html>
