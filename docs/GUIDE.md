@@ -1531,6 +1531,17 @@ and as `session` when nothing is, which is how a session working for you is told
 apart; the summary says which. An explicit gate still takes no answer on the
 verb's own command line, so `--continue` is always the second command.
 
+A gate that shows a plan is answered once its run has stopped there and put
+that plan on the screen, never ahead of it. A verb with two such gates, such as
+`crate organize`'s rekordbox gate and then its account gate, shows the second
+only after the first is answered and the run continued, so `crate run decide`
+on the second gate while the run still waits at the first is refused as
+`gate-not-reached` and records nothing. The refusal names the gate the run
+waits at, the command that continues the run, which shows the gate you named
+and its plan if it reaches it and says why in its report if it does not, and
+the answer to give once that gate is shown. A gate that shows no plan, such as
+the cloud sync gate, can still be answered ahead.
+
 When the plan moves between your answer and the run that applies it, the run
 refuses as stale and writes nothing. Where the gate itself finds the move, the
 refusal opens with "The plan moved since this gate was answered" and shows the

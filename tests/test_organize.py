@@ -2012,3 +2012,151 @@ def test_a_stale_rekordbox_refusal_shows_the_moved_plan_and_the_decide_after_it_
 
     assert code == int(ExitCode.OK), done
     assert _parent(cfg, landed) != inbox
+
+
+# ---------------------------------------------------------------------------
+# R-1349: a gate is answered once its run has shown it
+# ---------------------------------------------------------------------------
+
+
+def _account_side(held) -> tuple[list, list, list]:
+    return list(held.created), list(held.folders_created), list(held.moves)
+
+
+def test_an_account_answer_before_its_gate_is_shown_is_refused_and_records_nothing(world):
+    """R-1349. The drive that created three folders on the account with no account gate.
+
+    The rekordbox gate open, the account answered ahead of its own gate. The
+    answer used to be recorded with no digest, so the resume applied the
+    account area unasked. Now the decide is refused, names the gate the run
+    waits at and the command that reaches the account gate, and the resume
+    after the rekordbox answer stops at the account gate with nothing written.
+    """
+    from cratekit.cli import gates
+
+    _cfg, _fake, held, _inbox, _ids = world
+    before = _account_side(held)
+    collection.reset_cache()
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert first["cause"]["detail"]["gate"] == DB_GATE
+    run_id = first["run_id"]
+    record = gates.load(run_id).to_json()
+
+    code, early = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
+
+    assert code == int(ExitCode.PRECONDITION), early
+    cause = early["cause"]
+    assert cause["reason"] == "gate-not-reached"
+    assert cause["remediation"]["remedy"] is None
+    assert cause["detail"]["gate"] == ACCOUNT_GATE
+    assert cause["detail"]["open_gate"] == DB_GATE
+    assert cause["detail"]["run_id"] == run_id
+    steps = cause["remediation"]["steps"]
+    assert f"crate run decide {run_id} {DB_GATE} <option>" in steps[0]
+    assert f"crate --run {run_id} organize --as-of {TODAY.isoformat()}" in steps[1]
+    # Nothing recorded: the run reads exactly as it did.
+    assert gates.load(run_id).to_json() == record
+
+    assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
+    collection.reset_cache()
+    code, second = drive(["--run", run_id, *VERB])
+
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    assert second["cause"]["detail"]["gate"] == ACCOUNT_GATE
+    assert _account_side(held) == before
+
+
+def test_an_account_answer_ahead_continued_is_refused_before_the_verb_runs(world):
+    """``--continue`` does not carry an early answer past the gate it was refused at."""
+    _cfg, _fake, held, _inbox, _ids = world
+    before = _account_side(held)
+    collection.reset_cache()
+    code, first = drive(VERB)
+    run_id = first["run_id"]
+    assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
+    reached = _parent(_cfg, _ids["batch"])
+
+    # The run waits at nothing now (the database answer is recorded, the
+    # account gate not reached), so the refusal names the run to continue.
+    code, early = drive(
+        ["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person", "--continue"]
+    )
+
+    assert code == int(ExitCode.PRECONDITION), early
+    assert early["cause"]["reason"] == "gate-not-reached"
+    assert early["cause"]["detail"]["open_gate"] is None
+    (step, *_rest) = early["cause"]["remediation"]["steps"]
+    assert f"crate --run {run_id} organize --as-of {TODAY.isoformat()}" in step
+    # The verb did not run: no rekordbox write, nothing on the account.
+    assert _parent(_cfg, _ids["batch"]) == reached
+    assert _account_side(held) == before
+
+
+def test_an_account_answer_after_its_gate_is_shown_binds_the_digest_it_showed(world):
+    from cratekit.cli import gates
+
+    collection.reset_cache()
+    code, first = drive(VERB)
+    run_id = first["run_id"]
+    assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
+    collection.reset_cache()
+    code, second = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    shown = second["cause"]["detail"]["shown"]["digest"]
+
+    code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
+
+    assert code == int(ExitCode.OK), decided
+    assert gates.load(run_id).decisions[ACCOUNT_GATE].digest == shown
+
+
+def test_a_gate_with_no_digest_source_still_takes_an_answer_before_it_is_reached(world):
+    """The cloud sync gate binds no plan, so an answer ahead of it is what it always was."""
+    from cratekit.cli import gates
+
+    (cloud,) = [g for g in registry.entry("organize").gates if g.name == "write.cloudsync.unreadable"]
+    assert cloud.digest_source is None
+    collection.reset_cache()
+    code, first = drive(VERB)
+    run_id = first["run_id"]
+
+    code, decided = drive(["run", "decide", run_id, cloud.name, "abort", "--actor", "a-person"])
+
+    assert code == int(ExitCode.OK), decided
+    state = gates.load(run_id)
+    assert state.decisions[cloud.name].option == "abort"
+    assert state.decisions[cloud.name].digest is None
+    assert state.open_gate == DB_GATE
+
+
+def test_an_answer_ahead_of_a_gate_the_continue_may_not_reach_promises_no_stop_there(world):
+    """Round one's drive: the acknowledgment lapsed, so the rekordbox area refuses before it plans.
+
+    The run stops at the account gate alone, and a decide on the rekordbox
+    gate is refused. Its steps used to promise that the continued run stops at
+    the rekordbox gate with its plan on the screen, and it never does: the
+    area refuses again, and the decide those steps end on is refused again.
+    """
+    cfg, _fake, _held, _inbox, _ids = world
+    session.ack_path(cfg).unlink()
+    collection.reset_cache()
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert first["cause"]["detail"]["gate"] == ACCOUNT_GATE
+    run_id = first["run_id"]
+
+    code, early = drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])
+
+    assert code == int(ExitCode.PRECONDITION), early
+    steps = early["cause"]["remediation"]["steps"]
+    assert not any(f"stops at {DB_GATE}" in step for step in steps)
+    assert any("its report says why if it does not" in step for step in steps)
+    assert drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"])[0] == 0
+    collection.reset_cache()
+    code, done = drive(["--run", run_id, *VERB])
+    # The continue reaches no rekordbox gate, and says why.
+    assert code == int(ExitCode.OK), done
+    assert done["data"]["summary"]["areas"][rekordbox.AREA]["refused"]["reason"] == (
+        "backup-acknowledgment-missing"
+    )

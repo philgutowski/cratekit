@@ -37,6 +37,7 @@ somebody decided on, not a directory this module invented.
 from __future__ import annotations
 
 import json
+import shlex
 from dataclasses import dataclass, field
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -220,6 +221,81 @@ class UnknownOption(CratekitError):
                 detail=detail,
             )
         )
+
+
+class GateNotReached(CratekitError):
+    """A decision named a gate that binds a plan, and the run has not reached it (R-1349).
+
+    ITS OWN REASON, NOT ``decision-required``, and no ``answer-decision``
+    remedy. Both mean an open gate: the human output prints a gate screen for
+    the one and verbs recognise an unanswered gate by the other, and either
+    would invite the very answer this refuses. The steps say what reaches
+    the gate instead: the answer on the gate the run waits at, if it waits at
+    one, then the run continued under ``--run``, which shows this gate and its
+    plan if it reaches it, then the answer once it has.
+    """
+
+    def __init__(self, state: RunState, spec: GateSpec) -> None:
+        command = continue_command(state)
+        waiting = state.open_gate
+        # NO STOP IS PROMISED (R-1349 round one). A continued run reaches the
+        # gate only if nothing before it refuses: organize's rekordbox area
+        # refuses before it plans while the backup acknowledgment is missing,
+        # and its gate is never asked. So the steps say what the run does if it
+        # reaches the gate, and that its own report says why if it does not.
+        reach = (
+            f"continue the run: {command}; it puts {spec.name} and its plan on the "
+            f"screen if it reaches it, and its report says why if it does not"
+        )
+        answer = (
+            f"then, once the run shows {spec.name}, answer it: crate run decide "
+            f"{state.run_id} {spec.name} <option>"
+        )
+        if waiting is not None:
+            steps: tuple[str, ...] = (
+                f"answer the gate the run waits at first: crate run decide "
+                f"{state.run_id} {waiting} <option>",
+                f"then {reach}",
+                answer,
+            )
+            where = f", and it waits at {waiting!r} first"
+        else:
+            steps = (reach, answer)
+            where = ""
+        super().__init__(
+            Cause(
+                reason="gate-not-reached",
+                message=(
+                    f"run {state.run_id} has not reached the gate {spec.name!r}, so "
+                    f"no plan of it has been shown for an answer to bind to{where}; "
+                    f"nothing was recorded"
+                ),
+                remediation=Remediation(steps=steps),
+                scope=Scope.RUN,
+                retryable=True,
+                origin=("gates",),
+                detail={
+                    "gate": spec.name,
+                    "run_id": state.run_id,
+                    "verb": state.verb,
+                    "open_gate": waiting,
+                    "continue": command,
+                },
+            )
+        )
+
+
+def continue_command(state: RunState) -> str:
+    """The command that continues a kept run with every answer it holds (U211).
+
+    The verb's own command line as its first invocation gave it, under
+    ``--run``, which is what ``run decide --continue`` dispatches. A run
+    recorded before U168 keeps no command line, so the verb's words stand
+    with an ellipsis for its arguments, as ``run decide`` says it then.
+    """
+    if state.argv is not None:
+        return shlex.join(["crate", "--run", state.run_id, *state.argv])
+    return f"crate --run {state.run_id} {state.verb.replace('.', ' ')} ..."
 
 
 @dataclass(frozen=True, slots=True)
@@ -770,9 +846,26 @@ def record(state: RunState, spec: GateSpec, option: str, *, actor: str) -> None:
     The digest comes from what the run OFFERED, never from the caller. A person
     answering in a later session has no way to quote the identity of something
     they were shown by a process that has already exited.
+
+    SO A GATE THAT BINDS A PLAN IS ANSWERED ONLY ONCE ITS RUN REACHED IT
+    (R-1349). Its offer is recorded by :meth:`Gates.require` when the gate is
+    reached, and an answer recorded before that held no digest, which
+    ``require`` cannot compare, so the resume applied whatever plan it read
+    there with no screen ever shown. Reached means the run holds the gate's
+    offer, holds it open (a gate reached with nothing to digest is open and
+    offerless), or already holds an answer on it, which only a reached gate
+    can since this check. Refused before anything is written, so the run
+    reads exactly as it did.
     """
     if option not in spec.options:
         raise UnknownOption(spec, option)
+    if (
+        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)
     state.decisions[spec.name] = Decision(
         option=option,
         actor=actor,
