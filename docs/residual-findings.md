@@ -44840,3 +44840,319 @@ is an untested claim, not a write.
 **Closes when:** a world is found where the gate's own record changes a word
 the edit rule reads, and a test pins the frozen one, or the claim is shown to
 hold by construction and the docstring says so. Ledger only.
+
+---
+
+## R-1336. A 404 page on one track read inside the client's ISRC lookup reads the whole ISRC as filed under nothing
+
+**Found:** at the build of #561, R-1313, 2026-11-06.
+
+**The mechanism.** tidalapi 0.8.11's `get_tracks_by_isrc` reads each track the
+ISRC answer names with its own track read, and skips one that answers a not
+found it can decode, `ObjectNotFound`. A track read answered 404 with a body
+that is not JSON raises the decode error instead, which the client does not
+catch, so the whole lookup fails with the 404 three context links down. Since
+R-1313 every reader of a not found reads that 404, so the account and the
+catalogue answer the ISRC as filed under nothing and keep that answer for a
+week, where the client meant to skip one track and return the rest. Before
+R-1313 it was retried and failed as an outage, so a match was missed either
+way; now it is missed for a week rather than until the outage clears.
+
+**Measured cost.** Driven on the installed client by round one of the review:
+a v2 answer naming track 11 and a v1 track read answering a 404 page escape
+`get_tracks_by_isrc` as the decode error, the HTTP error's response URL naming
+the v1 track path, and `said_not_found` reads it true. That such a failure is
+then kept is the seam tests' measure over a fixture client, and seven days is
+`NOT_FOUND_DAYS` read from the source. Not driven against the provider. It needs a v1 track read
+answered with a 404 page while the v2 ISRC answer names that track; whether the
+provider answers 404 with a page at all is the attended measurement R-1313
+left out of scope.
+
+**Closes when:** the ISRC readers tell a 404 on the lookup itself from one on
+a track it read, by the request the 404 answered (the HTTP error's response
+URL names the v1 track path), or the attended measurement shows the provider
+never answers a track read with a page. Ledger only: the reachability is
+unmeasured and the cost is a match missed for at most a week.
+
+---
+
+## R-1337. A track read as gone off a 404 page carries the JSON decoder's words as why
+
+**Found:** at round one of #561's review, R-1313, 2026-11-06.
+
+**The mechanism.** `adapter._unavailable` writes `str(exc)` as a result's
+detail. Since R-1313 a track answered 404 with a page is permanently
+unavailable, read off the HTTP error three context links down, but the detail
+is the failure's own text, the decoder's.
+
+**Measured cost.** Driven by the review: `acquire_one` over a source raising
+the installed client's 404 page answers `unavailable-permanent`, no remedy,
+detail `Expecting value: line 1 column 1 (char 0)`. Nothing false, and the
+outcome is right; a person reading the job row is told a decoder failed
+rather than that the provider has no such track. The sibling of the message
+residual R-1305 filed for a rejected session.
+
+**Closes when:** a detail read off a link names that link's status, for
+example the HTTP error's own text. Ledger only: wording.
+
+---
+
+## R-1338. An artist read answered with a 404 page is not an unresolved seed, since the catalogue reads that not found by its class alone
+
+**Found:** at round one of #561's review, R-1313, 2026-11-06, the class one file over.
+
+**The mechanism.** `label.tidal_catalogue._artist_identified` answers a seed
+the provider has no artist for by catching the client's `ObjectNotFound`. A
+404 whose body is a page never becomes that class (R-1313's mechanism), so the
+client's decode error propagates out of the artist read with the 404 three
+context links down, and the label roster reports a failed read rather than
+"no artist with identifier".
+
+**Measured cost.** Driven by the review: `session.artist` raising the
+installed client's failure for a 404 page propagates as `JSONDecodeError`,
+`nearest_status` 404. Not introduced by R-1313, which changed the four readers
+its brief named. Whether the provider answers an artist read with a page is
+the attended measurement R-1313 left out of scope.
+
+**Closes when:** `_artist_identified` also answers `None` when
+`core.cause.answered_not_found` holds, with a test raising the failure through
+`tests/provider_answers.client_failure`. Ledger only: the producer is
+unmeasured, and the cost is a refusal worded as a failed read.
+
+---
+
+## R-1339. The label sweep's 429 reader misses a 429 page under a declared wrapper
+
+**Found:** at round two of #561's review, R-1313, 2026-11-06, the shape one file over.
+
+**The mechanism.** `label.sweep`'s rate limit reader walks the declared cause
+chain and the context chain each on its own (`_linked` over one attribute), so
+a 429 whose body is a page, under a wrapper raised from it, sits on a context
+link of a declared link and is reached by neither walk. `core.cause.failure_links`
+reaches it.
+
+**Measured cost.** Driven by the review: a `RuntimeError` raised from the
+installed client's 429 page reads not rate limited, where the raw page and a
+wrapped `TooManyRequests` read rate limited. R-704's cost, a label recorded as
+permanently failed for a limit a wait would clear, if anything wrapped the
+failure; no producer: each of the raise from sites on the sweep's path
+(`tidal_catalogue`, `harvest`, `crawl`, `catalogue`, `listing`, `sweep`) hands
+the reader the raw failure. Predates R-1305 and R-1313.
+
+**Closes when:** the sweep reads its 429 through `core.cause.failure_links`
+in place of the two single attribute walks, with a test raising a rewrapped
+page through `tests/provider_answers.client_failure`. Ledger only: no producer.
+
+---
+
+## R-1340. The paced pool's status read takes the failure alone, so a 403 or 429 whose body is not JSON says nothing about pacing
+
+**Found:** at the build of #561, R-1313, 2026-11-06, hunting the class one file over.
+
+**The mechanism.** `acquire.download.status_of`, which `classify_signal` asks
+first, reads a status off the failure itself and none of its links. A provider
+answer whose body is not JSON reaches it as the client's decode error with the
+HTTP error three context links down (R-704, R-1305, R-1313), so a 403 page
+reads as no status, then as text that is the decoder's own, and the pool hears
+no account block. A 429 page is the same shape, though the provider gate counts
+a rate limit off the raw response at the transport, so only the block is
+unheard.
+
+**Measured cost.** Not driven. The pool's one source today is the vendored
+tool, which swallows a provider failure and raises `NoFileLanded`, read as no
+signal before any status, so a raw client failure reaching `classify_signal`
+needs a source that lets one through. The other readers of a status off a
+client failure found by a grep of `src` for `status_code` walk the links (the
+two of a rejected session, the four of a not found, `_stale_tag` and the label
+sweep's 429); this is the one found that still does not.
+
+**Closes when:** `status_of` reads the nearest status through
+`core.cause.nearest_status` when the failure carries none of its own, with a
+test raising a 403 and a 429 page through `tests/provider_answers.client_failure`.
+Ledger only, for the reachability above.
+
+---
+
+## R-1341. The walk's depth first order off the declared chain is pinned one hop deep only
+
+**Found:** at round two of #561's review, R-1313, 2026-11-06.
+
+**The mechanism.** Round one's fix made `core.cause.failure_links` take a
+context reached link's own cause before what it was raised while handling,
+depth first, so `nearest_status` reads what a wrapper says it is first. Depth
+first also takes that cause's own context before the wrapper's context: a
+wrapper raised from a status-less error, itself raised while handling a 404
+page, while the wrapper was handling a 503 page, reads the 404 three hops out
+before the 503 two hops out.
+
+**Measured cost.** Driven by the review: that shape reads `nearest_status`
+404, and a breadth first walk patched into every copy reads 503 and passes all
+89 tests of the two body files, so the order past one hop is unpinned. No
+producer: it needs a status-less failure raised while handling a provider
+answer, and the handler grep of round one found none.
+
+**Closes when:** a test pins which of the two the walk takes, with the order
+chosen on a reason the docstring gives. Ledger only: no producer.
+
+---
+
+## R-1342. The walk's refusal limit stops only at a CratekitError, so a failure met while handling a NoFileLanded or an adapter error raised from a 404 page reads as not found
+
+**Found:** at round one of #561's review, R-1313, 2026-11-06.
+
+**The mechanism.** `core.cause.failure_links` never enters a product refusal
+off the declared chain, and a product refusal is a `CratekitError`.
+`NoFileLanded` is a `RuntimeError` and the adapter's `AdapterError` family is
+plain `Exception`, both raised from the provider failure they carry. A failure
+with no status of its own raised while handling one of them, raised from a 404
+page, is read through to the 404, so every reader of a not found calls it one:
+R-703's rule that a `NoFileLanded` decides nothing by its cause holds for the
+failure itself and not one hop out.
+
+**Measured cost.** Driven by the review: a `ValueError` raised while handling
+`NoFileLanded(cause=gone)` raised from a 404 page, and the same under
+`AdapterBroken`, read `nearest_status` 404 and all four readers true. No
+producer: the except handlers of 15 modules (8 of Cratekit's, 7 of the
+client's) were grepped with a six line window for a provider call inside a
+handler of either, and none was found;
+`acquire_with_source` classifies the handled failure itself and
+`fetch_with_retry` retries outside its handler.
+
+**Closes when:** the walk's limit also stops at a `NoFileLanded` and an
+`AdapterError`, or a test shows no reader is ever handed a failure raised
+inside a handler of one. Ledger only: no producer.
+
+---
+
+## R-1343. A removal refused as possibly landed under a lagging read is recorded by no caller as taken off
+
+**Found:** at the build of #558, R-1308, 2026-11-06.
+
+**The mechanism.** When `remove_tracks` refuses with `lagged: yes`, the
+removal may have landed, but prune, the mirror, `label heard` and
+`sync pair` each record only what a returned removal said, so a removal that
+did land is not in their records. A run again plans from a fresh reading of
+the playlist and does not ask for it again once the read shows it.
+
+**Measured cost.** Not driven past the adapter. A record of what was taken
+off is short by the asked tracks until the next run reads the playlist.
+
+**Closes when:** a caller records a possibly landed removal as such, or the
+next run is shown to settle it. Ledger only.
+
+---
+
+## R-1344. A removal's read back whose declared count or videos cannot be read now stops the mirror apply as a possibly wrong track
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** Before R-1308 a read back whose count or video count could
+not be read, or declared a video, was refused `positions-unknown` at
+`Scope.SOURCE`, which the mirror's apply keeps as "nothing was taken off it"
+and carries on past, although the removal had been sent. R-1308's read back
+refuses it at `Scope.RUN` as `read-back-differs`, "a track other than the
+asked ones may have come off", which stops the apply.
+
+**Measured cost.** The new answer is the more conservative and the old one
+was false; no provider was driven that changes its declared counts' shape
+between the first reading and the read back.
+
+**Closes when:** a provider is seen to do so; ledger only, a seam note.
+
+---
+
+## R-1345. A removal run again while the read still lags takes the wrong track off if the lagging listing carries the current version tag
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** `TidalAccount.remove_tracks` plans its positions from its
+first reading and sends them with the version tag that reading came with. The
+safety of a removal run again after R-1308's "may have landed" refusal rests
+on the provider answering 412 to a removal whose tag is the one a stale
+listing came with; the client takes the tag from the tracks response's own
+header, so a lagging body and its tag should come from one response. Driven
+on a stand in whose lagging listing keeps the playlist's CURRENT tag instead:
+after a refused lagged removal of `b` from `[a, b, c, d]`, a fresh run reads
+`[a, b, c, d]` stale, removes position 1, which is now `c`, and its read back,
+lagging one write, shows `[a, c, d]`, equal to what it expected, so it
+reports `b` taken off while `c` is gone.
+
+**Measured cost.** Not reached on the live provider: the one live observation,
+Sitting 62's 412 on a move after adds (U220's record), points to a stale read
+carrying a stale tag, under which the same drive is answered 412 and nothing
+comes off. Pre existing on main; R-1308's refusal and the GUIDE advise looking
+by hand before anything runs again.
+
+**Closes when:** an attended sitting reads a playlist straight after a
+removal and compares the listing's tag with the playlist's, or the first
+reading of a removal is held to what is known of the playlist (the residual
+beside this one). Ledger only, since it closes at an attended sitting.
+
+---
+
+## R-1346. label heard adds run it again after a removal's read back refusal that says to check the playlist by hand first
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** prune's refusal wrapper drops its "run again" step when
+the account's problem is `read-back-differs`; `label heard`'s
+`_failed_part_way` appends "run crate label heard again" after it whatever
+the problem. Driven at round one's review on the adapter's read back refusal.
+
+**Measured cost.** A heard user is told in one answer to check by hand and to
+run again; no data is lost, since a run again's removal is planned from a
+fresh reading (see the residual beside this one on a lagging read's tag).
+
+**Closes when:** heard's wrapper keeps the account's steps alone on a
+`read-back-differs`, as prune's does. Ledger only, a wording fix.
+
+---
+
+## R-1347. An order's refusal and a removal's provider failure leave what the adapter remembers of the playlist as it was before
+
+**Found:** at round two's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** R-1308's read back forgets `TidalAccount._members` for
+the playlist on every refusal, since what it holds is not known. The same
+shape one method over does not: `order_tracks`'s `_read_back` and
+`_settled` refuse with the entry holding the last reading `_positions`
+took, lagging or not, and `remove_tracks`'s provider failures (a removal
+not accepted, or a call that raised) leave the reading from before the
+removal. Round two drove what a stale entry does on round one's head: a
+later `add_tracks` on the same adapter answered a track as held and added
+nothing while the provider did not hold it.
+
+**Measured cost.** None reached: the four callers (prune, the mirror's
+apply, `label heard`, `sync pair`) each raise out of the command on these
+refusals, read and not driven, so no later call on the same adapter reads
+the entry.
+
+**Closes when:** every refusal and failure after a write forgets the entry,
+or a caller is found that continues on the same adapter. Ledger only.
+
+---
+
+## R-1348. The first reading of a removal is not held to what the same command's writes left, so a mirror apply or a prune's second chunk stops over a lag
+
+**Found:** at round one's review of #558, R-1308, 2026-11-06.
+
+**The mechanism.** `order_tracks` holds its first reading to what this
+adapter's writes left (`_settled`, U220); `remove_tracks` takes its first
+reading through `_positions` as it comes. The mirror's apply adds then
+removes on one playlist (`mirror.py`, the add before the removal), and
+prune takes a playlist's removals off in chunks of 50, one `remove_tracks`
+call each, so either can meet a first reading that lags its own earlier
+write. Driven on the U220 stand in: add `x` then remove `b` under a whole
+lag of one is answered 412 and raised as `unavailable-transient`; under a
+tracks only lag it is refused `positions-unknown` at source. A removal
+answered 412 changed nothing but is raised rather than read again, which
+R-1308's brief kept out of scope.
+
+**Measured cost.** A mirror apply or a prune stops after its adds or its
+first chunk landed, with a true message; running it again does the rest.
+
+**Closes when:** the first reading of a removal is held to `_members` when
+this adapter wrote the playlist in this process, read again on the order's
+pauses as `_settled` does, and a removal answered 412 is read again and
+planned afresh as a move answered 412 is. Ledger only: the run again
+finishes the workflow.

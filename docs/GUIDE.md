@@ -1107,6 +1107,14 @@ the playlists left out of order and the `crate --run RUN sync pair` that
 finishes them. Look at each in the Tidal app first; the continue moves nothing
 until its reading agrees with the one it took just before.
 
+Taking tracks off a Tidal playlist is read back the same way. When the
+provider is slow to show the removal, Cratekit waits a few seconds and reads
+again, and never sends the removal twice. If the playlist's tracks or its
+count still read as they were before after the last wait, the answer says
+which, and that the removal may have landed: look at the playlist in the
+Tidal app before you run anything again. A reading that shows some other
+track gone stops at once.
+
 ### Publish a playlist
 
 ```bash
@@ -1731,6 +1739,13 @@ middle of a job, Cratekit says the session was rejected and to sign in again,
 whatever the answer's body held, a gateway's page and an empty answer
 included. When the provider fails or cannot be reached it says to wait and
 resume, and keeps the stored session, because nothing judged it.
+
+When the provider answers that it has no such track, release or ISRC, that
+answer is taken as given whatever the answer's body held, a gateway's page
+included: the track is reported as one the provider lacks rather than retried
+as an outage, a release is gone, and an ISRC it files nothing under is kept
+for a week like any other answer. A server error stays a wait, even one met
+while a not found was being handled.
 
 ## Where things live
 
