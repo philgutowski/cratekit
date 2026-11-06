@@ -98,8 +98,10 @@ description = "playlist_tracks_unpaged: the walk asks again at the declared coun
 file = "src/cratekit/acquire/listing.py"
 surface = "user"
 tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
-old = '''    while len(rows) < declared:'''
-new = '''    while len(rows) <= declared:'''
+old = '''        if len(rows) >= declared:
+            break'''
+new = '''        if len(rows) > declared:
+            break'''
 
 [[rows]]
 id = "W11_offset_dropped"
