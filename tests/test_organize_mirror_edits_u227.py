@@ -19,7 +19,7 @@ import sqlite3
 from cratekit.adopt import apply as adoption
 from cratekit.adopt import apply_cli, collection
 from cratekit.cli.output import timestamp
-from cratekit.core import tags, taxonomy
+from cratekit.core import jobs, tags, taxonomy
 from cratekit.modules.outbound import mirror_edits as edits
 from tests.test_organize_mirror_edits_u204 import _field_policies as _field_policies  # noqa: PLC0414
 from tests.test_organize_mirror_edits_u204 import _items, _land_and_file, _queued
@@ -200,4 +200,57 @@ def test_a_refiling_through_adoption_after_the_landing_is_not_the_landings(world
     assert "landed for the account's edit" not in kept["why"]
     assert ("Tech House", "High") in world.places("3")
     # The energy the person filed it with is never rewritten toward the edit.
+    assert tags.read_energy_checked(world.files["3"]) == 7
+
+
+def _file_as_person(world, content_id: str, genre: str, genre_id: str, energy: int) -> None:
+    """A person tags the row and files it through ``crate adopt apply``'s worker.
+
+    The verb queues an ``adopt.apply`` job freezing the approved plan's digest,
+    and its worker, ``apply_cli.handle``, files that plan.
+    """
+    assert tags.write_tags(world.files[content_id], {"genre": genre, "energylevel": energy})
+    conn = sqlite3.connect(world.db)
+    try:
+        conn.execute("UPDATE djmdContent SET GenreID = ? WHERE ID = ?", (genre_id, content_id))
+        conn.commit()
+    finally:
+        conn.close()
+    collection.reset_cache()
+    plan = apply_cli.current_plan(world.cfg, DECLARED)
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key="adopt.apply",
+            payload={
+                "tree": plan.tree,
+                "digest": plan.digest(),
+                apply_cli.ACTOR_KEY: "session",
+                jobs.GATE_RUN_KEY: "adopt-run",
+            },
+            item_ids=(plan.digest(),),
+            cfg=world.cfg,
+        )
+    apply_cli.handle(job, None, world.cfg)
+
+
+def test_a_persons_first_filing_after_a_landing_that_filed_nothing_is_not_the_landings(world):
+    """Round two of the review: a download with no genre tag is filed nowhere by its
+    landing, and the person's own first filing is never read as the landing's."""
+    world.put_in("Tech House Med", "r3", at=ACCOUNT_AT)
+    world.run_all()
+    _land_and_file(world, matched_as="r3")
+    assert adoption.read(world.cfg).applied == () or all(
+        one.content_id != "3" for one in adoption.read(world.cfg).applied
+    )
+    _file_as_person(world, "3", "Tech House", "101", 7)
+    assert world.places("3") == {("Tech House", "High")}
+
+    _area, step, _queue = world.run_all()
+
+    assert _items(step) == []
+    (kept,) = [one for one in step.items if one.get("track") == "r3"]
+    assert kept["outcome"] == edits.REKORDBOX
+    assert "landed for the account's edit" not in kept["why"]
+    assert world.places("3") == {("Tech House", "High")}
     assert tags.read_energy_checked(world.files["3"]) == 7

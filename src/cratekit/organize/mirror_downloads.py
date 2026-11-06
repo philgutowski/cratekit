@@ -189,6 +189,27 @@ def _queued_at(cfg: config.Config) -> dict[str, str]:
     return held
 
 
+def _adopted(cfg: config.Config) -> frozenset[str]:
+    """Every approval a person gave ``crate adopt apply`` on this library, by its plan digest.
+
+    The adoption applied ledger has two writers: the adopt worker, whose job
+    freezes the approved plan's digest and refuses unless the plan it files
+    still has it, and a landing's own filing (``intake.filing.file_landed``),
+    which queues no job. So an entry under one of these digests was filed by a
+    person, never by a landing (the review of U227, round two).
+    """
+    from cratekit.core import jobs
+    from cratekit.organize import rekordbox  # noqa: PLC0415 - a cycle at import time
+
+    with jobs.open_store() as store:
+        return frozenset(
+            str((job.payload or {}).get("digest") or "")
+            for job in jobs.list_jobs(store)
+            if job.handler_key == rekordbox.ADOPT_HANDLER
+            and job.library_id == cfg.library.volume_id
+        ) - {""}
+
+
 def filed(
     cfg: config.Config, declared: Any, owner: Mapping[str, Any]
 ) -> dict[str, frozenset[tuple[str, str]]]:
@@ -199,11 +220,12 @@ def filed(
     entries for that row in the routing tree that the LANDING'S FILING wrote:
     the earliest entry applied no earlier than the track was queued, and every
     entry of the same approval (its digest). So a row the library held before
-    the download is never read as one the landing made, and a re-filing a
-    person drives after the landing, ``crate adopt apply`` over a retagged
-    file above all, is a later approval and never read as the landing's (the
-    review of U227). Each is ``(folder, playlist)`` as the taxonomy names it
-    now. A queue or a ledger that cannot be read gives
+    the download is never read as one the landing made. An approval a person
+    gave ``crate adopt apply`` is never the landing's, whatever its order:
+    a re-filing after the landing is a later approval (round one), and a
+    landing that filed nothing, a download with no genre tag above all, has
+    no approval of its own for the person's first filing to be mistaken for
+    (round two). Each is ``(folder, playlist)`` as the taxonomy names it now. A queue or a ledger that cannot be read gives
     none, and the edit is read by the later change rule as before U227, which
     leaves the library as it is.
     """
@@ -216,12 +238,13 @@ def filed(
         if not since:
             return {}
         applied = adoption.read(cfg).applied
+        by_person = _adopted(cfg)
     except (CratekitError, OSError, ValueError):
         return {}
     tree = declared.tree.id
     by_row: dict[str, list[Any]] = {}
     for entry in applied:
-        if entry.tree == tree:
+        if entry.tree == tree and entry.digest not in by_person:
             by_row.setdefault(str(entry.content_id), []).append(entry)
     found: dict[str, frozenset[tuple[str, str]]] = {}
     for remote, queued_when in since.items():

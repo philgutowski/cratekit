@@ -649,9 +649,10 @@ def _way_on(hold: cli_jobs.Hold) -> str:
     run_id = _run_of(job)
     if run_id:
         way = f"continue its pass with: {_continue_command(run_id)}"
-    elif _mirror_download(job):
+    elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:
         # U227: queued by organize for an edit made on the account, and the
-        # next new pass takes it, so driving it by hand would land it outside one.
+        # next new pass takes it, so driving it by hand would land it outside
+        # one. Only a queued one: a pass takes no other (round two, R3).
         way = (
             "queued by crate organize for a track added on the account; the next new "
             "pass takes it: crate sync land"

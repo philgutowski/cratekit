@@ -268,3 +268,23 @@ def test_a_mirror_download_another_library_queued_is_not_taken(machine, monkeypa
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert "run_id" not in _job(queued.job_id).payload
     assert "mirror_downloads_taken" not in _summary(envelope)
+
+
+def test_a_mirror_download_a_pass_cannot_take_keeps_the_command_that_settles_it(
+    machine, monkeypatch, tail
+):
+    """A blocked mirror job is not the next pass's, so the row names its own command."""
+    cfg, script = machine
+    queued = _mirror_job(monkeypatch, cfg, "301")
+    with jobs.open_store() as store:
+        store.conn.execute(
+            "UPDATE jobs SET state = ? WHERE job_id = ?", (str(jobs.JobState.BLOCKED), queued.job_id)
+        )
+    _account(monkeypatch, script, "101")
+
+    code, envelope = drive(["sync", "land"])
+
+    (row,) = [said for said in _said(envelope, "left-open") if queued.job_id in said]
+    mine = row.split(queued.job_id, 1)[1].split(" | ")[0]
+    assert "queued by hand, drive it with: crate intake playlist" in mine
+    assert "the next new pass takes it" not in mine
