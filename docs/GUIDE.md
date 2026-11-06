@@ -1115,6 +1115,18 @@ which, and that the removal may have landed: look at the playlist in the
 Tidal app before you run anything again. A reading that shows some other
 track gone stops at once.
 
+Tidal can go on serving a playlist's old order or old tracks for several
+minutes after a change, to the paged read every listing makes, while the
+plain read of the whole playlist is already current. So wherever a sync
+pair plans an order or judges a write, Cratekit reads the playlist both ways
+and takes the plain read when it holds every track the playlist counts: a
+move or removal that landed is taken as done, and a plan is made from the
+playlist as it stands, never from an order nobody holds. When the two reads
+disagree and the plain read is not the whole playlist, that pair is left out
+of the run, nothing written on either side, and the answer says why; sync it
+again a few minutes later. The answer's totals list each read back with how
+many readings it took and how long it waited, which is how long Tidal lagged.
+
 ### Publish a playlist
 
 ```bash

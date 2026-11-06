@@ -1476,6 +1476,11 @@ class TidalAccount:
         short of its count refuses at once, as :meth:`_positions` always has,
         since there is no write for it to lag. ``pauses_from`` is how many
         pauses the caller already took, so a reading after a 412 waits longer.
+
+        A WINDOW THAT LAGS ITS UNPAGED READ (U226, :meth:`_reading`) is read
+        again the same way whether or not anything is known, since it is a
+        write the provider has not caught up with, this product's or a
+        person's; once the readings are spent it is refused ``window-lags``.
         """
 
         def agrees(reading: list[str]) -> bool:
@@ -1486,8 +1491,10 @@ class TidalAccount:
             return sorted(reading) == sorted(known)
 
         note = self._noting(identifier, "order")
-        kept = "nothing more was moved; every track is still on it" if pauses_from else (
-            "no track was moved"
+        kept = (
+            "nothing more was moved; every track is still on it"
+            if pauses_from
+            else "no track was moved"
         )
         last: CratekitError | None = None
         for attempt in range(ORDER_REREADS + 1):
