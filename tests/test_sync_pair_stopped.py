@@ -150,24 +150,43 @@ def test_a_write_begun_ordered_and_not_finished_is_read_back_whole():
     )
 
 
-def test_a_finished_or_unordered_write_is_the_latest_but_no_stopped_one():
+def test_a_finished_or_unordered_write_is_no_stopped_one():
     began = _WHEN.isoformat()
     finished = _steps("run-1", {"pl-1": {"account": began, "ordering": _ordering(), "done": "pl-1"}})
-    assert _read(finished)["pl-1"] == (_WHEN, None)
+    assert _read(finished) == {}
     unordered = _steps("run-1", {"pl-1": {"account": began}})
-    assert _read(unordered)["pl-1"] == (_WHEN, None)
+    assert _read(unordered) == {}
 
 
-def test_the_latest_write_on_a_pair_decides_across_runs():
+def test_a_later_run_that_finished_the_pair_hides_the_stopped_write_in_either_order():
     early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
     later = _WHEN.replace(hour=18).isoformat()
     finished = _steps("run-2", {"pl-1": {"account": later, "done": "pl-1"}})
-    assert _read(early, finished)["pl-1"][1] is None
-    assert _read(finished, early)["pl-1"][1] is None
+    assert _read(early, finished) == {}
+    assert _read(finished, early) == {}
+    # A run that finished the pair before the stopped write began hides nothing.
+    earlier = _WHEN.replace(hour=16).isoformat()
+    before = _steps("run-0", {"pl-1": {"account": earlier, "done": "pl-1"}})
+    assert _read(before, early)["pl-1"][1].run_id == "run-1"
+
+
+def test_a_later_run_that_stopped_before_its_order_began_hides_nothing():
+    """Round one's review: its steps are kept, and it is no finish."""
+    early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
+    later = _WHEN.replace(hour=18).isoformat()
+    failed = _steps("run-2", {"pl-1": {"account": later, "rekordbox": {}, "queued": ""}})
+    assert _read(early, failed)["pl-1"][1].run_id == "run-1"
+    assert _read(failed, early)["pl-1"][1].run_id == "run-1"
+
+
+def test_the_latest_stopped_write_on_a_pair_is_the_one_read():
+    early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
+    later = _WHEN.replace(hour=18).isoformat()
     stopped_later = _steps(
         "run-2", {"pl-1": {"account": later, "ordering": _ordering(at=later)}}
     )
     assert _read(early, stopped_later)["pl-1"][1].run_id == "run-2"
+    assert _read(stopped_later, early)["pl-1"][1].run_id == "run-2"
 
 
 def test_a_made_pair_is_read_under_the_account_playlist_it_was_made_as():
@@ -200,12 +219,16 @@ def test_a_made_pair_is_read_under_the_account_playlist_it_was_made_as():
 )
 def test_a_record_not_of_this_form_is_no_stopped_write(spoiled):
     record = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering(**spoiled)}})
-    assert _read(record)["pl-1"][1] is None
+    assert _read(record) == {}
 
 
 def test_a_record_from_before_u225_reads_as_no_write_at_all():
     record = _steps("run-1", {"pl-1": {"account": True, "ordering": True}})
     assert _read(record) == {}
+    # And a finish recorded with no time hides nothing.
+    early = _steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}})
+    untimed = _steps("run-2", {"pl-1": {"account": True, "done": "pl-1"}})
+    assert _read(early, untimed)["pl-1"][1].run_id == "run-1"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

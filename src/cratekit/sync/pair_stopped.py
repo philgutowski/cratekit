@@ -161,8 +161,8 @@ def stopped_writes(
     ordering: str,
     made: str,
     done: str,
-) -> dict[str, tuple[datetime, StoppedWrite | None]]:
-    """Each pair's latest account write, by account playlist, and the stopped one when it is.
+) -> dict[str, tuple[datetime, StoppedWrite]]:
+    """Each pair's write stopped part way through its order, by account playlist, with when it began.
 
     ``records`` are runs' steps (``core/held_plan.Steps``). The step names are
     the caller's: ``account`` is recorded with when the account write began,
@@ -171,12 +171,16 @@ def stopped_writes(
     the pair finished. ``new`` is the prefix a pair whose account side is new
     is keyed by.
 
-    Answers, per account playlist, when its latest account write began and
-    that write when it began to order and did not finish, else None. A write
-    whose beginning was not recorded with a time is not counted, so a record
-    written before U225 is read as no write at all, as it was.
+    THE LATEST WRITE THAT BEGAN TO ORDER AND NEVER FINISHED, unless a run
+    that began its account write later finished the pair. A later run that
+    began its account write and stopped before its order began does not hide
+    it (round one's review): its steps are kept as the stopped write's are,
+    and its additions and removals move no track the stopped write ordered.
+    A record written before U225 carries no detail and no time, and is read
+    as no write at all, as it was.
     """
-    latest: dict[str, tuple[datetime, StoppedWrite | None]] = {}
+    stopped: dict[str, tuple[datetime, StoppedWrite]] = {}
+    finished: dict[str, datetime] = {}
     for record in records:
         for key, steps in record.done.items():
             if not isinstance(steps, Mapping):
@@ -187,17 +191,23 @@ def stopped_writes(
             if not account_id:
                 continue
             began = placeholders.parse_hearted(steps.get(account))
-            write = _read(record.run_id, account_id, steps.get(ordering))
             if began is None:
-                if write is None:
-                    continue
-                began = write.at
+                continue
             if done in steps:
-                write = None
-            held = latest.get(account_id)
-            if held is None or began > held[0]:
-                latest[account_id] = (began, write)
-    return latest
+                if account_id not in finished or began > finished[account_id]:
+                    finished[account_id] = began
+                continue
+            write = _read(record.run_id, account_id, steps.get(ordering))
+            if write is None:
+                continue
+            held = stopped.get(account_id)
+            if held is None or write.at > held[1].at:
+                stopped[account_id] = (began, write)
+    return {
+        account_id: (began, write)
+        for account_id, (began, write) in stopped.items()
+        if account_id not in finished or not finished[account_id] > began
+    }
 
 
 def front_moves(before: Sequence[str], order: Iterable[str]) -> list[str]:

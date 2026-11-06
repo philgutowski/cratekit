@@ -558,9 +558,9 @@ class PairPlan:
     #: U202. When the account says each listed track was added, ISO text by
     #: remote id, recorded with the snapshot.
     account_dates: dict[str, str] = field(default_factory=dict)
-    #: U225. The account playlist as the removals and additions leave it,
-    #: before any move, when the plan orders it: what the order starts from.
-    account_start: tuple[str, ...] = ()
+    #: U225. Every id the account listed, in order, when the plan orders it:
+    #: what the write's removals and additions start from.
+    account_before: tuple[str, ...] = ()
     #: U225. The run whose write on this pair stopped part way through its
     #: order and that this plan finishes, or empty; and whether the account
     #: stood where that write's moves left it, so its order was finished.
@@ -802,7 +802,7 @@ class _Reader:
 
     @cached_property
     def stopped(self) -> tuple[dict[str, tuple[Any, Any]], tuple[str, ...]]:
-        """Each pair's latest account write a kept run recorded, and the runs' steps unread (U225).
+        """Each pair's write stopped part way through its order, and the runs' steps unread (U225).
 
         Read once per plan, from every run's steps still kept, so a fresh
         plan knows a write that stopped part way through a pair's order.
@@ -825,15 +825,16 @@ class _Reader:
     def stopped_write(self, account_id: str, held: Any) -> Any:
         """The write on this pair that stopped part way through its order since its snapshot, or None (U225).
 
-        The pair's latest account write a kept run recorded, when it began
-        after the pair's last snapshot and began to order and never finished.
+        The pair's latest write that began to order and never finished, when
+        no later run finished the pair and it began after the pair's last
+        snapshot.
         A snapshot that cannot be read as a moment says nothing was written
         since, so nothing is finished from a write it cannot place.
         """
         if not account_id or held is None:
             return None
         began, write = self.stopped[0].get(account_id, (None, None))
-        if write is None:
+        if write is None or began is None:
             return None
         if held.synced:
             synced = placeholders.parse_hearted(held.synced)
@@ -1248,7 +1249,14 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         base_account = pair_merge.distinct(
             alias(one)
             for one in (
-                pair_merge.placed(stopped_write.target, stopped_write.start)
+                # THE ORDER IT ASKED, NARROWED TO WHAT ITS ADDITIONS AND
+                # REMOVALS LEFT: a track it asked for that never landed is not
+                # in its base, so it is never read as taken off since.
+                [
+                    held_id
+                    for held_id in pair_merge.placed(stopped_write.target, stopped_write.start)
+                    if held_id in set(stopped_write.start)
+                ]
                 if folded
                 else held.account or ()
             )
@@ -1357,12 +1365,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
                 if alias(one) in holding
             )
         )
-        row_keys = {content_id: key for key, content_id in content_of.items()}
         stopped = pair_merge.Stopped(
             account=finishing_keys,
             rekordbox=tuple(
-                row_keys.get(content_id) or as_key(content_id)
-                for content_id, _row in stopped_write.rekordbox
+                as_key(content_id) for content_id, _row in stopped_write.rekordbox
             ),
             leader=stopped_write.leader,
         )
@@ -1457,7 +1463,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     )
     account_removes: tuple[str, ...] = ()
     account_order: tuple[str, ...] | None = None
-    account_start: tuple[str, ...] = ()
+    account_before: tuple[str, ...] = ()
     if short is None:
         # EVERY RELEASE OF A REMOVED TRACK GOES (U208), the one a tie linked
         # and any other of it the account holds.
@@ -1482,7 +1488,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             account_order = _with_unread_placed(
                 [one for key in wanted_keys for one in after if alias(one) == key], after
             )
-            account_start = tuple(after)
+            account_before = tuple(listed_order or account_now)
 
     return PairPlan(
         target=target,
@@ -1520,7 +1526,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         ),
         home=home,
         account_dates=dict(dates),
-        account_start=account_start,
+        account_before=account_before,
         finishing=stopped_write.run_id if (folded or stopped is not None) else "",
         finishing_order=stopped is not None,
     )
@@ -2961,22 +2967,18 @@ def _write_account(
         # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
         # it stopped reads its moves as this write's: the order it starts
         # from, the order it asks, the side that led, and rekordbox as it
-        # stands, committed by this write or as the plan read it. ONLY WHEN
-        # EVERY REMOVAL AND ADDITION LANDED AS ASKED: the adapter leaves out
-        # of its answer a track the provider would not add, and a plan that
-        # took the asked additions as landed would read that track as taken
-        # off the account and take it out of rekordbox.
-        landed = set(removed) == set(one.account_removes) and set(added) == set(
-            one.account_adds
-        )
+        # stands, committed by this write or as the plan read it. THE START IS
+        # WHAT THE ADAPTER ANSWERED, not what was asked: it leaves out of its
+        # answer a track the provider would not add, and a plan that took the
+        # asked additions as landed would read that track as taken off the
+        # account and take it out of rekordbox.
         steps.mark(
             STEP_ORDERING,
-            True
-            if not landed
-            else pair_stopped.ordering_step(
+            pair_stopped.ordering_step(
                 at=timestamp(),
-                start=one.account_start
-                or pair_merge.appended(one.account_now, one.account_removes, one.account_adds),
+                start=pair_merge.appended(
+                    one.account_before or one.account_now, removed, added
+                ),
                 target=one.account_order,
                 leader=one.merged.leader,
                 rekordbox=(
