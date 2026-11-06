@@ -166,6 +166,93 @@ def _chain(exc: BaseException | None) -> Iterator[BaseException]:
         current = current.__cause__
 
 
+def failure_links(exc: BaseException) -> Iterator[tuple[BaseException, bool]]:
+    """``exc`` and every error it was raised from or raised while handling, once each (R-1305).
+
+    Each comes with whether it was reached by DECLARED causes alone, ``raise X
+    from Y``, the declared ones first. The two readers of a rejected session,
+    ``acquire.provider_session._rejected`` and the outbound account's
+    ``_session_refused``, walk this, and so does every reader of a not found
+    through :func:`nearest_status` (R-1313). It lives here rather than beside
+    the login, where R-1305 put it, because the acquisition adapter's
+    classifier reads it too and the login module imports the adapter.
+
+    IT DEPARTS FROM :func:`_chain`, WHICH WALKS DECLARED CAUSES ONLY. The
+    provider client reads an error answer's body as JSON inside its own handler
+    of the HTTP error, so a 401 whose body is not JSON, a gateway's page,
+    surfaces as the decode error with the HTTP error three CONTEXT links down
+    and no declared cause anywhere (measured on tidalapi 0.8.11's request
+    handler). A walk of causes alone told that person the provider was
+    unavailable and to wait, for an outage that was not happening.
+
+    TWO LIMITS KEEP ``_chain``'s REASON FOR NOT READING CONTEXT. Off the
+    declared chain the walk never enters a product refusal, a
+    ``CratekitError``: a login or a call made inside a handler of a refused
+    session would otherwise find that refusal's 401 and read its own outage as
+    a rejection, the "raised while handling is not is" mistake ``_chain``
+    names. And a caller trusts a link reached only as context for the status
+    the provider answered, never for its type or name, as ``label.sweep``
+    reads a 429 (R-704).
+
+    The ``walked`` set ends a cycle: both links are assignable, so two errors
+    can name each other, and a walk without it spins rather than fails.
+    """
+    walked: set[int] = set()
+    declared: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and id(current) not in walked:
+        walked.add(id(current))
+        declared.append(current)
+        yield current, True
+        current = current.__cause__
+    pending = [one.__context__ for one in reversed(declared)]
+    while pending:
+        one = pending.pop()
+        if one is None or id(one) in walked or isinstance(one, CratekitError):
+            continue
+        walked.add(id(one))
+        yield one, False
+        pending.extend((one.__cause__, one.__context__))
+
+
+def answered_status(exc: BaseException) -> Any:
+    """The HTTP status the client attached to ``exc``, or None."""
+    return getattr(getattr(exc, "response", None), "status_code", None)
+
+
+#: The status a provider answers for a resource it holds nothing under.
+NOT_FOUND_STATUS = 404
+
+
+def nearest_status(exc: BaseException) -> Any:
+    """The status the provider answered for this failure, or None (R-1313).
+
+    The status on the FIRST link :func:`failure_links` reaches that carries
+    one: the failure itself, its declared causes, then what it was raised while
+    handling. The nearest, not any: a server error met while handling a not
+    found is the server error, and read for the not found beneath it, an
+    outage would be remembered as an answer.
+    """
+    for link, _declared in failure_links(exc):
+        status = answered_status(link)
+        if status is not None:
+            return status
+    return None
+
+
+def answered_not_found(exc: BaseException) -> bool:
+    """Whether the status nearest this failure says the provider holds nothing (R-1313).
+
+    The client decodes an error answer's body inside its own handler of the
+    HTTP error, so a 404 whose body is not JSON, a gateway's page, never becomes
+    the client's not found class: it surfaces as the decode error with the 404
+    three context links down. Read through :func:`nearest_status`, that answer
+    is the not found it is, and a 404 under a product refusal that was only
+    being handled is never read (the walk's limit).
+    """
+    return nearest_status(exc) == NOT_FOUND_STATUS
+
+
 def _immutable(path: str) -> bool:
     """Whether a per-file immutable flag is set on ``path``.
 
@@ -2345,6 +2432,7 @@ __all__ = [
     "ACCESS_REMEDIES",
     "DATABASE_ACCESS_ERRORNAMES",
     "DATABASE_PATH_ATTRIBUTE",
+    "NOT_FOUND_STATUS",
     "PERMISSION_ERRNOS",
     "READ_ONLY_ERRNOS",
     "REASONS",
@@ -2360,8 +2448,12 @@ __all__ = [
     "UnknownReason",
     "access_refusal",
     "access_remedy",
+    "answered_not_found",
+    "answered_status",
     "classified",
+    "failure_links",
     "name_the_database",
+    "nearest_status",
     "permission_denied",
     "rebuilt",
     "refuse",

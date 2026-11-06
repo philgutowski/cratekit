@@ -51,7 +51,7 @@ import tomli_w
 
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken, AdapterError, Remedy
 from cratekit.core import config, provider_gate, secrets
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, answered_status, failure_links
 
 #: Fields that make a session blob usable. A write-back missing all of them is a
 #: truncated or empty file rather than a refreshed session, and replacing a good
@@ -175,57 +175,6 @@ class ProviderUnavailable(AdapterError):
     """The login could not be ASKED, as distinct from being refused."""
 
     remedy = Remedy.RETRY_LATER
-
-
-def failure_links(exc: BaseException) -> Iterator[tuple[BaseException, bool]]:
-    """``exc`` and every error it was raised from or raised while handling, once each (R-1305).
-
-    Each comes with whether it was reached by DECLARED causes alone, ``raise X
-    from Y``, the declared ones first. The two readers of a rejected session,
-    :func:`_rejected` here and the outbound account's ``_session_refused``, both
-    walk this.
-
-    IT DEPARTS FROM ``core.cause._chain``, WHICH WALKS DECLARED CAUSES ONLY. The
-    provider client reads an error answer's body as JSON inside its own handler
-    of the HTTP error, so a 401 whose body is not JSON, a gateway's page,
-    surfaces as the decode error with the HTTP error three CONTEXT links down
-    and no declared cause anywhere (measured on tidalapi 0.8.11's request
-    handler). A walk of causes alone told that person the provider was
-    unavailable and to wait, for an outage that was not happening.
-
-    TWO LIMITS KEEP ``_chain``'s REASON FOR NOT READING CONTEXT. Off the
-    declared chain the walk never enters a product refusal, a
-    ``CratekitError``: a login or a call made inside a handler of a refused
-    session would otherwise find that refusal's 401 and read its own outage as
-    a rejection, the "raised while handling is not is" mistake ``_chain``
-    names. And a caller trusts a link reached only as context for the status
-    the provider answered, never for its type or name, as ``label.sweep``
-    reads a 429 (R-704).
-
-    The ``walked`` set ends a cycle: both links are assignable, so two errors
-    can name each other, and a walk without it spins rather than fails.
-    """
-    walked: set[int] = set()
-    declared: list[BaseException] = []
-    current: BaseException | None = exc
-    while current is not None and id(current) not in walked:
-        walked.add(id(current))
-        declared.append(current)
-        yield current, True
-        current = current.__cause__
-    pending = [one.__context__ for one in reversed(declared)]
-    while pending:
-        one = pending.pop()
-        if one is None or id(one) in walked or isinstance(one, CratekitError):
-            continue
-        walked.add(id(one))
-        yield one, False
-        pending.extend((one.__cause__, one.__context__))
-
-
-def answered_status(exc: BaseException) -> Any:
-    """The HTTP status the client attached to ``exc``, or None."""
-    return getattr(getattr(exc, "response", None), "status_code", None)
 
 
 def _rejected(exc: BaseException) -> bool:

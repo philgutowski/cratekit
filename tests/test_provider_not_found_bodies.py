@@ -75,12 +75,21 @@ READER_IDS = list(READERS)
 
 
 def while_handling(first: Callable[[], Exception], later: Callable[[], Exception]) -> Exception:
-    """``later``'s failure, raised while ``first``'s is being handled."""
+    """``later``'s failure, raised while ``first``'s is being handled.
+
+    A failure the client already raised is returned as it came, never raised
+    again: raising an exception inside a handler sets its context to the
+    handled one, which would cut the client's own chain off at the top and
+    put ``first`` where the decode error's links were.
+    """
     try:
         raise first()
     except Exception:  # noqa: BLE001 - the context is the point
+        made = later()
+        if made.__traceback__ is not None:
+            return made
         try:
-            raise later()
+            raise made
         except Exception as exc:  # noqa: BLE001
             return exc
     raise AssertionError("unreachable")
