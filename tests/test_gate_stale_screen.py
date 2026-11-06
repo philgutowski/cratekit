@@ -263,3 +263,20 @@ def test_through_the_dispatcher_the_stale_refusal_shows_the_moved_plan_and_a_dec
     assert code == int(ExitCode.OK), out
     config.reset_cache()
     assert config.load().profile.name == "slim"
+
+
+def test_only_the_gates_own_stale_prints_a_gate_screen():
+    """A stale a verb raises on its write handle carries no options, so no screen is printed.
+
+    Without the options test, such a refusal would print the moved plan's
+    header over an empty options line and no plan.
+    """
+    state = _answered()
+    with pytest.raises(gates.DecisionStale) as offered:
+        gates.Gates(state=state).require(_spec(), plan=_plan(MOVED, "Two"))
+    with pytest.raises(gates.DecisionRequired) as opened:
+        gates.Gates(state=gates.RunState(run_id="r", verb="probe", created="now")).require(_spec())
+
+    assert render.is_gate_screen(offered.value.cause)
+    assert render.is_gate_screen(opened.value.cause)
+    assert not render.is_gate_screen(gates.DecisionStale(_spec(), "r", SHOWN, MOVED).cause)
