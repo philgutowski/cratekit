@@ -45408,3 +45408,137 @@ only, maintainer facing.
 **Measured cost.** Maintainer facing: one run in two of the full suite on this container. Its failure output was not kept, so the cause is not known.
 
 **Closes when:** a run that keeps the failure's output names what it shares under the parallel run, and the test is made independent of it. Ledger only.
+
+---
+
+## R-1360. A playlist of more than a hundred tracks is still judged by a window that lags a change past its first hundred
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** U226 judges every account removal and order, and the
+`crate sync pair` plan and check, by the window read beside the client's
+unpaged read (`acquire.listing.judge_window`). The unpaged read is taken as
+the playlist only when it holds every track the playlist declares. The
+client fills the unpaged read's missing limit with its session's
+`item_limit`, 1000, and `listing.PAGE_SIZES` records the provider's ceiling
+for this shape as 100, so a playlist of more than a hundred tracks is most
+likely served its first hundred alone. The judge then reads an unpaged read
+that is the window's first part as agreeing, and takes the window as the
+playlist, as every read did before U226: a change past the first hundred
+that the window lags is not seen.
+
+**Measured cost.** Driven on the stand ins at round one: a person's move in
+the tail of a playlist whose unpaged read is capped (members a, b, d, c;
+window serving a, b, c, d; unpaged capped at 2) made `order_tracks` move the
+wrong track on the account and refuse `read-back-differs`, `lagged: no`;
+through the verb, a four track pair whose window served an old order past
+the cap wrote that order into rekordbox and recorded it as the snapshot,
+with `totals.read_backs` empty. Round two drove the degenerate case: an unpaged read
+that comes back empty agrees with any window, so a landed removal behind a
+lagging window was refused "may have landed" after 4 readings. No worse than main, which read every
+playlist this way. The live cap was not measured: 0 live candidates driven.
+
+**Closes when:** the next attended sitting reads `len(p.tracks())` beside
+`p.num_tracks` on the longest paired playlist. If the unpaged read is capped
+below a paired playlist's length, the judge reads past its first page the
+same way (a walk of the unpaged kind with an offset, or a prefix read as a
+lag for the pairs it touches), with a test on a stand in of the measured
+cap. Earns an issue: a write path whose guard is blind for every paired
+playlist past the cap, board bar (a) and (d).
+
+---
+
+## R-1361. A window that starts lagging between the sync pair plan and its write stops every pair's write as moved
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** `crate sync pair`'s plan holds a pair whose account
+window lags a partial unpaged read (`sync-pair-account-lagging`) and syncs
+every other pair. The check before the write reads the same lag as a moved
+list (`pair_cli.check`), and a moved list stops the whole write as
+`decision-stale` with nothing written, as any list moved since the plan
+does.
+
+**Measured cost.** Driven at round one through the verb: two pairs planned
+clean, the second's window lagging from inside the check, exit 11, "1
+list(s) moved since the plan ... nothing was written", the first pair's add
+unwritten too. A fresh `crate sync pair` a few minutes later is the way on,
+as the answer and the guide say. The producer, a partial unpaged read whose
+window starts lagging in the seconds between plan and check, was not driven
+live.
+
+**Closes when:** the check leaves a lagging pair out of the write as the
+plan does, the rest written, if a sitting shows the lag reaching the check.
+Ledger only: the run refuses with nothing written and names the way on.
+
+---
+
+## R-1362. A playlist holding a track the account cannot play never has a whole unpaged read, so its window is judged as before U226
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** `acquire.listing.judge_window` takes the unpaged read as
+the playlist only when it holds the declared count, which keeps the declared
+total rule. A track the account cannot play is left out of both reads and
+still counted, so for such a playlist neither read is ever whole: a window
+that lags is a lag (the pair held, the read back refused after its pauses)
+and an order or removal is refused `positions-unknown`, as on main.
+
+**Measured cost.** Read at round one, not driven live: whether a paired
+playlist on the account carries such a track was not measured. No new cost
+against main, which refused the same writes; the pair is held for the lag's
+length rather than planned from a stale window.
+
+**Closes when:** a reading can place the unplayable track (the items
+endpoint, which counts it), if a sitting finds a paired playlist carrying
+one. Ledger only.
+
+---
+
+## R-1363. A removal stopped by a window that never caught up carries a wrong removal's cause and stops every later pair's write
+
+**Found:** at round one of U226's review (#578), 2026-11-06.
+
+**The mechanism.** When a removal's positions read or read back still finds
+the window disagreeing with a partial unpaged read after the last pause,
+`TidalAccount` refuses `outbound-remove-refused`, problem `window-lags` or
+`read-back-differs` with `lagged: yes`. That cause is the one a removal
+that may have taken the wrong track carries, exit 30 and not retryable,
+though this one is a wait. `crate sync pair`'s `_write_account` stops one
+pair alone only for an order's refusal, so the removal's refusal stops the
+write of every pair after it.
+
+**Measured cost.** Driven at round one through the verb with the fake
+account raising the adapter's refusal: exit 30, the second pair's add
+unwritten, the steps saying to wait and run it again. Since the fix round a
+lag at the positions read is read again three times first. The live
+producer, a partial unpaged read whose window lags for longer than the
+pauses at a removal, was not driven.
+
+**Closes when:** a lag refusal carries a cause of its own that a run reads
+as a wait, and a pair's lagging removal stops that pair alone, as an
+order's does. Ledger only: the run says to wait and run it again, and R-1343
+records what the callers do not record of such a removal.
+
+---
+
+## R-1364. A provider client that cannot read a playlist with no window is reported as a wait to retry, and refuses a whole sync pair run
+
+**Found:** at round two of U226's review (#578), 2026-11-06.
+
+**The mechanism.** `acquire.listing.playlist_tracks_unpaged` turns a
+`TypeError` from the client's `tracks()` into `ListingNotPaginated`, "the
+provider client changed shape", at once rather than climbing the retry
+ladder. Through the account adapter that is translated to
+`unavailable-transient`, whose remedy is to resume the job to retry; through
+`label_cli._listed` it is `label-playlist-unreadable`, which `crate sync
+pair` does not leave out per pair, so one pair refuses the whole run.
+
+**Measured cost.** Driven at round two on stand ins whose `tracks` requires a
+limit: exit 41 with a retry remedy, and a sync of every pair refused for one
+pair. The installed client, tidalapi 0.8.11, accepts the bare call, so the
+producer is a client upgrade that changes the signature: 0 live candidates.
+
+**Closes when:** a signature fault from the unpaged read carries the
+adapter-broken remedy the paged walk's own `ListingNotPaginated` should, the
+same rule for both. Ledger only.
