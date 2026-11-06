@@ -1902,3 +1902,113 @@ def test_an_account_change_between_the_mirrors_acts_is_stale_and_says_what_moved
     assert cause["detail"]["gate"] == ACCOUNT_GATE
     # Said with no row asked again and nothing written.
     assert len(held.matches) == asked and held.created == created
+
+
+# ---------------------------------------------------------------------------
+# R-1334: the answer recorded after a stale refusal is the plan it showed
+# ---------------------------------------------------------------------------
+
+
+def _playlists(items: list[dict]) -> list[str]:
+    return [str(item.get("playlist", "")) for step in items for item in step["plan"]]
+
+
+def test_a_stale_mirror_refusal_shows_the_moved_plan_and_the_decide_after_it_applies_that_plan(
+    world, monkeypatch
+):
+    """R-1334. The review of U222's drive: the playlist reaches the account only once shown.
+
+    With no frozen plan, a playlist made under a mirrored folder between the
+    acts moves the digest. The refusal used to name the two digests alone, and
+    a second ``run decide`` bound the moved one, so the resume created a
+    playlist no screen had shown.
+    """
+    from cratekit.cli import gates
+    from cratekit.organize import mirror_frozen
+
+    cfg, _fake, held, _inbox, _ids = world
+    assert _answered()[0] == int(ExitCode.OK)
+    monkeypatch.setattr(mirror_frozen, "load", lambda _cfg, run_id: (None, "none, by the test"))
+
+    code, stale, _asked = _mirror_between_acts(cfg, held, monkeypatch)
+
+    assert code == int(ExitCode.DECISION_STALE), stale
+    detail = stale["cause"]["detail"]
+    assert detail["gate"] == ACCOUNT_GATE
+    assert detail["shown"]["digest"] == detail["actual"]
+    assert any(" Made After The Gate" in name for name in _playlists(detail["shown"]["items"]))
+    (spec,) = [g for g in registry.entry("organize").gates if g.name == ACCOUNT_GATE]
+    assert detail["options"] == list(spec.options)
+    assert not any("Made After The Gate" in title for title in held.titles.values())
+
+    run_id = stale["run_id"]
+    code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK), decided
+    assert gates.load(run_id).decisions[ACCOUNT_GATE].digest == detail["shown"]["digest"]
+    collection.reset_cache()
+    code, done = drive(["--run", run_id, *VERB, "--only", account_area.MIRROR])
+
+    assert code == int(ExitCode.OK), done
+    assert any("Made After The Gate" in title for title in held.titles.values())
+
+
+def test_a_mirror_plan_that_moves_again_after_the_second_answer_is_stale_and_writes_nothing(
+    world, monkeypatch
+):
+    from cratekit.organize import mirror_frozen
+
+    cfg, _fake, held, _inbox, _ids = world
+    assert _answered()[0] == int(ExitCode.OK)
+    monkeypatch.setattr(mirror_frozen, "load", lambda _cfg, run_id: (None, "none, by the test"))
+    code, stale, _asked = _mirror_between_acts(cfg, held, monkeypatch)
+    assert code == int(ExitCode.DECISION_STALE), stale
+    run_id = stale["run_id"]
+    assert drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])[0] == 0
+    _node(cfg, "Made After The Answer", under=_mirrored_folder(cfg), tracks=("r-one",))
+    created = list(held.created)
+
+    collection.reset_cache()
+    code, again = drive(["--run", run_id, *VERB, "--only", account_area.MIRROR])
+
+    assert code == int(ExitCode.DECISION_STALE), again
+    detail = again["cause"]["detail"]
+    assert detail["expected"] == stale["cause"]["detail"]["actual"]
+    assert any(" Made After The Answer" in name for name in _playlists(detail["shown"]["items"]))
+    assert held.created == created
+    assert not any("Made After The" in title for title in held.titles.values())
+
+
+def test_a_stale_rekordbox_refusal_shows_the_moved_plan_and_the_decide_after_it_files_it(world):
+    """R-1334 for the database gate: the batch landed between the acts is on the screen first."""
+    from cratekit.cli import gates
+
+    cfg, _fake, _held, inbox, _ids = world
+    collection.reset_cache()
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    run_id = first["run_id"]
+    assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
+    late = "2026-07-01T101010Z-2_inboxed"
+    landed = _node(cfg, late, under=inbox, age=60)
+    collection.reset_cache()
+    code, stale = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), stale
+    detail = stale["cause"]["detail"]
+    assert detail["gate"] == DB_GATE
+    assert detail["shown"]["digest"] == detail["actual"]
+    assert late in _playlists(detail["shown"]["items"])
+    assert _parent(cfg, landed) == inbox
+
+    assert drive(["run", "decide", run_id, DB_GATE, "approve", "--actor", "a-person"])[0] == 0
+    assert gates.load(run_id).decisions[DB_GATE].digest == detail["shown"]["digest"]
+    collection.reset_cache()
+    code, second = drive(["--run", run_id, *VERB])
+    # The database answer now holds, and the run goes on to ask the account.
+    assert code == int(ExitCode.DECISION_REQUIRED), second
+    assert second["cause"]["detail"]["gate"] == ACCOUNT_GATE
+    assert drive(["run", "decide", run_id, ACCOUNT_GATE, "abort", "--actor", "a-person"])[0] == 0
+    collection.reset_cache()
+    code, done = drive(["--run", run_id, *VERB])
+
+    assert code == int(ExitCode.OK), done
+    assert _parent(cfg, landed) != inbox
