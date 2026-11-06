@@ -1,83 +1,75 @@
 # Developing Cratekit
 
-Working on the product itself. If you only want to run Cratekit against a
-library, this is the wrong file: the README installs it and
-[`GUIDE.md`](GUIDE.md) runs it, and nothing here is needed for either.
+For working on Cratekit itself. To run it against a library, the
+[README](../README.md) installs it and [`GUIDE.md`](GUIDE.md) runs it.
 
-Development and use are separate setups on purpose. A user installs a copy
-through pipx that runs from its own environment. A developer works from an
-editable install inside the checkout, so an edit takes effect without a
-reinstall. Keeping them apart means the copy you run against a real library is
-not the one you are halfway through changing.
+Develop in an editable environment inside the checkout, kept apart from the
+pipx copy you run against a real library.
 
-## The environment
-
-Development uses its own editable environment inside the checkout rather than
-pipx. Set it up once, and activate it in each terminal window you work in:
+## Setup
 
 ```bash
 python3.12 -m venv .venv
-source .venv/bin/activate
-pip install -e '.[dev]'
-```
-
-Because it is editable, `crate doctor` treats the checkout as a developer
-machine and checks that the commit hooks under Guards are installed. It fails
-until they are, which is the intended behaviour here and the reason a user's
-install is not editable.
-
-Then:
-
-```bash
-ruff check src tests scripts
-pytest -q
-```
-
-CI runs both on Python 3.12 and 3.13, plus a cold-install job that proves a
-clean checkout installs and imports with nothing preinstalled.
-
-## Guards
-
-Set up the commit hooks once per clone. Both hook types matter. A bare
-`pre-commit install` writes only the first, and the closing check on commit
-messages then silently never runs.
-
-```bash
-pip install pre-commit && pre-commit install --hook-type pre-commit --hook-type commit-msg
+.venv/bin/pip install -e '.[dev]'
+.venv/bin/pre-commit install --hook-type pre-commit --hook-type commit-msg
 cp .scan-identity.example .scan-identity
 ```
 
-Then open `.scan-identity` and list your own drive and account names.
-`scripts/scan_repo.py` runs on every commit and again in CI. It scans **every**
-tracked path, vendored trees included, for two things: personal literals (a home
-directory, a volume, an account, a machine name) and credential-shaped content
-(OAuth tokens, API keys, private keys, and filenames that are credential stores
-regardless of what is inside them). Nothing here should name a person or carry a
-secret, and the hook is what stops one reaching the history, where removing it
-becomes a rewrite everybody has to follow.
+- Activate `.venv` in the shell you commit from: the hooks call `ruff` and
+  `python3` from your PATH.
+- Name both hook types. The `pre-commit` hook runs the repository scan and
+  ruff; the `commit-msg` hook runs `scripts/board.py closing`, which a bare
+  `pre-commit install` never installs.
+- List your own drive, account and machine names in `.scan-identity`
+  (gitignored). The scan catches path-shaped personal literals without it;
+  bare names need it.
+- In an editable install `crate doctor` fails `repo.commit_hook` until the
+  hooks are installed. Never install the copy you run against a library with
+  `--editable`.
+- Do not symlink `.venv` into a git worktree: the editable install names the
+  checkout it came from.
 
-`.scan-identity` is gitignored and optional. It tells the scan which bare names
-are yours, so "the X drive must be mounted" is caught even when X is not
-currently plugged in. Path-shaped literals are caught without it.
+## The battery
+
+Nothing merges until all three are clean:
+
+```bash
+.venv/bin/ruff check src tests scripts
+.venv/bin/python -m pytest
+.venv/bin/python scripts/scan_repo.py
+```
+
+- pytest runs with `-q -n auto` from `pyproject.toml`; add `-n 0` for a
+  debugger or profiler. While building, run the test files for what you
+  touched.
+- The suite is a macOS proof. On Linux run `scripts/cloud_battery.py baseline`
+  on the base commit and `scripts/cloud_battery.py compare` on the branch; it
+  fails only on tests the branch newly breaks.
+- `scripts/scan_repo.py` scans every tracked file, the vendored tree included,
+  for personal literals (home directories, volumes, accounts, machine names)
+  and credential-shaped content.
+- ruff skips `src/cratekit/_vendor`; see [`vendoring.md`](vendoring.md).
+
+## CI
+
+`.github/workflows/ci.yml` proves packaging and portability, not the suite:
+
+| Job | Runs |
+|---|---|
+| `scan` | `scan_repo.py`, then `board.py closing` over the pushed range or pull request |
+| `portable` | slim install on 3.12 and 3.13, a check that no heavy extra came with it, ruff |
+| `cold-install` | a clean `pip install .` on 3.12 and 3.13, `crate --help`, and an import of the vendored downloader from the installed package |
 
 ## Deferred guards
 
-A guard can be written before the module it governs. Such a guard keeps its full
-assertion, is never stubbed, and is skipped with a reason naming the unit that
-arms it. This prints every skip with the unit that unblocks it:
+A test written before its module exists keeps its full assertion and is
+skipped with a reason naming the unit that arms it. `tests/_pending.py` is the
+register and `tests/test_pending_units.py` fails an unrecorded skip and a skip
+kept after its module lands. `pytest -rs` lists skips. The register is empty.
 
-```bash
-pytest -q -rs
-```
+## Process
 
-`tests/_pending.py` is the register and `tests/test_pending_units.py` holds it
-accountable: adding a skip without recording it fails the build, and so does
-keeping one after its module lands. A skip is a countdown, not a hiding place.
-The register is empty today, because every guard has been armed.
-
-## How the work is picked and landed
-
-The rules for a session are not in this file. `CLAUDE.md` at the repository root
-is the session contract and names what to read next, `docs/METHOD.md` is the
-pipeline and the merge bar, and `docs/BOARD.md` explains the queue that work is
-taken from. `AGENTS.md` at the root routes an agent to the same place.
+[`CLAUDE.md`](../CLAUDE.md) is the session contract and
+[`METHOD.md`](METHOD.md) the pipeline and merge bar;
+[`BOARD.md`](BOARD.md) explains the queue. `AGENTS.md` routes other agents to
+the same place.
