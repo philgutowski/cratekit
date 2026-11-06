@@ -1057,7 +1057,7 @@ def row_id(row: Any) -> str:
     return str(getattr(row, "id", "") or "")
 
 
-def _declared_count(declared: Any) -> bool:
+def _is_count(declared: Any) -> bool:
     """Whether a playlist's declared track total is a count a read can be held to."""
     return isinstance(declared, int) and not isinstance(declared, bool) and declared >= 0
 
@@ -1115,7 +1115,7 @@ def playlist_tracks_unpaged(playlist: Any, **retry: Any) -> list[Any]:
 
     rows = list(fetch_with_retry(call(0), limit=0, offset=0, **retry) or [])
     declared = getattr(playlist, "num_tracks", None)
-    if not _declared_count(declared) or len(rows) >= declared or len(rows) < 2:
+    if not _is_count(declared) or len(rows) >= declared or len(rows) < 2:
         return rows
     step = len(rows)
     tag = getattr(playlist, "_etag", None)
@@ -1162,7 +1162,7 @@ def judge_window(paged: Sequence[str], unpaged: Sequence[str], declared: Any) ->
     paged, unpaged = list(paged), list(unpaged)
     if unpaged == paged:
         return WINDOW_AGREES
-    counted = _declared_count(declared)
+    counted = _is_count(declared)
     if counted and len(unpaged) == declared:
         return WINDOW_UNPAGED
     if len(unpaged) < len(paged) and paged[: len(unpaged)] == unpaged:
