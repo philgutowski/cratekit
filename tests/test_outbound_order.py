@@ -516,3 +516,109 @@ def test_a_reading_after_a_412_that_never_agrees_does_not_say_no_track_was_moved
     assert refused.value.cause.detail["problem"] == "read-differs"
     assert "no track was moved" not in refused.value.cause.message
     assert "every track is still on it" in refused.value.cause.message
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U231: the moves sent with no read back between them
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_every_move_is_planned_from_one_reading_and_sent_with_no_read_between(
+    installed, monkeypatch
+):
+    """Sitting 86: a read back after each move spent four readings on a lag of minutes."""
+    provider = Provider(["a", "b", "c", "d", "e"])
+    account = _adapter(installed, provider)
+    reads: list[int] = []
+    real = Movable.move_by_indices
+
+    def counted(self, indices, position):
+        reads.append(provider.reads)
+        return real(self, indices, position)
+
+    monkeypatch.setattr(Movable, "move_by_indices", counted)
+    after = account.order_tracks("mine", ("e", "d", "c", "b", "a"))
+    assert after == ("e", "d", "c", "b", "a")
+    assert provider.members == ["e", "d", "c", "b", "a"]
+    assert len(set(reads)) == 1, "the playlist was read between two moves"
+    assert provider.opened == 1
+
+
+def test_a_read_that_lags_every_move_does_not_stop_the_order(installed):
+    provider = Provider(["a", "b", "c", "d"], lag=99)
+    slept: list[float] = []
+    after = _adapter(installed, provider, slept).order_tracks("mine", ("d", "c", "a", "b"))
+    assert after == ("d", "c", "a", "b")
+    assert provider.members == ["d", "c", "a", "b"]
+    assert len(provider.moves) == 2
+    assert slept == []
+
+
+def test_a_412_on_the_third_move_resends_that_move_once_and_no_other(installed, monkeypatch):
+    provider = Provider(["a", "b", "c", "d", "e"])
+    real = Movable.move_by_indices
+    sent: list[int] = []
+
+    def third_stale(self, indices, position):
+        sent.append(1)
+        if len(sent) == 3:
+            self._etag = -1
+        return real(self, indices, position)
+
+    monkeypatch.setattr(Movable, "move_by_indices", third_stale)
+    slept: list[float] = []
+    after = _adapter(installed, provider, slept).order_tracks("mine", ("e", "d", "c", "a", "b"))
+    assert after == ("e", "d", "c", "a", "b")
+    assert provider.members == ["e", "d", "c", "a", "b"]
+    assert provider.refused == 1
+    assert len(provider.moves) == 4, "a move was sent twice, or one was missed"
+    assert provider.moves[2][0] == provider.moves[3][0], "the 412's move was not the one resent"
+    assert slept == [tidal_account.ORDER_PAUSES[0]]
+
+
+def test_the_caller_is_told_what_is_sent_before_the_first_move(installed):
+    provider = Provider(["a", "b", "c"])
+    told: list[tuple[tuple[str, ...], tuple[str, ...], int]] = []
+    _adapter(installed, provider).order_tracks(
+        "mine",
+        ("c", "a", "b"),
+        begun=lambda start, end: told.append((start, end, len(provider.moves))),
+    )
+    assert told == [(("a", "b", "c"), ("c", "a", "b"), 0)]
+
+
+def test_a_caller_that_cannot_record_the_moves_has_none_sent(installed):
+    provider = Provider(["a", "b", "c"])
+
+    def unwritable(start, end):
+        raise OSError("read only")
+
+    with pytest.raises(OSError):
+        _adapter(installed, provider).order_tracks("mine", ("c", "a", "b"), begun=unwritable)
+    assert provider.moves == []
+
+
+def test_nothing_to_move_tells_the_caller_nothing(installed):
+    provider = Provider(["a", "b", "c"])
+    told: list[object] = []
+    after = _adapter(installed, provider).order_tracks(
+        "mine", ("a", "b", "c"), begun=lambda start, end: told.append(start)
+    )
+    assert after == ("a", "b", "c") and told == []
+
+
+def test_the_settle_reading_waits_then_reads_once_and_names_a_lag(installed):
+    provider = Provider(["a", "b", "c"])
+    slept: list[float] = []
+    account = _adapter(installed, provider, slept)
+    assert account.settled_order("mine", wait=12.5) == ("a", "b", "c")
+    assert slept == [12.5]
+    provider.members[:] = ["c", "a", "b"]
+    provider.previous = (["a", "b", "c"], 0)
+    provider.lagging = 1
+    provider.window_only = True
+    provider.declared = 4
+    assert account.settled_order("mine") is None
+    record = account.read_backs()[-1]
+    assert record["after"] == "settle" and record["window_lagged"] == 1
+    assert record["outcome"] == "lags"
