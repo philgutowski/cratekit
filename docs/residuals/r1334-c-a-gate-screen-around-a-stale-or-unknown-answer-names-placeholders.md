@@ -12,7 +12,9 @@ the answer that moved is still recorded, so sibling warnings and U170's
 retirement read the run as answered. An unknown inline option's screen
 (`-d gate=bogus`) shows the plan since R-1334, but its answer line reads
 `crate run decide <run> ...`, because `UnknownOption` carries no run
-identifier, while the run is printed one line above.
+identifier, while the run is printed one line above, and its question reads
+the default "A decision is required." rather than the gate's own prompt,
+since it carries no prompt.
 
 **Measured cost.** Driven at R-1334's review through the dispatcher in human
 mode with `profile set`: two instructions on one screen, the first with a

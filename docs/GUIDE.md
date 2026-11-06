@@ -1532,8 +1532,10 @@ plan: the next run applies what that screen showed, and refuses as stale again
 if the plan has moved once more. Read it before you answer again, or start a
 fresh run. A stale refusal with no plan on it was found by the verb's own
 check just before it wrote, or names a fact such as the database file rather
-than the plan; answering it again on the same run does not help, so plan
-again with a fresh run. An answer on the verb's own command line is compared
+than the plan. After the first, answering again on the same run brings the
+gate's own refusal with the moved plan on the next run, so a fresh run is the
+shorter way; after the second, the run refuses every answer, and only a fresh
+run goes on. An answer on the verb's own command line is compared
 with the one already recorded, so after a stale refusal answer with `crate run
 decide`.
 
