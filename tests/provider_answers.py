@@ -20,6 +20,9 @@ HTML = b"<html><head><title>401</title></head><body>Unauthorized</body></html>"
 #: The provider's own error body, JSON the client can read.
 JSON_BODY = b'{"status": 401, "subStatus": 11002, "userMessage": "Session expired"}'
 
+#: The provider's own body for a resource it holds nothing under (R-1313).
+NOT_FOUND_BODY = b'{"status": 404, "subStatus": 2001, "userMessage": "The resource could not be found"}'
+
 
 def client_failure(status: int, body: bytes) -> Exception:
     """What the client's request handler raises for an answer of ``status`` carrying ``body``.

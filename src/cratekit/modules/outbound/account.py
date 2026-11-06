@@ -98,7 +98,8 @@ SESSION_REFUSED_STATUSES = frozenset({401, 403})
 def _session_refused(exc: BaseException) -> bool:
     """Whether a failure after login is the provider refusing the session.
 
-    The walk is the login's, ``provider_session.failure_links``, which departs
+    The walk is the login's, ``core.cause.failure_links`` (moved there from
+    ``provider_session`` by R-1313, which still imports it), which departs
     from ``core.cause._chain`` by following context too (R-1305): the client
     decodes an error answer's body inside its own handler of the HTTP error,
     so a 401 whose body is not JSON arrives as the decode error with the 401

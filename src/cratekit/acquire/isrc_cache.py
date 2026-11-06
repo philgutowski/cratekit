@@ -89,6 +89,7 @@ from typing import Any
 
 from cratekit.acquire import match
 from cratekit.core import config
+from cratekit.core.cause import answered_not_found
 
 #: The two declared state entries, installation scoped for the reason above.
 STATE_KEY = "isrc_cache"
@@ -269,10 +270,15 @@ def said_not_found(exc: BaseException) -> bool:
     ``ModuleNotFoundError`` raised inside a lookup would satisfy. Either seam
     may go on answering those as it did; only the client's own not found
     class, by its exact name, or a 404 status is kept for a week.
+
+    The class is read off the failure alone, and the status off the one
+    nearest it, ``core.cause.answered_not_found`` (R-1313): a 404 whose body is
+    a page reaches here as the client's decode error with the 404 three context
+    links down, and read off the failure alone it was asked again every run.
     """
     if type(exc).__name__ == "ObjectNotFound":
         return True
-    return getattr(getattr(exc, "response", None), "status_code", None) == 404
+    return answered_not_found(exc)
 
 
 def country_of(session: Any) -> str:
