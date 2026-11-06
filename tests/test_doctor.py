@@ -8798,6 +8798,59 @@ def test_the_installed_probe_names_both_bundles_and_the_shipped_state_folder(mon
     assert doctor._deadca7_installed() == (Path("/Applications/DEADCA7.app"),)
 
 
+def test_a_real_probes_value_asks_the_installed_probe(configured, tmp_path, monkeypatch):
+    """The seam's default is wired: a regression to nothing would re-create the bug green."""
+    import dataclasses
+
+    home = tmp_path / "home"
+    (home / "Library" / "Application Support" / doctor.DEADCA7_STATE).mkdir(parents=True)
+    monkeypatch.setattr(doctor.Path, "home", classmethod(lambda cls: home))
+    machine = dataclasses.replace(
+        doctor_machines.green(),
+        deadca7_home=lambda: home / "nowhere",
+        deadca7_installed=RealProbes().deadca7_installed,
+    )
+    finding = find(doctor.run(configured, probes=machine), "deadca7.push")
+    assert "installed here and has recorded no push" in finding.detail, finding.detail
+
+
+def test_an_install_place_reached_through_a_file_is_absent_not_unread(configured, tmp_path):
+    """``Applications`` a file: the stat raises NotADirectoryError, which is not there."""
+    (tmp_path / "Applications").write_bytes(b"")
+    places = (tmp_path / "Applications" / doctor.DEADCA7_BUNDLE,)
+    finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
+    assert finding.detail == (
+        "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox"
+    )
+
+
+def test_with_its_support_folder_here_the_install_signals_are_not_asked(configured, tmp_path):
+    asked = []
+
+    def installed():
+        asked.append(True)
+        raise OSError(5, "Input/output error")
+
+    report = doctor.run(
+        configured,
+        probes=probes(deadca7_home=lambda: _deadca7(tmp_path), deadca7_installed=installed),
+    )
+    finding = find(report, "deadca7.push")
+    assert "installed here and has recorded no push" in finding.detail, finding.detail
+    assert asked == [], "the support folder alone says installed; nothing else need be read"
+
+
+def test_installed_with_no_home_to_resolve_says_where_its_backups_land_is_unconfirmed(
+    configured, tmp_path
+):
+    places = _installed_places(tmp_path, "system")
+    finding = _installed_check(configured, None, places)
+    assert finding.detail.startswith("DEADCA7 is installed here and has recorded no push")
+    assert finding.detail.endswith(
+        "Where it backs rekordbox's database up before a push is unconfirmed until a push is read"
+    )
+
+
 def _refuse_stat_under(monkeypatch, under: Path) -> None:
     """Refuse ``os.stat`` at or under ``under``, as an account the folder is closed to
     is refused; the container runs as root, which no mode bars."""
