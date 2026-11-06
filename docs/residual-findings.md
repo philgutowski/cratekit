@@ -44142,6 +44142,12 @@ told the provider is unavailable and to wait, the cost both functions'
 docstrings name. Whether the provider answers 401 with a body that is not
 JSON is unmeasured.
 
+**Measured live, 2026-11-06 (A100, #562, sitting 78 of `docs/cutover.md`):**
+an invalid access token at login is answered `401 application/json`,
+`{"status":401,"subStatus":11002,"userMessage":"Token has invalid payload"}`,
+and the client raises `HTTPError`. The page case is a defence, not the common
+path.
+
 **Closes when:** both walks read `__context__` beside `__cause__`, saying why
 they depart from `core/cause.py`'s `_chain`, with a test over a 401 whose
 body is HTML through the client's own handler. It meets the board bar under
@@ -44315,6 +44321,13 @@ retried, failed as `unavailable-transient` and asked again every run, never
 remembered as gone, the R-380 shape `tidal_catalogue`'s docstring names. Whether
 the provider answers 404 with a page is unmeasured.
 
+**Measured live, 2026-11-06 (A103, #571, sitting 78 of `docs/cutover.md`):**
+an album, a track and an artist read of identifier `1` through the stored
+session are each answered `404 application/json`,
+`{"status":404,"subStatus":2001,"userMessage":"... [1] not found"}`, and the
+client raises `ObjectNotFound` for each. `simplejson` is not installed in the
+venv. The page case is a defence, not the common path.
+
 **Closes when:** each of the four readers also reads a 404 status reached as
 context, through `provider_session.failure_links` or a walk with its limits,
 with a test per reader raising the failure through the client's own handler
@@ -44366,6 +44379,13 @@ declared chain), as does a refresh that succeeds and a sessions call then
 rejected with a page. Whether the live oauth host ever answers with a page is
 unmeasured; this is the path a stale session most often takes, so it is R-1305's
 own cost if it does.
+
+**Measured live, 2026-11-06 (A100, #562, sitting 78 of `docs/cutover.md`):**
+a refresh with an invalid refresh token is answered `400 application/json`,
+`{"error":"invalid_grant","error_description":"Token has invalid payload","status":400,"sub_status":1005}`,
+and the client raises `AuthenticationError`, the case this entry already reads
+right. Neither a page nor JSON without `error` was seen, so this earns no card
+on that measurement; the entry stays ledger only.
 
 **Closes when:** the live oauth answer to a refresh with a revoked refresh
 token is measured (the attended card filed with R-1305's landing), and, if it
@@ -44868,6 +44888,11 @@ answered with a 404 page while the v2 ISRC answer names that track; whether the
 provider answers 404 with a page at all is the attended measurement R-1313
 left out of scope.
 
+**Measured live, 2026-11-06 (A103, #571, sitting 78 of `docs/cutover.md`):**
+a v1 track read of an identifier that names nothing is answered
+`404 application/json` and raises `ObjectNotFound`, which the client's ISRC
+lookup skips. The page case is a defence, not the common path; no card.
+
 **Closes when:** the ISRC readers tell a 404 on the lookup itself from one on
 a track it read, by the request the 404 answered (the HTTP error's response
 URL names the v1 track path), or the attended measurement shows the provider
@@ -44913,6 +44938,12 @@ installed client's failure for a 404 page propagates as `JSONDecodeError`,
 `nearest_status` 404. Not introduced by R-1313, which changed the four readers
 its brief named. Whether the provider answers an artist read with a page is
 the attended measurement R-1313 left out of scope.
+
+**Measured live, 2026-11-06 (A103, #571, sitting 78 of `docs/cutover.md`):**
+an artist read of an identifier that names nothing is answered
+`404 application/json` and raises `ObjectNotFound`, which
+`_artist_identified` already catches. The page case is a defence, not the
+common path; no card.
 
 **Closes when:** `_artist_identified` also answers `None` when
 `core.cause.answered_not_found` holds, with a test raising the failure through

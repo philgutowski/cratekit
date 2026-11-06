@@ -2147,6 +2147,57 @@ Run straight after sitting 76, on the same conditions. Both backup ages two days
 
 **Calls:** live 5,456 on the account (the gate's count 508,439 to 513,895): the two acts, the refresh and the final read 677 each (2,708), two `mirror-edits` passes of a plan and a continue at 536 each (2,144), the edit report 536, and 68 for the account client's reads and writes. Three copy plans on the redirected gate, 536 each, 1,608. No single command came near 5,000.
 
+
+## Sitting 78, 2026-11-06, the attended session on v0.11.1, no desktop control: A103 (#571), A100 (#562), A98 (#545) and A56 (#414)
+
+A sub session of the attended run with no desktop control. The installed copy is v0.11.1 (`crate --version`), local `main` at `049c973c`, level with `origin/main`. No Cratekit job running and rekordbox and rekordboxAgent not running before every verb; no library write, so no acknowledgment was minted. The provider gate's count was 513,895 before. The two measurements ran the briefs' scripts exactly, through the checkout's venv, with the answer's URL added to the printed line; the session identifier the URLs carry is left out here.
+
+**A103 (#571), three reads of identifiers that name nothing**, through the stored session and its gate, 7 calls with the login:
+
+| Read | Status | Content type | Body | Client raised |
+|---|---|---|---|---|
+| `session.album("1")` | 404 | `application/json` | JSON, `{"status":404,"subStatus":2001,"userMessage":"Album [1] not found"}` | `ObjectNotFound`, "Album with id 1 not found" |
+| `session.track("1")` | 404 | `application/json` | JSON, `{"status":404,"subStatus":2001,"userMessage":"Track [1] not found"}` | `ObjectNotFound`, "Track with id 1 not found" |
+| `session.artist("1")` | 404 | `application/json` | JSON, `{"status":404,"subStatus":2001,"userMessage":"Artist [1] not found"}` | `ObjectNotFound`, "Artist with id 1 not found" |
+
+**`simplejson` installed: False.** Every 404 is JSON, so R-1313's page case is a defence, not the common path, and R-1336 and R-1338 have no producer: noted on all three ledger entries, no card.
+
+**A100 (#562), an invalid token at login and at refresh**, from a throwaway `tidalapi.Session` touching no stored session, keychain entry or library, 2 calls outside the gate:
+
+| Call | Status | Content type | Body | Client raised |
+|---|---|---|---|---|
+| login, `load_oauth_session("Bearer", "not-a-token", ...)`, `GET /v1/sessions` | 401 | `application/json` | JSON, `{"status":401,"subStatus":11002,"userMessage":"Token has invalid payload"}` | `HTTPError`, "401 Client Error: Unauthorized" |
+| refresh, `token_refresh("not-a-refresh-token")`, `POST auth.tidal.com/v1/oauth2/token` | 400 | `application/json` | JSON with `error`, `{"error":"invalid_grant","error_description":"Token has invalid payload","status":400,"sub_status":1005}` | `AuthenticationError`, "invalid_grant: Token has invalid payload" |
+
+The login answer is JSON, so R-1305's page case is a defence, noted on its entry. The refresh answer is JSON naming `error`, the case R-1315 already reads right, so R-1315 earns no card; noted on its entry.
+
+**A98 (#545), Defected's label sync stopped at the ceiling, continued, and asked again:**
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Before | `label_crawl/defected/listing.json` (sitting 74's kept listing, 5 hours old) moved out of the cache into the session's scratch folder; `reads.json` left | no kept listing | ready |
+| Ceiling | `crate label sync --next --label defected`, run `2026-11-06T03:34:27Z-0ee5`, 61 s | **`blocked (REFUSED_BY_POLICY)`, `provider-call-ceiling` at 500 calls**, printing `crate --calls 1000 label sync --next --label defected`; spend line **500 calls**, none rate limited. A new `listing.json` was kept on the way out. | stopped |
+| Continue | the printed command, exactly, run `2026-11-06T03:35:31Z-b1c7`, 73 s | `no_op`, "Defected: nothing new since it was last asked; 11991 release(s) past this run's window"; **listing line "the label's listing continued from an earlier run: 334 answer(s) kept, the oldest 2 minute(s) old, and 329 asked of the provider now"**; spend line **550 calls**. Artists `3534055` and `3930127` unavailable, as at sitting 74. | met |
+| Second ask | the same command, run `2026-11-06T03:36:48Z-ffe4`, 10 s, within two minutes | `no_op`, the same answer; **listing line "the label's listing was answered from the one kept by an earlier run, 2 minute(s) old, with no listing call to the provider"**; spend line **12 calls**, the session and the window's ownership reads sitting 75 traced. No saved question existed to answer `not-now`: a label with nothing new saves none. | met |
+
+The two runs add to **1,050 calls**, against 1,790 for one fresh listing at sitting 60, and the second ask made no listing call.
+
+**A56 (#414), the INBOX mirror on the live account, first half:**
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Report | `crate --calls 2000 organize --report --only mirror`, run `2026-11-06T03:37:17Z-3051`, 85 s, 677 calls | `no_op`. **INBOX: "nothing to write: 22 playlist(s) already equal their rekordbox playlists' account tracks, 110 row(s) unmatched, 3 left as they are; 3 node(s) in INBOX not mirrored: 2026-10-08 Labels (36 row(s)), not recognised as a batch; Analyze (0 row(s)), the Analyze playlist; Old, the Old folder"**. Every other folder equal but Progressive House, "remove 1". **No `mirror rows answered by their landing` fact.** | read |
+| Apply | `crate --calls 2000 organize --only mirror`, run `2026-11-06T03:39:38Z-0525`, 677 calls; approved as `session`, `run decide --continue`, 685 calls | Gate `organize.account.apply`, digest `8deaa5df5a61431e`, one write: **1 track off `Progressive House Low`, Kabi (AR) `Rainbow` (`421913435`)**, the change sitting 77 left for the next mirror apply. Applied from the frozen plan: `ok`, Progressive House "applied", every other folder nothing to write. | live |
+| Read back | the installed copy's account client, read only | The account's root folder `INBOX` (`41efef92`) holds **22 playlists and no subfolder**, `INBOX <batch>` for each of the 22 live batches `crate inbox rotate` names in rekordbox's INBOX, from `Phil 9-30-26` to `Welcoming vibe 2026-11-04`; **none for any of Old's 18 playlists**, none for `2026-10-08 Labels` or Analyze. Kabi is off `Progressive House Low` (63 tracks) and in `Med` (114). | met |
+| The Defected batch | the 80 landing session records under `history/sessions` | **None of the 19 native landing records carries `provider_tracks`**, the key U150's landing match reads, so no row could be matched by its landing and the plan has no fact to name. No label batch has been landed natively with `--label`: that is A45 (#369), open, the same hold as A71 at sitting 73. The ten Defected tracks of sitting 55 landed in an ordinary batch. | held |
+| Retirement | `crate inbox rotate`, run `2026-11-06T03:42:42Z-34b6`, answered `abort` | Gate `inbox.rotate.approve`, digest `e59100a117e5413e`, as of 2026-11-05: **every batch `keep`**. The oldest live batch is `Phil 9-30-26`, landed 2026-10-08, 28 days; a batch moves after more than 30, so it is first due on **2026-11-08**. | waiting |
+
+**macOS battery**, on `049c973c` (v0.11.1, carrying U217), run while A56's verbs ran: `ruff` clean; **17,079 passed, 1 skipped**; `scan_repo.py` clean; and **`tests/test_label_kept_listing.py` alone, 38 passed** on the Mac. `config.toml` unchanged, sha256 `9e545aa4...`.
+
+**A103 (#571) is met** and **A100 (#562) is met**: their outputs above and the ledger notes on R-1305, R-1313, R-1315, R-1336 and R-1338. **A98 (#545) is met**: the stop at 500, the continue's listing line, 1,050 calls across the two, the second ask's zero listing calls, and the battery below. **A56 (#414) stays open**: the report, the apply and the read back are recorded, with one INBOX playlist per live batch and none for Old; its Defected batch proof now depends on **#369 (A45)**, and its retirement half waits on the next rotate, due 2026-11-08 at the earliest.
+
+**Calls:** 3,125 through the gate (513,895 to 517,020): A103 7, A98 1,062, A56 2,056 (677, 677 and 685 for the three organize runs, 17 for the account client's reads), the rotate plan none; and A100's 2 on a throwaway client outside the gate. No single command came near 5,000.
+
 ## Next sitting
 
 **The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
