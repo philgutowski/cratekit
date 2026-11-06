@@ -468,7 +468,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'cli/__init__.py': [
         'config-unusable',
-        'decision-required',
+        # 2026-11-06, R-1334: 'decision-required' left, the screen test moved to render.
         'decision-unknown-gate',
         'internal-error',
         # 2026-11-05, U206: the warning a run that looked an ISRC up carries.
@@ -604,7 +604,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'dj-vocal-restamp',
         'dj-vox-backfill',
     ],
-    'cli/render.py': ['not-imported', 'not-judged'],
+    'cli/render.py': [
+        # 2026-11-06, R-1334: a gate's screen, an open gate's or a stale answer's.
+        'decision-required',
+        'decision-stale',
+        'not-imported',
+        'not-judged',
+    ],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': [
         'review-file-unusable',
@@ -2667,7 +2673,7 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'cli/__init__.py': [
         'config-unusable',
-        'decision-required',
+        # 2026-11-06, R-1334: 'decision-required' left, the screen test moved to render.
         'decision-unknown-gate',
         'internal-error',
         'module-extras-missing',
@@ -2700,7 +2706,8 @@ PINNED_LITERAL_HOLDERS = {
         'rebuild-tree-not-native',
     ],
     # 2026-11-01, U182: the stale cancel's list says which jobs it cancelled.
-    'cli/render.py': ['cancelled'],
+    # 2026-11-06, R-1334: a gate's screen, an open gate's or a stale answer's.
+    'cli/render.py': ['cancelled', 'decision-required', 'decision-stale'],
     'cli/reports.py': ['config-unusable', 'report-as-of-invalid'],
     'cli/review.py': ['review-file-unusable', 'review-selection-invalid'],
     'cli/setup.py': [

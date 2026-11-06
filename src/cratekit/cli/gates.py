@@ -108,7 +108,21 @@ class DecisionRequired(CratekitError):
 
 
 class DecisionStale(CratekitError):
-    """A decision was supplied, but the artifact it was made against moved."""
+    """A decision was supplied, but the artifact it was made against moved.
+
+    ``offered`` IS THE GATE'S OWN STALE (R-1334), raised by
+    :meth:`Gates.require` over the plan it was just handed. That method has
+    already recorded the moved digest as the run's offer, and ``crate run
+    decide`` binds the next answer to the offer, so an answer recorded after
+    this refusal is taken over the moved plan and the resume applies it. The
+    refusal therefore carries the screen an open gate would show over that
+    plan, its options, prompt and ``shown``, so the plan a person answers is
+    the plan applied. ``context`` is that screen's ``shown``, absent when the
+    gate shows nothing, the rule :class:`DecisionRequired` states. A stale a
+    verb raises itself, on its write handle after the gate passed, moved no
+    offer and is left as it was: the answer recorded after it binds the plan
+    the gate showed, which is why ``offered`` defaults to false.
+    """
 
     def __init__(
         self,
@@ -118,6 +132,8 @@ class DecisionStale(CratekitError):
         actual: str,
         *,
         pinned: str | None = None,
+        offered: bool = False,
+        context: Mapping[str, Any] | None = None,
     ) -> None:
         self.spec = spec
         self.run_id = run_id
@@ -140,6 +156,8 @@ class DecisionStale(CratekitError):
         }
         if pinned is not None:
             detail["pinned"] = pinned
+        if offered:
+            detail.update(_screen(spec, context))
         super().__init__(
             Cause(
                 reason="decision-stale",
@@ -153,10 +171,41 @@ class DecisionStale(CratekitError):
         )
 
 
-class UnknownOption(CratekitError):
-    """A decision named an option the gate does not offer."""
+def _screen(spec: GateSpec, context: Mapping[str, Any] | None) -> dict[str, Any]:
+    """What an open gate puts in front of the person, for a refusal that binds an offer.
 
-    def __init__(self, spec: GateSpec, option: str) -> None:
+    The same keys :class:`DecisionRequired` carries, so the human screen and a
+    JSON reader read one shape whichever refusal recorded the offer.
+    """
+    screen: dict[str, Any] = {
+        "options": list(spec.options),
+        "prompt": spec.prompt,
+        "explicit": spec.explicit,
+    }
+    if context is not None:
+        screen["shown"] = dict(context)
+    return screen
+
+
+class UnknownOption(CratekitError):
+    """A decision named an option the gate does not offer.
+
+    ``context`` IS THE SCREEN OF THE GATE IT WAS RAISED AT (R-1334), passed by
+    :meth:`Gates.require` only, which has recorded the run's offer by then. The
+    refusal reads as an open gate and invites ``crate run decide``, which binds
+    that offer, so it shows the plan the offer was taken over, as an open gate
+    does. ``crate run decide`` raises it with none, since it records nothing.
+    """
+
+    def __init__(
+        self,
+        spec: GateSpec,
+        option: str,
+        context: Mapping[str, Any] | None = None,
+    ) -> None:
+        detail: dict[str, Any] = {"gate": spec.name, "options": list(spec.options)}
+        if context is not None:
+            detail["shown"] = dict(context)
         super().__init__(
             Cause(
                 reason="decision-required",
@@ -168,7 +217,7 @@ class UnknownOption(CratekitError):
                 scope=Scope.RUN,
                 retryable=True,
                 origin=("gates",),
-                detail={"gate": spec.name, "options": list(spec.options)},
+                detail=detail,
             )
         )
 
@@ -560,12 +609,17 @@ class Gates:
             self.state.open_gate = spec.name
             raise DecisionRequired(spec, self.state.run_id, context)
         if chosen not in spec.options:
-            raise UnknownOption(spec, chosen)
+            raise UnknownOption(spec, chosen, context)
 
         if spec.digest_source is not None and digest is not None:
             against = recorded.digest if recorded is not None else None
             if against is not None and against != digest:
-                raise DecisionStale(spec, self.state.run_id, against, digest)
+                # THE MOVED PLAN IS ON THE REFUSAL (R-1334). The offer above is
+                # already the moved digest, and the next ``run decide`` binds
+                # it, so the screen is the plan that answer applies.
+                raise DecisionStale(
+                    spec, self.state.run_id, against, digest, offered=True, context=context
+                )
 
         if recorded is not None and inline is None:
             held = self.state.pins.get(spec.name, {})

@@ -1,0 +1,226 @@
+name = "r1334"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_stale_not_offered"
+description = "require: raise the digest stale as a verb's own, offered false, so the refusal carries no screen and the decide after it binds an unshown plan (R-1334 itself)"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''                    spec, self.state.run_id, against, digest, offered=True, context=context'''
+new = '''                    spec, self.state.run_id, against, digest, offered=False, context=context'''
+
+[[rows]]
+id = "S2_stale_screen_without_plan"
+description = "require: the stale carries the options but not the plan, context dropped"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''                    spec, self.state.run_id, against, digest, offered=True, context=context'''
+new = '''                    spec, self.state.run_id, against, digest, offered=True, context=None'''
+
+[[rows]]
+id = "S3_offered_ignored"
+description = "DecisionStale: never add the screen, whatever offered says"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        if offered:
+            detail.update(_screen(spec, context))'''
+new = '''        if False:
+            detail.update(_screen(spec, context))'''
+
+[[rows]]
+id = "S4_screen_always"
+description = "DecisionStale: add the screen to every stale, a verb's own write handle stale and the pinned one included"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        if offered:
+            detail.update(_screen(spec, context))'''
+new = '''        if True:
+            detail.update(_screen(spec, context))'''
+
+[[rows]]
+id = "S5_screen_no_shown"
+description = "_screen: drop the shown plan, keep the options"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''    if context is not None:
+        screen["shown"] = dict(context)
+    return screen'''
+new = '''    return screen'''
+
+[[rows]]
+id = "S6_screen_shown_empty_for_none"
+description = "_screen: an empty shown where the gate shows nothing, absent read as empty"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''    if context is not None:
+        screen["shown"] = dict(context)
+    return screen'''
+new = '''    screen["shown"] = dict(context or {})
+    return screen'''
+
+[[rows]]
+id = "S7_screen_no_options"
+description = "_screen: no options, so the human screen is never printed for a stale"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        "options": list(spec.options),
+        "prompt": spec.prompt,'''
+new = '''        "prompt": spec.prompt,'''
+
+[[rows]]
+id = "S8_screen_no_prompt"
+description = "_screen: no prompt, so the stale screen asks 'A decision is required.'"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        "prompt": spec.prompt,
+        "explicit": spec.explicit,'''
+new = '''        "explicit": spec.explicit,'''
+
+[[rows]]
+id = "S9_screen_explicit_false"
+description = "_screen: every stale read as a gate that takes an inline answer"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        "explicit": spec.explicit,
+    }'''
+new = '''        "explicit": False,
+    }'''
+
+[[rows]]
+id = "S10_unknown_option_no_context"
+description = "require: raise the unknown option with no screen, as before, though its offer is recorded"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''            raise UnknownOption(spec, chosen, context)'''
+new = '''            raise UnknownOption(spec, chosen)'''
+
+[[rows]]
+id = "S11_unknown_option_shown_dropped"
+description = "UnknownOption: ignore the context it is handed"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        detail: dict[str, Any] = {"gate": spec.name, "options": list(spec.options)}
+        if context is not None:
+            detail["shown"] = dict(context)'''
+new = '''        detail: dict[str, Any] = {"gate": spec.name, "options": list(spec.options)}'''
+
+[[rows]]
+id = "S12_render_no_stale_header"
+description = "render_gate: no line saying the plan moved and that an answer now is taken over it"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py", "tests/test_gate_shown_plan.py"]
+old = '''    lines = [STALE_SCREEN, ""] if stale else []'''
+new = '''    lines = []'''
+
+[[rows]]
+id = "S13_render_header_reworded"
+description = "STALE_SCREEN: reworded, never appended"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py", "tests/test_gate_shown_plan.py"]
+old = '''    "The plan moved since this gate was answered. This is the plan this run "'''
+new = '''    "This gate's plan has changed since it was answered. This is the plan this run "'''
+
+[[rows]]
+id = "S14_render_stale_offers_inline"
+description = "render_gate: a stale screen offers the inline -d answer, which is compared with the moved one and refused"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py", "tests/test_gate_shown_plan.py"]
+old = '''        if not stale:
+            lines.append(f"  or:      rerun with -d {gate}=<option>")'''
+new = '''        lines.append(f"  or:      rerun with -d {gate}=<option>")'''
+
+[[rows]]
+id = "S15_render_open_gate_drops_inline"
+description = "render_gate: the open gate's inline line dropped too, the stale test inverted"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py", "tests/test_gate_shown_plan.py"]
+old = '''        if not stale:
+            lines.append(f"  or:      rerun with -d {gate}=<option>")'''
+new = '''        if stale:
+            lines.append(f"  or:      rerun with -d {gate}=<option>")'''
+
+[[rows]]
+id = "S16_is_gate_screen_no_stale"
+description = "is_gate_screen: a stale never prints its screen, the human sees two digests only"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py", "tests/test_gate_shown_plan.py"]
+old = '''    return cause.reason == "decision-stale" and "options" in (cause.detail or {})'''
+new = '''    return False'''
+
+[[rows]]
+id = "S17_is_gate_screen_any_stale"
+description = "is_gate_screen: every stale prints a gate screen, a verb's own write handle stale with no options included"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py", "tests/test_gate_shown_plan.py"]
+old = '''    return cause.reason == "decision-stale" and "options" in (cause.detail or {})'''
+new = '''    return cause.reason == "decision-stale"'''
+
+[[rows]]
+id = "S18_emit_open_gate_only"
+description = "_emit: print the gate screen for an open gate only, as before"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py"]
+old = '''    if envelope.cause is not None and render.is_gate_screen(envelope.cause):'''
+new = '''    if envelope.cause is not None and envelope.cause.reason == "decision-required":'''
+
+[[rows]]
+id = "E1_offer_after_compare"
+description = "require (existing, sampled): record the offer only on the open gate, so the decide after a stale binds the shown digest again and every resume is stale"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        if spec.digest_source is not None and digest is not None:
+            self.state.offers[spec.name] = digest
+        pins ='''
+new = '''        if spec.digest_source is not None and digest is not None and recorded is None:
+            self.state.offers[spec.name] = digest
+        pins ='''
+
+[[rows]]
+id = "E2_stale_compare_dropped"
+description = "require (existing, sampled): never compare a recorded digest, so a moved plan applies"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''            if against is not None and against != digest:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "E3_record_binds_no_offer"
+description = "record (existing, sampled): bind no digest, so the decide after a stale applies any plan"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_organize.py", "tests/test_gate_pins.py", "tests/test_gate_shown_plan.py", "tests/test_cli_contract.py"]
+old = '''        digest=state.offers.get(spec.name),
+    )
+    if state.open_gate == spec.name:'''
+new = '''        digest=None,
+    )
+    if state.open_gate == spec.name:'''
+
+[[rows]]
+id = "S19_screen_test_drops_options_clause"
+description = "is_gate_screen: drop the options clause in the round one fix's form, so a verb's own stale prints the header over no plan"
+file = "src/cratekit/cli/render.py"
+surface = "user"
+tests = ["tests/test_gate_stale_screen.py", "tests/test_cli_contract.py"]
+old = '''    return cause.reason == "decision-stale" and "options" in (cause.detail or {})'''
+new = '''    return cause.reason == "decision-stale" and "gate" in (cause.detail or {})'''
