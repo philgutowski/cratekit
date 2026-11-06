@@ -45336,3 +45336,75 @@ the test covers, and the dispatcher test checks only the human text.
 **Closes when:** the readers are enumerated from the tree, and the dispatcher
 drive reaches its unreached gate through a verb with two digest gates. Ledger
 only, maintainer facing.
+
+---
+
+## R-1354. crate doctor's deadca7.push check leaves out a DEADCA7 state folder it could not read when it found the app's bundle
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_deadca7_presence` in `src/cratekit/cli/doctor.py` gathers every install place it could not stat into its unread list, and `_check_deadca7_push` says that list only when nothing was found or the support folder itself was unread. With `DEADCA7.app` present and the `deadcatalog` state folder refused, the detail reads "installed here and has recorded no push ... is here, and no push backup folder is", and the refused folder is never named, though `docs/GUIDE.md` now says a folder doctor cannot read is said as unread.
+
+**Measured cost.** Driven by the round one review in process, with the real `Probes`, a scratch home and `os.stat` refused under the state folder: the reading is true, since the bundle alone proves the install and the push backups are not under the state folder, so the cost is an unsaid refusal, not a false sentence. No producer of a state folder closed to its own account was driven.
+
+**Closes when:** the detail names every place it could not read in each reading, or the GUIDE line is narrowed to the readings that turn on the unread place. Ledger only.
+
+---
+
+## R-1355. A symlink loop at a DEADCA7 install place reads as whether DEADCA7 is installed cannot be said, where Path.is_dir answers absent
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_folder_presence` in `src/cratekit/cli/doctor.py` reads absent only for `FileNotFoundError` and `NotADirectoryError`; a stat that fails with ELOOP is unread. So `~/Applications/DEADCA7.app` linked to itself makes `crate doctor` say whether DEADCA7 is installed cannot be said, on a Mac with no DEADCA7. A dangling link reads absent.
+
+**Measured cost.** Driven by the round one review through `crate doctor` with a self linked bundle path, the reviewer's own construction: one INFO line that hedges where "not installed" is true. The conservative side of the unread rule. No natural producer of such a link was driven.
+
+**Closes when:** ELOOP is read as absent, or left as unread on purpose with the reason in the docstring. Ledger only.
+
+---
+
+## R-1356. A regular file where DEADCA7's push backup folder belongs is said as a backup folder that does not exist
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_folder_presence` answers False for a path that is there and not a folder, and `_check_deadca7_push` words False as "its backup folder does not exist". With a file at `deadca7/rekordbox-backups`, the sub clause is false. Before U224 the same input read "its backup folder holds no entry", false the same way.
+
+**Measured cost.** Driven by the round one review through `crate doctor` with a file at that path: the INFO line's sub clause is false; its claim that no push is recorded holds, since no entry can be read. Nothing known writes a file there; no producer was driven.
+
+**Closes when:** a path that is there and not a folder is worded as such. Ledger only.
+
+---
+
+## R-1357. Whether DEADTRAX alone makes the deadcatalog folder crate doctor reads as DEADCA7 installed is unmeasured
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** U224 reads the `deadcatalog` folder under Application Support as DEADCA7 installed, as the brief requires, from sitting 68's reading of DEADCA7 0.2.3. The same disk image carries a second app, DEADTRAX, seen beside it at a later sitting in `docs/cutover.md`. If DEADTRAX alone makes that folder, a Mac with only DEADTRAX is told an app that can push into rekordbox's database is installed.
+
+**Measured cost.** Not driven: no Mac here, and neither app is run by a cloud session. The reading is INFO and says no push is recorded, so the cost would be a hedge where none is due, never a missed push.
+
+**Closes when:** an attended sitting reads which app makes `deadcatalog`, and the install signal is narrowed if DEADTRAX does. Ledger only; it closes only at an attended sitting.
+
+---
+
+## R-1358. The U224 test helper that refuses os.stat replaces it process wide and assumes every caller passes a path
+
+**Found:** at the review of #576, U224, 2026-11-06.
+
+**The mechanism.** `_refuse_stat_under` in `tests/test_doctor.py` patches `os.stat` for the whole process during `doctor.run` and builds `Path(path)` from every argument before deciding, so a caller inside the run that passes a file descriptor or bytes would raise TypeError rather than see a refusal or a real stat.
+
+**Measured cost.** Maintainer facing. The 28 U185 and U224 cases pass on this container, so no such caller is reached today; a later check that stats a descriptor would fail those tests for a reason they do not name.
+
+**Closes when:** the helper refuses only a `str` or `PathLike` argument under the path and passes everything else to the real call. Ledger only.
+
+---
+
+## R-1359. test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask failed once under the full parallel suite on the cloud container and passes alone
+
+**Found:** at the battery of #576, U224, 2026-11-06.
+
+**The mechanism.** Unmeasured. `tests/test_sync_land.py::test_the_acknowledgment_stop_names_the_gate_the_replanned_landing_will_ask` failed in one `cloud_battery.py compare` run of the whole suite at cb92bbfd, U224's branch with `main` merged in, and passed in the run before it at cf7cd4fd. Alone it passed three times, and its file passed whole under `-n auto`. U224 changes only `crate doctor`'s DEADCA7 check, which that file never names; the merge brought only `docs/cutover.md`.
+
+**Measured cost.** Maintainer facing: one run in two of the full suite on this container. Its failure output was not kept, so the cause is not known.
+
+**Closes when:** a run that keeps the failure's output names what it shares under the parallel run, and the test is made independent of it. Ledger only.

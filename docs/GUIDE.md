@@ -1,1119 +1,514 @@
 # Using Cratekit
 
-How to run Cratekit day to day, in the order you will meet things. It assumes
-the install and first run in the README are done and `crate doctor` reports no
-failing check.
+How to run Cratekit day to day. When this file and `crate --help` (or
+`crate VERB --help`) disagree, the help is right.
 
-This guide describes the command line as it is built. When it disagrees with
-`crate --help`, the help is right and this file is stale. Which workflows have
-actually run on a real library is a separate question, answered by
-[`cutover.md`](cutover.md), and the table under "Where it stands" is only a
-summary of that file.
+## Install and set up
 
-## How it works, in one picture
+The [README](../README.md) covers requirements, install, extras and upgrade.
 
-Cratekit touches your rekordbox library in exactly three ways, and the first two
-never go near the live database.
+```bash
+crate setup
+crate doctor
+```
+
+- `setup` records the library root, the rekordbox database, the volume's
+  identity, download staging, the profile, the taxonomy and the backup
+  destinations, and proposes a rekordbox version pin that only a yes adopts.
+  Every answer is also a flag (`crate setup --help`). Re-running keeps earlier
+  answers unless a flag changes one, and ends by running doctor.
+- `doctor` writes nothing. Each line is `ok`, `fail` (blocks a verb, names the
+  fix) or `note` (no action).
+- `crate profile show` lists the modules the profile switches on; `crate
+  profile set slim|full|custom` changes the preset and nothing else. A verb
+  whose module is off does not exist. Adoption is on in every profile.
+
+### Credentials
+
+Credentials live in the OS keychain, never in the config file. Record one
+from a file only you can read; a value on the command line is refused:
+
+```bash
+crate login NAME --from-file PATH
+```
+
+| NAME | What |
+|---|---|
+| `provider-session` | The streaming account session, used to list and download. Obtaining it is two commands at a browser: see [`adapters.md`](adapters.md). Delete the plaintext token file afterwards, and after a download run, which can write it back. |
+| `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
+| `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
+| `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
+
+A provider that rejects the stored session is reported as rejected, with the
+sign in step. A provider that fails or cannot be reached is reported as an
+outage to wait out; the session is kept.
+
+## How it works
+
+Cratekit reaches your rekordbox library three ways:
 
 ```
                          reads only
-  rekordbox --(export)--> collection XML file --------> crate reports, audits,
-     |                    (a file you make by hand)     favourites sync, playlist export
-     |
+  rekordbox --(export)--> collection XML file --------> reports, audits,
+     |                                                  favourites sync, playlist export
      |   you import by hand
-     +<------------------- importable XML file <-------- crate intake and sync
-     |                     (crate writes it, you load it)
+     +<------------------- importable XML file <-------- intake land (xml bridge)
      |
-     |   guarded write, rekordbox closed, backup acknowledged
-     +<------------------- the live database <---------- crate route, rebuild, restore,
-                           (through one guarded layer)   metadata --apply
+     |   guarded write: rekordbox closed, backup acknowledged
+     +<------------------- the live database <---------- landing (database native),
+                                                         route, adopt, organize, restore ...
 ```
 
-- **A collection export** is the XML file rekordbox writes when you export your
-  collection (the File menu, Export Collection in xml format). Several verbs read
-  one and never the live database. Cratekit records no location for it, so you
-  pass the path each time, and a stale export answers every question confidently
-  and wrongly. Export a fresh one when the answer matters. With rekordbox closed,
-  `crate export collection FILE` writes one from a copy of the database, so
-  rekordbox's menu is not the only source. See "Take a collection export" below.
-- **An importable file** is what intake and sync produce for new tracks.
-  Cratekit does not import it for you. You load it into rekordbox, export the
-  collection again, and run `crate intake imported --export` with that export,
-  which proves the import happened and puts the importable file away.
-- **The guarded write** is the only path to the live database. It refuses unless
-  the library volume is mounted and is the volume that was recorded, rekordbox and
-  its background agent are both closed, the pinned versions match, and you have
-  recorded a backup acknowledgment. It snapshots first and reads the result back
-  afterward. Any one of those refusing stops the write.
+- **A collection export** (a Fresh Export) is a rekordbox XML of the whole
+  collection. Verbs that take one never read the live database. A stale export
+  answers wrongly and confidently, so take a fresh one when it matters.
+- **An importable file** (the intake file, `*_inboxed.xml`) is what a landing
+  writes while the intake tree is on the xml bridge. You import it into
+  rekordbox.
+- **The guarded write** is the only path to the live database. It refuses
+  unless the recorded library volume is mounted, rekordbox and
+  `rekordboxAgent` are both closed, the pinned versions match and a backup
+  acknowledgment is on record. It snapshots first and reads the result back.
 
-Four words carry most of the rest.
+Terms:
 
-- **Job.** Long work, such as a playlist intake, a tagging pass or a label
-  sweep, is queued and handed back to you as a job identifier. Most verbs
-  return quickly. `crate job list` shows the queue, one line per job with its
-  verb, its state and how many of its items are settled, `crate job show ID` shows
-  one job and why it is in its state, and `crate job resume ID` picks it up
-  without repeating finished work. Three verbs of the acquisition tail, `tag
-  folder`, `analyze run` and `analyze restamp`, queue their job and then work
-  through it before they return, so each step is one command. Stop one with
-  Ctrl-C at any moment and its answer names the `--job` command that finishes
-  the rest, a track `analyze run` had already renamed included; pass
-  `--queue-only` to have it queue and return like the others. An intake job
-  names the playlist it was made for in both `job list` and `job show`. An
-  open intake job holds its playlist out of every sync pass, so an old one
-  left queued keeps that playlist's new music out until it is driven or
-  cancelled: `crate job cancel --stale-days 30 --dry-run` lists every queued
-  intake job queued more than 30 days ago, with its playlist, age, track count
-  and what cancelling it frees, and the same command without `--dry-run`
-  cancels them. It never touches a running job, and of several open jobs
-  holding exactly the same tracks it keeps the newest and says so.
-- **Run.** One invocation's decision state, saved on disk so a decision can be
-  answered later, from another terminal, after the process has exited.
+- **Tree.** A playlist tree the taxonomy governs: INBOX, BY GENRE + ENERGY,
+  Record Labels and so on. Each tree is either on the **xml bridge** (written
+  through an importable file) or **database native** (written straight to the
+  database). `crate tree cutover TREE --export FILE` moves a tree to the
+  database; `crate tree revert TREE` puts it back before its first native
+  write.
+- **Job.** Long work is queued and returns a job id. `crate job list`,
+  `job show ID`, `job resume ID` (repeats no finished work) and `job cancel
+  ID`. `tag folder`, `analyze run` and `analyze restamp` drive their own job to
+  the end; Ctrl-C names the `--job` command that finishes it, and
+  `--queue-only` queues and returns.
+- **Run.** One invocation's decision state, kept on disk so a gate can be
+  answered later from another terminal.
 - **Gate.** A named question a verb stops at before it writes. There is no
-  `--yes` anywhere. A gate is answered by name, and the answer is recorded with
-  who gave it.
-- **Review item.** A single decision a person has to make, such as "is this
-  remix the version I wanted". Verdicts are remembered, so you are never asked
-  twice about the same thing.
+  `--yes`. See [Answering a gate](#answering-a-gate).
+- **Review item.** One decision only a person can make, such as whether a
+  remix counts as the track. A verdict is remembered.
 
-Two habits follow from that design. Read a refusal instead of retrying it, since
-every refusal names a reason and what to do about it. And put root options
-before the verb, because they belong to the top level command. `--output json`
-gives a machine readable answer, `--decision` answers a gate on the same line, and
-`--run` continues a run that stopped at a gate:
+Root options go before the verb:
 
 ```bash
-crate --output json doctor
-crate --decision route.inbox.apply=apply route inbox
-crate --run RUN_ID route inbox
+crate --output json doctor           # one JSON envelope
+crate -d route.inbox.apply=apply route inbox   # answer a gate inline
+crate --run RUN_ID route inbox       # continue a run stopped at a gate
+crate --calls 2000 --run RUN_ID sync pair   # raise the provider call ceiling for one run
 ```
 
 ## Before every session
 
-Every verb that writes needs the same conditions, so check them once up front.
-
-1. Quit rekordbox, and quit its background agent too. Opening the app is the one
-   thing that makes writing verbs refuse.
+1. Quit rekordbox and its background agent. Every writing verb refuses while
+   either runs.
 2. Mount the library volume.
-3. Run the health check, and read the `fail` lines first. `note` lines are worth
-   knowing and need no action.
-4. Run the status verb, which reports open runs, per source sync state and any
-   tree whose membership no longer matches the database.
-
-```bash
-crate doctor
-crate status
-```
-
-A source that shows "no clean increment has completed" has simply never synced.
-
-Open gates that have sat idle for more than a week are one line rather than one
-line each: how many, the dates they span, and the command that retires them,
-`crate run retire --older-than 7d`. Newer gates are listed one by one. The week
-is `reports.open_gate_stale_days` in the configuration file. Doctor's
-`runs.open-gates` note lists each run that has sat at a gate for more than a
-day, with its verb, gate and age, and never fails the report.
+3. `crate doctor`; read the `fail` lines first.
+4. `crate status`: open runs, each source's sync state, and any tree whose
+   membership no longer matches the database. Gates idle over a week are
+   summarised in one line with the command that retires them.
 
 ## Where it stands
 
-Summary of [`cutover.md`](cutover.md) as of 2026-09-17. Fixes made after that
-date are recorded in `RESTART-cratekit.md`. Treat a fix as unproven on the live
-library until `cutover.md` says it was re-run there.
-
-| Workflow | Last live run | State |
-|---|---|---|
-| Setup and doctor | 2026-09-16 | Live. |
-| Backup, `backup run` | 2026-09-16 | Live. A restore rehearsal landed the database byte for byte, then the verb reported failure over a missing side file. Fixed on main, not re-run. |
-| Vocal scoring and My Tags | 2026-09-17 | Live for one folder. The verb scores one folder per call, so a full library pass is hundreds of calls. |
-| Playlist export, favourites sweep | 2026-09-17 | Live. Both are add only. The favourites listing read a fraction of the account, fixed since, not re-run. |
-| Download, `acquire download` | 2026-09-16 | One real track, lossless, proven. Not yet lived on. |
-| Playlist intake and harvest | 2026-09-17 | Ran live. Both resolve tracks and report, and neither downloads. |
-| Label sweep | 2026-09-17 | 15 of 47 labels swept, 32 refused for want of a seed artist. A discovery fix has merged since and has not been measured live. |
-| `sync all` | 2026-09-17 | Queued 18 playlists, 11 of them label debris. A swept playlist is recorded as done once resolved, not once acquired, and is not marked on the account. |
-| Routing, tree flip, adopt, remove tracks, analyze, set builder, mastering, naming, tagging, path repair | none recorded | Covered by the test suite and by no live sitting yet. |
-
-For anything in the last row, or anything marked "not re-run", do a small batch
-first, confirm your backup is current, and check `crate restore list` afterward
-so you know what a rollback would undo.
+Which workflows have run on a real library, and with what result, is recorded
+per workflow in [`cutover.md`](cutover.md). For a workflow not recorded there,
+run a small batch first, with a current backup, and check `crate restore list`
+afterwards.
 
 ## Recipes
 
 ### Take a collection export
 
 ```bash
-crate export collection /path/to/collection-2026-09-29.xml
+crate export collection /path/to/collection-export.xml
 ```
 
-Quit rekordbox first. The verb copies the database, reads the copy, and writes
-the export to the file you name. It never opens the live database and never
-writes to it, and it refuses while rekordbox or its background agent is running,
-because a copy taken under a live application is missing whatever was mid write.
+With rekordbox closed, writes a collection export from a copy of the database;
+the live file is never opened. It never replaces a file, refuses a name ending
+`_inboxed.xml`, `_synced.xml` or `_favorites.xml`, leaves smart playlists out
+(counted and named), and carries no tempo, grid or cue points, so it is not a
+backup. Take a new one after anything writes the database.
 
-- It never replaces a file. Name one that does not exist yet.
-- A name ending in `_inboxed.xml`, `_synced.xml` or `_favorites.xml` is refused,
-  since that is how an importable file is named and the verbs that read an export
-  would refuse this one.
-- The file is what the verbs that take `--export` read, and it is not a backup.
-  It carries no tempo, no beat grid and no cue points. Every track is written
-  with the tempo rekordbox uses for a track it has not analysed.
-- Smart playlists are left out, because the database stores their rule and not
-  their tracks. The report counts them and names them.
-- The first line after the XML declaration says Cratekit wrote the file, so it
-  can be told from one rekordbox exported.
+### Run a sync pass
 
-An export is a picture of the database at the moment it was written. Take a new
-one after anything writes the database, an import included.
+The everyday path from the streaming account to filed rows. It needs a
+database native intake tree.
+
+```bash
+crate sync land
+```
+
+`sync land` takes the pass to its landing gate in one verb: preflight
+(rekordbox closed, no backup running), `sync all`, its intake jobs, the
+missing list, the download, then the tail in this order: `tag folder`, `tag
+guess`, `analyze run`, `analyze vocals --unscored`, `analyze restamp`, `name
+apply`. It then plans `intake land` and stops at `intake.land.native`, printing
+the two commands that answer and apply it and the rekordbox visit after.
+
+- A tail step that fails ends the pass there; no landing is planned over
+  files the tail did not run on.
+- A track the download refuses for good (lossy only, gone from the provider)
+  is named and skipped. Anything a wait would mend ends the pass.
+- A missing track already staged by an earlier unlanded download is not
+  downloaded again.
+- When the vocal model cannot score here it stops first at
+  `sync.land.without-vocals`; install the `vocals` extra, or answer
+  `crate -d sync.land.without-vocals=go sync land` to land unscored.
+- Two staged files with one ISRC stop `name apply`; keep one, move the other
+  out, and continue.
+- `crate sync land --pass-run RUN_ID` continues an earlier pass, by either run
+  id it printed. Jobs already ended are read, not driven again.
+
+Then, in order:
+
+1. Optionally rehearse: the landing command with `--rehearse` (see [Land a
+   batch](#land-a-batch)).
+2. Answer and apply the landing with the two printed commands.
+3. The rekordbox visit, below.
+4. `crate sync mark --pass PASS` to prefix the finished account playlists.
+
+**The rekordbox visit.** Cratekit never analyses inside rekordbox and never
+writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
+rows without the `dyn` My Tag with Analysis Mode Normal, high precision off,
+BPM/Grid, Phrase and KEY on; rows with `dyn` with Analysis Mode Dynamic, every
+other setting the same. Quit rekordbox and confirm `rekordbox` and
+`rekordboxAgent` are gone. Then:
+
+```bash
+crate analyze check        # exit 0 done, 12 rows still waiting, 27 suspect
+crate inbox analyzed       # take the analysed rows out of INBOX / Analyze
+```
+
+`analyze check` reads a copy and writes nothing: every row analysed, every
+grid one tempo (or moving on a `dyn` row), Key filled, and how often the
+title's key agrees with rekordbox's. `--pass` or `--session` names one
+landing.
+
+`sync all` alone queues each enabled source's increment under one run and
+returns at once; nothing has run until the jobs are resumed. It sweeps no
+labels (`crate label sync` does). The favourites source needs `--export` and
+asks `sync.all.favorites.confirm`. A source's watermark moves only after a
+pass in which every item finished. An open intake job holds its playlist out
+of later passes; `crate job cancel --stale-days 30 --dry-run` lists old ones,
+and without `--dry-run` cancels them.
 
 ### Bring music in
 
-Pick the verb by what you are holding.
+Pick the verb by what you hold:
 
 ```bash
 crate intake playlist https://tidal.com/playlist/PLAYLIST_UUID
-crate intake playlist favorites
+crate intake playlist favorites          # every heart on the account
 crate intake file /path/to/one-track.aiff
-crate intake set /path/to/recording.wav
+crate intake set /path/to/recording.wav  # or a mix URL
 crate intake identify /path/to/recording.wav
 crate match run /path/to/tracklist.txt
 ```
 
-- `intake playlist` reads a streaming playlist and reports each track as owned,
-  offered or missing. It queues a job and does not download.
-- `intake playlist favorites` does the same for every track hearted on the
-  account, which answers whether each heart is in your library. Ownership is
-  the same match rule a playlist gets, so a heart you hold in another version
-  is offered for review rather than counted owned. Nothing is written to the
-  account, no holding playlist is made, and a heart you acquire later simply
-  reads owned on the next run. A listing that cannot be read in full refuses
-  rather than reporting a short one.
-- `intake file` shows a plan by default. It writes only when you also pass
-  `--export` with the collection export to splice the track into. It then ends
-  waiting on you the way `intake land` does, naming the file to import, and is
-  settled the same way, with `crate intake imported`. Once your intake tree
-  has cut over to the database it takes no export and refuses one: it plans
-  one collection row for the file where it sits and one playlist under your
-  INBOX folder, named for the file, and asks
-  `intake.file.native`, which is answered by a separate `crate run decide`.
-  The file is not moved, nothing about the audio is written, and the row
-  awaits an analysis you ask rekordbox for, as a native landing's rows do. On
-  that path the file has to be inside your library, since a row for a file
-  outside it could not be matched against the collection again.
-- `intake set` takes a recording on this machine, or the web address of a mix.
-  An address is fetched with `yt-dlp` into a scratch folder outside the
-  library, identified, and removed again, because a mix is input and not
-  library material. Without `yt-dlp` it refuses and says how to install it.
-  `intake identify` takes an address the same way.
-- `intake identify` names the tracks in a recording and stops. It calls a paid
-  recognition service, so it refuses before the first call if the recognition
-  keys are not recorded.
-- A recording longer than one recognition run's bound, about two hours and
-  forty minutes, is identified in even parts, up to three, and is still one
-  set: one tracklist, one job, one batch. Both verbs say so with a
-  `recognition-in-parts` note. The month's bound is checked over the whole
-  recording before the first call, and a file longer than three parts is
-  refused as not one set.
-- `match run` takes lines of `Artist - Title` and sorts each into matched,
-  needs review or missing. Needs review means a different version of the track
-  exists, such as a remix or an edit, and only you can say if it counts. Those
-  become review items.
+- `intake playlist` queues a job that sorts each track into owned, offered
+  (another version is held: a review item) or missing. It downloads nothing
+  and writes nothing to the account.
+- `intake file` plans one file. On the xml bridge it writes only with
+  `--export`; once the intake tree is native it takes no export, plans one
+  collection row and one INBOX playlist for the file where it sits (it must be
+  inside the library), and asks `intake.file.native`.
+- `intake set` identifies a recording or a mix URL (fetched with `yt-dlp` to
+  scratch, then removed) and resolves its tracks; `intake identify` names the
+  tracks and stops. Both call a paid recognition service and refuse before
+  the first call without its keys. A recording over one recognition run's
+  bound (about 2h40) is identified in up to three even parts, still one set.
+- `match run` sorts `Artist - Title` lines into matched, needs review and
+  missing.
 
-When a playlist job has finished, turn what it found missing into a list the
-download step reads:
+Turn what is missing into a download list:
 
 ```bash
-crate intake missing --job JOB_ID
+crate intake missing --job JOB_ID     # one finished intake job
+crate intake missing --run RUN_ID     # a whole sync all pass, one list
+crate intake missing --list PATH      # a text list, searched on the provider
 ```
 
-It writes `intake-JOB_ID.list.json` into a `lists` folder under download
-staging, or into the folder you name with `--out`, and prints the path and the
-exact `acquire download` command to run next. Only missing tracks are listed.
-Owned tracks, tracks offered for review, and tracks you deleted on purpose are
-counted and left out. A job that is still running, failed or was cancelled is
-refused rather than listed in part.
+- Lists go to `lists/` under download staging, or `--out`. Owned, offered and
+  deliberately deleted tracks are left out. A job not finished is refused;
+  with `--run`, `--skip-failed` leaves out failed or cancelled jobs.
+- A set track has no provider id, so it is listed only when exactly one
+  provider track carries its ISRC. The rest go to `intake-JOB_ID.unlisted.json`
+  with the reason.
+- `--list` checks every line against the library first, then searches the
+  provider. A line is listed only on one exact match in artist, title and
+  version; otherwise its candidates become review items (`review list --queue
+  version-match --kind provider-candidate`). Accept one and run again. The list
+  is written as `NAME-found.list.json`.
+- A missing track already sitting in download staging (same ISRC) is counted
+  `staged` and not listed.
 
-A finished `intake set` job lists the same way. A track recognised in a set
-carries no provider id, so the verb asks the provider for its ISRC and lists the
-track only when exactly one provider track carries that code. A track with no
-ISRC, or one the provider files under no track or under several (a single, an
-album cut and a compilation often share one), is never guessed at. It is
-written to `intake-JOB_ID.unlisted.json` beside the list, with the reason above
-each line, and reported as a failing line. If the provider cannot be reached
-the verb refuses and writes nothing; run it again later.
-
-That file is a text list, and a text list has its own route to a download:
+For bootlegs, white labels and promos the provider lacks:
 
 ```bash
-crate intake missing --list PATH
-```
-
-`PATH` is the unlisted file above, or any tracklist of `Artist - Title` lines
-you typed or transcribed from a screenshot. Every line is checked against the
-library first, exactly as `match run` checks it, so a track you own is never
-searched for. Each line that is still missing is searched for on the provider,
-and the search only ever proposes. A line is listed on its own only when exactly
-one track the provider returned matches it in artist, title and version. Two
-matching tracks, or none with near misses beside it, are offered for review
-with each candidate's score, and nothing is ever listed from a score:
-
-```bash
-crate review list --queue version-match --kind provider-candidate
-crate review resolve ITEM_ID --verdict accepted --option TRACK_ID
-```
-
-Run the same `intake missing --list` again after answering, and the candidate
-you accepted is listed. A rejected line is not searched for again until you
-clear the answer with `crate review clear ITEM_ID`. A line the provider has
-nothing for is reported as a failing line, never silently dropped. The list is
-written as `NAME-found.list.json`, `NAME` being the input's own name, so it
-never lands on the job's list.
-
-A bootleg, a white label or an unreleased promo is not on the provider at all.
-For those lines there is a second source search:
-
-```bash
-crate acquire fallback PATH
-```
-
-It reads the same kind of list, checks it against the library the same way,
-and searches SoundCloud and then YouTube for each line still missing. Run
-`intake missing --list` first and hand this the lines it could not route: a
-line carrying the provider's own id, or with a provider candidate waiting or
-accepted in review, is left alone, and a line the provider would list on its
-own is not something this verb can see. What it finds is offered for review,
-best match first, and nothing is picked or downloaded:
-
-```bash
+crate acquire fallback PATH        # searches SoundCloud, then YouTube; offers review items
 crate review list --queue fallback-source --kind fallback-candidate
 crate review resolve ITEM_ID --verdict accepted --option URL
+crate acquire fallback-fetch PATH  # downloads the accepted ones, marked lossy
 ```
 
-A second run searches nothing it already offered. It needs `yt-dlp`, and says
-how to install it when it is missing. If a search fails part way it stops and
-names every line it had already offered, and the next run carries on from
-there. An accepted upload is reported with its address; downloading it is not
-built yet.
-
-A `crate sync all` pass queues one playlist job per new playlist, and its output
-ends with the command that lists the whole pass at once:
+Download and audit:
 
 ```bash
-crate intake missing --run RUN_ID
+crate acquire download LIST
+crate acquire audit                # files that break the lossless policy
 ```
 
-A track the account lists with no title or no artist does not hold its
-playlist back: the pass queues the playlist's other tracks and names that one,
-by its id and why, in its summary and a warning. Once the playlist's job
-succeeds it is recorded like any other, so no later pass offers it again; bring
-the named track in by hand once the account names it. A playlist with no track
-left to queue is reported unreadable and offered again.
+`acquire download` fetches into download staging through the configured
+adapter, paced. A track refused for good is skipped and named in an
+`acquire-refused` warning.
 
-It writes one list for every playlist job the pass queued on this library,
-named for the run, so the pass downloads and lands as one batch. A track two
-playlists share is listed once, and the list's manifest names both playlists.
-A job still running refuses the whole run. A job that failed or was cancelled
-is named and refuses the run too, unless you pass `--skip-failed`, which lists
-the rest and reports what it left out as a failing line. The output names the
-`--pass` to give `intake land`, and says that the landing takes `--export`
-while your intake tree is on the xml bridge and no export once it is database
-native. The pass names the importable file, which is how `sync mark` later finds
-the run, and the batch itself is named for the date and the playlists.
-
-A missing track an earlier download already left in the download staging
-folder, one whose landing was never answered, is not listed again. Each file a
-landing would take from that folder is read for the ISRC the downloader wrote,
-and a missing track carrying the same ISRC is counted under `staged`, named with
-its file on the `staged` line, and left off the list; the landing over that
-folder lands it. A file with no ISRC, or one that cannot be read, matches
-nothing, so its track is listed as before. If every missing track is staged
-the list is not written and the output says the landing takes them, and
-`crate sync land` then skips the download and goes on to the tail and the
-landing. A track the pass's own list already names stays listed, so continuing
-a pass rewrites the same list. If the staging folder cannot be read the
-`staged` line fails and says so.
-
-Downloading is its own step. `crate acquire download LIST` fetches tracks into
-the download staging folder through the configured adapter, paced so the account
-is not blocked, and `crate acquire audit` reports files that break the lossless
-policy. A track the policy refuses for good, such as one offered lossy only, or
-one the provider no longer has, is skipped and named in an `acquire-refused`
-warning, and a download whose only misses are those ends ok; any other failure
-still fails it. What arrived then needs tagging, naming, landing and filing, in
-this order. `tag folder` writes genre and album art to the files only. `name apply`
-rebuilds filenames from your template. `intake land` moves the staged files into
-your library and writes one importable file naming every one of them, which you
-import into rekordbox. `intake imported` reads a collection export taken after
-that import and proves it happened. `route inbox` files the intake folder into
-your taxonomy, and `route pending` files the landed tracks once a tree has cut
-over to the database.
-
-A `--root` is read against your library root when it is not a full path, so
-`--root Downloads` is the library's Downloads folder wherever your shell stands,
-and a root with no folder there is refused naming the path it tried.
+Then the tail and the landing, in this order (`sync land`, `label sync --go`
+and `sync bandcamp` run it for you):
 
 ```bash
 crate tag folder /path/to/staging
+crate tag guess /path/to/staging --pass PASS
+crate analyze run /path/to/staging
+crate analyze vocals --unscored /path/to/staging
+crate analyze restamp /path/to/staging
 crate name apply --root /path/to/staging
-crate intake land --export /path/to/collection-export.xml
-crate intake imported --export /path/to/export-taken-after-the-import.xml
-crate route inbox
+crate intake land --pass PASS
 crate route pending
 ```
 
-`tag folder` leaves a file with no genre when no catalogue that answers knows
-the track, and some never answer here: Traxsource and Bandcamp refuse every
-search with a bot check. `crate tag guess` gives each such file a genre from
-what sits beside it: the same artist's other tracks, in your library and in
-the folder, and, with `--pass`, the playlist on your account the pass
-downloaded it for, which the catalogues mostly did tag. The weighing and its
-bands are `tag suggest`'s, and a playlist counts as one voice
-however long it is, so three tracks by the artist outweigh a long playlist of
-another genre. Every guess is written, whatever its band; a tie is written as
-the genre the artist's tracks weigh most, then the first by name, and named in
-the report so you can check it. A file nothing votes for keeps no genre and is
-named. A file that already carries a genre is never changed. The report gives
-how many of the folder's files carried a genre before and after, and names any
-word on a file your taxonomy has no folder for, offering to save it as an alias
-of one of your genres or to make it a genre folder of its own. `--report`
-writes nothing and says what a run would write, which is how a folder that has
-already landed is measured. The passes below run it for you, right after `tag
-folder`.
+- `tag folder` writes genre and album art to the files only. A file no
+  catalogue knows keeps no genre.
+- `tag guess` gives each file with no genre one from its artist's other
+  tracks and, with `--pass`, the account playlist that asked for it. A file
+  that has a genre is never changed. `--report` writes nothing. Each genre
+  word your taxonomy has no folder for is named, with the `taxonomy alias` or
+  `taxonomy folder` command that answers it (see [Keep the library
+  tidy](#keep-the-library-tidy)).
+- `name apply` renames from your naming template behind
+  `name.apply.confirm`. A relative `--root` is read against the library root.
+- `route pending` places tracks whose routing was decided before the library
+  held a row for them; on the xml bridge it has nothing to place.
 
-```bash
-crate tag guess /path/to/staging --pass PASS
-crate tag guess /path/to/staging --report
-```
+### Land a batch
 
-Each word `tag folder` or `tag guess` names that your taxonomy has no folder for
-is answered in one command, either way, save the one kind named below. `crate
-taxonomy alias` saves the word as
-an alias of one of your genre folders, so a catalogue that gives it again is
-tagged as that genre, and retags every audio file under your library root whose
-one genre is the word, in any case; `--folder` retags only the files under one
-folder. A file carrying the word beside another genre is left and named. Then
-`crate tag rows` brings the rows into line and `crate route resort` files the
-tracks. `crate taxonomy folder` makes the word a genre folder of its own under
-BY GENRE + ENERGY, with energy bands, so the files already carrying it file
-there at the next `crate route resort` and nothing is retagged. It takes the
-family, tempo window and rating of the folder the word's tracks are filed in
-now, or of the one `--like` names. Both edit your taxonomy copy behind an
-explicit gate, keep the copy as it was beside it under a dated name, and refuse
-a word the taxonomy treats as too coarse to be a genre, such as `Electronic`, a
-word it already files, and a genre it does not declare, writing nothing.
+`intake land` moves staged files into the library and adds them as one
+batch: a folder and an INBOX playlist of the same name. Staging must be on the
+library's volume. A file whose name is taken stays in staging and is named.
+Two landings under one batch name never run at once.
 
-One kind of word takes one answer only: a genre folder's own name in another
-case, such as `breaks / d&b / dubstep`. Rekordbox folders are matched by their
-exact name, so a file carrying it is filed by a keyword or the fallback until
-it is retagged. `crate taxonomy alias "breaks / d&b / dubstep" "Breaks / D&B /
-Dubstep"` retags those files to the folder's exact name and changes nothing in
-your taxonomy, and the warning names that command for you. An alias to any
-other folder is refused, since it would retag the files already carrying the
-exact name too, and so is a folder of its own. Where the folder's own name does
-not file a track by itself, as with `nonelectronic` and the NonElectronic
-folder, which files each track by the track's own genre, neither verb takes the
-word, and the refusal says to retag each file with the genre it means.
+The batch name, unless `--name` gives one:
 
-```bash
-crate taxonomy alias "Latin Electronic" "Afro House"
-crate taxonomy folder "Latin Electronic" --like "Afro House"
-```
-
-`intake land` reads download staging unless you name another folder. The files go
-to a new folder under your music folder, and the batch playlist under INBOX takes
-the same name. Unless you pass `--name`, that name is the landing's date and what
-the files came from, read from what was queued rather than typed:
-
-| What the landing is handed | The batch is named |
+| Handed | Batch |
 |---|---|
-| a `--manifest` whose label rows name one label | `2026-10-03 Sudbeat` |
-| a `--manifest` naming several labels | `2026-10-03 Labels` |
-| a `--pass` whose jobs listed account playlists | `2026-10-03 Tidal playlists` |
-| a `--pass` whose jobs listed your hearts | `2026-10-03 Favorites` |
-| a `--pass` whose jobs listed a set | `2026-10-03 Set` |
-| a `--pass` of more than one kind | `2026-10-03 Tidal playlists and Favorites` |
-| neither | `2026-10-03 Downloads` |
+| `--manifest` naming one label | `2026-10-03 Some Label` |
+| `--manifest` naming several | `2026-10-03 Labels` |
+| `--pass` of account playlists | `2026-10-03 Tidal playlists` |
+| `--pass` of hearts | `2026-10-03 Favorites` |
+| `--pass` of a set | `2026-10-03 Set` |
+| `--pass` of several kinds | `2026-10-03 Tidal playlists and Favorites` |
+| a Bandcamp batch | `2026-10-03 Bandcamp Some Label`, or `2026-10-03 Bandcamp` |
+| none | `2026-10-03 Downloads` |
 
-A second landing on the same day from the same source gets ` 2`, the next ` 3`,
-so two batches never share a playlist.
+A second batch of the same name the same day gets ` 2`, then ` 3`. A pass
+that swept your own account playlists also gives each its own INBOX
+playlist, named as on the account with the landing's date at the end.
 
-A `--pass` that swept playlists you made on the account also gives each of them
-its own playlist under INBOX, beside the batch, named as on the account with the
-landing's date at the end: `Lisa_10_27_26 2026-10-27`. INBOX stays flat, and the
-date says which pass brought each one. A playlist landed before this rule keeps
-the name it had, and `inbox rotate` ages it out as before. The importable file is written beside the
-library as `PASS_inboxed.xml` when you pass `--pass`, `NAME_inboxed.xml` when you
-pass only `--name`, and is named for the landing's own run otherwise. That name
-is what `sync mark`, `label mark` and `export archive` read, so keep the one the
-earlier step printed. It never replaces a file already in the library: a file whose
-name is taken stays in staging and the run says so. Two landings under one
-batch name never run at once: the second is refused with nothing moved. Staging has to be on the same
-volume as the library, because a move there is a rename and a copy is refused. The
-run ends waiting on you, naming the file to import.
-
-Take the export before you run `intake land`. An export that is not there, or is
-not a collection the landed files can be spliced into, is refused before the plan
-reaches its gate, and so is an unmounted library or an importable file already
-written under that name, so no answer is spent on a landing that could never run.
-
-Once your intake tree has cut over to the database, with `crate tree cutover
-inbox --export`, `intake land` needs no export and refuses one. It moves the
-files the same way and then adds each one to the collection itself, with a
-title from the file's own tags, and puts the batch playlist under your INBOX
-folder, through the same guarded database session every database write here
-uses: rekordbox and its agent closed, a backup acknowledged first, a capture
-taken before the commit. The plan shows every row with every column it will
-set, the playlist and its parent, and the database it writes, and its gate,
-`intake.land.native`, is answered by a separate `crate run decide` and never
-inline. A file already in the collection is reported present and not added
-twice. Each row carries the artist, album, album artist, genre and year its
-file's tags name, linked to the library's own artist, album and genre entries
-where one of that exact name exists and made in the same commit where none
-does, and the plan says which for every row. A file with no artist tag lands
-with no artist, as rekordbox would show it. **Nothing about the audio is
-written**: no tempo, no grid, no key, no waveform, and the run says so.
-rekordbox does not analyse a row it did not make until you ask, so open it,
-select INBOX / Analyze and run Analyze Tracks; Reload Tags is not needed, and
-adoption reads each row's genre from the moment it lands. A row whose tempo
-moves, a live drummed track or an edit of two takes, joins carrying the `dyn`
-My Tag, written from the drift `analyze run` measured (below), so the visit is
-two selections and the run's warning counts each: the rows without `dyn` with
-Analysis Mode Normal, high precision off, BPM/Grid, Phrase and KEY on, and the
-rows with `dyn` with Analysis Mode Dynamic and the rest the same. A file with
-too little pulse to judge lands as steady, and a file analysed before the drift
-existed is counted as unscored on the screen and takes Normal, as every row did
-before. Once rekordbox and its
-agent have quit, `crate analyze check` says whether the visit is done and done
-right: every row analysed, every grid one tempo (or moving on a row marked
-`dyn`), the Key column filled, and how often the title's key agrees with
-rekordbox's. It exits 0 when the visit is done, 12 when rows still wait for
-analysis, and 27 when what rekordbox wrote looks wrong, naming the rows; it
-reads INBOX / Analyze, or the landing you name with `--pass` or `--session`,
-and writes nothing. A row landed before
-2026-10-09 also lacks the defaults rekordbox writes on every row it makes, and
-will not load to a deck until `crate repair rows` fills them (R-923); a row
-landed since carries them from the start. There is no import, no drag and no `intake imported` on this path.
-
-On this path the files go straight to where they live, the folder a shelve
-would have filed them in: `Music/Processed_Tracks/<year>/<MM_DD_YY subject>`,
-the date and subject read off the batch name (`2026-10-27 Tidal playlists and
-Favorites` lands in `Processed_Tracks/2026/10_27_26 Tidal playlists and
-Favorites`), and a `--name` with no date filed under the day it landed. A
-folder of that name already on disk, or one the collection stores rows under,
-is passed over for ` 2`, ` 3` and on. The gate screen's `lands in` line names
-the final folder, every row carries its final path from the first commit, and
-the INBOX playlist keeps the batch's readable name. Landing into a batch again
-by its own `--name` goes back to its folder. So no `crate intake shelve`
-follows a native landing: run against such a batch, it says it was already
-filed and does nothing. Batches landed before this change, and every batch on
-the xml bridge, are still under `Music/<batch>` until you shelve them.
-
-To see a native landing work before you approve it, run the same command with
-`--rehearse` first. A rehearsal asks no question and writes nothing live: it
-copies the database and the library's state into a scratch folder of its own
-(one per run, so two rehearsals never share one), clones the staged files
-there, applies the landing to the copy, reads it back, reports the plan's
-digest with the rows added and the copy's integrity, and removes the scratch
-folder. Your staging folder, your music folder and your database are left
-exactly as they were, and rekordbox running refuses it as it refuses the
-landing. A library whose drive was renamed since rekordbox made it, so that
-rekordbox stores every path under the old drive name, rehearses as any other:
-each row's stored path is compared under the name rekordbox recorded. When the
-rehearsal fails, the scratch folder is kept and the refusal names it, the
-fields that differ, and the spellings it compared. The landing you then run without `--rehearse` names the newest
-rehearsal of the same folder and batch on its gate screen and says whether
-its plan equals it, printing the lines that differ when it does not.
-
-When your genre tree is database native too, the same landing files its new
-rows into BY GENRE + ENERGY under the same answer. Its gate screen shows, for
-every file, the bucket and sub adoption will file it in, its vocal sub when it
-gets the vox tag, or why it is placed nowhere (a file with no genre lands and
-is listed, filed nowhere), and the `files after landing` line counts them.
-After the commit the landing plans adoption over the rows it made and files
-them only when every one is where the screen said. If any differs, nothing is
-filed, the rows stay landed, and the run says which rows differ and to run
-`crate adopt apply`. `--land-only` lands without filing, and a genre tree on
-the xml bridge files nothing, which the screen names; either way filing the
-batch is then `adopt scan` and `adopt apply`.
-
-Once you have imported the landed file, quit rekordbox, take a new export with
-`crate export collection` or from rekordbox's own menu, and run
-`crate intake imported --export` with that new export. It looks for every landed
-file in the export. When they are all there, the import is proven: the importable
-file is renamed to `PASS_inboxed.xml.imported`, which you can delete whenever you
-like, and the landing stops counting as unfinished. When any are missing it
-changes nothing and names them, so an export taken before the import, or an
-import that skipped a track, is never mistaken for a finished one. The importable
-file itself is refused as the export, since it names every landed track whether or
-not rekordbox imported it. Run with no landing waiting, it does nothing, and then
-it needs no `--export`. A landing made before this verb existed recorded no
-importable file, so its import is proven the same way and the file is yours to
-remove once it is.
-
-Until a tree has cut over, `crate route pending` has nothing it can place and
-says so. It does not confirm an import.
-
-Tracks you acquired from a label can be filed under that label in the same file.
-`crate label approved` writes a manifest beside its list, a file ending in
-`.manifest.json` that records which label and year each track came from. Pass it
-with `--manifest` and every label track that landed is also listed under
-`Record Labels`, in a folder for the label and a playlist for each year:
+**On the xml bridge** the landing needs `--export`, takes `intake.land.confirm`,
+and writes an importable file beside the library: `PASS_inboxed.xml` with
+`--pass`, `NAME_inboxed.xml` with only `--name`. Import it into rekordbox,
+quit, take a new export, and prove the import:
 
 ```bash
-crate intake land --export /path/to/collection-export.xml --manifest /path/to/label-approved-NAME.manifest.json
+crate intake land --export /path/to/collection-export.xml --pass PASS
+crate intake imported --export /path/to/export-after-import.xml
 ```
 
-The gate screen names the manifest and every label playlist it lists, so you
-see what will be filed before you answer. A manifest changed after you read the
-plan makes the answer stale, the way a changed folder does.
+`intake imported` renames the file to `*.imported` once every landed file is
+in the export, and changes nothing while any is missing. The importable file
+itself is refused as the export. Files stay under `Music/<batch>` until
+`crate intake shelve BATCH` (or `--all`) files them under the processed
+folder by year and date, behind `intake.shelve.native`; `--report` plans only.
 
-A landed file is tied to its manifest row by artist, title and version, the same
-rule `acquire match` uses. A label track that no file in this landing matches is
-named in a warning, and this landing files it under no label. That warning is
-expected for a track you landed earlier, which keeps the playlist that landing
-gave it, and for a download that never arrived. An export that already holds a
-label's folder is added to, never doubled, so landing the rest of a label later
-is safe. An export holding the same label folder twice is refused before anything
-moves: merge the two in rekordbox and export again.
+**Database native** (`crate tree cutover inbox --export FILE`), the landing
+takes no export and refuses one. It writes each row itself, with artist,
+album, album artist, genre and year from the file's tags, puts the batch
+playlist under INBOX and every row in `INBOX / Analyze`, and asks the explicit
+gate `intake.land.native`, answered only by `crate run decide`. Nothing about
+the audio is written: no tempo, grid, key or waveform. Files go straight to
+`Music/<processed folder>/<year>/<MM_DD_YY subject>` (`Processed_Tracks` by
+default), so no shelve follows. A row whose tempo moves (drift from `analyze
+run` at or over `analysis.drift_cut`, 1.5 by default) carries the `dyn` My
+Tag.
 
-Once a sync pass has landed, `crate sync mark` tells the streaming account which
-playlists it finished, by putting `DOWNLOADED ` in front of their names:
+- `--rehearse` copies the database and library state to a scratch folder,
+  applies the landing to the copy over clones of the staged files, reports the
+  digest and removes the folder. Nothing live changes. The live landing then
+  says whether its plan equals the newest rehearsal. A failed rehearsal keeps
+  its folder and names it.
+- When the genre tree is native too, the same answer files the new rows into
+  BY GENRE + ENERGY; the gate shows each row's bucket. If the plan after the
+  commit differs, nothing is filed and the run names `crate adopt apply`.
+  `--land-only` lands without filing.
+- `--manifest` (from `label approved`) files label tracks under `Record Labels
+  / <Label> / <Label> <year>`. `--label NAME` files every file under one label;
+  `--label-from-tags` files each by its own label tag. Either uses the file's
+  date tag for the year; a file without one is named and filed nowhere.
+- `--set JOB` also writes the set's permanent playlist under INSPIRATION.
+  `crate intake inspiration --job JOB` does the same for a set landed without
+  it.
+- A row landed by an older version that will not load to a deck is mended by
+  `crate repair rows`.
+
+### Mark the account
 
 ```bash
-crate sync mark --xml /path/to/library/RUN_synced_inboxed.xml
+crate sync mark --pass PASS                     # database native
+crate sync mark --xml /path/to/PASS_inboxed.xml # xml bridge
+crate sync mark --pass PASS --playlist ID       # only these playlists
+crate sync unmark --pass PASS
 ```
 
-Give it the importable file `intake land` wrote for the pass, under the
-`--pass` `intake missing --run` told you to land it with, since the file's name is
-how the pass is found. The batch folder and playlist carry the date instead. If you ran `intake imported` first, the file now ends in `.imported`, and
-that name works the same. It reads what each playlist's job reported, and plans a rename only for a
-playlist whose every track is now in your library, counting a track you have
-since deleted on purpose as settled. A playlist with a track still missing, or
-one the pass offered you for review and you have not got, is left alone and the
-track is named. Nothing is renamed until you answer the gate, a playlist whose name
-changed since the plan is skipped, and a playlist already carrying the prefix is
-never prefixed twice. If a rename fails part way, the run names the playlists it
-had already renamed, and running it again picks up the rest.
-
-Every rename that lands is recorded under its pass, so a mark made by mistake
-can be taken off again with `crate sync unmark`:
-
-```bash
-crate sync unmark --pass RUN_synced
-```
-
-Give it the pass's name, or the same intake file you gave `sync mark`; the file
-does not have to be there any more. It plans to put back the title each
-playlist had before the mark, and only where the title on the account is still
-exactly what the mark wrote. A playlist you have retitled since, with the
-prefix or without it, is listed and left, and so is one the account no longer
-lists. It only ever touches playlists that pass marked: `--playlist ID` narrows
-the plan to the ones you name, and naming a playlist the pass did not mark is
-refused, even when its name carries the prefix. Nothing is renamed until you
-answer its gate, and a playlist already put back is skipped, so running it
-twice renames nothing the second time. Taking the prefix off does not make the
-next `sync all` offer the playlist again: the pass already recorded it as
-resolved, which is a separate record.
-
-**Once your intake tree is database native, name the pass instead of the file.**
-A native landing writes no importable file, so give `sync mark` the name you
-landed the pass with:
-
-```bash
-crate sync mark --pass RUN_synced
-```
-
-Everything else is the same: a playlist is planned only when every track the
-pass did not find is now in your library, and nothing is renamed until you
-answer the gate. With no file to say which landing brought a track, each one
-your library holds is counted as owned rather than landed. `--pass` on an intake
-tree still on the xml bridge is refused and names `--xml`, since there the file
-is what proves the pass landed.
-
-To mark only some playlists of a pass, name each with `--playlist` and its
-account identifier, as `sync unmark` takes them:
-
-```bash
-crate sync mark --pass RUN_synced --playlist ID
-```
-
-The plan, the gate and the renames are only those playlists, and an answer to
-that narrowed plan is not taken for the whole pass. A playlist the pass does
-not hold is refused before the account is read, and one the pass did not
-complete, its job unfinished or a track still missing, is refused by name with
-the reason. `crate organize --only marks` marks every landed pass whole.
-
-`name apply`, `intake land` and `route inbox` each build a plan and stop at a
-gate before they write. Run once to read the plan, then answer the gate. See
-"Answering a gate". A plan is bound to the folder as it was, so if a file lands
-between reading the plan and answering, the answer is refused as stale and you
-plan again.
+`sync mark` prefixes `DOWNLOADED ` to each account playlist of the pass whose
+every track is now in the library, behind `sync.mark.confirm`. A playlist with
+a track still missing is left and the track named; one renamed since the plan
+is skipped; none is prefixed twice. A partial failure names what was renamed,
+and a rerun does the rest. `sync unmark` restores each title the pass's mark
+wrote, only where the title is still exactly what the mark wrote. Unmarking
+does not make the next `sync all` offer the playlist again. `crate organize
+--only marks` marks every landed pass.
 
 ### Follow record labels
 
 ```bash
-crate label registry
+crate label registry                                 # list who you follow
 crate label registry add "Some Label" --match "Some Label Rec"
+crate label registry set "Some Label" --genre Rominimal --bandcamp somelabel
+crate label registry rename "Some Label" --to "New Name"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
 crate label registry adopt
-crate label import "Some Label"
 crate label sync
-crate label sync --next
-crate label sync --next --label "Some Label"
-crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 crate label sync --go
-crate review list --queue label-release
-crate review resolve ITEM_ID --verdict accepted --actor YOUR_NAME
-crate label approved
-crate label playlists "Some Label" --releases
-crate label playlists "Some Label"
 ```
 
-`label sync` is the guided way through your labels. It walks them one at a
-time and asks, per label, only about the releases that are new since that label
-was last asked, showing the release count, the track count and an estimated
-size. Four answers: `all` takes every new release, `pick` lets you choose them by
-number, `not-now` takes none, and `stop` removes the label from the registry.
-Every answer is saved as it is given, so you can `quit` at any label and the next
-run picks up at the first label still unanswered. A release answered once is
-never asked about again, `not-now` included; a skipped release is still reachable
-through `label import`. The genre gate runs before a label is asked, so a release
-it would hold never reaches a question, and the first run also offers, once per
-label, the releases already waiting in review from earlier sweeps. A taken
-release is an accepted review item; nothing is downloaded by the answer itself.
-Without a terminal, `--next` prints the next question and `--answer` records one
-answer for one label, and both write the same record. To ask about one label
-without reaching it through the labels above it, name it: `--next --label "Some
-Label"` lists only that label and prints its question, says it has nothing
-new, or says its listing failed, and leaves every other label as it was. A
-label whose listing failed is a `[FAIL]` line and is never counted as having
-nothing new: the closing line names only the labels that were listed, and a
-run in which no label could be read at all, each listing having failed or
-confirmed nothing, ends refused, exit 30, reason `label-sync-unlisted`, with
-every label's line still shown and a line saying what to do about each kind. A newly followed label is
-asked about its newest few releases, the `labels.offer_per_sweep` count, not its
-whole catalogue.
+- A label's id is made once, at `add`; what has been pulled hangs off it.
+  Rename with `registry rename`; removing and re-adding makes the whole
+  catalogue new again.
+- `registry set` fields: `--match`, `--seed`, `--track-limit`, `--offer`
+  (releases kept in review per sweep, `labels.offer_per_sweep` by default),
+  `--kind` (for the genre gate), `--genre` (given to the label's files with
+  no genre, so no catalogue is asked; one routing only to the fallback folder
+  needs `--accept-fallback`) and `--bandcamp` (the seller account). `default`
+  clears a field.
+- `harvest` offers the labels behind a playlist as review items; `registry
+  adopt` adds each accepted one not already held.
 
-A label's listing is kept. Listing a label asks the provider for its roster,
-discovery's album searches and every artist's releases, which on a label the
-size of Defected is about 1,800 calls, so every answer is kept for seven days,
-written as it goes and again whenever the run stops. A `--next` stopped by the
-call ceiling continues from where it stopped rather than from the start, a
-second ask of the same label inside the seven days makes no listing call at
-all, and `label playlists` and the label sweep read the same kept listing. The
-cost is that a release the label put out after its listing was read shows once
-the listing is seven days old. Each label's `listing` line says which it was:
-answered from the kept listing and how old, continued from an earlier run, or
-read from the provider and why (none kept, older than seven days, or the
-label's name, `--match` or seeds changed). Deleting the file the line names
-lists the label afresh and costs only provider calls. If the kept listing
-cannot be read the run refuses with `label-listing-kept-unusable`, before any
-call, naming the file; if it cannot be written the line says so and the next
-run lists the label again.
-
-When every label with something new is answered, the walk ends at one gate,
-`label.sync.confirm`, over one summary of every answer saved since the last go:
-the labels taking releases, the releases, the tracks, an estimated size and
-time, and how many labels were answered not now or stop following. `--go` asks
-the same gate over answers already saved. The gate is explicit, so it is
-answered on its own with `crate run decide RUN label.sync.confirm apply --actor
-YOUR_NAME`, then `crate --run RUN label sync --go` downloads, unattended and
-paced through the provider gate. Only releases an `all` or a `pick` took are
-downloaded, a track the library holds in another version goes to the match
-queue instead, and a rate limit parks the download rather than retrying. A go
-that stopped part way is picked up by the next `--go`, which resumes it before
-anything new, and a track is never asked for twice. Once the download has
-landed its tracks, the same command runs the acquisition tail on the staging
-folder the way `crate sync land` does: `tag folder`, `tag guess` (with no
-playlist vote, since no playlist on your account asked for a label's tracks),
-`analyze run` followed by
-`analyze vocals --unscored`, `analyze restamp` and `name apply`, each driven to
-the end, then plans `intake land
---manifest ... --pass ...`, which names the batch for the date and the label,
-and stops at the landing's own gate. The report names that gate's run and the
-two commands that answer and apply it, then the rekordbox visit. A tail step
-that fails ends the go there with its reason, plans no landing, keeps the
-download, and names the rest of the tail to run once the cause is mended. A
-track the download refused for good, one the provider offers only lossy above
-all, is named in the report and skipped, and the tail runs on the tracks that
-landed, the way `crate sync land` reads the same download. A go that downloaded
-nothing, or whose every track was refused, runs no tail and names none. Every
-go downloads into the same staging folder, so land each go before the next. The
-size and time are estimates: the size from each track's duration at a FLAC rate,
-the time from the pacing delay and an assumed transfer rate.
-
-`label registry` lists who you follow. The registry records nothing about what has
-been pulled. A
-label's identifier is made once, when you add it, and the record of what has been
-pulled hangs off that identifier. To change how a label is displayed, use
-`label registry rename`. Removing and re-adding under a new spelling makes the
-next sync treat the whole catalogue as new. `harvest` offers the labels behind a
-playlist for review and adds and downloads nothing. Accept the ones you want in
-review, then `label registry adopt` adds each accepted label the registry does
-not already hold, under any spelling of its name, and reports the rest as
-already held. Running it again adds nothing new.
-
-A label you follow for one style can carry that style as its genre, so its
-tracks are tagged with it and none waits for a hand tag:
+`label sync` walks your labels one at a time and asks only about releases new
+since that label was last asked, with release and track counts and a size.
+Answers: `all`, `pick` (by number), `not-now`, `stop` (unfollow). Each answer is
+saved as given; `quit` and the next run resumes at the first unanswered label.
+A release answered once is never asked again. The genre gate runs first, so
+a release it holds is never asked about. Without a terminal:
 
 ```bash
-crate label registry set PULS --genre Rominimal
-crate tag folder /path/to/staging --label PULS
+crate label sync --next [--label "Some Label"]
+crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 ```
 
-The genre is checked against your taxonomy when you set it, and the screen says
-which folder it routes to and how. A genre that reaches only the fallback folder
-is refused unless you pass `--accept-fallback`, and `--genre default` clears it.
-`tag folder` gives the label's genre to every file of the label that has no
-genre, without asking any catalogue, and counts those files apart in its report
-under `label-genre`. A file's label is its label tag, or `--label` for a file
-that carries none. A file that already has a genre keeps it, and a file of the
-label with no picture is still searched, for its art only.
+A label whose listing fails is a `[FAIL]` line, never "nothing new"; a run
+where no label could be read ends refused, `label-sync-unlisted`. A label's
+listing is kept seven days, so a second ask makes no listing calls; deleting
+the file its `listing` line names lists it afresh.
 
-A label that sells on Bandcamp from its own account can name that account, so
-what you buy from it arrives tagged with the label and lands filed under it:
+`label sync --go` shows one summary of every answer since the last go at the
+explicit gate `label.sync.confirm`. Answer it with `crate run decide RUN
+label.sync.confirm apply`, then `crate --run RUN label sync --go` downloads,
+paced, and runs the same tail as `sync land`, then plans `intake land
+--manifest ... --pass ...` and stops at its gate. A go stopped part way is
+resumed by the next `--go`. Every go stages into the same folder, so land
+each before the next.
+
+Other label verbs:
+
+| Verb | Does |
+|---|---|
+| `label approved` | Writes a download list and a `.manifest.json` from accepted label releases, leaving out what you own. Each run supersedes the last unfetched list. |
+| `label import NAME` | Brings one label's catalogue in, as a job. |
+| `label held [return RELEASE_ID ...]` | Lists releases the genre gate holds back, or returns some to review. |
+| `label judge [--label NAME]` | Judges releases waiting in review by the label's kind and holds what the gate would not file. |
+| `label artists` | Names open releases whose artist reads as a provider address. |
+| `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
+| `label mark LABEL --pass PASS` (or `--xml FILE`) | Prefixes `DOWNLOADED ` to the year playlists a landed batch filed. |
+| `label prune LABEL` | Takes held or no longer confirmed tracks off the label's year playlists. |
+| `label heard LABEL YEAR DATE [--release ID]` | Moves a dated `<Label> <year> new <date>` playlist's tracks into the year playlist and removes the dated one. |
+
+`crate sync labels` is retired; it only resumes a labels sweep queued before
+`label sync`, with `--job JOB_ID`.
+
+### Bandcamp
 
 ```bash
-crate label registry set PULS --bandcamp pulsromania
-crate acquire bandcamp-fetch --seller PULS
-crate intake land "/path/to/staging/Bandcamp 2026-11-01" --label-from-tags
+crate acquire bandcamp [--seller NAME]          # purchases, newest first, with what you own
+crate acquire bandcamp-fetch [--seller NAME]    # stage what you do not own
+crate sync bandcamp [--seller NAME] [--batch NAME]
 ```
 
-The account is the name in the address the label's releases are sold from,
-`pulsromania` for `pulsromania.bandcamp.com`, and the address itself is taken
-too. One account names one label, so a second label naming it is refused with
-the label that holds it, and `--bandcamp default` clears it. `acquire bandcamp`
-names each purchase's label, and names every seller you would fetch from that no
-label names, with the command that registers it. `--seller` takes a label's
-name as well as an account. The fetch writes the label's name into the label tag
-of every file it stages from that account, and leaves a seller no label names as
-it came. `--label-from-tags` then files each landed file under `Record Labels /
-<Label> / <Label> <year>` by its own label tag and its date tag's year, so one
-batch holding several sellers files each under its own label. A file with no
-label tag or no year is named on the screen and lands in INBOX filed under no
-label. This works once the intake tree is database native, as `--label` does.
+`bandcamp-fetch` stages into `Bandcamp <today's date>` under download staging
+and writes the label's name into the label tag of every file from an account
+a registered label names. `sync bandcamp` does the whole run: plans the
+purchases (an expired session stops here with the login step), fetches, runs
+the tail through `name apply`, rehearses the landing, and plans it with
+`--label-from-tags`, stopping at its gate. Rerun with the same `--batch` to
+continue; nothing fetched is fetched again. It needs a native intake tree.
 
-Or take all of it in one command, from your new purchases to the landing's gate:
+### Sets
 
 ```bash
-crate sync bandcamp --seller PULS
+crate intake set https://example.com/mix --dj NAME --set-name NAME
+crate export set TRACKLIST [--name NAME]    # a set or typed tracklist as a private account playlist
+crate export archive [NAME]                 # file a downloaded set's playlist in Downloaded Sets <year>
 ```
 
-It plans your purchases first, so a session that has expired stops there
-with the login step before anything downloads. It fetches what you do not
-own into `Bandcamp <today's date>` under download staging (or the folder
-`--batch` names), runs `tag folder`, `tag guess`, `analyze run`, `analyze restamp` and
-`name apply` on it the way `crate sync land` does, rehearses the landing on a
-copy, and plans the landing itself, stopping at its gate with the commands
-that answer and apply it as the session and the rekordbox visit after. The
-batch is named `<date> Bandcamp <Label>` when every file is one label's, and
-`<date> Bandcamp` otherwise, and each file is filed under its own label tag.
-Leave out `--seller` for every seller. The report names the purchases and
-tracks held back as owned with the library file each is, what the fetch
-refused, the sellers no label names, and the files left with no genre. If a
-step stops, run the same command again with the same `--batch`: what was
-fetched is not fetched again, and whatever the folder holds is taken on
-through the tail. Nothing new to fetch and nothing staged ends with no
-landing. Like the landing it plans, it needs a database native intake tree.
+`export set` lists a row by its provider id, its ISRC, an accepted review
+candidate, or one exact catalogue match, never a score; the rest are named on
+the gate. With no tracklist it backfills INSPIRATION playlists that have no
+account playlist; `--rename JOB` renames one to its INSPIRATION name.
+`export archive` with no name archives every recorded set whose download is
+proven.
 
-`sync labels` is retired. It queues nothing and names `label sync`, and `sync
-all` no longer sweeps labels either. A labels sweep queued before the guided
-sync replaced it still runs with `crate sync labels --job JOB_ID`, so a job
-already in the queue is never lost. Such a sweep proposes releases into the
-review queue rather than taking them, and a rejection is remembered until you
-clear it.
-
-`label approved` is what makes an accepted release acquirable. It reads every
-release you accepted, asks the provider for its tracks again, and writes the
-ones your library does not hold into a list under the `lists` folder in download
-staging, or the folder you name with `--out`. It prints the path and the exact
-`acquire download` command to run next. Beside the list it writes a manifest
-recording the label, the year and the release each track came from. Tracks you
-own are left out, so you can run it after every review sitting and it lists only
-what is still owed. Owned means landed in the library, not listed or staged, so
-a list you have not downloaded yet is superseded by the next one, which holds
-everything the earlier one did. Download the newest and ignore the older, or
-you fetch the same tracks twice. A release the provider has withdrawn is reported by name as
-a failing line and the other releases are still listed. A track you hold in
-another version becomes a review question, and is listed on a later run once you
-answer it.
-
-`label playlists` keeps a label's folder on the streaming account: one
-`<Label>` folder holding a private `<Label> <year>` playlist per release year.
-It adds and never removes, and asks one explicit gate, `label.playlists.confirm`,
-over a plan naming every playlist and how many tracks it adds. After a `label
-sync --go`, `--releases` adds only the releases that go took for the label: it
-reads just those releases from the provider, two calls each, creates the folder
-or a year playlist if either is missing, and leaves every other year alone. A
-second run plans nothing. Without `--releases` the build reads the label's
-whole catalogue, two calls for every release it lists, which on a label of
-thousands of releases is hours of calls. So it counts the listing first, and
-when the estimate is over 500 calls it stops at its own explicit gate,
-`label.playlists.crawl`, showing the release count, the calls and the time,
-and reads nothing more until you answer `crawl`. A full build keeps the
-releases it reads for seven days, written every 50 releases and again whenever
-it stops, so a build the provider's rate limit stops part way starts again
-where it stopped, and the run that applies the plan you
-approved reads none of the catalogue again. The estimate counts only the
-releases not kept, and both screens say how many reads were reused and how old
-the oldest is. The listing itself is the kept one described under `label sync`
-above, so a release the label put out after it was read shows once that
-listing is seven days old, and the crawl gate says how old it is. If the kept reads cannot be read the build
-refuses with `label-playlists-reads-unusable`; deleting the file it names is
-safe and costs only provider calls. If they cannot be written the build still
-shows its plan and warns `label-playlists-reads-unkept`, and a later run reads
-those releases again.
-
-Once a label batch has landed, `label mark` puts `DOWNLOADED ` in front of the
-year playlists that batch filed, so the account stops offering them as unheard:
-
-```bash
-crate label mark "Some Label" --xml /path/to/library/RUN_synced_inboxed.xml
-crate label mark "Some Label" --pass RUN_synced
-```
-
-Give it the intake file the landing wrote while your intake tree is on the xml
-bridge, and the pass's name once it is database native, since a native landing
-writes no file and its own record says which years it filed. Only a year the
-batch filed under that label is renamed, and only while its title is still the
-one `label playlists` built it under; every other year is listed and left, and
-a batch that filed none of them says so. Nothing is renamed until you answer
-its gate, and `crate sync unmark --pass RUN_synced` takes the marks off again.
-
-### Sync from streaming
-
-```bash
-crate status
-crate sync all --export /path/to/collection-export.xml
-crate job list --state queued --state blocked
-crate job resume JOB_ID
-```
-
-`sync all` queues each enabled source's own increment under one shared run and
-returns almost at once. That is the design, not a failure. Nothing has run yet.
-Labels are not among the sources it queues: it makes no provider call for them,
-and its report names `crate label sync` as the way to take label releases.
-Resume the jobs it names, and every source appends to one importable file
-instead of one per source. Each source keeps a bookmark (its watermark) that
-moves only after a pass in which every item finished, so a partial failure is
-covered again next time. The favourites source needs the export, because it never
-reads the live database, and it asks one gate before anything is queued.
-
-`crate sync favorites` hearts the library's own favourites on the account, and
-that is the whole of what it writes. It reads the favourites playlist out of a
-collection export, matches each track on the service, and hearts the ones the
-account does not already hold. It changes nothing in the library: no colour, no
-Favorite tag and no playlist membership is written locally, and the pass that
-queues the sweep says so in its own report, before any heart is written. That is
-the pass to read it on: a resume runs detached and its own report goes to the
-job's log under the queue root rather than to the terminal that started it.
-Hearts the library does not own reach it the other way, through
-`crate intake playlist favorites`, which queues them for acquisition. Nothing
-un-hearts or un-colours, on either side.
-
-A heart that comes IN is coloured, which is the inbound half the sync does not
-touch. When a landing places a heart into All Favorites and its month, it
-colours that track Pink in the same write, because Pink is the standing signal a
-track is a favourite and the sweep above reads it. `crate favorites backfill`
-does the same for every member of All Favorites that carries no colour, so the
-colour and the playlist agree over a library placed before the colour write
-existed. A track you coloured otherwise by hand keeps its colour and is named,
-never overwritten, and a library whose colour table has no Pink row places the
-hearts and says it coloured none, to be run again once Pink is restored.
-
-The Favorites folder reads newest first: All Favorites on top, then the month
-playlists from the newest down, then `Undated`, then anything else you keep
-there, in the order you left it. A landing, the backfill and the split each make
-a new month in its place, directly under All Favorites and any newer month,
-rather than at the bottom. A folder made before that reads oldest first, and
-`crate favorites order` puts it right once, with rekordbox closed: it shows each
-playlist's position now and after, asks one gate, and writes positions and
-nothing else, no membership and no name. A folder already in order asks nothing.
-
-An ISRC the service has answered is not asked again for a while, by any verb.
-The answer is kept in one file of the installation, beside the service's pacing
-state and never under the library, so a rehearsal on a library copy with its
-state redirected and the live run after it pay for their lookups once, and a
-mirror after a pair, or `intake missing` after a sync, pay nothing. A found
-answer is kept for `[provider] isrc_cache_days` days, 30 unless set; an ISRC
-the service files nothing under is kept for a week, or for fewer days if the
-setting is lower; 0 turns it off. Only an answer is kept: an outage, a rate
-limit or a rejected session is asked again next time. Every run that looked an
-ISRC up says how many lookups the cache answered and how many went to the
-service. `crate doctor` notes how many answers are kept, and names any copy of
-the file it could not read and set aside; nothing reads those, and they may be
-removed. A rehearsal keeps using the live answers even though it
-redirects everything else; a copy run made by hand that redirects
-`CRATEKIT_STATE_DIR` sets `CRATEKIT_ISRC_CACHE_DIR` to the live state folder
-first, or its lookups are paid for again on the live run.
-
-### Keep your custom playlists in rekordbox for good
+### Keep custom playlists in rekordbox
 
 ```bash
 crate sync twins
 crate sync pair
+crate sync release ACCOUNT_ID    # or --all
+crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
 ```
 
-A custom playlist you build on the account lands as an INBOX playlist, which
-rotates out of rekordbox after thirty and ninety days. Its twin is the copy that
-stays: one playlist of the same name, less `DOWNLOADED `, in the top level folder
-`Custom Playlists <year>`, holding the tracks the library owns in the account's
-order. A landing of an account playlist pass writes the twin of each custom
-playlist it lands, beside its INBOX playlist and in the same write, and pairs the
-two with no hand step. `crate sync twins` does the same once for every
-`DOWNLOADED` playlist the account already holds in a year folder, shows every
-twin and every track it will not hold on one gate, and plans nothing the second
-time. One playlist never stops the others: a playlist the account cannot list
-is left and named on the gate with the reason, and read again on the next run,
-and a track the account lists with no title or no artist is still placed when a
-recorded link or its ISRC finds its row, and otherwise named on the gate as a
-track the twin will not hold. A title written wholly in brackets, such as
-`[Premade Sandwiches]`, reads as its words; `crate intake playlist` on one
-playlist still refuses a track that names no title, so you see it before
-anything is queued. From then on `crate sync pair` keeps each twin and its account playlist
-one list: an addition on either side lands on both, a removal on either side
-comes off both, and a track the library lacks is queued once.
-
-A track a twin was made without is held for your choice, never downloaded on
-its own, as a label's releases are not. `crate sync twins` records each twin's
-missing tracks with its pair, and `crate sync pair` names every one of them on
-its gate as on hold, counts them per twin playlist and queues none:
-
-```bash
-crate sync release ACCOUNT_ID     # let one twin's held tracks go
-crate sync release --all          # every twin's
-```
-
-`crate sync release` shows each twin and the tracks it holds on one gate, and
-once you approve, the next `crate sync pair` queues what that twin lacks; a
-second twin you did not name stays held. A track you put on the account
-playlist by hand after its twin was made is not held and is queued as usual. A
-twin made before this hold existed, or from a listing the account served
-short, recorded no list, so `crate sync pair`
-holds every track the account added to it before the twin was made, and one
-the account gives no date for, and `crate sync release` names that twin as
-holding those. A twin a landing makes holds nothing: the sweep that landed it
-was your choice to download that playlist.
-
-A track the account lists with no title or no artist never stops `crate sync
-pair`. It is left where it is on both sides and named on the gate, and every
-other track of that playlist syncs both ways, removals and order included; a
-reorder keeps such a track behind the one listed before it. When a playlist's
-listing cannot be used at all, a row with no track id, a sync of every pair
-leaves that pair out, names it and syncs the others; named alone, it refuses.
-
-A twin is never counted: when its folder already holds a playlist of its name,
-the twin is left and named, and you pair the one there by hand with
-`crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`. When you delete the
-playlist on the account, the next `crate sync pair` unpairs the twin and leaves
-it in rekordbox, named.
-
-### Keep every playlist you made in rekordbox on the account
-
-```bash
-crate sync pair
-```
-
-With no argument, `crate sync pair` also finds every plain playlist you made in
-rekordbox and syncs it with a playlist of its own on the account, both ways. A
-rekordbox top folder becomes one root folder of the same name on the account,
-holding one private playlist per playlist, titled with the folder first:
-`GIG READY Opener`, or `GIG READY Halloween Opener` for one in a subfolder. A
-playlist at the rekordbox root goes in the root folder `Playlists`. The first
-sync makes the account playlist on the account's gate and adds only; after
-that an addition or a removal on either side lands on both, and a track added
-on the account that the library does not own is queued for download once.
-
-Never paired: Cratekit's own trees, the Favorites folder and the custom
-playlist twins, which other verbs keep. Listed on the gate and never written:
-a smart playlist, and every playlist under a top folder
-`outbound.pair_skip_folders` names, which is `["ARCHIVE"]` unless you change
-it. A made pair whose rekordbox playlist you move into such a folder, another
-app's folder or the Favorites folder is unpaired, and its account playlist
-stays. A track whose ISRC names several releases on
-the account that all agree with it, a single and its album cut, is paired as
-one of them: the one you heart, else the lowest numbered after the file's
-album has narrowed them, as the mirror chooses, and it stays on that one; the
-gate counts how many rows were paired that way. A release of it you add on the
-account by hand is read as the same track, never queued for download: take
-one release off the account and the track stays while the other is there, at
-the other's place, and take the track out in rekordbox and every release of it
-leaves the account. When the account already holds two or more releases of a
-track, the lowest numbered of those is taken rather than any other. A
-track the account cannot carry stays in rekordbox, counted on the gate, and is
-not asked about again until its ISRC changes. Another app's
-folder is never paired either. Two playlists that would take one account title refuse that title
-until you rename one. Delete either side of such a pair and the next sync
-unpairs it, leaves the other side where it is, and does not make it again.
-
-It works the other way too. A playlist you make on the account inside one of
-those root folders comes into rekordbox at the next `crate sync pair`, in the
-rekordbox folder of the same name, named by its title less the folder:
-`GIG READY Closer` becomes `Closer` in GIG READY, and `GIG READY Halloween
-Closer` goes in GIG READY / Halloween when that subfolder is there. One in
-`Playlists` goes at the rekordbox root. It is made on the rekordbox gate,
-holding every track the library owns in the account's order, and a track it
-lacks is queued for download once. Listed on the gate and never made: one
-whose rekordbox playlist you deleted, two that would take one rekordbox name,
-one whose name its rekordbox folder already holds, and one whose rekordbox top
-folder is gone or doubled.
-
-Only a playlist made after the folder was synced comes back. When the first
-sync found a root folder of the name already on the account, such as an old
-`Genre Trivia!`, the playlists it already held are the account's own and stay
-there: the sync records them when it takes the folder over, and lists them on
-the gate rather than making them in rekordbox. A folder taken over before
-Cratekit kept that record is read by when the account says each playlist was
-made, and one with no time it can read is listed rather than made. A
-`DOWNLOADED ` copy of a playlist a pair in the same folder already holds, such
-as `DOWNLOADED Techno` beside `Genre Trivia! Techno`, is listed too. To sync
-one of these anyway, pair it by hand with `crate sync pair ACCOUNT_ID
---rekordbox PLAYLIST_ID`.
-
-When you add a track on one side and take it off the other between two syncs,
-the change you made later wins on both. Cratekit reads when the account says
-the track was added and when rekordbox's playlist row was made or marked
-removed. The account keeps no time for a removal, and rekordbox often keeps
-none either, so where either time is unknown the track stays on both and the
-gate names it.
-
-A sync plans once. The first command reads both sides and shows the rekordbox
-gate; answering it, and then the account gate, reuses that plan rather than
-reading every playlist and asking the provider about every track again, even
-when you answer a day later. Just before writing, Cratekit reads each paired
-playlist on both sides once more, and only to see that it is as the plan read
-it: if you changed one in between, nothing is written, the answer names each
-playlist that moved, and you run `crate sync pair` again to see the plan as it
-is now. The answer says how many provider calls the plan, that check and the
-write each took.
-
-A long sync can stop part way through its write: the provider's call ceiling
-for one command, a cooldown, or anything else that parks it. What it wrote is
-kept and each step is recorded under its run, so the stop's answer names the
-run and the command that finishes it, `crate --calls N --run RUN sync pair`
-for a ceiling stop. That continue writes only what is left, with no new plan
-and no new answers: a playlist the stop left made and empty is filled, never
-made twice. If you changed a playlist the write had not finished with, by hand
-on Tidal or in rekordbox, it refuses as stale and names it, and a fresh
-`crate sync pair` is the way on. Before you answer, the gates show how many
-provider calls the write is expected to make, and when that is more than one
-command may make, the `--calls` value that lets it finish in one go.
-
-Putting a Tidal playlist in rekordbox's order is one move per track, each read
-back before the next. When the provider is slow to show a change, Cratekit
-waits a few seconds and reads again rather than moving anything twice, and when
-it cannot trust what it reads it leaves that one playlist with every track on
-it but not yet in order. That stops that pair alone: every other pair, and
-every playlist brought into rekordbox, is still written, and the answer names
-the playlists left out of order and the `crate --run RUN sync pair` that
-finishes them. Look at each in the Tidal app first; the continue moves nothing
-until its reading agrees with the one it took just before.
-
-Taking tracks off a Tidal playlist is read back the same way. When the
-provider is slow to show the removal, Cratekit waits a few seconds and reads
-again, and never sends the removal twice. If the playlist's tracks or its
-count still read as they were before after the last wait, the answer says
-which, and that the removal may have landed: look at the playlist in the
-Tidal app before you run anything again. A reading that shows some other
-track gone stops at once.
+- A custom account playlist lands as an INBOX playlist, which rotates out.
+  Its **twin** is the permanent copy in `Custom Playlists <year>`. A landing
+  writes the twin itself; `sync twins` makes one for every `DOWNLOADED`
+  playlist already on the account.
+- `sync pair` keeps each pair one list both ways: additions and removals on
+  either side land on both, and a track the library lacks is queued once.
+  When one side added and the other removed between syncs, the later change
+  wins; with either time unknown the track stays and is named.
+- A twin's missing tracks are held, not downloaded, until `sync release`
+  names that twin.
+- With no argument, `sync pair` also pairs every plain playlist you made in
+  rekordbox: a top folder becomes a root folder on the account, each playlist
+  one private playlist titled folder first (`GIG READY Opener`); a root
+  playlist goes in `Playlists`. A playlist you make in such an account folder
+  comes into rekordbox at the next sync.
+- Never paired: Cratekit's own trees, Favorites, twins, smart playlists,
+  another app's folder, and folders `outbound.pair_skip_folders` names
+  (`["ARCHIVE"]` by default).
+- It plans once; the rekordbox gate `sync.pair.rekordbox` then the account
+  gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
+  changed before the write refuses as stale. A write stopped by the call
+  ceiling names the `crate --calls N --run RUN sync pair` that finishes it.
+- After a reorder or a removal on Tidal it cannot read back, it names the
+  playlist: look at it in the Tidal app before running anything again.
 
 Tidal can go on serving a playlist's old order or old tracks for several
 minutes after a change, to the paged read every listing makes, while the
@@ -1137,513 +532,356 @@ lagged.
 ### Publish a playlist
 
 ```bash
-crate --decision export.playlist.confirm=export \
-  export playlist PLAYLIST_KEY --export /path/to/collection-export.xml
+crate export playlist PLAYLIST_KEY --export /path/to/collection-export.xml
+crate export prune PLAYLIST_KEY --export /path/to/collection-export.xml
 ```
 
-Give the stable identifier of the library playlist, never its title. Export is
-add only. Tracks the service cannot match are reported, so read the report and
-not just the count. Exporting the same playlist again updates the remote playlist
-Cratekit already made instead of creating a second.
+Give the playlist's stable id, never its title. `export playlist` is add only,
+behind `export.playlist.confirm`, and updates the playlist it made before
+(`--new-playlist` forces a new one); read the unmatched tracks it reports.
+`export prune` takes off the remote playlist what the library playlist no
+longer holds.
 
-### Keep the library tidy
+### Favourites
 
 ```bash
-crate route unplaced
-crate audit coverage /path/to/export.xml
-crate audit duplicates /path/to/export.xml
-crate report library /path/to/export.xml
-crate report intake-aging /path/to/export.xml
-crate repair paths
-crate route resort
-crate converge
+crate sync favorites --export /path/to/collection-export.xml
+crate favorites backfill
+crate favorites refresh
+crate favorites split
+crate favorites order
 ```
 
-`route unplaced` lists tracks no tree files, and `audit coverage` asks the same
-question from an export. `audit duplicates` never deletes. Run `route resort`
-after a genre or energy change, and `converge` to check that each tree matches
-the database. `route resort` first shows every track it will add at the
-explicit gate `route.resort.apply`, answered with `crate run decide`, and files
-only the routing tree: INBOX and the other places the taxonomy names are left
-alone. It also fills a genre sub, a playlist beside a genre
-folder's energy bands for one genre: in the shipped taxonomy, every track
-tagged exactly `Rominimal` sits in its Minimal / Deep Tech band and in
-`Minimal / Deep Tech / Rominimal` too. A library whose taxonomy copy predates
-it gains it by hand, since `crate taxonomy upgrade` adds only whole folders
-and classes: add `"Rominimal"` to the Minimal / Deep Tech bucket's `aliases`,
-add the `[[bucket.genre_sub]]` table the shipped template carries under it, and
-set `schema_version = 5`. A track landed after that reaches the genre sub at
-the next `route resort`. Reports and audits are read only. `repair paths` proposes a
-shorter name for each audio file whose name is over the path budget or repeats
-its own title at the end, which are the names rekordbox rejects on import, and
-you accept or reject each one with `crate review resolve`. Nothing is inferred.
-`crate repair paths --apply` then renames the files whose proposal you accepted,
-behind a confirm gate, and never one the rekordbox collection references, since
-that would strand the row. It does not re-point rows or rewrite an export. `converge` reports and never repairs. If a tree has fallen
-out of step, `crate rebuild --tree TREE_ID --actor YOUR_NAME` is the only way to
-clear it. INBOX is the exception: no rebuild can reproduce its batches, so
-naming it asks the explicit gate `rebuild.accept`, and accepting records you
-as having taken it as it stands after a restore.
+| Verb | Does |
+|---|---|
+| `sync favorites` | Hearts the library's favourites on the account. Add only; writes nothing locally. |
+| `intake playlist favorites` | Queues hearts the library does not own for acquisition. |
+| `favorites backfill` | Puts every owned heart into All Favorites and its month playlist, coloured Pink when uncoloured. Adds only. |
+| `favorites refresh` | Makes each genre folder's Favorites playlist mirror All Favorites. |
+| `favorites split` | Splits quarter playlists into month playlists and retires the emptied quarters. |
+| `favorites order` | Orders the folder: All Favorites, months newest first, `Undated`, then the rest as they were. Positions only. |
 
-To tidy everything the product's rules govern in one pass, on both sides:
+A landing that places a heart colours it Pink in the same write. A colour you
+set by hand is never overwritten. Nothing un-hearts or un-colours.
+
+### Organize
 
 ```bash
 crate organize --report
 crate organize
-```
-
-`organize` plans two areas and asks one question for each. The rekordbox area
-files unfiled tracks into BY GENRE + ENERGY and its `with vox` subs the way
-`adopt apply` does, and rotates INBOX the way `inbox rotate` does. It also
-gives every downloaded set on the account its INSPIRATION playlist: each
-`DOWNLOADED` playlist in a `Downloaded Sets <year>` folder with no INSPIRATION
-playlist of its name (the account name without `DOWNLOADED `) gets one, holding
-the library tracks its account tracks match, in the set's order, with every
-track it could not match named under the set. A track Tidal lists with no
-title or no artist does not hold its set back: it is named among the misses,
-by its id and why, and the set's other tracks are matched; a set none of whose
-tracks can be read is shown unread. Nothing is downloaded, a set with
-no match gets no playlist, and a set already in INSPIRATION is skipped, so a
-second run plans nothing. That write needs rekordbox closed. The account
-area builds a folder for every followed label that lacks one or a year, marks
-every landed sync pass, and archives every set whose download is proven into
-the root folder `Downloaded Sets <year>`, prefixed. A sync pass is found by its
-intake file, or, once your intake tree is database native and writes none, by
-the landing that committed it, so every pass that landed is planned and not
-only the latest; a native landing of no sync pass, a label's or a set's, is
-counted on the gate and planned for nothing. Either of two things proves
-a set downloaded: an intake file named for the set, or a playlist of the set's
-name under the INSPIRATION folder in rekordbox. It also files every playlist at
-the account root
-that a sync marked downloaded into the root folder named for the year of its
-mark, creating that folder once if the account lacks it, and names every other
-playlist at the root with why it stays. It also mirrors rekordbox onto the
-account: every genre folder of BY GENRE + ENERGY, the Favorites folder and
-INBOX each become one root folder of the same name, holding one private
-playlist per rekordbox playlist, `Deep House Low` or `INBOX 2026-10-31
-Defected`, kept equal to the tracks the account carries. INBOX mirrors only its
-live batches, the playlists `inbox rotate` moves, never Old, and its step
-names every other playlist or folder directly under INBOX that it leaves off
-the account, with the reason and, for a plain playlist, its row count, so a
-playlist no rule reads as a batch is named rather than missing; `inbox rotate`
-names the same ones the same way. A label batch,
-which no account playlist holds, fills from the provider track each file was
-downloaded as. A track whose ISRC names several releases that all agree with
-it, a single and its album cut, goes onto the mirror as one of them and stays
-on that one; `crate sync favorites` still hearts none of them until you heart
-one yourself, since a heart is a choice of release.
-
-An edit you make on the account to a mirrored genre playlist is kept, and
-your library follows it. Move a track from `Deep House Low` to `Tech House Med`
-on Tidal and the next organize retags it, genre Tech House and the energy
-nearest its own that files into Med, and moves it there in BY GENRE + ENERGY;
-take a track off its genre playlist and add it nowhere and its genre and energy
-are cleared, so `crate route unplaced` lists it for placing again, and it stays
-in your collection. Adding a track to another genre's `with vox` playlist gives
-it that genre and keeps its energy. The mirror remembers what each playlist
-held when it last finished it, so it tells your edit from a change made in
-rekordbox. Where both sides changed one track, an addition beats a removal, and
-two moves follow the later one; when either time is unknown rekordbox's
-stands. A track added to two band playlists at once, one the library does not
-own, one taken off its band and left only in a with vox playlist, and one
-missing from a playlist the account listed short is left on the account as
-you put it and named, never taken off. The rekordbox step is `mirror-edits`,
-on the rekordbox area's gate, each track named with its genre, energy and
-playlists from and to. The first organize after this arrives changes nothing in
-your library: it reads every difference as rekordbox's and remembers each
-playlist from then on.
-
-The Favorites folder and INBOX follow your edits the same way. Put a track in
-`All Favorites` on Tidal and the next organize favourites it as a heart is:
-into All Favorites and the month you added it in (`Undated` when Tidal gives no
-time, and no month when it already sits in one), coloured Pink when it carries
-no colour. Put it in a month playlist and it goes into that month and All
-Favorites. Take it off `All Favorites` and it leaves All Favorites and every
-month playlist in rekordbox; its colour is left, and it stays hearted on Tidal,
-so the next sync places it back unless you un-heart it there too, the same two
-steps as before. Taking a track off a month playlist alone, or adding it to two
-months at once, is listed and not carried. In INBOX, a track you add on Tidal
-to a batch joins that batch in rekordbox and one you take off leaves it; Old is
-never touched: when the rotation moves an edited batch into Old in the same
-run, the step writes nothing that run and the next organize takes the other
-edits again, while the edit to that batch goes with its retired playlist. A track you add on Tidal to any mirrored
-playlist that your library does not have is queued for download once, by the
-rekordbox step `mirror-downloads`, exactly as `crate sync pair` queues one (a
-track Tidal lists with no title or no artist is named and not queued, and the
-playlist's other tracks still are); it stays on Tidal meanwhile, and once it lands the next organize files it where
-you put it. A track whose recording you already own as another release is not
-queued, and one the download found you own, or could not fetch, is named as
-such and left on Tidal as you put it. Approve one area and abort the other
-and only the approved one is written. Answer the account's question on a later
-run and the mirror applies the plan you were shown: a landing, a split, or a
-Tidal edit the rekordbox step took into your library in between is left for
-the next organize, and no track is asked of Tidal again. A change made on Tidal
-itself since the plan, or to what another account step reads, refuses the
-answer as stale; when the mirror was planned, the refusal says whether its plan
-was rebuilt from the one you were shown and, where it was, names each step and
-playlist that moved. Run organize again for the new plan. Every other playlist you made yourself,
-on either side, is listed with a suggested home where one is obvious, and is
-never moved or renamed. Nothing is deleted beyond the expired batch playlists the rotation
-removes, a track that left a mirrored playlist's rekordbox playlist, and the
-mirrored playlist of a batch that left INBOX, each named on the gate, and never
-a track from your library. `--report` prints both plans and asks nothing. The
-rekordbox area needs a backup acknowledged under a day old, and like every
-database write it is worth rehearsing on a copy first.
-
-To run one kind of step alone, name it with `--only`, as often as you like:
-
-```bash
-crate organize --report --only file
 crate organize --only file
 ```
 
-The kinds are `adopt`, `rotate`, `record-labels`, `inspiration`, `mirror-edits` and `mirror-downloads` on the rekordbox side,
-`labels`, `sets`, `marks`, `file`, `root` and `mirror` on the account, and `yours` on both. An
-area with no kind named is not planned and not asked, so `--only file` files
-the playlists at the account root into their folders without reading the
-database or planning a label's catalogue, and asks only the account's
-question. Its plan is only the filing, and an answer given to the full
-organize is not taken for it. A word that is not a kind is refused before
-anything is read.
+One plan per side, one explicit gate each: `organize.rekordbox.approve`, then
+`organize.account.apply`. Approve one and abort the other and only the
+approved side is written. `--report` asks nothing. `--only KIND`, repeatable,
+plans just those steps; a side with no kind named is not asked.
 
-New label releases are kept apart from the ones you have already heard. For
-each followed label, the account area also plans a dated playlist beside the
-year, `<Label> <year> new <YYYY-MM-DD>`, inside the label's folder, holding the
-tracks of the releases a `label sync --go` took that day and that the label's
-record does not list as heard. The date is the local day the go ran, so a
-second go the same day adds to the same playlist and a go on another day makes
-its own. The year playlist is left exactly as it was. A dated playlist older
-than `labels.new_playlist_age_days`, thirty by default, is listed in the plan
-and nothing is moved; merging one into its year is not done yet.
+| Side | Kind | Does |
+|---|---|---|
+| rekordbox | `adopt` | Files unfiled tracks into BY GENRE + ENERGY and its `with vox` subs, as `adopt apply`. |
+| rekordbox | `rotate` | Rotates INBOX, as `inbox rotate`. |
+| rekordbox | `record-labels` | Listed only; a landing files label batches itself. |
+| rekordbox | `inspiration` | Gives each `DOWNLOADED` set in `Downloaded Sets <year>` its INSPIRATION playlist of owned tracks in set order. |
+| rekordbox | `mirror-edits` | Carries your edits to mirrored playlists on the account back into the library (genre, energy, favourites, INBOX batches). |
+| rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist that the library lacks. |
+| account | `labels` | Builds missing label folders and year playlists, and plans each label's dated `<Label> <year> new <date>` playlist of releases a go took that day. |
+| account | `sets` | Archives every set whose download is proven into `Downloaded Sets <year>`. |
+| account | `marks` | Marks every landed sync pass. |
+| account | `file` | Files each `DOWNLOADED` playlist at the root into its `<year>` folder. |
+| account | `root` | Removes label debris whose tracks are all downloaded and empty root playlists, and empties legacy `<year> Custom Playlists` folders, each named on the gate. |
+| account | `mirror` | Mirrors each BY GENRE + ENERGY genre folder, Favorites and INBOX's live batches to a root folder of private playlists. |
+| both | `yours` | Lists playlists you made, with a suggested home; never moves or renames them. |
 
-Removing files is deliberately slow. `crate delete review` offers the files behind
-rows you removed in rekordbox, and confirmed ones go to the system Trash and
-nowhere else. `crate tombstone list` shows what was removed and lets you lift one
-so that version can be acquired again.
+- An edit on Tidal to a mirrored genre playlist retags the track: moving it
+  from `Deep House Low` to `Tech House Med` gives it that genre and an energy
+  that files into Med; removing it from every genre playlist clears its genre
+  and energy so `route unplaced` lists it. The first organize after the
+  mirror exists reads every difference as rekordbox's.
+- An answer given on a later run applies the plan you were shown; a change
+  on Tidal since refuses as stale.
+- `--rematch` asks the provider again about rows the mirror remembers as
+  unmatched.
+- A dated label playlist older than `labels.new_playlist_age_days` (30) is
+  listed; `label heard` merges it.
+
+### Keep the library tidy
+
+```bash
+crate route inbox                 # file the intake folder into the taxonomy
+crate route unplaced              # tracks no tree places
+crate route resort                # after a genre or energy change, additive
+crate converge                    # does each tree match the database
+crate rebuild --tree TREE_ID --actor YOUR_NAME
+crate audit coverage EXPORT
+crate audit duplicates EXPORT
+crate report library EXPORT
+crate report intake-aging EXPORT
+crate report genres
+crate repair paths
+crate inbox rotate
+```
+
+- `route inbox` and `route unplaced` take `--export` for a tree still on the
+  bridge and write `<name>_routed.xml` or `<name>_placed.xml` beside it.
+- `route resort` shows every addition at `route.resort.apply` and files only
+  the routing tree; the old membership stays and is named. `crate adopt move`
+  moves a track from the sub it holds to the one its file names, adding
+  before removing.
+- `converge` only reports. `rebuild` is the one repair for an unconverged
+  tree; naming INBOX asks `rebuild.accept`.
+- Audits and reports are read only. `audit duplicates` never deletes and
+  remembers intentional alternates. `report genres` names genres with 50 or
+  more tracks and no top level folder.
+- `repair paths` proposes a shorter name for each file rekordbox would reject
+  (over the path budget, or repeating its title); accept or reject each with
+  `review resolve`, then `repair paths --apply` renames the accepted ones,
+  never a file the collection references.
+- `inbox rotate` moves a batch older than `reports.intake_stale_days` (30)
+  into `INBOX / Old` and removes one in Old older than
+  `reports.intake_expired_days` (90). Never a track. `inbox refill --pass
+  PASS` refills a pass's mirrored INBOX playlists from the account.
+
+**Adopting an existing library.** `crate adopt scan` queues a census; `crate
+adopt apply` shows the plan at `adopt.apply.approve` and files tracks and
+writes their genre tags.
+
+**Genres.**
+
+| Verb | Does |
+|---|---|
+| `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
+| `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
+| `tag retag FOLDER` | Replaces a genre too coarse to be final. |
+| `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
+| `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
+| `taxonomy folder WORD [--like GENRE]` | Makes the word a genre folder of its own with energy bands, copying family, tempo window and rating. |
+| `taxonomy upgrade` | Adds the classes and buckets the shipped template has and your copy lacks. |
+
+`taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
+dated name and refuse a word too coarse to be a genre (such as `Electronic`),
+one already filed, or a genre the taxonomy does not declare. A word that is a
+genre folder's name in another case takes only `taxonomy alias WORD "Exact
+Name"`, which retags without touching the taxonomy. After an alias, run `tag
+rows`, then `route resort`.
+
+**Removing tracks.** `crate delete review` offers the files behind rows you
+removed in rekordbox; confirmed ones go to the system Trash only. `crate
+tombstone list` shows what was removed; `--revoke ID` lets that version be
+acquired again.
+
+**Review queue.** `crate review list [--queue Q] [--kind K]`, `review show
+ID`, `review resolve ID --verdict accepted|rejected [--option X]` (or
+`--where FIELD=VALUE` for many), `review clear ID` to ask again,
+`review export PATH` and `review import PATH` (never overwrites a local
+verdict).
 
 ### Analyse audio and score vocals
 
 ```bash
-crate analyze run /path/to/staging
-crate analyze vocals /path/to/one-folder
-crate analyze vocals /path/to/library --recursive
-crate metadata mytags-vocals
-crate metadata mytags-vocals --apply
+crate analyze run /path/to/folder
+crate analyze vocals /path/to/folder [--recursive] [--unscored]
+crate analyze restamp /path/to/folder [--recursive]
+crate analyze calibrate LIBRARY_ROOT --recursive
+crate analyze validate /path/to/labelled-folder
+crate metadata mytags-vocals [--apply]
 ```
 
-The first `metadata` line shows the plan only. Adding `--apply` writes, and needs
-the backup acknowledgment.
-
-Analysis needs the `analysis` extra and vocals needs the `vocals` extra, both in
-the README. Cratekit never writes a beat grid, a tempo element or an average BPM
-field, in any container, and no flag turns that on. `analyze calibrate` and
-`analyze restamp` fit a threshold and carry it across the back catalogue.
-
-`analyze run` also writes how far each track's tempo moves over its length, a
-drift, as two file tags beside the vocal ones: `driftlevel`, the spread of the
-tempo between its steady sections as a percent of its middle, and `drift`,
-which reads `steady`, `variable` or `unknown` (too little pulse to judge, a
-beatless or very short file). Neither is a tempo. A drift at or above
-`analysis.drift_cut` in the config file, 1.5 by default, is variable, and a
-native landing reads the level against the cut as it is when it lands, so
-changing the cut changes which rows the next landing marks `dyn`. The default
-leans toward Normal, since a steady track analysed Dynamic comes back with a
-wobbling grid, and it has not yet been calibrated against a real library.
-
-Vocal scores need the vocal model to load, and a copy installed without the
-`vocals` extra finishes every track with a key and an energy and no `voxlevel`.
-`crate doctor` says so on its `install.extras` row and prints the reinstall
-command, which keeps the extras the copy already carries. `analyze run` treats
-the Camelot head on a name as finished, so a track it finalized with no score is
-never scored by it again; `crate analyze vocals --unscored FOLDER` queues
-exactly those files, the head and no `voxlevel`, and leaves a scored one alone.
-The acquisition tail runs it after `analyze run` whenever the model can score.
-`crate sync land` asks before its pass queues anything: when the model cannot
-score here it stops at the gate `sync.land.without-vocals`, whose screen names
-what is missing and the command that mends it. Install it and run the pass
-again, or answer `crate -d sync.land.without-vocals=go sync land` to land rows
-with no vocal score, which the summary then says. A landing plan in which more
-than half the added rows carry no score carries the warning
-`vox-mostly-unscored`. A profile with the vocals module off is never asked.
-
-`analyze vocals` and `analyze restamp` take `--recursive`, which queues every
-folder under the one you name as a single resumable job, so a back catalogue
-pass is one invocation rather than one per genre folder. A folder that is a
-symbolic link is not walked, and the answer says which ones it left alone.
-`analyze run` has no such flag, because it renames each track as it finishes and
-that resume is keyed to the filename.
-
-`analyze calibrate` takes `--recursive` too, and for it the flag is not a
-convenience. A calibration describes the whole library, so the verb fits only
-over the library root, or the music folder under it, walked recursively,
-`crate analyze calibrate ROOT --recursive`. Any other folder fails its
-`calibrate.sample` check with nothing measured and nothing written, and so does
-a walk that had to leave out a linked or unreadable folder. `--accept-partial`
-fits over what was walked anyway and warns that the numbers are on its scale. The energy half measures an
-even stride sample of the walk, 500 tracks unless `--sample N` says otherwise,
-so the same library gives the same fit twice. The vocal cut reads every tagged
-track.
+- Needs the `analysis` and `vocals` extras. Cratekit never writes a beat
+  grid, tempo element or average BPM field, in any container; no flag turns
+  that on.
+- `analyze run` writes key, energy, vocal scores and a drift to the file's
+  tags (`drift` reads `steady`, `variable` or `unknown`; `driftlevel` is the
+  spread), then renames the file to the naming template's Camelot head. It
+  skips a file already carrying the head, so `analyze vocals --unscored`
+  scores the ones it finished with no `voxlevel`. Doctor's `install.extras`
+  row says when vocals cannot score.
+- `--recursive` queues every folder under the one named as one resumable
+  job; linked folders are not walked. `analyze run` has no such flag.
+- `analyze calibrate` fits only over the whole library walked recursively;
+  anything else fails `calibrate.sample` unless `--accept-partial`. The energy
+  fit samples 500 tracks at an even stride (`--sample N`); `--vocal-cut`
+  sets the vocal cut by hand. `analyze restamp` carries a new calibration
+  across the catalogue.
+- `metadata mytags-vocals` plans My Tags from vocal scores; `--apply` writes
+  them.
 
 ### Build a set, master a recording
 
 ```bash
-crate setbuild /path/under/the/library/anchor-track.aiff --count 8 --role after
-crate master /path/to/recording.wav --output-dir /path/to/out
-crate master /path/to/REC001.wav /path/to/REC002.wav --lufs -16
+crate setbuild /path/under/the/library/anchor.aiff --count 8 --role after
+crate setbuild --named "Artist Title"
+crate setbuild --unowned "Some Track" --key 8A --bpm 124
+crate master /path/to/REC001.wav /path/to/REC002.wav --lufs -16 --output-dir /path/to/out
 ```
 
-`setbuild` ranks tracks you own that are compatible in key and energy with the
-anchor, and needs no network. `master` levels a set recording and encodes it to
-lossless, and never touches the source. A recording the player split into
-several files is named as every part, in order; the parts are joined in the
-order you give, never sorted, the order is printed back when the job is queued,
-and the master is named after the first part with `_set` added. `--lufs` sets
-the loudness target, minus fourteen by default.
+`setbuild` ranks owned tracks compatible with the anchor in key and energy,
+offline. `master` joins a split recording's parts in the order given (named
+for the first part plus `_set`), levels it to `--lufs` (-14 by default) and
+writes `<name>_mastered.flac` beside it or in `--output-dir`. It never touches
+the source and refuses to replace a master without `--overwrite`.
 
 ### Back up and restore
 
 ```bash
 crate backup run --dry-run
-crate backup run
-crate backup run --full
+crate backup run [--full]
 crate restore list
-crate restore run SESSION_ID --dry-run
+crate restore run [SESSION_ID] --dry-run
 crate restore run --from-backup --target /path/to/empty/dir
+crate restore bare-metal --target /path/to/replacement --accept-replacement --dry-run
 ```
 
-Backup copies the library to the rclone remote named under `[backup]` in the
-config, keeps a dated archive of changed files, and snapshots the database. The
-three destinations, `dest`, `archive_root` and `db_dest_root`, are each written
-as an rclone `remote:path`, and setup asks for them when the backup module is
-on, or takes them from `--backup-dest`, `--backup-archive-root` and
-`--backup-db-dest-root`. A value with no remote before the colon is refused at
-load rather than handed to rclone, which would read it as a folder beside the
-process running the backup. The `remote` key is derived from the destinations
-when you leave it out. The database portion refuses while rekordbox or its
-agent is running, so a backup taken with the app open covers the music and not
-the database. Doctor reports each portion's age separately for that reason. Use
-`--dry-run` first, since it walks the whole plan and copies nothing.
+**Backup** mirrors the library to the rclone remote, archives changed files
+by date and snapshots the database. `[backup]`'s `dest`, `archive_root` and
+`db_dest_root` are each an rclone `remote:path`. The database part refuses
+while rekordbox or its agent runs, so doctor reports the two ages apart.
+Every run compares every file by size and modification time; `--full` lists
+the remote folder by folder (most of an hour, independent of the recursive
+listing), and doctor's `backup.full_comparison` asks for one every thirty
+days. With the database outside the library root, the `share` folder beside
+it (rekordbox's analysis files) is mirrored to `analysis-share/` under
+`db_dest_root`.
 
-Every backup compares every file on the volume with the remote, by size and
-modification time, so a file whose tags were rewritten is sent even when its
-length did not change. What differs between the two modes is how the remote is
-listed. The ordinary run asks the remote for one recursive listing. `--full`
-asks folder by folder, which on a large library is most of an hour against a
-few minutes, and does not depend on the recursive listing being complete.
-Doctor reports how long ago a full comparison last ran, under
-`backup.full_comparison`, and says to run one after thirty days. The answer
-to a resumed backup says which mode ran, how long the mirror took, and how many
-files it compared and sent. The count sent is never zero after a real run,
-because the record of the previous backup lives in the library and travels with
-it.
+**Restore** puts the database and its coupled state back to a recorded write
+session. It does not undo values written into audio files. It asks
+`restore.run.confirm`, and reaching past a later session that committed work
+needs `--discard SESSION_ID` for each.
 
-A restore puts the database and the state coupled to it back to a recorded write
-session. It does not put back values written into audio files, so genre tags
-written by an adoption are not undone. It needs its own confirmation, and if it
-reaches back past a later session that committed work, you have to name each of
-those sessions with `--discard`. `crate restore list` is free and opens no
-session.
-
-`--target` rehearses the database half somewhere the live library is not, which
-is how you find out a restore works before you need one. It takes the database
-from the off-machine snapshot, needs `--from-backup`, rolls no session back, and
-refuses a directory that is the library, holds it, sits inside it, or would land
-the database on the live file. The gates are the live restore's: the backup
-acknowledgment, the library lock, and rekordbox closed.
-
-When the rekordbox database sits outside the library root, which is where
-rekordbox puts it by default, the `share` folder beside it holds every beat grid
-and the library mirror never sees it. The database portion of a backup mirrors
-that folder to `analysis-share/` under `backup.db_dest_root`, with rekordbox
-closed, and keeps what each run replaced in a dated `archive` beside it. A
-restore with `--target` copies it back as `share` beside the restored database,
-and the totals say `analysis_share`: `pulled`, `absent` for a backup taken before
-the share was carried, `withheld`, or `mirrored` when the share is under the
-library root and travels with the music. A restore onto the live library
-withholds it, because that restore refuses when any analysis file under the
-library moves. To put grids back, restore to a target with rekordbox closed and
-move `share` into place beside the database yourself.
-
-Each snapshot records the volume identity of the library it was taken from.
-`--from-backup` pulls the newest snapshot that is this library's, stepping over
-another library's under a shared remote, unless `--snapshot STAMP` names one,
-and a named snapshot that records another volume is refused. The confirmation
-shows which stamp it resolved, so a backup that lands before you answer makes
-the answer stale rather than changing what arrives. A stamp is the dated folder
-name a backup wrote, this product's or the one it replaces, and nothing else is
-accepted. Two cases need a word from you. A snapshot taken before identities
-were recorded is never the default and is pulled only when you name it with
-`--snapshot`. And after a drive is replaced, its snapshots name the old volume,
-so the refusal prints that identity and you pass it back as
-`--snapshot-volume IDENTITY`. It is checked against the snapshot, used for that
-one restore, and never written to the config. `--snapshot`, `--snapshot-volume`
-and `--include-mirror` are refused without `--from-backup` rather than ignored.
-
-When the drive itself died and its replacement is a new, empty volume, the verb
-above cannot help, because every gate it passes was recorded beside the library
-that is gone. Mount the replacement and recover onto it:
-
-```bash
-crate restore bare-metal --target /path/to/mounted/replacement --accept-replacement --dry-run
-crate restore bare-metal --target /path/to/mounted/replacement --accept-replacement
-```
-
-It pulls the mirror first and the database second, and reports each half
-separately. It refuses while the recorded library can still be read, refuses a
-target that is the empty folder the lost volume left behind on the internal
-disk, refuses a target that already holds a database, and refuses when nobody is
-at a terminal. `--accept-replacement` is the acknowledgment, since the recorded
-one was on the drive that died. It asks whether rekordbox is running twice,
-before it starts and again before the database lands, so leave the application
-closed until the recovery reports.
-
-It rolls no session back. The session log, the captures and the review queue
-arrive inside the mirror as the last backup saw them, and the database comes
-from a dated snapshot, which is the same moment only if that backup ran with
-rekordbox closed. Run `crate converge` on the recovered library to see whether
-the two agree. When the database is configured outside the library root, which
-is rekordbox's default, it was never on the lost drive, so only the mirror half
-runs and the report says where the database is.
-
-A recovery that stops part way is refused when you run it again, because the
-target now holds database files and a target holding one is always refused. The
-failure says so and gives the step: remove every file ending `.db` under the
-target, then run it again. Nothing is lost, since each of those files came from
-the mirror or the snapshot and is transferred again, and music that already
-arrived is not copied twice.
-
-Afterwards the config still names the drive that died. Run `crate doctor`, which
-prints the identity it reads from the new drive, then `crate setup` with
-`--library-root` and `--volume-id` to record the recovered library, since setup
-keeps a recorded identity until it is told a new one.
+- `--from-backup` pulls the newest snapshot of this library's volume;
+  `--snapshot STAMP` names one; `--snapshot-volume IDENTITY` accepts a
+  snapshot taken before a drive was replaced, for that one restore;
+  `--include-mirror` pulls the music too.
+- `--target DIR` rehearses the database half elsewhere, rolling nothing back,
+  and refuses the library or anything inside it. It puts `share` back beside
+  the restored database; a live restore withholds it, so move it into place
+  yourself, with rekordbox closed.
+- `restore bare-metal` recovers mirror then database onto a new empty volume
+  when the drive died. It refuses while the old library is readable, onto a
+  target holding a database or the empty mount point the lost drive left, or
+  with nobody at a terminal. If it stops part way, remove every `.db` file
+  under the target and run it again. Afterwards run `crate doctor` and
+  `crate setup --library-root PATH --volume-id ID` to record the new drive,
+  then `crate converge`.
 
 ## Answering a gate
 
-A gated verb exits asking for a decision and prints the gate's name, its options
-and a run identifier. Answer it on the same line, or later, from anywhere. On the
-same line:
-
-```bash
-crate --decision route.inbox.apply=apply route inbox
-```
-
-Or afterwards, from any terminal:
+A gated verb exits with the gate's name, its options and a run id. Most gates
+are **explicit**: only a separate `crate run decide` answers them, never `-d`
+on the verb's own line.
 
 ```bash
 crate run show RUN_ID
-crate run decide RUN_ID route.inbox.apply apply --actor YOUR_NAME
-crate --run RUN_ID route inbox
+crate run decide RUN_ID GATE OPTION [--actor YOUR_NAME]
+crate --run RUN_ID VERB ...          # continue the same run
+crate run decide RUN_ID GATE OPTION --continue   # answer and continue in one
 ```
 
-The last line matters. Starting a fresh invocation mints a new run, which meets
-the same gate with nothing recorded and refuses again. Or answer and continue in
-one command: `--continue` records the answer, then runs the verb that owns the
-run again with the arguments it was first given and `--run`, and prints that
-verb's result.
+A fresh invocation without `--run` mints a new run, which meets the gate again.
+Without `--actor` the answer is recorded as `cli` at a terminal and `session`
+without one.
 
-```bash
-crate run decide RUN_ID route.inbox.apply apply --continue
-```
+- A gate that shows a plan is answered only once its run has shown it. On a
+  verb with two gates (organize, sync pair, intake land, export set, label
+  playlists), answering the second early is refused as `gate-not-reached`.
+- If the plan moves between the answer and the apply, the run refuses as stale
+  and writes nothing. When the gate found the move, the refusal shows the new
+  plan; an answer recorded after it applies that plan. Otherwise start a fresh
+  run.
+- A database writer's gate names other runs of the same verb open or answered
+  in the last twelve hours (`gate-sibling-run`). It refuses nothing.
+- Every gate offers `abort`, a recorded answer that ends the run with no
+  further writes, except `sync.land.without-vocals` (`go` or `stop`) and the two
+  `sync pair` gates (`apply` or `skip`).
 
-With no `--actor`, the answer is recorded as `cli` when you are at a terminal
-and as `session` when nothing is, which is how a session working for you is told
-apart; the summary says which. An explicit gate still takes no answer on the
-verb's own command line, so `--continue` is always the second command.
-
-A gate that shows a plan is answered once its run has stopped there and put
-that plan on the screen, never ahead of it. A verb with two such gates, such as
-`crate organize`'s rekordbox gate and then its account gate, shows the second
-only after the first is answered and the run continued, so `crate run decide`
-on the second gate while the run still waits at the first is refused as
-`gate-not-reached` and records nothing. The refusal names the gate the run
-waits at, the command that continues the run, which shows the gate you named
-and its plan if it reaches it and says why in its report if it does not, and
-the answer to give once that gate is shown. A gate that shows no plan, such as
-the cloud sync gate, can still be answered ahead.
-
-When the plan moves between your answer and the run that applies it, the run
-refuses as stale and writes nothing. Where the gate itself finds the move, the
-refusal opens with "The plan moved since this gate was answered" and shows the
-plan the run reads now, every item, under the same question, the way the gate
-first did, and an answer you record on the run after it is taken over that
-plan: the next run applies what that screen showed, and refuses as stale again
-if the plan has moved once more. Read it before you answer again, or start a
-fresh run. A stale refusal with no plan on it was found by the verb's own
-check just before it wrote, or names a fact such as the database file rather
-than the plan. After the first, answering again on the same run brings the
-gate's own refusal with the moved plan on the next run, so a fresh run is the
-shorter way; after the second, the run refuses every answer, and only a fresh
-run goes on. An answer on the verb's own command line is compared
-with the one already recorded, so after a stale refusal answer with `crate run
-decide`.
-
-When a verb that writes the rekordbox database stops at its gate, it also names
-every other run of the same verb that holds its gate open or answered it in the
-last twelve hours, one `gate-sibling-run` warning per run with its identifier,
-who answered, the option and the time. `crate run decide` repeats the warning
-when another run already answered the same plan the same way. It refuses
-nothing: two runs planned over one library are told about each other, and an
-apply over a library that moved underneath it is still refused stale. Gates you
-will meet:
-
-| Gate | Go option | Verb |
+| Gate | Go | Verb |
 |---|---|---|
-| `route.inbox.apply` | apply | `route inbox` |
-| `name.apply.confirm` | apply | `name apply` |
-| `intake.land.confirm` | apply | `intake land`, intake tree on the xml bridge |
-| `intake.land.native` | apply | `intake land`, intake tree database native; explicit, `crate run decide` only |
-| `intake.file.native` | apply | `intake file`, intake tree database native; explicit, `crate run decide` only |
+| `route.inbox.apply` * | apply | `route inbox` |
+| `name.apply.confirm` * | apply | `name apply` |
+| `intake.land.confirm` * | apply | `intake land`, xml bridge |
+| `repair.paths.confirm` * | apply | `repair paths --apply` |
+| `run.retire.confirm` * | apply | `run retire` |
+| `profile.set.apply` * | apply | `profile set` |
+| `sync.land.without-vocals` * | go (or stop) | `sync land` |
+| `intake.land.native` | apply | `intake land`, database native |
+| `intake.file.native` | apply | `intake file`, database native |
+| `intake.shelve.native` | apply | `intake shelve` |
+| `intake.inspiration.approve` | apply | `intake inspiration` |
+| `intake.set.account.confirm` | apply | `intake set` |
 | `tag.retag.confirm` | apply | `tag retag` |
-| `tag.remap.confirm` | apply | `tag remap`; explicit, `crate run decide` only |
-| `tag.suggest.confirm` | apply | `tag suggest`; explicit, `crate run decide` only |
-| `sync.favorites.confirm` | sync | `sync favorites` |
-| `sync.all.favorites.confirm` | sync | `sync all` |
-| `sync.mark.confirm` | apply | `sync mark` |
-| `sync.unmark.confirm` | apply | `sync unmark`; explicit, `crate run decide` only |
-| `export.playlist.confirm` | export | `export playlist` |
-| `delete.review.confirm` | trash | `delete review` |
+| `tag.rows.confirm` | apply | `tag rows` |
+| `tag.remap.confirm` | apply | `tag remap` |
+| `tag.suggest.confirm` | apply | `tag suggest` |
+| `taxonomy.upgrade.apply` | approve | `taxonomy upgrade` |
+| `taxonomy.alias.apply` | approve | `taxonomy alias` |
+| `taxonomy.folder.apply` | approve | `taxonomy folder` |
+| `route.resort.apply` | apply | `route resort` |
 | `adopt.apply.approve` | approve | `adopt apply` |
 | `adopt.move.approve` | approve | `adopt move` |
-| `inbox.rotate.approve` | approve | `inbox rotate`; explicit, `crate run decide` only |
-| `inbox.refill.approve` | apply | `inbox refill`; explicit, `crate run decide` only |
-| `organize.rekordbox.approve` | approve | `organize`, its rekordbox area; explicit, `crate run decide` only |
-| `organize.account.apply` | apply | `organize`, its account area; explicit, `crate run decide` only |
+| `inbox.rotate.approve` | approve | `inbox rotate` |
+| `inbox.refill.approve` | apply | `inbox refill` |
+| `inbox.analyzed.approve` | apply | `inbox analyzed` |
+| `favorites.backfill.approve` | approve | `favorites backfill` |
+| `favorites.refresh.approve` | approve | `favorites refresh` |
+| `favorites.split.approve` | approve | `favorites split` |
+| `favorites.order.approve` | approve | `favorites order` |
+| `organize.rekordbox.approve` | approve | `organize`, rekordbox side |
+| `organize.account.apply` | apply | `organize`, account side |
+| `sync.all.favorites.confirm` | sync | `sync all` |
+| `sync.favorites.confirm` | sync | `sync favorites` |
+| `sync.mark.confirm` | apply | `sync mark` |
+| `sync.unmark.confirm` | apply | `sync unmark` |
+| `sync.pair.rekordbox` | apply (or skip) | `sync pair` |
+| `sync.pair.account` | apply (or skip) | `sync pair` |
+| `sync.twins.approve` | approve | `sync twins` |
+| `sync.release.approve` | approve | `sync release` |
+| `label.sync.confirm` | apply | `label sync --go` |
+| `label.playlists.confirm` | apply | `label playlists` |
+| `label.playlists.crawl` | crawl | `label playlists`, over 500 calls |
+| `label.mark.confirm` | apply | `label mark` |
+| `label.prune.confirm` | apply | `label prune` |
+| `label.heard.confirm` | apply | `label heard` |
+| `export.playlist.confirm` | export | `export playlist` |
+| `export.prune.confirm` | apply | `export prune` |
+| `export.set.confirm` | apply | `export set` |
+| `export.set.rename` | apply | `export set --rename` |
+| `export.archive.confirm` | apply | `export archive` |
+| `delete.review.confirm` | trash | `delete review` |
+| `repair.rows.confirm` | apply | `repair rows` |
+| `repair.link.confirm` | apply | `repair link` |
+| `tree.cutover.approve` | approve | `tree cutover` |
+| `tree.revert.approve` | revert | `tree revert` |
+| `rebuild.accept` | accept | `rebuild`, INBOX |
 | `restore.run.confirm` | restore | `restore run` |
 | `session.ack.backup` | acknowledged | `session ack` |
-| `run.retire.confirm` | apply | `run retire` |
-| `write.cloudsync.unreadable` | proceed | any verb that writes |
+| `session.release.confirm` | release | `session release` |
+| `write.cloudsync.unreadable` | proceed | any database writer |
 
-Every gate also offers `abort`. An abort is a recorded answer and not a failure,
-and the verb returns its plan with a no-op outcome. Read the last gate in the
-table before answering it. It fires when Cratekit cannot tell whether a
-cloud sync client is also touching the library, and proceeding is a decision about
-a second writer. Treat "could not read" as unknown, not as safe.
+\* Not explicit: also answered inline with `-d GATE=OPTION`.
+
+`write.cloudsync.unreadable` fires when Cratekit cannot tell whether a cloud
+sync client is also writing the library. Proceeding is a decision about a
+second writer; treat "could not read" as unknown, not safe.
 
 ### Retiring old gates
-
-A run that stopped at a gate nobody will answer stays open until something
-answers it. `crate run retire` answers every open gate idle for longer than the
-threshold, a week unless you give `--older-than` or set
-`reports.open_gate_stale_days`, and it answers each one `abort` as `session`,
-never the go option, explicit gates included. It shows every gate it would
-answer and asks once; nothing old means nothing to ask.
 
 ```bash
 crate run retire --older-than 7d
 crate -d run.retire.confirm=apply run retire --older-than 7d
 ```
 
-A gate is idle from its run's start or its last resume, whichever is later, so a
-run you picked up yesterday is not old. A gate whose options have no `abort`, or
-whose verb is gone, is kept and named, and stays in the status list. Queued jobs
-are not touched; `crate job cancel` is theirs.
+Answers `abort`, as `session`, on every open gate idle longer than the
+threshold (`reports.open_gate_stale_days`, 7 by default), after one confirm.
+Idle counts from the run's start or last resume. A gate with no `abort`, or
+whose verb is gone, is kept and named. Queued jobs are untouched.
 
 ### The backup acknowledgment
 
-Before any write, Cratekit wants proof that you have a current backup, and the
-proof has to come from you, or from the ages themselves. The acknowledgment
-lasts twelve hours. Answering a gate is not the same act as minting it.
-From a terminal you are sitting at:
+Every database write needs a backup acknowledgment on record; it lasts twelve
+hours. Run `crate doctor` first: it shows both backup ages and, on
+`backup.acknowledgment`, whether one is on record and when it expires.
+
+From a terminal:
 
 ```bash
 crate session ack
@@ -1651,164 +889,109 @@ crate run decide RUN_ID session.ack.backup acknowledged --actor YOUR_NAME
 crate --run RUN_ID session ack
 ```
 
-The gate asks whether the database and the music files are backed up, so run
-`crate doctor` first and read the two backup ages. The line after them,
-`backup.acknowledgment`, says whether an acknowledgment is on record and when it
-expires. If a verb refuses because the acknowledgment is missing or has expired,
-this is the fix.
-
-A session working for you may mint it as the actor `session`, with no
-terminal, but only on young backups, in one command:
+A session working for you, with no terminal, in one command:
 
 ```bash
 crate session ack --as session
 ```
 
-It asks no gate and leaves no run waiting. When an acknowledgment is already
-valid it says so, with its expiry, and mints nothing. `--as` takes no value
-but `session`. The older two step form still works:
+It mints only while both backup ages are under five days, and refuses
+otherwise as `backup-acknowledgment-backup-too-old`; an acknowledgment already
+valid is reported, not minted again. The record says which rule minted it,
+`session-ages` or `terminal`.
 
-```bash
-crate session ack
-crate run decide RUN_ID session.ack.backup acknowledged --continue
-```
+## Safety
 
-With no terminal the answer is the session's without `--actor`, and
-`--continue` mints in the same command; no `script` wrapper is needed.
+- **No beat grid, ever.** No tempo element, BPM tag, average BPM field or
+  ANLZ grid, in any container. rekordbox does its own analysis.
+- **The live database** is written only through the guarded write (see [How it
+  works](#how-it-works)). Verbs that only read take a copy.
+- **Files** are trashed only by `delete review`, to the system Trash.
+  Renames go through `name apply` and `repair paths --apply`, behind gates.
+- **The account** is written behind explicit gates. Exports and label
+  playlists add only; removals happen only where a verb names them on its
+  gate (`export prune`, `label prune`, `label heard`, `sync pair`, organize's
+  `root` and `mirror`).
+- **Rollback**: `crate restore list` shows what a restore would undo.
 
-Either way the verb checks the ages itself and mints only while both portions are
-under five days old. An older portion, or one with no completion recorded, is
-refused as `backup-acknowledgment-backup-too-old` and named; run a backup, or
-acknowledge from a terminal yourself. The acknowledgment records which rule
-minted it, `session-ages` or `terminal`, and who answered the gate.
+### Using DEADCA7 beside Cratekit
 
-## Using DEADCA7 beside Cratekit
-
-DEADCA7 is a catalog manager and player that can push into rekordbox's
-database. Its playlists go into one folder named `DEADCA7` at the top of the
-playlist tree, along with its hot cues and its grids and waveforms. Cratekit
-shares the library with it and leaves its work alone:
-
-- Nothing Cratekit writes can move, rename, empty or fill that folder or
-  anything in it. A write that would is refused, with nothing written.
-- `crate organize` names the folder once, as another app's, and never lists it
-  among your own playlists or suggests a home for it.
-- A playlist DEADCA7 pushed that happens to share your Favorites playlist's
-  name is not mistaken for it.
-- No tree in your taxonomy may be named `DEADCA7`.
-- `crate doctor` says whether DEADCA7 is installed, when it last pushed into
-  the database, and warns when that push is newer than your last database
-  backup. Run `crate backup run` then.
-
-Both tools refuse while rekordbox is open, so they take turns. Do not push
-from DEADCA7 while a Cratekit verb is running: the verb's next commit sees the
-push and refuses, which is the safe answer, and running it again carries on.
-A folder merely named DEADCA7 somewhere below the top is your own and is
-treated like any other.
+DEADCA7 pushes playlists into one top level `DEADCA7` folder, with its cues,
+grids and waveforms. Cratekit never writes into that folder (a write that
+would is refused), never offers it a home in `organize`, and refuses a
+taxonomy tree of that name. Doctor says whether DEADCA7 is installed, when it
+last pushed, and warns when that push is newer than your last database backup:
+run `crate backup run` then. Both tools need rekordbox closed; do not push
+from DEADCA7 while a verb runs, or the verb's next commit refuses. A folder
+named DEADCA7 below the top level is yours.
 
 ## When something refuses or stalls
 
-| Symptom | Ask |
+Read the refusal's reason and remedy before retrying, then `crate doctor`.
+
+| Symptom | Do |
 |---|---|
-| Any refusal | Read its reason and remedy. Then run `crate doctor`. |
-| "Decision required" | `crate run show RUN_ID` names the gate and its options. |
-| A job that never moves | `crate job show JOB_ID`. Queued work needs `crate job resume`. |
-| A blocked job | `job show` carries the cause, usually a review decision or a credential. |
-| "provider-call-ceiling" | The command made as many calls to the streaming provider as one command may, 500 unless `[provider] calls_per_command` says otherwise, and stopped with the remaining items queued; what it read and did not keep is read again when it continues, and a label's listing is kept. The refusal prints the exact command that continues, with `--calls N` raising the ceiling for that one run; a job continues with `crate --calls N job resume JOB_ID`. The next run is back at the configured ceiling. |
-| "rekordbox-absence-unconfirmed" | A process the check for rekordbox could not read, named by its pid, so whether rekordbox is closed was not established and the step that needed it closed did not run. It is usually a process that is still exiting: wait a moment, then continue the run with the command the refusal prints, `crate --run RUN_ID` and the verb's own words, which keeps every gate already answered. A process that has finished exiting, a zombie, is skipped and never refuses. If it refuses again, look at the pid with `ps -p PID -o pid,stat,comm`. `crate doctor` shows the same thing as a note under `rekordbox.closed`. |
-| A resume that refuses the same way each time | Cancel it with `crate job cancel` and queue a fresh one. |
-| `sync land` stops at `name apply` over a "second copy of one recording" | Two files in the staging folder carry one ISRC, so one would take the other's name. The refusal names the passes whose downloads it was, earliest first. Keep one copy, move the other out of the folder, and continue the pass with the command it prints. |
-| `sync land` says intake jobs are left open | Its left open row lists them by playlist with their age. Old ones: `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`; the next pass queues each freed playlist again. |
-| A verb the parser has never heard of | `crate profile show`. A module the profile leaves out has no verbs at all. |
-| A tree "unconverged" | `crate converge`, then `crate rebuild`, then `crate converge` again. |
-| A stale lock from a machine that is gone | `crate session release`, explicitly. |
+| "Decision required" | `crate run show RUN_ID`. |
+| A job that never moves | `crate job show JOB_ID`; queued work needs `crate job resume`. |
+| A blocked job | `job show` gives the cause, usually a review item or a credential. |
+| A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
+| `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`. |
+| `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
+| `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
+| `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. |
+| An unknown verb | `crate profile show`: its module is off. |
+| A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. |
+| A stale lock from a machine that is gone | `crate session release`. |
 
-A cancelled job is its own state and is never counted as a failure.
+Exit codes by band:
 
-## Credentials
+| Code | Meaning |
+|---|---|
+| 0 | ok |
+| 1, 2 | internal error, usage |
+| 10, 11, 12 | decision required, decision stale, waiting on a person |
+| 20 to 27 | the library refuses: busy, rekordbox open, unavailable, version pin, unconverged, unreadable, another writer, a missing prerequisite |
+| 30, 31, 32 | this install: precondition, module unavailable, acknowledgment required |
+| 40, 41, 42 | upstream: auth, unavailable, refused by policy |
+| 50 | interrupted |
 
-Credentials live in the operating system keychain (macOS's built in password
-store), never in the config file, and `crate doctor` reports which are recorded.
-
-- `provider-session` is the streaming account session used to list and download.
-- `identify-key` and `identify-signing-key` are the recognition service's access
-  key and signing value, used only by identification.
-- `catalogue-app-id` and `catalogue-app-key` are Cratekit's own app on the
-  streaming provider's developer platform, its client identifier and the key
-  issued beside it. Optional. When both are recorded, catalogue lookups (which
-  tracks carry an ISRC, a track by its identifier) go under the app rather than
-  under your account, so the account carries only its own playlists, hearts and
-  downloads; the label crawl still reads through the account. With either one
-  missing, every lookup goes to the account as before; one recorded here and
-  since deleted from the keychain does the same, and the run's spend line says
-  so. Register the app on the
-  developer platform, put each value in its own file only you can read, and run
-  `crate login catalogue-app-id --from-file PATH` and
-  `crate login catalogue-app-key --from-file PATH`. `crate doctor` says where
-  lookups are going and how many calls the account and the app have each made,
-  and every verb that reached the provider says the same of its own run.
-  Under the app, `crate sync pair`, the account mirror and `intake missing`
-  first ask up to twenty ISRCs in one request which of them the provider
-  files anything under, so a code it lacks costs no request of its own; every
-  code it holds is still looked up alone, since one ISRC is often a single, an
-  album cut and several compilations, and the batch answer names only one of
-  them.
-
-`crate login NAME --from-file PATH` records one. It refuses a value on the
-command line, since that would sit in your shell history and in the process list
-for every account on the machine.
-
-Signing in to the streaming account is two commands, because obtaining a session
-is an act at a browser and the vendored downloader owns that conversation. The
-full procedure, and why the session has to be the PKCE kind or every download
-quietly comes back lossy, is in [`adapters.md`](adapters.md) under "Authorising
-the provider". Delete the plaintext token file once it is in the keychain.
-
-When the streaming account rejects the stored session, at sign in or in the
-middle of a job, Cratekit says the session was rejected and to sign in again,
-whatever the answer's body held, a gateway's page and an empty answer
-included. When the provider fails or cannot be reached it says to wait and
-resume, and keeps the stored session, because nothing judged it.
-
-When the provider answers that it has no such track, release or ISRC, that
-answer is taken as given whatever the answer's body held, a gateway's page
-included: the track is reported as one the provider lacks rather than retried
-as an outage, a release is gone, and an ISRC it files nothing under is kept
-for a week like any other answer. A server error stays a wait, even one met
-while a not found was being handled.
+A cancelled job is its own state, never a failure.
 
 ## Where things live
 
 | What | Where |
 |---|---|
-| Configuration | `~/Library/Application Support/cratekit/config.toml` |
-| Library state, active taxonomy, write sessions and snapshots | `.cratekit/` under the library root |
+| Configuration | `config.toml` in the platform config folder (`~/Library/Application Support/cratekit/` on macOS; `CRATEKIT_CONFIG_DIR` overrides) |
+| Job queue, provider pacing, ISRC answers | the installation's state folder (`CRATEKIT_STATE_DIR` overrides); doctor names the files |
+| Library state, active taxonomy, write sessions, snapshots | `.cratekit/` under the library root |
 | Credentials | the OS keychain |
-| The service's pacing state and the ISRC answers it gave | the installation's state directory, `crate doctor` names the file |
-| Backups | the rclone remote named in `[backup]` |
+| Backups | the rclone remotes in `[backup]` |
 
-You never need to open a run or job record by hand. `crate status`,
-`crate run show` and `crate job show` read them for you.
+The configuration is TOML. `crate setup` writes it. Sections include
+`[library]`, `[profile]`, `[modules]` (toggles under `custom`), `[backup]`,
+`[acquisition]`, `[naming]`, `[rekordbox]`, `[taxonomy]`, `[provider]`,
+`[labels]`, `[reports]`, `[analysis]` and `[outbound]`. Keys named in this
+guide:
 
-The configuration is TOML (a plain text settings format) with `[library]`,
-`[backup]`, `[acquisition]`, `[naming]`, `[profile]`, `[rekordbox]` and
-`[taxonomy]` sections. `crate setup` writes it and can be re-run safely. It
-keeps every answer you already gave unless you pass a flag to change one, and it
-ends by running doctor.
+| Key | Default |
+|---|---|
+| `provider.calls_per_command` | 500 |
+| `provider.isrc_cache_days` | 30 (0 turns the ISRC cache off) |
+| `labels.offer_per_sweep` | 10 |
+| `labels.new_playlist_age_days` | 30 |
+| `reports.open_gate_stale_days` | 7 |
+| `reports.intake_stale_days`, `reports.intake_expired_days` | 30, 90 |
+| `analysis.drift_cut` | 1.5 |
+| `outbound.pair_skip_folders` | `["ARCHIVE"]` |
 
-The `[profile]` name decides which verbs exist. `crate profile show` lists what
-is on, and `crate profile set slim|full|custom` changes only that.
+An ISRC answer is shared by every verb, so a rehearsal and the live run pay
+for a lookup once. A copy run that redirects `CRATEKIT_STATE_DIR` should point
+`CRATEKIT_ISRC_CACHE_DIR` at the live state folder.
 
 ## Working with an AI assistant
 
-Twelve short guides ship with the package, one per workflow area, covering the
-recipes above. They are optional, since every workflow runs from the command line
-without them. They exist so an agent working beside you knows the order and the
-traps.
-
-The workspace is a folder of your own, outside the Cratekit clone, because that
-clone's instructions are about building the product rather than running it. The
-repository ships the template. From inside the clone:
+Twelve operator guides ship with the package, one per workflow area. Keep the
+agent's workspace outside the Cratekit clone:
 
 ```bash
 mkdir -p ~/cratekit-work
@@ -1816,44 +999,24 @@ cp operator/AGENTS.md operator/CLAUDE.md ~/cratekit-work/
 crate skills install --into ~/cratekit-work/.claude/skills
 ```
 
-Start the agent in that folder. `AGENTS.md` points at `CLAUDE.md`, which is the
-operator contract, and the split it draws is the one this guide already
-describes:
+`crate skills install` with no `--into` writes to the agent skills folder in
+your home directory, shared by every project. Run it again after upgrading;
+it refreshes stale copies.
 
 | The agent may | You do |
 |---|---|
 | run `doctor`, `status`, reports and audits | run anything that writes |
 | read a refusal and name the remedy | answer a gate by name |
-| propose the verbs and the order | record the backup acknowledgment |
-| read back what a run reports it did | quit rekordbox and its agent |
-
-The right column is not a convention anybody agreed to be polite about.
-`crate session ack` refuses an acknowledgment from a session working on your
-behalf unless both backup ages are under five days, and every writing verb
-refuses while rekordbox or its background agent is running, so neither is a
-thing an agent can do for you over old backups or an open rekordbox.
-
-Installing to the default location instead puts the guides where an agent finds
-them for every project on the machine, which is worth avoiding if you keep other
-skills there:
-
-```bash
-crate skills install
-```
-
-Run whichever form you chose again after updating Cratekit. Each copy carries the
-version that wrote it, so the verb reports which guides were stale and refreshes
-them in the same run.
+| propose the verbs and the order | record the backup acknowledgment once either backup is five days old |
+| read back what a run reports | quit rekordbox and its agent |
 
 ## Going deeper
 
 | For | Read |
 |---|---|
 | Which workflows have run for real | [`cutover.md`](cutover.md) |
-| What is verified right now | `RESTART-cratekit.md` |
 | Signing in, switching downloader | [`adapters.md`](adapters.md) |
 | A term that means something specific here | `CONCEPTS.md` |
-| Known problems, recorded and not yet fixed | [`residual-findings.md`](residual-findings.md) |
+| Known problems, recorded and not fixed | [`residual-findings.md`](residual-findings.md) |
 | Past problems and their causes | `solutions/` |
-| Setting up to work on Cratekit | [`DEVELOPING.md`](DEVELOPING.md) |
-| Working on Cratekit itself | [`METHOD.md`](METHOD.md) and [`BOARD.md`](BOARD.md) |
+| Working on Cratekit | [`DEVELOPING.md`](DEVELOPING.md), [`METHOD.md`](METHOD.md) |
