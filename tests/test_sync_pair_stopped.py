@@ -419,6 +419,22 @@ def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
     assert read("", synced=(_WHEN + timedelta(seconds=1)).isoformat()) is None
 
 
+def test_a_first_sync_reads_the_stop_on_its_account_playlist_whatever_the_mark():
+    """R-1376: a pair released after a stop and paired again has no snapshot, and the stop predates the mark."""
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
+    reader = SimpleNamespace(stopped=(write, ()))
+    assert pair_cli._Reader.first_stop(reader, "pl-1").run_id == "run-1"
+    assert pair_cli._Reader.first_stop(reader, "pl-9") is None
+    # An account side still to be made has no playlist to have stopped on.
+    assert pair_cli._Reader.first_stop(reader, "") is None
+    # The pair's own rule still keeps it from a pair marked after it.
+    held = SimpleNamespace(marked=(_WHEN + timedelta(seconds=1)).isoformat(), synced="")
+    assert pair_cli._Reader.stopped_write(reader, "pl-1", held) is None
+
+
 def test_a_carried_record_naming_another_run_is_named(cfg):
     where = held_plan.carried_path("run-f", "pl-6")
     where.parent.mkdir(parents=True, exist_ok=True)

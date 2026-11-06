@@ -566,6 +566,10 @@ def test_a_released_pair_paired_again_after_its_steps_were_pruned_never_takes_th
     assert code == int(ExitCode.OK), envelope
     assert world.held(rebuilt) == list(LED), "rekordbox took the stopped write's scramble"
     assert world.account.playlists[account_id] == _ids(*LED)
+    # The new pair's snapshot passed the stop, so it is let go.
+    records, problems = held_plan.carried()
+    assert problems == []
+    assert run_id not in [one.run_id for one in records], "a stop the new pair finished is kept"
 
 
 def test_a_first_sync_whose_account_side_was_skipped_still_never_takes_the_scramble(
