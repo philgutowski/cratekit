@@ -153,6 +153,43 @@ def _read(run_id: str, account_id: str, value: Any) -> StoppedWrite | None:
     )
 
 
+def _account_of(key: str, steps: Mapping[str, Any], *, new: str, made: str) -> str:
+    """The account playlist one pair's steps are about: its key, or what a new pair was made as."""
+    if key.startswith(new):
+        return steps.get(made) if isinstance(steps.get(made), str) else ""
+    return key
+
+
+def passed_by(
+    records: Iterable[Any],
+    *,
+    account_id: str,
+    moment: datetime,
+    new: str,
+    account: str,
+    made: str,
+) -> list[tuple[str, str]]:
+    """The carried records of one pair a snapshot taken at ``moment`` has passed, as ``(run_id, key)`` (R-1372).
+
+    A pair's carried record is about a write that began at its ``account``
+    step. Once the pair's snapshot is taken at or after that moment, the
+    next plan reads it as no stopped write (``sync/pair_cli._Reader``), so it
+    is let go. A record with no time, or of another pair, is not this
+    snapshot's to let go.
+    """
+    passed: list[tuple[str, str]] = []
+    for record in records:
+        for key, steps in record.done.items():
+            if not isinstance(steps, Mapping):
+                continue
+            if _account_of(key, steps, new=new, made=made) != account_id:
+                continue
+            began = placeholders.parse_hearted(steps.get(account))
+            if began is not None and not began > moment:
+                passed.append((record.run_id, key))
+    return passed
+
+
 def stopped_writes(
     records: Iterable[Any],
     *,
@@ -185,9 +222,7 @@ def stopped_writes(
         for key, steps in record.done.items():
             if not isinstance(steps, Mapping):
                 continue
-            account_id = key
-            if key.startswith(new):
-                account_id = steps.get(made) if isinstance(steps.get(made), str) else ""
+            account_id = _account_of(key, steps, new=new, made=made)
             if not account_id:
                 continue
             began = placeholders.parse_hearted(steps.get(account))
@@ -283,6 +318,7 @@ __all__ = [
     "front_moves",
     "ordering_step",
     "passed",
+    "passed_by",
     "reached",
     "stopped_writes",
 ]

@@ -37,12 +37,22 @@ given. Steps that cannot be read are no steps, and the reason is said: the
 continue then reads every list as the plan read it, so anything already
 written refuses stale rather than being written twice.
 
+**AND ONE ITEM'S STEPS, CARRIED PAST ITS RUN (R-1372).** A run's steps go
+with its plan: released when the run ends, pruned once older than
+:data:`KEEP`. A later plan that must know what a write left half done, for
+as long as nothing has written over it, cannot read that from a record
+which ages out. So the caller carries an item's steps into a record of its
+own (:func:`carry`), in a directory neither :func:`prune` nor
+:func:`release` reaches, read back whatever its age (:func:`carried`) and
+kept until the caller lets it go (:func:`let_go`).
+
 Layer: core.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import hashlib
 import json
 import time
 from collections.abc import Callable, Mapping
@@ -245,7 +255,12 @@ def release(run_id: str) -> None:
 
 
 def prune(*, keep: str = "", now: float | None = None) -> int:
-    """Remove held plans older than :data:`KEEP`, except ``keep``'s. Returns how many."""
+    """Remove held plans older than :data:`KEEP`, except ``keep``'s. Returns how many.
+
+    The carried records (R-1372) are in a directory of their own beneath
+    this one, which the listing here does not descend into, so no age takes
+    them.
+    """
     directory = config.state_path(STATE_KEY)
     cutoff = (time.time() if now is None else now) - KEEP.total_seconds()
     removed = 0
@@ -420,7 +435,102 @@ def recorded_steps(*, now: float | None = None) -> tuple[list[Steps], list[str]]
     return records, problems
 
 
+# ---------------------------------------------------------------------------
+# One item's steps, carried past its run (R-1372)
+# ---------------------------------------------------------------------------
+
+#: The directory, beneath the held plans, that carried records are kept in.
+CARRIED_DIR = "carried"
+
+#: A carried record's own schema version.
+CARRIED_VERSION = 1
+
+
+def carried_dir() -> Path:
+    """Where carried records are kept: beneath the held plans, out of :func:`prune`'s reach."""
+    return config.state_path(STATE_KEY) / CARRIED_DIR
+
+
+def carried_path(run_id: str, key: str) -> Path:
+    """One run's carried record of one item. The key is the caller's, so it is hashed."""
+    name = hashlib.sha256(str(key).encode()).hexdigest()[:24]
+    return carried_dir() / f"{run_id}.{name}.json"
+
+
+def carry(steps: Steps, key: str) -> None:
+    """Keep the steps ``steps`` holds for ``key`` past its run, until :func:`let_go`.
+
+    Written whole and atomically, and a carry again replaces it. An
+    ``OSError`` writing it is the caller's to refuse, as a step's is.
+    """
+    document = {
+        "version": CARRIED_VERSION,
+        "run_id": steps.run_id,
+        "digest": steps.digest,
+        "key": str(key),
+        "steps": dict(steps.done.get(str(key), {})),
+    }
+    payload = json.dumps(document, sort_keys=True, allow_nan=False).encode() + b"\n"
+    config.atomic_write_bytes(payload, carried_path(steps.run_id, key))
+
+
+def let_go(run_id: str, key: str) -> bool:
+    """Let go of one carried record, and answer whether it is gone; one never carried is."""
+    try:
+        carried_path(run_id, key).unlink(missing_ok=True)
+    except OSError:
+        return False
+    return True
+
+
+def carried() -> tuple[list[Steps], list[str]]:
+    """Every carried record whatever its age, each as its run's steps holding that one item, and why any could not be read.
+
+    A record that cannot be read, of another version, or not at the place its
+    run and key name, is NAMED in the second list, never read as no record,
+    so the caller can say it did not look there. One let go between the
+    listing and the read was never there.
+    """
+    try:
+        found = sorted(carried_dir().glob("*.json"))
+    except OSError as exc:
+        return [], [f"the carried steps could not be listed ({type(exc).__name__}: {exc})"]
+    records: list[Steps] = []
+    problems: list[str] = []
+    for one in found:
+        run_id = one.name.split(".", 1)[0]
+        try:
+            raw = json.loads(one.read_text())
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError) as exc:
+            problems.append(
+                f"run {run_id}'s carried steps could not be read ({type(exc).__name__}: {exc})"
+            )
+            continue
+        if not isinstance(raw, dict) or raw.get("version") != CARRIED_VERSION:
+            problems.append(f"run {run_id}'s carried steps are not a record this version reads")
+            continue
+        key = raw.get("key")
+        steps = raw.get("steps")
+        if (
+            raw.get("run_id") != run_id
+            or not isinstance(key, str)
+            or not key
+            or carried_path(run_id, key) != one
+        ):
+            problems.append(f"run {run_id}'s carried steps are not where their run and item name")
+            continue
+        if not isinstance(steps, dict):
+            problems.append(f"run {run_id}'s carried steps are not one item's record")
+            continue
+        records.append(Steps(run_id, str(raw.get("digest") or ""), {key: steps}))
+    return records, problems
+
+
 __all__ = [
+    "CARRIED_DIR",
+    "CARRIED_VERSION",
     "KEEP",
     "STATE_KEY",
     "STEPS_SUFFIX",
@@ -428,9 +538,14 @@ __all__ = [
     "Steps",
     "Unheld",
     "VERSION",
+    "carried",
+    "carried_dir",
+    "carried_path",
+    "carry",
     "decode",
     "encode",
     "hold",
+    "let_go",
     "load",
     "load_steps",
     "path",

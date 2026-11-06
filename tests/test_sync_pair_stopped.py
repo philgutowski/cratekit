@@ -395,3 +395,25 @@ def test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it(
     # A snapshot at the very moment a write began passes it, as the plan reads it.
     assert _passed(records, "pl-1", _WHEN) == [("run-1", "pl-1"), ("run-4", f"{pair_cli.NEW}x")]
     assert _passed(records, "pl-9", moment) == []
+
+
+def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
+    """A carried record outlives a pair forgotten and marked again, and is not the new pair's."""
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
+    reader = SimpleNamespace(stopped=(write, ()))
+
+    def read(marked: str, synced: str = ""):
+        held = SimpleNamespace(marked=marked, synced=synced)
+        return pair_cli._Reader.stopped_write(reader, "pl-1", held)
+
+    assert read((_WHEN + timedelta(seconds=1)).isoformat()) is None
+    assert read((_WHEN - timedelta(seconds=1)).isoformat()).run_id == "run-1"
+    # Marked the same moment the write began is the pair it began on.
+    assert read(_WHEN.isoformat()).run_id == "run-1"
+    # A mark that cannot be read as a moment leaves the snapshot to decide.
+    assert read("").run_id == "run-1"
+    assert read("", synced=(_WHEN - timedelta(seconds=1)).isoformat()).run_id == "run-1"
+    assert read("", synced=(_WHEN + timedelta(seconds=1)).isoformat()) is None

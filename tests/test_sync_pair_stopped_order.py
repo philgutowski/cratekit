@@ -458,3 +458,26 @@ def test_a_kept_stop_that_cannot_be_read_is_named(world, stopped):
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert run_id in _said(envelope, pair_cli.STOPPED_UNREAD)
+
+
+def test_a_stop_that_cannot_be_kept_past_its_run_moves_nothing(world, monkeypatch):
+    """The record is kept before the first move, so a write that cannot keep it stops first."""
+    from cratekit.core import held_plan
+
+    gig = world.folder("GIG READY")
+    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    account_id = world.titled("GIG READY Intro")
+    world.rekordbox_add(intro, "5", "6", "7")
+    _reordered(world, intro, *LED)
+
+    def refused(steps, key):
+        raise PermissionError("read only")
+
+    monkeypatch.setattr(held_plan, "carry", refused)
+    code, envelope = sync()
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == pair_cli.STEPS_UNWRITTEN, envelope["cause"]
+    # The additions landed and not one track was moved.
+    assert world.account.playlists[account_id] == _ids("1", "2", "3", "4", "5", "6", "7")
