@@ -15,11 +15,14 @@ week, where the client meant to skip one track and return the rest. Before
 R-1313 it was retried and failed as an outage, so a match was missed either
 way; now it is missed for a week rather than until the outage clears.
 
-**Measured cost.** Not driven against the provider. It needs a v1 track read
+**Measured cost.** Driven on the installed client by round one of the review:
+a v2 answer naming track 11 and a v1 track read answering a 404 page escape
+`get_tracks_by_isrc` as the decode error, the HTTP error's response URL naming
+the v1 track path, and the ISRC is kept as filed under nothing for seven days.
+Not driven against the provider. It needs a v1 track read
 answered with a 404 page while the v2 ISRC answer names that track; whether the
 provider answers 404 with a page at all is the attended measurement R-1313
-left out of scope. Driven on the installed client only as the chain's shape:
-the track read's decode error escapes `get_tracks_by_isrc` uncaught.
+left out of scope.
 
 **Closes when:** the ISRC readers tell a 404 on the lookup itself from one on
 a track it read, by the request the 404 answered (the HTTP error's response

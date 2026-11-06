@@ -170,7 +170,9 @@ def failure_links(exc: BaseException) -> Iterator[tuple[BaseException, bool]]:
     """``exc`` and every error it was raised from or raised while handling, once each (R-1305).
 
     Each comes with whether it was reached by DECLARED causes alone, ``raise X
-    from Y``, the declared ones first. The two readers of a rejected session,
+    from Y``, the declared ones first, and off that chain each link's own cause
+    before what it was raised while handling, depth first, so
+    :func:`nearest_status` reads what a wrapper says it is before what it met. The two readers of a rejected session,
     ``acquire.provider_session._rejected`` and the outbound account's
     ``_session_refused``, walk this, and so does every reader of a not found
     through :func:`nearest_status` (R-1313). It lives here rather than beside
@@ -212,7 +214,9 @@ def failure_links(exc: BaseException) -> Iterator[tuple[BaseException, bool]]:
             continue
         walked.add(id(one))
         yield one, False
-        pending.extend((one.__cause__, one.__context__))
+        # Pushed context first so the cause is taken first: a link is what it
+        # was raised from before it is what it was raised while handling.
+        pending.extend((one.__context__, one.__cause__))
 
 
 def answered_status(exc: BaseException) -> Any:
