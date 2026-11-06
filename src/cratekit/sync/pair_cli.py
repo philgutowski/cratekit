@@ -756,6 +756,10 @@ class _Reader:
     #: U216. When the account says each playlist in a folder was made, listed
     #: once per plan, and only for a folder adopted with no record of what it held.
     made_at: dict[str, dict[str, Any]] = field(default_factory=dict)
+    #: U229. Each landed INBOX playlist's codes and rows, and each intake
+    #: job's reports, read once per plan whichever pair asks for them.
+    landed_codes: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
+    reports: dict[str, tuple[dict[str, Any], ...] | None] = field(default_factory=dict)
 
     @cached_property
     def remote(self):
@@ -842,6 +846,37 @@ class _Reader:
                 return None
         return write
 
+    def mirror_codes(self, mirror: str) -> tuple[tuple[str, str], ...]:
+        """One landed INBOX playlist's ISRC and row pairs, read once per plan (U229)."""
+        if mirror not in self.landed_codes:
+            self.landed_codes[mirror] = mirror_codes(self.cfg, self.db, mirror)
+        return self.landed_codes[mirror]
+
+    @cached_property
+    def landed_anywhere(self) -> dict[str, tuple[str, ...]]:
+        """ISRC to content ids, from every INBOX playlist landed on this library (U229).
+
+        Whichever account playlist a landing brought a track in through, the
+        row it made is the library's copy of that track, so a pair asking for
+        the track is asked to add that row and never to download it again.
+        Read once per plan, and only when a pair reaches it.
+        """
+        every: set[str] = set()
+        for ids in self.mirrors.values():
+            every.update(ids)
+        return landed_isrcs(self.cfg, self.db, every, read=self.mirror_codes)
+
+    def job_reports(self, job: jobs.Job) -> tuple[dict[str, Any], ...] | None:
+        """One finished intake job's reports, None when they cannot be read, read once per plan."""
+        from cratekit.intake import missing_cli
+
+        if job.job_id not in self.reports:
+            try:
+                self.reports[job.job_id] = tuple(missing_cli.job_reports(self.store, job))
+            except CratekitError:
+                self.reports[job.job_id] = None
+        return self.reports[job.job_id]
+
     def jobs_for(self, account_id: str) -> tuple[jobs.Job, ...]:
         return tuple(
             job
@@ -889,16 +924,18 @@ def file_identity(cfg: config.Config, recorded: str) -> tuple[str, str]:
 def _owned_by_jobs(
     reader: _Reader, found: Sequence[jobs.Job], wanted: set[str]
 ) -> dict[str, str]:
-    """Remote id to content id, for each wanted track a pair's intake job found owned."""
-    from cratekit.intake import missing_cli, native
+    """Remote id to content id, for each wanted track a pair's intake job found owned.
+
+    The newest job's report of a track answers for it, as ``found`` is newest first.
+    """
+    from cratekit.intake import native
 
     paths: dict[str, Path] = {}
     for job in found:
         if job.state != jobs.JobState.SUCCEEDED:
             continue
-        try:
-            reports = missing_cli.job_reports(reader.store, job)
-        except CratekitError:
+        reports = reader.job_reports(job)
+        if reports is None:
             continue
         for report in reports:
             remote_id = str(report.get("item_id") or "")
@@ -942,8 +979,25 @@ def landed_inbox_playlists(cfg: config.Config) -> dict[str, frozenset[str]]:
     return {account_id: frozenset(ids) for account_id, ids in found.items()}
 
 
+def mirror_codes(cfg: config.Config, db: Any, mirror: str) -> tuple[tuple[str, str], ...]:
+    """Each row of one landed INBOX playlist with its ISRC, the database's or else the file's.
+
+    A row carrying no code anywhere is left out, since nothing can name it by one.
+    """
+    found: list[tuple[str, str]] = []
+    for row in playlist_pair.members(db, mirror):
+        code = match.isrc_token(row.isrc) or file_identity(cfg, row.path)[0]
+        if code:
+            found.append((code, row.content_id))
+    return tuple(found)
+
+
 def landed_isrcs(
-    cfg: config.Config, db: Any, playlist_ids: Iterable[str]
+    cfg: config.Config,
+    db: Any,
+    playlist_ids: Iterable[str],
+    *,
+    read: Callable[[str], Iterable[tuple[str, str]]] | None = None,
 ) -> dict[str, tuple[str, ...]]:
     """ISRC to content ids, read from the files of the INBOX playlists named.
 
@@ -951,19 +1005,24 @@ def landed_isrcs(
     with the account playlist's identifier. A track a pair queued and a landing
     brought sits there, and its row may carry no ISRC of its own, since a
     landed row's code is in its file. Only those rows' files are read.
+
+    ``read`` is how one playlist's codes are read, :func:`mirror_codes` unless
+    a caller keeps its own copy, as a plan does so each file is read once (U229).
     """
     found: dict[str, list[str]] = {}
-    for mirror in sorted(playlist_ids):
-        for row in playlist_pair.members(db, mirror):
-            code = match.isrc_token(row.isrc) or file_identity(cfg, row.path)[0]
-            if code and row.content_id not in found.setdefault(code, []):
-                found[code].append(row.content_id)
+    for mirror in sorted(set(playlist_ids)):
+        pairs_read = read(mirror) if read is not None else mirror_codes(cfg, db, mirror)
+        for code, content_id in pairs_read:
+            if content_id not in found.setdefault(code, []):
+                found[code].append(content_id)
     return {code: tuple(ids) for code, ids in found.items()}
 
 
 def _mirror_isrcs(reader: _Reader, account_id: str) -> dict[str, tuple[str, ...]]:
     """ISRC to content ids, from the INBOX playlists landed for this account playlist."""
-    return landed_isrcs(reader.cfg, reader.db, reader.mirrors.get(account_id, ()))
+    return landed_isrcs(
+        reader.cfg, reader.db, reader.mirrors.get(account_id, ()), read=reader.mirror_codes
+    )
 
 
 def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> PairPlan:
@@ -1656,6 +1715,11 @@ def _owned(
 ) -> dict[str, tuple[str, ...]]:
     """Each lacking account track's library rows: by ISRC, by an intake job, by its landing.
 
+    This pair's own intake jobs and landings are asked first, then, for what
+    they leave lacking, every intake job this verb queued on the library and
+    every INBOX playlist landed on it, for any account playlist (U229): a
+    track a landing through another account playlist brought in is that row.
+
     ``here`` is the pair's own rekordbox rows by ISRC, the database's or else
     the file's, asked only for a track no row's database ISRC names (U208). A
     release the account holds beside the one a tie linked, put there by hand,
@@ -1688,6 +1752,19 @@ def _owned(
     rest = {remote_id for remote_id in lacking if remote_id not in found and codes.get(remote_id)}
     if rest:
         landed = _mirror_isrcs(reader, account_id)
+        for remote_id in rest:
+            if landed.get(codes[remote_id]):
+                found[remote_id] = landed[codes[remote_id]]
+    # U229. WHAT ANOTHER ACCOUNT PLAYLIST BROUGHT IN IS STILL THE LIBRARY'S.
+    # Asked only for what this pair's own jobs and landings left lacking, so
+    # every track they answer is answered as before, and read once per plan.
+    rest = {remote_id for remote_id in lacking if remote_id not in found}
+    if rest:
+        for remote_id, content_id in _owned_by_jobs(reader, reader.pair_jobs, rest).items():
+            found[remote_id] = (content_id,)
+    rest = {remote_id for remote_id in lacking if remote_id not in found and codes.get(remote_id)}
+    if rest:
+        landed = reader.landed_anywhere
         for remote_id in rest:
             if landed.get(codes[remote_id]):
                 found[remote_id] = landed[codes[remote_id]]

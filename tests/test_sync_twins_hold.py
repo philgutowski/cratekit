@@ -158,7 +158,7 @@ def test_a_held_track_another_account_playlist_landed_is_added_and_the_rest_stay
     assert code == int(ExitCode.OK), envelope
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21")]
-    assert "9" in world.held(world.twin(PHIL_NAME))
+    assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "9"]
 
 
 def test_a_second_twin_stays_held_when_the_first_is_released(world, cfg):
