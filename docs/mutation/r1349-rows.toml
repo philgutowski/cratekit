@@ -1,0 +1,289 @@
+name = "r1349"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_guard_gone"
+description = "record: the not reached refusal removed, so an answer ahead of a digest gate is recorded with no digest (R-1349 itself)"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+new = '''        False
+        and spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+
+[[rows]]
+id = "N2_any_gate"
+description = "record: the digest source clause dropped, so a gate that binds no plan is refused ahead too"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+new = '''        spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+
+[[rows]]
+id = "N3_offer_ignored"
+description = "record: the offer clause dropped, so a run handed an offer (hand_off) or a gate offered and not open is refused"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+new = '''        spec.digest_source is not None
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+
+[[rows]]
+id = "N4_open_ignored"
+description = "record: the open gate clause dropped, so a gate reached with no digest and left open is refused"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+new = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+
+[[rows]]
+id = "N5_answered_ignored"
+description = "record: the answered clause dropped, so a gate reached with no digest and answered cannot be answered again"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+new = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+    ):
+        raise GateNotReached(state, spec)'''
+
+[[rows]]
+id = "N6_offer_inverted"
+description = "record: the offer clause inverted, refusing only a gate that holds an offer"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        spec.digest_source is not None
+        and spec.name not in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+new = '''        spec.digest_source is not None
+        and spec.name in state.offers
+        and state.open_gate != spec.name
+        and spec.name not in state.decisions
+    ):
+        raise GateNotReached(state, spec)'''
+
+[[rows]]
+id = "N7_written_before_refusal"
+description = "record: the answer written before the refusal is raised, so the refusal leaves a digestless decision in the run"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        raise GateNotReached(state, spec)
+'''
+new = '''        state.decisions[spec.name] = Decision(option=option, actor=actor, recorded="", digest=None)
+        raise GateNotReached(state, spec)
+'''
+
+[[rows]]
+id = "N8_after_unknown_swapped"
+description = "record: the unknown option check skipped, so an option the gate does not offer is recorded"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''    if option not in spec.options:
+        raise UnknownOption(spec, option)
+    if (
+'''
+new = '''    if False:
+        raise UnknownOption(spec, option)
+    if (
+'''
+
+[[rows]]
+id = "R1_reason_open_gate"
+description = "GateNotReached: reason decision-required, read and printed as an open gate inviting the refused answer"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''                reason="gate-not-reached",'''
+new = '''                reason="decision-required",'''
+
+[[rows]]
+id = "R2_answer_remedy"
+description = "GateNotReached: carries the answer-decision remedy verbs read as an open gate"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''                remediation=Remediation(steps=steps),'''
+new = '''                remediation=Remediation(remedy=Remedy.ANSWER_DECISION, steps=steps),'''
+
+[[rows]]
+id = "R3_waiting_ignored"
+description = "GateNotReached: the gate the run waits at is never named in the steps"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        if waiting is not None:
+            steps: tuple'''
+new = '''        if False:
+            steps: tuple'''
+
+[[rows]]
+id = "R4_continue_wrong"
+description = "GateNotReached: the continue step names a fresh run of the verb instead of the run under --run"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        command = continue_command(state)
+        waiting = state.open_gate'''
+new = '''        command = f"crate {state.verb.replace('.', ' ')}"
+        waiting = state.open_gate'''
+
+[[rows]]
+id = "R5_open_gate_detail"
+description = "GateNotReached: the detail's open_gate always None"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''                    "open_gate": waiting,'''
+new = '''                    "open_gate": None,'''
+
+[[rows]]
+id = "R6_message_no_gate"
+description = "GateNotReached: the message names no gate"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''                    f"run {state.run_id} has not reached the gate {spec.name!r}, so "'''
+new = '''                    f"run {state.run_id} has not reached a gate yet, so "'''
+
+[[rows]]
+id = "R7_answer_step_dropped"
+description = "GateNotReached: the closing step that answers the named gate dropped when the run waits at another"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''                f"then {reach}",
+                answer,
+'''
+new = '''                f"then {reach}",
+'''
+
+[[rows]]
+id = "R8_exit_code"
+description = "cause: gate-not-reached exits as decision required, the code a chain reads as an open gate"
+file = "src/cratekit/core/cause.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        "gate-not-reached": ExitCode.PRECONDITION,'''
+new = '''        "gate-not-reached": ExitCode.DECISION_REQUIRED,'''
+
+[[rows]]
+id = "C1_argv_ignored"
+description = "continue_command: the recorded command line ignored, so every continue says the verb's words and an ellipsis"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''    if state.argv is not None:
+        return shlex.join(["crate", "--run", state.run_id, *state.argv])'''
+new = '''    if False:
+        return shlex.join(["crate", "--run", state.run_id, *state.argv])'''
+
+[[rows]]
+id = "C2_run_dropped"
+description = "continue_command: the --run dropped, so the command starts a fresh run that loses the answers"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        return shlex.join(["crate", "--run", state.run_id, *state.argv])'''
+new = '''        return shlex.join(["crate", *state.argv])'''
+
+[[rows]]
+id = "E1_digest_unbound"
+description = "record (existing): the answer binds no digest, whatever the run offered"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        digest=state.offers.get(spec.name),
+    )
+    if state.open_gate == spec.name:'''
+new = '''        digest=None,
+    )
+    if state.open_gate == spec.name:'''
+
+[[rows]]
+id = "E2_open_left"
+description = "record (existing): the open gate left open after it is answered"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''    if state.open_gate == spec.name:
+        state.open_gate = None
+
+
+def blocked_by'''
+new = '''    if False:
+        state.open_gate = None
+
+
+def blocked_by'''
+
+[[rows]]
+id = "E3_offer_unrecorded"
+description = "require (existing): the offer never recorded when the gate is reached"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''        if spec.digest_source is not None and digest is not None:
+            self.state.offers[spec.name] = digest'''
+new = '''        if False:
+            self.state.offers[spec.name] = digest'''
+
+[[rows]]
+id = "E4_compare_gone"
+description = "require (existing): a recorded digest never compared with the one reached"
+file = "src/cratekit/cli/gates.py"
+surface = "user"
+tests = ["tests/test_gate_not_reached.py", "tests/test_organize.py", "tests/test_gate_stale_screen.py", "tests/test_run_decide_continue.py", "tests/test_gate_pins.py", "tests/test_cli_contract.py", "tests/test_run_retire.py", "tests/test_gate_siblings.py"]
+old = '''            if against is not None and against != digest:'''
+new = '''            if False:'''
