@@ -8600,6 +8600,217 @@ def test_a_backup_folder_that_cannot_be_read_is_said_as_unread_and_does_not_fail
     assert "cannot be said: its backup folder could not be read" in finding.detail
 
 
+# ---------------------------------------------------------------------------
+# U224: DEADCA7 installed and never pushed is not DEADCA7 absent
+# ---------------------------------------------------------------------------
+
+
+def _installed_places(tmp_path, *present: str) -> tuple[Path, ...]:
+    """The three places the installed probe names, under ``tmp_path``, with ``present`` made.
+
+    Keyed ``system``, ``user`` and ``state``: the bundle in the system's
+    Applications folder, the bundle in the account's, and the state folder the
+    shipped app keeps under Application Support.
+    """
+    places = {
+        "system": tmp_path / "Applications" / doctor.DEADCA7_BUNDLE,
+        "user": tmp_path / "home" / "Applications" / doctor.DEADCA7_BUNDLE,
+        "state": tmp_path / "home" / "Library" / "Application Support" / doctor.DEADCA7_STATE,
+    }
+    for name in present:
+        places[name].mkdir(parents=True)
+    return tuple(places.values())
+
+
+def _installed_check(configured, support, installed) -> doctor.Finding:
+    report = doctor.run(
+        configured,
+        probes=probes(deadca7_home=lambda: support, deadca7_installed=lambda: installed),
+    )
+    finding = find(report, "deadca7.push")
+    assert finding.status is doctor.Status.INFO, finding
+    return finding
+
+
+def test_sitting_68s_mac_the_bundle_and_no_support_folder_reads_installed_with_no_push(
+    configured, tmp_path
+):
+    """The bug: DEADCA7.app in /Applications, no deadca7 folder, named not installed."""
+    places = _installed_places(tmp_path, "system")
+    finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
+    assert "not installed" not in finding.detail, finding.detail
+    assert finding.detail.startswith(
+        "DEADCA7 is installed here and has recorded no push into rekordbox's database"
+    )
+    assert str(places[0]) in finding.detail, "it did not name what it found"
+    assert "unconfirmed until a push is read" in finding.detail
+    assert str(tmp_path / "deadca7" / doctor.DEADCA7_BACKUPS) in finding.detail
+
+
+def test_the_bundle_in_the_accounts_own_applications_folder_reads_installed(configured, tmp_path):
+    places = _installed_places(tmp_path, "user")
+    finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
+    assert "installed here and has recorded no push" in finding.detail
+    assert str(places[1]) in finding.detail
+
+
+def test_the_deadcatalog_state_folder_alone_reads_installed_with_no_push(configured, tmp_path):
+    places = _installed_places(tmp_path, "state")
+    finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
+    assert "installed here and has recorded no push" in finding.detail
+    assert str(places[2]) in finding.detail
+
+
+def test_nothing_present_still_reads_not_installed(configured, tmp_path):
+    finding = _installed_check(
+        configured, _deadca7(tmp_path, home=False), _installed_places(tmp_path)
+    )
+    assert finding.detail == (
+        "DEADCA7 is not installed here, so nothing else writes the library beside rekordbox"
+    )
+
+
+def test_a_file_where_the_bundle_would_be_is_not_an_install(configured, tmp_path):
+    places = _installed_places(tmp_path)
+    places[0].parent.mkdir(parents=True)
+    places[0].write_bytes(b"")
+    finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
+    assert "not installed" in finding.detail
+
+
+def test_a_push_is_read_as_today_whatever_the_install_signals_say(configured, tmp_path):
+    now = doctor_machines.green().now
+    support = _deadca7(tmp_path, pushed_at=now - timedelta(days=1))
+    finding = _installed_check(configured, support, _installed_places(tmp_path, "system"))
+    assert finding.detail.startswith("warning: DEADCA7 last pushed into rekordbox's database at")
+    assert "unconfirmed" not in finding.detail
+
+
+def test_installed_with_an_empty_backup_folder_says_the_location_is_unconfirmed(
+    configured, tmp_path
+):
+    finding = _installed_check(configured, _deadca7(tmp_path), ())
+    assert "installed here and has recorded no push" in finding.detail
+    assert "holds no entry" in finding.detail
+    assert "unconfirmed until a push is read" in finding.detail
+
+
+def test_a_support_folder_with_no_backup_folder_reads_installed_with_no_push(
+    configured, tmp_path
+):
+    support = tmp_path / "deadca7"
+    support.mkdir()
+    finding = _installed_check(configured, support, ())
+    assert "installed here and has recorded no push" in finding.detail
+    assert "does not exist" in finding.detail
+
+
+def test_an_install_signal_that_cannot_be_read_is_unread_never_not_installed(
+    configured, tmp_path, monkeypatch
+):
+    places = _installed_places(tmp_path)
+    _refuse_stat_under(monkeypatch, tmp_path / "home")
+    finding = _installed_check(configured, _deadca7(tmp_path, home=False), places)
+    assert "not installed" not in finding.detail, finding.detail
+    assert finding.detail.startswith("whether DEADCA7 is installed here cannot be said")
+    assert str(places[2]) in finding.detail
+    assert "PermissionError" in finding.detail
+
+
+def test_a_support_folder_that_cannot_be_read_is_unread_never_not_installed(
+    configured, tmp_path, monkeypatch
+):
+    support = _deadca7(tmp_path)
+    _refuse_stat_under(monkeypatch, support)
+    finding = _installed_check(configured, support, _installed_places(tmp_path))
+    assert "not installed" not in finding.detail, finding.detail
+    assert finding.detail.startswith("whether DEADCA7 is installed here cannot be said")
+    assert str(support) in finding.detail
+
+
+def test_installed_with_its_support_folder_unread_says_its_push_cannot_be_said(
+    configured, tmp_path, monkeypatch
+):
+    support = _deadca7(tmp_path)
+    places = _installed_places(tmp_path, "system")
+    _refuse_stat_under(monkeypatch, support)
+    finding = _installed_check(configured, support, places)
+    assert finding.detail.startswith("DEADCA7 is installed here")
+    assert "cannot be said" in finding.detail
+    assert "recorded no push" not in finding.detail, "an unread folder read as no push"
+
+
+def test_a_backup_folder_whose_stat_is_refused_is_unread_never_no_push(
+    configured, tmp_path, monkeypatch
+):
+    support = _deadca7(tmp_path)
+    _refuse_stat_under(monkeypatch, support / doctor.DEADCA7_BACKUPS)
+    finding = _installed_check(configured, support, ())
+    assert "cannot be said: its backup folder could not be read" in finding.detail
+    assert "recorded no push" not in finding.detail
+
+
+@pytest.mark.parametrize("probe", ["deadca7_home", "deadca7_installed"])
+def test_a_probe_that_raises_reads_unread_rather_than_not_installed(configured, tmp_path, probe):
+    def broken():
+        raise OSError(5, "Input/output error")
+
+    seams = {
+        "deadca7_home": lambda: _deadca7(tmp_path, home=False),
+        "deadca7_installed": lambda: _installed_places(tmp_path),
+        probe: broken,
+    }
+    report = doctor.run(configured, probes=probes(**seams))
+    finding = find(report, "deadca7.push")
+    assert finding.status is doctor.Status.INFO, finding
+    assert "not installed" not in finding.detail, finding.detail
+    assert finding.detail.startswith("whether DEADCA7 is installed here cannot be said")
+    assert "OSError" in finding.detail
+
+
+def test_a_probe_that_raises_beside_a_present_bundle_still_reads_installed(configured, tmp_path):
+    def broken():
+        raise OSError(5, "Input/output error")
+
+    places = _installed_places(tmp_path, "system")
+    report = doctor.run(
+        configured, probes=probes(deadca7_home=broken, deadca7_installed=lambda: places)
+    )
+    finding = find(report, "deadca7.push")
+    assert finding.status is doctor.Status.INFO, finding
+    assert finding.detail.startswith("DEADCA7 is installed here")
+    assert "cannot be said" in finding.detail
+    assert "recorded no push" not in finding.detail
+
+
+def test_the_installed_probe_names_both_bundles_and_the_shipped_state_folder(monkeypatch, tmp_path):
+    monkeypatch.setattr(doctor.Path, "home", classmethod(lambda cls: tmp_path))
+    assert doctor._deadca7_installed() == (
+        Path("/Applications/DEADCA7.app"),
+        tmp_path / "Applications" / "DEADCA7.app",
+        tmp_path / "Library" / "Application Support" / "deadcatalog",
+    )
+
+    def homeless(cls):
+        raise RuntimeError("no home")
+
+    monkeypatch.setattr(doctor.Path, "home", classmethod(homeless))
+    assert doctor._deadca7_installed() == (Path("/Applications/DEADCA7.app"),)
+
+
+def _refuse_stat_under(monkeypatch, under: Path) -> None:
+    """Refuse ``os.stat`` at or under ``under``, as an account the folder is closed to
+    is refused; the container runs as root, which no mode bars."""
+    real = os.stat
+
+    def refused(path, *args, **kwargs):
+        if Path(path) == under or under in Path(path).parents:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real(path, *args, **kwargs)
+
+    monkeypatch.setattr(doctor.os, "stat", refused)
+
+
 def test_a_push_beside_a_backup_recorded_ahead_of_now_is_not_called_held(configured, tmp_path):
     now = doctor_machines.green().now
     backup_facts.record(

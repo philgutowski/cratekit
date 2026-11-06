@@ -1679,7 +1679,11 @@ shares the library with it and leaves its work alone:
 - No tree in your taxonomy may be named `DEADCA7`.
 - `crate doctor` says whether DEADCA7 is installed, when it last pushed into
   the database, and warns when that push is newer than your last database
-  backup. Run `crate backup run` then.
+  backup. Run `crate backup run` then. Installed means its app in your
+  Applications folder or the system's, or its `deadcatalog` folder under
+  Application Support, so an app that has never pushed still reads as
+  installed, with no push recorded. A folder doctor cannot read is said as
+  unread, never as not installed.
 
 Both tools refuse while rekordbox is open, so they take turns. Do not push
 from DEADCA7 while a Cratekit verb is running: the verb's next commit sees the
