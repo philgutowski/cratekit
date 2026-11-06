@@ -30,6 +30,13 @@ track the job cannot be asked about; every other playlist is planned. A track
 the account lists with no title or no artist is named the same way, and the
 playlist's other tracks are planned (R-1289).
 
+AND FILED WHERE THE ACCOUNT PUT IT, NOT WHERE ITS TAGS DID (U227). The
+landing files the row it made by the row's own tags, in a commit after the
+landing's, and the adoption ledger records each place it filed. :func:`filed`
+hands the edit rule those places for each queued track, so its filing is read
+as the landing's and not as a change a person made in rekordbox, and the
+account's edit is carried onto the row once.
+
 ANOTHER RELEASE OF A RECORDING THE LIBRARY HOLDS IS NEVER QUEUED. A track the
 account matched no library row to may still carry the ISRC of a row the
 library owns, linked to another release or in no mirrored playlist at all:
@@ -162,6 +169,110 @@ def landed(
         token = match.isrc_token(frozen.get("isrc"))
         if token and by_code.get(token):
             found[remote] = tuple(sorted(by_code[token]))
+    return found
+
+
+def _queued_at(cfg: config.Config) -> dict[str, str]:
+    """Each account track a mirror job holds, to when the earliest such job was queued."""
+    from cratekit.intake import cli as intake_cli
+    from cratekit.modules.outbound import mirror_edits as edits
+
+    held: dict[str, str] = {}
+    for job in _jobs(cfg):
+        made = edits.moment(job.created)
+        if made is None:
+            continue
+        for remote in (job.payload or {}).get(intake_cli.TRACKS) or {}:
+            was = edits.moment(held.get(str(remote), ""))
+            if was is None or made < was:
+                held[str(remote)] = job.created
+    return held
+
+
+def _adopted(cfg: config.Config) -> frozenset[str]:
+    """Every approval a person gave ``crate adopt apply`` on this library, by its plan digest.
+
+    The adoption applied ledger has two writers: the adopt worker, whose job
+    freezes the approved plan's digest and refuses unless the plan it files
+    still has it, and a landing's own filing (``intake.filing.file_landed``),
+    which queues no job. So an entry under one of these digests was filed by a
+    person, never by a landing (the review of U227, round two).
+    """
+    from cratekit.core import jobs
+    from cratekit.organize import rekordbox  # noqa: PLC0415 - a cycle at import time
+
+    with jobs.open_store() as store:
+        return frozenset(
+            str((job.payload or {}).get("digest") or "")
+            for job in jobs.list_jobs(store)
+            if job.handler_key == rekordbox.ADOPT_HANDLER
+            and job.library_id == cfg.library.volume_id
+        ) - {""}
+
+
+def filed(
+    cfg: config.Config, declared: Any, owner: Mapping[str, Any]
+) -> dict[str, frozenset[tuple[str, str]]]:
+    """Each queued account track to the band places its landing filed its row into (U227).
+
+    ``owner`` is each account track to the library rows matched to it; a track
+    owned by exactly one row is read. The places are the adoption ledger's
+    entries for that row in the routing tree that the LANDING'S FILING wrote:
+    the earliest entry applied no earlier than the track was queued, and every
+    entry of the same approval (its digest). So a row the library held before
+    the download is never read as one the landing made. An approval a person
+    gave ``crate adopt apply`` is never the landing's, whatever its order:
+    a re-filing after the landing is a later approval (round one), and a
+    landing that filed nothing, a download with no genre tag above all, has
+    no approval of its own for the person's first filing to be mistaken for
+    (round two). Each is ``(folder, playlist)`` as the taxonomy names it now. A queue or a ledger that cannot be read gives
+    none, and the edit is read by the later change rule as before U227, which
+    leaves the library as it is.
+    """
+    from cratekit.adopt import apply as adoption
+    from cratekit.modules.outbound import mirror_edits as edits
+    from cratekit.write import routing_pass
+
+    try:
+        since = _queued_at(cfg)
+        if not since:
+            return {}
+        applied = adoption.read(cfg).applied
+        by_person = _adopted(cfg)
+    except (CratekitError, OSError, ValueError):
+        return {}
+    tree = declared.tree.id
+    by_row: dict[str, list[Any]] = {}
+    for entry in applied:
+        if entry.tree == tree and entry.digest not in by_person:
+            by_row.setdefault(str(entry.content_id), []).append(entry)
+    found: dict[str, frozenset[tuple[str, str]]] = {}
+    for remote, queued_when in since.items():
+        rows = {str(one) for one in owner.get(remote, ()) if str(one)}
+        if len(rows) != 1:
+            continue
+        (content_id,) = rows
+        after = edits.moment(queued_when)
+        since_queued = [
+            (at, entry)
+            for entry in by_row.get(content_id, ())
+            if (at := edits.moment(entry.applied)) is not None
+            and after is not None
+            and at >= after
+        ]
+        if not since_queued:
+            continue
+        first = min(since_queued, key=lambda pair: (pair[0], pair[1].entry_id))[1]
+        places: set[tuple[str, str]] = set()
+        for _at, entry in since_queued:
+            if entry.digest != first.digest:
+                continue
+            try:
+                places.add(routing_pass.destination(declared, entry.bucket, entry.sub))
+            except (KeyError, CratekitError):
+                continue
+        if places:
+            found[remote] = frozenset(places)
     return found
 
 
@@ -452,6 +563,7 @@ __all__ = [
     "TITLE",
     "Planned",
     "add_step",
+    "filed",
     "landed",
     "outcomes",
     "plan",

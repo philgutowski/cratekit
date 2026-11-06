@@ -62,6 +62,21 @@ the mirror keeps it on the account until it lands, when this rule reads it as
 the addition it is and the library takes it. A track a snapshot held once and
 the library no longer owns left the collection, and is never fetched again.
 
+AND THE LANDING'S OWN FILING NEVER BEATS THE EDIT THAT QUEUED IT (U227). A
+landing files the row it made by the row's own tags, in a commit after the
+landing's, so the next refresh reads the track in a band rekordbox placed it
+in later than the account's addition, and the later change rule would keep
+rekordbox's place and take the track off the playlist the person put it in
+(sitting 85). ``decide`` is handed, for each track a mirror download queued,
+the band places its landing filed its row into, read from the adoption
+ledger. A track no snapshot ever held whose every band in rekordbox is one of
+those is read as LANDED FOR THE ACCOUNT'S EDIT: no change made in rekordbox,
+so the edit is carried. Once, since the library taking it settles the
+snapshot. A band rekordbox holds it in that the landing did not file, a move
+or a second band a person made since, is rekordbox's change, read by the
+later change rule as before. Places are compared, never a time against
+another clock's.
+
 HELD IS NEITHER CARRIED NOR UNDONE. A track added on the account to two band
 playlists at once, one taken off its band and left in a derived playlist only,
 one the library owns no row for (queued for download by U204) or owns two rows
@@ -216,6 +231,8 @@ class Decision:
     filed: bool = False
     #: A FAVOURITE moved between months (U204): the months it leaves.
     away: tuple[Place, ...] = ()
+    #: Carried over the band its landing filed it into by its tags (U227).
+    landed: bool = False
 
     def item(self) -> dict[str, object]:
         shown: dict[str, object] = {
@@ -232,6 +249,8 @@ class Decision:
             shown["content_id"] = self.content_id
         if self.acquire:
             shown["acquire"] = True
+        if self.landed:
+            shown["landed"] = True
         return shown
 
 
@@ -368,12 +387,16 @@ def _agrees(kind: str, to: Place | None, now: frozenset[Place]) -> bool:
 
 
 def decide(
-    playlists: Sequence[Mirrored], owner: Mapping[str, Sequence[str]]
+    playlists: Sequence[Mirrored],
+    owner: Mapping[str, Sequence[str]],
+    filed: Mapping[str, Iterable[tuple[str, str]]] | None = None,
 ) -> Decided:
     """Decide every track a person changed on the account, tree by tree. Pure.
 
     ``owner`` is each account track to the library rows matched to it, which a
-    carried edit needs exactly one of. Each tree is read by its own rule, and
+    carried edit needs exactly one of. ``filed`` is each track a mirror
+    download queued to the ``(folder, playlist)`` places its landing filed its
+    row into (U227), none when absent. Each tree is read by its own rule, and
     each playlist's hold covers only the tracks its own tree held (U204).
     """
     # EVERY TRACK A SNAPSHOT EVER HELD, across every tree: one the library no
@@ -381,10 +404,15 @@ def decide(
     known: set[str] = set()
     for one in playlists:
         known |= one.base
+    by_landing = {track: frozenset(places) for track, places in (filed or {}).items()}
     decisions: list[Decision] = []
     for tree, rule in ((GENRE, _decide_genre), (FAVORITES, _decide_favorites), (INBOX, _decide_inbox)):
         mine = [one for one in playlists if one.place.tree == tree]
-        if mine:
+        if not mine:
+            continue
+        if tree == GENRE:
+            decisions.extend(_decide_genre(mine, owner, frozenset(known), by_landing))
+        else:
             decisions.extend(rule(mine, owner, frozenset(known)))
     return Decided(decisions=tuple(decisions), holds=_holds(playlists, decisions))
 
@@ -473,9 +501,17 @@ def _carry(
 
 
 def _decide_genre(
-    playlists: Sequence[Mirrored], owner: Mapping[str, Sequence[str]], known: frozenset[str]
+    playlists: Sequence[Mirrored],
+    owner: Mapping[str, Sequence[str]],
+    known: frozenset[str],
+    filed: Mapping[str, frozenset[tuple[str, str]]] | None = None,
 ) -> list[Decision]:
-    """Every track a person changed on the account across the genre tree (U201)."""
+    """Every track a person changed on the account across the genre tree (U201).
+
+    ``filed`` is each track a mirror download queued to the places its landing
+    filed its row into (U227).
+    """
+    filed = filed or {}
     unread = _unread(playlists)
 
     def placed(track: str, side: str, primary: bool) -> frozenset[Place]:
@@ -497,6 +533,7 @@ def _decide_genre(
         if track in unread:
             decisions.append(Decision(track, HELD, _UNREAD, **shown))
             continue
+        extra: dict[str, Any] = {}
         intent = _intent(
             was, now, placed(track, "base", False), placed(track, "account", False)
         )
@@ -523,7 +560,16 @@ def _decide_genre(
                     )
                 )
                 continue
-            if there:
+            if there and _landed_there(track, there, known, filed):
+                # THE LANDING'S OWN FILING (U227): the row was made for this
+                # edit and filed by its tags, which no person chose.
+                why = (
+                    f"{why}, and landed for the account's edit: its landing filed it in "
+                    f"{', '.join(_titles(there))} by its own tags, which is no change "
+                    f"made in rekordbox"
+                )
+                extra = {"landed": True}
+            elif there:
                 said = _later(playlists, track, to, there - was)
                 if said is not None:
                     decisions.append(Decision(track, REKORDBOX, f"{why}, {said}", **shown))
@@ -552,9 +598,28 @@ def _decide_genre(
                     if not one.short
                 ),
                 shown=shown,
+                **extra,
             )
         )
     return decisions
+
+
+def _landed_there(
+    track: str,
+    there: frozenset[Place],
+    known: frozenset[str],
+    filed: Mapping[str, frozenset[tuple[str, str]]],
+) -> bool:
+    """Whether every band rekordbox holds ``track`` in is one its landing filed it into (U227).
+
+    Only for a track no snapshot ever held, the one a mirror download was
+    queued for: once the library took the edit its snapshot holds the track,
+    and the later change rule alone reads it from then on.
+    """
+    places = filed.get(track)
+    if not places or track in known:
+        return False
+    return bool(there) and all((place.folder, place.playlist) in places for place in there)
 
 
 def _decide_favorites(

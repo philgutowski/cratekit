@@ -575,7 +575,7 @@ plans just those steps; a side with no kind named is not asked.
 | rekordbox | `record-labels` | Listed only; a landing files label batches itself. |
 | rekordbox | `inspiration` | Gives each `DOWNLOADED` set in `Downloaded Sets <year>` its INSPIRATION playlist of owned tracks in set order. |
 | rekordbox | `mirror-edits` | Carries your edits to mirrored playlists on the account back into the library (genre, energy, favourites, INBOX batches). |
-| rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist that the library lacks. |
+| rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist that the library lacks; the next new `sync land` pass takes the download. |
 | account | `labels` | Builds missing label folders and year playlists, and plans each label's dated `<Label> <year> new <date>` playlist of releases a go took that day. |
 | account | `sets` | Archives every set whose download is proven into `Downloaded Sets <year>`. |
 | account | `marks` | Marks every landed sync pass. |
@@ -589,6 +589,9 @@ plans just those steps; a side with no kind named is not asked.
   that files into Med; removing it from every genre playlist clears its genre
   and energy so `route unplaced` lists it. The first organize after the
   mirror exists reads every difference as rekordbox's.
+- A track downloaded for your edit is filed where you put it, though its
+  landing first filed it by its tags ("landed for the account's edit"); a
+  change you make in rekordbox after the landing still wins.
 - An answer given on a later run applies the plan you were shown; a change
   on Tidal since refuses as stale.
 - `--rematch` asks the provider again about rows the mirror remembers as
@@ -929,7 +932,7 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
-| `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. |
+| `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
 | An unknown verb | `crate profile show`: its module is off. |
 | A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. |
 | A stale lock from a machine that is gone | `crate session release`. |

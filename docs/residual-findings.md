@@ -45542,3 +45542,79 @@ producer is a client upgrade that changes the signature: 0 live candidates.
 **Closes when:** a signature fault from the unpaged read carries the
 adapter-broken remedy the paged walk's own `ListingNotPaginated` should, the
 same rule for both. Ledger only.
+
+---
+
+## R-1365. A track hearted on the account and put in an older month, landed into another month, reads that landing's month as a change made in rekordbox
+
+**Found:** at the review of #579, U227, 2026-11-06.
+
+**The mechanism.** U227 reads a landing's own filing as the landing's only in
+the genre rule (`mirror_edits._decide_genre`, with `filed`). The Favorites
+rule's later change path (`_decide_favorites` through `_later`) has the same
+shape. Suppose a track the library lacks is put in month `2026-10` on the
+account and is also hearted, and its landing then places it in All Favorites
+and `2026-11` as a heart of the pass. The next refresh reads `2026-11` as
+rekordbox's later change, keeps it, and the mirror takes the track off
+`2026-10` on the account.
+
+**Measured cost.** The rule was driven over `decide` by Fable's round one: the
+result is REKORDBOX, "placed in Favorites 2026-11 in rekordbox at ..., so
+rekordbox's place stands". The producer, a hearts landing whose month differs
+from the one the person chose, was not driven, so reachability is unmeasured.
+It is outside the card's genre scope.
+
+**Closes when:** a landing's placed hearts (the landing record's
+`placement.PLACED_KEY`) are handed to the Favorites rule as `filed` is to the
+genre rule, and a test drives the month case. Ledger only.
+
+---
+
+## R-1366. A mirror download driven to its end outside a pass is taken by no pass, and its track is never listed or downloaded
+
+**Found:** at the plan of #579, U227, 2026-11-06.
+
+**The mechanism.** A sync pass takes a download `crate organize` queued for an
+account edit only while the job is QUEUED and carries no run
+(`cli.sync_land._take_mirror_downloads`). Until U227 the left open row told
+the person to drive such a job by hand with `crate intake playlist ... --job`.
+A job driven that way ends SUCCEEDED with no run. `intake missing --run`
+lists only the jobs of a run, so no pass lists its missing track. The
+downloads step keeps naming the track as awaiting its landing.
+
+**Measured cost.** Not driven. Since U227 the left open row names the next
+new pass as the way on, so no new job reaches the state through the product's
+own advice. A job driven by hand before U227 may still be in it. Sitting 85's
+job `2026-11-06T15:02:36Z-40b0` was left queued, so it is not in that state.
+
+**Closes when:** a pass also takes a succeeded mirror job with no run whose
+tracks the library still lacks, listing them afresh, or the downloads step
+names such a job with the command that frees it (`crate job retry`). Ledger
+only.
+
+---
+
+## R-1367. An adoption ledger the account mirror cannot read reads as no landing, and the landed track's account edit is undone with no word of the ledger
+
+**Found:** at the review of #579, U227, 2026-11-06.
+
+**The mechanism.** `organize.mirror_downloads.filed` answers `{}` when the
+job queue or the adoption applied ledger cannot be read, or when an entry
+names a sub the taxonomy no longer declares. The edit rule then reads a
+landed track's filing by its tags as a change made in rekordbox, as before
+U227. The plan says "so rekordbox's place stands" and the mirror takes the
+track off the playlist the person put it in on the account. Neither step names
+the ledger it could not read.
+
+**Measured cost.** Driven on U204's world by Fable's round one (P1, P3).
+After the queue, the landing and its filing, the ledger's `applied` field was
+made a string, or the entry's sub was made one the taxonomy lacks. The plan
+then kept rekordbox's place, and the apply emptied the account's Tech House
+Med. The producer was not driven: the ledger is written atomically under a
+lock by `adopt.apply.write`, and one candidate, the tool's own writer, was
+driven and wrote a readable ledger. So whether a real library reaches an
+unreadable ledger is unmeasured.
+
+**Closes when:** `filed` returns why it read nothing, and the edit rule holds
+each queued track whose landing it could not read, with that reason, rather
+than reading it as rekordbox's. Ledger only until a producer is driven.
