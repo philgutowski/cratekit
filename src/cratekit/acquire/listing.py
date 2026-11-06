@@ -1063,12 +1063,30 @@ def playlist_tracks_unpaged(playlist: Any, **retry: Any) -> list[Any]:
     MEASURED ON THE LIVE ACCOUNT on 2026-11-06 (Sitting 84): after a move,
     this read returned the new order at once while the window read
     :func:`playlist_tracks` walks returned the old one, and sometimes the
-    new, for at least thirteen minutes. How many tracks the provider serves
-    it is not measured, so it is never trusted as whole on its own:
-    :func:`judge_window` holds it to the declared count. Put through the
-    same retry ladder a page gets.
+    new, for at least thirteen minutes.
+
+    NOT A READ OF EVERY TRACK. The client fills a missing limit with its
+    session's own ``item_limit``, 1000 by default, and :data:`PAGE_SIZES`
+    records the provider's ceiling for this shape as 100, so a playlist of
+    more than 100 tracks is most likely served its first hundred alone (the
+    count was not measured live). It is never trusted as whole on its own:
+    :func:`judge_window` holds it to the declared count. Put through the same
+    retry ladder a page gets; a client that cannot be called with no window
+    raises :class:`ListingNotPaginated` at once.
     """
-    page = fetch_with_retry(lambda _limit, _offset: playlist.tracks(), limit=0, offset=0, **retry)
+    def call(_limit: int, _offset: int) -> Any:
+        try:
+            return playlist.tracks()
+        except TypeError as exc:
+            # A signature fault, not a wait (round one's review): the ladder
+            # would sleep 31 seconds on an answer it has at the first attempt.
+            raise ListingNotPaginated(
+                f"{type(playlist).__name__}.tracks cannot be called with no "
+                f"window, so the playlist cannot be read as the provider serves "
+                f"it unpaged; the provider client changed shape"
+            ) from exc
+
+    page = fetch_with_retry(call, limit=0, offset=0, **retry)
     return list(page or [])
 
 
@@ -1078,7 +1096,9 @@ def judge_window(paged: Sequence[str], unpaged: Sequence[str], declared: Any) ->
     :data:`WINDOW_AGREES` when the two are the same, or the unpaged read is
     shorter than the window read and is its first part while holding fewer
     tracks than the playlist declares, which is a provider serving an unpaged
-    read its first page alone. :data:`WINDOW_UNPAGED` when they differ and
+    read its first page alone. THAT AGREEMENT IS AS BLIND AS MAIN WAS: a
+    window that lags a change past the unpaged read's first page agrees, and
+    is taken as the playlist, as every read was before U226 (a residual). :data:`WINDOW_UNPAGED` when they differ and
     the unpaged read holds exactly the declared count, so it is the playlist
     as it stands. :data:`WINDOW_LAGS` otherwise.
 

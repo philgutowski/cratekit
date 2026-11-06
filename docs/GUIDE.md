@@ -1124,7 +1124,11 @@ move or removal that landed is taken as done, and a plan is made from the
 playlist as it stands, never from an order nobody holds. When the two reads
 disagree and the plain read is not the whole playlist, that pair is left out
 of the run, nothing written on either side, and the answer says why; sync it
-again a few minutes later. The answer's totals list each read back with how
+again a few minutes later. If that starts between the plan and the write, the
+write stops before writing anything and names the playlist as moved; a fresh
+`crate sync pair` a few minutes later is the way on. For a playlist of more
+than about a hundred tracks the plain read may be its first hundred only, and
+a change past them is not seen until Tidal catches up, as before. The answer's totals list each read back with how
 many readings it took and how long it waited, which is how long Tidal lagged.
 
 ### Publish a playlist

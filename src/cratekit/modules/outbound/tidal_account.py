@@ -1456,6 +1456,8 @@ class TidalAccount:
         *,
         exact: bool,
         pauses_from: int = 0,
+        after: str = "order",
+        kept: str | None = None,
     ) -> tuple[Any, list[str]]:
         """The playlist opened and read for an order, once the reading agrees with ``known`` (U220).
 
@@ -1481,6 +1483,10 @@ class TidalAccount:
         again the same way whether or not anything is known, since it is a
         write the provider has not caught up with, this product's or a
         person's; once the readings are spent it is refused ``window-lags``.
+        ``after`` names the record of the readings, ``kept`` what a refusal
+        says was not done; :meth:`remove_tracks` reads its positions here too
+        (round one's review), so a lag at its first reading is read again
+        rather than stopping the write.
         """
 
         def agrees(reading: list[str]) -> bool:
@@ -1490,12 +1496,13 @@ class TidalAccount:
                 return list(dict.fromkeys(reading)) == list(dict.fromkeys(known))
             return sorted(reading) == sorted(known)
 
-        note = self._noting(identifier, "order")
-        kept = (
-            "nothing more was moved; every track is still on it"
-            if pauses_from
-            else "no track was moved"
-        )
+        note = self._noting(identifier, after)
+        if kept is None:
+            kept = (
+                "nothing more was moved; every track is still on it"
+                if pauses_from
+                else "no track was moved"
+            )
         last: CratekitError | None = None
         for attempt in range(ORDER_REREADS + 1):
             if attempt:
@@ -1640,8 +1647,21 @@ class TidalAccount:
         self._vouched(identifier, "no track was taken off it")
         asked = set(wanted)
         doing = f"take {len(wanted)} tracks off the playlist {identifier}"
-        playlist = self._playlist(identifier) if wanted else None
-        before = self._positions(identifier, playlist) if wanted else []
+        playlist: Any = None
+        before: list[str] = []
+        if wanted:
+            # U226. THE POSITIONS ARE READ AS AN ORDER'S FIRST READING IS, so
+            # a window that lags its unpaged read is read again after a pause
+            # rather than stopping the write (round one's review); nothing is
+            # known to hold the reading to, and a track the account cannot
+            # play still refuses at once.
+            playlist, before = self._settled(
+                identifier,
+                None,
+                exact=False,
+                after="removal positions",
+                kept="nothing was taken off it",
+            )
         while playlist is not None:
             at = sorted(i for i, one in enumerate(before) if one in asked)[:REMOVE_CHUNK]
             if not at:

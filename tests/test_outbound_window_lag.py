@@ -71,6 +71,19 @@ def test_the_judge_reads_the_two_reads_against_the_declared_count(paged, unpaged
     assert listing.judge_window(paged, unpaged, declared) == judged
 
 
+def test_a_client_that_cannot_read_with_no_window_says_so_at_once():
+    """Round one's review: a signature fault is not climbed as a wait."""
+
+    class Playlist:
+        def tracks(self, limit, offset):
+            return []
+
+    slept: list[float] = []
+    with pytest.raises(listing.ListingNotPaginated):
+        listing.playlist_tracks_unpaged(Playlist(), sleep=slept.append)
+    assert slept == []
+
+
 def test_the_unpaged_read_asks_the_client_with_no_window():
     asked: list[dict] = []
 
@@ -214,10 +227,28 @@ def test_a_removal_whose_first_reading_lags_beside_a_first_page_sends_nothing(in
     provider = _window_lagging(["b", "a", "c"], 0, unpaged=1)
     provider.previous = (["a", "b", "c"], 0)
     provider.lagging = 99
+    slept: list[float] = []
     with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider).remove_tracks("mine", ("b",))
-    assert refused.value.cause.detail["problem"] == "window-lags"
+        _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
+    cause = refused.value.cause
+    assert cause.detail["problem"] == "window-lags"
+    assert cause.detail["readings"] == str(tidal_account.ORDER_REREADS + 1)
+    assert "nothing was taken off it" in cause.message
+    assert len(slept) == tidal_account.ORDER_REREADS
     assert provider.removals == []
+
+
+def test_a_removal_whose_first_reading_lags_once_is_read_again_and_lands(installed):
+    """Round one's review: a lag at the positions read pauses rather than stopping the write."""
+    provider = _window_lagging(["b", "a", "c"], 0, unpaged=1)
+    provider.previous = (["a", "b", "c"], 0)
+    provider.lagging = 1
+    slept: list[float] = []
+    gone = _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
+    assert gone == ("b",)
+    assert provider.removals == [(0,)]
+    assert provider.members == ["a", "c"]
+    assert slept == [tidal_account.ORDER_PAUSES[0]]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -247,6 +278,7 @@ def test_every_read_back_records_its_readings_and_wait(installed):
     assert [(one["after"], one["outcome"]) for one in account.read_backs()] == [
         ("order", "done"),
         ("move", "done"),
+        ("removal positions", "done"),
         ("removal", "done"),
     ]
     move = account.read_backs()[1]

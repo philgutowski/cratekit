@@ -3756,8 +3756,9 @@ def _expected(planned: Plan, steps: Any) -> tuple[int, int]:
     for one in left:
         made = one.target.new and bool(_steps_of(steps, one).get(STEP_MADE))
         if made:
-            # Its listing is the check's now, as any paired playlist's is.
-            check_calls += pair_calls.listing_calls(0)
+            # Its listing is the check's now, as any paired playlist's is,
+            # with the unpaged read beside it (U226, round one's review).
+            check_calls += pair_calls.judged_calls(0)
         write_calls += pair_calls.pair_write(one, made_before=made)
     return check_calls, write_calls
 

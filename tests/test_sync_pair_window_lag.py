@@ -131,6 +131,27 @@ def test_the_check_before_the_write_reads_the_playlist_as_it_stands(world, monke
     assert world.account.playlists[second_id] == ["t4", "t5", "t6"]
 
 
+def test_a_window_that_starts_lagging_after_the_plan_stops_the_write_as_moved(world, monkeypatch):
+    """Round one's review: the check reads a partial unpaged read's lag as a move, naming it."""
+    opener, second = _two_pairs(world)
+    second_id = world.titled("GIG READY Second")
+    world.rekordbox_add(second, "6")
+    real = pair_cli.check
+
+    def check(*args, **kwargs):
+        monkeypatch.setattr(LivePlaylist, "page_size", 1)
+        _lagging_window(world, monkeypatch, {second_id: ["t5", "t4"]}, whole=False)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(pair_cli, "check", check)
+    code, envelope = sync()
+    assert code != int(ExitCode.OK), envelope
+    moved = envelope["cause"]["detail"]["moved"]
+    assert [one["playlist_id"] for one in moved] == [second_id]
+    assert "unpaged" in moved[0]["why"]
+    assert world.account.playlists[second_id] == ["t4", "t5"]
+
+
 def test_the_runs_totals_carry_each_read_backs_readings_and_wait(world, monkeypatch):
     opener, _second = _two_pairs(world)
     account_id = world.titled("GIG READY Opener")
