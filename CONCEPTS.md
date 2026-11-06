@@ -720,6 +720,19 @@ account track the library lacks is queued once through `intake.playlist`.
 *Avoid:* reading a pair as an export or an intake. Both of those go one way and
 never remove.
 
+### On hold
+An account track a custom playlist twin was made without, which `crate sync
+pair` names and never queues until the author chooses (U221). `crate sync
+twins` records each twin's missing tracks with its pair, a landing's twin
+records none, and `crate sync release ACCOUNT_ID` (or `--all`) empties a twin's
+hold so the next sync queues what it lacks. A track added to the account
+playlist after the twin was made is not on hold. A twin paired before U221
+recorded no hold and is read by time: what the account added before the pair
+was marked, or does not date, is on hold.
+
+*Avoid:* a **held release**, which the label genre gate keeps out of review, a
+**held row**, and a **held plan**, which is one sync's plan kept for its gates.
+
 ### Pair snapshot
 What each side of a playlist pair held when its last whole sync finished: the
 account's tracks in order with the date the account gives each (U202), every

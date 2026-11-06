@@ -103,6 +103,16 @@ ACQUISITION through the intake path, ``intake.playlist`` exactly as
 file. A track an earlier sync queued is not queued again and is named as
 awaiting.
 
+**A TWIN'S MISSING TRACKS WAIT FOR THE AUTHOR'S CHOICE (U221).** Decided by
+Phillip on 2026-11-05: a track a custom playlist twin was made without is
+never queued on its own, as a label's releases are never downloaded on their
+own. ``crate sync twins`` records those tracks on the twin's pair, and here
+each is named on the gate as on hold, counted per twin, and left out of the
+queue (:func:`held_for_choice`), until ``crate sync release`` empties that
+twin's hold. A track put on the playlist by hand after the twin was made is
+not held, and a twin paired before U221 or made from a short listing, which
+recorded no hold, is read by the account's added dates against the pair's mark.
+
 **TWO GATES, BOTH ASKED BEFORE ANYTHING IS WRITTEN.** ``sync.pair.rekordbox``
 and ``sync.pair.account`` each show the whole plan, every addition and every
 removal on both sides by artist and title, and each answers for its own side.
@@ -241,6 +251,10 @@ WRITTEN = "sync-pair-written"
 UNPAIRED = "sync-pair-twin-unpaired"
 #: R-1264. Account tracks listed with no title or no artist, kept by their id.
 UNREAD = "sync-pair-unread"
+#: U221. A twin's tracks held for the author's choice, counted per twin.
+ON_HOLD = "sync-pair-on-hold"
+#: U221. The gate's item for one of them.
+ON_HOLD_ACTION = "on-hold"
 
 #: The refusals that are about one pair's own playlists, which a sync of every
 #: pair names and passes over rather than stopping at. R-1264: and an account
@@ -461,6 +475,9 @@ class PairPlan:
     acquire: dict[str, dict[str, Any]] = field(default_factory=dict)
     #: Account tracks an earlier sync of this pair already queued.
     awaiting: tuple[Named, ...] = ()
+    #: U221. Account tracks the library lacks that a twin holds for the
+    #: author's choice, named and never queued until ``sync release``.
+    on_hold: tuple[Named, ...] = ()
     #: Account tracks two live library rows carry, so no row is chosen.
     ambiguous: tuple[Named, ...] = ()
     #: U208. Rekordbox rows matched as one of several releases that all agree.
@@ -519,6 +536,12 @@ class PairPlan:
             # digests as it did.
             **(
                 {"unread": [named.remote_id for named in self.unread]} if self.unread else {}
+            ),
+            # U221, ONLY WHEN ANY, so a pair holding nothing digests as it did.
+            **(
+                {"on_hold": sorted(named.remote_id for named in self.on_hold)}
+                if self.on_hold
+                else {}
             ),
         }
 
@@ -1182,6 +1205,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     adds: list[str] = []
     acquire: dict[str, dict[str, Any]] = {}
     awaiting: list[Named] = []
+    on_hold: list[Named] = []
     ambiguous: list[Named] = []
     lacking = [
         remote_of(key) for key in merged.add_rekordbox if remote_of(key) not in known
@@ -1226,6 +1250,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             continue
         if remote_id in queued_before:
             awaiting.append(names[key])
+        elif held_for_choice(held, remote_id, dates):
+            # U221. A TWIN'S MISSING TRACK WAITS FOR THE AUTHOR'S CHOICE, named
+            # and never queued, until ``sync release`` lets its twin's go.
+            on_hold.append(names[key])
         else:
             acquire[remote_id] = dict(tracks[remote_id])
     order = tuple(
@@ -1289,6 +1317,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         unmatched=tuple(unmatched),
         acquire=acquire,
         awaiting=tuple(awaiting),
+        on_hold=tuple(on_hold),
         ambiguous=tuple(ambiguous),
         tied=tuple(tied),
         siblings=siblings,
@@ -1472,6 +1501,28 @@ def _owned(
             if landed.get(codes[remote_id]):
                 found[remote_id] = landed[codes[remote_id]]
     return found
+
+
+def held_for_choice(pair: Any, remote_id: str, dates: Mapping[str, str]) -> bool:
+    """Whether an account track the library lacks waits for the author's choice (U221).
+
+    Only a custom playlist twin's pair holds. One whose hold is recorded holds
+    exactly the tracks recorded, the ones its twin was made without. One paired
+    before U221 recorded none, so it is read by time: a track is held unless
+    the account dates its addition after the pair was marked, so a track put on
+    the playlist by hand since the twin was made is queued as any pair's is,
+    and one the account dates nowhere, or a mark that does not read, is held.
+    """
+    if pair is None or not getattr(pair, "twin", False):
+        return False
+    recorded = getattr(pair, "on_hold", None)
+    if recorded is not None:
+        return remote_id in recorded
+    marked = placeholders.parse_hearted(getattr(pair, "marked", ""))
+    added = placeholders.parse_hearted(dates.get(remote_id))
+    if marked is None or added is None:
+        return True
+    return not added > marked
 
 
 def _queued(reader: _Reader, account_id: str) -> frozenset[str]:
@@ -2026,6 +2077,8 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
         items.append(row("library", "acquire", by_remote.get(remote_id)))
     for named in one.awaiting:
         items.append(row("library", "awaiting", named))
+    for named in one.on_hold:
+        items.append(row("library", ON_HOLD_ACTION, named))
     for named in one.unmatched:
         items.append(row("account", "unmatched", named))
     for named in one.ambiguous:
@@ -2096,6 +2149,8 @@ def payload(planned: Plan) -> dict[str, Any]:
             "account_removes": count("account", "remove"),
             "acquire": count("library", "acquire"),
             "awaiting": count("library", "awaiting"),
+            # U221. A twin's tracks held for the author's choice.
+            "on_hold": count("library", ON_HOLD_ACTION),
             "unmatched": count("account", "unmatched"),
             "ambiguous": count("rekordbox", "ambiguous"),
             "unpaired": count("pairs", "unpair"),
@@ -2215,6 +2270,10 @@ class Done:
     created: str = ""
     #: U202. The rekordbox playlist made for an account playlist.
     created_in_rekordbox: str = ""
+    #: U220. Why the account order of this pair did not finish, or None.
+    order_refused: Any = None
+    #: U220. The pair's name, said when its order did not finish.
+    name: str = ""
 
     @property
     def wrote(self) -> bool:
@@ -2422,7 +2481,15 @@ STEP_REKORDBOX = "rekordbox"
 STEP_QUEUED = "queued"
 STEP_ACCOUNT = "account"
 STEP_ORDERING = "ordering"
+#: U220. The pair's account order was refused part way, its message the value.
+STEP_ORDER_REFUSED = "order-refused"
 STEP_DONE = "done"
+
+#: U220. The refusals an account order may end in that stop that pair alone:
+#: a read back or a reading the adapter would not trust, and the provider
+#: failing a move or a read. A park, a rejected session and anything else
+#: still stop the whole write, since every later pair would meet it too.
+ORDER_REFUSALS = frozenset({"outbound-remove-refused", "unavailable-transient"})
 
 #: U210. The refusal a write stops with when a step it took cannot be recorded.
 STEPS_UNWRITTEN = "sync-pair-steps-unwritten"
@@ -2643,7 +2710,30 @@ def apply_pair(
         if one.account_order:
             # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
             steps.mark(STEP_ORDERING)
-            account_after = tuple(remote.order_tracks(playlist_id, one.account_order))
+            # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
+            # the adapter's reading agrees with the check's own listing of it.
+            expect = (
+                tuple(account_listed)
+                if steps.has(STEP_ORDER_REFUSED) and account_listed is not None
+                else None
+            )
+            try:
+                account_after = tuple(
+                    remote.order_tracks(playlist_id, one.account_order, expect=expect)
+                )
+            except jobs.Parked:
+                raise
+            except CratekitError as exc:
+                if exc.cause.reason not in ORDER_REFUSALS:
+                    raise
+                # U220. THIS PAIR ALONE STOPS. Its adds and removals landed and
+                # its rekordbox side is written; it is left unfinished, its
+                # snapshot unmoved, for a continue of the run to put in order,
+                # and the write goes on to every other pair.
+                steps.mark(STEP_ORDER_REFUSED, exc.cause.message)
+                done.order_refused = exc.cause
+                done.name = one.name
+                return done
             done.account_ordered = True
         elif account_listed is not None and not (one.account_removes or one.account_adds):
             account_after = tuple(account_listed)
@@ -2697,6 +2787,24 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                 "message": (
                     f"{len(awaiting)} account track(s) were queued for acquisition by "
                     f"an earlier sync and are not in the library yet: {listed(awaiting)}"
+                ),
+            }
+        )
+    holding = [one for one in planned.pairs if one.on_hold]
+    if holding:
+        said.append(
+            {
+                "code": ON_HOLD,
+                "message": (
+                    f"{sum(len(one.on_hold) for one in holding)} account track(s) the "
+                    f"library lacks are held for your choice and were not queued, each "
+                    f"named on the gate: "
+                    + "; ".join(
+                        f"{one.name}: {len(one.on_hold)} (crate sync release "
+                        f"{one.target.account_id})"
+                        for one in holding
+                    )
+                    + "; crate sync release --all lets every twin's go"
                 ),
             }
         )
@@ -3123,6 +3231,10 @@ def check(
                     )
                 elif unread_moved:
                     moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, unread_said))
+                else:
+                    # U220. The listing a refused order is checked against,
+                    # every id in its place as the adapter reads it (R-1264).
+                    listed[account_id] = tuple(listing.order)
             elif now != tuple(one.account_now):
                 moved.append(
                     Moved(ACCOUNT_SIDE, account_id, one.name, _differs(one.account_now, now))
@@ -3629,6 +3741,70 @@ def _stopped(
     return dataclasses.replace(cause, message=f"{cause.message}{said}", detail=detail)
 
 
+def _unordered(
+    unordered: Sequence[Done],
+    planned: Plan,
+    steps: Any,
+    *,
+    run_id: str,
+    argv: Sequence[str] | None,
+) -> Any:
+    """The stop a write ends in when a pair's account order did not finish (U220).
+
+    Built on the first refusal's own cause, so its reason and remedy stand,
+    and said with how far the run got: every pair it finished, each pair whose
+    order did not finish and why, and the command that continues the run.
+    """
+    import dataclasses
+
+    first = unordered[0].order_refused
+    named = "; ".join(
+        f"{one.name or one.account_id} ({one.order_refused.message})" for one in unordered
+    )
+    said = (
+        f"the account order of {len(unordered)} pair(s) did not finish, so their "
+        f"tracks are all on the account and not yet in rekordbox's order: {named}"
+    )
+    detail: dict[str, Any] = {
+        **dict(first.detail or {}),
+        "unordered": [
+            {"account_id": one.account_id, "name": one.name, "why": one.order_refused.message}
+            for one in unordered
+        ],
+    }
+    if steps is None:
+        said += (
+            "; every other pair was written, and this run's plan could not be held, "
+            "so it cannot be continued: run crate sync pair again and answer both "
+            "gates over the plan it shows"
+        )
+        detail["fresh"] = True
+    else:
+        finished = sum(1 for one in planned.pairs if _steps_of(steps, one).has(STEP_DONE))
+        said += (
+            f"; run {run_id} finished {finished} of {len(planned.pairs)} pair(s), wrote "
+            f"every other write of these, and recorded each step it took, so "
+            f"continuing the run tries their order again with no new plan and no "
+            f"new answer, and moves nothing until its reading agrees with the "
+            f"check's; first do what each refusal above asks, then: "
+            + shlex.join(["crate", "--run", run_id, *(argv or VERB_PATH)])
+        )
+        detail.update({"run_id": run_id, "finished": finished})
+    # EVERY REFUSAL'S STEPS, once each, since the message asks the person to
+    # do what each one asks (round two's review).
+    steps_said = tuple(
+        dict.fromkeys(
+            step for one in unordered for step in one.order_refused.remediation.steps
+        )
+    )
+    return dataclasses.replace(
+        first,
+        message=said,
+        detail=detail,
+        remediation=dataclasses.replace(first.remediation, steps=steps_said),
+    )
+
+
 def sync_pair(ctx) -> Envelope:
     """Plan every asked pair once, ask both gates, check the lists, then write each side approved.
 
@@ -3823,6 +3999,13 @@ def sync_pair(ctx) -> Envelope:
             raise jobs.Parked(
                 _stopped(exc.cause, planned, steps, run_id=run_id, argv=ctx.run.argv, cfg=cfg)
             ) from None
+    unordered = [one for one in done if one.order_refused is not None]
+    if unordered:
+        # U220. EVERY OTHER PAIR WAS WRITTEN, and the run stops here, held, so
+        # a continue of it puts the unfinished pairs in order.
+        raise CratekitError(
+            _unordered(unordered, planned, steps, run_id=run_id, argv=ctx.run.argv)
+        )
     forgotten = [
         one
         for one in planned.unpaired
@@ -3934,6 +4117,8 @@ __all__ = [
     "STEP_MADE",
     "STEP_MAKING",
     "STEP_ORDERING",
+    "STEP_ORDER_REFUSED",
+    "ORDER_REFUSALS",
     "STEP_QUEUED",
     "STEP_REKORDBOX",
     "PairSteps",
@@ -3949,6 +4134,8 @@ __all__ = [
     "NEW",
     "NOT_BROUGHT",
     "NOT_DISCOVERED",
+    "ON_HOLD",
+    "ON_HOLD_ACTION",
     "RELEASED",
     "TIME_UNKNOWN",
     "Done",
@@ -3964,6 +4151,7 @@ __all__ = [
     "facts",
     "file_identity",
     "generated_tops",
+    "held_for_choice",
     "landed_inbox_playlists",
     "landed_isrcs",
     "payload",

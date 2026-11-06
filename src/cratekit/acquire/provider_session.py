@@ -177,21 +177,72 @@ class ProviderUnavailable(AdapterError):
     remedy = Remedy.RETRY_LATER
 
 
+def failure_links(exc: BaseException) -> Iterator[tuple[BaseException, bool]]:
+    """``exc`` and every error it was raised from or raised while handling, once each (R-1305).
+
+    Each comes with whether it was reached by DECLARED causes alone, ``raise X
+    from Y``, the declared ones first. The two readers of a rejected session,
+    :func:`_rejected` here and the outbound account's ``_session_refused``, both
+    walk this.
+
+    IT DEPARTS FROM ``core.cause._chain``, WHICH WALKS DECLARED CAUSES ONLY. The
+    provider client reads an error answer's body as JSON inside its own handler
+    of the HTTP error, so a 401 whose body is not JSON, a gateway's page,
+    surfaces as the decode error with the HTTP error three CONTEXT links down
+    and no declared cause anywhere (measured on tidalapi 0.8.11's request
+    handler). A walk of causes alone told that person the provider was
+    unavailable and to wait, for an outage that was not happening.
+
+    TWO LIMITS KEEP ``_chain``'s REASON FOR NOT READING CONTEXT. Off the
+    declared chain the walk never enters a product refusal, a
+    ``CratekitError``: a login or a call made inside a handler of a refused
+    session would otherwise find that refusal's 401 and read its own outage as
+    a rejection, the "raised while handling is not is" mistake ``_chain``
+    names. And a caller trusts a link reached only as context for the status
+    the provider answered, never for its type or name, as ``label.sweep``
+    reads a 429 (R-704).
+
+    The ``walked`` set ends a cycle: both links are assignable, so two errors
+    can name each other, and a walk without it spins rather than fails.
+    """
+    walked: set[int] = set()
+    declared: list[BaseException] = []
+    current: BaseException | None = exc
+    while current is not None and id(current) not in walked:
+        walked.add(id(current))
+        declared.append(current)
+        yield current, True
+        current = current.__cause__
+    pending = [one.__context__ for one in reversed(declared)]
+    while pending:
+        one = pending.pop()
+        if one is None or id(one) in walked or isinstance(one, CratekitError):
+            continue
+        walked.add(id(one))
+        yield one, False
+        pending.extend((one.__cause__, one.__context__))
+
+
+def answered_status(exc: BaseException) -> Any:
+    """The HTTP status the client attached to ``exc``, or None."""
+    return getattr(getattr(exc, "response", None), "status_code", None)
+
+
 def _rejected(exc: BaseException) -> bool:
     """Whether a login failure is the provider refusing this session.
 
-    Read off the response status the client attaches, or the client's own
-    authentication error by name, walking the cause chain because the client
-    re-raises its HTTP error under its own types.
+    Read off the response status the client attaches, on any link
+    :func:`failure_links` reaches, since a status whose body was not JSON sits
+    under the client's decode error as context (R-1305); or the client's own
+    authentication error by name, on the declared cause chain only, because the
+    client re-raises its HTTP error under its own types and a name reached
+    only as context is a guess.
     """
-    seen: BaseException | None = exc
-    while seen is not None:
-        status = getattr(getattr(seen, "response", None), "status_code", None)
-        if status in REJECTED_STATUSES:
+    for link, declared in failure_links(exc):
+        if answered_status(link) in REJECTED_STATUSES:
             return True
-        if type(seen).__name__ == "AuthenticationError":
+        if declared and type(link).__name__ == "AuthenticationError":
             return True
-        seen = seen.__cause__
     return False
 
 
@@ -418,8 +469,10 @@ __all__ = [
     "Codec",
     "ProviderUnavailable",
     "SessionScope",
+    "answered_status",
     "catalogue_client",
     "client_session",
+    "failure_links",
     "materialised_session",
     "write_back",
 ]

@@ -46,8 +46,8 @@ position. So the adapter supplies positions it can vouch for:
    the same way.
 4. **Open the playlist fresh for each request.** The client sends the version
    tag from its last read with the removal, and reads again after it, so the
-   tag rides with the positions it was read beside. Whether the provider
-   refuses a stale tag is unproven until the attended sitting.
+   tag rides with the positions it was read beside. The provider does refuse
+   a stale tag, 412 with nothing changed (Sitting 62, U220's solution entry).
 5. **Never retry.** A removal by position that reached the provider and timed
    out, sent again, takes off whatever moved up into those positions.
 6. **Read back and compare.** The playlist after must equal the playlist

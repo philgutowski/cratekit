@@ -61,10 +61,9 @@ class Playlist:
         return True
 
     def move_by_indices(self, indices: list[int], position: int) -> bool:
-        del position
         self.counter.requests += 1
         (at,) = indices
-        self.members.append(self.members.pop(at))
+        self.members.insert(position, self.members.pop(at))
         return True
 
     def set_playlist_private(self) -> bool:

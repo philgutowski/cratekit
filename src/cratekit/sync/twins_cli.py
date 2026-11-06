@@ -9,7 +9,9 @@ track to a library row (``sync/twins.py`` says how), and names each track the
 twin will not hold. One explicit gate shows every twin and every miss; the
 approved write makes the folders and twins in one guarded commit, reads them
 back, and marks each pair, so ``crate sync pair`` keeps the two one list from
-then on.
+then on. Each twin's missing tracks are recorded as its pair's hold (U221):
+``crate sync pair`` names them and queues none, and ``crate sync release``
+lets one twin's go at the author's choice.
 
 A SECOND RUN PLANS NOTHING. Every playlist the first run made a twin for is
 paired, and a paired playlist is counted and never planned, so the second run
@@ -112,9 +114,10 @@ def _notes(plan: twins.Backfill) -> list[dict[str, str]]:
             {
                 "code": MISSING,
                 "message": (
-                    f"{len(missing)} account track(s) are not in their twin; the next "
-                    f"crate sync pair adds each one it finds in the library and queues "
-                    f"each one the library lacks: "
+                    f"{len(missing)} account track(s) are not in their twin and are held "
+                    f"for your choice: the next crate sync pair adds each one it finds in "
+                    f"the library, names the rest and queues none of them until crate sync "
+                    f"release names its twin's account playlist (U221): "
                     + "; ".join(f"{one.name}: {miss.said()}" for one, miss in missing)
                 ),
             }

@@ -44119,3 +44119,530 @@ the routing tree's membership written under that tree's root.
 **Closes when:** `derivable` allows the declared routing tree alone and the
 suites' synthesized trees are declared as the routing tree, or the cutover
 verb's set is shown to be the only producer.
+
+---
+
+## R-1305. A rejected session whose answer body is not JSON is read as the provider being unavailable
+
+**Found:** at round two's review of #543, U220, 2026-11-05.
+
+**The mechanism.** The provider client reads an error answer's body as JSON
+inside its own handler of the HTTP error, so an answer whose body is not
+JSON surfaces as the decode error, with the HTTP error as its context and
+not its cause. `account._session_refused` (src/cratekit/modules/outbound/
+account.py) and `provider_session._rejected` (src/cratekit/acquire/
+provider_session.py) walk the cause chain alone. U220 fixed the same shape
+in `tidal_account._stale_tag` by walking both chains. Measured on the
+client's own handler with mocked answers: a 401 or 403 with an HTML body
+reads as not refused and is classified `unavailable-transient`; with an
+empty or JSON body it reads `credential-missing`.
+
+**Measured cost.** A person whose stored session the provider rejected is
+told the provider is unavailable and to wait, the cost both functions'
+docstrings name. Whether the provider answers 401 with a body that is not
+JSON is unmeasured.
+
+**Closes when:** both walks read `__context__` beside `__cause__`, saying why
+they depart from `core/cause.py`'s `_chain`, with a test over a 401 whose
+body is HTML through the client's own handler. It meets the board bar under
+(b).
+
+---
+
+## R-1306. A continue of a pair this run made passes the order no reading to agree with
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `check` keys a part written pair's listing by the account
+playlist it read, which for a pair this run made is the identifier in `ours`,
+while `apply_pair` looks it up by `one.target.account_id`, empty in a made
+pair's plan. So a continue of a made pair whose order was refused orders with
+`expect=None`, and only the adapter's own guards (its memory of the adds, the
+read back) hold.
+
+**Measured cost.** Not driven: the planner derives a made pair's additions
+and order from one merged order, and 0 candidates produced a made pair that
+owes an order.
+
+**Closes when:** `apply_pair` looks the listing up by the made identifier,
+with a test, or ledger only.
+
+---
+
+## R-1307. A pair whose order is refused for a reason a continue cannot change is still offered to the continue
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `pair_cli.ORDER_REFUSALS` is keyed on the refusal's reason
+alone, so `outbound-remove-refused` for positions that can never be known (a
+playlist declaring a video, or holding a track the account cannot play) stops
+that pair alone and the stop names `crate --run RUN sync pair`, which meets
+the same refusal, after its rereads (seven seconds). Deliberately kept: the
+alternative, stopping every later pair, is the cost the card exists to end.
+The stop now carries each refusal's own steps and asks for them first.
+
+**Measured cost.** One continue that cannot succeed, driven through the verb
+with a stand in refusal; the producer through the real planner was not driven
+(0 candidates produced a video on a paired playlist).
+
+**Closes when:** the stop says which unordered pairs a continue cannot finish,
+by the refusal's problem, and the continue skips them, or ledger only.
+
+---
+
+## R-1308. A removal from a playlist whose read lags the removal is refused as not done, though it landed
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `TidalAccount.remove_tracks` reads the playlist back once
+after each removal by position and refuses at once when the reading is not
+the playlist with exactly those positions gone. U220 measured on Sitting 62
+that the provider's read can lag a write it accepted, and taught
+`order_tracks` to read again after a pause; `remove_tracks` has the same
+shape and no reread. Driven on a stand in whose read lags one write:
+removing `b` from `[a, b, c, d]` landed, leaving `[a, c, d]`, and was refused
+either "declares 3 track(s) ... nothing was taken off it" (the count current,
+the tracks lagging) or "a track other than the asked ones may have come off"
+(both lagging).
+
+**Measured cost.** The product says a removal did not happen, or may have
+taken the wrong track, when it took exactly the asked one; the person checks
+by hand and the sync stops. The lag itself is measured live for a move
+(Sitting 62), not yet for a removal.
+
+**Closes when:** `remove_tracks` reads back through the same bounded reread
+`order_tracks` uses (a reading equal to the playlist before the removal is
+read again after a pause; anything else refuses at once), with a test over a
+provider whose read lags one write. It meets the board bar under (b).
+
+---
+
+## R-1309. Three of U220's guards kill no test
+
+**Found:** at the reviews of #543, U220, 2026-11-05.
+
+**The mechanism.** `apply_pair`'s `except jobs.Parked: raise` is dead today,
+since no park reason is in `ORDER_REFUSALS`, and is there so that adding one
+cannot swallow a park. `_stale_tag`'s guard against a cyclic chain is never
+met by a test (three cyclic chains were driven by hand and terminate).
+`_pause(0)` returns the last pause, not the first; every caller passes one or
+more.
+
+**Measured cost.** None reaches a person.
+
+**Closes when:** ledger only.
+
+---
+
+## R-1310. A sync pair stopped on an unfinished order reports no totals of what it wrote
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** When an account order does not finish, `sync_pair` writes
+every other pair and then raises one refusal, whose envelope carries the
+refusal's detail (the unordered pairs, the run, how many finished) and not
+the totals a finished sync reports (tracks added and taken off each side,
+playlists made, jobs queued). The continue's totals count only its own
+command's writes.
+
+**Measured cost.** An under report, not a false one: driven through the verb,
+another pair's added track and a playlist brought into rekordbox appear in
+neither envelope.
+
+**Closes when:** the stop's detail carries the totals of the writes it made.
+Ledger only.
+
+---
+
+## R-1311. The account order's pauses and reread count are a bound, not a measurement of the provider
+
+**Found:** at the build of #543, U220, 2026-11-05.
+
+**The mechanism.** `tidal_account.ORDER_PAUSES` (1, 2 and 4 seconds) and
+`ORDER_REREADS` (3) decide how long `order_tracks` waits for a reading that
+lags a write before it refuses. They were chosen in the cloud with no live
+provider. Three facts the card asked to be measured first are still not:
+how long the provider's reads lag its writes, whether its tracks endpoint and
+its playlist endpoint issue the same version tag, and where it lands a move
+to the playlist's length. The adapter is built to be right under every
+answer (moves go to the front, a 412 is read again, a lagging read back is
+read again), so the cost of a wrong guess is a refusal that a continue
+finishes, never a wrong move.
+
+**Measured cost.** Not driven live. A provider lagging longer than seven
+seconds a step leaves the pair unordered and named in the stop.
+
+**Closes when:** the attended card U220 filed records the measurement on the
+card and the constants are set from it, or confirmed. Ledger only: it closes
+at an attended sitting.
+
+---
+
+## R-1312. The readings an account order takes again are not in the call estimate a gate shows
+
+**Found:** at round one's review of #543, U220, 2026-11-05.
+
+**The mechanism.** `pair_calls.account_write` counts one move and one read
+back per track moved. A provider that lags, or refuses a stale tag, makes
+`order_tracks` read again: up to three more readings a read back and up to
+fifteen across the 412s of one order, each an open and its pages. The
+named `--calls` margin is what covers them.
+
+**Measured cost.** Not driven to a park. A park mid order would name a
+ceiling sized without them; each continue still makes progress.
+
+**Closes when:** the estimate counts them once the attended measurement says
+how often they happen, or ledger only.
+
+---
+
+## R-1313. A 404 whose body is not JSON is read as an outage, not as not found, by the account, the catalogue and the ISRC cache
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** R-1305's shape on a different status. The provider client
+decodes an error answer's body inside its own handler of the HTTP error, so a
+404 whose body is a page never becomes `ObjectNotFound`: it surfaces as the
+decode error with the 404 three context links down. Four readers of a not
+found read the failure itself or its declared causes only:
+`modules/outbound/tidal_account._not_found`, `acquire/isrc_cache.said_not_found`,
+`label/tidal_catalogue`'s 404 reader, and `acquire/adapter.classify_unavailable`.
+
+**Measured cost.** Driven over the installed client (tidalapi 0.8.11) with a
+canned answer: a 404 page is read as not found by none of the four, a 404 in
+JSON by all four. A track or release the provider has nothing for is then
+retried, failed as `unavailable-transient` and asked again every run, never
+remembered as gone, the R-380 shape `tidal_catalogue`'s docstring names. Whether
+the provider answers 404 with a page is unmeasured.
+
+**Closes when:** each of the four readers also reads a 404 status reached as
+context, through `provider_session.failure_links` or a walk with its limits,
+with a test per reader raising the failure through the client's own handler
+(`tests/provider_answers.client_failure`). Earns an issue: the product says an
+outage where the provider said gone (board bar b), and it is buildable in the
+cloud as R-1305 was.
+
+---
+
+## R-1314. A rejected session read from a page quotes the decode error, not the status that decided it
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** `account.provider_failure` and `provider_session.client_session`
+put `str(exc)` in the message they raise. For a 401 or 403 whose body is not
+JSON, `exc` is the client's decode error, so the person reads "the provider
+rejected the stored session (Expecting value: line 1 column 1 (char 0))".
+
+**Measured cost.** Printed by the review through `account.resolve` and
+`provider_failure` for a 401 page and a 403 page: the reason and the remedy are
+right, and the parenthesis names nothing a person can act on. No false
+statement.
+
+**Closes when:** the two messages name the status `failure_links` found (for
+example "answered 401") when the failure itself carries none. Ledger only, a
+wording fix.
+
+---
+
+## R-1315. A stale access token whose refresh is answered with a page, or with JSON naming no error, is read as the provider being unavailable
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** When the stored access token has expired, tidalapi 0.8.11's
+`basic_request` asks `token_refresh`, which decodes the oauth answer's body
+before it checks any status (the client's `session.py`, about line 740). An
+answer that is not JSON raises the decode error, and JSON with no `error` key
+raises a `KeyError`; neither carries a status on any link, so
+`provider_session.failure_links` finds nothing for `_rejected` or
+`account._session_refused` to read, and the person is told the provider is
+unavailable and the held account is kept. R-1305's fix reads a status wherever
+the client leaves one; on this path it leaves none.
+
+**Measured cost.** Driven by the review over the installed client with canned
+answers: an oauth answer that is a 401 page, and one that is JSON without
+`error`, both read `unavailable-transient`. A refresh answered 400
+`invalid_grant` in JSON reads right (the client's `AuthenticationError` on the
+declared chain), as does a refresh that succeeds and a sessions call then
+rejected with a page. Whether the live oauth host ever answers with a page is
+unmeasured; this is the path a stale session most often takes, so it is R-1305's
+own cost if it does.
+
+**Closes when:** the live oauth answer to a refresh with a revoked refresh
+token is measured (the attended card filed with R-1305's landing), and, if it
+can be a page, the refresh's decode failure is read as a rejection by a rule
+the measurement justifies. Ledger only until then: no status exists to read,
+so a fix now would be a guess.
+
+---
+
+## R-1316. The refusal limit in the provider failure walk names only the product's refusals, not the adapter's own errors
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** `provider_session.failure_links` never enters a
+`CratekitError` off the declared chain, so a failure met while handling a
+refused session is not read as that refusal. `AdapterAuthFailed`,
+`AdapterBroken` and `ProviderUnavailable` are the adapter layer's own errors and
+plain `Exception` subclasses (`acquire/adapter.py`), so a provider call made
+inside a handler of one of them would be walked into, its 401 cause and all,
+and read as a rejected session.
+
+**Measured cost.** Not driven, because nothing produces it: the review read all
+13 handlers of those three types in `src` and the job engine's item boundary,
+and none makes a provider call inside the handler. 13 candidates driven in
+reading and none produces it.
+
+**Closes when:** the limit also names `AdapterError`, with a test raising a
+provider failure inside a handler of `AdapterAuthFailed`, or a unit adds such a
+handler and pins it. Ledger only, a maintainer facing shape.
+
+---
+
+## R-1317. A twin paired before U221 reads a naive account date as UTC, so a track dated before its mark in a zone east of UTC can read as added after it and be queued
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.held_for_choice` reads a twin that recorded
+no hold by time: a track is held unless the account dates its addition after
+the pair's mark. The dates come through `intake_cli._added_dates`, whose
+`hearted_on` reads `user_date_added` with `placeholders.parse_hearted`, and
+that reads a date with no zone as UTC (`as_utc`). A wall clock date one hour
+before the mark in a zone at +05:00, served with no zone, reads as four hours
+after it.
+
+**Measured cost.** Driven on the twins world by round one of U221's review:
+with `on_hold` dropped from the pairs document and the track dated as a naive
++05:00 wall clock an hour before the mark, `sync pair` queued it. No live
+producer was driven: the provider's client parses `dateAdded` into an aware
+datetime, and `tidal_account._added_at` drops naive ones, so the reachability
+on the live account is unmeasured. A track queued this way is a download
+Phillip did not choose, among sitting 63's twins only.
+
+**Closes when:** the time rule reads a date the account gave with no zone as
+unknown, which holds, rather than as UTC. Ledger only while no producer of a
+naive date is found.
+
+---
+
+## R-1318. The release gate counts a held track the library has since gained, so it can name more than the next sync pair queues
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `crate sync release` (`sync/release_cli.plan`) counts every
+id a twin's recorded hold carries. Once the library gains one of them, by a
+hand import, `crate sync pair` links it and adds it to the twin, but the
+pairs document still holds its id, so the release gate names and counts it.
+Fix round one subtracted the pair's recorded links; round two found that read
+raw links the document never prunes, so a link whose row left the library hid
+a held track and could make a twin unreleasable, and fix round two put back
+the count of every recorded id.
+
+**Measured cost.** Driven on the twins world by round one of U221's review:
+three held, a row carrying one track's ISRC inserted, `sync pair` added it to
+the twin; the release gate said "3 track(s)" and the next `sync pair` queued
+two. A count on the release screen one or more above what the sync pair gate
+then shows and queues; nothing is downloaded, lost or blocked by it.
+
+**Closes when:** the release plan subtracts only a held id whose link names a
+live library row, read as `sync pair` reads it, or `sync pair` drops from the
+recorded hold an id it has linked. Ledger only: a count the next gate corrects.
+
+---
+
+## R-1319. A twin read by time holds a track the account lists with no date, even one added by hand after the twin was made
+
+**Found:** at the review of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/pair_cli.held_for_choice` reads a twin that recorded
+no hold (paired before U221, or made from a short listing) by time, and an
+undated track reads as held, the conservative way, since the time rule cannot
+tell it from one listed before the mark. So a track Phillip adds to the
+account playlist by hand after the twin was made, if the account serves it
+with no date, waits for `crate sync release` rather than being queued.
+
+**Measured cost.** Driven on the twins world by round two of U221's review: a
+short listing backfill, then t22 appended dated after the mark and t23
+appended undated; `sync pair` queued t22 and held t23. `docs/GUIDE.md` says
+so. Whether the live account ever serves an undated track is unmeasured. The
+cost is a wanted download that waits for one release, never one made unasked.
+
+**Closes when:** the account is shown always to date an addition, or the hold
+is recorded for a short listing too, so the time rule is never read for a
+twin made since U221. Ledger only.
+
+---
+
+## R-1320. A twin a landing makes holds nothing, so a track the landing missed is queued again at the next sync pair without a release, until Phillip says whether it should be held too
+
+**Found:** at the build of #549, U221, 2026-11-05.
+
+**The mechanism.** `sync/twins.pair_landed` marks a landing's twin with an
+empty hold, so `crate sync pair` queues a track that twin lacks as any pair's,
+through intake. Only `crate sync twins` (the backfill) records a hold. The
+card asked Phillip, under "Question for Phillip" on #549, whether a landing's
+twin should hold its misses too; no answer had come by the landing, and the
+build took the recommended option, leaving it as it was.
+
+**Measured cost.** None new: before U221 a landing's misses were queued again
+the same way. The sweep that made the twin was Phillip's choice to download
+that playlist, so a retry of its misses is a download he chose. Driven by
+`tests/test_sync_twins_hold.py`, the landing test records an empty hold.
+
+**Closes when:** Phillip answers. If he picks holding a landing's misses,
+`pair_landed` records them as the backfill does, a small card. Ledger only.
+
+---
+
+## R-1321. A file put back at an analyze run item's source name after an interrupt fails the item on the headed name the interrupted attempt took
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** An interrupt after the rename and before the commit
+leaves the headed file and the evidence for it. If a person then puts a file
+back at the source name (a second copy of the same track), the resume reads
+the present source first, drops the evidence, analyses the new file, and
+fails it `analysis-write-failed` because the headed name is taken by the
+first attempt's file. The same outcome on main before U223.
+
+**Measured cost.** Driven by the round two reviewer: the item failed, the
+printed resume cannot finish the job, the first attempt's headed file intact
+and analysed, the new file carrying the head in its title only. The person
+deletes the duplicate and queues the folder again. Producer is a person's
+action between the interrupt and the resume.
+
+**Closes when:** the resume compares the present source with the evidence's
+target (the same recording reading) and settles the item as resumed when
+the target is there. Ledger only.
+
+---
+
+## R-1322. A kill between analyze run's name claim and its rename leaves a zero byte stub the resume then fails on for good
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` in `src/cratekit/analysis/cli.py` claims the
+headed name with `naming.claim_target`, an exclusive create of a zero byte
+file, and then renames the source onto it. A process death between the two
+leaves the stub. The resume finds the source still a file, analyses it again,
+and fails the item `analysis-write-failed`, "that name is already taken",
+against the job's own stub, a permanent cause. Present on main before U223.
+
+**Measured cost.** Driven by the round one reviewer with a kill after
+`claim_target`: resume exit 1, the cause not retryable, the stub at 0 bytes
+under an audio name. The producer is a hard kill in a window of
+microseconds; a Ctrl-C is deferred to the engine's checkpoint and does not
+land there.
+
+**Closes when:** the claim is recorded with the intent so a resume can tell
+its own stub from another file, or the rename replaces a zero byte stub the
+intent names. Ledger only: a SIGKILL in a microsecond window.
+
+---
+
+## R-1323. A rename that lands and then reports an error makes analyze run delete the analysed track under its new name
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` in `src/cratekit/analysis/cli.py` removes the
+claimed target on any `OSError` from `path.rename(target)`, to drop its own
+zero byte claim. A filesystem that completes the rename and then reports an
+error (the retransmitted rename shape of a network mount) leaves the analysed
+file at the target, and that removal deletes it: the folder holds neither
+name, and the next attempt refuses `source-missing` over a deleted track.
+The removal predates U223; U223 only drops the intent and report beside it.
+The same shape sits in `write/naming_cli.py` and `intake/repair_cli.py`.
+
+**Measured cost.** Driven by the round two reviewer with `Path.rename`
+patched to rename and then raise EIO: the folder empty, the item
+`analysis-write-failed`. Reachability unmeasured: no candidate on a local
+disk produces a rename that lands and raises, and no network mount was
+driven.
+
+**Closes when:** the error path removes the target only when it is still the
+zero byte claim (its size is 0 and the source is still a file), in all three
+places. Ledger only until a producer is driven; then it meets the board bar
+as lost files.
+
+---
+
+## R-1324. An intent left by a kill before analyze run's rename names an unrelated file as the twin once the source is deleted
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` records the rename intent before it claims
+the name and renames. A process death between the intent and the rename
+leaves an intent whose rename never landed. U223 drops it at the start of the
+next attempt whose source is still a file, but if the source is deleted
+first and another file is put at the intent's exact headed name, the resume
+reads that file as this item's twin and reports it `resumed_after_rename`.
+Present on main before U223, narrowed by it.
+
+**Measured cost.** Driven by the round one reviewer: a kill after
+`record_rename_intent`, the source deleted and a different file placed at
+the target by the test in the person's place; resume exit 0 over the
+unrelated file. Told something false, but the producer is a hard kill plus
+two moves by a person into the exact name.
+
+**Closes when:** the intent carries something that identifies the source's
+content (its size and modification time, or a digest) and the twin is
+accepted only when the target matches it. Ledger only.
+
+---
+
+## R-1325. A job whose analyze run item already failed source-missing under the shipped code cannot be finished by any resume
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** U223's staged report fallback finishes a job the shipped
+code interrupted between the staged report and the commit, if nobody resumed
+it under the shipped code. A60's job on the machine was resumed then, its
+item failed `source-missing`, a permanent cause, and every `analyze.run`
+failure is permanent, so both `crate analyze run ... --job` and
+`crate job resume` refuse it as not retryable.
+
+**Measured cost.** Driven by the round one reviewer: the shipped attempt and
+resume, then the branch, printed command exit 30 "every failure is
+permanent", `crate job resume` exit 30 `job-not-retryable`. The person queues
+the folder again, which the refusal already names, and the renamed track is
+skipped by its head.
+
+**Closes when:** A60 (#423) retakes its interrupt on a fresh folder. Ledger
+only: the requeue is the remedy shown.
+
+---
+
+## R-1326. Every renamed analyze run item leaves its rename intent in the job store's analysis staging for good
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** Since U223 `staged_path` keeps `rename-intent.json` so it
+outlives the attempt that renamed the file, and the engine's commit moves
+only the staged report. Nothing removes the intent once the row is done, so
+`analysis-staging/<job>/<ordinal>/rename-intent.json` stays for every renamed
+track, as the empty staging directories did before.
+
+**Measured cost.** Driven by the round one reviewer: a one item run to done
+leaves the staging directory listing only the intent. A small file per
+renamed track; no reader is harmed, since a done row is never driven again.
+
+**Closes when:** a job store prune removes the staging of a finished job, or
+the commit hook drops the item's staging once its row is done. Ledger only.
+
+---
+
+## R-1327. analyze run writes its rename intent through a linked staging directory that staged_path then refuses
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `record_rename_intent` in
+`src/cratekit/analysis/artifacts.py` makes the item's staging directory and
+writes into it without checking for a link, so an ordinal directory that is a
+link has the intent written at its far end, after which `staged_path`
+refuses the link and the item fails `internal-error` for good. U223 stopped
+the discard and the readers following such a link; the writer predates it.
+
+**Measured cost.** Driven by the round two reviewer with a link planted in
+the private job store. No verb writes a link there: zero producers.
+
+**Closes when:** the writer refuses a linked staging directory the way
+`staged_path` does. Ledger only.

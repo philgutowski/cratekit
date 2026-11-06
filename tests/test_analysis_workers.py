@@ -498,6 +498,410 @@ def test_a_rename_intent_for_another_item_or_a_gone_target_is_not_a_twin(cfg, fo
     assert analysis_cli._finalized_twin(cfg, Job, Item) is None, "another item's intent"
 
 
+# ---------------------------------------------------------------------------
+# U223: an interrupt between the staged report and the commit
+# ---------------------------------------------------------------------------
+
+
+def interrupt_once_staged(monkeypatch, *, status: str = "analyzed", times: int = 1):
+    """A real SIGINT the moment an item's report is staged, before its commit.
+
+    The window A60's live run hit (#423, sitting 72): the handler has renamed
+    the file and returned its staged report, and the engine's own checkpoint
+    finds the signal outstanding, releases the item uncommitted and cancels
+    the job. Nothing here edits a store or a staging file by hand.
+    """
+    import os
+    import signal
+
+    real = artifacts.produced
+    hits: list[str] = []
+
+    def produced(cfg, job, item, report):
+        staged = real(cfg, job, item, report)
+        if report.get("status") == status and len(hits) < times:
+            hits.append(item.item_id)
+            os.kill(os.getpid(), signal.SIGINT)
+        return staged
+
+    monkeypatch.setattr(artifacts, "produced", produced)
+    return hits
+
+
+def _interrupted(stopped: dict) -> list[str]:
+    """The resume argv the interrupted answer printed, checked against its line."""
+    import shlex
+
+    argv = stopped["cause"]["detail"]["resume"]
+    step = stopped["cause"]["remediation"]["steps"][0]
+    assert step == f"resume it with: {shlex.join(['crate', *argv])}", step
+    return list(argv)
+
+
+def test_an_interrupt_after_a_renamed_items_report_is_staged_resumes_by_the_printed_command(
+    cfg, folder, silence, monkeypatch
+):
+    """U223's bug, through the verb a person runs and the command it prints.
+
+    The shipped ``staged_path`` cleared the item's whole staging directory,
+    rename intent and all, in the same attempt that renamed the file, so the
+    resume found the source gone, no intent, and failed the item for ever as
+    ``source-missing`` over a file analysed and renamed on disk.
+    """
+    place(folder, silence, "a parade")
+    place(folder, silence, "b untouched")
+    seen = detector()
+    bind_scoring(monkeypatch, detect_=seen)
+    hits = interrupt_once_staged(monkeypatch)
+
+    code, stopped = drive(["analyze", "run", str(folder)])
+
+    assert code == int(ExitCode.INTERRUPTED), stopped
+    assert hits == ["a parade.flac"]
+    finished = folder / "08A - 124 - a parade.flac"
+    assert finished.is_file() and not (folder / "a parade.flac").exists()
+    job = analysis_job("analyze.run")
+    assert item_states(job.job_id) == {
+        "a parade.flac": jobs.ItemState.PENDING,
+        "b untouched.flac": jobs.ItemState.PENDING,
+    }
+
+    code, resumed = drive(_interrupted(stopped))
+
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    by_item = {r["item"]: r for r in artifacts.committed(cfg, job.job_id)}
+    assert by_item["a parade.flac"]["status"] == "skipped-prefixed"
+    assert by_item["a parade.flac"]["resumed_after_rename"] is True
+    assert by_item["a parade.flac"]["path"] == str(finished)
+    assert by_item["b untouched.flac"]["status"] == "analyzed"
+    assert seen.seen == ["a parade.flac", "b untouched.flac"], "a track was analysed twice"
+
+
+def test_a_resume_interrupted_in_the_same_window_is_resumed_again(
+    cfg, folder, silence, monkeypatch
+):
+    """The resume's own report is staged and the signal lands again before its
+    commit. The intent must outlive that attempt too, or the second resume is
+    the shipped bug one attempt later."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    interrupt_once_staged(monkeypatch)
+    _, stopped = drive(["analyze", "run", str(folder)])
+    argv = _interrupted(stopped)
+
+    hits = interrupt_once_staged(monkeypatch, status="skipped-prefixed")
+    code, again = drive(argv)
+    assert code == int(ExitCode.INTERRUPTED), again
+    assert hits == ["a.flac"]
+
+    # THE ``--job`` PATH LEAVES ITS JOB CANCELLED, which ``crate job resume``
+    # re-arms before it drives; the arming is taken by hand here so the drive
+    # stays in this process where the scoring is bound.
+    job = analysis_job("analyze.run")
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+    code, resumed = drive(argv)
+    assert code == int(ExitCode.OK), resumed
+    report = artifacts.committed(cfg, job.job_id)[0]
+    assert report["resumed_after_rename"] is True
+    assert report["path"] == str(folder / "08A - 124 - a.flac")
+
+
+def test_a_job_the_shipped_code_left_with_no_intent_resumes_from_its_staged_report(
+    cfg, folder, silence, monkeypatch
+):
+    """A job the shipped code interrupted in this window and nobody resumed
+    yet: the file renamed, the staged report naming it, and no intent. The
+    report is this item's own record of the rename, so it is the proof when
+    the intent is gone. (A job already resumed under the shipped code failed
+    its item for good, as A60's did, and is queued again instead.)"""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    interrupt_once_staged(monkeypatch)
+    _, stopped = drive(["analyze", "run", str(folder)])
+    job = analysis_job("analyze.run")
+    item = _item(job.job_id, "a.flac")
+    intent = artifacts.intent_path(cfg, job.job_id, item.ordinal)
+    assert intent.is_file(), "the attempt that renamed the file lost its intent"
+    intent.unlink()
+
+    code, resumed = drive(_interrupted(stopped))
+
+    assert code == int(ExitCode.OK), resumed
+    report = artifacts.committed(cfg, job.job_id)[0]
+    assert report["resumed_after_rename"] is True
+    assert report["path"] == str(folder / "08A - 124 - a.flac")
+
+
+def _item(job_id: str, item_id: str) -> jobs.Item:
+    with jobs.open_store() as store:
+        return next(i for i in jobs.items(store, job_id) if i.item_id == item_id)
+
+
+class _Job:
+    job_id = "j1"
+
+
+class _Item:
+    item_id = "a.flac"
+    ordinal = 1
+
+
+def _job_over(folder: Path):
+    class Job:
+        job_id = "j1"
+        payload = {"folder": str(folder)}
+
+    return Job
+
+
+def _stage(cfg, report: dict) -> Path:
+    return artifacts.write(artifacts.staged_path(cfg, _Job.job_id, _Item.ordinal), report)
+
+
+def test_a_staged_report_is_a_twin_only_for_this_item_renamed_in_its_own_folder(
+    cfg, folder, tmp_path
+):
+    """The fallback reads the item's own record, never the folder, and each
+    field it trusts is driven alone."""
+    job = _job_over(folder)
+    twin = folder / "08A - 124 - a.flac"
+    twin.write_bytes(b"x")
+    analysed = {
+        "item": "a.flac",
+        "path": str(twin),
+        "renamed_to": twin.name,
+        "status": "analyzed",
+    }
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "nothing staged"
+    _stage(cfg, analysed)
+    assert analysis_cli._finalized_twin(cfg, job, _Item) == twin
+    _stage(cfg, {**analysed, "item": "b.flac"})
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "another item's report"
+    _stage(cfg, {**analysed, "renamed_to": None})
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "a report with no rename"
+    _stage(cfg, {**analysed, "renamed_to": "08A - 125 - a.flac"})
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "renamed_to is not its path"
+    _stage(cfg, {**analysed, "status": "skipped-prefixed"})
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "not an analysed report"
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    (elsewhere / twin.name).write_bytes(b"x")
+    _stage(cfg, {**analysed, "path": str(elsewhere / twin.name)})
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "outside the folder"
+    resumed = {"item": "a.flac", "path": str(twin), "status": "skipped-prefixed"}
+    _stage(cfg, {**resumed, "resumed_after_rename": True})
+    assert analysis_cli._finalized_twin(cfg, job, _Item) == twin, "a resume's own report"
+    _stage(cfg, resumed)
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "a prefixed skip"
+    _stage(cfg, analysed)
+    twin.unlink()
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None, "the target is gone"
+
+
+def test_a_staged_report_that_is_not_json_or_not_a_mapping_is_no_twin(cfg, folder):
+    job = _job_over(folder)
+    staged = artifacts.staged_path(cfg, _Job.job_id, _Item.ordinal)
+    staged.write_text("{not json", encoding="utf-8")
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None
+    staged.write_text("[1, 2]", encoding="utf-8")
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None
+
+
+def test_a_new_attempt_clears_a_stale_report_and_keeps_only_the_intent(cfg, folder):
+    """A second attempt starts from a clean staging directory: a stale report
+    never leaks into it. Only the intent, the resume's evidence, is kept."""
+    first = _stage(cfg, {"item": "a.flac", "status": "analyzed"})
+    (first.parent / "scratch.tmp").write_text("x", encoding="utf-8")
+    (first.parent / "nested").mkdir()
+    (first.parent / "nested" / "left.json").write_text("{}", encoding="utf-8")
+    intent = artifacts.record_rename_intent(cfg, _Job, _Item, folder / "08A - 124 - a.flac")
+
+    second = artifacts.staged_path(cfg, _Job.job_id, _Item.ordinal)
+
+    assert second == first
+    assert sorted(p.name for p in second.parent.iterdir()) == [artifacts.RENAME_INTENT_FILENAME]
+    assert intent.is_file()
+    assert artifacts.rename_intent(cfg, _Job, _Item) == folder / "08A - 124 - a.flac"
+
+
+def test_an_attempt_whose_source_is_still_there_drops_a_stale_intent(
+    cfg, folder, silence, monkeypatch
+):
+    """An intent whose source is still a file names a rename that never landed.
+    Left behind, it would name whatever later sits at that target as this
+    item's twin once the source is deleted."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+    item = _item(job.job_id, "a.flac")
+    unrelated = folder / "unrelated.flac"
+    artifacts.record_rename_intent(cfg, job, item, unrelated)
+
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert artifacts.rename_intent(cfg, job, item) == folder / "08A - 124 - a.flac", (
+        "the attempt's own intent replaced the stale one"
+    )
+
+
+def test_a_kill_after_an_attempt_starts_leaves_no_stale_report_to_read_as_a_twin(
+    cfg, folder, silence, monkeypatch
+):
+    """Round one's residual, closed: an attempt whose source is a file drops the
+    staged report with the intent, before any work a kill can interrupt. Kept,
+    the report of an earlier attempt's rename would name whatever later sits
+    at that headed name as this item's twin once the source is deleted."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+    item = _item(job.job_id, "a.flac")
+    headed = folder / "08A - 124 - a.flac"
+    staged = artifacts.write(
+        artifacts.staged_path(cfg, job.job_id, item.ordinal),
+        {"item": "a.flac", "path": str(headed), "renamed_to": headed.name, "status": "analyzed"},
+    )
+    artifacts.record_rename_intent(cfg, job, item, headed)
+
+    def killed(path):
+        raise _Killed()
+
+    bind_scoring(monkeypatch, detect_=killed)
+    with pytest.raises(_Killed):
+        drive(resume_argv(job.job_id))
+
+    assert not staged.exists(), "the earlier attempt's report outlived this one's start"
+    assert artifacts.rename_intent(cfg, job, item) is None
+    (folder / "a.flac").unlink()
+    headed.write_bytes(b"an unrelated track")
+    assert analysis_cli._finalized_twin(cfg, job, item) is None
+
+
+def test_a_linked_intent_is_cleared_rather_than_kept_and_followed(cfg, folder, tmp_path):
+    planted = tmp_path / "planted.json"
+    planted.write_text(json.dumps({"item": "a.flac", "target": str(folder / "x.flac")}))
+    intent = artifacts.intent_path(cfg, _Job.job_id, _Item.ordinal)
+    intent.parent.mkdir(parents=True)
+    intent.symlink_to(planted)
+
+    artifacts.staged_path(cfg, _Job.job_id, _Item.ordinal)
+
+    assert not intent.is_symlink() and not intent.exists()
+    assert planted.is_file(), "the clear followed the link"
+
+
+def test_a_linked_intent_or_report_is_never_read_as_the_twin(cfg, folder, tmp_path):
+    """Fix round two: the read path followed a planted link before the clear
+    could drop it, and named its far end's file as this item's twin."""
+    job = _job_over(folder)
+    other = folder / "other.flac"
+    other.write_bytes(b"x")
+    planted = tmp_path / "planted.json"
+    planted.write_text(json.dumps({"item": "a.flac", "target": str(other)}))
+    intent = artifacts.intent_path(cfg, _Job.job_id, _Item.ordinal)
+    intent.parent.mkdir(parents=True)
+    intent.symlink_to(planted)
+    assert artifacts.rename_intent(cfg, job, _Item) is None
+    intent.unlink()
+    report = tmp_path / "report.json"
+    report.write_text(
+        json.dumps(
+            {"item": "a.flac", "path": str(other), "renamed_to": other.name, "status": "analyzed"}
+        )
+    )
+    (intent.parent / "0001.json").symlink_to(report)
+    assert artifacts.staged_report(cfg, job, _Item) is None
+    assert analysis_cli._finalized_twin(cfg, job, _Item) is None
+
+
+def test_the_discard_never_reaches_through_a_linked_staging_directory(cfg, folder, tmp_path):
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    for name in (artifacts.RENAME_INTENT_FILENAME, "0001.json"):
+        (elsewhere / name).write_text("{}", encoding="utf-8")
+    directory = artifacts.intent_path(cfg, _Job.job_id, _Item.ordinal).parent
+    directory.parent.mkdir(parents=True)
+    directory.symlink_to(elsewhere)
+
+    artifacts.discard_rename_evidence(cfg, _job_over(folder), _Item)
+
+    assert sorted(p.name for p in elsewhere.iterdir()) == ["0001.json", "rename-intent.json"]
+
+
+def test_a_directory_at_the_report_name_is_cleared_and_the_attempt_finishes(
+    cfg, folder, silence, monkeypatch
+):
+    """Fix round two: the attempt start's discard unlinked the report name and
+    failed the item for good on a directory there, a shape the clear before
+    U223 healed."""
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+    item = _item(job.job_id, "a.flac")
+    staged = artifacts.staged_path(cfg, job.job_id, item.ordinal)
+    staged.mkdir()
+    (staged / "inside").write_text("x", encoding="utf-8")
+
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+
+
+def test_a_prefixed_source_drops_a_stale_intent_too(cfg, folder, silence, monkeypatch):
+    place(folder, silence, "08A - 124 - a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+    item = _item(job.job_id, "08A - 124 - a.flac")
+    artifacts.record_rename_intent(cfg, job, item, folder / "unrelated.flac")
+
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert artifacts.rename_intent(cfg, job, item) is None
+
+
+def test_a_taken_target_name_leaves_no_intent_behind(cfg, folder, silence, monkeypatch):
+    """The rename never happened, so an intent naming the other file is false.
+    A retry after the source is deleted would read it as this item's twin."""
+    place(folder, silence, "twin")
+    place(folder, silence, "08A - 124 - twin")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+
+    drive(resume_argv(job.job_id))
+
+    assert item_causes(job.job_id) == {"twin.flac": "analysis-write-failed"}
+    item = _item(job.job_id, "twin.flac")
+    assert artifacts.rename_intent(cfg, job, item) is None
+
+
+def test_a_refused_rename_leaves_no_intent_behind(cfg, folder, silence, monkeypatch):
+    place(folder, silence, "a")
+    bind_scoring(monkeypatch)
+    drive(["analyze", "run", "--queue-only", str(folder)])
+    job = analysis_job("analyze.run")
+
+    def refuse_rename(self, target):
+        raise PermissionError(13, "Permission denied")
+
+    monkeypatch.setattr(Path, "rename", refuse_rename)
+    drive(resume_argv(job.job_id))
+
+    assert item_causes(job.job_id) == {"a.flac": "analysis-write-failed"}
+    assert (folder / "a.flac").is_file()
+    assert not (folder / "08A - 124 - a.flac").exists(), "the claim was left behind"
+    item = _item(job.job_id, "a.flac")
+    assert artifacts.rename_intent(cfg, job, item) is None
+
+
 def test_a_detector_shaped_like_the_batch_fakes_is_accepted(cfg, folder, silence, monkeypatch):
     place(folder, silence, "a")
     bind_scoring(

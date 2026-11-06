@@ -56,7 +56,8 @@ Four words carry most of the rest.
   without repeating finished work. Three verbs of the acquisition tail, `tag
   folder`, `analyze run` and `analyze restamp`, queue their job and then work
   through it before they return, so each step is one command. Stop one with
-  Ctrl-C and its answer names the `--job` command that finishes the rest; pass
+  Ctrl-C at any moment and its answer names the `--job` command that finishes
+  the rest, a track `analyze run` had already renamed included; pass
   `--queue-only` to have it queue and return like the others. An intake job
   names the playlist it was made for in both `job list` and `job show`. An
   open intake job holds its playlist out of every sync pass, so an old one
@@ -971,6 +972,27 @@ anything is queued. From then on `crate sync pair` keeps each twin and its accou
 one list: an addition on either side lands on both, a removal on either side
 comes off both, and a track the library lacks is queued once.
 
+A track a twin was made without is held for your choice, never downloaded on
+its own, as a label's releases are not. `crate sync twins` records each twin's
+missing tracks with its pair, and `crate sync pair` names every one of them on
+its gate as on hold, counts them per twin playlist and queues none:
+
+```bash
+crate sync release ACCOUNT_ID     # let one twin's held tracks go
+crate sync release --all          # every twin's
+```
+
+`crate sync release` shows each twin and the tracks it holds on one gate, and
+once you approve, the next `crate sync pair` queues what that twin lacks; a
+second twin you did not name stays held. A track you put on the account
+playlist by hand after its twin was made is not held and is queued as usual. A
+twin made before this hold existed, or from a listing the account served
+short, recorded no list, so `crate sync pair`
+holds every track the account added to it before the twin was made, and one
+the account gives no date for, and `crate sync release` names that twin as
+holding those. A twin a landing makes holds nothing: the sweep that landed it
+was your choice to download that playlist.
+
 A track the account lists with no title or no artist never stops `crate sync
 pair`. It is left where it is on both sides and named on the gate, and every
 other track of that playlist syncs both ways, removals and order included; a
@@ -1075,6 +1097,16 @@ on Tidal or in rekordbox, it refuses as stale and names it, and a fresh
 provider calls the write is expected to make, and when that is more than one
 command may make, the `--calls` value that lets it finish in one go.
 
+Putting a Tidal playlist in rekordbox's order is one move per track, each read
+back before the next. When the provider is slow to show a change, Cratekit
+waits a few seconds and reads again rather than moving anything twice, and when
+it cannot trust what it reads it leaves that one playlist with every track on
+it but not yet in order. That stops that pair alone: every other pair, and
+every playlist brought into rekordbox, is still written, and the answer names
+the playlists left out of order and the `crate --run RUN sync pair` that
+finishes them. Look at each in the Tidal app first; the continue moves nothing
+until its reading agrees with the one it took just before.
+
 ### Publish a playlist
 
 ```bash
@@ -1140,7 +1172,10 @@ gives every downloaded set on the account its INSPIRATION playlist: each
 `DOWNLOADED` playlist in a `Downloaded Sets <year>` folder with no INSPIRATION
 playlist of its name (the account name without `DOWNLOADED `) gets one, holding
 the library tracks its account tracks match, in the set's order, with every
-track it could not match named under the set. Nothing is downloaded, a set with
+track it could not match named under the set. A track Tidal lists with no
+title or no artist does not hold its set back: it is named among the misses,
+by its id and why, and the set's other tracks are matched; a set none of whose
+tracks can be read is shown unread. Nothing is downloaded, a set with
 no match gets no playlist, and a set already in INSPIRATION is skipped, so a
 second run plans nothing. That write needs rekordbox closed. The account
 area builds a folder for every followed label that lacks one or a year, marks
@@ -1674,6 +1709,12 @@ is an act at a browser and the vendored downloader owns that conversation. The
 full procedure, and why the session has to be the PKCE kind or every download
 quietly comes back lossy, is in [`adapters.md`](adapters.md) under "Authorising
 the provider". Delete the plaintext token file once it is in the keychain.
+
+When the streaming account rejects the stored session, at sign in or in the
+middle of a job, Cratekit says the session was rejected and to sign in again,
+whatever the answer's body held, a gateway's page and an empty answer
+included. When the provider fails or cannot be reached it says to wait and
+resume, and keeps the stored session, because nothing judged it.
 
 ## Where things live
 

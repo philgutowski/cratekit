@@ -117,6 +117,8 @@ class FakeAccount:
         #: asserted through the path that rebuilds the cause and merges totals.
         self.provider_error = provider_error
         self._writes = 0
+        #: U220. Every order asked, as ``(playlist, expect)``.
+        self.expected: list[tuple[str, tuple[str, ...] | None]] = []
         #: Every match asked, as the keyword arguments it was asked with, so a
         #: test can say what an engine handed the account to choose by.
         self.matches: list[dict[str, str]] = []
@@ -341,13 +343,32 @@ class FakeAccount:
         self.taken.append((playlist_id, tuple(remote_ids)))
         return tuple(one for one in remote_ids if one not in members)
 
-    def order_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Put the asked tracks it holds once in the asked order, the rest first. One write."""
+    def order_tracks(
+        self,
+        playlist_id: str,
+        remote_ids: tuple[str, ...],
+        *,
+        expect: tuple[str, ...] | None = None,
+    ) -> tuple[str, ...]:
+        """Put the asked tracks it holds once in the asked order, by the adapter's rule. One write.
+
+        The adapter's rule (U220): the longest run at the tail of the asked
+        order already standing stays, and each asked track before it is moved
+        to the front, the last first, so a track not asked stays where it
+        stood among the kept tail. ``expect`` is recorded in :attr:`expected`.
+        """
+        self.expected.append((playlist_id, None if expect is None else tuple(expect)))
         self._bump(playlist_id)
         members = self.playlists.setdefault(playlist_id, [])
         once = {one for one in members if members.count(one) == 1}
         asked = [one for one in dict.fromkeys(remote_ids) if one in once]
-        members[:] = [one for one in members if one not in set(asked)] + asked
+        keep = 0
+        for one in reversed(members):
+            if one in set(asked) and keep < len(asked) and one == asked[-1 - keep]:
+                keep += 1
+        for one in reversed(asked[: len(asked) - keep]):
+            members.remove(one)
+            members.insert(0, one)
         self.ordered.append((playlist_id, tuple(remote_ids)))
         return tuple(members)
 

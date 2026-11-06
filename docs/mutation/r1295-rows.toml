@@ -1,0 +1,165 @@
+name = "r1295"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_refused_row_fatal"
+description = "_read: every refused row raises again, so one untitled track leaves the whole set unread as on main"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            one = intake_cli.set_aside(row)
+            if not one.ref:'''
+new = '''            one = intake_cli.set_aside(row)
+            if True:'''
+
+[[rows]]
+id = "M2_no_id_named"
+description = "_read: a refused row with no provider id is named as a miss rather than leaving its set unread"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            if not one.ref:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M3_read_positions_renumbered"
+description = "_read: a read track's place counts only the rows read, so a miss after an unread row is misplaced"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            wanted.append((position, match.read_row('''
+new = '''            wanted.append((len(wanted) + 1, match.read_row('''
+
+[[rows]]
+id = "M4_unread_positions_renumbered"
+description = "_read: an unread track's place counts only the unread rows"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''            unread.append((position, one))'''
+new = '''            unread.append((len(unread) + 1, one))'''
+
+[[rows]]
+id = "M5_all_unread_branch"
+description = "plan: drop the every track unread branch, so such a set reads as one with no match"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if listing.unread and not listing.wanted:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M6_none_read_uncapped"
+description = "_none_read: name every unread track rather than the first five"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''listing.unread[:NAMED_UNREAD])'''
+new = '''listing.unread)'''
+
+[[rows]]
+id = "M7_none_read_rest_uncounted"
+description = "_none_read: say nothing of the unread tracks past the fifth"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''    if rest > 0:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M8_none_read_withheld_dropped"
+description = "_none_read: say nothing of the tracks the provider withheld"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''    if listing.withheld:
+        said +='''
+new = '''    if False:
+        said +='''
+
+[[rows]]
+id = "M9_misses_unsorted"
+description = "_matched: misses kept unread first rather than in set order"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''tuple(sorted(misses, key=lambda miss: miss.position))'''
+new = '''tuple(misses)'''
+
+[[rows]]
+id = "M10_unread_off_misses"
+description = "_matched: an unread track is not among the set's misses"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''    misses: list[Miss] = list(unread)'''
+new = '''    misses: list[Miss] = []'''
+
+[[rows]]
+id = "M11_again_drops_unread"
+description = "again: the write re-decides without the unread tracks, so the approved plan reads stale"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''                    row.withheld,
+                    row_of,
+                    row.unread,'''
+new = '''                    row.withheld,
+                    row_of,
+                    (),'''
+
+[[rows]]
+id = "M12_setrow_keeps_no_unread"
+description = "_decided: the set row keeps no unread tracks for the write to decide from"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        unread=unread,
+    )'''
+new = '''        unread=(),
+    )'''
+
+[[rows]]
+id = "M13_unread_miss_no_id"
+description = "_unread_miss: the miss line names no track id"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''f"{one.why} (track {one.ref}), so it was not asked of the library"'''
+new = '''f"{one.why}, so it was not asked of the library"'''
+
+[[rows]]
+id = "M14_unread_miss_blank_title"
+description = "_unread_miss: an absent title shown blank rather than as no title"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        one.title or "no title",'''
+new = '''        one.title,'''
+
+[[rows]]
+id = "M15_plan_passes_no_unread"
+description = "plan: the readable sets are decided with no unread misses"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''                    tuple(_unread_miss(place, one) for place, one in listing.unread),'''
+new = '''                    (),'''
+
+[[rows]]
+id = "M16_set_aside_one_word"
+description = "set_aside: always names the title as the absent half, so an artistless track is misnamed"
+file = "src/cratekit/intake/cli.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py", "tests/intake/test_workers.py", "tests/test_sync_all.py"]
+old = '''why=f"the account lists it with no {_absent(title)}"'''
+new = '''why="the account lists it with no title"'''
+
+[[rows]]
+id = "M17_skip_guard"
+description = "plan (existing guard, sample): a set INSPIRATION already holds is read and planned again"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py"]
+old = '''        if name in held:'''
+new = '''        if False:'''
