@@ -697,14 +697,17 @@ def plan_area(
         moving = _file_step(cfg, area if area.wants(FILE) else Area(name=AREA), filed_of, remote_of)
     if area.wants(ROOT):
         _root_step(cfg, area, followed, catalogue_of, remote_of, filed_of)
-    if area.wants(MIRROR):
-        account_mirror.add_steps(cfg, area, remote_of.get, run, shared=shared)
     if area.wants(YOURS):
         # AN EMPTY ROOT PLAYLIST IS THE ROOT STEP'S, not one of the author's
         # left alone, read off the filing plan so ``--only yours`` makes none
         # of the root step's reads. Debris is passed over by its name below,
         # and a legacy folder's playlists are in a folder.
         _yours(cfg, area, labels, catalogue_of, remote_of, moving | _empties(filed_of))
+    # THE MIRROR IS PLANNED LAST (U222): it freezes every step the gate shows,
+    # so the run that applies names the ones that moved, and a step planned
+    # after it would be named on every stale answer as one the gate never showed.
+    if area.wants(MIRROR):
+        account_mirror.add_steps(cfg, area, remote_of.get, run, shared=shared)
     area.facts["writes"] = (
         "folders are created and playlists filed and prefixed; at the root, only the "
         "source system's label debris whose tracks are in its label's folder, an empty "

@@ -65,6 +65,14 @@ alone, so a library write between the two acts no longer moves the digest and
 the provider is asked only about rows the frozen plan does not carry. A report
 records and freezes nothing.
 
+THE SNAPSHOT IS READ AS THE GATE READ IT (U222). The run that answers reads each
+recorded playlist's snapshot from the frozen plan too, so an account edit the
+rekordbox area took into the library between the acts is decided as the gate
+decided it, and never planned off the account again. When the answer is stale
+all the same, the area names each step that moved since the gate showed it and
+how the mirror's plan was made, and ``crate organize`` puts both on the
+refusal.
+
 Layer: modules.
 """
 
@@ -545,6 +553,11 @@ def read(cfg: config.Config, account_of: Callable[[], Any], run: Run | None = No
     # reads no landing record and asks the provider about no row.
     known = landed_tracks(cfg) if frozen is None else {}
     recorded = ledger.mirror_folders(cfg)
+    if frozen is not None:
+        # THE GATE'S SNAPSHOTS BESIDE THE GATE'S LIBRARY (U222): a snapshot the
+        # rekordbox area settled between the acts read beside the frozen
+        # library reads the edit it took as rekordbox's own change.
+        recorded = mirror_frozen.overlay(recorded, frozen)
     links = ledger.mirror_links(cfg)
     misses = ledger.mirror_misses(cfg)
     account = mirror.Counted(account_of())
@@ -793,7 +806,7 @@ def add_steps(
         area.steps.append(refused(MIRROR, TITLE, exc.cause))
         return
     started = reading.started
-    frozen, unfrozen = reading.frozen, reading.unfrozen
+    frozen = reading.frozen
     library, recorded = reading.library, reading.recorded
     account, root, matcher = reading.account, reading.root, reading.matcher
     settled: list[tuple[str, dict[str, tuple[str, frozenset[str]]]]] = []
@@ -909,26 +922,65 @@ def add_steps(
             else ""
         )
     elif run is not None and run.record:
-        area.facts[FROZEN_FACT] = _record(cfg, run, library, matcher, unfrozen)
+        area.facts[FROZEN_FACT] = _record(cfg, run, reading, area)
+    if run is not None and run.decided:
+        area.stale.extend(_stale(area, frozen))
 
 
-def _record(
-    cfg: config.Config, run: Run, library: Library, matcher: mirror.Matcher, unfrozen: str
-) -> str:
+def _stale(area: Area, frozen: mirror_frozen.Frozen | None) -> list[str]:
+    """What a stale answer on this area says beside the digests (U222).
+
+    Each step that moved since the gate showed it, when the plan was rebuilt
+    from a frozen one that kept what the gate showed, and how the mirror's plan
+    was made, so a person reading the refusal can tell a rebuild from a fresh
+    plan and see what it cost.
+    """
+    said: list[str] = []
+    if frozen is not None and not frozen.shown:
+        said.append(
+            "what moved cannot be named: the plan frozen on this run was planned afresh "
+            "by a run that applies, not shown by its gate"
+        )
+    elif frozen is not None:
+        moved = mirror_frozen.moved(area.steps, frozen)
+        said.append(
+            "moved since the gate showed it: " + "; ".join(moved)
+            if moved
+            else "every step plans as the gate showed it"
+        )
+    said.extend(f"{name}: {area.facts[name]}" for name in (FROZEN_FACT, PLAN_FACT) if name in area.facts)
+    return said
+
+
+def _record(cfg: config.Config, run: Run, reading: Reading, area: Area) -> str:
     """Record what the plan learned and freeze it on the run; what the gate says of it.
 
     NEITHER FAILURE REFUSES THE PLAN. A ledger that cannot take the links
     refuses the apply on its own, and a plan that cannot be frozen is planned
     again by the run that applies, which is what every run did before R-1031.
+
+    THE SNAPSHOTS FROZEN ARE THE ONES THE PLAN READ (U222), ``reading.recorded``,
+    never the ledger after this plan recorded its own, and THE STEPS FROZEN ARE
+    THE AREA'S, every one the gate is shown, since the mirror is planned last.
     """
-    said = f"{unfrozen}, so it was planned afresh; " if unfrozen else ""
+    said = f"{reading.unfrozen}, so it was planned afresh; " if reading.unfrozen else ""
+    matcher = reading.matcher
     try:
         ledger.record_mirror_links(cfg, matcher.fresh)
         ledger.record_mirror_misses(cfg, matcher.missed)
     except CratekitError as exc:
         return f"{said}not frozen: what the plan matched could not be recorded ({exc.cause.message})"
     try:
-        return said + mirror_frozen.freeze(cfg, run.run_id, library, matcher.seen)
+        return said + mirror_frozen.freeze(
+            cfg,
+            run.run_id,
+            reading.library,
+            matcher.seen,
+            recorded=reading.recorded,
+            steps=area.steps,
+            # A RUN THAT APPLIES PLANNED THIS AFRESH, so no gate showed it.
+            shown=not run.decided,
+        )
     except OSError as exc:
         return f"{said}not frozen ({exc}), so the apply plans again"
 

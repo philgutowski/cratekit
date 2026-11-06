@@ -126,6 +126,10 @@ class Area:
     #: Every removal a planned step would make, one line each (U143), shown on
     #: the gate in place of the line that says nothing is removed.
     deletes: list[str] = field(default_factory=list)
+    #: What a stale answer on this area says beside the two digests (U222):
+    #: each step that moved since its gate showed it, and how the plan was
+    #: made, one sentence each, when a step can say. Never digested.
+    stale: list[str] = field(default_factory=list)
 
     def __post_init__(self) -> None:
         if self.only is not None:

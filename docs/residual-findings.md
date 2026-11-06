@@ -44646,3 +44646,197 @@ the private job store. No verb writes a link there: zero producers.
 
 **Closes when:** the writer refuses a linked staging directory the way
 `staged_path` does. Ledger only.
+
+---
+
+## R-1328. A decided organize run whose frozen mirror plan cannot be read still plans the mirror afresh before it can say stale
+
+**Found:** at the build of #552, U222, 2026-11-05.
+
+**The mechanism.** The card asked that the mirror's apply never pay a full
+plan before saying stale. With its frozen plan read, the apply asks the
+provider about no row and reads only the account listing, which it must, since
+a change on the account is what a stale answer is for. By the cause driven
+on the card, sitting 66's 677 requests were that listing of every mirrored
+playlist rather than matches; that was not measured live. With no
+frozen plan to read (a record of another version, every run gated before U222
+among them, one pruned after a week, or a plans directory that could not be
+written at the gate), the run plans afresh as R-1031 chose, matching rows the
+links and misses do not answer, and only then compares. U222's refusal now
+says which happened and what it cost.
+
+**Measured cost.** Not driven live. On the fakes the fresh plan asks only rows
+the ledger's links and misses do not answer, so after a first build the cost
+is close to a refresh.
+
+**Closes when:** a decided run with no readable frozen plan refuses before it
+plans, naming why, or the record shows the fresh plan is the right cost.
+Ledger only.
+
+---
+
+## R-1329. A library change to a mirrored playlist between the account gate and its apply is applied as decided, a choice built while Phillip's answer waits
+
+**Found:** at the build of #552, U222, 2026-11-05.
+
+**The mechanism.** Since R-1031 the run that answers the account gate rebuilds
+the mirror from the library as the gate read it, and since U222 from the
+snapshot as the gate read it too, so any library change made between the two
+acts, to a mirrored playlist or not, is left for the next organize. The card
+asked Phillip whether a change he makes in rekordbox to a mirrored playlist
+between the acts should instead refuse the answer as stale (the card's
+"Question for Phillip", answer 1 recommended). U222 built answer 1, the
+behaviour already shipped and proven at sitting 58, as the conservative call.
+
+**Measured cost.** None lost under answer 1: a track the library added or took
+off between the acts reaches the account at the next organize, one run late.
+Not driven live; driven on U204's disposable library for the edits the
+rekordbox area takes from the account.
+
+**Closes when:** Phillip answers on the decisions page. Answer 1 closes it as
+is; answer 2 or 3 is a follow up card that reads the live library on the apply
+and compares it with the frozen one. Ledger only.
+
+---
+
+## R-1330. An apply that rebuilds a mirror plan a decided run made afresh says it rebuilt the frozen plan, with no word that no gate showed it
+
+**Found:** at the review of #552, U222, round two, 2026-11-05.
+
+**The mechanism.** Since U222 a decided run that could not read its frozen
+mirror plan freezes its fresh plan marked as shown by no gate. A later decided
+resume rebuilds from it, and when nothing moved its facts say "rebuilt from the
+plan frozen on run X", the same words as a rebuild of the gate's own plan; only
+a stale refusal says what moved cannot be named.
+
+**Measured cost.** Driven at the unit level on U204's world (a version 5
+record, two decided resumes); not driven through the verb, where the producer
+is a second decide after a stale refusal or an apply that failed part way over
+a record gated before U222. The words are literally true and nothing false is
+written.
+
+**Closes when:** the rebuild's fact says the frozen plan was made afresh by a
+run that applies whenever the record says so. Ledger only.
+
+---
+
+## R-1331. A short account listing at the mirror's apply drops a track the rekordbox area settled between the acts from the snapshot, and the next gate plans to add it
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** U222 hands the snapshot the gate's plan read to the
+decided run's whole mirror plan, so `PlaylistPlan.agreed` is the gate's word
+there too, and `mirror.settled()` and `PlaylistPlan.unlisted()` take the
+tracks a short listing did not list from it. When the rekordbox area's
+`mirror-edits` step settled a track into the snapshot between the acts and
+the apply's listing comes back short without that track, the decided run's
+plan time `record_mirror_agreed` writes the snapshot without it, where main's
+live reading kept it. The next run reads the track as rekordbox's own and its
+gate shows "add 1" for a track the playlist already holds unlisted.
+
+**Measured cost.** Unmeasured, and contested. Round one of U222's review
+reported it driven on U204's world with the fake hiding the track from the
+listing (the snapshot after the decided run `['r1']` against `['r1', 'r2']`
+with the live reading, and the next gate planning "add 1"). Round two drove
+four candidates of that input (the listing short with its count whole, both
+short, and the track hidden from the catalogue and from the account fake) and
+none produced it: the settle record makes the decided run hold the track, so
+`agreed_after` keeps its word. Four candidates were driven and none produces
+it; the exact input of round one was not recovered. If it is reachable, the
+cost is one wasted request and a false "add 1" on one gate, since the Tidal
+adapter reads membership before adding, after which the snapshot repairs
+itself.
+
+**Closes when:** the decided run takes the gate's snapshot for the edit rule
+alone and the live one for `unlisted()` and the plan time record, or a test
+shows the short case keeps the settled word. Ledger only.
+
+---
+
+## R-1332. A stale mirror answer can name a playlist whose plan did not move, since each line's digest covers the names the gate shows
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** `mirror_frozen._lines` digests each playlist's whole gate
+item, the removed tracks' names and the kept and unmatched counts among it,
+not only what the step's digest covers, so a playlist whose writes are
+unchanged but whose shown names changed is named beside the one that moved.
+
+**Measured cost.** Driven on the plain mirror world: a removal planned on
+Techno Med, then a track added to Techno Low on the account and the removed
+track retitled; the refusal named both playlists. The decision is still
+refused correctly; only the naming overreaches. The producer, a retitle on the
+account of a track whose removal is planned, was not driven on the provider.
+
+**Closes when:** each line is digested over the fields its playlist's plan
+identity carries. Ledger only.
+
+---
+
+## R-1333. A stale account answer over a changed --only selection says every step plans as the gate showed it and names no mover
+
+**Found:** at the review of #552, U222, round two, 2026-11-05.
+
+**The mechanism.** The account area's digest covers its `--only` selection as
+well as its steps (`Area.identity`), but `mirror_frozen.moved` compares the
+steps alone. A resume whose selection differs from the gate's, with the same
+steps, is refused stale, and U222's lines say "every step plans as the gate
+showed it" beside "a plan that has since changed", without naming the
+selection that moved.
+
+**Measured cost.** Driven through the dispatcher at round two: a gate on the
+mirror kind alone, `run decide`, a resume naming the mirror and `marks`; exit
+11 with that line, nothing asked and nothing written. The refusal is correct
+and the replan works; the cost is a naming gap.
+
+**Closes when:** the frozen plan carries the gate's selection and the stale
+lines name a selection that differs. Ledger only.
+
+---
+
+## R-1334. After a stale refusal, run decide records an answer over the moved plan's digest, which no screen showed
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** `gates.Gates.require` records the digest it is offered in
+`offers` before it compares a recorded answer, and the dispatcher saves the
+run on a `decision-stale` refusal. So after a stale refusal, `crate run decide
+RUN GATE OPTION` is accepted over the new digest, and the next resume applies
+that plan, although the stale refusal showed no items and the person never saw
+it. Pre-existing on `main` for every gate; U222's version bump makes every
+open organize run gated on v0.8.0 a producer, since its frozen mirror plan is
+no longer read and the resume plans afresh.
+
+**Measured cost.** Driven through `crate organize --only mirror` at the review
+of U222: a playlist made under a mirrored folder between the acts, a stale
+refusal, `run decide` again, and the resume created the playlist on the
+account. A person did type the second decide, against a refusal that told
+them to replan (`REPLAN_THEN_DECIDE`) and showed nothing. Meets the board bar
+(b) and (d): a write is applied that no gate screen declared, past a gate
+whose stale guard the second decide answers. Driven again at round two.
+
+**Closes when:** a decision recorded after a stale refusal is refused until
+the moved plan has been shown (a resume that leaves the gate open over it), or
+the stale refusal carries the moved plan's items as an open gate does, and a
+test drives the two acts with a second decide.
+
+---
+
+## R-1335. Freezing the snapshot the gate's plan read rather than the one it then recorded kills no test
+
+**Found:** at the review of #552, U222, 2026-11-05.
+
+**The mechanism.** `account_mirror._record` freezes `reading.recorded`, the
+ledger as the gate's plan read it, never the ledger after that plan's own
+`record_mirror_agreed`. Freezing the recorded one instead kills zero tests:
+in the worlds the suite builds, that record leaves a held track's word as it
+was, so the two readings are equal and the test written for the claim cannot
+tell them apart.
+
+**Measured cost.** None observed. By `agreed_after`, the two readings decide
+the same plan in every case the reviewer and the author constructed; the cost
+is an untested claim, not a write.
+
+**Closes when:** a world is found where the gate's own record changes a word
+the edit rule reads, and a test pins the frozen one, or the claim is shown to
+hold by construction and the docstring says so. Ledger only.
