@@ -44293,3 +44293,105 @@ ceiling sized without them; each continue still makes progress.
 
 **Closes when:** the estimate counts them once the attended measurement says
 how often they happen, or ledger only.
+
+---
+
+## R-1313. A 404 whose body is not JSON is read as an outage, not as not found, by the account, the catalogue and the ISRC cache
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** R-1305's shape on a different status. The provider client
+decodes an error answer's body inside its own handler of the HTTP error, so a
+404 whose body is a page never becomes `ObjectNotFound`: it surfaces as the
+decode error with the 404 three context links down. Four readers of a not
+found read the failure itself or its declared causes only:
+`modules/outbound/tidal_account._not_found`, `acquire/isrc_cache.said_not_found`,
+`label/tidal_catalogue`'s 404 reader, and `acquire/adapter.classify_unavailable`.
+
+**Measured cost.** Driven over the installed client (tidalapi 0.8.11) with a
+canned answer: a 404 page is read as not found by none of the four, a 404 in
+JSON by all four. A track or release the provider has nothing for is then
+retried, failed as `unavailable-transient` and asked again every run, never
+remembered as gone, the R-380 shape `tidal_catalogue`'s docstring names. Whether
+the provider answers 404 with a page is unmeasured.
+
+**Closes when:** each of the four readers also reads a 404 status reached as
+context, through `provider_session.failure_links` or a walk with its limits,
+with a test per reader raising the failure through the client's own handler
+(`tests/provider_answers.client_failure`). Earns an issue: the product says an
+outage where the provider said gone (board bar b), and it is buildable in the
+cloud as R-1305 was.
+
+---
+
+## R-1314. A rejected session read from a page quotes the decode error, not the status that decided it
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** `account.provider_failure` and `provider_session.client_session`
+put `str(exc)` in the message they raise. For a 401 or 403 whose body is not
+JSON, `exc` is the client's decode error, so the person reads "the provider
+rejected the stored session (Expecting value: line 1 column 1 (char 0))".
+
+**Measured cost.** Printed by the review through `account.resolve` and
+`provider_failure` for a 401 page and a 403 page: the reason and the remedy are
+right, and the parenthesis names nothing a person can act on. No false
+statement.
+
+**Closes when:** the two messages name the status `failure_links` found (for
+example "answered 401") when the failure itself carries none. Ledger only, a
+wording fix.
+
+---
+
+## R-1315. A stale access token whose refresh is answered with a page, or with JSON naming no error, is read as the provider being unavailable
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** When the stored access token has expired, tidalapi 0.8.11's
+`basic_request` asks `token_refresh`, which decodes the oauth answer's body
+before it checks any status (the client's `session.py`, about line 740). An
+answer that is not JSON raises the decode error, and JSON with no `error` key
+raises a `KeyError`; neither carries a status on any link, so
+`provider_session.failure_links` finds nothing for `_rejected` or
+`account._session_refused` to read, and the person is told the provider is
+unavailable and the held account is kept. R-1305's fix reads a status wherever
+the client leaves one; on this path it leaves none.
+
+**Measured cost.** Driven by the review over the installed client with canned
+answers: an oauth answer that is a 401 page, and one that is JSON without
+`error`, both read `unavailable-transient`. A refresh answered 400
+`invalid_grant` in JSON reads right (the client's `AuthenticationError` on the
+declared chain), as does a refresh that succeeds and a sessions call then
+rejected with a page. Whether the live oauth host ever answers with a page is
+unmeasured; this is the path a stale session most often takes, so it is R-1305's
+own cost if it does.
+
+**Closes when:** the live oauth answer to a refresh with a revoked refresh
+token is measured (the attended card filed with R-1305's landing), and, if it
+can be a page, the refresh's decode failure is read as a rejection by a rule
+the measurement justifies. Ledger only until then: no status exists to read,
+so a fix now would be a guess.
+
+---
+
+## R-1316. The refusal limit in the provider failure walk names only the product's refusals, not the adapter's own errors
+
+**Found:** at the review of #557, R-1305, 2026-11-05.
+
+**The mechanism.** `provider_session.failure_links` never enters a
+`CratekitError` off the declared chain, so a failure met while handling a
+refused session is not read as that refusal. `AdapterAuthFailed`,
+`AdapterBroken` and `ProviderUnavailable` are the adapter layer's own errors and
+plain `Exception` subclasses (`acquire/adapter.py`), so a provider call made
+inside a handler of one of them would be walked into, its 401 cause and all,
+and read as a rejected session.
+
+**Measured cost.** Not driven, because nothing produces it: the review read all
+13 handlers of those three types in `src` and the job engine's item boundary,
+and none makes a provider call inside the handler. 13 candidates driven in
+reading and none produces it.
+
+**Closes when:** the limit also names `AdapterError`, with a test raising a
+provider failure inside a handler of `AdapterAuthFailed`, or a unit adds such a
+handler and pins it. Ledger only, a maintainer facing shape.
