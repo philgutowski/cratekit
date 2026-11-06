@@ -770,6 +770,60 @@ def refreeze(store: JobStore, job_id: str, key: str, value: str) -> Job:
     return get(store, job_id)
 
 
+def join_run(store: JobStore, job_id: str, run_id: str) -> Job:
+    """Give a QUEUED job that carries no run the run ``run_id`` (U227).
+
+    The other write to a payload after the queue, beside :func:`refreeze`, and
+    as narrow. The account mirror's download step queues a track an account
+    edit asked for under no run, and a sync pass reads its own jobs by the run
+    they carry, so such a job was left open beside every pass. The pass takes it by giving it
+    its run. Only ``run_id`` is written, which no worker reads: it says which
+    pass drives, lists and lands the job, never what the job resolves. Only a
+    job no driver has started is written, so nothing ran against the payload
+    as it was, and only one that carries no run, so a job is never moved from
+    one pass to another. Anything else is refused.
+
+    Read and written INSIDE one immediate transaction, as :func:`refreeze` is,
+    so two passes taking the same job cannot both take it.
+    """
+    wanted = str(run_id or "").strip()
+    if not wanted:
+        raise refuse(
+            "internal-error",
+            f"job {job_id} was asked to join a blank run, which is no pass",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("jobs",),
+            detail={"job_id": job_id},
+        )
+    with store.immediate() as conn:
+        row = conn.execute("SELECT * FROM jobs WHERE job_id = ?", (job_id,)).fetchone()
+        if row is None:
+            raise refuse(
+                "job-unknown",
+                f"no job in this installation's queue has the identifier {job_id!r}",
+                steps=("check the identifier against the jobs this installation has queued",),
+                scope=Scope.RUN,
+                origin=("jobs",),
+                detail={"job_id": job_id},
+            )
+        current = _job_from_row(row)
+        held = str((current.payload or {}).get("run_id") or "")
+        if current.state is not JobState.QUEUED or held:
+            raise refuse(
+                "internal-error",
+                f"job {job_id} is {current.state} and carries the run {held or 'none'}, "
+                f"and only a queued job that carries no run joins one, since any other "
+                f"has run against its payload or belongs to another pass",
+                remedy=Remedy.REPORT_DEFECT,
+                origin=("jobs",),
+                detail={"job_id": job_id, "state": str(current.state), "run_id": held},
+            )
+        payload = dict(current.payload)
+        payload["run_id"] = wanted
+        _touch(conn, job_id, payload=json.dumps(payload, sort_keys=True))
+    return get(store, job_id)
+
+
 def retry(store: JobStore, job_id: str) -> Job:
     """Re-open a job that ended CANCELLED or FAILED, and re-arm its failed items.
 
@@ -1843,6 +1897,7 @@ __all__ = [
     "get",
     "interruptible",
     "items",
+    "join_run",
     "list_jobs",
     "lock_path",
     "log_path",

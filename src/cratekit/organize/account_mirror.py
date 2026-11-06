@@ -701,7 +701,13 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
                     rekordbox_added=added,
                 )
             )
-    reading.decided = edits.decide(read, {remote: sorted(rows) for remote, rows in owner.items()})
+    # AND WHERE EACH QUEUED TRACK'S LANDING FILED ITS ROW BY ITS TAGS (U227),
+    # so that filing is read as the landing's and the edit it was queued for
+    # is carried, never read as a change a person made in rekordbox.
+    landings = mirror_downloads.filed(cfg, declared, owner)
+    reading.decided = edits.decide(
+        read, {remote: sorted(rows) for remote, rows in owner.items()}, landings
+    )
 
 
 def holds_for(reading: Reading, folder: mirror.Folder) -> dict[str, Any] | None:
