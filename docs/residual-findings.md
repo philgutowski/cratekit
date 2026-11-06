@@ -44840,3 +44840,184 @@ is an untested claim, not a write.
 **Closes when:** a world is found where the gate's own record changes a word
 the edit rule reads, and a test pins the frozen one, or the claim is shown to
 hold by construction and the docstring says so. Ledger only.
+
+---
+
+## R-1336. A 404 page on one track read inside the client's ISRC lookup reads the whole ISRC as filed under nothing
+
+**Found:** at the build of #561, R-1313, 2026-11-06.
+
+**The mechanism.** tidalapi 0.8.11's `get_tracks_by_isrc` reads each track the
+ISRC answer names with its own track read, and skips one that answers a not
+found it can decode, `ObjectNotFound`. A track read answered 404 with a body
+that is not JSON raises the decode error instead, which the client does not
+catch, so the whole lookup fails with the 404 three context links down. Since
+R-1313 every reader of a not found reads that 404, so the account and the
+catalogue answer the ISRC as filed under nothing and keep that answer for a
+week, where the client meant to skip one track and return the rest. Before
+R-1313 it was retried and failed as an outage, so a match was missed either
+way; now it is missed for a week rather than until the outage clears.
+
+**Measured cost.** Driven on the installed client by round one of the review:
+a v2 answer naming track 11 and a v1 track read answering a 404 page escape
+`get_tracks_by_isrc` as the decode error, the HTTP error's response URL naming
+the v1 track path, and `said_not_found` reads it true. That such a failure is
+then kept is the seam tests' measure over a fixture client, and seven days is
+`NOT_FOUND_DAYS` read from the source. Not driven against the provider. It needs a v1 track read
+answered with a 404 page while the v2 ISRC answer names that track; whether the
+provider answers 404 with a page at all is the attended measurement R-1313
+left out of scope.
+
+**Closes when:** the ISRC readers tell a 404 on the lookup itself from one on
+a track it read, by the request the 404 answered (the HTTP error's response
+URL names the v1 track path), or the attended measurement shows the provider
+never answers a track read with a page. Ledger only: the reachability is
+unmeasured and the cost is a match missed for at most a week.
+
+---
+
+## R-1337. A track read as gone off a 404 page carries the JSON decoder's words as why
+
+**Found:** at round one of #561's review, R-1313, 2026-11-06.
+
+**The mechanism.** `adapter._unavailable` writes `str(exc)` as a result's
+detail. Since R-1313 a track answered 404 with a page is permanently
+unavailable, read off the HTTP error three context links down, but the detail
+is the failure's own text, the decoder's.
+
+**Measured cost.** Driven by the review: `acquire_one` over a source raising
+the installed client's 404 page answers `unavailable-permanent`, no remedy,
+detail `Expecting value: line 1 column 1 (char 0)`. Nothing false, and the
+outcome is right; a person reading the job row is told a decoder failed
+rather than that the provider has no such track. The sibling of the message
+residual R-1305 filed for a rejected session.
+
+**Closes when:** a detail read off a link names that link's status, for
+example the HTTP error's own text. Ledger only: wording.
+
+---
+
+## R-1338. An artist read answered with a 404 page is not an unresolved seed, since the catalogue reads that not found by its class alone
+
+**Found:** at round one of #561's review, R-1313, 2026-11-06, the class one file over.
+
+**The mechanism.** `label.tidal_catalogue._artist_identified` answers a seed
+the provider has no artist for by catching the client's `ObjectNotFound`. A
+404 whose body is a page never becomes that class (R-1313's mechanism), so the
+client's decode error propagates out of the artist read with the 404 three
+context links down, and the label roster reports a failed read rather than
+"no artist with identifier".
+
+**Measured cost.** Driven by the review: `session.artist` raising the
+installed client's failure for a 404 page propagates as `JSONDecodeError`,
+`nearest_status` 404. Not introduced by R-1313, which changed the four readers
+its brief named. Whether the provider answers an artist read with a page is
+the attended measurement R-1313 left out of scope.
+
+**Closes when:** `_artist_identified` also answers `None` when
+`core.cause.answered_not_found` holds, with a test raising the failure through
+`tests/provider_answers.client_failure`. Ledger only: the producer is
+unmeasured, and the cost is a refusal worded as a failed read.
+
+---
+
+## R-1339. The label sweep's 429 reader misses a 429 page under a declared wrapper
+
+**Found:** at round two of #561's review, R-1313, 2026-11-06, the shape one file over.
+
+**The mechanism.** `label.sweep`'s rate limit reader walks the declared cause
+chain and the context chain each on its own (`_linked` over one attribute), so
+a 429 whose body is a page, under a wrapper raised from it, sits on a context
+link of a declared link and is reached by neither walk. `core.cause.failure_links`
+reaches it.
+
+**Measured cost.** Driven by the review: a `RuntimeError` raised from the
+installed client's 429 page reads not rate limited, where the raw page and a
+wrapped `TooManyRequests` read rate limited. R-704's cost, a label recorded as
+permanently failed for a limit a wait would clear, if anything wrapped the
+failure; no producer: each of the raise from sites on the sweep's path
+(`tidal_catalogue`, `harvest`, `crawl`, `catalogue`, `listing`, `sweep`) hands
+the reader the raw failure. Predates R-1305 and R-1313.
+
+**Closes when:** the sweep reads its 429 through `core.cause.failure_links`
+in place of the two single attribute walks, with a test raising a rewrapped
+page through `tests/provider_answers.client_failure`. Ledger only: no producer.
+
+---
+
+## R-1340. The paced pool's status read takes the failure alone, so a 403 or 429 whose body is not JSON says nothing about pacing
+
+**Found:** at the build of #561, R-1313, 2026-11-06, hunting the class one file over.
+
+**The mechanism.** `acquire.download.status_of`, which `classify_signal` asks
+first, reads a status off the failure itself and none of its links. A provider
+answer whose body is not JSON reaches it as the client's decode error with the
+HTTP error three context links down (R-704, R-1305, R-1313), so a 403 page
+reads as no status, then as text that is the decoder's own, and the pool hears
+no account block. A 429 page is the same shape, though the provider gate counts
+a rate limit off the raw response at the transport, so only the block is
+unheard.
+
+**Measured cost.** Not driven. The pool's one source today is the vendored
+tool, which swallows a provider failure and raises `NoFileLanded`, read as no
+signal before any status, so a raw client failure reaching `classify_signal`
+needs a source that lets one through. The other readers of a status off a
+client failure found by a grep of `src` for `status_code` walk the links (the
+two of a rejected session, the four of a not found, `_stale_tag` and the label
+sweep's 429); this is the one found that still does not.
+
+**Closes when:** `status_of` reads the nearest status through
+`core.cause.nearest_status` when the failure carries none of its own, with a
+test raising a 403 and a 429 page through `tests/provider_answers.client_failure`.
+Ledger only, for the reachability above.
+
+---
+
+## R-1341. The walk's depth first order off the declared chain is pinned one hop deep only
+
+**Found:** at round two of #561's review, R-1313, 2026-11-06.
+
+**The mechanism.** Round one's fix made `core.cause.failure_links` take a
+context reached link's own cause before what it was raised while handling,
+depth first, so `nearest_status` reads what a wrapper says it is first. Depth
+first also takes that cause's own context before the wrapper's context: a
+wrapper raised from a status-less error, itself raised while handling a 404
+page, while the wrapper was handling a 503 page, reads the 404 three hops out
+before the 503 two hops out.
+
+**Measured cost.** Driven by the review: that shape reads `nearest_status`
+404, and a breadth first walk patched into every copy reads 503 and passes all
+89 tests of the two body files, so the order past one hop is unpinned. No
+producer: it needs a status-less failure raised while handling a provider
+answer, and the handler grep of round one found none.
+
+**Closes when:** a test pins which of the two the walk takes, with the order
+chosen on a reason the docstring gives. Ledger only: no producer.
+
+---
+
+## R-1342. The walk's refusal limit stops only at a CratekitError, so a failure met while handling a NoFileLanded or an adapter error raised from a 404 page reads as not found
+
+**Found:** at round one of #561's review, R-1313, 2026-11-06.
+
+**The mechanism.** `core.cause.failure_links` never enters a product refusal
+off the declared chain, and a product refusal is a `CratekitError`.
+`NoFileLanded` is a `RuntimeError` and the adapter's `AdapterError` family is
+plain `Exception`, both raised from the provider failure they carry. A failure
+with no status of its own raised while handling one of them, raised from a 404
+page, is read through to the 404, so every reader of a not found calls it one:
+R-703's rule that a `NoFileLanded` decides nothing by its cause holds for the
+failure itself and not one hop out.
+
+**Measured cost.** Driven by the review: a `ValueError` raised while handling
+`NoFileLanded(cause=gone)` raised from a 404 page, and the same under
+`AdapterBroken`, read `nearest_status` 404 and all four readers true. No
+producer: the except handlers of 15 modules (8 of Cratekit's, 7 of the
+client's) were grepped with a six line window for a provider call inside a
+handler of either, and none was found;
+`acquire_with_source` classifies the handled failure itself and
+`fetch_with_retry` retries outside its handler.
+
+**Closes when:** the walk's limit also stops at a `NoFileLanded` and an
+`AdapterError`, or a test shows no reader is ever handed a failure raised
+inside a handler of one. Ledger only: no producer.
