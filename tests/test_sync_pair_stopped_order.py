@@ -277,6 +277,9 @@ def test_an_addition_the_provider_left_out_is_never_read_as_taken_off(world, mon
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert "6" in world.held(intro), "a track the provider never added was taken out of rekordbox"
+    # And the order is still finished from the side that led it (round one's review).
+    assert world.held(intro) == list(LED), "rekordbox took the stopped write's scramble"
+    assert world.account.playlists[account_id] == _ids(*LED)
 
 
 def test_a_stopped_write_that_skipped_rekordbox_leaves_the_accounts_removal_to_be_made(
@@ -301,3 +304,34 @@ def test_a_stopped_write_that_skipped_rekordbox_leaves_the_accounts_removal_to_b
     assert "t2" not in world.account.playlists[account_id], "the account's removal was undone"
     assert world.held(intro) == ["4", "5", "1", "6", "7", "3"]
     assert world.account.playlists[account_id] == _ids("4", "5", "1", "6", "7", "3")
+
+
+def test_a_later_run_that_failed_before_its_order_began_does_not_hide_the_stopped_write(
+    world, stopped, monkeypatch
+):
+    """Round one's review: a run that began its account write and failed in its additions.
+
+    Its steps are kept, since only a finished run lets them go, and it is the
+    latest run to touch the account; it must not hide the write that stopped
+    part way through its order.
+    """
+    from cratekit.modules.outbound import account as outbound_account
+
+    intro, account_id, run_id = stopped
+    world.rekordbox_add(intro, "8")
+    real_add = world.account.add_tracks
+
+    def failing(playlist_id, remote_ids):
+        raise outbound_account.provider_failure(RuntimeError("timed out"), "add tracks")
+
+    monkeypatch.setattr(world.account, "add_tracks", failing)
+    code, refused = sync()
+    assert code != int(ExitCode.OK), refused
+    monkeypatch.setattr(world.account, "add_tracks", real_add)
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert f"finishes run {run_id}" in first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(intro) == [*LED, "8"], "rekordbox took the stopped write's scramble"
+    assert world.account.playlists[account_id] == _ids(*LED, "8")
