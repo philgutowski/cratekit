@@ -1,0 +1,205 @@
+name = "r1360"
+pass_kind = "full"
+
+[[rows]]
+id = "W1_no_walk"
+description = "playlist_tracks_unpaged: a first page short of the declared count is not walked past, as U226 left it"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''    if not _is_count(declared) or len(rows) >= declared or len(rows) < 2:
+        return rows'''
+new = '''    if True:
+        return rows'''
+
+[[rows]]
+id = "W2_walk_no_overlap"
+description = "playlist_tracks_unpaged: each later request starts where the last ended, not one track back"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''        offset = len(rows) - 1
+'''
+new = '''        offset = len(rows)
+'''
+
+[[rows]]
+id = "W3_no_start_check"
+description = "playlist_tracks_unpaged: a page is taken without starting on the last track read"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''            or row_id(page[0]) != row_id(rows[-1])
+'''
+new = ''''''
+
+[[rows]]
+id = "W4_no_tag_check"
+description = "playlist_tracks_unpaged: a page carrying another version tag is taken"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''            or getattr(playlist, "_etag", None) != tag
+'''
+new = ''''''
+
+[[rows]]
+id = "W5_no_length_check"
+description = "playlist_tracks_unpaged: a page longer than the first is taken"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''            or len(page) > step
+'''
+new = ''''''
+
+[[rows]]
+id = "W6_no_empty_check"
+description = "playlist_tracks_unpaged: an empty later page is not read as the end of the walk"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''            not page
+            or len(page) > step'''
+new = '''            len(page) > step'''
+
+[[rows]]
+id = "W7_full_page_ends"
+description = "playlist_tracks_unpaged: a full later page ends the walk as a short one does"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''        if len(page) < step:
+            break'''
+new = '''        if len(page) <= step:
+            break'''
+
+[[rows]]
+id = "W8_overlap_kept"
+description = "playlist_tracks_unpaged: the overlapping track is read twice"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''        rows.extend(page[1:])'''
+new = '''        rows.extend(page)'''
+
+[[rows]]
+id = "W9_first_whole_walked"
+description = "playlist_tracks_unpaged: a first page holding the declared count is walked past"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''or len(rows) >= declared or'''
+new = '''or len(rows) > declared or'''
+
+[[rows]]
+id = "W10_walk_past_count"
+description = "playlist_tracks_unpaged: the walk asks again at the declared count"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''    while len(rows) < declared:'''
+new = '''    while len(rows) <= declared:'''
+
+[[rows]]
+id = "W11_offset_dropped"
+description = "playlist_tracks_unpaged: a later request is asked with no offset"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''                return playlist.tracks(offset=offset) if offset else playlist.tracks()'''
+new = '''                return playlist.tracks()'''
+
+[[rows]]
+id = "W12_tag_unread"
+description = "playlist_tracks_unpaged: the first page's tag is not read, so no walk holds together where a client keeps one"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''    tag = getattr(playlist, "_etag", None)
+    while'''
+new = '''    tag = None
+    while'''
+
+[[rows]]
+id = "W13_declared_unread"
+description = "playlist_tracks_unpaged: the walk reads no declared count"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''    declared = getattr(playlist, "num_tracks", None)
+    if not _is_count'''
+new = '''    declared = None
+    if not _is_count'''
+
+[[rows]]
+id = "J1_prefix_agrees"
+description = "judge_window: a first part beside a whole window agrees, as U226 left it"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''        return WINDOW_LAGS if counted and len(paged) >= declared else WINDOW_AGREES'''
+new = '''        return WINDOW_AGREES'''
+
+[[rows]]
+id = "J2_prefix_equal_only"
+description = "judge_window: a first part lags only beside a window of exactly the count"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''counted and len(paged) >= declared else'''
+new = '''counted and len(paged) == declared else'''
+
+[[rows]]
+id = "J3_prefix_always_lags"
+description = "judge_window: a first part beside a window short of the count lags too"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''        return WINDOW_LAGS if counted and len(paged) >= declared else WINDOW_AGREES'''
+new = '''        return WINDOW_LAGS'''
+
+[[rows]]
+id = "J4_prefix_uncounted_lags"
+description = "judge_window: a first part beside a playlist declaring no count lags"
+file = "src/cratekit/acquire/listing.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''WINDOW_LAGS if counted and len(paged) >= declared else'''
+new = '''WINDOW_LAGS if not counted or len(paged) >= declared else'''
+
+[[rows]]
+id = "F1_walk_uncounted"
+description = "unpaged_calls: the walk past a first page is not counted"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''    return UNPAGED_READ + math.ceil(beyond / (PLAYLIST_PAGE - 1))'''
+new = '''    return UNPAGED_READ'''
+
+[[rows]]
+id = "F2_step_a_page"
+description = "unpaged_calls: each later request is counted as a whole new page"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''math.ceil(beyond / (PLAYLIST_PAGE - 1))'''
+new = '''math.ceil(beyond / PLAYLIST_PAGE)'''
+
+[[rows]]
+id = "F3_judged_without_walk"
+description = "judged_calls: a judged reading counts one unpaged request whatever its length"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''    return listing_calls(count) + unpaged_calls(count)'''
+new = '''    return listing_calls(count) + UNPAGED_READ'''
+
+[[rows]]
+id = "N1_null"
+description = "null control: a comment changed, which no test can see"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_window_lag.py", "tests/test_outbound_order.py", "tests/test_outbound_remove_lag.py", "tests/test_outbound_tidal_account.py", "tests/test_sync_pair_calls.py", "tests/test_prune.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py", "tests/test_organize_mirror.py", "tests/test_adapter_listing.py", "tests/test_label_tidal_catalogue.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_hold.py"]
+old = '''# ── U226: the window read beside the client's unpaged read'''
+new = '''# ── U226: the window read beside the unpaged read'''
