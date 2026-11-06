@@ -47,7 +47,7 @@ from dataclasses import dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from cratekit.acquire import match, match_cli
+from cratekit.acquire import listing, match, match_cli
 from cratekit.acquire.match import Wanted
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import artifacts, binaries, binary_refusal, config, jobs, review
@@ -1507,6 +1507,10 @@ class Readable:
     #: R-1264. When the account says each read track was added (U202), ISO
     #: 8601 UTC text by id, the first mention's, off the same rows.
     dates: dict[str, str] = field(default_factory=dict)
+    #: U226. How the window read stood beside the unpaged read, one of
+    #: ``listing``'s ``WINDOW_`` answers, when the caller asked for both;
+    #: ``WINDOW_AGREES`` when it did not.
+    window: str = listing.WINDOW_AGREES
 
 
 def _absent(title: str) -> str:
@@ -1534,7 +1538,9 @@ def set_aside(row: object) -> Unreadable:
     )
 
 
-def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readable:
+def list_playlist_readable(
+    found: catalogue.Catalogue, reference: str, *, current: bool = False
+) -> Readable:
     """:func:`list_playlist_declared`, with a row the reader refuses set aside, not fatal (U213).
 
     FOR A CALLER THAT PLANS MANY PLAYLISTS IN ONE RUN and needs only a
@@ -1552,11 +1558,19 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
     :func:`list_playlist_declared`, whose refusal is the answer when that
     playlist is all it was asked.
 
+    ``current`` reads the client's unpaged read beside the window (U226,
+    :func:`label_cli.playlist_listing_judged`) for a caller that plans a write
+    from the order it reads, and says how the two stood in ``window``.
+
     THE LISTING AS A WHOLE STILL REFUSES where the declared reader does: the
     provider unable to list it, or a row carrying no provider identifier,
     since a track with no id cannot be named, set aside or asked about.
     """
-    rows, short = label_cli.playlist_listing_or_refuse(found, reference)
+    window = listing.WINDOW_AGREES
+    if current:
+        rows, short, window = label_cli.playlist_listing_judged(found, reference)
+    else:
+        rows, short = label_cli.playlist_listing_or_refuse(found, reference)
     read: list[Wanted] = []
     refused: dict[str, Unreadable] = {}
     order: dict[str, None] = {}
@@ -1581,6 +1595,7 @@ def list_playlist_readable(found: catalogue.Catalogue, reference: str) -> Readab
         unread=unread,
         order=tuple(order),
         dates=_added_dates(rows, tracks),
+        window=window,
     )
 
 

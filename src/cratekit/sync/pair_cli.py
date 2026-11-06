@@ -198,6 +198,7 @@ from functools import cached_property
 from pathlib import Path
 from typing import Any
 
+from cratekit.acquire import listing as provider_listing
 from cratekit.acquire import match
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import analysis_store, config, jobs, locations, rb_writer, session, tags
@@ -246,6 +247,10 @@ WITHHELD = "sync-pair-withheld"
 SKIPPED = "sync-pair-skipped"
 NOTHING = "sync-pair-nothing"
 LEFT_OUT = "sync-pair-left-out"
+#: U226. The refusal of a pair whose account playlist the provider serves out
+#: of step: its window read disagrees with its unpaged read, which is not the
+#: whole playlist, so neither is the playlist as it stands.
+LAGGING = "sync-pair-account-lagging"
 WRITTEN = "sync-pair-written"
 #: A custom playlist twin's pair forgotten because its account playlist is gone (U149).
 UNPAIRED = "sync-pair-twin-unpaired"
@@ -261,7 +266,13 @@ ON_HOLD_ACTION = "on-hold"
 #: listing the reader cannot use at all, a row carrying no provider id, since
 #: a track it merely cannot read is unread, below, and never refuses.
 PER_PAIR_REASONS = frozenset(
-    {"sync-pair-unknown", "sync-pair-out-of-scope", "intake-list-unusable"}
+    {
+        "sync-pair-unknown",
+        "sync-pair-out-of-scope",
+        "intake-list-unusable",
+        # U226. Its account playlist's window read lags its unpaged read.
+        LAGGING,
+    }
 )
 #: U202. The refusals one account playlist brought from a synced folder may
 #: raise about itself, which list it rather than refuse the sync.
@@ -365,6 +376,29 @@ class Target:
 def _unknown(message: str, *, steps: Sequence[str], **detail: Any) -> CratekitError:
     return refuse(
         "sync-pair-unknown", message, steps=tuple(steps), origin=_ORIGIN, detail=dict(detail)
+    )
+
+
+def _lagging(account_id: str, name: str) -> CratekitError:
+    """The pair held whole for this run, its account side served out of step (U226).
+
+    HELD WHOLE, NOT ITS ORDER ALONE: a window that lags a write shows the
+    playlist's old membership as well as its old order, so a track just
+    taken off the account would read as added there and be put back in
+    rekordbox. Nothing is written for the pair; a run a few minutes later
+    reads it again.
+    """
+    return refuse(
+        LAGGING,
+        f"the account playlist {name or account_id} reads one way through its pages "
+        f"and another through the provider's unpaged read, which is not the whole "
+        f"playlist, so it may lag a recent change; the pair was not synced this run",
+        steps=(
+            "wait a few minutes for the provider to serve the playlist as it "
+            "stands, then sync the pair again",
+        ),
+        origin=_ORIGIN,
+        detail={"account_id": account_id, "problem": "window-lags"},
     )
 
 
@@ -904,7 +938,14 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         # account lists with no title or no artist used to refuse the whole
         # listing, so the pair never synced again. It is unread now, kept by
         # its id, and every other track reads exactly as it did.
-        listing = intake_cli.list_playlist_readable(reader.found, target.account_id)
+        # U226. THE UNPAGED READ BESIDE THE WINDOW, which may serve an order
+        # minutes old: planned from the unpaged rows when they are the whole
+        # playlist, and the pair held when neither read can be.
+        listing = intake_cli.list_playlist_readable(
+            reader.found, target.account_id, current=True
+        )
+        if listing.window == provider_listing.WINDOW_LAGS:
+            raise _lagging(target.account_id, name)
         tracks, short, dates, unread, listed_order = (
             listing.tracks,
             listing.short,
@@ -2274,6 +2315,9 @@ class Done:
     order_refused: Any = None
     #: U220. The pair's name, said when its order did not finish.
     name: str = ""
+    #: U226. The account adapter's record of each reading it judged this
+    #: pair's writes by: its readings, its wait and its window's lag.
+    read_backs: list[dict[str, Any]] = field(default_factory=list)
 
     @property
     def wrote(self) -> bool:
@@ -2703,47 +2747,76 @@ def apply_pair(
         steps.mark(STEP_ACCOUNT)
         remote = outbound_account.resolve(cfg)
         playlist_id = one.target.account_id
-        if one.account_removes:
-            done.account_removed = len(remote.remove_tracks(playlist_id, one.account_removes))
-        if one.account_adds:
-            done.account_added = len(set(remote.add_tracks(playlist_id, one.account_adds)))
-        if one.account_order:
-            # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
-            steps.mark(STEP_ORDERING)
-            # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
-            # the adapter's reading agrees with the check's own listing of it.
-            expect = (
-                tuple(account_listed)
-                if steps.has(STEP_ORDER_REFUSED) and account_listed is not None
-                else None
+        # U226. WHAT THE ADAPTER RECORDS FROM HERE IS THIS PAIR'S: the
+        # readings its writes were judged by, read off whatever way they end.
+        first = len(remote.read_backs())
+        try:
+            account_after = _write_account(
+                one, remote, playlist_id, done, steps, account_listed=account_listed
             )
-            try:
-                account_after = tuple(
-                    remote.order_tracks(playlist_id, one.account_order, expect=expect)
-                )
-            except jobs.Parked:
-                raise
-            except CratekitError as exc:
-                if exc.cause.reason not in ORDER_REFUSALS:
-                    raise
-                # U220. THIS PAIR ALONE STOPS. Its adds and removals landed and
-                # its rekordbox side is written; it is left unfinished, its
-                # snapshot unmoved, for a continue of the run to put in order,
-                # and the write goes on to every other pair.
-                steps.mark(STEP_ORDER_REFUSED, exc.cause.message)
-                done.order_refused = exc.cause
-                done.name = one.name
-                return done
-            done.account_ordered = True
-        elif account_listed is not None and not (one.account_removes or one.account_adds):
-            account_after = tuple(account_listed)
-        else:
-            account_after = tuple(remote.playlist_tracks(playlist_id))
+        finally:
+            done.read_backs = list(remote.read_backs()[first:])
+        if account_after is None:
+            return done
     done.snapshot = _record(
         cfg, one, rekordbox_after=rekordbox_after, account_after=account_after
     )
     steps.mark(STEP_DONE, done.account_id or one.target.key)
     return done
+
+
+def _write_account(
+    one: PairPlan,
+    remote: Any,
+    playlist_id: str,
+    done: Done,
+    steps: PairSteps,
+    *,
+    account_listed: Sequence[str] | None,
+) -> tuple[str, ...] | None:
+    """The account side of one pair's write, and the playlist after it, or None when its order stopped (U220).
+
+    Split out of :func:`apply_pair` by U226, so what the adapter records of
+    the pair's readings is read whether the write finishes, stops or raises.
+    """
+    account_after: tuple[str, ...]
+    if one.account_removes:
+        done.account_removed = len(remote.remove_tracks(playlist_id, one.account_removes))
+    if one.account_adds:
+        done.account_added = len(set(remote.add_tracks(playlist_id, one.account_adds)))
+    if one.account_order:
+        # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
+        steps.mark(STEP_ORDERING)
+        # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
+        # the adapter's reading agrees with the check's own listing of it.
+        expect = (
+            tuple(account_listed)
+            if steps.has(STEP_ORDER_REFUSED) and account_listed is not None
+            else None
+        )
+        try:
+            account_after = tuple(
+                remote.order_tracks(playlist_id, one.account_order, expect=expect)
+            )
+        except jobs.Parked:
+            raise
+        except CratekitError as exc:
+            if exc.cause.reason not in ORDER_REFUSALS:
+                raise
+            # U220. THIS PAIR ALONE STOPS. Its adds and removals landed and
+            # its rekordbox side is written; it is left unfinished, its
+            # snapshot unmoved, for a continue of the run to put in order,
+            # and the write goes on to every other pair.
+            steps.mark(STEP_ORDER_REFUSED, exc.cause.message)
+            done.order_refused = exc.cause
+            done.name = one.name
+            return None
+        done.account_ordered = True
+    elif account_listed is not None and not (one.account_removes or one.account_adds):
+        account_after = tuple(account_listed)
+    else:
+        account_after = tuple(remote.playlist_tracks(playlist_id))
+    return account_after
 
 
 def _warnings(planned: Plan) -> list[dict[str, str]]:
@@ -3193,8 +3266,9 @@ def check(
         for one in on_account:
             account_id = one.target.account_id or ours[one.target.key]
             try:
-                # READ AS THE PLAN READ IT (R-1264), row by row.
-                listing = intake_cli.list_playlist_readable(found, account_id)
+                # READ AS THE PLAN READ IT (R-1264), row by row, and its
+                # unpaged read beside the window (U226).
+                listing = intake_cli.list_playlist_readable(found, account_id, current=True)
             except CratekitError as exc:
                 if exc.cause.reason not in BROUGHT_REASONS:
                     raise
@@ -3204,6 +3278,19 @@ def check(
                         account_id,
                         one.name,
                         f"could not be listed ({exc.cause.message})",
+                    )
+                )
+                continue
+            if listing.window == provider_listing.WINDOW_LAGS:
+                # U226. Neither read is the playlist as it stands, so what it
+                # holds now is not known: read as moved, nothing written.
+                moved.append(
+                    Moved(
+                        ACCOUNT_SIDE,
+                        account_id,
+                        one.name,
+                        "reads one way through its pages and another through the "
+                        "provider's unpaged read, so it may lag a recent change",
                     )
                 )
                 continue
@@ -4070,6 +4157,10 @@ def sync_pair(ctx) -> Envelope:
         # and what the gates said this command was expected to spend.
         "finished_before": len(finished),
         "calls_expected": {"check": expected_check, "write": expected_write},
+        # U226. Each reading the account's writes were judged by, with how
+        # many readings it took and how long it waited, so an attended
+        # sitting reads how far the provider's read lagged.
+        "read_backs": [record for d in done for record in d.read_backs],
     }
     answered = {"rekordbox": on_rekordbox, "the account": on_account}
     sides = [side for side, on in answered.items() if on]

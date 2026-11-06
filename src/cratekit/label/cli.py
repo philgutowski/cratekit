@@ -15,7 +15,7 @@ from __future__ import annotations
 from collections.abc import Callable, Container, Sequence
 from pathlib import Path
 
-from cratekit.acquire import match_cli
+from cratekit.acquire import listing, match_cli
 from cratekit.cli.output import Envelope
 from cratekit.core import active_taxonomy, config, jobs, review, routing, taxonomy
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
@@ -981,10 +981,48 @@ def playlist_listing_or_refuse(
     is kept for that seam rather than deleted because the seam is the thing this
     unit built and the adapter is the next unit.
     """
+    rows, short, _window = _listed(found, reference, current=False)
+    return rows, short
+
+
+def playlist_listing_judged(
+    found: catalogue.Catalogue, reference: str
+) -> tuple[list, catalogue.ListingShortfall | None, str]:
+    """:func:`playlist_listing_or_refuse`, with the client's unpaged read beside the window (U226).
+
+    FOR A CALLER THAT PLANS A WRITE FROM THE ORDER IT READS, which is
+    ``crate sync pair``. Sitting 84 measured the window read serving a
+    playlist's old order for minutes after a move while the unpaged read
+    served it as it stood. The third value is
+    :func:`cratekit.acquire.listing.judge_window`'s answer: when it is
+    ``WINDOW_UNPAGED`` the rows are the unpaged read's, the whole playlist as
+    it stands, and the shortfall is read against them; when it is
+    ``WINDOW_LAGS`` the rows are the window's and the caller must not plan
+    from them as the playlist as it stands. One request more than
+    :func:`playlist_listing_or_refuse`, refused the same way.
+    """
+    return _listed(found, reference, current=True)
+
+
+def _listed(
+    found: catalogue.Catalogue, reference: str, *, current: bool
+) -> tuple[list, catalogue.ListingShortfall | None, str]:
+    """The two listings' one body and one boundary, see :func:`playlist_listing_or_refuse`."""
     try:
         playlist = found.playlist_for(reference)
         rows = harvest.playlist_tracks(playlist)
-        return rows, catalogue.ListingShortfall.of(rows, getattr(playlist, "num_tracks", None))
+        declared = getattr(playlist, "num_tracks", None)
+        window = listing.WINDOW_AGREES
+        if current:
+            unpaged = listing.playlist_tracks_unpaged(playlist)
+            window = listing.judge_window(
+                [listing.row_id(row) for row in rows],
+                [listing.row_id(row) for row in unpaged],
+                declared,
+            )
+            if window == listing.WINDOW_UNPAGED:
+                rows = unpaged
+        return rows, catalogue.ListingShortfall.of(rows, declared), window
     except CratekitError:
         raise
     except Exception as exc:
@@ -1585,6 +1623,7 @@ __all__ = [
     "harvest_playlist",
     "harvest_withheld_warning",
     "HARVEST_WITHHELD",
+    "playlist_listing_judged",
     "playlist_listing_or_refuse",
     "playlist_tracks_or_refuse",
     "import_label",

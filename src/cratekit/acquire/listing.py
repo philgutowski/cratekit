@@ -52,7 +52,7 @@ from __future__ import annotations
 
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from enum import Enum
 from typing import Any
 
@@ -1036,6 +1036,73 @@ def artist_releases(artist: Any, methods: Iterable[str] = RELEASE_METHODS, *,
     return releases
 
 
+# ── U226: the window read beside the client's unpaged read ──────────────────
+
+#: U226. The two reads agree, or the unpaged one is a first page the window
+#: read begins with: the window read is the reading.
+WINDOW_AGREES = "agrees"
+#: U226. The two differ and the unpaged read holds every track the playlist
+#: declares: the window lags a change the provider already serves unpaged, and
+#: the unpaged read is the reading.
+WINDOW_UNPAGED = "unpaged"
+#: U226. The two differ and the unpaged read is not whole, so neither can be
+#: taken as the playlist as it stands: a lag, read again or held.
+WINDOW_LAGS = "lags"
+
+
+def row_id(row: Any) -> str:
+    """One listed row's provider identifier as text, a track object's or a mapping's."""
+    if isinstance(row, Mapping):
+        return str(row.get("id", "") or "")
+    return str(getattr(row, "id", "") or "")
+
+
+def playlist_tracks_unpaged(playlist: Any, **retry: Any) -> list[Any]:
+    """The client's own read of a playlist with no window: one request, as it is served now (U226).
+
+    MEASURED ON THE LIVE ACCOUNT on 2026-11-06 (Sitting 84): after a move,
+    this read returned the new order at once while the window read
+    :func:`playlist_tracks` walks returned the old one, and sometimes the
+    new, for at least thirteen minutes. How many tracks the provider serves
+    it is not measured, so it is never trusted as whole on its own:
+    :func:`judge_window` holds it to the declared count. Put through the
+    same retry ladder a page gets.
+    """
+    page = fetch_with_retry(lambda _limit, _offset: playlist.tracks(), limit=0, offset=0, **retry)
+    return list(page or [])
+
+
+def judge_window(paged: Sequence[str], unpaged: Sequence[str], declared: Any) -> str:
+    """How the window read of a playlist stands beside its unpaged read (U226).
+
+    :data:`WINDOW_AGREES` when the two are the same, or the unpaged read is
+    shorter than the window read and is its first part while holding fewer
+    tracks than the playlist declares, which is a provider serving an unpaged
+    read its first page alone. :data:`WINDOW_UNPAGED` when they differ and
+    the unpaged read holds exactly the declared count, so it is the playlist
+    as it stands. :data:`WINDOW_LAGS` otherwise.
+
+    THE DECLARED TOTAL RULE STANDS. A track the account cannot play is left
+    out of both reads and still counted, so two reads short of the declared
+    count that agree are :data:`WINDOW_AGREES`, and the caller refuses them
+    as it always has.
+    """
+    paged, unpaged = list(paged), list(unpaged)
+    if unpaged == paged:
+        return WINDOW_AGREES
+    whole = (
+        isinstance(declared, int)
+        and not isinstance(declared, bool)
+        and declared >= 0
+        and len(unpaged) == declared
+    )
+    if whole:
+        return WINDOW_UNPAGED
+    if len(unpaged) < len(paged) and paged[: len(unpaged)] == unpaged:
+        return WINDOW_AGREES
+    return WINDOW_LAGS
+
+
 #: Every listing shape this module covers, as name to wrapper. The guard in the
 #: test suite reads this to decide which provider method names may only be called
 #: from here, so adding a wrapper arms the guard for it automatically (P3).
@@ -1080,6 +1147,9 @@ __all__ = [
     "PAGINATION_KEYWORDS",
     "RELEASE_METHODS",
     "STOP_RULES",
+    "WINDOW_AGREES",
+    "WINDOW_LAGS",
+    "WINDOW_UNPAGED",
     "WRAPPERS",
     "HeldReleases",
     "ListingNotPaginated",
@@ -1095,5 +1165,8 @@ __all__ = [
     "folder_playlists",
     "paginate",
     "paginate_cursor",
+    "judge_window",
     "playlist_tracks",
+    "playlist_tracks_unpaged",
+    "row_id",
 ]

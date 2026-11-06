@@ -2055,6 +2055,11 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # set's playlist, a folder, or a playlist under one of Cratekit's own
         # trees. Nothing was written.
         "sync-pair-out-of-scope": ExitCode.PRECONDITION,
+        # U226. The pair's account playlist reads one way through its pages and
+        # another through the provider's unpaged read, which is not the whole
+        # playlist, so it may lag a recent change. Nothing was written for the
+        # pair; a run a few minutes later reads it again.
+        "sync-pair-account-lagging": ExitCode.UPSTREAM_UNAVAILABLE,
         # One of the two playlists is already paired with another. One playlist
         # stays the same list as one other. Nothing was written.
         "sync-pair-conflict": ExitCode.PRECONDITION,

@@ -183,10 +183,12 @@ def test_a_removal_whose_window_lags_and_unpaged_read_does_not_is_taken_as_done(
 
 
 def test_a_removal_whose_window_lags_beside_a_first_page_refuses_after_the_bound(installed):
+    # The removal changes the unpaged read's first page, so the two disagree;
+    # past it they cannot, and the read back judges the window as ever.
     provider = _window_lagging(["a", "b", "c", "d"], 99, unpaged=1)
     slept: list[float] = []
     with pytest.raises(CratekitError) as refused:
-        _adapter(installed, provider, slept).remove_tracks("mine", ("b",))
+        _adapter(installed, provider, slept).remove_tracks("mine", ("a",))
     cause = refused.value.cause
     assert cause.detail["problem"] == "read-back-differs"
     assert cause.detail["lagged"] == "yes"
@@ -194,7 +196,7 @@ def test_a_removal_whose_window_lags_beside_a_first_page_refuses_after_the_bound
     assert "unpaged" in cause.message
     assert cause.detail["readings"] == str(tidal_account.ORDER_REREADS + 1)
     assert len(slept) == tidal_account.ORDER_REREADS
-    assert provider.removals == [(1,)], "a removal was sent twice"
+    assert provider.removals == [(0,)], "a removal was sent twice"
 
 
 def test_a_removal_planned_from_a_lagging_window_takes_the_track_where_it_stands(installed):
@@ -242,12 +244,12 @@ def test_every_read_back_records_its_readings_and_wait(installed):
     account = _adapter(installed, provider)
     account.order_tracks("mine", ("d", "a", "b", "c"))
     account.remove_tracks("mine", ("b",))
-    assert [(one["after"], one["outcome"]) for one in account.read_backs] == [
+    assert [(one["after"], one["outcome"]) for one in account.read_backs()] == [
         ("order", "done"),
         ("move", "done"),
         ("removal", "done"),
     ]
-    move = account.read_backs[1]
+    move = account.read_backs()[1]
     assert move["playlist_id"] == "mine"
     assert move["readings"] == 2
     assert move["waited"] == tidal_account.ORDER_PAUSES[0]
@@ -259,7 +261,7 @@ def test_a_refused_read_back_is_recorded_as_refused(installed):
     account = _adapter(installed, provider)
     with pytest.raises(CratekitError):
         account.order_tracks("mine", ("d", "a", "b", "c"))
-    last = account.read_backs[-1]
+    last = account.read_backs()[-1]
     assert (last["after"], last["outcome"]) == ("move", "refused")
     assert last["readings"] == tidal_account.ORDER_REREADS + 1
     assert last["window_lagged"] == tidal_account.ORDER_REREADS + 1

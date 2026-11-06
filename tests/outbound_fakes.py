@@ -67,6 +67,8 @@ PROTOCOL_METHODS = frozenset(
         # U143. The account root's removals, each of a kind the gate named.
         "remove_root_playlist",
         "remove_legacy_folder",
+        # U226. Reads nothing: the record of the readings writes were judged by.
+        "read_backs",
     }
 )
 
@@ -94,6 +96,9 @@ class FakeAccount:
         self.catalog = dict(catalog or {})
         self.hearts: set[str] = set(hearts or ())
         self.playlists: dict[str, list[str]] = {}
+        #: U226. The readings a write was judged by, as the adapter records
+        #: them; this fake judges none, and a test appends what it drives.
+        self.judged: list[dict] = []
         self.created: list[str] = []
         self.added: list[tuple[str, str]] = []
         self.hearted: list[str] = []
@@ -394,6 +399,10 @@ class FakeAccount:
         self.titles.pop(playlist_id, None)
         self.placed.pop(playlist_id, None)
         self.root_removed.append((playlist_id, kind))
+
+    def read_backs(self) -> tuple[dict, ...]:
+        """What :attr:`judged` holds, as the adapter's record of its read backs (U226)."""
+        return tuple(dict(one) for one in self.judged)
 
     def remove_legacy_folder(self, folder_id: str) -> None:
         """Remove an empty root folder; one holding anything is refused, as the adapter does."""

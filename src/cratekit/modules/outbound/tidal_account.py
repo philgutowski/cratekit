@@ -189,6 +189,41 @@ class _Absent:
 _ABSENT = _Absent()
 
 
+def _waited(seconds: float) -> str:
+    """Seconds paused, as a refusal names them: ``7`` rather than ``7.0``."""
+    return f"{seconds:g}"
+
+
+def _window_lags(
+    identifier: str, kept: str, *, readings: int | None = None, waited: float = 0.0
+) -> CratekitError:
+    """The refusal of a playlist whose window read still disagrees with its unpaged read (U226).
+
+    ``kept`` says what was not done. ``readings``, when given, is how many
+    readings were taken and ``waited`` the seconds paused between them, named
+    in the message and the detail so an attended sitting reads the lag.
+    """
+    detail = {"playlist_id": identifier, "problem": "window-lags", "lagged": "yes"}
+    said = ""
+    if readings is not None:
+        detail |= {"readings": str(readings), "waited": _waited(waited)}
+        said = f" after {readings} readings and {_waited(waited)} seconds"
+    return refuse(
+        "outbound-remove-refused",
+        f"the playlist {identifier} read one way through its pages and another "
+        f"through the provider's unpaged read{said}, and the unpaged read is not "
+        f"the whole playlist, so it may lag a recent change and which position "
+        f"holds which track is not known; {kept}",
+        steps=(
+            "wait a few minutes for the provider to serve the playlist as it "
+            "stands, then run it again",
+        ),
+        scope=Scope.RUN,
+        origin=("outbound", "account"),
+        detail=detail,
+    )
+
+
 def _not_found(exc: BaseException) -> bool:
     """Whether a failure is the provider saying it has nothing, asked FIRST."""
     if type(exc).__name__ in NOT_FOUND_NAMES:
@@ -406,6 +441,9 @@ class TidalAccount:
         self._reasons: dict[str, str] = {}
         #: U208. The identities whose last match took one of a tie.
         self._ties: set[str] = set()
+        #: U226. Every reading this adapter judged a write or an order by,
+        #: see :meth:`read_backs`.
+        self._read_backs: list[dict[str, Any]] = []
 
     def _call(self, doing: str, fn: Callable[[], Any], *, retries: int = WRITE_RETRIES) -> Any:
         """One provider call, retried ``retries`` times, translated on failure.
@@ -1140,6 +1178,43 @@ class TidalAccount:
             declared=declared if isinstance(declared, int) and not isinstance(declared, bool) else None,
         )
 
+    def _noting(self, playlist_id: str, after: str) -> dict[str, Any]:
+        """A record of one judged reading's readings and wait, kept from its start (U226).
+
+        Appended now and filled as it goes, so a refusal raised from anywhere
+        inside the reading leaves it recorded as ``"refused"``.
+        """
+        note: dict[str, Any] = {
+            "playlist_id": str(playlist_id),
+            "after": after,
+            "readings": 0,
+            "waited": 0.0,
+            "window_lagged": 0,
+            "outcome": "refused",
+        }
+        self._read_backs.append(note)
+        return note
+
+    def read_backs(self) -> tuple[dict[str, Any], ...]:
+        """Every reading this adapter judged a write or an order by, in order (U226).
+
+        Each is ``{"playlist_id", "after", "readings", "waited",
+        "window_lagged", "outcome"}``: ``after`` is ``"order"`` for the
+        reading an order is planned from, ``"move"`` or ``"removal"`` for a
+        write's read back; ``waited`` the seconds paused between readings;
+        ``window_lagged`` how many readings' window read disagreed with the
+        unpaged read while that read was not the whole playlist; ``outcome``
+        ``"done"`` or ``"refused"``. A copy of each, so a caller cannot change
+        what is recorded. ``crate sync pair`` carries them as the run's facts,
+        so an attended sitting reads how long the provider's read lagged.
+        """
+        return tuple(dict(note) for note in self._read_backs)
+
+    def _paused(self, note: dict[str, Any], seconds: float) -> None:
+        """Pause before a reading taken again, and count the wait in its record."""
+        self._sleep(seconds)
+        note["waited"] += seconds
+
     def _positions(self, playlist_id: str, playlist: Any) -> list[str]:
         """The playlist's tracks by position, refused when a position is unknowable.
 
@@ -1154,8 +1229,16 @@ class TidalAccount:
         are tracks and videos together, and the read here is of tracks alone,
         so a playlist declaring any video, or declaring no video count, is
         refused as well.
+
+        A WINDOW THAT DISAGREES WITH THE UNPAGED READ IS REFUSED FIRST (U226),
+        the problem ``window-lags``, when the unpaged read is not the whole
+        playlist and so cannot stand in for it, see :meth:`_reading`: which
+        position holds which track is not known while the two disagree. Each
+        caller says whether such a reading is read again.
         """
-        members, declared, videos = self._reading(playlist_id, playlist)
+        members, declared, videos, window = self._reading(playlist_id, playlist)
+        if window == listing.WINDOW_LAGS:
+            raise _window_lags(str(playlist_id), "nothing was sent on that reading")
         if (
             not _count(declared)
             or declared != len(members)
@@ -1179,17 +1262,43 @@ class TidalAccount:
         self._members[playlist_id] = members
         return members
 
-    def _reading(self, playlist_id: str, playlist: Any) -> tuple[list[str], Any, Any]:
-        """One reading of an opened playlist: its tracks by position, its declared tracks and videos.
+    def _reading(self, playlist_id: str, playlist: Any) -> tuple[list[str], Any, Any, str]:
+        """One reading of an opened playlist: its tracks by position, its declared tracks and videos, and how its two reads stood.
+
+        TWO READS, THE WINDOW AND THEN THE UNPAGED ONE (U226). Sitting 84
+        measured the window read every listing walks serving a playlist's old
+        order for minutes after a move, while the client's unpaged read served
+        the new one at once. :func:`listing.judge_window` reads the two
+        against the declared count: when they differ and the unpaged read is
+        the whole playlist, its tracks are this reading's, ``WINDOW_UNPAGED``;
+        when they agree, the window's, ``WINDOW_AGREES``; otherwise the
+        window's, marked ``WINDOW_LAGS``, which no caller takes as the
+        playlist as it stands.
+
+        THE UNPAGED READ IS TAKEN LAST, so the version tag the client keeps
+        from it is the one the next write carries: a window served from before
+        a write carries the tag it had then, and a write sent with it is
+        answered 412.
 
         Nothing is judged or remembered here; :meth:`_positions` and
         :meth:`_removal_read_back` each judge a reading by their own rule.
         """
         tracks = self._listed(playlist_id, playlist)
+        paged = [listing.row_id(track) for track in tracks]
+        unpaged = [
+            listing.row_id(track)
+            for track in self._read(
+                f"read the playlist {playlist_id}",
+                lambda: listing.playlist_tracks_unpaged(playlist),
+            )
+        ]
+        declared = getattr(playlist, "num_tracks", None)
+        window = listing.judge_window(paged, unpaged, declared)
         return (
-            [str(getattr(track, "id", "") or "") for track in tracks],
-            getattr(playlist, "num_tracks", None),
+            unpaged if window == listing.WINDOW_UNPAGED else paged,
+            declared,
             getattr(playlist, "num_videos", None),
+            window,
         )
 
     def _vouched(self, identifier: str, kept: str) -> None:
@@ -1376,29 +1485,41 @@ class TidalAccount:
                 return list(dict.fromkeys(reading)) == list(dict.fromkeys(known))
             return sorted(reading) == sorted(known)
 
+        note = self._noting(identifier, "order")
+        kept = "nothing more was moved; every track is still on it" if pauses_from else (
+            "no track was moved"
+        )
         last: CratekitError | None = None
         for attempt in range(ORDER_REREADS + 1):
             if attempt:
-                self._sleep(_pause(pauses_from + attempt))
+                self._paused(note, _pause(pauses_from + attempt))
             playlist = self._playlist(identifier)
+            note["readings"] += 1
             try:
                 reading = self._positions(identifier, playlist)
             except CratekitError as exc:
-                if known is None or (exc.cause.detail or {}).get("problem") != "positions-unknown":
+                problem = (exc.cause.detail or {}).get("problem")
+                if problem == "window-lags":
+                    # U226. A WINDOW THAT LAGS IS READ AGAIN whether or not
+                    # anything is known: it is a write, this product's or a
+                    # person's, the provider has not caught up with.
+                    note["window_lagged"] += 1
+                    last = _window_lags(
+                        identifier, kept, readings=note["readings"], waited=note["waited"]
+                    )
+                    continue
+                if known is None or problem != "positions-unknown":
                     raise
                 last = exc
                 continue
             if agrees(reading):
+                note["outcome"] = "done"
                 return playlist, reading
             last = refuse(
                 "outbound-remove-refused",
                 f"the playlist {identifier} read {attempt + 1} time(s) does not hold "
                 f"what was last known of it, so the reading may lag a write and "
-                + (
-                    "nothing more was moved; every track is still on it"
-                    if pauses_from
-                    else "no track was moved"
-                ),
+                + kept,
                 steps=(
                     "check the playlist by hand in the provider's own player, then "
                     "run the sync again",
@@ -1421,27 +1542,50 @@ class TidalAccount:
         once, since a move that landed elsewhere would make every later one
         wrong. The move is never sent again from here.
         """
+        note = self._noting(identifier, "move")
         reading: list[str] = []
-        attempt = 0
+        lagged = False
+        window = False
         for attempt in range(ORDER_REREADS + 1):
             if attempt:
-                self._sleep(_pause(attempt))
+                self._paused(note, _pause(attempt))
             playlist = self._playlist(identifier)
-            reading = self._positions(identifier, playlist)
+            note["readings"] += 1
+            try:
+                reading = self._positions(identifier, playlist)
+            except CratekitError as exc:
+                if (exc.cause.detail or {}).get("problem") != "window-lags":
+                    raise
+                # U226. THE WINDOW STILL DISAGREES WITH THE UNPAGED READ, which
+                # is not whole: the move may have landed, so it is a lag.
+                note["window_lagged"] += 1
+                lagged = window = True
+                continue
+            window = False
             if reading == expected:
+                note["outcome"] = "done"
                 return playlist, reading
-            if reading != before:
+            lagged = reading == before
+            if not lagged:
                 break
-        lagged = reading == before
+        readings, waited = note["readings"], _waited(note["waited"])
+        if window:
+            shown = (
+                f" (its pages still read otherwise than the provider's unpaged read "
+                f"after {readings} readings and {waited} seconds)"
+            )
+        elif lagged:
+            shown = (
+                f" (it still read as it was before the move after {readings} readings "
+                f"and {waited} seconds)"
+            )
+        else:
+            shown = ""
         raise refuse(
             "outbound-remove-refused",
             f"the playlist {identifier} read back after a move is not what it held "
             f"with that track moved to the front"
-            + (
-                f" (it still read as it was before the move after {attempt + 1} readings)"
-                if lagged
-                else ""
-            )
+            + shown
             + ", so nothing more was moved; every track is still on it",
             steps=("check the playlist's order by hand in the provider's own player",),
             scope=Scope.RUN,
@@ -1450,6 +1594,8 @@ class TidalAccount:
                 "playlist_id": identifier,
                 "problem": "read-back-differs",
                 "lagged": "yes" if lagged else "no",
+                "readings": str(readings),
+                "waited": waited,
             },
         )
 
@@ -1530,15 +1676,27 @@ class TidalAccount:
         removal is never sent again from here: one that reached the provider,
         sent again, would take off whatever stands at those positions now.
         """
+        note = self._noting(identifier, "removal")
         reading: list[str] = []
         lagged = False
-        attempt = 0
+        tracks: str | None = None
+        counted: str | None = None
         for attempt in range(ORDER_REREADS + 1):
             if attempt:
-                self._sleep(_pause(attempt))
+                self._paused(note, _pause(attempt))
             playlist = self._playlist(identifier)
-            reading, declared, videos = self._reading(identifier, playlist)
-            tracks = "before" if reading == before else "after" if reading == expected else None
+            note["readings"] += 1
+            reading, declared, videos, window = self._reading(identifier, playlist)
+            # U226. A WINDOW THAT DISAGREES WITH AN UNPAGED READ NOT WHOLE says
+            # nothing of which tracks are on the playlist now: its tracks half
+            # is a lag, the count half judged as ever.
+            if window == listing.WINDOW_LAGS:
+                note["window_lagged"] += 1
+                tracks = "window"
+            else:
+                tracks = (
+                    "before" if reading == before else "after" if reading == expected else None
+                )
             counted = (
                 None
                 if not _count(declared) or not _count(videos) or videos != 0
@@ -1550,6 +1708,7 @@ class TidalAccount:
             )
             if tracks == counted == "after":
                 self._members[identifier] = reading
+                note["outcome"] = "done"
                 return playlist, reading
             lagged = tracks is not None and counted is not None
             if not lagged:
@@ -1568,6 +1727,14 @@ class TidalAccount:
                 "read after a removal with its tracks changed as asked and its "
                 "declared count still as it was before"
             ),
+            ("window", "before"): (
+                "read after a removal with its pages otherwise than the provider's "
+                "unpaged read and its declared count still as it was before"
+            ),
+            ("window", "after"): (
+                "read after a removal with its pages otherwise than the provider's "
+                "unpaged read and its declared count changed"
+            ),
         }
         # NOT ``provider_failure``, whose remedy is to run it again: a playlist
         # that did not change as asked may have lost the wrong track, and
@@ -1576,8 +1743,9 @@ class TidalAccount:
             "outbound-remove-refused",
             (
                 f"the playlist {identifier} {shown[(tracks, counted)]} after "
-                f"{attempt + 1} readings, so the removal may have landed with the "
-                f"read lagging it; nothing more was sent"
+                f"{note['readings']} readings and {_waited(note['waited'])} seconds, "
+                f"so the removal may have landed with the read lagging it; nothing "
+                f"more was sent"
             )
             if lagged
             else (
@@ -1595,6 +1763,8 @@ class TidalAccount:
                 "playlist_id": identifier,
                 "problem": "read-back-differs",
                 "lagged": "yes" if lagged else "no",
+                "readings": str(note["readings"]),
+                "waited": _waited(note["waited"]),
             },
         )
 
