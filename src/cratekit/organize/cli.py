@@ -50,7 +50,7 @@ from typing import Any
 from cratekit.cli.output import Envelope
 from cratekit.core import profiles
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
-from cratekit.core.exit_codes import Remedy
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import rotate_cli
 from cratekit.modules.outbound import shell
 from cratekit.organize import account, account_mirror, rekordbox
@@ -148,10 +148,31 @@ def _followed() -> tuple[tuple, CratekitError | None]:
 
 
 def _ask(ctx, area: Area, name: str) -> str | None:
-    """The area's answer, or ``None`` for an area refused before it was planned."""
+    """The area's answer, or ``None`` for an area refused before it was planned.
+
+    A STALE ANSWER SAYS WHAT MOVED (U222). The gate's refusal names the two
+    digests alone; an area that can say which of its steps moved since the
+    gate showed it, and how its plan was made, adds that, so the person
+    replanning knows what changed and whether the run rebuilt a frozen plan.
+    """
     if area.cause is not None:
         return None
-    return ctx.gate.require(_gate(ctx.entry, name), plan=area.payload(), context=area.shown())
+    try:
+        return ctx.gate.require(_gate(ctx.entry, name), plan=area.payload(), context=area.shown())
+    except CratekitError as exc:
+        # BY ITS CODE, the gate's own ``DecisionStale``, so this file keeps off
+        # the CLI's modules; a refusal of any other code leaves as raised.
+        if exc.cause.code != ExitCode.DECISION_STALE or not area.stale:
+            raise
+        cause = exc.cause
+        raise rebuilt(
+            exc,
+            dataclasses.replace(
+                cause,
+                message=f"{cause.message}; {area.name}: " + "; ".join(area.stale),
+                detail={**dict(cause.detail or {}), "stale": list(area.stale)},
+            ),
+        ) from exc
 
 
 def _apply(area: Area) -> None:

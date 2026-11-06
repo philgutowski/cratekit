@@ -720,6 +720,11 @@ def test_a_plan_that_moves_after_the_answer_is_stale_rather_than_applied(world):
 
     assert code == int(ExitCode.DECISION_STALE), again
     assert again["cause"]["reason"] == "decision-stale"
+    # U222: an area with nothing to say beside the digests leaves the refusal as the gate gave it.
+    assert again["cause"]["message"] == (
+        f"the decision on {DB_GATE!r} was made against a plan that has since changed"
+    )
+    assert "stale" not in again["cause"]["detail"]
     assert _filed(cfg) == [] and held.folders_created == []
 
 
@@ -1197,6 +1202,28 @@ def test_a_library_write_between_the_mirrors_two_acts_applies_the_approved_plan(
     assert sorted(path.name for path in frozen.glob("*.json")) == before
 
 
+def test_the_gate_freezes_every_step_of_the_full_account_area(world):
+    """U222. The steps a stale answer names are the whole area's, the mirror planned last.
+
+    A step kind planned after the mirror would be missing from the frozen plan
+    and named on every stale answer as one the gate did not show.
+    """
+    from cratekit.organize import mirror_frozen
+
+    cfg, _fake, _held, _inbox, _ids = world
+    collection.reset_cache()
+    code, refused = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    frozen, said = mirror_frozen.load(cfg, refused["run_id"])
+    assert frozen is not None, said
+    collection.reset_cache()
+    code, report = drive([*VERB, "--report"])
+    assert code == int(ExitCode.OK), report
+    keys = [step["step"] for step in report["data"]["summary"]["areas"][account_area.AREA]["steps"]]
+    assert len(keys) > len([one for one in keys if one.startswith("mirror:")]) > 0, keys
+    assert sorted(frozen.steps) == sorted(keys)
+
+
 def test_without_the_frozen_plan_the_same_two_acts_are_refused_stale(world, monkeypatch):
     """The contrast to the drive above: what the frozen plan holds, shown by its absence."""
     from cratekit.organize import mirror_frozen
@@ -1209,6 +1236,9 @@ def test_without_the_frozen_plan_the_same_two_acts_are_refused_stale(world, monk
 
     assert code == int(ExitCode.DECISION_STALE), done
     assert done["cause"]["reason"] == "decision-stale"
+    # U222: and it says the plan was made afresh, not rebuilt, and what it cost.
+    assert "mirror plan frozen: none, by the test, so it was planned afresh" in done["cause"]["message"]
+    assert "to read the library and the account and plan" in done["cause"]["message"]
 
 
 def test_a_run_resumed_with_no_account_answer_plans_the_mirror_afresh(world, monkeypatch):
@@ -1831,3 +1861,44 @@ def test_an_unread_label_registry_refuses_the_root_step_as_it_refuses_the_filing
     step = _steps(_report(), account_area.AREA)[account_area.ROOT]
 
     assert step["state"] == "refused"
+
+
+def test_an_account_change_between_the_mirrors_acts_is_stale_and_says_what_moved(world, monkeypatch):
+    """U222. The refusal names the step and playlist that moved, and says the plan was rebuilt.
+
+    Sitting 66's refusal named two digests and nothing else, so the sitting
+    could not tell a rebuild from a fresh plan, nor which playlist moved.
+    """
+    _cfg, _fake, held, _inbox, _ids = world
+    assert _answered()[0] == int(ExitCode.OK)
+    monkeypatch.setattr(rekordbox, "plan_area", _not_planned)
+    only = [*VERB, "--only", account_area.MIRROR]
+    collection.reset_cache()
+    code, refused = drive(only)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    code, decided = drive(["run", "decide", run_id, ACCOUNT_GATE, "apply", "--actor", "a-person"])
+    assert code == int(ExitCode.OK), decided
+    # A person deletes a mirrored INBOX batch's playlist on the account.
+    (gone,) = [pid for pid, title in held.titles.items() if title.endswith("Tidal playlists")]
+    title = held.titles[gone]
+    del held.playlists[gone], held.titles[gone], held.placed[gone]
+    asked, created = len(held.matches), list(held.created)
+
+    collection.reset_cache()
+    code, done = drive(["--run", run_id, *only])
+
+    assert code == int(ExitCode.DECISION_STALE), done
+    cause = done["cause"]
+    assert cause["reason"] == "decision-stale"
+    assert cause["message"].startswith(
+        f"the decision on {ACCOUNT_GATE!r} was made against a plan that has since changed; "
+        f"account: moved since the gate showed it: mirror INBOX onto the account, in {title!r}; "
+        f"mirror plan frozen: rebuilt from the plan frozen on run {run_id}; mirror plan: "
+    ), cause["message"]
+    assert cause["detail"]["stale"][0] == (
+        f"moved since the gate showed it: mirror INBOX onto the account, in {title!r}"
+    )
+    assert cause["detail"]["gate"] == ACCOUNT_GATE
+    # Said with no row asked again and nothing written.
+    assert len(held.matches) == asked and held.created == created
