@@ -54,6 +54,20 @@ session, and the rekordbox visit that follows. This verb never starts a backup,
 never opens rekordbox and never writes a beat grid; it refuses before any write
 while rekordbox or a backup is running.
 
+A DOWNLOAD ``crate organize`` QUEUED FOR AN ACCOUNT EDIT IS THE PASS'S TOO
+(U227). The rekordbox step ``mirror-downloads`` queues a track a person put
+on a mirrored playlist on the account, which the library lacks, under no run,
+and a pass reads its jobs by the run they carry, so sitting 85 left such a job
+open beside the pass and landed its track only because another playlist
+listed it too. A pass ``sync all`` has just started, or the run it named when
+it queued nothing and no earlier pass is open, takes every such job still
+queued, through :func:`cratekit.core.jobs.join_run`, and drives, lists,
+downloads and lands it with its own; a track two of the pass's jobs list is
+listed once, so it lands once. A continued pass takes none, since it may have
+listed already, and the job stays on the left open row until a new pass
+takes it. ``sync mark`` reads only the playlist sweep's own jobs, so the
+mirror's playlist is never marked.
+
 EITHER RUN ID CONTINUES THE PASS, SINCE U183. A pass has two: the land run this
 verb prints as its own, and the ``sync all`` run its intake jobs carry, which is
 the one every step reads. The land run's record names its pass the moment that
@@ -655,6 +669,7 @@ def _sync(report: _Pass, cfg: config.Config) -> str | None:
     summary = _summary_of(envelope)
     run_id = str(summary.get("run_id") or envelope.get("run_id") or "")
     report.summary["pass_run"] = run_id
+    report.summary["sync_run"] = run_id
     if envelope.get("outcome") == str(Outcome.NO_OP):
         earlier = _open_passes(cfg)
         if len(earlier) == 1:
@@ -677,6 +692,42 @@ def _sync(report: _Pass, cfg: config.Config) -> str | None:
         f"sync all queued {summary.get('queued', 0)} job(s) under run {run_id}",
     )
     return run_id
+
+
+def _take_mirror_downloads(report: _Pass, cfg: config.Config, run_id: str) -> list[str]:
+    """Take every download ``crate organize`` queued for an account edit into the pass (U227).
+
+    Each intake job of this library the ``mirror-downloads`` step queued that
+    is still queued and carries no run is given ``run_id``, so the pass drives,
+    lists, downloads and lands it with its own. A job another pass took in
+    between is refused by the write and left as it is. Answers the jobs taken.
+    """
+    from cratekit.organize import mirror_downloads  # noqa: PLC0415 - one module's keys
+
+    taken: list[str] = []
+    with jobs.open_store() as store:
+        for job in jobs.list_jobs(store, states=[jobs.JobState.QUEUED]):
+            if (
+                job.handler_key != mirror_downloads.HANDLER
+                or job.library_id != cfg.library.volume_id
+                or (job.payload or {}).get("source_id") != mirror_downloads.SOURCE_ID
+                or _run_of(job)
+            ):
+                continue
+            try:
+                jobs.join_run(store, job.job_id, run_id)
+            except CratekitError:
+                continue
+            taken.append(job.job_id)
+    if taken:
+        report.summary["mirror_downloads_taken"] = taken
+        report.check(
+            SYNC,
+            "info",
+            f"took {len(taken)} download(s) crate organize queued for an edit made on "
+            f"the account into this pass, run {run_id}: {', '.join(taken)}",
+        )
+    return taken
 
 
 def _pass_jobs(store: jobs.JobStore, run_id: str, cfg: config.Config) -> list[jobs.Job]:
@@ -1046,6 +1097,12 @@ def sync_land(ctx: Context) -> Envelope:
             report.check(SYNC, "info", f"continuing the pass queued under run {run_id}")
         else:
             run_id = _sync(report, cfg)
+            # A PASS SYNC ALL STARTED, or the run it named over nothing new with
+            # no earlier pass open, takes the account's queued downloads (U227).
+            fresh = str(report.summary.get("sync_run") or "")
+            if fresh and run_id in (None, fresh) and _take_mirror_downloads(report, cfg, fresh):
+                run_id = fresh
+                report.summary["pass_run"] = fresh
         if run_id:
             _remember(ctx, report, run_id)
         _left_behind(report, cfg, run_id)
