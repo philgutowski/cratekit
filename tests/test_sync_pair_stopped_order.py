@@ -134,6 +134,7 @@ def test_a_move_the_person_made_on_the_account_after_the_stop_still_leads(world,
     assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == ["t3", "t2", "t7", "t1", "t4", "t5", "t6"]
     assert world.held(intro) == ["3", "2", "7", "1", "4", "5", "6"]
+    assert "the account was reordered since" in _said(envelope, pair_cli.FINISHING)
 
 
 def test_rekordbox_reordered_since_the_stop_leads(world, stopped):
@@ -220,3 +221,29 @@ def test_a_pair_with_no_stopped_write_is_planned_as_before(world, monkeypatch):
     assert stops == []
     assert world.held(intro) == ["3", "1", "2"]
     assert pair_cli.FINISHING not in _codes(envelope)
+
+
+def test_a_stopped_write_a_fresh_sync_finished_is_left_behind_by_the_snapshot(world, stopped):
+    _intro, account_id, run_id = stopped
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    # The stopped run's record is still kept, and the snapshot is later.
+    from cratekit.core import held_plan
+
+    assert held_plan.steps_path(run_id).exists()
+    code, again = sync()
+    assert code == int(ExitCode.OK), again
+    assert pair_cli.FINISHING not in _codes(again)
+    assert [item for item in again["data"]["items"] if item["pair"] == account_id] == []
+
+
+def test_a_runs_steps_that_cannot_be_read_are_named_never_read_as_no_write(world, stopped):
+    from cratekit.core import held_plan
+
+    held_plan.steps_path("2026-11-05T17:42:49Z-5ddd").write_text("{not json")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    said = _said(envelope, pair_cli.STOPPED_UNREAD)
+    assert "2026-11-05T17:42:49Z-5ddd" in said
+    # The record that can be read is still read.
+    assert pair_cli.FINISHING in _codes(envelope)

@@ -1885,6 +1885,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-account-lagging',  # 2026-11-06, U226.
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
+        'sync-pair-finishing',  # 2026-11-06, U225.
         'sync-pair-later-change',
         'sync-pair-left-out',
         'sync-pair-not-brought',
@@ -1898,6 +1899,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-skipped',
         'sync-pair-steps-unread',
         'sync-pair-steps-unwritten',
+        'sync-pair-stopped-unread',  # 2026-11-06, U225.
         'sync-pair-time-unknown',
         'sync-pair-twin-unpaired',
         'sync-pair-unknown',

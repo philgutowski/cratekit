@@ -152,6 +152,20 @@ show the provider calls the command that writes is expected to make
 lets it finish; a stop part way names the run and the ``--calls`` its
 continue needs.
 
+**A FRESH SYNC AFTER A WRITE STOPPED PART WAY THROUGH ITS ORDER FINISHES IT
+(U225).** Sitting 62's write added tracks to one paired account playlist and
+stopped part way through putting it in order; the next fresh sync read the
+stopped write's own moves as the person's reorder and planned to put that
+scramble into rekordbox. So the write records what its order was doing when it
+began to move tracks, and a plan reads every run's steps still kept
+(``sync/pair_stopped.py``). For a pair whose latest account write since its
+snapshot began to order and never finished: its moves are not read as
+anybody's when the account stands where the adapter's moves could have left
+it, and the side that led it leads again unless a side changed order since;
+and when it committed rekordbox too, the plan merges against what it left on
+both sides, so its additions and removals are not read as the person's
+either. The gate names the pair as finishing that run.
+
 **THE SNAPSHOT MOVES ONLY WHEN THE WHOLE PAIR WAS WRITTEN.** Both gates
 applied, every write landed, and the account listed the whole playlist: only
 then are both sides' snapshots recorded, together. Anything less, a side
@@ -200,7 +214,7 @@ from typing import Any
 
 from cratekit.acquire import listing as provider_listing
 from cratekit.acquire import match
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, timestamp
 from cratekit.core import analysis_store, config, jobs, locations, rb_writer, session, tags
 from cratekit.core.cause import CratekitError, Outcome, refuse
 from cratekit.favorites import placeholders
@@ -208,7 +222,7 @@ from cratekit.intake import cli as intake_cli
 from cratekit.intake import ingest
 from cratekit.modules.outbound.pairs import ACCOUNT_SIDE, REKORDBOX_SIDE
 from cratekit.sync import cli as sync_cli
-from cratekit.sync import pair_calls, pair_merge, playlists
+from cratekit.sync import pair_calls, pair_merge, pair_stopped, playlists
 from cratekit.write import playlist_pair
 
 _ORIGIN = ("sync.pair",)
@@ -258,6 +272,12 @@ UNPAIRED = "sync-pair-twin-unpaired"
 UNREAD = "sync-pair-unread"
 #: U221. A twin's tracks held for the author's choice, counted per twin.
 ON_HOLD = "sync-pair-on-hold"
+#: U225. Pairs a fresh sync plans as finishing a write stopped part way
+#: through its order, each named with the run that stopped.
+FINISHING = "sync-pair-finishing"
+#: U225. Runs' steps a plan could not read, so a stopped write in them was
+#: not looked for.
+STOPPED_UNREAD = "sync-pair-stopped-unread"
 #: U221. The gate's item for one of them.
 ON_HOLD_ACTION = "on-hold"
 
@@ -538,6 +558,14 @@ class PairPlan:
     #: U202. When the account says each listed track was added, ISO text by
     #: remote id, recorded with the snapshot.
     account_dates: dict[str, str] = field(default_factory=dict)
+    #: U225. The account playlist as the removals and additions leave it,
+    #: before any move, when the plan orders it: what the order starts from.
+    account_after: tuple[str, ...] = ()
+    #: U225. The run whose write on this pair stopped part way through its
+    #: order and that this plan finishes, or empty; and whether the account
+    #: stood where that write's moves left it, so its order was finished.
+    finishing: str = ""
+    finishing_order: bool = False
 
     @property
     def account_writes(self) -> bool:
@@ -577,6 +605,8 @@ class PairPlan:
                 if self.on_hold
                 else {}
             ),
+            # U225, ONLY WHEN ONE, so a pair no stopped write left digests as it did.
+            **({"finishing": self.finishing} if self.finishing else {}),
         }
 
 
@@ -769,6 +799,47 @@ class _Reader:
     def mirrors(self) -> dict[str, frozenset[str]]:
         """Each account playlist's INBOX playlists, as the landing records name them (U128)."""
         return landed_inbox_playlists(self.cfg)
+
+    @cached_property
+    def stopped(self) -> tuple[dict[str, tuple[Any, Any]], tuple[str, ...]]:
+        """Each pair's latest account write a kept run recorded, and the runs' steps unread (U225).
+
+        Read once per plan, from every run's steps still kept, so a fresh
+        plan knows a write that stopped part way through a pair's order.
+        """
+        from cratekit.core import held_plan
+
+        records, problems = held_plan.recorded_steps()
+        return (
+            pair_stopped.stopped_writes(
+                records,
+                new=NEW,
+                account=STEP_ACCOUNT,
+                ordering=STEP_ORDERING,
+                made=STEP_MADE,
+                done=STEP_DONE,
+            ),
+            tuple(problems),
+        )
+
+    def stopped_write(self, account_id: str, held: Any) -> Any:
+        """The write on this pair that stopped part way through its order since its snapshot, or None (U225).
+
+        The pair's latest account write a kept run recorded, when it began
+        after the pair's last snapshot and began to order and never finished.
+        A snapshot that cannot be read as a moment says nothing was written
+        since, so nothing is finished from a write it cannot place.
+        """
+        if not account_id or held is None:
+            return None
+        began, write = self.stopped[0].get(account_id, (None, None))
+        if write is None:
+            return None
+        if held.synced:
+            synced = placeholders.parse_hearted(held.synced)
+            if synced is None or not began > synced:
+                return None
+        return write
 
     def jobs_for(self, account_id: str) -> tuple[jobs.Job, ...]:
         return tuple(
@@ -1151,12 +1222,37 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     account_readded: set[str] = set()
     rekordbox_added: dict[str, Any] = {}
     rekordbox_removed: dict[str, Any] = {}
+    # U225. A WRITE ON THIS PAIR STOPPED PART WAY THROUGH ITS ORDER since the
+    # snapshot, and the rows its links name: it never reached the snapshot
+    # that would have recorded them, so a row it linked and that is gone from
+    # rekordbox since is still read as the account track it was.
+    stopped_write = reader.stopped_write(target.account_id, held)
+    stopped_links = (
+        {row: remote for remote, row in stopped_write.links.items()}
+        if stopped_write is not None
+        else {}
+    )
+
     def as_key(content_id: str) -> str:
         remote_id = canon.get(content_id, "")
+        if not remote_id and content_id in stopped_links:
+            return alias(stopped_links[content_id])
         return remote_key(remote_id) if remote_id else row_key(content_id)
 
+    # U225. WHEN THE STOPPED WRITE COMMITTED REKORDBOX as well, both sides
+    # hold what it wrote, so the bases are what it left, the snapshot it would
+    # have recorded; when it did not, neither base moves (record both or
+    # neither).
+    folded = stopped_write is not None and stopped_write.written
     if held is not None and not held.first:
-        base_account = pair_merge.distinct(alias(one) for one in held.account or ())
+        base_account = pair_merge.distinct(
+            alias(one)
+            for one in (
+                pair_merge.placed(stopped_write.target, stopped_write.start)
+                if folded
+                else held.account or ()
+            )
+        )
         if short is not None:
             # A WITHHELD TRACK IS NOT A REMOVED ONE. Which tracks the provider
             # left out is not known, so no track the base held is read as gone,
@@ -1170,19 +1266,28 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         # A RE-ADD IS A TRACK NONE OF WHOSE BASE MEMBERSHIPS SURVIVES. A track
         # the playlist holds twice that lost one copy still holds the other,
         # which the base saw, so it was not taken out and put back.
+        from cratekit.modules.outbound import pairs as _pairs
+
+        base_members = (
+            tuple(_pairs.Membership(content_id, row_id) for content_id, row_id in stopped_write.rekordbox)
+            if folded
+            else tuple(held.rekordbox or ())
+        )
         base_rows: dict[str, set[str]] = {}
-        for member in held.rekordbox or ():
+        for member in base_members:
             base_rows.setdefault(member.content_id, set()).add(member.row_id)
         current_rows: dict[str, set[str]] = {}
         for row in rekordbox.rows:
             current_rows.setdefault(row.content_id, set()).add(row.row_id)
-        base_rekordbox = tuple(as_key(member.content_id) for member in held.rekordbox or ())
+        base_rekordbox = tuple(as_key(member.content_id) for member in base_members)
         readded = {
             as_key(content_id)
             for content_id, row_ids in current_rows.items()
             if content_id in base_rows and not (row_ids & base_rows[content_id])
         }
-        synced = placeholders.parse_hearted(held.synced)
+        # A FOLDED BASE WAS TAKEN WHEN THE STOPPED WRITE BEGAN, so a moment
+        # before that is no change since it.
+        synced = stopped_write.at if folded else placeholders.parse_hearted(held.synced)
         # A TRACK TAKEN OUT AND PUT BACK ON THE ACCOUNT (R-990, closed by
         # U202): the base held it with one added date and the account dates it
         # later now, and later than the base's own sync, so the putting back
@@ -1228,6 +1333,39 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
                 )
         base = pair_merge.Base(account=base_account, rekordbox=base_rekordbox, synced=synced)
 
+    # U225. THE ACCOUNT'S ORDER IS THE STOPPED WRITE'S when it stands where
+    # that write's moves could have left it: the merge reads it in the order
+    # the write was putting it in, each track added since after the track it
+    # follows, and each side's change of order against what the write left.
+    stopped: pair_merge.Stopped | None = None
+    if stopped_write is not None and pair_stopped.reached(
+        stopped_write.start, stopped_write.target, listed_order or account_now
+    ):
+        holding = set(account_keys)
+        finishing_keys = pair_merge.distinct(
+            alias(one) for one in stopped_write.target if alias(one) in holding
+        )
+        # AS THE WRITE WOULD HAVE LEFT IT HAD IT FINISHED: its remaining moves
+        # applied to the playlist as it stands, a track added since staying
+        # where it stood among the tracks the write kept.
+        account_keys = list(
+            pair_merge.distinct(
+                alias(one)
+                for one in pair_stopped.finished(
+                    listed_order or account_now, stopped_write.target
+                )
+                if alias(one) in holding
+            )
+        )
+        row_keys = {content_id: key for key, content_id in content_of.items()}
+        stopped = pair_merge.Stopped(
+            account=finishing_keys,
+            rekordbox=tuple(
+                row_keys.get(content_id) or as_key(content_id)
+                for content_id, _row in stopped_write.rekordbox
+            ),
+            leader=stopped_write.leader,
+        )
     merged = pair_merge.merge(
         base,
         pair_merge.Side(
@@ -1239,6 +1377,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             added_at=rekordbox_added,
             removed_at=rekordbox_removed,
         ),
+        stopped=stopped,
     )
 
     # ── what rekordbox is asked: adds need a live row, never a row without a file
@@ -1318,6 +1457,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     )
     account_removes: tuple[str, ...] = ()
     account_order: tuple[str, ...] | None = None
+    account_after: tuple[str, ...] = ()
     if short is None:
         # EVERY RELEASE OF A REMOVED TRACK GOES (U208), the one a tie linked
         # and any other of it the account holds.
@@ -1342,6 +1482,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             account_order = _with_unread_placed(
                 [one for key in wanted_keys for one in after if alias(one) == key], after
             )
+            account_after = tuple(after)
 
     return PairPlan(
         target=target,
@@ -1379,6 +1520,9 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         ),
         home=home,
         account_dates=dict(dates),
+        account_after=account_after,
+        finishing=stopped_write.run_id if (folded or stopped is not None) else "",
+        finishing_order=stopped is not None,
     )
 
 
@@ -1620,6 +1764,9 @@ class Plan:
     matched: frozenset[str] = frozenset()
     #: U202. Every account playlist in a synced folder left out and named.
     listed_back: tuple[Any, ...] = ()
+    #: U225. Runs' steps the plan could not read, each said, so a write that
+    #: stopped part way in one of them was not looked for.
+    stopped_unread: tuple[str, ...] = ()
 
     @property
     def digest(self) -> str:
@@ -1800,6 +1947,7 @@ def plan(
             misses=dict(reader.fresh),
             matched=frozenset(reader.matched),
             listed_back=tuple(listed_back),
+            stopped_unread=reader.stopped[1] if "stopped" in reader.__dict__ else (),
         )
     finally:
         rb_writer.close_db(db)
@@ -2246,6 +2394,18 @@ def facts(planned: Plan) -> dict[str, Any]:
                 else ""
             )
             + ("not yet marked, approving marks it; " if not one.target.marked else "")
+            + (
+                f"finishes run {one.finishing}'s write, stopped part way through its "
+                f"order, "
+                + (
+                    "so its moves are not read as anybody's; "
+                    if one.finishing_order
+                    else "whose additions and removals are read as that write's; the "
+                    "account was reordered since, so its order is read as yours; "
+                )
+                if one.finishing
+                else ""
+            )
             + f"order follows {lead}"
             + (
                 f"; the account withheld {one.withheld.get('withheld', 0)} track(s), so "
@@ -2743,8 +2903,9 @@ def apply_pair(
         from cratekit.modules.outbound import account as outbound_account
 
         # BEFORE THE FIRST ACCOUNT CALL (U210), so a continue knows this
-        # playlist may hold part of this write and reads it that way.
-        steps.mark(STEP_ACCOUNT)
+        # playlist may hold part of this write and reads it that way, and
+        # WHEN (U225), so a later plan knows which write was the latest.
+        steps.mark(STEP_ACCOUNT, timestamp())
         remote = outbound_account.resolve(cfg)
         playlist_id = one.target.account_id
         # U226. WHAT THE ADAPTER RECORDS FROM HERE IS THIS PAIR'S: the
@@ -2752,7 +2913,13 @@ def apply_pair(
         first = len(remote.read_backs())
         try:
             account_after = _write_account(
-                one, remote, playlist_id, done, steps, account_listed=account_listed
+                one,
+                remote,
+                playlist_id,
+                done,
+                steps,
+                account_listed=account_listed,
+                rekordbox_after=rekordbox_after,
             )
         finally:
             done.read_backs = list(remote.read_backs()[first:])
@@ -2773,6 +2940,7 @@ def _write_account(
     steps: PairSteps,
     *,
     account_listed: Sequence[str] | None,
+    rekordbox_after: Sequence[playlist_pair.Row] | None = None,
 ) -> tuple[str, ...] | None:
     """The account side of one pair's write, and the playlist after it, or None when its order stopped (U220).
 
@@ -2786,7 +2954,27 @@ def _write_account(
         done.account_added = len(set(remote.add_tracks(playlist_id, one.account_adds)))
     if one.account_order:
         # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
-        steps.mark(STEP_ORDERING)
+        # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
+        # it stopped reads its moves as this write's: the order it starts
+        # from, the order it asks, the side that led, and rekordbox as it
+        # stands, committed by this write or as the plan read it.
+        steps.mark(
+            STEP_ORDERING,
+            pair_stopped.ordering_step(
+                at=timestamp(),
+                start=one.account_after
+                or pair_merge.appended(one.account_now, one.account_removes, one.account_adds),
+                target=one.account_order,
+                leader=one.merged.leader,
+                rekordbox=(
+                    [(row.content_id, row.row_id) for row in rekordbox_after]
+                    if rekordbox_after is not None
+                    else one.rekordbox_before
+                ),
+                written=rekordbox_after is not None,
+                links=one.links,
+            ),
+        )
         # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
         # the adapter's reading agrees with the check's own listing of it.
         expect = (
@@ -3005,6 +3193,39 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                         f"({named.reason})"
                         for one, named in unread
                     )
+                ),
+            }
+        )
+    finishing = [one for one in planned.pairs if one.finishing]
+    if finishing:
+        said.append(
+            {
+                "code": FINISHING,
+                "message": (
+                    f"{len(finishing)} pair(s) finish a write stopped part way through its "
+                    f"order, so that write's own moves, additions and removals are not "
+                    f"read as anybody's edit: "
+                    + "; ".join(
+                        f"{one.name!r} (run {one.finishing}, "
+                        + (
+                            f"order follows {'the account' if one.merged.leader == pair_merge.ACCOUNT else 'rekordbox'})"
+                            if one.finishing_order
+                            else "the account was reordered since, so its order leads)"
+                        )
+                        for one in finishing
+                    )
+                ),
+            }
+        )
+    if planned.stopped_unread:
+        said.append(
+            {
+                "code": STOPPED_UNREAD,
+                "message": (
+                    f"{len(planned.stopped_unread)} run(s)' steps could not be read, so a "
+                    f"write stopped part way in them was not looked for, and a pair it "
+                    f"left part ordered is planned as if nothing stopped: "
+                    + "; ".join(planned.stopped_unread)
                 ),
             }
         )
