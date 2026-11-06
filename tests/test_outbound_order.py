@@ -46,6 +46,14 @@ class Provider:
     write, with the tag it had then. ``stale_tags`` is how many reads answer
     the current tracks with the previous tag. ``elsewhere`` makes the next
     move land at position one whatever was asked.
+
+    R-1308 adds a removal by position, as the client's ``remove_by_indices``
+    sends it, with the same tag and the same lag. ``count_lag`` is how many
+    openings after each write declare the count the playlist had before it
+    while the tracks read current; ``wrong`` takes that position instead of
+    the asked ones, once; ``remove_fails`` raises before anything changes;
+    ``shown`` is the ``(num_tracks, num_videos)`` every opening after a
+    removal declares; ``drift`` is what the tracks become once a lag is spent.
     """
 
     def __init__(
@@ -75,11 +83,20 @@ class Provider:
         self.refused = 0
         self.opened = 0
         self.reads = 0
+        self.count_lag = 0
+        self.counting = 0
+        #: Every removal asked, as its indices, refused or not.
+        self.removals: list[tuple[int, ...]] = []
+        self.wrong: int | None = None
+        self.remove_fails: list[Exception] = []
+        self.shown: tuple[object, object] | None = None
+        self.drift: list[str] | None = None
 
     def wrote(self, before: list[str]) -> None:
         self.previous = (before, self.version)
         self.version += 1
         self.lagging = self.lag
+        self.counting = self.count_lag
 
 
 class Movable:
@@ -91,8 +108,12 @@ class Movable:
         provider.opened += 1
         self.provider = provider
         self.id = playlist_id
-        lagging = provider.whole and provider.lagging
+        lagging = (provider.whole and provider.lagging) or provider.counting
+        if provider.counting:
+            provider.counting -= 1
         self.num_tracks = len(provider.previous[0] if lagging else provider.members)
+        if provider.shown is not None and provider.removals:
+            self.num_tracks, self.num_videos = provider.shown
         self._etag = provider.version
 
     def tracks(self, limit: int | None = None, offset: int = 0) -> list[SimpleNamespace]:
@@ -102,6 +123,8 @@ class Movable:
         if provider.lagging:
             if offset + size >= len(provider.previous[0]):
                 provider.lagging -= 1
+                if not provider.lagging and provider.drift is not None:
+                    provider.members[:] = provider.drift
             seen, self._etag = provider.previous
         elif provider.stale_tags:
             provider.stale_tags -= 1
@@ -121,6 +144,23 @@ class Movable:
         provider.wrote(before)
         self._etag = provider.version
         return fresh
+
+    def remove_by_indices(self, indices) -> bool:
+        provider = self.provider
+        asked = tuple(indices)
+        provider.removals.append(asked)
+        if provider.remove_fails:
+            raise provider.remove_fails.pop(0)
+        if self._etag != provider.version:
+            raise Stale()
+        before = list(provider.members)
+        taken = {provider.wrong} if provider.wrong is not None else set(asked)
+        provider.wrong = None
+        provider.members[:] = [one for i, one in enumerate(before) if i not in taken]
+        provider.wrote(before)
+        # The client reads the playlist again after the request, for its tag.
+        self._etag = provider.version
+        return True
 
     def move_by_indices(self, indices, position: int) -> bool:
         provider = self.provider
