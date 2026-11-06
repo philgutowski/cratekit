@@ -509,25 +509,14 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   ceiling names the `crate --calls N --run RUN sync pair` that finishes it.
 - After a reorder or a removal on Tidal it cannot read back, it names the
   playlist: look at it in the Tidal app before running anything again.
-
-Tidal can go on serving a playlist's old order or old tracks for several
-minutes after a change, to the paged read every listing makes, while the
-plain read of the whole playlist is already current. So wherever a sync
-pair plans an order or judges a write, Cratekit reads the playlist both ways
-and takes the plain read when it holds every track the playlist counts: a
-move or removal that landed is taken as done, and a plan is made from the
-playlist as it stands, never from an order nobody holds. When the two reads
-disagree and the plain read is not the whole playlist, that pair is left out
-of the run, nothing written on either side, and the answer says why; sync it
-again a few minutes later. If that starts between the plan and the write, the
-write stops before writing anything and names the playlist as moved; a fresh
-`crate sync pair` a few minutes later is the way on. For a playlist of more
-than about a hundred tracks the plain read may be its first hundred only, and
-a change past them is not seen until Tidal catches up, as before. The
-answer's totals list, under `read_backs`, each reading a write was judged by
-(`order` and `removal positions` before it, `move` and `removal` after), with
-how many readings it took and how long it waited, which is how long Tidal
-lagged.
+- Tidal can serve a playlist's old order or tracks to a paged read for
+  minutes after a change, while the plain read is current. Where it plans an
+  order or checks a write, `sync pair` reads both and takes the plain read
+  when it holds every track. If the two disagree and it does not, the pair is
+  left out of the run, or the write stops as moved if that starts after the
+  plan; sync again a few minutes later. Past a playlist's first hundred
+  tracks such a change is not seen until Tidal catches up. The answer's
+  `read_backs` say how many readings each write took and how long it waited.
 
 ### Publish a playlist
 
