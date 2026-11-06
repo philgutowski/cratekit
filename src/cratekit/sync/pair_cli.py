@@ -805,11 +805,19 @@ class _Reader:
         """Each pair's write stopped part way through its order, and the runs' steps unread (U225).
 
         Read once per plan, from every run's steps still kept, so a fresh
-        plan knows a write that stopped part way through a pair's order.
+        plan knows a write that stopped part way through a pair's order, and
+        from every pair's steps carried past its run (R-1372), whatever their
+        age, so a stop is never forgotten while its pair is unfinished. A
+        carried record gives way to its own run's steps when those are still
+        kept under the same plan, since they say whether the pair finished.
         """
         from cratekit.core import held_plan
 
         records, problems = held_plan.recorded_steps()
+        kept, unread = held_plan.carried()
+        current = {(one.run_id, one.digest) for one in records}
+        records = [*records, *(one for one in kept if (one.run_id, one.digest) not in current)]
+        problems = [*problems, *unread]
         return (
             pair_stopped.stopped_writes(
                 records,
@@ -829,12 +837,17 @@ class _Reader:
         no later run finished the pair and it began after the pair's last
         snapshot.
         A snapshot that cannot be read as a moment says nothing was written
-        since, so nothing is finished from a write it cannot place.
+        since, so nothing is finished from a write it cannot place. And a
+        write that began before the pair was marked is another pair's: a
+        carried record outlives a pair forgotten and marked again (R-1372).
         """
         if not account_id or held is None:
             return None
         began, write = self.stopped[0].get(account_id, (None, None))
         if write is None or began is None:
+            return None
+        marked = placeholders.parse_hearted(held.marked) if held.marked else None
+        if marked is not None and began < marked:
             return None
         if held.synced:
             synced = placeholders.parse_hearted(held.synced)
@@ -2522,7 +2535,7 @@ def _record(
     # the base as it does now.
     whole = rekordbox_after is not None and account_after is not None and not one.withheld
     held_after = pair_merge.distinct(account_after or ())
-    pairs.PairStore(cfg).record(
+    recorded = pairs.PairStore(cfg).record(
         one.target.account_id,
         account=list(held_after) if whole else None,
         # U202. THE ADDED DATES THE PLAN LISTED, for the tracks the account
@@ -2540,7 +2553,33 @@ def _record(
         links=one.links,
         name=one.name,
     )
+    if whole:
+        _let_go_passed(one.target.account_id, recorded.synced)
     return whole
+
+
+def _let_go_passed(account_id: str, synced: str) -> None:
+    """Let go of every carried record of this pair its new snapshot passed (R-1372).
+
+    A record that cannot be read or let go is left; the next plan reads one
+    the snapshot passed as no write, so leaving it costs a file, never a
+    write.
+    """
+    from cratekit.core import held_plan
+
+    moment = placeholders.parse_hearted(synced)
+    if moment is None:
+        return
+    records, _problems = held_plan.carried()
+    for run_id, key in pair_stopped.passed_by(
+        records,
+        account_id=account_id,
+        moment=moment,
+        new=NEW,
+        account=STEP_ACCOUNT,
+        made=STEP_MADE,
+    ):
+        held_plan.let_go(run_id, key)
 
 
 def _made(
@@ -2732,6 +2771,29 @@ class PairSteps:
             self.steps.mark(self.key, step, value)
         except OSError as exc:
             raise steps_unwritten(self.steps.run_id, exc) from None
+
+    def carry(self) -> None:
+        """Keep this pair's steps past its run (R-1372), and stop the write when they cannot be kept."""
+        if self.steps is None:
+            return
+        from cratekit.core import held_plan
+
+        try:
+            held_plan.carry(self.steps, self.key)
+        except OSError as exc:
+            raise steps_unwritten(self.steps.run_id, exc) from None
+
+    def let_go(self) -> None:
+        """Let go of what this pair's steps carried past its run, once the pair is done (R-1372).
+
+        A record that cannot be let go is left: the snapshot the pair's write
+        recorded is later than it, so a later plan reads it as no write.
+        """
+        if self.steps is None:
+            return
+        from cratekit.core import held_plan
+
+        held_plan.let_go(self.steps.run_id, self.key)
 
 
 def steps_unwritten(run_id: str, exc: OSError) -> CratekitError:
@@ -2935,6 +2997,7 @@ def apply_pair(
         cfg, one, rekordbox_after=rekordbox_after, account_after=account_after
     )
     steps.mark(STEP_DONE, done.account_id or one.target.key)
+    steps.let_go()
     return done
 
 
@@ -2990,6 +3053,12 @@ def _write_account(
                 links=one.links,
             ),
         )
+        # R-1372. AND KEPT PAST THE RUN, before the first move: the run's
+        # steps are released when it ends and pruned once older than a held
+        # plan is kept, and a pair left part ordered is part ordered for as
+        # long as nothing writes over it, so a later plan reads this record
+        # whatever its age until the pair's snapshot passes it.
+        steps.carry()
         # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
         # the adapter's reading agrees with the check's own listing of it.
         expect = (
