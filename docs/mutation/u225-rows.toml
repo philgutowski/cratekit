@@ -1,0 +1,222 @@
+name = "u225"
+pass_kind = "full"
+
+[[rows]]
+id = "M1_stopped_ignored"
+description = "merge: a stopped write handed in is ignored and the order is read against the base"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''    if stopped is not None:
+        # U225.'''
+new = '''    if False:
+        # U225.'''
+
+[[rows]]
+id = "M2_rekordbox_since_dropped"
+description = "merge: rekordbox reordered since the stopped write does not lead"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, stopped.rekordbox) and not account_moved:'''
+new = '''        if False and not account_moved:'''
+
+[[rows]]
+id = "M3_rekordbox_over_account"
+description = "merge: rekordbox reordered since leads even when the account was reordered since"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, stopped.rekordbox) and not account_moved:'''
+new = '''        if order_changed(rekordbox.keys, stopped.rekordbox):'''
+
+[[rows]]
+id = "M4_leader_not_honoured"
+description = "merge: with no change since, the stopped write's leader does not lead again"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        elif not account_moved and stopped.leader == REKORDBOX:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M5_leader_over_account"
+description = "merge: the stopped write's leader leads even when the account was reordered since"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        elif not account_moved and stopped.leader == REKORDBOX:'''
+new = '''        elif stopped.leader == REKORDBOX:'''
+
+[[rows]]
+id = "M6_front_keeps_nothing"
+description = "front_moves: no tail is kept, every asked track is moved"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''            keep += 1
+    return list(reversed(wanted[: len(wanted) - keep]))'''
+new = '''            keep += 0
+    return list(reversed(wanted[: len(wanted) - keep]))'''
+
+[[rows]]
+id = "M8_reached_strict_membership"
+description = "reached: a track added or taken off since is compared too"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''    common = set(current) & set(start)'''
+new = '''    common = set(current) | set(start)'''
+
+[[rows]]
+id = "M12_age_unchecked"
+description = "recorded_steps: a record older than a held plan is kept is still read"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''            if one.stat().st_mtime < cutoff:
+                continue
+            raw = json.loads(one.read_text())'''
+new = '''            raw = json.loads(one.read_text())'''
+
+[[rows]]
+id = "M13_unreadable_silent"
+description = "recorded_steps: a record that cannot be read is dropped unnamed"
+file = "src/cratekit/core/held_plan.py"
+surface = "user"
+old = '''            problems.append(
+                f"run {run_id}'s steps could not be read ({type(exc).__name__}: {exc})"
+            )'''
+new = '''            pass'''
+
+[[rows]]
+id = "M14_superseded_unchecked"
+description = "stopped_write: a write the pair's snapshot came after is still finished"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            if synced is None or not began > synced:'''
+new = '''            if synced is None:'''
+
+[[rows]]
+id = "M15_fold_despite_skip"
+description = "plan_pair: both bases move to the stopped write's though it skipped rekordbox"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    folded = stopped_write is not None and stopped_write.written'''
+new = '''    folded = stopped_write is not None'''
+
+[[rows]]
+id = "M16_account_base_unfolded"
+description = "plan_pair: the account base is the snapshot's, not what the stopped write left"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                if folded
+                else held.account or ()'''
+new = '''                if False
+                else held.account or ()'''
+
+[[rows]]
+id = "M17_rekordbox_base_unfolded"
+description = "plan_pair: the rekordbox base is the snapshot's, not what the stopped write left"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            if folded
+            else tuple(held.rekordbox or ())'''
+new = '''            if False
+            else tuple(held.rekordbox or ())'''
+
+[[rows]]
+id = "M18_reached_unchecked"
+description = "plan_pair: the account is read as the stopped write's whatever order it stands in"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if stopped_write is not None and pair_stopped.reached(
+        stopped_write.start, stopped_write.target, listed_order or account_now
+    ):'''
+new = '''    if stopped_write is not None:'''
+
+[[rows]]
+id = "M19_not_finished"
+description = "plan_pair: the account is handed to the merge as it stands, not as the write would have left it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                for one in pair_stopped.finished(
+                    listed_order or account_now, stopped_write.target
+                )'''
+new = '''                for one in (listed_order or account_now)'''
+
+[[rows]]
+id = "M20_stopped_not_passed"
+description = "plan_pair: the stopped write is not handed to the merge"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        stopped=stopped,'''
+new = '''        stopped=None,'''
+
+[[rows]]
+id = "M22_written_always"
+description = "_write_account: the step says rekordbox was committed though its gate was skipped"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                written=rekordbox_after is not None,'''
+new = '''                written=True,'''
+
+[[rows]]
+id = "M23_links_dropped"
+description = "_write_account: the step records none of the write's links"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                written=rekordbox_after is not None,
+                links=one.links,'''
+new = '''                written=rekordbox_after is not None,
+                links={},'''
+
+[[rows]]
+id = "M24_unread_unsaid"
+description = "_warnings: runs' steps that could not be read are not named"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if planned.stopped_unread:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M9_finish_ignored"
+description = "stopped_writes: a later run that finished the pair does not hide the stopped write"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''            if done in steps:
+                if account_id not in finished'''
+new = '''            if False:
+                if account_id not in finished'''
+
+[[rows]]
+id = "M10_finished_filter_dropped"
+description = "stopped_writes: a finish recorded later than the stopped write began hides nothing"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''        if account_id not in finished or not finished[account_id] > began'''
+new = '''        if True'''
+
+[[rows]]
+id = "M11_earliest_stopped"
+description = "stopped_writes: the earliest stopped write on a pair is read, not the latest"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''            if held is None or write.at > held[1].at:'''
+new = '''            if held is None or write.at < held[1].at:'''
+
+[[rows]]
+id = "M21_start_from_asked"
+description = "_write_account: the start is built from the asked removals and additions, not the adapter's answer"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                    one.account_before or one.account_now, removed, added'''
+new = '''                    one.account_before or one.account_now, one.account_removes, one.account_adds'''
+
+[[rows]]
+id = "M26_base_not_narrowed"
+description = "plan_pair: the folded account base keeps a track the write asked for and never added"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                    if held_id in set(stopped_write.start)'''
+new = '''                    if True'''
+
+[[rows]]
+id = "M25_null"
+description = "null control: a comment changed, which no test can see"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "maintainer"
+old = '''#: The fields an ordering step records, by name.'''
+new = '''#: The fields an ordering step records.'''

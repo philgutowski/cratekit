@@ -55,6 +55,17 @@ The leading side's order is kept as it stands, and each track only the other
 side holds is placed right after the track it follows on that side, so a track
 added mid playlist stays mid playlist rather than going to the end.
 
+**AFTER A WRITE STOPPED PART WAY THROUGH ITS ORDER, CHANGED SINCE THAT WRITE
+(U225).** Sitting 62's write stopped part way through putting the account in
+order, and the next sync read the stopped write's own moves as the person's
+reorder on the account and put that scramble into rekordbox. So the caller
+hands the merge what that write left (:class:`Stopped`): the order it was
+putting the account in and rekordbox's order as it stood, and each side's
+change of order is measured against those instead of the base. Rekordbox
+leads when it alone changed order since; the account leads when it did; and
+when neither did, the side that led the stopped write leads again, so the
+order it was writing is finished rather than read as anybody's edit.
+
 Layer: modules.
 """
 
@@ -125,6 +136,24 @@ class Base:
     account: tuple[str, ...]
     rekordbox: tuple[str, ...]
     synced: datetime | None = None
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "account", distinct(self.account))
+        object.__setattr__(self, "rekordbox", distinct(self.rekordbox))
+
+
+@dataclass(frozen=True, slots=True)
+class Stopped:
+    """What a write stopped part way through its account order left, as the order rule reads it (U225).
+
+    ``account`` is the order that write was putting the account in, and
+    ``rekordbox`` rekordbox's order as it stood when that order began, both as
+    keys; ``leader`` is the side that led that write.
+    """
+
+    account: tuple[str, ...]
+    rekordbox: tuple[str, ...]
+    leader: str
 
     def __post_init__(self) -> None:
         object.__setattr__(self, "account", distinct(self.account))
@@ -221,10 +250,15 @@ def placed(leading: Sequence[str], other: Sequence[str]) -> tuple[str, ...]:
     return tuple(result)
 
 
-def merge(base: Base | None, account: Side, rekordbox: Side) -> Merged:
+def merge(
+    base: Base | None, account: Side, rekordbox: Side, *, stopped: Stopped | None = None
+) -> Merged:
     """Decide the list both sides should hold. Pure.
 
     ``base`` is None on the first sync of a pair, which adds only.
+    ``stopped`` is what a write stopped part way through its account order
+    left, when the caller found one, and the order rule then reads each side's
+    change of order against it (U225).
     """
     held_account = set(account.keys)
     held_rekordbox = set(rekordbox.keys)
@@ -277,7 +311,16 @@ def merge(base: Base | None, account: Side, rekordbox: Side) -> Merged:
             kept.add(key)
 
     leader = ACCOUNT
-    if base is not None and order_changed(rekordbox.keys, base.rekordbox):
+    if stopped is not None:
+        # U225. CHANGED SINCE THE STOPPED WRITE, NOT SINCE THE BASE: its own
+        # moves are nobody's edit, and with no edit since it, the side that
+        # led it leads again.
+        account_moved = order_changed(account.keys, stopped.account)
+        if order_changed(rekordbox.keys, stopped.rekordbox) and not account_moved:
+            leader = REKORDBOX
+        elif not account_moved and stopped.leader == REKORDBOX:
+            leader = REKORDBOX
+    elif base is not None and order_changed(rekordbox.keys, base.rekordbox):
         if not order_changed(account.keys, base.account):
             leader = REKORDBOX
     leading, other = (
@@ -323,6 +366,7 @@ __all__ = [
     "Call",
     "Merged",
     "Side",
+    "Stopped",
     "appended",
     "as_held",
     "distinct",

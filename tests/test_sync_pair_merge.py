@@ -302,3 +302,71 @@ def test_the_first_sync_makes_no_call_whatever_the_moments():
         Side(("b",), removed_at={"a": at(9)}),
     )
     assert merged.calls == () and set(merged.order) == {"a", "b"}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U225: the order after a write stopped part way through it
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: The base both sides held, and what a write stopped part way left: it was
+#: putting the account in rekordbox's new order, which rekordbox led.
+_BASE = Base(account=("a", "b", "c"), rekordbox=("a", "b", "c"))
+_LEFT = pair_merge.Stopped(
+    account=("c", "a", "b"), rekordbox=("c", "a", "b"), leader=pair_merge.REKORDBOX
+)
+
+
+def test_with_no_change_since_the_stopped_write_the_side_that_led_it_leads_again():
+    merged = merge(_BASE, Side(("c", "a", "b")), Side(("c", "a", "b")), stopped=_LEFT)
+    assert merged.leader == pair_merge.REKORDBOX
+    account_led = pair_merge.Stopped(
+        account=_LEFT.account, rekordbox=_LEFT.rekordbox, leader=pair_merge.ACCOUNT
+    )
+    merged = merge(_BASE, Side(("c", "a", "b")), Side(("c", "a", "b")), stopped=account_led)
+    assert merged.leader == pair_merge.ACCOUNT
+
+
+def test_the_stopped_writes_order_is_not_read_against_the_base():
+    # Against the base both sides changed order, and the account would lead.
+    assert merge(_BASE, Side(("c", "a", "b")), Side(("c", "a", "b"))).leader == (
+        pair_merge.ACCOUNT
+    )
+    merged = merge(_BASE, Side(("c", "a", "b")), Side(("c", "a", "b")), stopped=_LEFT)
+    assert merged.leader == pair_merge.REKORDBOX
+
+
+def test_rekordbox_reordered_since_the_stopped_write_leads():
+    account_led = pair_merge.Stopped(
+        account=_LEFT.account, rekordbox=_LEFT.rekordbox, leader=pair_merge.ACCOUNT
+    )
+    merged = merge(_BASE, Side(("c", "a", "b")), Side(("b", "c", "a")), stopped=account_led)
+    assert merged.leader == pair_merge.REKORDBOX
+    assert merged.order == ("b", "c", "a")
+
+
+def test_the_account_reordered_since_the_stopped_write_leads_whatever_else_moved():
+    alone = merge(_BASE, Side(("a", "c", "b")), Side(("c", "a", "b")), stopped=_LEFT)
+    assert alone.leader == pair_merge.ACCOUNT
+    assert alone.order == ("a", "c", "b")
+    both = merge(_BASE, Side(("a", "c", "b")), Side(("b", "c", "a")), stopped=_LEFT)
+    assert both.leader == pair_merge.ACCOUNT
+
+
+def test_the_stopped_write_decides_the_order_alone_and_never_membership():
+    plain = merge(_BASE, Side(("c", "a", "x")), Side(("c", "a", "b", "y")))
+    left = merge(_BASE, Side(("c", "a", "x")), Side(("c", "a", "b", "y")), stopped=_LEFT)
+    for field in ("add_account", "remove_account", "add_rekordbox", "remove_rekordbox"):
+        assert getattr(left, field) == getattr(plain, field), field
+
+
+def test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_against_it():
+    left = pair_merge.Stopped(
+        account=("b", "a"), rekordbox=("b", "a", "c"), leader=pair_merge.ACCOUNT
+    )
+    # Rekordbox was reordered since the stopped write, the account was not.
+    assert merge(None, Side(("b", "a")), Side(("a", "b", "c"))).order == ("b", "c", "a")
+    merged = merge(None, Side(("b", "a")), Side(("a", "b", "c")), stopped=left)
+    assert merged.first is True
+    assert merged.remove_account == () and merged.remove_rekordbox == ()
+    assert merged.leader == pair_merge.REKORDBOX
+    assert merged.order == ("a", "b", "c")

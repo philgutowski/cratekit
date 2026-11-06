@@ -368,6 +368,58 @@ def load_steps(run_id: str, digest: str) -> tuple[Steps, str]:
     return Steps(run_id, digest, done), ""
 
 
+def recorded_steps(*, now: float | None = None) -> tuple[list[Steps], list[str]]:
+    """Every run's steps still kept, whatever plan each was recorded against, and why any could not be read (U225).
+
+    A later plan of the same verb reads what a run's write did, to tell a write
+    stopped part way from the person's own edit. A record older than
+    :data:`KEEP` is no record, as its plan is none. A record that cannot be
+    read, of another version or of another run is NAMED in the second list,
+    never read as no write, so the caller can say it did not look there. A
+    record released between the listing and the read was never there.
+    """
+    directory = config.state_path(STATE_KEY)
+    cutoff = (time.time() if now is None else now) - KEEP.total_seconds()
+    try:
+        found = sorted(directory.glob(f"*{STEPS_SUFFIX}"))
+    except OSError as exc:
+        return [], [f"the runs' steps could not be listed ({type(exc).__name__}: {exc})"]
+    records: list[Steps] = []
+    problems: list[str] = []
+    for one in found:
+        run_id = one.name[: -len(STEPS_SUFFIX)]
+        try:
+            if one.stat().st_mtime < cutoff:
+                continue
+            raw = json.loads(one.read_text())
+        except FileNotFoundError:
+            continue
+        except (OSError, ValueError) as exc:
+            problems.append(
+                f"run {run_id}'s steps could not be read ({type(exc).__name__}: {exc})"
+            )
+            continue
+        if not isinstance(raw, dict):
+            problems.append(f"run {run_id}'s steps are not a JSON object")
+            continue
+        wrong = [
+            key
+            for key, wanted in (("version", STEPS_VERSION), ("run_id", run_id))
+            if raw.get(key) != wanted
+        ]
+        if wrong:
+            problems.append(
+                f"run {run_id}'s steps record {wrong[0]} {raw.get(wrong[0])!r}"
+            )
+            continue
+        done = raw.get("steps")
+        if not isinstance(done, dict) or not all(isinstance(item, dict) for item in done.values()):
+            problems.append(f"run {run_id}'s steps are not one record per item")
+            continue
+        records.append(Steps(run_id, str(raw.get("digest") or ""), done))
+    return records, problems
+
+
 __all__ = [
     "KEEP",
     "STATE_KEY",
@@ -383,6 +435,7 @@ __all__ = [
     "load_steps",
     "path",
     "prune",
+    "recorded_steps",
     "release",
     "steps_path",
 ]
