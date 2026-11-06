@@ -1200,8 +1200,9 @@ class TidalAccount:
 
         Each is ``{"playlist_id", "after", "readings", "waited",
         "window_lagged", "outcome"}``: ``after`` is ``"order"`` for the
-        reading an order is planned from, ``"move"`` or ``"removal"`` for a
-        write's read back; ``waited`` the seconds paused between readings;
+        reading an order is planned from (again after a 412),
+        ``"removal positions"`` for the reading a removal is planned from,
+        ``"move"`` or ``"removal"`` for a write's read back; ``waited`` the seconds paused between readings;
         ``window_lagged`` how many readings' window read disagreed with the
         unpaged read while that read was not the whole playlist; ``outcome``
         ``"done"`` or ``"refused"``. A copy of each, so a caller cannot change
@@ -1432,9 +1433,12 @@ class TidalAccount:
                 # the first was, since a move changes no membership: a reading
                 # that lags the adds would otherwise be planned from as whole
                 # (round one's review).
-                self._sleep(_pause(stale))
                 playlist, before = self._settled(
-                    identifier, tuple(before), exact=False, pauses_from=stale
+                    identifier,
+                    tuple(before),
+                    exact=False,
+                    pauses_from=stale,
+                    first_pause=_pause(stale),
                 )
                 # A NEW READING IS PLANNED FROM AFRESH, so its moves are counted
                 # afresh; the 412s that lead to one are bounded on their own.
@@ -1458,6 +1462,7 @@ class TidalAccount:
         pauses_from: int = 0,
         after: str = "order",
         kept: str | None = None,
+        first_pause: float = 0.0,
     ) -> tuple[Any, list[str]]:
         """The playlist opened and read for an order, once the reading agrees with ``known`` (U220).
 
@@ -1484,7 +1489,8 @@ class TidalAccount:
         write the provider has not caught up with, this product's or a
         person's; once the readings are spent it is refused ``window-lags``.
         ``after`` names the record of the readings, ``kept`` what a refusal
-        says was not done; :meth:`remove_tracks` reads its positions here too
+        says was not done, and ``first_pause`` a pause before the first
+        reading, the one after a 412, counted in the record (round two); :meth:`remove_tracks` reads its positions here too
         (round one's review), so a lag at its first reading is read again
         rather than stopping the write.
         """
@@ -1497,6 +1503,8 @@ class TidalAccount:
             return sorted(reading) == sorted(known)
 
         note = self._noting(identifier, after)
+        if first_pause:
+            self._paused(note, first_pause)
         if kept is None:
             kept = (
                 "nothing more was moved; every track is still on it"

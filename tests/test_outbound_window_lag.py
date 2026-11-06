@@ -298,3 +298,14 @@ def test_a_refused_read_back_is_recorded_as_refused(installed):
     assert last["readings"] == tidal_account.ORDER_REREADS + 1
     assert last["window_lagged"] == tidal_account.ORDER_REREADS + 1
     assert last["waited"] == sum(tidal_account.ORDER_PAUSES)
+
+
+def test_the_pause_after_a_412_is_counted_in_the_readings_record(installed):
+    """Round two's review: the one pause outside every record is now in one."""
+    provider = Provider(["a", "b", "c"], stale_tags=1)
+    slept: list[float] = []
+    account = _adapter(installed, provider, slept)
+    account.order_tracks("mine", ("c", "a", "b"))
+    assert slept == [tidal_account.ORDER_PAUSES[0]]
+    assert sum(one["waited"] for one in account.read_backs()) == sum(slept)
+    assert [one["after"] for one in account.read_backs()][:2] == ["order", "order"]
