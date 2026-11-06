@@ -44490,3 +44490,159 @@ that playlist, so a retry of its misses is a download he chose. Driven by
 
 **Closes when:** Phillip answers. If he picks holding a landing's misses,
 `pair_landed` records them as the backfill does, a small card. Ledger only.
+
+---
+
+## R-1321. A file put back at an analyze run item's source name after an interrupt fails the item on the headed name the interrupted attempt took
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** An interrupt after the rename and before the commit
+leaves the headed file and the evidence for it. If a person then puts a file
+back at the source name (a second copy of the same track), the resume reads
+the present source first, drops the evidence, analyses the new file, and
+fails it `analysis-write-failed` because the headed name is taken by the
+first attempt's file. The same outcome on main before U223.
+
+**Measured cost.** Driven by the round two reviewer: the item failed, the
+printed resume cannot finish the job, the first attempt's headed file intact
+and analysed, the new file carrying the head in its title only. The person
+deletes the duplicate and queues the folder again. Producer is a person's
+action between the interrupt and the resume.
+
+**Closes when:** the resume compares the present source with the evidence's
+target (the same recording reading) and settles the item as resumed when
+the target is there. Ledger only.
+
+---
+
+## R-1322. A kill between analyze run's name claim and its rename leaves a zero byte stub the resume then fails on for good
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` in `src/cratekit/analysis/cli.py` claims the
+headed name with `naming.claim_target`, an exclusive create of a zero byte
+file, and then renames the source onto it. A process death between the two
+leaves the stub. The resume finds the source still a file, analyses it again,
+and fails the item `analysis-write-failed`, "that name is already taken",
+against the job's own stub, a permanent cause. Present on main before U223.
+
+**Measured cost.** Driven by the round one reviewer with a kill after
+`claim_target`: resume exit 1, the cause not retryable, the stub at 0 bytes
+under an audio name. The producer is a hard kill in a window of
+microseconds; a Ctrl-C is deferred to the engine's checkpoint and does not
+land there.
+
+**Closes when:** the claim is recorded with the intent so a resume can tell
+its own stub from another file, or the rename replaces a zero byte stub the
+intent names. Ledger only: a SIGKILL in a microsecond window.
+
+---
+
+## R-1323. A rename that lands and then reports an error makes analyze run delete the analysed track under its new name
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` in `src/cratekit/analysis/cli.py` removes the
+claimed target on any `OSError` from `path.rename(target)`, to drop its own
+zero byte claim. A filesystem that completes the rename and then reports an
+error (the retransmitted rename shape of a network mount) leaves the analysed
+file at the target, and that removal deletes it: the folder holds neither
+name, and the next attempt refuses `source-missing` over a deleted track.
+The removal predates U223; U223 only drops the intent and report beside it.
+The same shape sits in `write/naming_cli.py` and `intake/repair_cli.py`.
+
+**Measured cost.** Driven by the round two reviewer with `Path.rename`
+patched to rename and then raise EIO: the folder empty, the item
+`analysis-write-failed`. Reachability unmeasured: no candidate on a local
+disk produces a rename that lands and raises, and no network mount was
+driven.
+
+**Closes when:** the error path removes the target only when it is still the
+zero byte claim (its size is 0 and the source is still a file), in all three
+places. Ledger only until a producer is driven; then it meets the board bar
+as lost files.
+
+---
+
+## R-1324. An intent left by a kill before analyze run's rename names an unrelated file as the twin once the source is deleted
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `_finalize` records the rename intent before it claims
+the name and renames. A process death between the intent and the rename
+leaves an intent whose rename never landed. U223 drops it at the start of the
+next attempt whose source is still a file, but if the source is deleted
+first and another file is put at the intent's exact headed name, the resume
+reads that file as this item's twin and reports it `resumed_after_rename`.
+Present on main before U223, narrowed by it.
+
+**Measured cost.** Driven by the round one reviewer: a kill after
+`record_rename_intent`, the source deleted and a different file placed at
+the target by the test in the person's place; resume exit 0 over the
+unrelated file. Told something false, but the producer is a hard kill plus
+two moves by a person into the exact name.
+
+**Closes when:** the intent carries something that identifies the source's
+content (its size and modification time, or a digest) and the twin is
+accepted only when the target matches it. Ledger only.
+
+---
+
+## R-1325. A job whose analyze run item already failed source-missing under the shipped code cannot be finished by any resume
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** U223's staged report fallback finishes a job the shipped
+code interrupted between the staged report and the commit, if nobody resumed
+it under the shipped code. A60's job on the machine was resumed then, its
+item failed `source-missing`, a permanent cause, and every `analyze.run`
+failure is permanent, so both `crate analyze run ... --job` and
+`crate job resume` refuse it as not retryable.
+
+**Measured cost.** Driven by the round one reviewer: the shipped attempt and
+resume, then the branch, printed command exit 30 "every failure is
+permanent", `crate job resume` exit 30 `job-not-retryable`. The person queues
+the folder again, which the refusal already names, and the renamed track is
+skipped by its head.
+
+**Closes when:** A60 (#423) retakes its interrupt on a fresh folder. Ledger
+only: the requeue is the remedy shown.
+
+---
+
+## R-1326. Every renamed analyze run item leaves its rename intent in the job store's analysis staging for good
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** Since U223 `staged_path` keeps `rename-intent.json` so it
+outlives the attempt that renamed the file, and the engine's commit moves
+only the staged report. Nothing removes the intent once the row is done, so
+`analysis-staging/<job>/<ordinal>/rename-intent.json` stays for every renamed
+track, as the empty staging directories did before.
+
+**Measured cost.** Driven by the round one reviewer: a one item run to done
+leaves the staging directory listing only the intent. A small file per
+renamed track; no reader is harmed, since a done row is never driven again.
+
+**Closes when:** a job store prune removes the staging of a finished job, or
+the commit hook drops the item's staging once its row is done. Ledger only.
+
+---
+
+## R-1327. analyze run writes its rename intent through a linked staging directory that staged_path then refuses
+
+**Found:** at the review of #555, U223, 2026-11-05.
+
+**The mechanism.** `record_rename_intent` in
+`src/cratekit/analysis/artifacts.py` makes the item's staging directory and
+writes into it without checking for a link, so an ordinal directory that is a
+link has the intent written at its far end, after which `staged_path`
+refuses the link and the item fails `internal-error` for good. U223 stopped
+the discard and the readers following such a link; the writer predates it.
+
+**Measured cost.** Driven by the round two reviewer with a link planted in
+the private job store. No verb writes a link there: zero producers.
+
+**Closes when:** the writer refuses a linked staging directory the way
+`staged_path` does. Ledger only.
