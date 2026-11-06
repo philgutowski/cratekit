@@ -62,7 +62,7 @@ from __future__ import annotations
 from collections.abc import Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Protocol
+from typing import Any, Protocol
 
 #: The words an unmatched reason carries when a candidate track could not be
 #: read, formatted into the reason by the adapter and read by the mirror, which
@@ -108,6 +108,16 @@ class PlaylistListing:
 
 class RemoteAccount(Protocol):
     """Writes against one streaming account: adds, a retitle, and one narrow remove."""
+
+    def read_backs(self) -> tuple[dict[str, Any], ...]:
+        """Every reading this account judged a write or an order by, in order (U226).
+
+        Reads nothing from the provider: what the writes so far recorded of
+        their read backs, each with how many readings it took and how long
+        it waited, for a run to carry as its facts. An account that judges
+        none returns nothing.
+        """
+        ...
 
     def match_track(
         self,

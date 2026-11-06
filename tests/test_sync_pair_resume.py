@@ -350,8 +350,9 @@ def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):
     run_id, _first = to_the_write(VERB)
     code, stopped = write(run_id, VERB, 3)
     assert code == CEILING, stopped
-    # The check: the made playlist listed, and the root folders read once.
-    check = pair_calls.listing_calls(0) + pair_calls.READ_FOLDER
+    # The check: the made playlist listed with its unpaged read beside it
+    # (U226), and the root folders read once.
+    check = pair_calls.judged_calls(0) + pair_calls.READ_FOLDER
     # The write: the first pair filled after its membership is read, and the
     # other four made and filled; their folder is made already.
     fill = pair_calls.listing_calls(0) + 1 + 1

@@ -509,6 +509,14 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   ceiling names the `crate --calls N --run RUN sync pair` that finishes it.
 - After a reorder or a removal on Tidal it cannot read back, it names the
   playlist: look at it in the Tidal app before running anything again.
+- Tidal can serve a playlist's old order or tracks to a paged read for
+  minutes after a change, while the plain read is current. Where it plans an
+  order or checks a write, `sync pair` reads both and takes the plain read
+  when it holds every track. If the two disagree and it does not, the pair is
+  left out of the run, or the write stops as moved if that starts after the
+  plan; sync again a few minutes later. Past a playlist's first hundred
+  tracks such a change is not seen until Tidal catches up. The answer's
+  `read_backs` say how many readings each write took and how long it waited.
 
 ### Publish a playlist
 
