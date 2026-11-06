@@ -108,10 +108,8 @@ description = "filed: read ledger entries of every tree, not the routing tree's 
 file = "src/cratekit/organize/mirror_downloads.py"
 surface = "user"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
-old = '''        if entry.tree == tree:
-            by_row'''
-new = '''        if True:
-            by_row'''
+old = '''        if entry.tree == tree and entry.digest not in by_person:'''
+new = '''        if entry.digest not in by_person:'''
 
 [[rows]]
 id = "R13_two_rows"
@@ -141,7 +139,7 @@ description = "_way_on: name a mirror download as queued by hand, to be driven o
 file = "src/cratekit/cli/sync_land.py"
 surface = "user"
 tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
-old = '''    elif _mirror_download(job):'''
+old = '''    elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:'''
 new = '''    elif False:'''
 
 [[rows]]
@@ -211,3 +209,31 @@ tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", 
 old = '''                run_id = fresh
                 report.summary["pass_run"] = fresh'''
 new = '''                pass'''
+
+[[rows]]
+id = "R23_person_digest"
+description = "filed: read an approval a person gave adopt apply as the landing's (round two's F2)"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        if entry.tree == tree and entry.digest not in by_person:'''
+new = '''        if entry.tree == tree:'''
+
+[[rows]]
+id = "R24_adopted_library"
+description = "_adopted: read another library's adopt apply approvals as this one's"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            if job.handler_key == rekordbox.ADOPT_HANDLER
+            and job.library_id == cfg.library.volume_id'''
+new = '''            if job.handler_key == rekordbox.ADOPT_HANDLER'''
+
+[[rows]]
+id = "R25_way_on_state"
+description = "_way_on: name a blocked mirror download as the next pass's, which takes queued jobs only (round two's R3)"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land.py", "tests/test_sync_land_mirror_downloads.py", "tests/test_sync_land_staged.py"]
+old = '''    elif _mirror_download(job) and job.state is jobs.JobState.QUEUED:'''
+new = '''    elif _mirror_download(job):'''
