@@ -65,19 +65,22 @@ class LivePlaylist:
 
     page_size = 100
 
-    def __init__(self, world: World) -> None:
+    def __init__(self, world: World, playlist_id: str = ACCOUNT) -> None:
         self.world = world
+        self.playlist_id = playlist_id
 
     @property
     def num_tracks(self):
         if self.world.withheld:
-            return len(self.world.account.playlists[ACCOUNT])
+            return len(self.world.account.playlists[self.playlist_id])
         return self.world.declared
 
     def tracks(self, limit=None, offset=0):
         size = self.page_size if limit is None else limit
         members = [
-            one for one in self.world.account.playlists[ACCOUNT] if one not in self.world.withheld
+            one
+            for one in self.world.account.playlists[self.playlist_id]
+            if one not in self.world.withheld
         ]
         return [
             Listed(one, f"Artist {one}", f"Title {one}", self.world.codes.get(one, ""))
@@ -795,10 +798,17 @@ def test_a_track_another_pairs_intake_job_found_owned_is_added(world, cfg, tmp_p
     assert envelope["data"]["totals"]["queued_jobs"] == []
 
 
-def _other_pairs_job(cfg, *, state: str, config_toml: str | None = None) -> str:
-    """Queue a ``sync pair`` intake job for another account playlist, holding t8."""
+def _other_pairs_job(
+    cfg,
+    *,
+    state: str,
+    config_toml: str | None = None,
+    tracks: dict[str, str] | None = None,
+) -> str:
+    """Queue a ``sync pair`` intake job for another account playlist, holding t8 unless told."""
     from cratekit.intake import cli as intake_cli
 
+    held = tracks if tracks is not None else {"t8": isrc("8")}
     with jobs.open_store() as store:
         job = jobs.enqueue(
             store,
@@ -806,10 +816,11 @@ def _other_pairs_job(cfg, *, state: str, config_toml: str | None = None) -> str:
             payload={
                 "source_id": pair_cli.PAIR_SOURCE,
                 intake_cli.SOURCE: "acc-other",
-                intake_cli.TRACKS: {"t8": {"isrc": isrc("8")}},
+                intake_cli.TRACKS: {one: {"isrc": code} for one, code in held.items()},
+                intake_cli.PLAYLIST_NAME: "Another",
             },
             cfg=cfg,
-            item_ids=("t8",),
+            item_ids=tuple(held),
         )
         store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", (state, job.job_id))
         if config_toml is not None:
@@ -828,6 +839,163 @@ def test_another_pairs_job_that_no_longer_reads_stops_no_plan(world, cfg):
     w.codes["t40"] = "USZZZ2600040"
     w.account.playlists[ACCOUNT].append("t40")
     code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert _acquired(envelope) == ["t40"]
+
+
+# R-1385. A TRACK NO LANDING BROUGHT IN IS QUEUED ONCE FOR THE LIBRARY: once
+# for every pair of one plan listing it, and never again beside another
+# pair's job still holding it.
+
+SECOND = "acc-second"
+SECOND_NAME = "Second Set"
+LACKING = {"t40": "USZZZ2600040"}
+
+
+def _second_pair(w, cfg, tracks) -> str:
+    """Mark and sync a second pair, ``Second Set`` and a rekordbox playlist of its own."""
+    w.account.playlists[SECOND] = [remote(one) for one in tracks]
+    w.catalogue.playlists[SECOND] = LivePlaylist(w, SECOND)
+    w.catalogue.account.append(AccountPlaylist(playlist_id=SECOND, name=SECOND_NAME))
+    handle = w.open()
+    try:
+        made = handle.create_playlist("Second")
+        for content_id in tracks:
+            handle.add_to_playlist(made, content_id)
+        handle.session.commit()
+        second_id = str(made.ID)
+    finally:
+        rb_writer.close_db(handle)
+    code, envelope = sync([*VERB, SECOND, "--rekordbox", second_id])
+    assert code == int(ExitCode.OK), envelope
+    return second_id
+
+
+def _awaiting(envelope) -> list[tuple[str, str, str]]:
+    return [
+        (item["pair"], item["remote_id"], item.get("reason", ""))
+        for item in envelope["data"]["items"]
+        if item["side"] == "library" and item["action"] == "awaiting"
+    ]
+
+
+def _acquiring(envelope) -> list[tuple[str, str]]:
+    return [
+        (item["pair"], item["remote_id"])
+        for item in envelope["data"]["items"]
+        if item["side"] == "library" and item["action"] == "acquire"
+    ]
+
+
+def test_two_pairs_listing_one_lacking_track_queue_it_once(world, cfg):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _second_pair(w, cfg, ("2",))
+    w.codes.update(LACKING)
+    w.account.playlists[ACCOUNT].append("t40")
+    w.account.playlists[SECOND].append("t40")
+    code, envelope = sync(VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert len(envelope["data"]["totals"]["queued_jobs"]) == 1
+    assert _acquired(envelope) == ["t40"]
+    assert envelope["data"]["totals"]["acquire"] == 1
+    ((first, _),) = _acquiring(envelope)
+    ((later, track, why),) = _awaiting(envelope)
+    assert track == "t40" and later != first
+    assert "this sync" in why
+    assert pair_cli.AWAITING in _codes(envelope)
+    # THE NEXT SYNC QUEUES NOTHING: the one job holds t40 for both pairs.
+    code, again = sync(VERB)
+    assert code == int(ExitCode.OK), again
+    assert again["data"]["totals"]["queued_jobs"] == []
+    assert sorted(track for _pair, track, _why in _awaiting(again)) == ["t40", "t40"]
+
+
+@pytest.mark.parametrize(
+    "state", [jobs.JobState.QUEUED, jobs.JobState.RUNNING, jobs.JobState.SUCCEEDED]
+)
+def test_a_track_another_pairs_job_still_holds_is_awaiting_and_not_queued(world, cfg, state):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _other_pairs_job(cfg, state=str(state), tracks=LACKING)
+    w.codes.update(LACKING)
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    ((pair, track, why),) = _awaiting(envelope)
+    assert (pair, track) == (ACCOUNT, "t40")
+    assert "Another" in why
+    assert pair_cli.AWAITING in _codes(envelope)
+
+
+@pytest.mark.parametrize("state", [jobs.JobState.FAILED, jobs.JobState.CANCELLED])
+def test_a_track_only_a_failed_or_cancelled_job_held_is_queued(world, cfg, state):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _other_pairs_job(cfg, state=str(state), tracks=LACKING)
+    w.codes.update(LACKING)
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert _acquired(envelope) == ["t40"]
+    assert _awaiting(envelope) == []
+
+
+def test_a_track_this_pair_alone_lists_is_queued_once_beside_anothers_job(world, cfg):
+    """Another pair's job holding another track holds nothing of this pair's."""
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _other_pairs_job(cfg, state=str(jobs.JobState.QUEUED), tracks={"t41": "USZZZ2600041"})
+    w.codes.update(LACKING)
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert _acquired(envelope) == ["t40"]
+    assert _awaiting(envelope) == []
+
+
+def _held_at_its_gate(w):
+    """Drive a sync of every pair to its first gate, answering nothing: the run id."""
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    return first["run_id"], first["cause"]["detail"]["gate"]
+
+
+def _finished(run_id: str, gate: str):
+    """Answer each gate the run asks and resume it, until it answers."""
+    for _ in range(3):
+        decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
+        assert decided == int(ExitCode.OK), said
+        code, envelope = drive(["--run", run_id, *VERB])
+        if code != int(ExitCode.DECISION_REQUIRED):
+            return code, envelope
+        gate = envelope["cause"]["detail"]["gate"]
+    raise AssertionError("the verb kept asking after both gates were answered")
+
+
+def test_another_pairs_job_queued_since_the_plan_refuses_the_write_as_stale(world, cfg):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    w.codes.update(LACKING)
+    w.account.playlists[ACCOUNT].append("t40")
+    run_id, gate = _held_at_its_gate(w)
+    _other_pairs_job(cfg, state=str(jobs.JobState.QUEUED), tracks=LACKING)
+    code, refused = _finished(run_id, gate)
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert "another sync queued since the plan" in json.dumps(refused)
+
+
+def test_the_runs_own_job_for_an_earlier_pair_stops_no_later_command(world, cfg):
+    """The write held across its gates finishes beside the job its first pair queued."""
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _second_pair(w, cfg, ("2",))
+    w.codes.update(LACKING)
+    w.account.playlists[ACCOUNT].append("t40")
+    w.account.playlists[SECOND].append("t40")
+    run_id, gate = _held_at_its_gate(w)
+    code, envelope = _finished(run_id, gate)
     assert code == int(ExitCode.OK), envelope
     assert _acquired(envelope) == ["t40"]
 

@@ -101,7 +101,9 @@ account playlist (U128) whose file carries its ISRC. A track found nowhere is QU
 ACQUISITION through the intake path, ``intake.playlist`` exactly as
 ``intake playlist`` queues it, and never written to rekordbox as a row without a
 file. A track an earlier sync queued is not queued again and is named as
-awaiting.
+awaiting, and so is one any other pair's job still holds or an earlier pair
+of the same plan queues (R-1385): a track is downloaded once for the library,
+whichever pairs list it.
 
 **A TWIN'S MISSING TRACKS WAIT FOR THE AUTHOR'S CHOICE (U221).** Decided by
 Phillip on 2026-11-05: a track a custom playlist twin was made without is
@@ -527,7 +529,8 @@ class PairPlan:
     unmatched: tuple[Named, ...] = ()
     #: Account tracks the library lacks, by remote id, as the intake job freezes them.
     acquire: dict[str, dict[str, Any]] = field(default_factory=dict)
-    #: Account tracks an earlier sync of this pair already queued.
+    #: Account tracks an earlier sync of this pair already queued, or, named
+    #: with the pair, another pair's job or an earlier pair of this plan (R-1385).
     awaiting: tuple[Named, ...] = ()
     #: U221. Account tracks the library lacks that a twin holds for the
     #: author's choice, named and never queued until ``sync release``.
@@ -760,6 +763,9 @@ class _Reader:
     #: job's reports, read once per plan whichever pair asks for them.
     landed_codes: dict[str, tuple[tuple[str, str], ...]] = field(default_factory=dict)
     reports: dict[str, tuple[dict[str, Any], ...] | Exception] = field(default_factory=dict)
+    #: R-1385. Each track a pair of this plan asks to acquire, by remote id,
+    #: with the pair's key and name, so a later pair listing it awaits it.
+    asked: dict[str, tuple[str, str]] = field(default_factory=dict)
 
     @cached_property
     def remote(self):
@@ -907,6 +913,23 @@ class _Reader:
             for job in self.pair_jobs
             if str((job.payload or {}).get(intake_cli.SOURCE) or "") == account_id
         )
+
+    @cached_property
+    def held_by_jobs(self) -> dict[str, tuple[tuple[str, str], ...]]:
+        """Each track any pair's intake job on this library holds, read once per plan (R-1385).
+
+        Remote id to the account playlist and its name of every job holding
+        it, newest first, from the jobs :attr:`pair_jobs` lists: every one
+        that did not fail or cancel, as a pair's own are read.
+        """
+        found: dict[str, list[tuple[str, str]]] = {}
+        for job in self.pair_jobs:
+            payload = job.payload or {}
+            source = str(payload.get(intake_cli.SOURCE) or "")
+            name = str(payload.get(intake_cli.PLAYLIST_NAME) or "") or source
+            for item in payload.get(intake_cli.TRACKS) or {}:
+                found.setdefault(str(item), []).append((source, name))
+        return {remote_id: tuple(held) for remote_id, held in found.items()}
 
 
 def pair_jobs(cfg: config.Config, store) -> tuple[jobs.Job, ...]:
@@ -1522,7 +1545,12 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         elif held_for_choice(held, remote_id, dates):
             # U221. A TWIN'S MISSING TRACK WAITS FOR THE AUTHOR'S CHOICE, named
             # and never queued, until ``sync release`` lets its twin's go.
+            # Asked before another pair's job, so a plain pair listing it
+            # leaves the twin's choice where it was (R-1385).
             on_hold.append(names[key])
+        elif why := _queued_elsewhere(reader, target, remote_id):
+            # R-1385. ONE DOWNLOAD FOR THE LIBRARY, whichever pairs list it.
+            awaiting.append(_with_reason(names[key], why))
         else:
             acquire[remote_id] = dict(tracks[remote_id])
     order = tuple(
@@ -1573,6 +1601,8 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             )
             account_before = tuple(listed_order or account_now)
 
+    for remote_id in acquire:
+        reader.asked.setdefault(remote_id, (target.key, name))
     return PairPlan(
         target=target,
         name=name,
@@ -1822,10 +1852,27 @@ def held_for_choice(pair: Any, remote_id: str, dates: Mapping[str, str]) -> bool
 def _queued(reader: _Reader, account_id: str) -> frozenset[str]:
     """Every track an intake job this verb queued for the pair still holds or resolved."""
     return frozenset(
-        str(item)
-        for job in reader.jobs_for(account_id)
-        for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
+        remote_id
+        for remote_id, held in reader.held_by_jobs.items()
+        if any(source == account_id for source, _name in held)
     )
+
+
+def _queued_elsewhere(reader: _Reader, target: Target, remote_id: str) -> str:
+    """Why a track another pair's job or an earlier pair of this plan holds is awaited, or ``""``.
+
+    R-1385. A track the library lacks is downloaded once for the library,
+    whichever pairs list it: one any other pair's intake job still holds or
+    resolved, or one an earlier pair of this plan asks to acquire, is named
+    awaiting with the pair holding it and never queued a second time.
+    """
+    for source, name in reader.held_by_jobs.get(remote_id, ()):
+        if source != target.account_id:
+            return f"queued for {name}"
+    asked = reader.asked.get(remote_id)
+    if asked is not None and asked[0] != target.key:
+        return f"queued by this sync for {asked[1]}"
+    return ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -3220,8 +3267,9 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
             {
                 "code": AWAITING,
                 "message": (
-                    f"{len(awaiting)} account track(s) were queued for acquisition by "
-                    f"an earlier sync and are not in the library yet: {listed(awaiting)}"
+                    f"{len(awaiting)} account track(s) were queued for acquisition, by "
+                    f"an earlier sync or for another pair, and are not in the library "
+                    f"yet: {listed(awaiting)}"
                 ),
             }
         )
@@ -3770,15 +3818,16 @@ def check(
     # U210. A JOB THIS RUN QUEUED is its own, never another sync's.
     asking = [one for one in todo if one.acquire and not of(one).has(STEP_QUEUED)]
     if asking:
-        queued = pair_jobs(cfg, store)
+        # R-1385. EVERY PAIR'S JOBS, since a plan made now would name a track
+        # any of them holds as awaiting. A job this run queued holds none of a
+        # pair's still to queue, since one plan asks each track of one pair.
+        now = {
+            str(item)
+            for job in pair_jobs(cfg, store)
+            for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
+        }
         for one in asking:
             owner = one.target.account_id
-            now = {
-                str(item)
-                for job in queued
-                if str((job.payload or {}).get(intake_cli.SOURCE) or "") == owner
-                for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
-            }
             again = sorted(set(one.acquire) & now)
             if again:
                 # ANOTHER SYNC QUEUED THEM SINCE THE PLAN, which a plan made now
