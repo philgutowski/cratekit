@@ -171,10 +171,19 @@ def test_the_order_refusals_that_stop_one_pair_are_the_two_an_order_raises():
     assert pair_cli.ORDER_REFUSALS == {"outbound-remove-refused", "unavailable-transient"}
 
 
-def test_a_continue_after_moves_that_landed_agrees_with_the_playlist_as_it_is_now(
+def test_a_continue_after_a_change_no_move_of_the_run_recorded_holds_it_as_moved(
     world, owed, monkeypatch
 ):
-    """Round two: the expected reading is the continue's own listing, not the plan's."""
+    """U220's round two, read again by R-1420: a change under a refusal that no record names.
+
+    U220 passed the continue its own listing to agree with, so a move that
+    landed somewhere the read back did not expect was ordered from. Since
+    U231 the adapter records its moves before the first is sent, and this
+    fake changes the playlist without telling ``begun``: a refusal with no
+    moves recorded sent none, so the change is someone else's, and the
+    continue holds it as moved with nothing written. A fresh sync then
+    takes the account's order as the person's.
+    """
     _gig, opener, _second = owed
     opener_account = world.titled("GIG READY Opener")
     refused_on = {opener_account}
@@ -183,7 +192,6 @@ def test_a_continue_after_moves_that_landed_agrees_with_the_playlist_as_it_is_no
     def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
         if playlist_id in refused_on:
             world.account.expected.append((playlist_id, expect))
-            # One move landed somewhere the read back did not expect.
             world.account.playlists[playlist_id][:] = ["t1", "t3", "t2"]
             raise refuse(
                 "outbound-remove-refused",
@@ -198,10 +206,11 @@ def test_a_continue_after_moves_that_landed_agrees_with_the_playlist_as_it_is_no
     code, stopped = sync()
     assert code != int(ExitCode.OK), stopped
     refused_on.clear()
-    code, done = drive(["--run", stopped["run_id"], *VERB])
-    assert code == int(ExitCode.OK), done
-    assert world.account.expected[-1] == (opener_account, ("t1", "t3", "t2"))
-    assert world.account.playlists[opener_account] == ["t3", "t1", "t2"]
+    asked = len(world.account.expected)
+    code, refused = drive(["--run", stopped["run_id"], *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert len(world.account.expected) == asked, "the continue asked the account an order"
+    assert world.account.playlists[opener_account] == ["t1", "t3", "t2"]
     assert world.held(opener) == ["3", "1", "2"]
 
 
