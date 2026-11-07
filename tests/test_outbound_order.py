@@ -15,6 +15,12 @@ Which of them the live provider is was not measured from this container; the
 adapter is held to reaching the asked order under every one of them, or to
 refusing before its first move with nothing moved.
 
+U231 changed what a lag after a move costs: Sitting 86's reads lagged the
+moves for minutes, so the moves are now sent with no read back between them,
+a 412 resends the same move, and one later reading (``settled_order``) says
+whether the order landed. The read back tests U220 wrote are rewritten to
+that contract here.
+
 D1 applies. Nothing here names a real account, a real person or a real track.
 """
 

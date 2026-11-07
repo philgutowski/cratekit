@@ -4445,7 +4445,8 @@ def _unordered(
             f"every other write of these, and recorded each step it took, so "
             f"continuing the run tries their order again with no new plan and no "
             f"new answer, and moves nothing until its reading agrees with the "
-            f"check's; first do what each refusal above asks, then: "
+            f"check's, while an order whose moves had begun is only read, never "
+            f"moved again; first do what each refusal above asks, then: "
             + shlex.join(["crate", "--run", run_id, *(argv or VERB_PATH)])
         )
         detail.update({"run_id": run_id, "finished": finished})
