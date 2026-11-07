@@ -1997,7 +1997,9 @@ def _moved_since_stop(
     :data:`AGREE_AFTER` later agrees with it: only then is it the person's,
     and the account leads. Every other reading is finished as the stopped
     write's. A pair with no record, a hand pairing, keeps nothing, so
-    nothing it reads leads on its own.
+    nothing it reads leads on its own. The plan then asks whether the
+    reorder moved a readable track (:func:`_readable_moved`, R-1446), so a
+    move of unread tracks alone still finishes the stop.
     """
     from dataclasses import replace
 
