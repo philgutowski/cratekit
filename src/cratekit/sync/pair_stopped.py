@@ -34,6 +34,17 @@ would have recorded had its order finished. Where it skipped rekordbox
 neither base moves, since a base moved for one side alone reads the other
 side's removals as never made (``docs/solutions``, the two sided snapshot).
 
+**SENT BLIND, A WRITE IS PENDING UNTIL IT CAN BE READ (U231).** Since U231
+the adapter sends an order's moves with no read back between them, and the
+write records, before the first is sent, the reading they were planned from
+and the order they leave (:func:`moving_step`); it records too when every
+move was accepted. Sitting 86 measured the provider serving old orders for
+minutes after the moves landed, so a write that began sending is read as
+pending: the next plan finishes it when the account shows the order the
+moves leave (:func:`shows`), and otherwise waits for two readings that agree
+(``sync/pair_cli``). When every move was accepted, a reading on the moves'
+path short of their end can only be a lag, however long it agrees.
+
 Pure: it reads and writes nothing. Layer: modules.
 """
 
@@ -81,6 +92,39 @@ class StoppedWrite:
     rekordbox: tuple[tuple[str, str], ...]
     written: bool
     links: Mapping[str, str]
+    #: U231. When the write began sending its moves, None for a write that
+    #: sent none or recorded none (any write before U231), and the order they
+    #: leave; ``start`` is then the reading they were planned from. ``moved``
+    #: says every move was accepted.
+    moving_at: datetime | None = None
+    end: tuple[str, ...] = ()
+    moved: bool = False
+
+    @property
+    def pending(self) -> bool:
+        """Whether its moves were sent with no read back, so it is read as pending (U231)."""
+        return self.moving_at is not None
+
+
+def moving_step(*, at: str, start: Sequence[str], end: Sequence[str]) -> dict[str, Any]:
+    """What a write records just before its first move is sent (U231).
+
+    ``start`` is the reading the adapter planned the moves from and ``end``
+    the order they leave.
+    """
+    return {AT: str(at), START: [str(one) for one in start], TARGET: [str(one) for one in end]}
+
+
+def _moving(value: Any) -> tuple[datetime, tuple[str, ...], tuple[str, ...]] | None:
+    """A moving step read back: when, the reading moved from and the order left, or None."""
+    if not isinstance(value, Mapping):
+        return None
+    at = placeholders.parse_hearted(value.get(AT))
+    start = _ids(value.get(START))
+    end = _ids(value.get(TARGET))
+    if at is None or start is None or end is None:
+        return None
+    return at, start, end
 
 
 def ordering_step(
@@ -111,8 +155,15 @@ def _ids(value: Any) -> tuple[str, ...] | None:
     return tuple(value)
 
 
-def _read(run_id: str, account_id: str, value: Any) -> StoppedWrite | None:
-    """One ordering step read back, or None when it is not one this module wrote."""
+def _read(
+    run_id: str, account_id: str, value: Any, moving: Any = None, moved: bool = False
+) -> StoppedWrite | None:
+    """One ordering step read back, or None when it is not one this module wrote.
+
+    ``moving`` is the pair's moving step (U231), when it has one: its write
+    is then pending, and its start is the reading the moves were planned
+    from, the truest record of where the account stood.
+    """
     if not isinstance(value, Mapping):
         # A RECORD WRITTEN BEFORE U225 says only that the order began.
         return None
@@ -140,16 +191,20 @@ def _read(run_id: str, account_id: str, value: Any) -> StoppedWrite | None:
         )
     ):
         return None
+    sent = _moving(moving)
     return StoppedWrite(
         run_id=run_id,
         account_id=account_id,
         at=at,
-        start=start,
+        start=sent[1] if sent is not None else start,
         target=target,
         leader=leader,
         rekordbox=tuple((one[0], one[1]) for one in rows),
         written=written,
         links=dict(links),
+        moving_at=sent[0] if sent is not None else None,
+        end=sent[2] if sent is not None else (),
+        moved=sent is not None and bool(moved),
     )
 
 
@@ -198,6 +253,8 @@ def stopped_writes(
     ordering: str,
     made: str,
     done: str,
+    moving: str = "",
+    moved: str = "",
 ) -> dict[str, tuple[datetime, StoppedWrite]]:
     """Each pair's write stopped part way through its order, by account playlist, with when it began.
 
@@ -214,7 +271,9 @@ def stopped_writes(
     it (round one's review): its steps are kept as the stopped write's are,
     and its additions and removals move no track the stopped write ordered.
     A record written before U225 carries no detail and no time, and is read
-    as no write at all, as it was.
+    as no write at all, as it was. ``moving`` and ``moved`` name the steps a
+    write records as it begins sending its moves and once every one was
+    accepted (U231).
     """
     stopped: dict[str, tuple[datetime, StoppedWrite]] = {}
     finished: dict[str, datetime] = {}
@@ -232,7 +291,13 @@ def stopped_writes(
                 if account_id not in finished or began > finished[account_id]:
                     finished[account_id] = began
                 continue
-            write = _read(record.run_id, account_id, steps.get(ordering))
+            write = _read(
+                record.run_id,
+                account_id,
+                steps.get(ordering),
+                steps.get(moving) if moving else None,
+                bool(moved) and moved in steps,
+            )
             if write is None:
                 continue
             held = stopped.get(account_id)
@@ -312,10 +377,28 @@ def reached(start: Sequence[str], target: Sequence[str], now: Sequence[str]) -> 
     )
 
 
+def shows(end: Sequence[str], now: Sequence[str]) -> bool:
+    """Whether the account's order ``now`` is the order ``end`` a write's moves leave (U231).
+
+    A track added or taken off since is left out of the comparison, as
+    :func:`reached` leaves it out, since neither moves the tracks both hold.
+    An end sharing no track with ``now`` is not shown.
+    """
+    current = list(dict.fromkeys(now))
+    common = set(current) & set(end)
+    if not common:
+        return False
+    return [one for one in current if one in common] == [
+        one for one in dict.fromkeys(end) if one in common
+    ]
+
+
 __all__ = [
     "StoppedWrite",
     "finished",
     "front_moves",
+    "moving_step",
+    "shows",
     "ordering_step",
     "passed",
     "passed_by",

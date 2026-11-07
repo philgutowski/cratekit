@@ -2060,6 +2060,8 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # playlist, so it may lag a recent change. Nothing was written for the
         # pair; a run a few minutes later reads it again.
         "sync-pair-account-lagging": ExitCode.UPSTREAM_UNAVAILABLE,
+        # U231. A pair whose account order was sent and is not yet read as landed.
+        "sync-pair-account-settling": ExitCode.UPSTREAM_UNAVAILABLE,
         # One of the two playlists is already paired with another. One playlist
         # stays the same list as one other. Nothing was written.
         "sync-pair-conflict": ExitCode.PRECONDITION,

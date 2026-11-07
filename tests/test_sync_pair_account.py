@@ -109,15 +109,17 @@ def test_the_order_of_an_unpaired_playlist_is_refused_before_any_call(installed)
     assert store.opened == [] and store.moves == []
 
 
-def test_a_move_that_landed_elsewhere_stops_the_order_with_every_track_kept(installed):
+def test_a_move_that_landed_elsewhere_is_left_to_the_settle_reading_with_every_track_kept(
+    installed,
+):
+    """U231: no read back between moves; the order's one later reading shows where it landed."""
     store = _store()
     _paired(installed, store, "mine", ["a", "b", "c"])
     store.misplace = True
-    with pytest.raises(CratekitError) as refused:
-        _adapter(installed, store).order_tracks("mine", ("c", "b", "a"))
-    assert refused.value.cause.detail["problem"] == "read-back-differs"
-    assert len(store.moves) == 1
+    account = _adapter(installed, store)
+    assert account.order_tracks("mine", ("c", "b", "a")) == ("c", "b", "a")
     assert sorted(store.members["mine"]) == ["a", "b", "c"]
+    assert account.settled_order("mine") != ("c", "b", "a")
 
 
 def test_a_track_held_twice_is_not_moved(installed):

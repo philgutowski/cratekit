@@ -69,6 +69,8 @@ class LivePlaylist:
     def tracks(self, limit=None, offset=0):
         size = self.page_size if limit is None else limit
         members = self.world.account.playlists.get(self.playlist_id, [])
+        # U231. A playlist the provider serves as it was, every read alike.
+        members = self.world.account.served.get(self.playlist_id, members)
         return [
             Listed(one, self.world.codes.get(one, ""), self.world.dates.get(one))
             for one in members[offset : offset + size]

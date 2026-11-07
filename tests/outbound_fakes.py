@@ -69,6 +69,8 @@ PROTOCOL_METHODS = frozenset(
         "remove_legacy_folder",
         # U226. Reads nothing: the record of the readings writes were judged by.
         "read_backs",
+        # U231. One judged reading of a playlist an order was sent to.
+        "settled_order",
     }
 )
 
@@ -124,6 +126,13 @@ class FakeAccount:
         self._writes = 0
         #: U220. Every order asked, as ``(playlist, expect)``.
         self.expected: list[tuple[str, tuple[str, ...] | None]] = []
+        #: U231. What the provider serves of a playlist, by playlist, when it
+        #: lags what the playlist holds: every reading a sync takes of it, the
+        #: catalogue's and the settle's, reads this instead. Absent reads it as
+        #: it is.
+        self.served: dict[str, list[str]] = {}
+        #: U231. The wait each settle reading was asked to pause, in order.
+        self.settle_waits: list[float] = []
         #: Every match asked, as the keyword arguments it was asked with, so a
         #: test can say what an engine handed the account to choose by.
         self.matches: list[dict[str, str]] = []
@@ -354,6 +363,7 @@ class FakeAccount:
         remote_ids: tuple[str, ...],
         *,
         expect: tuple[str, ...] | None = None,
+        begun: Callable[[tuple[str, ...], tuple[str, ...]], None] | None = None,
     ) -> tuple[str, ...]:
         """Put the asked tracks it holds once in the asked order, by the adapter's rule. One write.
 
@@ -361,6 +371,9 @@ class FakeAccount:
         order already standing stays, and each asked track before it is moved
         to the front, the last first, so a track not asked stays where it
         stood among the kept tail. ``expect`` is recorded in :attr:`expected`.
+        ``begun`` is called, as the adapter calls it (U231), with the order
+        moved from and the order the moves leave, before the first move and
+        only when something moves. Returns the order the moves leave.
         """
         self.expected.append((playlist_id, None if expect is None else tuple(expect)))
         self._bump(playlist_id)
@@ -371,11 +384,24 @@ class FakeAccount:
         for one in reversed(members):
             if one in set(asked) and keep < len(asked) and one == asked[-1 - keep]:
                 keep += 1
-        for one in reversed(asked[: len(asked) - keep]):
+        moving = list(reversed(asked[: len(asked) - keep]))
+        if moving and begun is not None:
+            end = list(members)
+            for one in moving:
+                end.remove(one)
+                end.insert(0, one)
+            begun(tuple(members), tuple(end))
+        for one in moving:
             members.remove(one)
             members.insert(0, one)
         self.ordered.append((playlist_id, tuple(remote_ids)))
         return tuple(members)
+
+    def settled_order(self, playlist_id: str, *, wait: float = 0.0) -> tuple[str, ...] | None:
+        """The playlist as the provider serves it, :attr:`served` when it lags (U231). Reads only."""
+        self.settle_waits.append(wait)
+        served = self.served.get(playlist_id)
+        return tuple(served if served is not None else self.playlists.get(playlist_id, ()))
 
     def remove_playlist(self, playlist_id: str) -> None:
         """Remove the playlist and its place. One write, so ``fail_on`` names it.

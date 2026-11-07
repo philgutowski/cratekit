@@ -47,9 +47,9 @@ def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
     real = world.account.order_tracks
     stops: list[int] = []
 
-    def order_tracks(asked_id, remote_ids, *, expect=None):
+    def order_tracks(asked_id, remote_ids, *, expect=None, begun=None):
         if asked_id != playlist_id or len(stops) >= 1:
-            return real(asked_id, remote_ids, expect=expect)
+            return real(asked_id, remote_ids, expect=expect, begun=begun)
         members = world.account.playlists[asked_id]
         for one in tidal_account._to_the_front(list(members), remote_ids)[:moves]:
             members.remove(one)
