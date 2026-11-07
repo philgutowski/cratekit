@@ -141,6 +141,12 @@ class Pair:
     #: the pair recorded no hold: no twin, a twin paired before U221, or one
     #: made from a short listing, which ``sync pair`` reads by time.
     on_hold: Mapping[str, str] | None = None
+    #: U231. The account playlist's order as a reading after an order's moves
+    #: last served it, while that order is pending, and when it was read.
+    #: A later reading must agree with it before anything moves. None when no
+    #: such reading is held; cleared once the pair's snapshot moves.
+    seen: tuple[str, ...] | None = None
+    seen_at: str = ""
 
     @property
     def first(self) -> bool:
@@ -168,6 +174,8 @@ class Pair:
             record["rekordbox"] = [member.to_json() for member in self.rekordbox]
         if self.on_hold is not None:
             record["on_hold"] = dict(sorted(self.on_hold.items()))
+        if self.seen is not None:
+            record["seen"] = {"order": list(self.seen), "at": self.seen_at}
         return record
 
 
@@ -399,6 +407,15 @@ class PairStore:
             and all(isinstance(k, str) and k and isinstance(v, str) for k, v in on_hold.items())
         ):
             raise self._unusable(f"the pair {account_id!r} holds tracks that are not ids")
+        seen = value.get("seen")
+        if seen is not None and not (
+            isinstance(seen, Mapping)
+            and isinstance(seen.get("order"), list)
+            and all(isinstance(one, str) and one for one in seen["order"])
+            and isinstance(seen.get("at"), str)
+            and seen["at"]
+        ):
+            raise self._unusable(f"the pair {account_id!r} holds a reading that is not an order")
         return Pair(
             account_id=account_id,
             rekordbox_id=rekordbox_id,
@@ -413,6 +430,8 @@ class PairStore:
             folder=folder,
             account_added=MappingProxyType(dict(added)),
             on_hold=None if on_hold is None else MappingProxyType(dict(on_hold)),
+            seen=None if seen is None else tuple(seen["order"]),
+            seen_at="" if seen is None else seen["at"],
         )
 
     def _write(self, pairs: Mapping[str, Pair], document: Document | None = None) -> None:
@@ -546,11 +565,32 @@ class PairStore:
                 rekordbox=tuple(rekordbox) if rekordbox is not None else held.rekordbox,
                 links=MappingProxyType(merged),
                 name=held.name if name is None else str(name),
+                # U231. A SNAPSHOT THAT MOVED IS LATER THAN ANY READING HELD for
+                # a pending order, which the next plan no longer reads.
+                seen=None if moved else held.seen,
+                seen_at="" if moved else held.seen_at,
             )
             pairs[str(account_id)] = pair
             self._write(pairs)
             return pair
 
+
+    def see(self, account_id: str, order: Sequence[str], *, at: str) -> Pair | None:
+        """Keep one reading of a pending order's account playlist on its pair (U231).
+
+        ``order`` is the playlist as the reading served it and ``at`` when it
+        was read. Replaces any reading held. Answers the pair, or None when no
+        such pair is marked, which keeps nothing.
+        """
+        with self._locked():
+            pairs = self._load()
+            held = pairs.get(str(account_id))
+            if held is None:
+                return None
+            pair = replace(held, seen=tuple(str(one) for one in order), seen_at=str(at))
+            pairs[str(account_id)] = pair
+            self._write(pairs)
+            return pair
 
     def unmark(self, account_id: str, rekordbox_id: str) -> Pair | None:
         """Forget one pair, and answer what it was, or None when it is not this pair.

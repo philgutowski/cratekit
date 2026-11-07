@@ -508,8 +508,20 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
   changed before the write refuses as stale. A write stopped by the call
   ceiling names the `crate --calls N --run RUN sync pair` that finishes it.
-- After a reorder or a removal on Tidal it cannot read back, it names the
-  playlist: look at it in the Tidal app before running anything again.
+- After a removal on Tidal it cannot read back, it names the playlist: look
+  at it in the Tidal app before running anything again.
+- Tidal's order is kept in rekordbox's order only for pairs under GIG READY;
+  set `outbound.pair_order_every_pair = true` to keep every pair's. Other
+  pairs still sync their tracks both ways.
+- An order is sent in one go, then read once, about 30 seconds later or
+  after the other pairs are written. Not served yet, the pair is pending: the
+  run ends ok and names it, every track is on Tidal and rekordbox is
+  untouched. The next `sync pair` finishes it when Tidal shows the new order,
+  and otherwise leaves the pair out until two readings at least 5 minutes
+  apart agree. Nothing is moved again meanwhile, and a continue of a stopped
+  run only reads the order. Once two readings agree on an order part way
+  there, the rest of a stopped order is sent from that reading. A run whose
+  plan cannot be kept sends no order.
 - A fresh `sync pair` after a write that stopped part way through putting a
   Tidal playlist in order finishes that order, from the side that led it,
   rather than reading its half done order as your edit. The gate names the
@@ -989,6 +1001,7 @@ guide:
 | `reports.intake_stale_days`, `reports.intake_expired_days` | 30, 90 |
 | `analysis.drift_cut` | 1.5 |
 | `outbound.pair_skip_folders` | `["ARCHIVE"]` |
+| `outbound.pair_order_every_pair` | false (only GIG READY pairs keep Tidal's order) |
 
 An ISRC answer is shared by every verb, so a rehearsal and the live run pay
 for a lookup once. A copy run that redirects `CRATEKIT_STATE_DIR` should point

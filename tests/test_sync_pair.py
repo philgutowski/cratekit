@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -89,6 +90,12 @@ class World:
     """The account, its catalogue and the rekordbox playlist, wired together."""
 
     def __init__(self, cfg, monkeypatch, *, account=(), rekordbox=()) -> None:
+        # U231. THE PLAYLIST SITS AT THE REKORDBOX ROOT, outside GIG READY, and
+        # these suites drive the account's order, so every pair keeps it, as
+        # ``outbound.pair_order_every_pair`` says. The scope itself is held by
+        # ``tests/test_sync_pair_settle.py``.
+        cfg = replace(cfg, outbound=replace(cfg.outbound, pair_order_every_pair=True))
+        monkeypatch.setattr(config, "load", lambda *args, **kwargs: cfg)
         self.cfg = cfg
         self.account = outbound_fakes.FakeAccount(
             {content_id: remote(content_id) for content_id in ROWS}

@@ -47,9 +47,9 @@ def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
     real = world.account.order_tracks
     stops: list[int] = []
 
-    def order_tracks(asked_id, remote_ids, *, expect=None):
+    def order_tracks(asked_id, remote_ids, *, expect=None, begun=None):
         if asked_id != playlist_id or len(stops) >= 1:
-            return real(asked_id, remote_ids, expect=expect)
+            return real(asked_id, remote_ids, expect=expect, begun=begun)
         members = world.account.playlists[asked_id]
         for one in tidal_account._to_the_front(list(members), remote_ids)[:moves]:
             members.remove(one)
@@ -504,12 +504,14 @@ def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _released(world, intro: str, account_id: str) -> str:
+def _released(world, intro: str, account_id: str, *, root: bool = False) -> str:
     """The stopped pair's rekordbox playlist deleted, a sync releasing it, and a new one in rekordbox's order.
 
-    Answers the new rekordbox playlist, made at the root, where no sync of
-    every pair discovers it, holding the stopped pair's tracks in the order
-    rekordbox held them, as a person rebuilding the playlist would.
+    Answers the new rekordbox playlist, holding the stopped pair's tracks in
+    the order rekordbox held them, as a person rebuilding the playlist would:
+    in GIG READY, where a pair's account is put in rekordbox's order (U231),
+    or at the root, where it is not. Made after the sync that released the
+    pair, so no sync of every pair has discovered it.
     """
     world.delete_rekordbox(intro)
     code, envelope = sync()
@@ -518,7 +520,14 @@ def _released(world, intro: str, account_id: str) -> str:
     assert pairs.PairStore(world.cfg).get(account_id) is None
     # The release wrote nothing on the account: it still holds the scramble.
     assert world.account.playlists[account_id] == ["t2", "t7", "t1", "t3", "t4", "t5", "t6"]
-    return world.playlist("Rebuilt", *LED)
+    if root:
+        return world.playlist("Rebuilt", *LED)
+    [(gig,)] = world.sql(
+        "SELECT ID FROM djmdPlaylist WHERE Name = ? AND Attribute = 1 "
+        "AND COALESCE(rb_local_deleted, 0) = 0",
+        "GIG READY",
+    )
+    return world.playlist("Rebuilt", *LED, under=str(gig))
 
 
 def test_a_pair_released_after_a_stop_and_paired_again_never_takes_the_scramble(
@@ -631,3 +640,66 @@ def test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before(w
     # The first sync's account leads, as it always has.
     assert world.held(mine) == ["3", "1", "2"]
     assert world.account.playlists[theirs] == _ids("3", "1", "2")
+
+
+def test_a_released_pair_paired_again_at_the_root_never_takes_the_scramble_on_its_first_sync(
+    world, stopped
+):
+    """Outside GIG READY the account's order is left as it is (U231), and rekordbox keeps its own."""
+    intro, account_id, run_id = stopped
+    rebuilt = _released(world, intro, account_id, root=True)
+    paired = [*VERB, account_id, "--rekordbox", rebuilt]
+    code, first = drive(paired)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    line = first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    assert f"finishes run {run_id}" in line, line
+    assert "order follows rekordbox's" in line, line
+    assert "kept only for pairs under GIG READY" in line, line
+    pair = [item for item in plan_only(paired)["items"] if item["pair"] == account_id]
+    assert [item for item in pair if item["side"] == "rekordbox"] == [], (
+        "the first sync writes rekordbox the stopped write's scramble"
+    )
+    code, envelope = sync(paired)
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(rebuilt) == list(LED), "rekordbox took the stopped write's scramble"
+    assert world.account.playlists[account_id] == ["t2", "t7", "t1", "t3", "t4", "t5", "t6"]
+    assert run_id in _said(envelope, pair_cli.FINISHING)
+
+
+def test_a_released_pair_paired_again_over_a_pending_order_is_held_until_the_provider_serves_it(
+    world, cfg
+):
+    """U231's pending order, read by a first sync by hand with no pair record, holds the pair rather than finishing from a lagging read."""
+    from tests.test_sync_pair_order import _reordered
+
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    account_id = world.titled("GIG READY Opener")
+    _reordered(world, opener, "4", "3", "1", "2")
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.PENDING in _codes(envelope)
+    world.delete_rekordbox(opener)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.RELEASED in _codes(envelope)
+    assert pairs.PairStore(cfg).get(account_id) is None
+    rebuilt = world.playlist("Rebuilt", "4", "3", "1", "2", under=gig)
+    paired = [*VERB, account_id, "--rekordbox", rebuilt]
+    # The provider still serves the order the moves began from: held, twice.
+    for _ in range(2):
+        code, envelope = sync(paired)
+        assert code == int(ExitCode.UPSTREAM_UNAVAILABLE), envelope
+        assert envelope["cause"]["detail"]["problem"] == "order-pending", envelope
+        assert world.held(rebuilt) == ["4", "3", "1", "2"]
+        assert pairs.PairStore(cfg).get(account_id) is None
+    # Served as the moves leave it, the first sync finishes the order.
+    del world.account.served[account_id]
+    code, envelope = sync(paired)
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.FINISHING in _codes(envelope)
+    assert world.held(rebuilt) == ["4", "3", "1", "2"]
+    assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")

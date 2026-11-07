@@ -2980,6 +2980,10 @@ DEFAULT_PAIR_SKIP_FOLDERS: tuple[str, ...] = ("ARCHIVE",)
 
 PAIR_SKIP_FOLDERS_KEY = "outbound.pair_skip_folders"
 
+#: U231. Whether ``crate sync pair`` keeps the account's order for every pair
+#: rather than only those whose rekordbox playlist is under GIG READY.
+PAIR_ORDER_EVERY_PAIR_KEY = "outbound.pair_order_every_pair"
+
 
 @dataclass(frozen=True, slots=True)
 class OutboundConfig:
@@ -3002,6 +3006,12 @@ class OutboundConfig:
     #: when it finds the author's own playlists (U198), by exact name. ARCHIVE
     #: by Phillip's answer of 2026-11-04; an empty list pairs every folder.
     pair_skip_folders: tuple[str, ...] = DEFAULT_PAIR_SKIP_FOLDERS
+    #: U231. ``crate sync pair`` puts an account playlist in rekordbox's order
+    #: only when its rekordbox playlist sits under the top folder GIG READY,
+    #: the one played from, since every move is a provider call and Sitting
+    #: 86's 65 orders took thousands of them. True keeps the order of every
+    #: pair; a pair outside the scope still syncs its tracks both ways.
+    pair_order_every_pair: bool = False
 
 
 #: The recognition service's identify endpoint for the region most accounts are
@@ -3499,6 +3509,7 @@ def validate(data: Mapping) -> list[str]:
     problems += _validate_aging_thresholds(data)
     problems += _validate_export_staleness(data)
     problems += _validate_pair_skip_folders(data)
+    problems += _validate_pair_order_every_pair(data)
     problems += _validate_open_gate_staleness(data)
     problems += _validate_recognition(data)
     problems += _validate_provider(data)
@@ -3701,6 +3712,18 @@ def _validate_pair_skip_folders(data: Mapping) -> list[str]:
             f"playlists under it would be paired with the account."
         ]
     return []
+
+
+def _validate_pair_order_every_pair(data: Mapping) -> list[str]:
+    """Whether every pair keeps the account's order (U231): true or false."""
+    value = _dig(data, PAIR_ORDER_EVERY_PAIR_KEY)
+    if value is None or isinstance(value, bool):
+        return []
+    return [
+        f"{PAIR_ORDER_EVERY_PAIR_KEY} must be true or false, found {value!r}. A value "
+        f"read as true would write the account's order for every pair, a provider call "
+        f"per track moved."
+    ]
 
 
 def _validate_open_gate_staleness(data: Mapping) -> list[str]:

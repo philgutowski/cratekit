@@ -46058,3 +46058,129 @@ download half reads "rekordbox's place stands" again after the merge.
 library state were taken after the queue and the landing (the solutions entry
 on copy rehearsals of the mirror edit rule), and reads either the carry or
 which input was missing. Ledger only: it closes at an attended sitting.
+
+---
+
+## R-1394. An order stopped part way whose two readings agree on a lag longer than five minutes has its remaining moves sent by position from that lag
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** A write stopped part way through its order (no `moved`
+step) is pending; once two readings at least `AGREE_AFTER` (five minutes)
+apart agree on an order on the moves' path, `_pending` in
+`sync/pair_cli.py` lets the plan finish it from the leading side, as U225
+finishes a stopped write and as the brief asks. If the provider serves the
+same stale order for longer than five minutes, the agreed reading is that
+lag, and the remaining moves are planned from it and sent by position, one
+of them already sent, which scrambles the account playlist.
+
+**Measured cost.** Driven by round one's review on the fakes (T7, the verb)
+and on the order suite's provider (T9, the adapter): the second order write
+went out from the served old order and left d, c, b, a for an asked d, c, a,
+b. Whether the live provider's lag after a stopped write outlasts five
+minutes and agrees with itself was not driven; Sitting 86 measured orders
+not served after 28 minutes, but reads 3 s apart then disagreed.
+
+**Closes when:** a stopped write is finished only from a reading that also
+agrees with where the recorded moves could have left it after a longer wait,
+or the attended proof (A88, A91) measures the lag and the window is sized to
+it. Earns an issue: an account playlist can be damaged.
+
+---
+
+## R-1395. After every move of an order was accepted, a reorder by hand back onto the moves' path holds the pair until it is moved off it or released
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** When every move was accepted, `_pending` reads an agreed
+reading on the moves' path short of their end as a lag however long it
+agrees, so it never moves from it. A person who puts the account playlist
+back to one of those orders by hand is held the same way, and the pair's
+membership stops syncing both ways meanwhile.
+
+**Measured cost.** Driven by round one's review (T6): three runs each held
+the pair, and a track added in rekordbox never reached the account. The held
+message now says a reorder by hand back onto the path is read the same way,
+and that moving it off the path in the provider's player or releasing the
+pair frees it (T6b shows an off path order merged as the person's).
+
+**Closes when:** the held message's remedy is enough for Phillip, or a later
+card offers a verb that releases a pending order. Ledger only: the product
+says what holds it and how to free it.
+
+---
+
+## R-1396. A later pair raising outside an order's own refusals after an earlier pair's moves went out skips the settle reading of every order sent
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** `sync_pair` reads every order sent once all pairs are
+written (`_settle`). A later pair whose write raises anything that stops the
+whole write leaves the loop before `_settle`, so an earlier pair's order is
+not read, no reading is kept on it, and no pending warning names it.
+
+**Measured cost.** Driven by round one's review (T2d): the carried record
+held `moving` and `moved`, no move was sent again, the pair was held two
+runs and finished on the run after the provider caught up. One extra run
+while the provider lags; the state is honest.
+
+**Closes when:** the settle runs in a `finally` that cannot itself mask a
+park, or the stop names the pairs whose order it did not read. Ledger only.
+
+---
+
+## R-1397. The gate's forecast for a plan that could not be held counts the account order calls a write that keeps no record never makes
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** Since round one's fix a write that keeps no record sends
+no order (`_write_account`), but `_expected` still counts the order's
+reading, moves and settle reading when `steps` is None.
+
+**Measured cost.** Driven by round two's review (C2): `_expected` answered
+ten write calls on the owed pair while the write sent none. A number too high
+on the gate's provider calls line, on a run that then stops naming why.
+
+**Closes when:** `_expected` leaves an order out when the plan is not held.
+Ledger only.
+
+---
+
+## R-1398. Guards of U231's order and pending path that the reviews measured killing no test
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** Of the twelve guards round one measured killing nothing,
+the fix rounds pinned the agreement gap, a reading kept before the moves,
+the settle window's overlap, a settle refused for another reason, a reading
+replaced too soon, the root playlist named GIG READY, both validations and
+the continue's window. Left unpinned: the moving step's start taking the
+place of the ordering step's start (`pair_stopped._read`), and the reworded
+lag clause of the held message (round two's G5), which no test reads.
+
+**Measured cost.** None measured; the start matters only where the provider
+placed an added track elsewhere than the plan appended it.
+
+**Closes when:** a test drives an order whose adapter reading differs from
+the plan's appended start. Ledger only.
+
+---
+
+## R-1399. The steps unread note says anything an earlier command wrote refuses stale, which an account order's blind moves never did
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** `sync_pair`'s `sync-pair-steps-unread` note says that
+with the run's steps unreadable "anything an earlier command of run N wrote
+refuses stale rather than being written twice". Round two's review drove a
+continue whose steps were unreadable or gone sending an order's moves a
+second time, the check passing because the provider still served the order
+from before them. The second fix round closed the resend by reading the
+carried record (`PairSteps.carried`); the note's sentence is still stronger
+than what holds for the rest of a pair's write.
+
+**Measured cost.** None left for the order after the fix; a wording that
+overclaims.
+
+**Closes when:** the note says the carried record is read for an order and
+names what else refuses stale. Ledger only.
