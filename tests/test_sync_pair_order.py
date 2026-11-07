@@ -528,3 +528,20 @@ def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_list
     assert code == int(ExitCode.OK), done
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
+
+
+def test_a_continue_of_a_refused_order_that_also_added_holds_the_added_track_moved_since(
+    world, cfg, monkeypatch
+):
+    """The mutation table's B2: a person moving only the track this write added is a reorder too."""
+    opener, account_id, run_id = _refused_with_an_addition(world, monkeypatch)
+    world.account.playlists[account_id][:] = _ids("1", "2", "5", "3", "4")
+    ordered = list(world.account.ordered)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
+        "was reordered since the plan"
+    ]
+    assert world.account.playlists[account_id] == _ids("1", "2", "5", "3", "4")
+    assert world.account.ordered == ordered
+    assert world.held(opener) == ["4", "3", "1", "2", "5"]

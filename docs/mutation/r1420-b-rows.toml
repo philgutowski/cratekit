@@ -1,0 +1,14 @@
+name = "r1420-b"
+pass_kind = "light"
+
+[[rows]]
+id = "B2_beyond_tail_unread_pinned"
+description = "sample: the part written check reads the kept tracks' order but not that this write's additions stand after them, measured again once a test pins it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if kept != [track for track in one.account_now if track in held] or (
+            list(now) != kept + tail
+        ):'''
+new = '''        if kept != [track for track in one.account_now if track in held] or (
+            list(now) != list(now)
+        ):'''
