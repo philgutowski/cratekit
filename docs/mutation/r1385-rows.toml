@@ -26,9 +26,9 @@ new = '''    for source, name in ():'''
 
 [[rows]]
 id = "M3_own_job_guard"
-description = "_queued_elsewhere: read a pair's own job as another's; unreachable while plan_pair asks the pair's own jobs first"
+description = "_queued_elsewhere: read a pair's own job as another's; unreachable while plan_pair asks the pair's own jobs first, so only a reordering of those checks reaches it, and M9 measures the check that shadows it"
 file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
+surface = "maintainer"
 tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
 old = '''        if source != target.account_id:'''
 new = '''        if True:'''
@@ -44,9 +44,9 @@ new = '''    asked = None'''
 
 [[rows]]
 id = "M5_own_ask_guard"
-description = "_queued_elsewhere: read a pair's own ask as another pair's; unreachable while plan() plans each pair once"
+description = "_queued_elsewhere: read a pair's own ask as another pair's; unreachable while plan() plans each pair once, so only a caller planning a pair twice reaches it, and M6 measures the registry it refines"
 file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
+surface = "maintainer"
 tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
 old = '''    if asked is not None and asked[0] != target.key:'''
 new = '''    if asked is not None:'''
