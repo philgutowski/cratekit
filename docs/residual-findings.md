@@ -45840,3 +45840,87 @@ test that reaches it, or the docstring credits the guard. Ledger only.
 **Measured cost.** The filter: none reached, the producer (a kill between two calls) not driven. The directory: driven by the round two reviewer, a false clause on the gate beside the finishing note for the same pair, both sides ending in the led order; nothing in Cratekit creates such a directory, and the old `glob` listing behaved the same.
 
 **Closes when:** a test with a `.tmp` beside a record pins the filter, and the unread sentence names only what was not read.
+
+---
+
+## R-1381. An intake job whose frozen configuration no longer reads refuses whole verbs as a configuration error rather than naming the job
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** A job's reports are read through its frozen configuration, and a configuration that no longer validates raises `config.ConfigError`, which is not a `CratekitError`. U229 passes such a job over when another pair's plan reads it, but the pair that queued it still re raises it, as the base did, so `crate sync pair` with no argument is refused for every pair (`src/cratekit/sync/pair_cli.py`, `_Reader.job_reports`). The same shape stands one file over: `src/cratekit/sync/mark_cli.py` refuses `sync mark` whole, `src/cratekit/organize/mirror_downloads.py` (`outcomes`) raises out of its step, and `src/cratekit/favorites/backfill.py` reads its jobs the same way (not driven). A `config_toml` that is not TOML at all raises `TOMLDecodeError` through U229's catch as an internal error.
+
+**Measured cost.** Driven by round two's review on a hand edited store row: exit 30 `config-unusable` with the remedy to fix the configuration file, which is not what is wrong, for every pair, and for `sync mark` no items at all. Three candidate producers were driven (a configuration frozen today with recent keys removed, one with no provider table, today's enqueue round trip) and none produces it; the required keys are unchanged since before pair jobs existed. The guard that re raises for the owning pair kills no test.
+
+**Closes when:** every reader of a job's reports names the one job whose frozen configuration does not read and goes on with the rest, or a measurement shows no build ever freezes one. Ledger only until a producer is found.
+
+---
+
+## R-1382. A track whose landing's INBOX memberships were removed is no longer found by its landing, and a sync pair queues it again
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** A landed row with no database ISRC is found by `landed_isrcs` in `src/cratekit/sync/pair_cli.py` only through its live membership of the INBOX playlist its landing made. Once those memberships are soft deleted, the row is named by nothing a plan reads, and a track listed on a pair is planned as `acquire`.
+
+**Measured cost.** Driven by round one's review: with the INBOX playlist and its memberships soft deleted the plan queued the track, and with the playlist alone deleted it still found the row. Whether rekordbox or `inbox rotate` ever soft deletes the memberships when an INBOX playlist goes was not measured.
+
+**Closes when:** the landing writes the ISRC into the row, out of U229's scope, or a measurement shows nothing removes the memberships. Ledger only until that is measured.
+
+---
+
+## R-1383. A landing record the session log cannot read is read as no landing, so a sync pair queues the landed track again with a clean report
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** `landed_inbox_playlists` in `src/cratekit/sync/pair_cli.py` takes `session.scan_log`'s records and discards its unreadable list, so a landing whose record does not read (torn, or a state value this build does not know) names no INBOX playlist, and a track only that landing brought in is planned as `acquire`. Since U229 every pair reads every landing this way, so the shape now carries the whole of the card's fix. Pattern one, absence read as evidence of absence.
+
+**Measured cost.** Driven by round one's review on two hand damaged records, one rewritten with an unknown state and one torn: both times the plan queued the landed track and warned only `sync-pair-written`. The natural producers, a record a later build writes or a log directory the account cannot list, were not driven.
+
+**Closes when:** a plan that finds an unreadable landing record names it in a warning and plans no `acquire` for a track it could not rule out, or refuses, as the session log's own gates do. It earns an issue under the board bar's (b), a clean report over state the tool could not read.
+
+---
+
+## R-1384. A sync pair plan reads the tag of every landed row lacking a database ISRC once a lacking track reaches the widened step
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** `_Reader.landed_anywhere` in `src/cratekit/sync/pair_cli.py` reads the file of each row in every INBOX playlist landed on the library, once per plan, whenever a lacking track carrying an ISRC is left by the four earlier steps. Every native landing leaves its rows without a database ISRC, so the reads grow with what has landed and not with what is asked.
+
+**Measured cost.** Round one measured four tag reads per plan for four landed rows, against none on the base, and none on a resume within the run, which holds the plan. No provider call is added. The live count, over every landing still in rekordbox's INBOX, was not measured.
+
+**Closes when:** the ISRC is written into a landed row at the landing, which the brief leaves out of scope, or the reads are measured on the live library and found small. Ledger only: it costs time, never a wrong answer.
+
+---
+
+## R-1385. One sync pair command queues a track no landing brought in once for each pair listing it, and again beside another pair's job still holding it
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** `_queued` in `src/cratekit/sync/pair_cli.py` reads only the jobs this pair queued, and `_owned` reads another pair's job only once it SUCCEEDED and only for an `owned` report. So two plain pairs listing one new track each plan it as `acquire` in one command, and a pair listing a track another pair's pending job already holds plans it again. U229 made a track a landing brought in through any account playlist the library's row; a track not yet landed is outside that brief.
+
+**Measured cost.** Driven by round one's review: two pairs listing `t40` queued two jobs holding `t40` in one command, and a pair listing `t8` beside another pair's pending job holding `t8` queued a second job. Whether the second job downloads a second copy or resolves owned by the first file's ISRC when it runs was not driven.
+
+**Closes when:** a sync pair plans a track any pending or running `sync pair` job on the library holds as `awaiting`, and two pairs in one plan listing one lacking track queue it once. It earns an issue because a second download job for one track is what the card's goal forbids, a day earlier.
+
+---
+
+## R-1386. sync twins still holds a track a landing through another account playlist brought in, which sync pair then adds
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** The twins backfill in `src/cratekit/sync/twins.py` reads `pair_cli.landed_isrcs` for each account playlist's own INBOX playlists, as `sync pair` did before U229. So a twin's track that the library holds because another account playlist's landing brought it in is recorded as held, and the next `sync pair` finds the row and adds it.
+
+**Measured cost.** Driven by round one's review: the backfill held `t20`, `t21` and `t22` with the twin holding rows 3 and 1, and the sync pair right after held `t20` and `t21` and added row 9 for `t22`. Two verbs tell two stories about one library; nothing is downloaded and the end state is right.
+
+**Closes when:** the backfill reads every landed INBOX playlist as `sync pair` now does. Ledger only: the next sync pair corrects it with no download.
+
+---
+
+## R-1387. Three of the guards on what a sync pair reads as owned kill no test, sampled by U229's mutation table
+
+**Found:** at the mutation table of #593, U229, 2026-11-07.
+
+**The mechanism.** In `src/cratekit/sync/pair_cli.py`, `landed_inbox_playlists` reads a landing still awaiting its import as a landing (U128), and `_owned_by_jobs` reads only a SUCCEEDED job and only an `owned` report (U130). Each was removed alone by U229's table, rows S3, S4 and S5, and no test in the suite died.
+
+**Measured cost.** None measured. An intake file's landing entry carries no playlist id, an unfinished job's reports may not read, and a report in another state may carry no path, so each removal may be equivalent on every input the suite builds; no input that would show otherwise was driven.
+
+**Closes when:** each guard has a test that fails when it is removed, or a measurement shows the removal equivalent. Ledger only: a maintainer facing gap in pinning.
