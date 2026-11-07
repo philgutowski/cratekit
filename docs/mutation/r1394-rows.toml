@@ -1,0 +1,210 @@
+name = "r1394"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_recorder_never_told"
+description = "adapter order: the recorder begun answers is never told before a move, so the record keeps sent and landed at 0 while moves land"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                if told is not None:
+                    told(number, number - 1)'''
+new = '''                if False:
+                    told(number, number - 1)'''
+
+[[rows]]
+id = "A2_sent_one_short"
+description = "adapter order: the recorder is told one move fewer sent than is about to go, so a move in flight is read as known not to have landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                    told(number, number - 1)'''
+new = '''                    told(number - 1, number - 1)'''
+
+[[rows]]
+id = "A3_landed_overstated"
+description = "adapter order: the recorder is told the move about to go has already landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                    told(number, number - 1)'''
+new = '''                    told(number, number)'''
+
+[[rows]]
+id = "A4_412_not_brought_down"
+description = "adapter order: a move spent on its 412s is left as maybe landed, its sent count never brought back down"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                        told(number - 1, number - 1)'''
+new = '''                        pass'''
+
+[[rows]]
+id = "A5_any_failure_brought_down"
+description = "adapter order: a move that failed any way, a dropped connection included, is told as not landed"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                    if not _stale_tag(exc):
+                        raise
+                    if told is not None:'''
+new = '''                    if told is not None:
+                        told(number - 1, number - 1)
+                    if not _stale_tag(exc):
+                        raise
+                    if told is not None:'''
+
+[[rows]]
+id = "P1_counts_never_written"
+description = "pair write: the recorder writes the moving step with no progress, sent and landed always 0"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                        at=at, start=start, end=end, sent=sent, landed=landed'''
+new = '''                        at=at, start=start, end=end, sent=0, landed=0'''
+
+[[rows]]
+id = "P2_counts_not_carried"
+description = "pair write: the recorder's counts are marked in the run's steps but not carried past the run"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                steps.carry()
+
+            return sending'''
+new = '''                pass
+
+            return sending'''
+
+[[rows]]
+id = "P3_begun_answers_no_recorder"
+description = "pair write: begun answers no recorder, so the adapter tells the record nothing between moves"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            return sending'''
+new = '''            return None'''
+
+[[rows]]
+id = "P4_finish_from_landed"
+description = "pending order: an agreed reading at the moves the provider accepted is finished from even with a move whose landing is not known after it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if not at or max(at) >= write.sent:'''
+new = '''        if not at or max(at) >= write.landed:'''
+
+[[rows]]
+id = "P5_finish_from_any_path_reading"
+description = "pending order: any agreed reading on the moves' path is finished from, R-1394's own defect"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if not at or max(at) >= write.sent:'''
+new = '''        if not at or max(at) >= 0:'''
+
+[[rows]]
+id = "P6_off_path_held"
+description = "pending order: an agreed reading off the moves' path, the person's change, is held instead of merged as theirs"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if not at or max(at) >= write.sent:'''
+new = '''        if at and max(at) >= write.sent:'''
+
+[[rows]]
+id = "P7_unknown_named_as_landed"
+description = "held message: a reading at a move whose landing is not known is named as before the moves accepted"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    elif at < write.landed:'''
+new = '''    elif at <= write.landed:'''
+
+[[rows]]
+id = "P8_every_move_named_as_a_stop"
+description = "held message: every move accepted is named as a write that stopped part way"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    elif write is None or write.moved:'''
+new = '''    elif write is None:'''
+
+[[rows]]
+id = "S1_counts_beyond_the_moves_trusted"
+description = "stopped write: counts larger than the write's moves are trusted rather than read as nothing known"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''    if sent is None or landed is None or not landed <= sent <= total:'''
+new = '''    if sent is None or landed is None or not landed <= sent:'''
+
+[[rows]]
+id = "S2_missing_counts_read_as_none_sent"
+description = "stopped write: a moving step with no counts reads as no move sent, so any agreed path reading finishes it, as before R-1394"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''        return 0, total
+    return landed, sent'''
+new = '''        return 0, 0
+    return landed, sent'''
+
+[[rows]]
+id = "S3_bool_count_read"
+description = "stopped write: a count written as true or false is read as a number"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "maintainer"
+old = '''    if isinstance(value, bool) or not isinstance(value, int) or value < 0:'''
+new = '''    if not isinstance(value, int) or value < 0:'''
+
+[[rows]]
+id = "S4_negative_count_read"
+description = "stopped write: a negative count is read as one"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "maintainer"
+old = '''    if isinstance(value, bool) or not isinstance(value, int) or value < 0:'''
+new = '''    if isinstance(value, bool) or not isinstance(value, int):'''
+
+[[rows]]
+id = "S5_sent_read_as_landed"
+description = "stopped write: the sent count is read from the landed field, so a move in flight reads as known not sent"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''    return at, start, end, _count(value.get(SENT)), _count(value.get(LANDED))'''
+new = '''    return at, start, end, _count(value.get(LANDED)), _count(value.get(LANDED))'''
+
+[[rows]]
+id = "S6_counts_not_wired"
+description = "stopped write: the counts read back never reach the stopped write, which keeps none landed and none sent"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''        landed=landed,
+        sent=reached_by,'''
+new = '''        landed=0,
+        sent=0,'''
+
+[[rows]]
+id = "S8_positions_first_only"
+description = "positions: only the first count on the path that leaves the order is answered, so a track taken off since hides a later one"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''    return tuple(
+        index
+        for index, state in enumerate(passed(start, target))
+        if [one for one in dict.fromkeys(state) if one in common] == shown
+    )'''
+new = '''    return tuple(
+        index
+        for index, state in enumerate(passed(start, target))
+        if [one for one in dict.fromkeys(state) if one in common] == shown
+    )[:1]'''
+
+[[rows]]
+id = "S9_moving_step_counts_dropped"
+description = "moving step: the record written carries a sent count of 0 whatever it is told"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''        SENT: int(sent),'''
+new = '''        SENT: 0,'''
+
+[[rows]]
+id = "P9_finish_not_held_to_the_agreed_reading"
+description = "pair write: a write that finishes a stopped order lets the adapter plan its moves from any reading holding the same tracks, round one's row 1"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                or (one.finishing_order and not (one.account_removes or one.account_adds))'''
+new = '''                or False'''
+
+[[rows]]
+id = "S10_later_unsent_write_hides_the_pending"
+description = "stopped writes: the latest record is read whether or not it sent a move, so a refused finish hides the pending write it was finishing, round two's BLOCKING row"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):'''
+new = '''            if held is None or write.at > held[1].at:'''
