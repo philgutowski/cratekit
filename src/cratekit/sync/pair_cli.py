@@ -3521,10 +3521,12 @@ def apply_pair(
     """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot.
 
     ``account_listed`` is the account playlist as the check before the write
-    read it (U209), equal to what the plan read until this run marks the
-    pair's order begun; on a continue after that it is checked for what it
-    holds and not its order, so a finish is held to the plan's own reading
-    (R-1411), never to this listing. A pair with nothing to write
+    read it (U209), equal to what the plan read until this run's moves of
+    the pair's order begin. On a continue of an order whose moves never
+    began and that finishes no stopped write, it was read in order and is
+    handed to the adapter to agree with first (R-1420); once the moves
+    began it is checked for what it holds and not its order, and a finish
+    is held to the plan's own reading (R-1411). A pair with nothing to write
     on the account records it as the side's snapshot rather than listing the
     playlist again; a pair that writes there lists it after the write, as
     every pair did before.
@@ -3723,6 +3725,14 @@ def _write_account(
             ).cause
             done.name = one.name
             return None
+        # R-1420, ROUND ONE'S REVIEW. WHETHER AN EARLIER COMMAND OF THIS RUN
+        # BEGAN THIS ORDER, read before this one marks it: with no move sent
+        # (the branch above returned otherwise), it was refused, parked or
+        # stopped with the whole write, and its continue agrees first. A
+        # finish keeps what R-1411 holds it to. ROUND TWO'S REVIEW: the run's
+        # steps unreadable or gone, the record carried beside them still
+        # says the order began, as it says the moves went.
+        continued = steps.has(STEP_ORDERING) or steps.carried(STEP_ORDERING) is not None
         # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
         # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
         # it stopped reads its moves as this write's: the order it starts
@@ -3758,6 +3768,12 @@ def _write_account(
         steps.carry()
         # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
         # the adapter's reading agrees with the check's own listing of it.
+        # R-1420. AND ONE AN EARLIER COMMAND BEGAN AND STOPPED BEFORE ANY
+        # MOVE, whatever stopped it, not only a refusal (round one's review).
+        # That listing was judged in order by the check where this is no
+        # finish, so a person's reorder before the check stopped the write
+        # before here (`_ordered_by_this_run`), and one after it is refused
+        # by the adapter's agreement with it.
         # R-1394. NOR DOES ONE THAT FINISHES A STOPPED ORDER: the plan read
         # the playlist where that order's moves left it, at or past what was
         # sent, and a reading the adapter takes seconds later may still lag
@@ -3769,6 +3785,7 @@ def _write_account(
             if account_listed is not None
             and (
                 steps.has(STEP_ORDER_REFUSED)
+                or (continued and not one.finishing_order)
                 or (one.finishing_order and not (one.account_removes or one.account_adds))
             )
             else None
@@ -4472,7 +4489,7 @@ def check(
             unread_said = "lists a different set of tracks it cannot read than the plan read"
             if one.target.new or of(one).has(STEP_ACCOUNT):
                 # U210. PART WRITTEN BY THIS RUN: only its own write's doing.
-                why = _beyond(one, now, ordering=of(one).has(STEP_ORDERING))
+                why = _beyond(one, now, ordering=_ordered_by_this_run(one, of(one)))
                 if why:
                     moved.append(Moved(ACCOUNT_SIDE, account_id, one.name, why))
                 elif not one.target.new and withheld != one.withheld:
@@ -4815,6 +4832,24 @@ def _landed_moved(db: Any, one: PairPlan, landed: Mapping[str, Any], moved: list
                 said.replace("since the plan", "since this run wrote it"),
             )
         )
+
+
+def _ordered_by_this_run(one: PairPlan, steps: PairSteps) -> bool:
+    """Whether a part written pair's account order can be this run's own doing, so the check leaves it unread.
+
+    U210. Once the write began to order the playlist, its order is read as
+    the moves' and not judged. R-1420. BUT AN ORDER WHOSE MOVES NEVER BEGAN
+    moved nothing: since U231 the moves are recorded (``moving``) before the
+    first is sent, so an order stopped with no such step, refused, parked or
+    stopped with the whole write, left the playlist where the plan read it,
+    with this write's removals and additions. Unread, a person's reorder
+    between that command and a continue passed the check and was written
+    over. So the order is read as before the write began, and a change
+    refuses as moved. A FINISH OF A STOPPED ORDER is left as R-1411 holds
+    it, to the plan's reading at the adapter, since the plan read it where
+    earlier moves left it and the check's listing can lag them.
+    """
+    return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)
 
 
 def _beyond(one: PairPlan, now: Sequence[str], *, ordering: bool = False) -> str:

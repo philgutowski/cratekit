@@ -228,13 +228,30 @@ def test_a_track_added_on_the_account_after_the_stop_is_kept_and_the_order_still
     assert world.account.playlists[account_id] == _ids(*LED, "8")
 
 
-def test_a_stopped_write_finished_by_its_continue_leaves_nothing_for_the_next_sync(
+def test_a_stopped_write_its_continue_holds_is_finished_by_the_next_sync_and_leaves_nothing(
     world, stopped
 ):
+    """R-1420: moves no record names are a change the continue did not make, held as moved.
+
+    This fixture's stop moves the playlist without telling ``begun``, as the
+    adapter did before U231. Since U231 the adapter records its moves before
+    the first is sent, so a refusal with none recorded sent none, and a
+    playlist that stands elsewhere was moved by someone else: the continue
+    writes nothing over it. The fresh sync after it finishes the stopped
+    write from the side that led (U225), and leaves nothing for the next.
+    """
     intro, account_id, run_id = stopped
-    code, done = drive(["--run", run_id, *VERB])
-    assert code == int(ExitCode.OK), done
+    reached = list(world.account.playlists[account_id])
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert [one["why"] for one in refused["cause"]["detail"]["moved"]] == [
+        "was reordered since the plan"
+    ]
+    assert world.account.playlists[account_id] == reached
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == _ids(*LED)
+    assert world.held(intro) == list(LED)
     plan = plan_only()
     assert [item for item in plan["items"] if item["pair"] == account_id] == []
     code, first = drive(VERB)

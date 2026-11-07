@@ -55,6 +55,22 @@ of its own, so a track held in one is never held in another:
   taken off LEAVES it. One base per playlist, so the two sides cannot disagree
   there: a change both made is agreed.
 
+THE LIBRARY'S OWN MONTH IS NEVER REKORDBOX'S CHANGE (U236). A FAVOURITE put
+in All Favorites alone is placed in rekordbox in a month the account does not
+hold it in, since the account area was planned before that write (R-1029),
+and a snapshot settled the month without it. Read as an addition in rekordbox,
+the month then beat the account's removal, and a favourite taken off again
+before the mirror caught up was kept (sitting 88). So each playlist carries
+the library's PLACEMENTS on it, recorded with the write and dropped once the
+mirror put the track on the account's side of it (:func:`placed_after`). A
+placement names the time of the membership the write made, and the reader
+hands this rule only those rekordbox still holds by that membership: a month
+placed is no addition in rekordbox, neither against an UNFAVOURITE nor as a later change
+against a FAVOURITE, and a favourite put in another month on the account
+leaves it, the person's choice replacing the library's. A month a person
+added in rekordbox since, or made again, or a membership put back by hand, is
+not the library's, and still beats a removal.
+
 A DOWNLOAD (U204). A track added on the account that the library owns no row
 for, and that no snapshot of any mirrored playlist ever held, is HELD with
 ``acquire`` set: the organize step ``mirror-downloads`` queues it once, and
@@ -185,6 +201,12 @@ class Mirrored:
     short: bool = False
     account_added: Mapping[str, str] = field(default_factory=dict)
     rekordbox_added: Mapping[str, str] = field(default_factory=dict)
+    #: The library's own placements on it (U236): tracks an account edit the
+    #: library took placed here in rekordbox that the account does not hold
+    #: here yet, each still held here by the membership that write made, which
+    #: the reader checks by its time. Read on a filing playlist of the
+    #: Favorites folder only.
+    placed: frozenset[str] = frozenset()
 
     @property
     def base(self) -> frozenset[str]:
@@ -743,6 +765,12 @@ def _decide_favorites(
         there_s = bool(placed(track, "rekordbox", True))
         was_m, now_m = placed(track, "base", False), placed(track, "account", False)
         there_m = placed(track, "rekordbox", False)
+        # THE LIBRARY'S OWN MONTH (U236): a filing playlist the library placed
+        # the track in for an account edit, which the account does not show
+        # yet, is never a change a person made in rekordbox.
+        ours = frozenset(
+            one.place for one in playlists if not one.place.primary and track in one.placed
+        )
         shown = {
             "was": _titles(placed(track, "base", True) | was_m),
             "account": _titles(placed(track, "account", True) | now_m),
@@ -779,12 +807,21 @@ def _decide_favorites(
         elif added_m:
             ((to),) = added_m
             kind, why = FAVOURITE, f"put in {to.title} on the account"
-            if removed_m:
+            mine = ours - now_m
+            if removed_m or mine:
                 # A MOVE BETWEEN MONTHS: the month it was taken off is left too,
                 # so the library matches the account rather than holding the
-                # track in both and listing the old month on every run.
-                extra = {"away": tuple(sorted(removed_m, key=lambda one: one.title))}
-                why = f"{why}, taken off {', '.join(_titles(removed_m))}"
+                # track in both and listing the old month on every run. So is
+                # a month the library placed it in for the person (U236),
+                # whose own choice of month replaces it.
+                extra = {"away": tuple(sorted(removed_m | mine, key=lambda one: one.title))}
+                if removed_m:
+                    why = f"{why}, taken off {', '.join(_titles(removed_m))}"
+                if mine:
+                    why = (
+                        f"{why}, leaving {', '.join(_titles(mine))}, the month the library "
+                        f"placed it in"
+                    )
         elif added_s:
             to = source
             kind, why = FAVOURITE, f"put in {to.title} on the account"
@@ -813,7 +850,7 @@ def _decide_favorites(
                         )
                     )
                     continue
-                if (there_s and not was_s) or (there_m - was_m):
+                if (there_s and not was_s) or (there_m - was_m - ours):
                     decisions.append(
                         Decision(
                             track,
@@ -836,7 +873,9 @@ def _decide_favorites(
                         )
                     )
                     continue
-                moved = there_m - was_m
+                # The month the account put it in is no move of rekordbox's,
+                # even where a person put it there in rekordbox too.
+                moved = there_m - was_m - ours - {to}
                 if moved and not to.primary:
                     said = _later(playlists, track, to, moved)
                     if said is not None:
@@ -989,6 +1028,23 @@ def _holds(playlists: Sequence[Mirrored], decisions: Iterable[Decision]) -> dict
     return holds
 
 
+def placed_after(
+    placed: Mapping[str, str], after: Iterable[str], held: Iterable[str]
+) -> dict[str, str]:
+    """The placements a playlist keeps once the mirror finished it (U236).
+
+    ``placed`` is each placed track to its membership's time, ``after`` the
+    account tracks the playlist holds once the mirror's writes landed and
+    ``held`` the tracks its hold covers. A placement whose track the account
+    now holds there, and no hold covers, is the snapshot's word now
+    (:func:`agreed_after`) and is dropped. Every other is kept, a refused add
+    included: it is read only while rekordbox holds the track there by the
+    membership it names, so a kept one never speaks for a person's own.
+    """
+    now, kept = frozenset(after), frozenset(held)
+    return {track: at for track, at in placed.items() if track in kept or track not in now}
+
+
 def agreed_after(
     base: Iterable[str] | None, after: Iterable[str], held: Iterable[str]
 ) -> frozenset[str]:
@@ -1036,4 +1092,5 @@ __all__ = [
     "agreed_after",
     "decide",
     "moment",
+    "placed_after",
 ]

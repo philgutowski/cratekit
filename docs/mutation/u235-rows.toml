@@ -1,0 +1,90 @@
+name = "u235"
+pass_kind = "light"
+
+# U235 widens one line, the random tail of cli.output.new_run_id, from 16 bits
+# to 64. Rows T1 to T3 narrow it again to nearby widths, T4 keeps the width and
+# takes the randomness away, T5 and T6 move the stamp before it, and S1 is a
+# sample of the guard beside it that hands the identifier to every job.
+
+[[rows]]
+id = "T1_tail_back_to_sixteen_bits"
+description = "new_run_id: the tail goes back to token_hex(2), four hex characters, the width the card's failure came from"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(2)}"'''
+
+[[rows]]
+id = "T2_tail_thirty_two_bits"
+description = "new_run_id: the tail narrows to token_hex(4), eight hex characters, a width the distinct test alone cannot tell from sixty four"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(4)}"'''
+
+[[rows]]
+id = "T3_tail_fifty_six_bits"
+description = "new_run_id: the tail narrows by one byte, token_hex(7), fourteen hex characters"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(7)}"'''
+
+[[rows]]
+id = "T4_tail_from_the_instant"
+description = "new_run_id: the tail keeps its sixteen hex characters but is read off the instant's microseconds, so two ids at one instant are equal"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{moment.microsecond:016x}"'''
+
+[[rows]]
+id = "T5_instant_ignored"
+description = "new_run_id: the instant a caller hands it is ignored and the clock is read instead"
+file = "src/cratekit/cli/output.py"
+surface = "maintainer"
+tests = ["tests/test_cli_contract.py"]
+old = '''    moment = now or datetime.now(timezone.utc)
+    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    moment = datetime.now(timezone.utc)
+    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+
+[[rows]]
+id = "T6_stamp_loses_its_colons"
+description = "new_run_id: the stamp drops its colons, so an id minted after the widening no longer reads like one minted before it"
+file = "src/cratekit/cli/output.py"
+surface = "user"
+tests = ["tests/test_cli_contract.py"]
+old = '''    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"'''
+new = '''    return f"{moment.strftime('%Y-%m-%dT%H%M%SZ')}-{secrets.token_hex(8)}"'''
+
+[[rows]]
+id = "S1_enqueue_ignores_a_given_job_id"
+description = "jobs.enqueue: a job id the caller names is ignored and a fresh identifier minted, a sample of the guard that hands new_run_id to every job"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs.py"]
+old = '''    identifier = job_id or new_run_id()'''
+new = '''    identifier = new_run_id()'''
+
+[[rows]]
+id = "H1_shelve_four_hex_only"
+description = "intake.shelve: the run named batch pattern takes a four hex tail only, the round one finding, so a batch named for a run minted since U235 is refused as carrying no date"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''T\d{6}Z-(?:[0-9a-f]{4}|[0-9a-f]{16})$")'''
+new = '''T\d{6}Z-[0-9a-f]{4}$")'''
+
+[[rows]]
+id = "H2_shelve_sixteen_hex_only"
+description = "intake.shelve: the run named batch pattern takes a sixteen hex tail only, so a batch named for a run from before U235 is refused as carrying no date"
+file = "src/cratekit/intake/shelve.py"
+surface = "user"
+tests = ["tests/test_intake_shelve.py"]
+old = '''T\d{6}Z-(?:[0-9a-f]{4}|[0-9a-f]{16})$")'''
+new = '''T\d{6}Z-[0-9a-f]{16}$")'''

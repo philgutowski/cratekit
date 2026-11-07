@@ -249,16 +249,28 @@ def _matches_type(value: Any, declared: str) -> bool:
 def new_run_id(now: datetime | None = None) -> str:
     """A stable, sortable, addressable identifier for one run.
 
-    Timestamp plus four random hex characters, matching the stamp convention the
-    source system already uses. The random tail exists because two runs can start
-    inside the same second, and a collision would let one run's decisions answer
-    another run's gate.
+    A second's timestamp plus a random tail. The random tail exists because two
+    runs can start inside the same second, and a collision would let one run's
+    decisions answer another run's gate.
+
+    SIXTY FOUR BITS OF TAIL, NOT SIXTEEN, widened by U235 (R-22). A second is
+    not a rare place for two identifiers: ``jobs.enqueue`` names every job with
+    this function too, and one ``sync land`` pass mints a dozen or more run
+    and job identifiers inside one second. At sixteen bits two of them met
+    about once in 4,700 runs of one test, measured by forcing each pair, and a
+    meeting either read an earlier pass's run as the new one's or refused a
+    second job at enqueue as a duplicate key. Sixty four bits is the width
+    ``snapshot.new_stamp`` already carries, so a change to either width is a
+    change to read both, and ``tests/test_cli_contract.py`` pins it. The stamp
+    before the tail is unchanged, colons included, so an identifier written
+    before the widening reads, sorts and names a file as one written after it
+    does; ``intake.shelve`` reads a batch named for a run at either width.
 
     U5 ships before the job engine, so this is the identifier space U10 adopts
     rather than a second one it invents.
     """
     moment = now or datetime.now(timezone.utc)
-    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(2)}"
+    return f"{moment.strftime('%Y-%m-%dT%H:%M:%SZ')}-{secrets.token_hex(8)}"
 
 
 def timestamp(now: datetime | None = None) -> str:

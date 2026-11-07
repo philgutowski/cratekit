@@ -33,10 +33,12 @@ import enum
 import io
 import json
 import os
+import re
 import subprocess
 import sys
 import uuid
 from dataclasses import replace
+from datetime import datetime, timezone
 from pathlib import Path
 from types import MappingProxyType
 from typing import Mapping
@@ -800,6 +802,35 @@ def test_every_non_success_outcome_carries_a_cause():
 def test_two_runs_starting_in_the_same_second_get_different_identifiers():
     """A collision would let one run's decisions answer another run's gate."""
     assert output.new_run_id() != output.new_run_id()
+
+
+def test_two_thousand_identifiers_minted_inside_one_second_are_all_distinct():
+    """U235: every id a busy second mints is its own, at one frozen instant.
+
+    A sync land pass mints a dozen or more run and job identifiers inside one
+    second, and at the tail's old sixteen bits two of them met about once in
+    4,700 runs of one test: the earlier pass's run read as the new one's, or a
+    second job refused at enqueue as a duplicate key (R-22). Two thousand at one
+    instant collide with near certainty at sixteen bits, about one time in eight
+    at twenty four, and about once in 10^13 at sixty four.
+    """
+    instant = datetime(2026, 11, 7, 16, 48, 26, tzinfo=timezone.utc)
+    minted = [output.new_run_id(instant) for _ in range(2000)]
+    assert len(set(minted)) == len(minted)
+    assert {one[:20] for one in minted} == {"2026-11-07T16:48:26Z"}
+
+
+def test_a_run_identifier_carries_sixty_four_bits_of_random_tail():
+    """The tail is sixteen hex characters, the width ``snapshot.new_stamp`` carries.
+
+    Written as a LITERAL sixteen rather than as ``len(secrets.token_hex(n))``,
+    since an expected value computed from the thing under test passes at every
+    width. The stamp before it keeps its colons, so an identifier already on
+    disk reads, sorts and names a file as a new one does.
+    """
+    instant = datetime(2026, 11, 7, 16, 48, 26, tzinfo=timezone.utc)
+    minted = output.new_run_id(instant)
+    assert re.fullmatch(r"2026-11-07T16:48:26Z-[0-9a-f]{16}", minted), minted
 
 
 # ═══════════════════════════════════════════════════════════════════════════

@@ -24,7 +24,8 @@ the library, so an edit taken between the acts read as rekordbox's own change
 and planned the edit off the account again (sitting 66). So the snapshot each
 recorded playlist had when the gate's plan read it is frozen too, and the run
 that applies reads it wherever the playlist is still recorded under the same
-remote identifier; everything else of the ledger is read live.
+remote identifier, with each folder's placements beside it (U236); everything
+else of the ledger is read live.
 
 WHAT THE GATE SHOWED IS KEPT TO NAME WHAT MOVED (U222). Each step's digest, and
 each playlist's or folder's line inside it, is frozen as the gate showed it, so
@@ -70,7 +71,10 @@ from cratekit.modules.outbound import ledger, mirror
 #: is planned afresh rather than rebuilt with those lines lost. 6 since U222,
 #: which froze each recorded playlist's snapshot and what the gate showed, so a
 #: version 5 record is planned afresh rather than rebuilt over a live snapshot.
-VERSION = 6
+#: 7 since U236, which froze each mirrored folder's placements with its
+#: snapshot, so a version 6 record is planned afresh rather than rebuilt over
+#: live placements.
+VERSION = 7
 
 #: How long a frozen plan is kept once another is written.
 KEPT_DAYS = 7
@@ -99,6 +103,10 @@ class Frozen:
     agreed: Mapping[str, Mapping[str, tuple[str, frozenset[str] | None]]] = field(
         default_factory=dict
     )
+    #: Each mirrored folder's placements as the gate's plan read them (U236),
+    #: ``folder -> title -> track -> membership time``, read with the snapshot
+    #: they stand beside.
+    placed: Mapping[str, Mapping[str, Mapping[str, str]]] = field(default_factory=dict)
     #: Each step of the area as the gate showed it (U222), by its key.
     steps: Mapping[str, Shown] = field(default_factory=dict)
     #: Whether a gate showed this plan, or a run that applies planned it afresh
@@ -241,6 +249,10 @@ def freeze(
         "library": _library_json(library),
         "matches": {cid: list(held) for cid, held in sorted(matches.items())},
         "agreed": _agreed_json(recorded or {}),
+        "placed": {
+            name: {title: dict(sorted(tracks.items())) for title, tracks in sorted(folder.placed.items())}
+            for name, folder in sorted((recorded or {}).items())
+        },
         "steps": {step.key: _shown_json(step) for step in steps},
         "shown": shown,
     }
@@ -320,13 +332,19 @@ def load(cfg: config.Config, run_id: str) -> tuple[Frozen | None, str]:
             for cid, (remote, isrc, reason) in data["matches"].items()
         }
         agreed = _agreed_of(data["agreed"])
+        placed = _placed_of(data["placed"])
         steps = _steps_of(data["steps"])
         shown = data["shown"]
         if not isinstance(shown, bool):
             raise ValueError(f"whether a gate showed it is {shown!r}, not true or false")
     except (AttributeError, KeyError, TypeError, ValueError) as exc:
         return None, f"the frozen mirror plan of run {run_id} is not one this build reads ({exc})"
-    return Frozen(library=library, matches=matches, agreed=agreed, steps=steps, shown=shown), ""
+    return (
+        Frozen(
+            library=library, matches=matches, agreed=agreed, placed=placed, steps=steps, shown=shown
+        ),
+        "",
+    )
 
 
 def _text(value: Any, what: str) -> str:
@@ -349,6 +367,20 @@ def _agreed_of(data: Any) -> dict[str, dict[str, tuple[str, frozenset[str] | Non
                 _text(remote_id, f"the remote id of {title!r}"),
                 None if agreed is None else frozenset(agreed),
             )
+    return found
+
+
+def _placed_of(data: Any) -> dict[str, dict[str, dict[str, str]]]:
+    """The frozen placements (U236), refused as unreadable unless each is a track to a time."""
+    found: dict[str, dict[str, dict[str, str]]] = {}
+    for name, titles in data.items():
+        found[_text(name, "a placement's folder")] = held = {}
+        for title, tracks in titles.items():
+            if not isinstance(tracks, dict) or not all(
+                isinstance(track, str) and isinstance(at, str) for track, at in tracks.items()
+            ):
+                raise ValueError(f"the placements on {title!r} are {tracks!r}, not tracks to times")
+            held[_text(title, "a placement's title")] = dict(tracks)
     return found
 
 
@@ -377,6 +409,10 @@ def overlay(
     frozen snapshot: one made again on the account between the acts is another
     playlist, and keeps the snapshot recorded for it now. Every other field,
     and every playlist the gate's plan did not read, is the ledger's now.
+
+    A FOLDER'S PLACEMENTS ARE THE GATE'S TOO (U236), whole, for every folder
+    the gate's plan read, since the library step that settles a snapshot
+    between the acts records and drops them in the same write.
     """
     folders: dict[str, ledger.MirrorFolder] = {}
     for name, folder in recorded.items():
@@ -387,7 +423,9 @@ def overlay(
             if held is not None and held[0] == one.remote_id:
                 one = replace(one, agreed=held[1])
             playlists[title] = one
-        folders[name] = replace(folder, playlists=playlists)
+        folders[name] = replace(
+            folder, playlists=playlists, placed=frozen.placed.get(name, folder.placed)
+        )
     return folders
 
 
