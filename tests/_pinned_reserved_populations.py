@@ -1880,6 +1880,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'label-playlist-unreadable',
         'landing-unread',  # 2026-11-07, R-1383.
         'on-hold',  # 2026-11-05, U221.
+        'order-moved-since-stop',  # 2026-11-07, U234.
         'order-pending',  # 2026-11-06, U231.
         'order-refused',
         'outbound-remove-refused',
