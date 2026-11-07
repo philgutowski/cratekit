@@ -135,7 +135,8 @@ class StoppedWrite:
     landed: int = 0
     sent: int = 0
     #: U234. Whether its ordering step says the write records its moving
-    #: step before its first move (:data:`MOVES_RECORDED`).
+    #: step before its first move (:data:`MOVES_RECORDED`), read only when its
+    #: moving step was looked for and is absent or readable.
     moves_recorded: bool = False
 
     @property
@@ -238,13 +239,21 @@ def _ids(value: Any) -> tuple[str, ...] | None:
 
 
 def _read(
-    run_id: str, account_id: str, value: Any, moving: Any = None, moved: bool = False
+    run_id: str,
+    account_id: str,
+    value: Any,
+    moving: Any = None,
+    moved: bool = False,
+    *,
+    moving_read: bool = False,
 ) -> StoppedWrite | None:
     """One ordering step read back, or None when it is not one this module wrote.
 
     ``moving`` is the pair's moving step (U231), when it has one: its write
     is then pending, and its start is the reading the moves were planned
-    from, the truest record of where the account stood.
+    from, the truest record of where the account stood. ``moving_read``
+    says the caller looked for one, so its absence can mean no move was
+    sent (U234); a moving step present and unreadable never means that.
     """
     if not isinstance(value, Mapping):
         # A RECORD WRITTEN BEFORE U225 says only that the order began.
@@ -293,7 +302,11 @@ def _read(
         moved=sent is not None and bool(moved),
         landed=landed,
         sent=reached_by,
-        moves_recorded=value.get(MOVES_RECORDED) is True,
+        moves_recorded=(
+            value.get(MOVES_RECORDED) is True
+            and moving_read
+            and (moving is None or sent is not None)
+        ),
     )
 
 
@@ -395,6 +408,7 @@ def stopped_writes(
                 steps.get(ordering),
                 steps.get(moving) if moving else None,
                 bool(moved) and moved in steps,
+                moving_read=bool(moving),
             )
             if write is None:
                 continue

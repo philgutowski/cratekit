@@ -147,10 +147,17 @@ def test_a_write_begun_ordered_and_not_finished_is_read_back_whole():
         rekordbox=(("1", "r1"), ("2", "r2")),
         written=True,
         links={"t9": "9"},
-        moves_recorded=True,
     )
-    # U234. Written by this version, with no moving step: known to have sent no move.
-    assert write.sent_nothing
+    # U234. Read with no moving step looked for, so nothing says no move was sent.
+    assert not write.sent_nothing
+
+
+def test_an_ordering_step_of_this_version_with_no_moving_step_sent_nothing():
+    began = _WHEN.isoformat()
+    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": _ordering()}}))[
+        "pl-1"
+    ]
+    assert write.moves_recorded and write.sent_nothing
 
 
 def test_an_ordering_step_from_before_u234_says_nothing_of_its_moves():
@@ -158,11 +165,22 @@ def test_an_ordering_step_from_before_u234_says_nothing_of_its_moves():
     began = _WHEN.isoformat()
     old = _ordering()
     old.pop(pair_stopped.MOVES_RECORDED)
-    _at, write = _read(_steps("run-1", {"pl-1": {"account": began, "ordering": old}}))["pl-1"]
+    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": old}}))["pl-1"]
     assert not write.moves_recorded and not write.sent_nothing
     flagged = {**_ordering(), pair_stopped.MOVES_RECORDED: "yes"}
-    _at, write = _read(_steps("run-1", {"pl-1": {"account": began, "ordering": flagged}}))["pl-1"]
+    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": flagged}}))[
+        "pl-1"
+    ]
     assert not write.moves_recorded, "a marker that is not true is no marker"
+
+
+@pytest.mark.parametrize("moving", [{"at": "not a moment"}, "moved", {"at": _WHEN.isoformat()}])
+def test_a_moving_step_that_cannot_be_read_never_says_no_move_was_sent(moving):
+    """U234: a write whose moving step is there and unreadable may have sent every move."""
+    began = _WHEN.isoformat()
+    record = _steps("run-1", {"pl-1": {"account": began, "ordering": _ordering(), "moving": moving}})
+    _at, write = _read_moving(record)["pl-1"]
+    assert not write.sent_nothing
 
 
 def test_a_finished_or_unordered_write_is_no_stopped_one():
