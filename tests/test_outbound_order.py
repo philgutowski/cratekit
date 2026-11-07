@@ -668,7 +668,26 @@ def test_a_move_spent_on_its_412s_is_told_as_not_landed(installed):
     told: list[tuple[int, int, int]] = []
     with pytest.raises(CratekitError):
         account.order_tracks("mine", ("c", "a", "b"), begun=_counting(provider, told))
+    # Told before each send and, after each 412, that the move changed nothing.
+    assert [(sent, landed) for sent, landed, _moves in told] == [(1, 0), (0, 0)] * (
+        tidal_account.ORDER_REREADS + 1
+    )
+
+
+def test_a_stop_in_the_pause_after_a_412_is_recorded_as_no_move_in_flight(installed):
+    """Round one's row 4: the 412 is recorded before the pause, so a stop inside it reads true."""
+    provider = Provider(["a", "b", "c"])
+    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
+
+    def stopped(seconds: float) -> None:
+        raise KeyboardInterrupt
+
+    account = tidal_account.TidalAccount(RefusingClient(provider), sleep=stopped, cfg=installed)
+    told: list[tuple[int, int, int]] = []
+    with pytest.raises(KeyboardInterrupt):
+        account.order_tracks("mine", ("c", "a", "b"), begun=_counting(provider, told))
     assert [(sent, landed) for sent, landed, _moves in told] == [(1, 0), (0, 0)]
+    assert provider.members == ["a", "b", "c"]
 
 
 def test_a_move_that_failed_another_way_is_left_as_maybe_landed(installed, monkeypatch):

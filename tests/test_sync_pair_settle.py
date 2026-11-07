@@ -382,6 +382,9 @@ def test_a_stop_after_one_of_three_moves_read_as_that_move_leaves_it_is_finished
         assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == _ids("4", "3", "2", "1")
     assert world.held(opener) == ["4", "3", "2", "1"]
+    # Round one's row 1: the finishing write moves nothing until the adapter's
+    # own reading is the one the plan agreed on, not merely the same tracks.
+    assert world.account.expected[-1] == (account_id, tuple(_ids("2", "1", "3", "4")))
 
 
 def test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after(
@@ -478,6 +481,7 @@ def test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order
         assert pair_cli.LEFT_OUT in _codes(envelope)
     assert len(world.account.ordered) == ordered
     assert world.account.playlists[account_id] == reached
+    assert "recorded no count" in _said(envelope, pair_cli.LEFT_OUT)
     # Shown as the moves leave it, it finishes with nothing moved.
     world.account.playlists[account_id][:] = _ids("4", "3", "2", "1")
     code, envelope = sync()

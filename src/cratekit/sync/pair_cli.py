@@ -3438,9 +3438,19 @@ def _write_account(
         steps.carry()
         # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
         # the adapter's reading agrees with the check's own listing of it.
+        # R-1394. NOR DOES ONE THAT FINISHES A STOPPED ORDER: the plan read
+        # the playlist where that order's moves left it, at or past what was
+        # sent, and a reading the adapter takes seconds later may still lag
+        # them, which its own check of what the playlist holds cannot see.
+        # Where this write also adds or removes, the listing no longer is
+        # the playlist, and the adapter's check of what it holds stands.
         expect = (
             tuple(account_listed)
-            if steps.has(STEP_ORDER_REFUSED) and account_listed is not None
+            if account_listed is not None
+            and (
+                steps.has(STEP_ORDER_REFUSED)
+                or (one.finishing_order and not (one.account_removes or one.account_adds))
+            )
             else None
         )
 
