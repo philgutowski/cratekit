@@ -45924,3 +45924,137 @@ test that reaches it, or the docstring credits the guard. Ledger only.
 **Measured cost.** None measured. An intake file's landing entry carries no playlist id, an unfinished job's reports may not read, and a report in another state may carry no path, so each removal may be equivalent on every input the suite builds; no input that would show otherwise was driven.
 
 **Closes when:** each guard has a test that fails when it is removed, or a measurement shows the removal equivalent. Ledger only: a maintainer facing gap in pinning.
+
+---
+
+## R-1388. A plan only organize agrees a never agreed queuing playlist with its held track, so a declined gate loses the account's edit at the next organize
+
+**Found:** at the review of #594, U230, round two, 2026-11-06.
+
+**The mechanism.** `account_mirror` records each playlist's snapshot at the
+plan for a playlist with nothing to write (`ledger.record_mirror_agreed`),
+and `mirror_edits.agreed_after(None, after, held)` takes the account's word
+now for a playlist never agreed, held track included. So a never agreed
+queuing playlist that U230 would read as it stood at the queue is agreed
+with the track by a plan whose gate is declined, or a rehearsal that stops,
+and the next organize reads the track as the library's word: no edit, and
+the mirror takes the track off the account playlist the person put it in.
+
+**Measured cost.** Driven by round two of the review on U204's world as a
+plan without its apply, with the never agreed base set by hand; the control
+with U227's agreed base keeps the carry on offer. The never agreed queued
+state has no driven producer, and the declined gate was not driven through
+the verb.
+
+**Closes when:** a held track keeps no word in a playlist never agreed
+(agreed without it), or the plan's snapshot is not taken over a held track.
+Ledger only, reachability unmeasured.
+
+---
+
+## R-1389. A mirror job whose source playlist the mirror record no longer names lifts nothing, with no word on the plan
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** `account_mirror._read_edits` maps each job's source remote
+identifier to a title through the playlists the mirror record holds now
+(`titled`). A playlist retired and made again under a new identifier since
+the queue maps to nothing, so its base is not lifted, and the plan says
+nothing of the unmapped source.
+
+**Measured cost.** Read, not driven. The edit is read as U227 reads it.
+
+**Closes when:** an unmapped source is named on the plan, or mapped by title.
+Ledger only.
+
+---
+
+## R-1390. A queuing playlist left never agreed after the carry, because its snapshot record was refused, reads a drag back into the landing's band as landed once the batch left INBOX
+
+**Found:** at the review of #594, U230, round two, 2026-11-06.
+
+**The mechanism.** Round one's BLOCKING finding closed because the carry
+run agrees the edited playlist with the track, so its base is no longer
+lifted. When that record is refused (the area fact says "not recorded"),
+the playlist stays never agreed; once the landing's batch leaves INBOX no
+other snapshot holds the track, and a person's drag in rekordbox back into
+the band the landing filed is carried back once, the plan saying it is no
+change made in rekordbox. The next run agrees the playlist, so it happens
+once.
+
+**Measured cost.** Driven by round two of the review with the record
+refused by a monkeypatch, since the ledger's lock blocks rather than
+refuses and an unwritable state directory cannot be driven as root; the
+never agreed queued state is hand set. One person's rekordbox move undone
+once, named on the gate.
+
+**Closes when:** the carry itself settles a never agreed playlist (agreed
+with the track) so the lift cannot outlive the carry, or a producer of the
+refusal is shown not to exist. Ledger only, two producer links not driven.
+
+---
+
+## R-1391. A second never agreed mirrored playlist that lists a queued track counts as a snapshot holding it, so the landing is not read and the account loses the track from both playlists
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** `Mirrored.base` is the account side of a playlist never
+agreed, and `decide` counts every base as a snapshot holding the track. U230
+lifts that reading for the queuing playlist alone. A track queued from
+`Tech House Med` and also listed on a never agreed `Tech House with vox` is
+read by the later change rule, so rekordbox's place stands and the mirror
+takes the track off both account playlists.
+
+**Measured cost.** Driven on U204's world by round one of the review, with
+the second playlist's snapshot removed by hand; the same with that playlist
+agreed carries correctly. A newly mirrored playlist is the candidate
+producer and was not driven.
+
+**Closes when:** a never agreed base the account side alone gives is not read
+as a snapshot that held the track for the landed check, or a producer is
+shown not to exist. Ledger only, reachability unmeasured.
+
+---
+
+## R-1392. A carried edit read as it stood at the queue shows the queuing playlist out of its was places while the record lists it
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** `Decision.was` is built from the lifted bases, so a
+carried landed edit shows `was` without the queuing playlist, while that
+playlist's base, its account side, holds the track.
+
+**Measured cost.** Observed in every carried item of round one's drives. No
+reader of `was` beyond `Decision.item()` was found in `src`.
+
+**Closes when:** the plan names the lifted playlist, or says it was read as
+it stood at the queue. Ledger only, cosmetic.
+
+---
+
+## R-1393. The state U230 reads as it stood at the queue, a never agreed queuing playlist that lists the queued track, has no driven producer, so sitting 86's live read may have another cause
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** U230 reads the base of the playlist whose mirror job
+queued a track without it while that playlist is never agreed, so the
+account's addition there is read as the edit and the landing's filing as the
+landing's. A never agreed playlist queues nothing, since its base is its
+account side and no addition can be read on it, so the state needs a
+playlist whose snapshot was lost after the queue. Round one of the review
+drove four candidates on U204's world with U227's producers (the queue run, a
+second organize while awaiting, plan only runs around the landing, a never
+agreed playlist) and none produced it. The why sitting 86 quotes is the later
+change rule's, which main reaches only when the edited playlist's base lacked
+the track; it also reaches it when another snapshot holds the track, or when
+`mirror_downloads.filed` gives nothing (an empty or stale job queue on a copy
+rehearsal, two rows owning the track, a ledger entry whose destination does
+not resolve). U230 changes none of those.
+
+**Measured cost.** Not driven live. If the live cause is one of those, A90's
+download half reads "rekordbox's place stands" again after the merge.
+
+**Closes when:** A90's attended proof runs on a copy whose installation and
+library state were taken after the queue and the landing (the solutions entry
+on copy rehearsals of the mirror edit rule), and reads either the carry or
+which input was missing. Ledger only: it closes at an attended sitting.
