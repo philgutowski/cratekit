@@ -3575,7 +3575,8 @@ def _write_account(
         # at all. Passed only when set, so a stand in for the adapter that
         # does not take it is asked what it always was. R-1418: and only when
         # the plan read the account, since an empty reading agrees on no
-        # order; no sync was found that finishes with one and an order.
+        # order. No plan reaches here with one: with nothing listed the
+        # additions go in the merged order, so the plan asks no order.
         agreed = (
             {"agreed": tuple(one.account_before)}
             if one.finishing_order and one.account_before
