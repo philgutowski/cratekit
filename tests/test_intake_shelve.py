@@ -428,11 +428,23 @@ def test_a_running_rekordbox_refuses_before_the_plan_is_shown(native_library, si
     assert (_music(cfg) / BATCH).is_dir() and _rows(cfg) == before
 
 
+@pytest.mark.parametrize(
+    "run_named",
+    [
+        pytest.param("2026-09-23T222241Z-4773", id="four-hex-before-u235"),
+        pytest.param("2026-09-23T222241Z-ce458ab7cceccb0b", id="sixteen-hex-since-u235"),
+    ],
+)
 def test_a_run_identifier_named_batch_files_as_downloads_or_as_the_subject_given(
-    native_library, silence
+    native_library, silence, run_named
 ):
+    """A batch named for a run, as ``default_name`` spells one, at either width.
+
+    A run identifier's tail was four hex characters until U235 widened it to
+    sixteen, and a batch a person named for a run of either era files by its
+    date, never refused as carrying no date.
+    """
     cfg, _root = native_library
-    run_named = "2026-09-23T222241Z-4773"
     _land_three(cfg, silence, name=run_named)
 
     code, envelope = drive(_shelve("--report", run_named))
