@@ -539,3 +539,42 @@ def test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known(count
     moving.update(counts)
     write = _pending(moving)
     assert (write.landed, write.sent) == (0, len(pair_stopped.front_moves(START, TARGET)))
+
+
+def _read_moving(*records):
+    return pair_stopped.stopped_writes(
+        records,
+        new=pair_cli.NEW,
+        account=pair_cli.STEP_ACCOUNT,
+        ordering=pair_cli.STEP_ORDERING,
+        made=pair_cli.STEP_MADE,
+        done=pair_cli.STEP_DONE,
+        moving=pair_cli.STEP_MOVING,
+        moved=pair_cli.STEP_MOVED,
+    )
+
+
+def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
+    """R-1394, round two: a refused finish left the account where the pending moves left it."""
+    early = _WHEN.replace(second=40).isoformat()
+    pending = _steps(
+        "run-1",
+        {"pl-1": {"account": early, "ordering": _ordering(), "moving": _moving(sent=1, landed=1)}},
+    )
+    later = _WHEN.replace(hour=18).isoformat()
+    refused = _steps("run-2", {"pl-1": {"account": later, "ordering": _ordering(at=later)}})
+    for records in ((pending, refused), (refused, pending)):
+        write = _read_moving(*records)["pl-1"][1]
+        assert write.run_id == "run-1" and write.pending, records
+    # A later write that did send moves is the one read, as before.
+    sending = _steps(
+        "run-3",
+        {
+            "pl-1": {
+                "account": later,
+                "ordering": _ordering(at=later),
+                "moving": _moving(sent=1, landed=0),
+            }
+        },
+    )
+    assert _read_moving(pending, sending)["pl-1"][1].run_id == "run-3"

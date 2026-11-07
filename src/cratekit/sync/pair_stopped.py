@@ -339,6 +339,15 @@ def stopped_writes(
     as no write at all, as it was. ``moving`` and ``moved`` name the steps a
     write records as it begins sending its moves and once every one was
     accepted (U231).
+
+    A PENDING WRITE IS NOT HIDDEN BY A LATER ONE THAT SENT NO MOVE (R-1394,
+    round two's review), for the reason a later run stopped before its order
+    began hides nothing: a later write whose order was refused before its
+    first move (a finish whose reading was not the agreed one, a read that
+    failed) left the account where the pending write's moves left it, and
+    only the pending write's counts say how far that was. Read in its place,
+    the next plan would take a reading lagging those moves as the person's
+    reorder and merge it into rekordbox.
     """
     stopped: dict[str, tuple[datetime, StoppedWrite]] = {}
     finished: dict[str, datetime] = {}
@@ -366,7 +375,7 @@ def stopped_writes(
             if write is None:
                 continue
             held = stopped.get(account_id)
-            if held is None or write.at > held[1].at:
+            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):
                 stopped[account_id] = (began, write)
     return {
         account_id: (began, write)

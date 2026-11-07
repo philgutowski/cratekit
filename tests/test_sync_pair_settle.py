@@ -434,6 +434,59 @@ def test_a_stopped_writes_counts_are_carried_past_its_runs_steps(world, owed, cf
     assert world.account.playlists[account_id] == reached
 
 
+def test_a_finish_the_adapter_refuses_leaves_the_stopped_write_pending(
+    world, owed, cfg, monkeypatch
+):
+    """Round two's review: the refused finish's record does not hide the stopped write it finishes.
+
+    Read in its place, the next run took the provider serving the order from
+    before the moves as the person's reorder and wrote it into rekordbox.
+    """
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    stopping = world.account.order_tracks
+    refusals: list[tuple[str, ...] | None] = []
+
+    def refusing(asked_id, remote_ids, *, expect=None, begun=None):
+        if asked_id == account_id and not refusals:
+            refusals.append(expect)
+            raise refuse(
+                "outbound-remove-refused",
+                f"the playlist {asked_id} does not hold what was last known of it",
+                scope=Scope.ITEM,
+                origin=("test", "order"),
+            )
+        return stopping(asked_id, remote_ids, expect=expect, begun=begun)
+
+    monkeypatch.setattr(world.account, "order_tracks", refusing)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    code, envelope = sync()
+    assert code != int(ExitCode.OK), envelope
+    assert refusals == [tuple(reached)], "the finish was not refused, or not held to its reading"
+    assert world.account.playlists[account_id] == reached
+    # The provider now serves the order from before any move.
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert world.held(opener) == ["4", "3", "2", "1"], "a lag was merged into rekordbox"
+    assert world.account.playlists[account_id] == reached
+    # Served as it stands, the stopped write is finished.
+    del world.account.served[account_id]
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids("4", "3", "2", "1")
+    assert world.held(opener) == ["4", "3", "2", "1"]
+
+
 def test_a_first_move_refused_on_its_412s_is_sent_again_from_the_start_once(
     world, owed, cfg, monkeypatch
 ):
