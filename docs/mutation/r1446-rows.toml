@@ -1,0 +1,227 @@
+name = "r1446"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_readable_check"
+description = "the card's row: a reorder read after a stop stands whatever it moved, so a settled move of an unread track alone lets the account lead and undoes rekordbox's reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            reordered_since_stop
+            and unread
+            and not _readable_moved('''
+new = '''            False
+            and unread
+            and not _readable_moved('''
+
+[[rows]]
+id = "M2_check_with_nothing_unread"
+description = "the check run when nothing is unread too, which reads the same comparison as U234's and should change nothing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            reordered_since_stop
+            and unread
+            and not'''
+new = '''            reordered_since_stop
+            and not'''
+
+[[rows]]
+id = "M3_moved_nothing_kept"
+description = "a stop that sent nothing, its account off the path only by an unread track's place, keeps moved_nothing, so the gate still says none of its moves was sent and its order is read as yours"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            reordered_since_stop = False
+            moved_nothing = False
+            unread_moved = True'''
+new = '''            reordered_since_stop = False
+            unread_moved = True'''
+
+[[rows]]
+id = "M4_unread_moved_not_set"
+description = "the flag never set, so the finish places the moved unread track by the stopped write's target, over the person's place, and the gate says the stopped order takes it there"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            moved_nothing = False
+            unread_moved = True'''
+new = '''            moved_nothing = False'''
+
+[[rows]]
+id = "M5_target_passed_though_the_person_moved_it"
+description = "the target passed at the finish though the person moved the unread track, so it goes where the stopped write was taking it rather than where the person put it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                if stopped is not None and stopped_write is not None and not unread_moved'''
+new = '''                if stopped is not None and stopped_write is not None'''
+
+[[rows]]
+id = "M6_sent_nothing_always_moved"
+description = "after a write that sent nothing, any reorder read is a readable one, so an unread track's move alone makes the account lead"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        return not pair_stopped.reached(write.start, write.target, readable)'''
+new = '''        return True'''
+
+[[rows]]
+id = "M7_sent_nothing_reads_the_unread_place"
+description = "after a write that sent nothing, the path is judged with the unread ids in place, so a move of one alone reads as off the path"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        return not pair_stopped.reached(write.start, write.target, readable)'''
+new = '''        return not pair_stopped.reached(write.start, write.target, reading)'''
+
+[[rows]]
+id = "M8_no_settled_reading_reads_no_move"
+description = "with no settled reading kept, the reorder is read as moving no readable track, so a reorder U234 read is dropped"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    if kept is None or not kept.settled:
+        return True'''
+new = '''    if kept is None or not kept.settled:
+        return False'''
+
+[[rows]]
+id = "M9_unsettled_reading_compared"
+description = "an unsettled kept reading compared as though settled; unreachable while U234 reads a reorder only from a settled one"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    if kept is None or not kept.settled:'''
+new = '''    if kept is None:'''
+
+[[rows]]
+id = "M10_kept_order_with_unread"
+description = "the settled reading compared with its unread ids in place, so a move of an unread track alone still reads as a reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        [one for one in kept.order if one not in left_out], readable'''
+new = '''        list(kept.order), readable'''
+
+[[rows]]
+id = "M11_now_with_unread"
+description = "the reading now compared with its unread ids in place, so a move of an unread track alone still reads as a reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        [one for one in kept.order if one not in left_out], readable
+    )'''
+new = '''        [one for one in kept.order if one not in left_out], list(reading)
+    )'''
+
+[[rows]]
+id = "M12_nothing_left_out"
+description = "no id left out of either comparison, which undoes the card on both paths"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    left_out = set(unread)'''
+new = '''    left_out: set[str] = set()'''
+
+[[rows]]
+id = "M13_kept_reading_not_passed"
+description = "the kept reading not handed to the check, so every reorder read after a settled one stands"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                stopped_write, _kept_after(held, stopped_write), reading, unread,'''
+new = '''                stopped_write, None, reading, unread,'''
+
+[[rows]]
+id = "M14_plan_flag_dropped"
+description = "the plan never carries the flag, so the gate says the stopped order takes the unread track where it was taking it and never that only unread tracks moved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        stop_unread_moved=unread_moved,'''
+new = '''        stop_unread_moved=False,'''
+
+[[rows]]
+id = "M15_facts_line_unsaid"
+description = "the pair's facts line does not say only unread tracks moved since"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                    "of its order is finished; "
+                    if one.stop_unread_moved'''
+new = '''                    "of its order is finished; "
+                    if False'''
+
+[[rows]]
+id = "M16_facts_clause_shown"
+description = "the facts line's R-1432 clause shown for a pair whose unread track keeps the person's place"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                    if one.finishing_order and one.account_order and not one.stop_unread_moved'''
+new = '''                    if one.finishing_order and one.account_order'''
+
+[[rows]]
+id = "M17_warning_clause_shown"
+description = "the unread warning's finish clause shown for a pair whose unread track keeps the person's place"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            one.finishing_order and one.account_order and not one.stop_unread_moved
+            for one, _named in unread'''
+new = '''            one.finishing_order and one.account_order
+            for one, _named in unread'''
+
+[[rows]]
+id = "M18_note_unsaid"
+description = "the finishing note does not say only unread tracks moved since"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                            "it is not read as a reorder; "
+                            if one.stop_unread_moved'''
+new = '''                            "it is not read as a reorder; "
+                            if False'''
+
+[[rows]]
+id = "S1_u234_settled_reorder_never_leads"
+description = "sample, U234: a reorder settled readings show never leads"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        and _now() - since >= AGREE_AFTER
+    ):
+        return True'''
+new = '''        and _now() - since >= AGREE_AFTER
+    ):
+        return False'''
+
+[[rows]]
+id = "S2_u234_sent_nothing_not_the_persons"
+description = "sample, U234: a write that sent nothing is read as any stop, its order off the path never the person's at once"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        moved_nothing = off_path and stopped_write.sent_nothing'''
+new = '''        moved_nothing = False'''
+
+[[rows]]
+id = "S3_u225_finish_whatever_was_read"
+description = "sample, U225: the stop finished even when a reorder was read"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    if stopped_write is not None and not reordered_since_stop:'''
+new = '''    if stopped_write is not None:'''
+
+[[rows]]
+id = "S4_r1432_target_never_passed"
+description = "sample, R-1432: a finish passes no target"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                stopped_write.target
+                if stopped is not None and stopped_write is not None and not unread_moved
+                else (),'''
+new = '''                (),'''
