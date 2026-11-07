@@ -166,6 +166,10 @@ def test_the_shelve_policy_owns_the_path_column_and_nothing_else():
         ("2026-09-29_favourites", (date(2026, 9, 29), "favourites")),
         ("2026-09-29", (date(2026, 9, 29), "")),
         ("2026-09-23T222241Z-4773", (date(2026, 9, 23), "")),
+        # U235: a run's tail is four hex characters before it and sixteen
+        # since, so a width between the two is no run of either era.
+        ("2026-11-07T164826Z-ce458ab7cceccb0b", (date(2026, 11, 7), "")),
+        ("2026-11-07T164826Z-ce458ab7", None),
         ("rekordbox_djoid", None),
         ("Processed_Tracks", None),
         ("2026-13-01 Nope", None),
