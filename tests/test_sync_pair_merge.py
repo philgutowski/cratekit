@@ -484,7 +484,8 @@ def test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_
     # Neither side changed order since the stopped write, which the account led.
     merged = merge(None, Side(("b", "a")), Side(("a", "b", "c")), stopped=left, order_kept=False)
     assert merged.leader == pair_merge.ACCOUNT
-    assert merged.order == ("b", "a", "c")
+    # Led by the account, "c" follows "b", its predecessor in rekordbox.
+    assert merged.order == ("b", "c", "a")
 
 
 def test_a_base_is_read_as_before_whatever_the_order():
