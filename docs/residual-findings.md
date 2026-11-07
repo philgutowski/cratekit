@@ -1631,6 +1631,8 @@ The stamp's width is load bearing for a reason written down beside it, and
 symmetry achieved by taking the argued side down to the unargued one is the wrong
 direction.
 
+**Closed 2026-11-07, U235 (#626).** A fourth sighting, sitting 87's macOS battery, failed `tests/test_sync_land.py::test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on` once. Forcing each of the 91 pairs of that test's 14 tail draws equal failed 14: one on the earlier pass's run read as the new one's, 13 on a duplicate job id at enqueue, about one run in 4,700 at sixteen bits. `new_run_id` now carries `secrets.token_hex(8)`, the capture stamp's sixty four bits, each docstring naming the other, and `tests/test_cli_contract.py` pins the width as a literal; `intake.shelve` reads a batch named for a run at either width. A duplicate job id is still refused as an internal error naming no job, filed by U235 as its own residual. The record is `docs/restart/u235.md`.
+
 ---
 
 ## R-23. Three things the occupied-staging refusal leaves standing, each verified safe
