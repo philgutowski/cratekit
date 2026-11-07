@@ -1652,6 +1652,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             ),
             leader=stopped_write.leader,
         )
+    # U231 and R-1416. WHETHER THE ACCOUNT IS PUT IN THE MERGED ORDER, read
+    # before the merge, since a first sync whose order is not kept is led by
+    # rekordbox, and read once, so the merge and the account write agree.
+    order_kept = _keeps_order(cfg, rekordbox, home)
     merged = pair_merge.merge(
         base,
         pair_merge.Side(
@@ -1664,6 +1668,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             removed_at=rekordbox_removed,
         ),
         stopped=stopped,
+        order_kept=order_kept,
     )
 
     # ── what rekordbox is asked: adds need a live row, never a row without a file
@@ -1779,7 +1784,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         )
         wanted_keys = pair_merge.as_held(merged.order, set(firsts))
         # U231. ONLY A PAIR THAT KEEPS THE ACCOUNT'S ORDER has it written there.
-        order_unkept = wanted_keys != firsts and not _keeps_order(cfg, rekordbox, home)
+        order_unkept = wanted_keys != firsts and not order_kept
         if wanted_keys != firsts and not order_unkept:
             # A ROW'S RELEASES MOVE TOGETHER, in the order the account holds them.
             account_order = _with_unread_placed(
@@ -3640,7 +3645,10 @@ def _write_account(
         # one's review): a continue's check reads what the playlist holds and
         # not its order, and a plan made again in this command has no check
         # at all. Passed only when set, so a stand in for the adapter that
-        # does not take it is asked what it always was.
+        # does not take it is asked what it always was. R-1418: and only when
+        # the plan read the account, since an empty reading agrees on no
+        # order. No plan reaches here with one: with nothing listed the
+        # additions go in the merged order, so the plan asks no order.
         agreed = (
             {"agreed": tuple(one.account_before)}
             if one.finishing_order and one.account_before

@@ -1071,3 +1071,147 @@ def test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_readin
     assert world.account.playlists[account_id] == [*reached, "t5"], "moves were sent from a lag"
     assert asked == [tuple(reached)], "the finish planned again passed no agreed reading"
     assert world.held(opener) == ["4", "3", "2", "1", "5"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1418: the reading a finish is held to carries the unread tracks in place
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _listed_unread(monkeypatch, *remote_ids: str) -> None:
+    """Make the account list each of ``remote_ids`` with no title, so a plan keeps it unread by its id (R-1264)."""
+    from tests.test_sync_pair_discover import LivePlaylist
+
+    real = LivePlaylist.tracks
+
+    def tracks(self, limit=None, offset=0):
+        listed = real(self, limit, offset)
+        for one in listed:
+            if one.id in remote_ids:
+                one.name = ""
+        return listed
+
+    monkeypatch.setattr(LivePlaylist, "tracks", tracks)
+
+
+def test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_place(
+    world, owed, cfg, monkeypatch
+):
+    """R-1418: the one move that landed put a track the provider cannot read in front.
+
+    The account lists t9 with no title, so the plan keeps it unread behind
+    t4, and rekordbox's 2, 3, 4, 1 puts it first of four moves to the front.
+    The stop leaves every readable track where it stood: a reading lagging
+    that move differs from the one it left only by where t9 stands, so a
+    finish held to the readable tracks alone takes the lag and sends the
+    remaining moves by position from it.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    assert reached == ["t9", *_ids("1", "2", "3", "4")]
+    world.rekordbox_add(opener, "5")
+    asked = _adapter_reading(world, monkeypatch, account_id, [*_ids("1", "2", "3", "4"), "t9", "t5"])
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    code, envelope = sync()
+    # Refused at the adapter with nothing moved, its addition landed and
+    # rekordbox untouched by the lag.
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["detail"]["problem"] == "read-differs", envelope
+    assert world.account.playlists[account_id] == [*reached, "t5"], "moves were sent from a lag"
+    assert world.held(opener) == ["2", "3", "4", "1", "5"], "a lag was merged into rekordbox"
+    # Held to the plan's reading with the unread id in its place, not to the
+    # tracks the provider could read.
+    assert asked == [tuple(reached)], "the finish was not held to the unread track's place"
+    # Served as the move left it, the stopped write finishes.
+    _adapter_reading(world, monkeypatch, account_id, [*reached, "t5"])
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    # The readable tracks in rekordbox's order; t9 is kept once, where the
+    # finish's own plan places an unread track, behind the one it now
+    # follows (residual r1418-a).
+    finished = world.account.playlists[account_id]
+    assert [one for one in finished if one != "t9"] == _ids("2", "3", "4", "1", "5")
+    assert finished.count("t9") == 1
+    assert world.held(opener) == ["2", "3", "4", "1", "5"]
+
+
+class _InMemorySteps(pair_cli.PairSteps):
+    """One pair's steps kept in memory, as a run's record keeps them, with nothing on disk."""
+
+    def __init__(self) -> None:
+        super().__init__(steps=object(), key="the-pair")
+        self.kept: dict[str, object] = {}
+
+    def has(self, step: str) -> bool:
+        return step in self.kept
+
+    def get(self, step: str, default=None):
+        return self.kept.get(step, default)
+
+    def mark(self, step: str, value=True) -> None:
+        self.kept[step] = value
+
+    def carry(self) -> None:
+        return None
+
+    def carried(self, step: str):
+        return None
+
+
+def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
+    """R-1418: ``agreed`` is passed only when the plan read the account it finishes.
+
+    A plan that read nothing of the account holds no order to agree on, so
+    the finish asks the adapter what it always asked, and a stand in that
+    does not take ``agreed`` is asked as before. No sync was found to make
+    such a plan: an emptied playlist finishing a stopped write adds in the
+    merged order and asks no order (the record's driven candidate), so the
+    plan is built by hand.
+    """
+    from cratekit.sync import pair_merge
+    from cratekit.write import playlist_pair
+
+    one = pair_cli.PairPlan(
+        target=pair_cli.Target(account_id="acct", rekordbox_id="7", marked=True),
+        name="Opener",
+        rekordbox_name="Opener",
+        first=False,
+        merged=pair_merge.Merged(
+            order=("remote:t6", "remote:t5"), leader="rekordbox", first=False
+        ),
+        account_now=(),
+        rekordbox_before=(),
+        change=playlist_pair.Change(playlist_id="7", before=()),
+        account_adds=("t5", "t6"),
+        account_order=("t6", "t5"),
+        finishing_order=True,
+    )
+    asked: list[tuple[str, tuple[str, ...], object]] = []
+
+    class Before1411:
+        """An adapter of the protocol as it stood before R-1411, which takes no ``agreed``."""
+
+        def add_tracks(self, playlist_id, remote_ids):
+            return tuple(remote_ids)
+
+        def order_tracks(self, playlist_id, remote_ids, *, expect=None, begun=None):
+            asked.append((playlist_id, tuple(remote_ids), expect))
+            return tuple(remote_ids)
+
+    done = pair_cli.Done(account_id="acct")
+    after = pair_cli._write_account(
+        one, Before1411(), "acct", done, _InMemorySteps(), account_listed=None
+    )
+    assert asked == [("acct", ("t6", "t5"), None)]
+    assert after == ("t6", "t5")
+    assert done.order_refused is None

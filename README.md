@@ -40,11 +40,11 @@ read the repository with your git credentials.
 ```bash
 brew install pipx
 pipx ensurepath        # then open a new terminal window
-pipx install --python python3.12 "cratekit @ git+https://github.com/philgutowski/cratekit@v0.11.1"
+pipx install --python python3.12 "cratekit @ git+https://github.com/philgutowski/cratekit@v0.13.1"
 ```
 
 Use the newest tag from https://github.com/philgutowski/cratekit/releases in
-place of `v0.11.1`, never `main`. `--python` pins an interpreter Cratekit
+place of `v0.13.1`, never `main`. `--python` pins an interpreter Cratekit
 supports; write `python3.13` if that is what you have. `command not found:
 crate` means the terminal window predates `pipx ensurepath`.
 
@@ -53,7 +53,7 @@ Modules with heavy dependencies take an extra of the same name: `analysis`
 extra you want in one command; the quotes stop zsh reading the brackets:
 
 ```bash
-pipx install --force "cratekit[analysis,vocals] @ git+https://github.com/philgutowski/cratekit@v0.11.1"
+pipx install --force "cratekit[analysis,vocals] @ git+https://github.com/philgutowski/cratekit@v0.13.1"
 ```
 
 A module switched on without its extra prints the install command and exits
