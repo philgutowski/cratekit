@@ -3563,13 +3563,17 @@ def _write_account(
         # write does: a reading that holds every track the additions and
         # removals left, in the order from before the stopped moves, passes
         # the check of what it holds, and moves sent by position from it
-        # scramble the playlist. Every track of the listing the reading still
-        # holds must stand in the listing's order; one added may stand
-        # anywhere. Passed only when set, so a stand in for the adapter that
+        # scramble the playlist. Every track of the plan's reading the
+        # adapter's still holds must stand in that order; one added may stand
+        # anywhere. THE PLAN'S READING, the one its stopped write was judged
+        # from and carried in the held plan, NOT THE CHECK'S LISTING (round
+        # one's review): a continue's check reads what the playlist holds and
+        # not its order, and a plan made again in this command has no check
+        # at all. Passed only when set, so a stand in for the adapter that
         # does not take it is asked what it always was.
         agreed = (
-            {"agreed": tuple(account_listed)}
-            if account_listed is not None and one.finishing_order
+            {"agreed": tuple(one.account_before)}
+            if one.finishing_order and one.account_before
             else {}
         )
 
