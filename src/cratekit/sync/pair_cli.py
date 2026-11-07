@@ -3466,17 +3466,19 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
             {
                 "code": LANDING_UNREAD,
                 "message": (
-                    f"the session log could not be read whole, so a landing it records may "
-                    f"have brought in a track the library lacks, and {len(waiting)} account "
-                    f"track(s) that carry an ISRC were held and not queued until it reads"
+                    "the session log could not be read whole, so a landing it records may "
+                    "have brought in a track the library lacks, and "
                     + (
-                        ": "
+                        f"{len(waiting)} account track(s) that carry an ISRC were held and "
+                        f"not queued until it reads: "
                         + "; ".join(
                             f"{one.name!r}: {named.artist or '?'} - {named.title or '?'}"
                             for one, named in waiting
                         )
                         if waiting
-                        else ""
+                        # THE SCAN WAS READ AND NOTHING WAITED ON IT (round one's
+                        # finding 7): said as that, never as zero tracks held.
+                        else "no track this plan would queue waited on it"
                     )
                     + ". Unread: "
                     + "; ".join(planned.landings_unread)

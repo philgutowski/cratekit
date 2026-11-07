@@ -985,6 +985,26 @@ def test_a_track_no_landing_brought_in_is_held_while_a_record_is_unread(world, c
     assert pair_cli.LANDING_UNREAD in _codes(envelope)
 
 
+def test_a_track_an_earlier_sync_queued_is_awaiting_beside_an_unreadable_record(
+    world, cfg, tmp_path
+):
+    """Round one's finding 4: a track already queued is awaiting, never held as landing unread."""
+    w = world(account=("1",), rekordbox=("1",))
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].append("t40")
+    code, first = sync(w.args())
+    assert code == int(ExitCode.OK), first
+    assert _acquired(first) == ["t40"]
+    _damaged_landing(w, cfg, tmp_path, "torn")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["awaiting"] == 1
+    assert envelope["data"]["totals"]["landing_unread"] == 0
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    said = _said(envelope, pair_cli.LANDING_UNREAD)
+    assert "no track this plan would queue waited on it" in said
+    assert "0 account track" not in said
+
 def test_a_plan_with_every_landing_record_readable_warns_nothing_of_them(world, cfg, tmp_path):
     w = world(account=("1",), rekordbox=("1",))
     assert sync(w.args())[0] == int(ExitCode.OK)
