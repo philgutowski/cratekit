@@ -46867,3 +46867,72 @@ happens: the insert is refused inside its transaction.
 **Closes when:** `enqueue` catches the duplicate key on its INSERT and either
 mints again or refuses naming the identifier and the job that holds it.
 Ledger only.
+
+---
+
+## R-1436. A continue of a run held from before U231, whose order was refused after moves landed, is held as reordered by a person nobody was
+
+**Found:** at the review of #619, R-1420, 2026-11-07.
+
+**The mechanism.** R-1420 reads a part written pair's account order at the
+check before a continue whenever its steps carry `ordering` and no `moving`
+(`_ordered_by_this_run` in `sync/pair_cli.py`), since U231's adapter records
+its moves before the first is sent. A run planned and refused under a build
+from before U231 moved tracks with no `moving` step, so its continue finds
+the playlist where those moves left it and refuses `decision-stale`, "was
+reordered since the plan".
+
+**Measured cost.** Driven on the fake account only, by the rewritten
+`test_a_stopped_write_its_continue_holds_is_finished_by_the_next_sync_and_leaves_nothing`:
+the continue refuses as moved with nothing written, and a fresh `crate sync
+pair` finishes the stopped write from the side that led (U225). No loss; the
+person is told of a reorder nobody made and runs one more command.
+Reachability unmeasured: it needs a run held on the machine from the U220 to
+U231 window, refused after moves and not yet continued.
+
+**Closes when:** a held run from before U231 has aged out, or the check
+tells a pre U231 record from a refusal that sent nothing. Ledger only.
+
+---
+
+## R-1437. A continue of an order that moved nothing is held as reordered when the provider placed an added track anywhere but the end
+
+**Found:** at the build of #619, R-1420, 2026-11-07.
+
+**The mechanism.** The check reads the order of a part written pair whose
+moves never began as the write leaves it (`_beyond` with `ordering` false in
+`sync/pair_cli.py`): the plan's reading in its order, then this write's
+additions after it. R-1411 found the provider may place an added track
+elsewhere and lets it stand anywhere at the adapter; the check does not, so
+such a continue refuses `decision-stale`, "was reordered since the plan".
+The same rule held a continue stopped between its additions and its order
+before R-1420; R-1420 applies it to every order that moved nothing.
+
+**Measured cost.** Not driven against the provider: the shipped adapter
+adds through the client's playlist add, which appends, and the discovery
+suite's fake appends. Where it happens the cost is nothing written, a false
+reorder named, and one more command, a fresh sync.
+
+**Closes when:** the check reads the kept tracks' order and lets an added
+track stand anywhere, as the adapter's agreed order does. Ledger only.
+
+---
+
+## R-1438. A continue of a refused finish is handed the check's listing by a clause no test pins
+
+**Found:** at the mutation table of #619, R-1420, 2026-11-07.
+
+**The mechanism.** Since R-1420 the write in `_write_account` in
+`sync/pair_cli.py` hands a continue the check's listing as `expect` when an
+earlier command began the order and the plan is no finish. The older clause
+beside it, `steps.has(STEP_ORDER_REFUSED)`, now matters only for a refused
+finish that also adds or removes, which is R-1419's shape: `expect` beside
+the plan's reading as `agreed`.
+
+**Measured cost.** None on the branch. Row E1 of `docs/mutation/r1420.md`,
+the clause removed, killed none of 17448 on the full suite. A refused
+finish so continued is asked `agreed` alone, which R-1419 says is the
+reading it should be held to; no data cost either way.
+
+**Closes when:** R-1419 decides whether a refused finish keeps `expect`,
+and a test pins the choice. Ledger only.
