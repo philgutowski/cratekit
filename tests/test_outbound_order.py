@@ -630,3 +630,79 @@ def test_the_settle_reading_waits_then_reads_once_and_names_a_lag(installed):
     record = account.read_backs()[-1]
     assert record["after"] == "settle" and record["window_lagged"] == 1
     assert record["outcome"] == "lags"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1394: the caller is told, before each move, how far the moves can have got
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _counting(provider: Provider, told: list[tuple[int, int, int]]):
+    """A ``begun`` that answers a recorder, which notes each count with the moves sent by then."""
+
+    def begun(start, end):
+        def sending(sent: int, landed: int) -> None:
+            told.append((sent, landed, len(provider.moves)))
+
+        return sending
+
+    return begun
+
+
+def test_the_caller_is_told_before_each_move_how_many_may_have_landed(installed):
+    provider = Provider(["a", "b", "c", "d"])
+    told: list[tuple[int, int, int]] = []
+    after = _adapter(installed, provider).order_tracks(
+        "mine", ("d", "c", "b", "a"), begun=_counting(provider, told)
+    )
+    assert after == ("d", "c", "b", "a")
+    assert told == [(1, 0, 0), (2, 1, 1), (3, 2, 2)]
+
+
+def test_a_move_spent_on_its_412s_is_told_as_not_landed(installed):
+    provider = Provider(["a", "b", "c"])
+    pairs.PairStore(installed).mark("mine", "rb-mine", name="Mine")
+    account = tidal_account.TidalAccount(
+        RefusingClient(provider), sleep=lambda seconds: None, cfg=installed
+    )
+    told: list[tuple[int, int, int]] = []
+    with pytest.raises(CratekitError):
+        account.order_tracks("mine", ("c", "a", "b"), begun=_counting(provider, told))
+    assert [(sent, landed) for sent, landed, _moves in told] == [(1, 0), (0, 0)]
+
+
+def test_a_move_that_failed_another_way_is_left_as_maybe_landed(installed, monkeypatch):
+    provider = Provider(["a", "b", "c", "d"])
+    real = Movable.move_by_indices
+
+    def second_drops(self, indices, position):
+        if len(provider.moves) == 1:
+            provider.moves.append((tuple(indices), position, self._etag))
+            raise TimeoutError("the connection dropped")
+        return real(self, indices, position)
+
+    monkeypatch.setattr(Movable, "move_by_indices", second_drops)
+    told: list[tuple[int, int, int]] = []
+    with pytest.raises(CratekitError):
+        _adapter(installed, provider).order_tracks(
+            "mine", ("d", "c", "b", "a"), begun=_counting(provider, told)
+        )
+    assert [(sent, landed) for sent, landed, _moves in told] == [(1, 0), (2, 1)]
+
+
+def test_a_recorder_that_cannot_record_has_no_further_move_sent(installed):
+    provider = Provider(["a", "b", "c", "d"])
+    told: list[int] = []
+
+    def begun(start, end):
+        def sending(sent, landed):
+            if sent == 2:
+                raise OSError("read only")
+            told.append(sent)
+
+        return sending
+
+    with pytest.raises(OSError):
+        _adapter(installed, provider).order_tracks("mine", ("d", "c", "b", "a"), begun=begun)
+    assert told == [1]
+    assert len(provider.moves) == 1, "a move was sent that no record names"

@@ -227,8 +227,15 @@ def test_a_pending_pair_the_person_reordered_by_hand_is_merged_as_their_change(
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def _stopping_after(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
-    """Make the order on one playlist send ``moves`` moves and then refuse, as a failed move does."""
+def _stopping_after(
+    world, monkeypatch, playlist_id: str, moves: int, *, known: bool = True
+) -> list[int]:
+    """Make the order on one playlist send ``moves`` moves and then refuse, as a failed move does.
+
+    The caller is told the counts before each move as the adapter tells it
+    (R-1394): ``known`` is the next move ended on its last 412, which changed
+    nothing, so it is told as not landed; otherwise its fate is not known.
+    """
     from cratekit.modules.outbound import tidal_account
 
     real = world.account.order_tracks
@@ -244,11 +251,16 @@ def _stopping_after(world, monkeypatch, playlist_id: str, moves: int) -> list[in
         for one in planned:
             end.remove(one)
             end.insert(0, one)
-        if begun is not None:
-            begun(tuple(before), tuple(end))
-        for one in planned[:moves]:
+        told = begun(tuple(before), tuple(end)) if begun is not None else None
+        for index, one in enumerate(planned[:moves], start=1):
+            if told is not None:
+                told(index, index - 1)
             members.remove(one)
             members.insert(0, one)
+        if told is not None and moves < len(planned):
+            told(moves + 1, moves)
+            if known:
+                told(moves, moves)
         stops.append(moves)
         world.account.ordered.append((asked_id, tuple(remote_ids)))
         raise refuse(
@@ -313,6 +325,145 @@ def test_a_stop_part_way_agreed_on_the_moves_path_is_finished_from_rekordbox(
     assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert world.held(opener) == ["4", "3", "1", "2"], "rekordbox took the stopped order"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1394: a stopped write is finished only from a reading its moves could have left
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _three_moves(world, opener) -> None:
+    """Rekordbox in an order three moves to the front put the account in: 4, 3, 2, 1 from 1, 2, 3, 4."""
+    _reordered(world, opener, "4", "3", "2", "1")
+
+
+def test_a_stop_after_one_of_three_moves_read_as_the_old_order_is_held_however_long_it_agrees(
+    world, owed, cfg, monkeypatch
+):
+    """T7 of U231's round one: two readings agreeing on the order before the moves are a lag."""
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    assert reached == _ids("2", "1", "3", "4")
+    # The provider serves the order from before any move, for longer than AGREE_AFTER.
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    ordered = len(world.account.ordered)
+    for _ in range(3):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert len(world.account.ordered) == ordered, "moves were sent from a lagging reading"
+    assert world.account.playlists[account_id] == reached
+    assert world.held(opener) == ["4", "3", "2", "1"]
+    assert "accepted 1 of the 3 moves" in _said(envelope, pair_cli.LEFT_OUT)
+
+
+def test_a_stop_after_one_of_three_moves_read_as_that_move_leaves_it_is_finished(
+    world, owed, cfg, monkeypatch
+):
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    code, envelope = sync()
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    # Now served as it stands, one move in: two readings agree, and it finishes.
+    del world.account.served[account_id]
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids("4", "3", "2", "1")
+    assert world.held(opener) == ["4", "3", "2", "1"]
+
+
+def test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after(
+    world, owed, cfg, monkeypatch
+):
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1, known=False)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    ordered = len(world.account.ordered)
+    for _ in range(3):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert len(world.account.ordered) == ordered, "moves were sent with one's landing unknown"
+    assert world.account.playlists[account_id] == reached
+    assert "whether it landed is not known" in _said(envelope, pair_cli.LEFT_OUT)
+    # The move had landed after all, and the provider now serves it.
+    world.account.playlists[account_id][:] = _ids("3", "2", "1", "4")
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids("4", "3", "2", "1")
+    assert world.held(opener) == ["4", "3", "2", "1"]
+
+
+def test_a_first_move_refused_on_its_412s_is_sent_again_from_the_start_once(
+    world, owed, cfg, monkeypatch
+):
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 0)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert world.account.playlists[account_id] == _ids("1", "2", "3", "4")
+    ordered = len(world.account.ordered)
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert len(world.account.ordered) == ordered + 1, "the moves were not sent again once"
+    assert world.account.playlists[account_id] == _ids("4", "3", "2", "1")
+    assert world.held(opener) == ["4", "3", "2", "1"]
+
+
+def test_a_stopped_write_recorded_with_no_counts_is_finished_only_from_the_order_it_leaves(
+    world, owed, cfg, monkeypatch
+):
+    """A moving step from before R-1394 says nothing of how far the moves got."""
+    from cratekit.sync import pair_stopped
+
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    real = pair_stopped.moving_step
+
+    def uncounted(**kwargs):
+        step = real(**kwargs)
+        step.pop(pair_stopped.SENT)
+        step.pop(pair_stopped.LANDED)
+        return step
+
+    monkeypatch.setattr(pair_stopped, "moving_step", uncounted)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    ordered = len(world.account.ordered)
+    for _ in range(2):
+        code, envelope = sync()
+        assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert len(world.account.ordered) == ordered
+    assert world.account.playlists[account_id] == reached
+    # Shown as the moves leave it, it finishes with nothing moved.
+    world.account.playlists[account_id][:] = _ids("4", "3", "2", "1")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.LEFT_OUT not in _codes(envelope)
+    assert len(world.account.ordered) == ordered
+    assert world.held(opener) == ["4", "3", "2", "1"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
