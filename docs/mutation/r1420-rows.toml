@@ -79,12 +79,13 @@ new = '''        if kept != [track for track in one.account_now] or ('''
 
 [[rows]]
 id = "E1_refused_continue_expects_nothing"
-description = "sample: a continue of a refused order passes no listing for the adapter to agree with"
+description = "sample: a refusal alone no longer hands a continue the check's listing, so a continue of a refused finish is not asked to agree with it"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 old = '''                steps.has(STEP_ORDER_REFUSED)
-                or (one.finishing_order and not (one.account_removes or one.account_adds))'''
-new = '''                (one.finishing_order and not (one.account_removes or one.account_adds))'''
+                or (continued and not one.finishing_order)'''
+new = '''                False
+                or (continued and not one.finishing_order)'''
 
 [[rows]]
 id = "E2_finish_agreed_dropped"
