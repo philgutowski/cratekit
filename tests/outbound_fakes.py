@@ -126,6 +126,8 @@ class FakeAccount:
         self._writes = 0
         #: U220. Every order asked, as ``(playlist, expect)``.
         self.expected: list[tuple[str, tuple[str, ...] | None]] = []
+        #: R-1411. Every order asked with an agreed reading, as ``(playlist, agreed)``.
+        self.agreed: list[tuple[str, tuple[str, ...]]] = []
         #: U231. What the provider serves of a playlist, by playlist, when it
         #: lags what the playlist holds: every reading a sync takes of it, the
         #: catalogue's and the settle's, reads this instead. Absent reads it as
@@ -364,6 +366,7 @@ class FakeAccount:
         *,
         expect: tuple[str, ...] | None = None,
         begun: Callable[[tuple[str, ...], tuple[str, ...]], Any] | None = None,
+        agreed: tuple[str, ...] | None = None,
     ) -> tuple[str, ...]:
         """Put the asked tracks it holds once in the asked order, by the adapter's rule. One write.
 
@@ -374,9 +377,12 @@ class FakeAccount:
         ``begun`` is called, as the adapter calls it (U231), with the order
         moved from and the order the moves leave, before the first move and
         only when something moves, and the recorder it answers before each
-        move (R-1394). Returns the order the moves leave.
+        move (R-1394). ``agreed`` is recorded in :attr:`agreed` when given
+        (R-1411). Returns the order the moves leave.
         """
         self.expected.append((playlist_id, None if expect is None else tuple(expect)))
+        if agreed is not None:
+            self.agreed.append((playlist_id, tuple(agreed)))
         self._bump(playlist_id)
         members = self.playlists.setdefault(playlist_id, [])
         once = {one for one in members if members.count(one) == 1}

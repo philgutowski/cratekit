@@ -221,8 +221,10 @@ def test_a_first_sync_named_by_hand_that_failed_after_its_mark_is_continued_on_i
 def _one_move_a_call(account) -> None:
     """Order as the live adapter does: one gated move to the front per track moved (U220)."""
 
-    def order(playlist_id, remote_ids, *, expect=None, begun=None):
+    def order(playlist_id, remote_ids, *, expect=None, begun=None, agreed=None):
         account.expected.append((playlist_id, expect))
+        if agreed is not None:
+            account.agreed.append((playlist_id, tuple(agreed)))
         members = account.playlists[playlist_id]
         once = {one for one in members if members.count(one) == 1}
         wanted = [one for one in dict.fromkeys(remote_ids) if one in once]
