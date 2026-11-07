@@ -124,9 +124,13 @@ def test_the_gate_names_the_pair_as_finishing_the_stopped_run(world, stopped):
     line = first["cause"]["detail"]["shown"][f"pair {account_id}"]
     assert f"finishes run {run_id}" in line
     assert "order follows rekordbox's" in line
+    # U234. On the path, so the gate never says it read the account off it.
+    assert "so its moves are not read as anybody's" in line, line
+    assert "none of its moves leaves" not in line, line
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert pair_cli.FINISHING in _codes(envelope)
+    assert "none of its moves leaves" not in _said(envelope, pair_cli.FINISHING)
     said = _said(envelope, pair_cli.FINISHING)
     assert run_id in said and "GIG READY Intro" in said
 
@@ -920,3 +924,20 @@ def test_a_track_added_on_the_account_between_two_readings_is_no_reorder(world, 
     assert code == int(ExitCode.OK), envelope
     assert "reordered since a sync after the stop read it" not in str(envelope)
     assert [one for one in world.held(closer) if one != "8"] == list(BACK)
+
+
+def test_a_later_reading_still_on_the_moves_path_is_finished_never_read_as_a_reorder(
+    world, stopped
+):
+    """U234: only an order off the path is compared with the kept reading; on it, the stop finishes."""
+    intro, account_id, _run = stopped
+    plan_only()
+    # One more of the write's own moves shows: still on its path, in another order.
+    members = world.account.playlists[account_id]
+    members.remove("t6")
+    members.insert(0, "t6")
+    assert members == ["t6", "t2", "t7", "t1", "t3", "t4", "t5"]
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(intro) == list(LED), "rekordbox took a point on the stopped write's path"
+    assert world.account.playlists[account_id] == _ids(*LED)

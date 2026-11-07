@@ -147,6 +147,14 @@ class Pair:
     #: such reading is held; cleared once the pair's snapshot moves.
     seen: tuple[str, ...] | None = None
     seen_at: str = ""
+    #: U234. The account playlist's order as a plan read it after a write on
+    #: this pair stopped part way through its order, when it was read, and
+    #: the run that stopped: a later reading off that write's path in another
+    #: order is the person's reorder, which one reading alone never shows.
+    #: None when no such reading is held; cleared once the snapshot moves.
+    stop_seen: tuple[str, ...] | None = None
+    stop_seen_at: str = ""
+    stop_seen_run: str = ""
 
     @property
     def first(self) -> bool:
@@ -176,6 +184,12 @@ class Pair:
             record["on_hold"] = dict(sorted(self.on_hold.items()))
         if self.seen is not None:
             record["seen"] = {"order": list(self.seen), "at": self.seen_at}
+        if self.stop_seen is not None:
+            record["stop_seen"] = {
+                "order": list(self.stop_seen),
+                "at": self.stop_seen_at,
+                "run": self.stop_seen_run,
+            }
         return record
 
 
@@ -416,6 +430,19 @@ class PairStore:
             and seen["at"]
         ):
             raise self._unusable(f"the pair {account_id!r} holds a reading that is not an order")
+        stop_seen = value.get("stop_seen")
+        if stop_seen is not None and not (
+            isinstance(stop_seen, Mapping)
+            and isinstance(stop_seen.get("order"), list)
+            and all(isinstance(one, str) and one for one in stop_seen["order"])
+            and isinstance(stop_seen.get("at"), str)
+            and stop_seen["at"]
+            and isinstance(stop_seen.get("run"), str)
+            and stop_seen["run"]
+        ):
+            raise self._unusable(
+                f"the pair {account_id!r} holds a reading after a stop that is not an order"
+            )
         return Pair(
             account_id=account_id,
             rekordbox_id=rekordbox_id,
@@ -432,6 +459,9 @@ class PairStore:
             on_hold=None if on_hold is None else MappingProxyType(dict(on_hold)),
             seen=None if seen is None else tuple(seen["order"]),
             seen_at="" if seen is None else seen["at"],
+            stop_seen=None if stop_seen is None else tuple(stop_seen["order"]),
+            stop_seen_at="" if stop_seen is None else stop_seen["at"],
+            stop_seen_run="" if stop_seen is None else stop_seen["run"],
         )
 
     def _write(self, pairs: Mapping[str, Pair], document: Document | None = None) -> None:
@@ -569,6 +599,11 @@ class PairStore:
                 # a pending order, which the next plan no longer reads.
                 seen=None if moved else held.seen,
                 seen_at="" if moved else held.seen_at,
+                # U234. AND LATER THAN ANY READING HELD after a stopped order,
+                # since a snapshot that moved is past that stop.
+                stop_seen=None if moved else held.stop_seen,
+                stop_seen_at="" if moved else held.stop_seen_at,
+                stop_seen_run="" if moved else held.stop_seen_run,
             )
             pairs[str(account_id)] = pair
             self._write(pairs)
@@ -588,6 +623,31 @@ class PairStore:
             if held is None:
                 return None
             pair = replace(held, seen=tuple(str(one) for one in order), seen_at=str(at))
+            pairs[str(account_id)] = pair
+            self._write(pairs)
+            return pair
+
+    def see_stop(
+        self, account_id: str, order: Sequence[str], *, at: str, run_id: str
+    ) -> Pair | None:
+        """Keep one reading of a playlist a stopped order left, read after the stop (U234).
+
+        ``order`` is the playlist as the reading served it, ``at`` when it was
+        read and ``run_id`` the run whose order stopped. Replaces any such
+        reading held. Answers the pair, or None when no such pair is marked,
+        which keeps nothing.
+        """
+        with self._locked():
+            pairs = self._load()
+            held = pairs.get(str(account_id))
+            if held is None:
+                return None
+            pair = replace(
+                held,
+                stop_seen=tuple(str(one) for one in order),
+                stop_seen_at=str(at),
+                stop_seen_run=str(run_id),
+            )
             pairs[str(account_id)] = pair
             self._write(pairs)
             return pair

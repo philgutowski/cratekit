@@ -22,8 +22,15 @@ test). From the order the write started from, the orders it can have left
 are the ones that rule passes through on the way to the asked order
 (:func:`passed`). The account is read as standing where the stopped write
 left it when its order is one of those (:func:`reached`), leaving out of the
-comparison any track added or taken off since, which moves nothing. Any other
-order is a move somebody made, and the account then leads as it always has.
+comparison any track added or taken off since, which moves nothing.
+
+**OFF THE PATH IS NOT A REORDER ON THAT ALONE (U234).** Sitting 87 read
+accounts a stopped write left in orders none of its moves leaves, after moves
+answered 412 or sent by position on a reading that lagged: the provider's
+partial state as often as a person's edit. Such an order is read as the
+stopped write's too, finished as one on the path is, unless a reading a plan
+kept after the stop shows the account in another order (:func:`reordered`),
+which a provider's state settled after a stop does not do and a person's move does.
 
 **AND ITS ADDITIONS AND REMOVALS, WHEN IT WROTE BOTH SIDES.** A write begins
 its order only once its removals and additions on the account have returned,
@@ -478,6 +485,22 @@ def shows(end: Sequence[str], now: Sequence[str]) -> bool:
     ]
 
 
+def reordered(kept: Sequence[str], now: Sequence[str]) -> bool:
+    """Whether the account's order ``now`` differs from a reading ``kept`` after the stop (U234).
+
+    Read over the tracks both hold, each at its first place, so a track added
+    or taken off between the two readings, which moves nothing, is no
+    reorder. Two readings sharing fewer than two tracks show no order.
+    """
+    current = list(dict.fromkeys(now))
+    common = set(current) & set(kept)
+    if len(common) < 2:
+        return False
+    return [one for one in current if one in common] != [
+        one for one in dict.fromkeys(kept) if one in common
+    ]
+
+
 __all__ = [
     "StoppedWrite",
     "finished",
@@ -489,5 +512,6 @@ __all__ = [
     "passed_by",
     "positions",
     "reached",
+    "reordered",
     "stopped_writes",
 ]
