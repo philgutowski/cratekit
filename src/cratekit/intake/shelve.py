@@ -66,8 +66,11 @@ SHELVED_KEY = "shelved_batches"
 #: The landing's default name, ``2026-10-08 Tidal playlists and Favorites``,
 #: and the two other separators a person has typed after the date.
 _DATED = re.compile(r"^(\d{4})-(\d{2})-(\d{2})(?:[ _-]+(?P<subject>.+))?$")
-#: A run identifier, what a batch was named before U110.
-_RUN_ID = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T\d{6}Z-[0-9a-f]{4}$")
+#: A run identifier without its colons, as ``land_cli.default_name`` spells
+#: it: what a batch was named before U110, and what a person may still type.
+#: The tail is four hex characters until U235 and sixteen since, and a name of
+#: either era is a run's.
+_RUN_ID = re.compile(r"^(\d{4})-(\d{2})-(\d{2})T\d{6}Z-(?:[0-9a-f]{4}|[0-9a-f]{16})$")
 
 _ORIGIN = ("intake.shelve",)
 
