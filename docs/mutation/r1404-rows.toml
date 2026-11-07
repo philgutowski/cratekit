@@ -1,0 +1,94 @@
+name = "r1404"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_disagreeing_base_ignored"
+description = "merge: a base whose two sides disagree on order no longer lets rekordbox lead, the defect R-1404 names"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, base.account
+        ):'''
+new = '''        if order_changed(rekordbox.keys, base.rekordbox) or False:'''
+
+[[rows]]
+id = "M2_rekordbox_move_ignored"
+description = "merge: rekordbox's own reorder since the base no longer leads, only a disagreeing base does"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, base.account
+        ):'''
+new = '''        if False or order_changed(
+            base.rekordbox, base.account
+        ):'''
+
+[[rows]]
+id = "M3_account_move_not_guarded"
+description = "merge: rekordbox leads over a disagreeing base even when the account changed order since it, so an account reorder no longer reaches rekordbox"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''    elif base is not None and not order_changed(account.keys, base.account):'''
+new = '''    elif base is not None:'''
+
+[[rows]]
+id = "M4_always_rekordbox"
+description = "merge: with neither side changed, rekordbox leads whatever the base, so a base whose sides agree takes the other tie between two additions"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, base.account
+        ):'''
+new = '''        if True:'''
+
+[[rows]]
+id = "M5_disagreement_read_now"
+description = "merge: the disagreement is read between the sides as they stand now rather than at the base"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, base.account
+        ):'''
+new = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            rekordbox.keys, account.keys
+        ):'''
+
+[[rows]]
+id = "M6_disagreement_read_against_the_account_now"
+description = "merge: the base's rekordbox order is compared with the account as it stands, not the account's base"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, base.account
+        ):'''
+new = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, account.keys
+        ):'''
+
+[[rows]]
+id = "S1_default_leader"
+description = "sample: the account no longer leads by default, so a first sync and a both reordered pair take rekordbox's order"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''    leader = ACCOUNT
+    if stopped is not None:'''
+new = '''    leader = REKORDBOX
+    if stopped is not None:'''
+
+[[rows]]
+id = "S2_stopped_leader_again"
+description = "sample, U225: with no change since a stopped write, the side that led it no longer leads again"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        elif not account_moved and stopped.leader == REKORDBOX:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "S3_scope_every_pair"
+description = "sample, U231: every pair keeps the account's order, so a root pair's account is written rekordbox's order"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if cfg.outbound.pair_order_every_pair:
+        return True'''
+new = '''    if True:
+        return True'''
