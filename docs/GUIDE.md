@@ -496,6 +496,11 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   wins; with either time unknown the track stays and is named.
 - A twin's missing tracks are held, not downloaded, until `sync release`
   names that twin.
+- While a session log record cannot be read (torn, or written by a later
+  build), or the log cannot be listed, any landing it holds may have
+  brought a track in, so a missing track that carries an ISRC is held and
+  named, not downloaded, until the record reads. The warning names each
+  record; a track with no ISRC is queued as before.
 - With no argument, `sync pair` also pairs every plain playlist you made in
   rekordbox: a top folder becomes a root folder on the account, each playlist
   one private playlist titled folder first (`GIG READY Opener`); a root

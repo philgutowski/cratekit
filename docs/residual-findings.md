@@ -46256,3 +46256,27 @@ names what else refuses stale. Ledger only.
 **Measured cost.** Driven where every move was accepted and the provider caught up: held twice, then finished, nothing written into rekordbox meanwhile. Not driven: a pending write some of whose moves the provider refused, whose end the account never shows; that pair would be held on every sync until released. It needs a U231 pending order, the pair's rekordbox playlist deleted while pending, a hand pairing and a refused move together. Nothing is written wrong.
 
 **Closes when:** a first sync by hand over a pending order can keep its reading somewhere a later run agrees with, or the hold says to wait for the order the moves leave. Ledger only.
+
+---
+
+## R-1406. A landing record torn after a sync pair's plan was held at its gate is not looked for again, so the held plan queues its download with a clean report
+
+**Found:** at the review of #599, R-1383, 2026-11-07.
+
+**The mechanism.** `sync pair` plans once and its two gates reuse the held plan (U209), so the hold R-1383 added is decided when the plan is made. A session log record that turns unreadable between the plan and the answered gates is never read by the write, which queues the plan's `acquire` with `sync-pair-written` only.
+
+**Measured cost.** Driven by round one's review by hand: records readable, `t40` lacking with an ISRC, the gate shown, the record then torn, both gates answered, and `t40` queued with no warning naming the record. A duplicate download needs a landing of that very track written and torn inside the window between the plan and the answer; that natural producer was not driven. Records are written atomically, so a torn one is a defect or a hand edit.
+
+**Closes when:** the write reads the scan again before it queues and holds what the fresh scan cannot rule out, or the window is shown to have no producer. Ledger only: the producer is a hand edit inside a gate's window.
+
+---
+
+## R-1407. sync twins shows its gate over a landing record the session log cannot read, naming the tracks it brought in as having no row, and refuses only after the answer
+
+**Found:** at the review of #599, R-1383, 2026-11-07.
+
+**The mechanism.** `twins.read_library` in `src/cratekit/sync/twins.py` unpacks `pair_cli.landed_inbox_playlists` and drops its unread half by its own policy. `twins_cli.sync_twins` plans before any session gate, so the backfill's approve gate shows a twin's track that only an unreadable landing record brought in as a miss, "the library holds no row for it", with no warning naming the record. Only `twins.write` enters `session.assert_gates`, which refuses on the unread entry after the person answered approve.
+
+**Measured cost.** Driven by round two's review on a torn record and on one carrying a state this build does not know: the gate showed three misses with no warning, and after approve the write refused with "the session log holds 1 entry this build cannot read". Nothing was written and nothing was queued. Both producers driven were hand edits; a record a later build writes was not driven.
+
+**Closes when:** the backfill names the unread entries beside its misses on the gate, as `sync pair` does since R-1383. Ledger only: the write refuses before anything is written, and the backfill never queues a download.
