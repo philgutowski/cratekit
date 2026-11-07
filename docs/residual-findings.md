@@ -46184,3 +46184,75 @@ overclaims.
 
 **Closes when:** the note says the carried record is read for an order and
 names what else refuses stale. Ledger only.
+
+---
+
+## R-1400. A rekordbox playlist rebuilt in a stopped write's half done order, and paired again, is read as a rekordbox reorder since the stop, and the gate names a finish that keeps the scramble
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** R-1376's first sync reads the stop on a re-paired account playlist and measures each side's change of order against what the stopped write left (`pair_merge.merge(..., stopped=...)`). A new rekordbox playlist built in the account's half done order, as importing the scrambled account playlist into rekordbox would make it, differs from the old pair's rekordbox order, so rekordbox is read as reordered since the stop and leads. Both sides end in the scramble, the gate says the pair "finishes run X's write ... so its moves are not read as anybody's; order follows rekordbox's", and the new snapshot lets the carried record go, so the stop is then forgotten.
+
+**Measured cost.** Driven by the round one reviewer on the fake account: the U225 stop, the rekordbox playlist deleted, the pair released, a rebuilt playlist made as 2, 7, 1, 3, 4, 5, 6, hand paired, both gates applied. Nothing is written wrong: rekordbox already held that order, put there by the person, and the account already held it. The person reads a finishing sentence over a pair whose stopped order is never reached. The base reached the same end state and said nothing.
+
+**Closes when:** the finishing sentence is said only where the finish changes the order, or names that rekordbox's order was taken as the person's. Ledger only: no write is wrong, and the sentence's clauses each hold under U225's reorder since rule.
+
+---
+
+## R-1401. The mark guard on a stopped write kills only its pure tests, since a first sync now reads the stop through first_stop and a later sync's snapshot guard covers it
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** `_Reader.stopped_write` refuses a write that began before the pair was marked (R-1372). Since R-1376 every first sync, one with no pair record or one with no snapshot, reads the stop through `_Reader.first_stop` whatever the mark, and every later sync has a snapshot no earlier than its mark, which the snapshot guard already compares. So the mark guard decides no plan the dispatcher can reach, short of a pairs document holding a snapshot with no sync time.
+
+**Measured cost.** Maintainer facing. The reviewer's row removing the guard killed 2 of 84, both the pure reader tests in `tests/test_sync_pair_stopped.py`; no scenario test dies. Kept, since the card asked that every existing refusal stay.
+
+**Closes when:** the guard is removed with its pure test, or a reachable input it decides is driven and pinned. Ledger only.
+
+---
+
+## R-1402. A stop on a pair's own first sync, with the account reordered past it since, is no longer named on the gate
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** R-1376 makes a first sync fold nothing, since it has no base, so a first sync names a stop only when its order is finished (`finishing` is set from `folded or stopped`). A pair marked whose first sync stopped part way through its order after committing rekordbox, with the account then reordered off the stopped write's path, plans as any first sync with the account leading, and the gate no longer says a stopped write was found.
+
+**Measured cost.** Driven by the round one reviewer: a hand pairing whose first sync's order stopped before any move, the account then reordered to 3, 2, 1, 4. The base's gate said "finishes run X's write ... whose additions and removals are read as that write's; the account was reordered since, so its order is read as yours", whose first clause was untrue on a first sync, which folds nothing. The branch's says only "order follows the account's". Both end at 3, 2, 1, 4 on both sides. Nothing is written differently.
+
+**Closes when:** the gate names a stop it found and set aside as a person's reorder, on a first sync as on a later one, without claiming a fold. Ledger only.
+
+---
+
+## R-1403. The empty identifier guard in first_stop is an equivalent mutant, so its pure assertion pins nothing
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** `_Reader.first_stop` answers None for an empty account playlist identifier before it looks the stop up, but the lookup `stopped[0].get("")` answers None anyway, since no stop is keyed by an empty identifier.
+
+**Measured cost.** Maintainer facing: the reviewer's row removing the guard killed no test of 84. None at the verbs.
+
+**Closes when:** the guard is dropped, or kept as documentation with this line. Ledger only.
+
+---
+
+## R-1404. A pair outside GIG READY reordered in rekordbox has its order put back to the account's two syncs later
+
+**Found:** at the review of #597, R-1376, round two, 2026-11-07.
+
+**The mechanism.** Since U231 (#595) a pair whose rekordbox playlist is not under GIG READY never has its account order written (`_keeps_order`, unless `outbound.pair_order_every_pair`). A reorder made in rekordbox leads the next sync, which writes nothing on the account and moves the snapshot, so the snapshot holds rekordbox's new order and the account's old one. On the sync after, neither side has changed order since that snapshot, `pair_merge.merge` lets the account lead by default, and the plan writes the account's old order into rekordbox.
+
+**Measured cost.** Driven on main at 1cadb924 with no R-1376 code: a pair made by hand of an account playlist 1, 2, 3 and a root rekordbox playlist 1, 2, 3, the rekordbox playlist reordered to 3, 1, 2; the next sync answers `sync-pair-nothing` and leaves 3, 1, 2; the one after answers `sync-pair-written` and rekordbox holds 1, 2, 3 again. A DJ's reorder of any paired playlist outside GIG READY is undone in the library with nothing said. It is also the way a stopped write's scramble still reaches rekordbox for a pair released and paired again at the root (R-1376): that pair's first sync keeps rekordbox's order and leaves the account in the scramble, and the next sync writes the scramble into rekordbox (driven on the merged branch).
+
+**Closes when:** a sync of a pair whose account order is not kept never writes rekordbox an order the account did not change to since the snapshot, and the root case is driven through the dispatcher. It meets the board bar: a person using the shipped verbs pays it, a write into the library.
+
+---
+
+## R-1405. A pair made by hand over a pending account order keeps no reading, so it is held until the provider serves the order the moves leave
+
+**Found:** at the review of #597, R-1376, round two, 2026-11-07.
+
+**The mechanism.** A first sync by hand has no pair record, and U231's pending hold keeps its reading on the record (`PairStore.see` keeps nothing for a pair not marked), so no two readings can ever agree. The pair is held (`sync-pair-account-settling`) until the account shows exactly the order the stopped write's moves leave, the one case `_pending` lets through without agreement.
+
+**Measured cost.** Driven where every move was accepted and the provider caught up: held twice, then finished, nothing written into rekordbox meanwhile. Not driven: a pending write some of whose moves the provider refused, whose end the account never shows; that pair would be held on every sync until released. It needs a U231 pending order, the pair's rekordbox playlist deleted while pending, a hand pairing and a refused move together. Nothing is written wrong.
+
+**Closes when:** a first sync by hand over a pending order can keep its reading somewhere a later run agrees with, or the hold says to wait for the order the moves leave. Ledger only.
