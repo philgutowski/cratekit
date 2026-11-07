@@ -307,7 +307,8 @@ class RemoteAccount(Protocol):
         remote_ids: tuple[str, ...],
         *,
         expect: tuple[str, ...] | None = None,
-        begun: Callable[[tuple[str, ...], tuple[str, ...]], None] | None = None,
+        begun: Callable[[tuple[str, ...], tuple[str, ...]], Callable[[int, int], None] | None]
+        | None = None,
     ) -> tuple[str, ...]:
         """Put one playlist's tracks in this order, and change nothing else (U130).
 
@@ -322,7 +323,11 @@ class RemoteAccount(Protocol):
         reading that never does refuses with nothing moved. ``begun`` is
         called with the reading the moves were planned from and the order they
         leave before the first is sent, and not at all when nothing moves
-        (U231); whatever it raises stops the order with nothing sent.
+        (U231); whatever it raises stops the order with nothing sent. It may
+        answer a recorder, called before each move with how many moves may
+        have reached the provider and how many it accepted, and once more with
+        the first brought back down when a move ends on a 412 that changed
+        nothing (R-1394); whatever the recorder raises sends no further move.
         """
 
     def settled_order(self, playlist_id: str, *, wait: float = 0.0) -> tuple[str, ...] | None:

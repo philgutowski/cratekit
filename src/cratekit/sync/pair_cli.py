@@ -430,26 +430,67 @@ def _lagging(account_id: str, name: str) -> CratekitError:
     )
 
 
-def _settling(account_id: str, name: str, run_id: str, *, lag: bool) -> CratekitError:
+def _settling(
+    account_id: str,
+    name: str,
+    run_id: str,
+    *,
+    lag: bool,
+    write: pair_stopped.StoppedWrite | None = None,
+    at: int = 0,
+) -> CratekitError:
     """The pair held whole for this run, its account order sent and not yet read as landed (U231).
 
     HELD WHOLE, as a lagging pair is (U226): a reading that lags the moves
     may lag a membership change as well, and an order read from it and
     written into rekordbox, or moved again on the account, is the scramble
-    Sitting 86's orders would have left. ``lag`` says every move was
-    accepted and the readings agree on an order short of where they leave
-    it, which only a read that lags can serve.
+    Sitting 86's orders would have left. ``lag`` says the readings agree on
+    an order on the moves' way short of where they can have left it: ``at``
+    moves from ``write``'s start leave it, and the message names why that is
+    short (R-1394): every move accepted, a stop after more moves landed, a
+    move whose landing is not known, or a write that recorded no count.
     """
-    said = (
-        "every move run {run}'s write sent was accepted, and the playlist still reads "
-        "as one of the orders on their way, short of the order they leave: a read that "
-        "lags them serves that, and so would a reorder by hand back onto their way, "
-        "which leaves the pair held until the playlist is moved off it in the "
-        "provider's player or the pair is released"
-        if lag
-        else "run {run}'s write sent its order's moves and no two readings of the "
-        "playlist since agree on where they left it"
-    ).format(run=run_id)
+    after = (
+        "a read that lags them serves that, and so would a reorder by hand back onto "
+        "their way, which leaves the pair held until the playlist is moved off it in "
+        "the provider's player or the pair is released"
+    )
+    total = len(pair_stopped.front_moves(write.start, write.target)) if write else 0
+    if not lag:
+        said = (
+            f"run {run_id}'s write sent its order's moves and no two readings of the "
+            f"playlist since agree on where they left it"
+        )
+    elif write is None or write.moved:
+        said = (
+            f"every move run {run_id}'s write sent was accepted, and the playlist still "
+            f"reads as one of the orders on their way, short of the order they leave: "
+            f"{after}"
+        )
+    elif at < write.landed:
+        said = (
+            f"the provider accepted {write.landed} of the {total} moves run {run_id}'s "
+            f"write sent before it stopped, and the playlist still reads as an order "
+            f"from before the last of them: {after}"
+        )
+    elif write.sent - write.landed == 1:
+        said = (
+            f"run {run_id}'s write stopped while move {write.sent} of its {total} was "
+            f"being sent, so whether it landed is not known, and the playlist still reads "
+            f"as the order before it: moved again from that, the rest would land on the "
+            f"wrong tracks if it did, so the pair is held until the provider serves that "
+            f"move landed, the playlist is moved off their way in the provider's player, "
+            f"or the pair is released"
+        )
+    else:
+        said = (
+            f"run {run_id}'s write stopped part way through its {total} moves and "
+            f"recorded no count of how many landed, so the playlist's reading on their "
+            f"way may lag them: moved again from it, the rest would land on the wrong "
+            f"tracks, so the pair is held until the provider serves the order they "
+            f"leave, the playlist is moved off their way in the provider's player, or "
+            f"the pair is released"
+        )
     return refuse(
         SETTLING,
         f"the account playlist {name or account_id}'s order is pending: {said}; the "
@@ -460,7 +501,12 @@ def _settling(account_id: str, name: str, run_id: str, *, lag: bool) -> Cratekit
             "playlist as it stands",
         ),
         origin=_ORIGIN,
-        detail={"account_id": account_id, "run_id": run_id, "problem": "order-pending"},
+        detail={
+            "account_id": account_id,
+            "run_id": run_id,
+            "problem": "order-pending",
+            **({"landed": write.landed, "sent": write.sent, "moves": total} if write else {}),
+        },
     )
 
 
@@ -1701,10 +1747,17 @@ def _pending(
     goes on: an order on the moves' path is a stopped write U225 finishes
     from the side that led, any other the person's change, merged as theirs.
 
-    EXCEPT WHEN EVERY MOVE WAS ACCEPTED: the account then holds the order
-    they leave unless a person moved it, so an agreed reading on their path
-    short of it can only lag them, however long it agrees, and moving from
-    it would scramble the playlist. Held, and the reading not kept again.
+    EXCEPT SHORT OF WHERE THE MOVES CAN HAVE LEFT IT (R-1394). The write
+    recorded how many moves the provider accepted and how many may have
+    reached it, so the account, unless a person moved it, stands at one of
+    the orders ``write.landed`` to ``write.sent`` moves leave. An agreed
+    reading on their path before ``write.sent`` moves is finished from only
+    when it stands at or past them: before ``write.landed`` it can only lag
+    them, however long it agrees (every move accepted is the case where
+    ``write.landed`` is all of them), and at a move whose landing is not
+    known it may be that lag too. Moved again from either, the remaining
+    moves land by position on the wrong tracks. Held, and the reading not
+    kept again.
     """
     if pair_stopped.shows(write.end, now):
         return
@@ -1713,10 +1766,10 @@ def _pending(
     kept = seen_at is not None and seen_at >= write.moving_at and tuple(held.seen) == now
     agreed = kept and _now() - seen_at >= AGREE_AFTER
     if agreed:
-        lags = write.moved and pair_stopped.reached(write.start, write.target, now)
-        if not lags:
+        at = pair_stopped.positions(write.start, write.target, now)
+        if not at or max(at) >= write.sent:
             return
-        raise _settling(target.account_id, name, write.run_id, lag=True)
+        raise _settling(target.account_id, name, write.run_id, lag=True, write=write, at=max(at))
     if not kept:
         reader.see(target.account_id, now)
     raise _settling(target.account_id, name, write.run_id, lag=False)
@@ -3393,13 +3446,31 @@ def _write_account(
 
         moves_sent: list[tuple[str, ...]] = []
 
-        def begun(start: tuple[str, ...], end: tuple[str, ...]) -> None:
+        def begun(
+            start: tuple[str, ...], end: tuple[str, ...]
+        ) -> Callable[[int, int], None]:
             # U231. RECORDED AND CARRIED BEFORE THE FIRST MOVE IS SENT, so a
             # continue or a later plan knows the moves went blind and never
             # sends them again from a reading that may lag them.
-            steps.mark(STEP_MOVING, pair_stopped.moving_step(at=timestamp(), start=start, end=end))
+            at = timestamp()
+            steps.mark(STEP_MOVING, pair_stopped.moving_step(at=at, start=start, end=end))
             steps.carry()
             moves_sent.append(end)
+
+            def sending(sent: int, landed: int) -> None:
+                # R-1394. AND HOW FAR THEY CAN HAVE GOT, before each move is
+                # sent, so a later plan never finishes the order from a reading
+                # before the moves the provider accepted: one that cannot be
+                # recorded sends no further move.
+                steps.mark(
+                    STEP_MOVING,
+                    pair_stopped.moving_step(
+                        at=at, start=start, end=end, sent=sent, landed=landed
+                    ),
+                )
+                steps.carry()
+
+            return sending
 
         try:
             sent = tuple(
