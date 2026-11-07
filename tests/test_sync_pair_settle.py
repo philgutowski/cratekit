@@ -951,3 +951,30 @@ def test_a_finish_whose_added_track_the_provider_placed_elsewhere_is_not_refused
     assert asked[0] == tuple(reached)
     assert world.account.playlists[account_id] == _ids("4", "3", "2", "1", "5")
     assert world.held(opener) == ["4", "3", "2", "1", "5"]
+
+
+def test_a_finish_that_also_removes_is_refused_on_a_reading_that_lags_the_stopped_move(
+    world, owed, cfg, monkeypatch
+):
+    """The other half of R-1411: a track taken off in rekordbox, the reading lagging the move."""
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    world.rekordbox_remove(opener, "3")
+    asked = _adapter_reading(world, monkeypatch, account_id, _ids("1", "2", "4"))
+    for _ in range(2):
+        code, envelope = sync()
+    assert code != int(ExitCode.OK), envelope
+    assert asked == [tuple(reached)], "the finish was not held to the agreed reading"
+    assert world.account.playlists[account_id] == _ids("2", "1", "4"), "moves were sent from a lag"
+    assert world.held(opener) == ["4", "2", "1"], "a lag was merged into rekordbox"
+    _adapter_reading(world, monkeypatch, account_id, _ids("2", "1", "4"))
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids("4", "2", "1")
+    assert world.held(opener) == ["4", "2", "1"]
