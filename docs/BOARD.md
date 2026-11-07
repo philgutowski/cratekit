@@ -4,7 +4,7 @@ Cratekit's work is tracked on GitHub, not in this repository.
 
 **https://github.com/users/philgutowski/projects/2**
 
-Issues live on `philgutowski/cratekit`. Milestones are the six plan phases.
+Issues live on `philgutowski/cratekit`. Milestones are the seven plan phases, A to G.
 
 ## What is on it
 
@@ -15,15 +15,15 @@ registers answering two questions, and they are not mirrors of each other.
 |---|---|---|
 | Implementation units `U-N` | always | they are the work, and work is picked here |
 | Attended items `A-N` | always | a chore needing a person at the machine is also work |
-| Residual findings `R-N` | only on intent | a residual is a problem recorded rather than fixed, so it lives in the ledger and earns an issue only when somebody decides to act on it |
+| Residual findings `R-N` | only past the board bar | a residual is a problem recorded rather than fixed, so it lives in the ledger and earns an issue only when it meets METHOD's board bar: a person using the shipped verbs pays for it |
 
 **Do not backfill residuals.** Most have no issue and should not. Putting the
 ledger on the board would claim you intend to do a hundred things you have decided
 not to do, and would flood the project board's Ready column, because a non unit
-issue with nothing waiting on it derives as Ready. A residual issue is also
-unstable before its unit merges, since a merge renumbers the incoming branch's
-residuals while the issue title keeps the old number. `board.py audit` reports a
-title that no longer matches its finding as a CONTRADICTION.
+issue with nothing waiting on it derives as Ready. A residual takes its number
+only when `board.py residuals --land` runs on `main`, so its issue is filed
+after that, never from a branch. `board.py audit` reports a title that no
+longer matches its finding as a CONTRADICTION.
 
 **No count is written here on purpose.** An earlier version of this section gave
 one, as a table, and it was true for 97 minutes: it said eleven residual findings
@@ -40,17 +40,20 @@ is issue #8 and U37 is issue #37, but U38 is issue #51, because #38 onward were
 taken by residual and attended issues. Look it up before writing a closing
 trailer rather than computing it.
 
-Each unit issue carries that unit's full brief, copied from the plan: goal,
-requirements, dependencies, key files, approach, test scenarios, verification. The
-issue is the working spec, so a session can pick up a unit without reading the plan
-document. The plan stays authoritative if the two ever disagree, and
-`DJ_tools/docs/migration/00-SEAM-DECISIONS.md` is authoritative over the plan.
+Each unit issue carries that unit's full brief: goal, requirements,
+dependencies, key files, approach, test scenarios, verification. The issue is
+the brief, so a session picks up a unit without reading any plan document, and
+an insufficient brief is fixed on the issue. New cards are filed in that form
+by the `file-card` skill. `DJ_tools/docs/migration/00-SEAM-DECISIONS.md` is
+authoritative over any brief.
 
 ## Status
 
 - **Ready**, every dependency has landed, this can start now.
 - **Blocked**, waiting on another unit. The issue body names which, by number.
 - **In Progress**, on a branch.
+- **In review**, held by the relay runner; like In Progress, a holder's status
+  that is never derived, so a recomputation keeps it.
 - **Attended**, needs Phillip at the machine and an agent must not drive it.
 - **Done**, landed on `main`.
 
@@ -69,6 +72,10 @@ numbered one.
 | `board.py start 11` | branch, mark In Progress, print the closing trailer |
 | `board.py sync` | make the board match the repository, idempotent |
 | `board.py audit` | report drift and contradictions, exit 1 or 2 |
+| `board.py closing` | refuse a `Closes` trailer while a register still owes that unit |
+| `board.py residuals` | list the residual files waiting for a number; `--land` numbers them on `main`, `--search` finds ledger headings |
+| `board.py cloud` | the cloud lane's queue, read from the cards' comments over REST |
+| `board.py local` | the attended cards only Phillip's Mac can do |
 
 `next` ranks by **transitive** reach rather than direct dependents. A unit whose
 one dependent is the gateway to a whole phase outranks a unit with three dead-end
@@ -88,25 +95,27 @@ issue. `.github/workflows/board.yml` fires on the close, rebuilds the graph, and
 flips every unit that was waiting on 11 from blocked to ready. The only human act
 in that chain is writing the trailer, which `board.py start` prints for you.
 
-The workflow also runs weekly and on demand, because the event triggers cover
-every ordinary change but not an issue body edited to change a dependency, and
-because a scheduled run is what notices the workflow itself has been failing.
+The workflow fires on every issue event, an edited body included, and also
+runs weekly and on demand, because a scheduled run is what notices the
+workflow itself has been failing.
 
 **On the token.** `GITHUB_TOKEN` is repository-scoped and cannot reach a
-user-owned project, so in CI the workflow runs `--labels-only`: the `ready` and
-`blocked` labels stay true and the cards do not move. That is the right half to
-keep if only one can be kept, because the labels are what the queue is derived
-from and the card is the view of it. Adding a `BOARD_TOKEN` repository secret with
-`project` scope moves the cards too. Running `board.py sync` locally always does
+user-owned project, so with it alone the workflow runs `--labels-only`: the
+`ready` and `blocked` labels stay true and the cards do not move. That is the
+right half to keep if only one can be kept, because the labels are what the
+queue is derived from and the card is the view of it. With a `BOARD_TOKEN`
+repository secret of `project` scope it moves the cards too, and its run
+summary says which of the two it ran. Running `board.py sync` locally always does
 both, because Phillip's own token carries that scope.
 
 **The one input nothing else checks.** Every value the board derives comes from
 issue closure state, so a close is the board's single unverified claim, and it
 cascades: one wrong close moved four units from blocked to ready in under a
-minute, correctly, off a false premise. `tests/_pending.py` already holds the
-answer, because an entry there is the repository asserting in an enforced file
-that a named unit has not finished. `audit` reads it and flags any unit whose
-issue is closed while the register still owes it a module.
+minute, correctly, off a false premise. Two registers already hold the
+answer: `tests/_pending.py`, and a `planned_in` marker on a verb registry
+entry. Each is the repository asserting, in an enforced file, that a named unit
+has not finished. `audit` reads both and flags any unit whose issue is closed
+while either still owes it a module.
 
 Those are reported as **contradictions**, separately from drift, and `sync` will
 not touch them. Drift is a derived value that fell out of date. A contradiction is
