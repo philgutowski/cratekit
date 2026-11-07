@@ -762,11 +762,15 @@ def test_this_account_playlists_own_landing_wins_over_anothers(world, cfg, tmp_p
     _untagged_row(cfg, "9", tmp_path, file_isrc=isrc("8"))
     _landed_for(w, cfg, ACCOUNT, ("8",), session_id="s-own", name=NAME)
     _landed_for(w, cfg, "acc-other", ("9",), session_id="s-other", name="Another")
-    w.account.playlists[ACCOUNT].append("t8")
+    # A track nobody landed keeps the widened step asked, which must answer
+    # only what the earlier steps left lacking, never t8 again.
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].extend(["t8", "t40"])
     code, envelope = sync([*VERB, ACCOUNT])
     assert code == int(ExitCode.OK), envelope
     assert w.held() == ["1", "8"]
     assert pair_cli.AMBIGUOUS not in _codes(envelope)
+    assert _acquired(envelope) == ["t40"]
 
 
 def test_a_track_another_pairs_intake_job_found_owned_is_added(world, cfg, tmp_path, monkeypatch):
