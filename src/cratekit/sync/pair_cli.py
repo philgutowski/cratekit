@@ -1787,8 +1787,13 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         order_unkept = wanted_keys != firsts and not order_kept
         if wanted_keys != firsts and not order_unkept:
             # A ROW'S RELEASES MOVE TOGETHER, in the order the account holds them.
+            # R-1432. A FINISH PLACES AN UNREAD TRACK WHERE THE STOPPED WRITE
+            # WAS TAKING IT, as it reads every readable track, and not where
+            # an interrupted move left it.
             account_order = _with_unread_placed(
-                [one for key in wanted_keys for one in after if alias(one) == key], after
+                [one for key in wanted_keys for one in after if alias(one) == key],
+                after,
+                stopped_write.target if stopped is not None and stopped_write is not None else (),
             )
             account_before = tuple(listed_order or account_now)
 
@@ -1916,25 +1921,44 @@ def _keeps_order(cfg: config.Config, rekordbox: playlist_pair.Playlist, home: An
     return len(path) > 1 and path[0] == ORDER_FOLDER
 
 
-def _with_unread_placed(ordered: list[str], listed: Sequence[str]) -> tuple[str, ...]:
+def _with_unread_placed(
+    ordered: list[str], listed: Sequence[str], target: Sequence[str] = ()
+) -> tuple[str, ...]:
     """``ordered`` with every id of ``listed`` it lacks put back after its neighbour (R-1264).
 
     An unread track is never moved by the merge, which cannot read it, so it
     keeps its place behind the track the account listed before it, or the
     front when none was. The order is then the whole playlist, and an account
     reorder written from it leaves no track for the provider to place.
+
+    R-1432. AT A FINISH OF A STOPPED ORDER ``target`` is the order the
+    stopped write was putting the account in, and the listing is where its
+    interrupted moves left it, so an unread track one of them moved stands
+    where no order wanted it. Each unread id ``target`` names is placed
+    first, in its order, behind the track ``target`` puts before it, or the
+    front when none of those is held; an id it does not name, one listed
+    since, keeps its place behind the track listed before it. An id of
+    ``target`` the listing no longer holds is never put back.
     """
     placed = list(ordered)
     held = set(placed)
+
+    def behind(before: Sequence[str]) -> int:
+        for one in reversed(before):
+            if one in held:
+                return placed.index(one) + 1
+        return 0
+
+    holding = set(listed)
+    for index, one in enumerate(target):
+        if one in held or one not in holding:
+            continue
+        placed.insert(behind(target[:index]), one)
+        held.add(one)
     for index, one in enumerate(listed):
         if one in held:
             continue
-        at = 0
-        for before in reversed(listed[:index]):
-            if before in held:
-                at = placed.index(before) + 1
-                break
-        placed.insert(at, one)
+        placed.insert(behind(listed[:index]), one)
         held.add(one)
     return tuple(placed)
 

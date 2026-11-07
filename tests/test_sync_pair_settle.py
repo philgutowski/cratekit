@@ -1283,3 +1283,76 @@ def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
     assert asked == [("acct", ("t6", "t5"), None)]
     assert after == ("t6", "t5")
     assert done.order_refused is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1432. Where a finish puts an unread track, read alone
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize(
+    ("ordered", "listed", "expected"),
+    [
+        (["t2", "t1"], ["t9", "t1", "t2"], ("t9", "t2", "t1")),
+        (["t2", "t1"], ["t1", "t9", "t2"], ("t2", "t1", "t9")),
+        (["t2", "t1"], ["t1", "t2", "t9"], ("t2", "t9", "t1")),
+        (["t2", "t1"], ["t1", "t2"], ("t2", "t1")),
+    ],
+)
+def test_with_no_stopped_write_an_unread_track_follows_the_one_listed_before_it(
+    ordered, listed, expected
+):
+    """R-1264's rule, unchanged where no write stopped: behind the track listed before it."""
+    assert pair_cli._with_unread_placed(ordered, listed) == expected
+    assert pair_cli._with_unread_placed(ordered, listed, ()) == expected
+
+
+@pytest.mark.parametrize(
+    ("ordered", "listed", "target", "expected"),
+    [
+        # The brief's: the stopped move put t9 in front, the target puts it behind t4.
+        (
+            ["t2", "t3", "t4", "t1", "t5"],
+            ["t9", "t1", "t2", "t3", "t4", "t5"],
+            ["t2", "t3", "t4", "t9", "t1"],
+            ("t2", "t3", "t4", "t9", "t1", "t5"),
+        ),
+        # Two unread ids the target names, in either order the moves left them.
+        (
+            ["t2", "t1"],
+            ["u2", "u1", "t1", "t2"],
+            ["t2", "u1", "u2", "t1"],
+            ("t2", "u1", "u2", "t1"),
+        ),
+        (
+            ["t2", "t1"],
+            ["u1", "u2", "t1", "t2"],
+            ["t2", "u1", "u2", "t1"],
+            ("t2", "u1", "u2", "t1"),
+        ),
+        # The track the target puts before it is gone: behind the one before that.
+        (
+            ["t2", "t1"],
+            ["t9", "t1", "t2"],
+            ["t2", "t3", "t9", "t1"],
+            ("t2", "t9", "t1"),
+        ),
+        # First in the target: the front.
+        (["t2", "t1"], ["t1", "t2", "t9"], ["t9", "t2", "t1"], ("t9", "t2", "t1")),
+        # An unread id listed since, which the target does not name, follows
+        # the track listed before it; the one it names follows the target.
+        (
+            ["t2", "t1"],
+            ["t9", "t8", "t1", "t2"],
+            ["t2", "t9", "t1"],
+            ("t2", "t9", "t8", "t1"),
+        ),
+        # An unread id of the target the playlist no longer holds is never put back.
+        (["t2", "t1"], ["t1", "t2"], ["t2", "t9", "t1"], ("t2", "t1")),
+    ],
+)
+def test_at_a_finish_an_unread_track_is_placed_by_the_stopped_writes_target(
+    ordered, listed, target, expected
+):
+    """R-1432: each unread id the target names stands behind the track the target puts before it."""
+    assert pair_cli._with_unread_placed(ordered, listed, target) == expected
