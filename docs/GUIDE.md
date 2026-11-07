@@ -14,10 +14,11 @@ crate doctor
 
 - `setup` records the library root, the rekordbox database, the volume's
   identity, download staging, the profile, the taxonomy and the backup
-  destinations, and proposes a rekordbox version pin that only a yes adopts.
-  Every answer is also a flag (`crate setup --help`). Re-running keeps earlier
+  destinations. It offers to record each credential the profile needs, and
+  proposes a rekordbox version pin and any location prefix rule, which only a
+  yes adopts. Every other answer is also a flag (`crate setup --help`). Re-running keeps earlier
   answers unless a flag changes one, and ends by running doctor.
-- `doctor` writes nothing. Each line is `ok`, `fail` (blocks a verb, names the
+- `doctor` writes nothing. Each line is `ok`, `FAIL` (blocks a verb, names the
   fix) or `note` (no action).
 - `crate profile show` lists the modules the profile switches on; `crate
   profile set slim|full|custom` changes the preset and nothing else. A verb
@@ -101,10 +102,10 @@ crate --calls 2000 --run RUN_ID sync pair   # raise the provider call ceiling fo
 
 ## Before every session
 
-1. Quit rekordbox and its background agent. Every writing verb refuses while
-   either runs.
+1. Quit rekordbox and its background agent. Every verb that writes the
+   rekordbox database refuses while either runs.
 2. Mount the library volume.
-3. `crate doctor`; read the `fail` lines first.
+3. `crate doctor`; read the `FAIL` lines first.
 4. `crate status`: open runs, each source's sync state, and any tree whose
    membership no longer matches the database. Gates idle over a week are
    summarised in one line with the command that retires them.
@@ -217,7 +218,7 @@ crate match run /path/to/tracklist.txt
   scratch, then removed) and resolves its tracks; `intake identify` names the
   tracks and stops. Both call a paid recognition service and refuse before
   the first call without its keys. A recording over one recognition run's
-  bound (about 2h40) is identified in up to three even parts, still one set.
+  bound (about 2h45) is identified in up to three even parts, still one set.
 - `match run` sorts `Artist - Title` lines into matched, needs review and
   missing.
 
@@ -239,7 +240,8 @@ crate intake missing --list PATH      # a text list, searched on the provider
   provider. A line is listed only on one exact match in artist, title and
   version; otherwise its candidates become review items (`review list --queue
   version-match --kind provider-candidate`). Accept one and run again. The list
-  is written as `NAME-found.list.json`.
+  is written as `NAME-found-DIGEST.list.json`, so a run after a review answer
+  writes a new list.
 - A missing track already sitting in download staging (same ISRC) is counted
   `staged` and not listed.
 
@@ -277,8 +279,9 @@ crate intake land --pass PASS
 crate route pending
 ```
 
-- `tag folder` writes genre and album art to the files only. A file no
-  catalogue knows keeps no genre.
+- `tag folder` writes genre and album art to the files only. A file of a
+  registered label with a genre takes that genre with no catalogue asked; any
+  other file no catalogue knows keeps no genre.
 - `tag guess` gives each file with no genre one from its artist's other
   tracks and, with `--pass`, the account playlist that asked for it. A file
   that has a genre is never changed. `--report` writes nothing. Each genre
@@ -399,7 +402,7 @@ crate label sync --go
   `--kind` (for the genre gate), `--genre` (given to the label's files with
   no genre, so no catalogue is asked; one routing only to the fallback folder
   needs `--accept-fallback`) and `--bandcamp` (the seller account). `default`
-  clears a field.
+  clears `--kind`, `--genre` or `--bandcamp`.
 - `harvest` offers the labels behind a playlist as review items; `registry
   adopt` adds each accepted one not already held.
 
@@ -436,7 +439,7 @@ Other label verbs:
 | `label import NAME` | Brings one label's catalogue in, as a job. |
 | `label held [return RELEASE_ID ...]` | Lists releases the genre gate holds back, or returns some to review. |
 | `label judge [--label NAME]` | Judges releases waiting in review by the label's kind and holds what the gate would not file. |
-| `label artists` | Names open releases whose artist reads as a provider address. |
+| `label artists` | Puts the artist's name on open releases whose artist reads as a provider address. |
 | `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
 | `label mark LABEL --pass PASS` (or `--xml FILE`) | Prefixes `DOWNLOADED ` to the year playlists a landed batch filed. |
 | `label prune LABEL` | Takes held or no longer confirmed tracks off the label's year playlists. |
@@ -457,8 +460,9 @@ crate sync bandcamp [--seller NAME] [--batch NAME]
 and writes the label's name into the label tag of every file from an account
 a registered label names. `sync bandcamp` does the whole run: plans the
 purchases (an expired session stops here with the login step), fetches, runs
-the tail through `name apply`, rehearses the landing, and plans it with
-`--label-from-tags`, stopping at its gate. Rerun with the same `--batch` to
+the tail through `name apply`, rehearses the landing, and plans it, with
+`--label-from-tags` when any staged file carries a label tag, stopping at its
+gate. Rerun with the same `--batch` to
 continue; nothing fetched is fetched again. It needs a native intake tree.
 
 ### Sets
@@ -507,9 +511,10 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   one private playlist titled folder first (`GIG READY Opener`); a root
   playlist goes in `Playlists`. A playlist you make in such an account folder
   comes into rekordbox at the next sync.
-- Never paired: Cratekit's own trees, Favorites, twins, smart playlists,
-  another app's folder, and folders `outbound.pair_skip_folders` names
-  (`["ARCHIVE"]` by default).
+- Never found by a bare `sync pair`: Cratekit's own trees, Favorites, twins
+  (a twin is paired with its account playlist when it is made), smart
+  playlists, another app's folder, and folders `outbound.pair_skip_folders`
+  names (`["ARCHIVE"]` by default).
 - It plans once; the rekordbox gate `sync.pair.rekordbox` then the account
   gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
   changed before the write refuses as stale. A write stopped by the call
@@ -518,11 +523,13 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   at it in the Tidal app before running anything again.
 - Tidal's order is kept in rekordbox's order only for pairs under GIG READY;
   set `outbound.pair_order_every_pair = true` to keep every pair's. Other
-  pairs still sync their tracks both ways, and a reorder you make in
-  rekordbox after the pair's first sync stays there until you reorder that
-  playlist on Tidal (the first sync itself follows Tidal's order): a Tidal
-  reorder is still taken into rekordbox, and it brings Tidal's whole order,
-  not only the tracks you moved.
+  pairs still sync their tracks both ways and keep rekordbox's order: the
+  first sync leaves the rekordbox playlist in the order it stands in, each
+  track only Tidal holds going in after the track it follows on Tidal, and a
+  reorder you make in rekordbox later stays there until you reorder that
+  playlist on Tidal. A Tidal reorder after the first sync is taken into
+  rekordbox, and it brings Tidal's whole order, not only the tracks you
+  moved. A rekordbox playlist paired while empty takes Tidal's order.
 - An order is sent in one go, then read once, about 30 seconds later or
   after the other pairs are written. Not served yet, the pair is pending: the
   run ends ok and names it, every track is on Tidal and rekordbox is
@@ -626,8 +633,10 @@ plans just those steps; a side with no kind named is not asked.
 
 - An edit on Tidal to a mirrored genre playlist retags the track: moving it
   from `Deep House Low` to `Tech House Med` gives it that genre and an energy
-  that files into Med; removing it from every genre playlist clears its genre
-  and energy so `route unplaced` lists it. The first organize after the
+  that files into Med; removing it from every genre playlist clears the
+  file's genre and energy tags so `route unplaced` lists it, while
+  rekordbox's Genre column keeps the old word until rekordbox reads the file
+  again. The first organize after the
   mirror exists reads every difference as rekordbox's.
 - A track downloaded for your edit is filed where you put it, though its
   landing first filed it by its tags ("landed for the account's edit"), even
@@ -794,8 +803,9 @@ needs `--discard SESSION_ID` for each.
 - `restore bare-metal` recovers mirror then database onto a new empty volume
   when the drive died. It refuses while the old library is readable, onto a
   target holding a database or the empty mount point the lost drive left, or
-  with nobody at a terminal. If it stops part way, remove every `.db` file
-  under the target and run it again. Afterwards run `crate doctor` and
+  with nobody at a terminal. If it stops in the database half, remove the
+  database file and the companions the refusal names, nothing else, and run
+  it again; a mirror half that stopped needs nothing removed. Afterwards run `crate doctor` and
   `crate setup --library-root PATH --volume-id ID` to record the new drive,
   then `crate converge`.
 
@@ -942,7 +952,8 @@ valid is reported, not minted again. The record says which rule minted it,
 - **The live database** is written only through the guarded write (see [How it
   works](#how-it-works)). Verbs that only read take a copy.
 - **Files** are trashed only by `delete review`, to the system Trash.
-  Renames go through `name apply` and `repair paths --apply`, behind gates.
+  Renames go through `name apply` and `repair paths --apply`, behind gates,
+  and `analyze run`, which renames each file it finishes to its Camelot head.
 - **The account** is written behind explicit gates. Exports and label
   playlists add only; removals happen only where a verb names them on its
   gate (`export prune`, `label prune`, `label heard`, `sync pair`, organize's
@@ -997,28 +1008,70 @@ A cancelled job is its own state, never a failure.
 | What | Where |
 |---|---|
 | Configuration | `config.toml` in the platform config folder (`~/Library/Application Support/cratekit/` on macOS; `CRATEKIT_CONFIG_DIR` overrides) |
-| Job queue, provider pacing, ISRC answers | the installation's state folder (`CRATEKIT_STATE_DIR` overrides); doctor names the files |
+| Job queue, provider pacing, ISRC answers | the installation's state folder (`CRATEKIT_STATE_DIR` overrides); doctor's `provider.isrc-cache` line names the ISRC file |
 | Library state, active taxonomy, write sessions, snapshots | `.cratekit/` under the library root |
 | Credentials | the OS keychain |
 | Backups | the rclone remotes in `[backup]` |
 
-The configuration is TOML. `crate setup` writes it. Sections include
-`[library]`, `[profile]`, `[modules]` (toggles under `custom`), `[backup]`,
-`[acquisition]`, `[naming]`, `[rekordbox]`, `[taxonomy]`, `[provider]`,
-`[labels]`, `[reports]`, `[analysis]` and `[outbound]`. Keys named in this
-guide:
+The configuration is TOML. `crate setup` writes it. Its sections are
+`[library]`, `[paths]`, `[profile]`, `[modules]` (one toggle per module, which
+wins over the profile's preset), `[taxonomy]`, `[naming]`, `[acquisition]`,
+`[analysis]`, `[rekordbox]`, `[backup]`, `[reports]`, `[outbound]`,
+`[recognition]`, `[provider]` and `[labels]`. Every key, with its default
+(required keys have none, and setup asks for each):
 
 | Key | Default |
 |---|---|
+| `schema_version` | required (setup writes it) |
+| `library.root` | required, the library folder on the music volume |
+| `library.volume_id` | required, the volume's identity, never a mount path |
+| `library.db_path` | required, the rekordbox database |
+| `library.db_outside_root_acknowledged_on` | unset (the date you accepted a database outside the library root; unset refuses one there) |
+| `library.music_dir` | `"Music"` |
+| `library.processed_dir` | `"Processed_Tracks"` (where `intake shelve` files a batch) |
+| `library.sets_dir` | `"Set_Recordings"` |
+| `library.state_dirname` | `".cratekit"` |
+| `library.location_prefix_map` | `[]` (setup offers a rule when rekordbox records paths under another base) |
+| `paths.download_staging` | required, where downloads land first |
+| `profile.name` | required, `slim`, `full` or `custom` |
+| `modules.<module>` | unset (the profile decides; `true` or `false` overrides it) |
+| `taxonomy.template` | `"default"` |
+| `naming.lossy_marker` | `"[MP3]"` |
+| `naming.path_budget_bytes` | 250 |
+| `naming.filename_max_bytes` | 255 |
+| `acquisition.adapter` | `"vendored"` (see [`adapters.md`](adapters.md)) |
+| `acquisition.quality` | `"lossless"` |
+| `acquisition.pacing_delay_s` | unset (the adapter's own pacing) |
+| `acquisition.concurrency` | 1 |
+| `acquisition.lossless_policy` | `"strict"` (or `"allow_lossy_marked"`, which marks every lossy file) |
+| `analysis.jobs` | unset (probed from memory, never from a CPU count) |
+| `analysis.energy_calibration` | `"auto"` (no verb reads it yet) |
+| `analysis.tempo_floor` | 80 |
+| `analysis.tempo_ceiling` | 160 |
+| `analysis.drift_cut` | 1.5 |
+| `rekordbox.pinned_pyrekordbox` | `"0.4.4"` |
+| `rekordbox.pinned_db_version` | `"6000"` |
+| `rekordbox.pinned_app_version` | unset (unset refuses every database write; setup proposes one) |
+| `rekordbox.validated_on` | unset (the date the pin was confirmed against a real write) |
+| `rekordbox.app_path` | unset |
+| `backup.remote` | unset (read from the destinations) |
+| `backup.dest` | unset, an rclone `remote:path` |
+| `backup.archive_root` | unset, an rclone `remote:path` |
+| `backup.db_dest_root` | unset, an rclone `remote:path` |
+| `reports.intake_stale_days` | 30 |
+| `reports.intake_expired_days` | 90 |
+| `reports.open_gate_stale_days` | 7 |
+| `outbound.export_stale_days` | 7 (past this age an export's plan says it is old; never a refusal) |
+| `outbound.pair_skip_folders` | `["ARCHIVE"]` |
+| `outbound.pair_order_every_pair` | false (only GIG READY pairs keep Tidal's order) |
+| `recognition.host` | `"identify-us-west-2.acrcloud.com"` |
+| `recognition.monthly_calls` | 1000 (a refusal past it, never a warning) |
+| `provider.min_interval_s` | 1.0 |
+| `provider.cooldown_s` | 900 |
 | `provider.calls_per_command` | 500 |
 | `provider.isrc_cache_days` | 30 (0 turns the ISRC cache off) |
 | `labels.offer_per_sweep` | 10 |
 | `labels.new_playlist_age_days` | 30 |
-| `reports.open_gate_stale_days` | 7 |
-| `reports.intake_stale_days`, `reports.intake_expired_days` | 30, 90 |
-| `analysis.drift_cut` | 1.5 |
-| `outbound.pair_skip_folders` | `["ARCHIVE"]` |
-| `outbound.pair_order_every_pair` | false (only GIG READY pairs keep Tidal's order) |
 
 An ISRC answer is shared by every verb, so a rehearsal and the live run pay
 for a lookup once. A copy run that redirects `CRATEKIT_STATE_DIR` should point

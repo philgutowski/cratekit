@@ -1,15 +1,22 @@
 # Cutover
 
-The per workflow record U29 asks for. The board says every unit is closed and
-the parity table says every Feature Inventory row has a verb. This file says
-which workflows have actually run on the live library, what each run observed,
-and what still stands between the product and a full sync cycle on Cratekit
-alone. It is written by the attended sittings, never by a session, and a
+The per workflow record U29 asks for. The parity table,
+`tests/test_cutover_parity.py`, says every Feature Inventory row has a verb.
+This file says which workflows have actually run on the live library, what
+each run observed, and what still stands between the product and retiring
+DJ_tools. It is written by the session that runs each attended sitting, and a
 workflow moves to "cut over" only after it has run correctly on the live
-library at least once and the author has lived on it.
+library at least once and the author has lived on it. Each sitting's rows are
+a record of the version that sitting ran and are never rewritten; the two
+sections that say where things stand now are "What blocks retiring DJ_tools",
+after sitting 42, and "Next sitting", at the end.
 
-Standing rule for every sitting: rekordbox and its agent closed, the volume
-mounted, `crate doctor` read before anything else, one workflow per sitting.
+Standing rule for every sitting: the volume mounted, `crate doctor` read
+before anything else, `crate backup run` first when either backup age is five
+days or more, rekordbox opened only by the attended session, and no Cratekit
+job running and `rekordbox` and `rekordboxAgent` both confirmed gone before
+every verb. A sitting may take several attended cards, each recorded in its
+own rows.
 
 ## Sitting 1, 2026-09-16
 
@@ -1392,14 +1399,17 @@ the mirror's unmatched rows are a tie between agreeing releases the matcher
 refuses (`s42-the-mirror-leaves...`); the backfill opens its gate with nothing
 to place where the split ends NO_OP (`s42-the-backfill-asks...`).
 
-## What blocks a full sync cycle, stated plainly
+## What blocks retiring DJ_tools, stated plainly
 
-**Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
-routing tree is database native and adoption has written it. Sitting 10's
-finding stands for every tree still on the xml bridge, `inbox` and
-`record_labels`: an import lands a playlist at the root (R-687) and sets
-attributes only on rows it creates (R-688). Line 4 of #178, the full sync
-cycle, is next and is attended.
+**As of sitting 86 (2026-11-06).** The full sync cycle has run on Cratekit
+alone: #178 line 4, at sittings 23 and 32, and `crate sync land` has landed
+passes natively since sitting 51. The routing tree has been database native
+since sitting 15 (#212) and `inbox` since sitting 31. Record Labels stays on
+the xml bridge in the registry, and a native landing appends to it (U156).
+Sitting 10's finding stands for a tree still on the bridge: an import lands a
+playlist at the root (R-687) and sets attributes only on rows it creates
+(R-688). U29 waits on #178 lines 8 and 9, art on a real player and a bare
+metal restore onto a spare drive, both the author's.
 
 ## Sitting 43, 2026-10-16, the operator session, U153's live colour backfill
 
@@ -2364,52 +2374,65 @@ From v0.12.0, which carries U225, U226, U227, U224, R-1360 and R-1349. Both back
 
 **Met:** **A86 (#509)**: the playlist made on the account in GIG READY came to rekordbox in its order, a second sync plans nothing, and both readings are sitting 84's. **A99 (#559)**: the ten track readings are sitting 84's, Classic Soul Intro stands in rekordbox's order on the account and the sync plans no order for it or for Phil Grenada, and the macOS battery passed. **A104 (#572)**: one reading, nothing lagging, exactly the two tracks gone, battery passed. **A66 (#435)**: the next landing's twins read back. **Not met:** A88 (#514), the quiet sync's calls, and A91 (#521), a quiet sync's per phase counts (this sync's: plan 774, each answer 0, write 4,142 and 1,652 against a forecast of 4,142, not finished), now waiting on #595; A90 (#518) waiting on #594. **Left:** 32 account playlists part way to rekordbox's order (every track present), which the next sync pair finishes from rekordbox's side; job `40b0` still queued. **Calls:** about 11,000 for the sitting (521,004 to about 531,000), no command over 5,000.
 
+## Sitting 87, 2026-11-07, the attended session on v0.13.1, with desktop control: A109, A112, A106, A107, A110, A105 and A111 met, the full sync pair held on #623, A90's queued download filed
+
+From v0.13.1 (`442eb2b2`), which carries U231, U229, U230, R-1394, R-1404, R-1411 and U232 on top of v0.12.0. rekordbox and rekordboxAgent were open from 02:44Z (not this session's) and the sitting waited until they were closed at 14:30Z. Both backup ages four and three days; the acknowledgment minted as `session` at 15:30Z, valid to 03:30Z. No Cratekit job running and `rekordbox` and `rekordboxAgent` gone before every verb. One short rekordbox visit, for A112's reorder. Every write rehearsed on a disposable copy with library state redirected, each live digest equal to its rehearsal's unless noted. **macOS battery on `442eb2b2` with rekordbox closed: ruff clean, scan clean; three suite runs, the first with one failure that passed alone straight after (filed as #626, U235), the second and third with none, the third 17,479 passed, 1 skipped, exit 0.**
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The full plan, rehearsal | `crate --calls 1500 sync pair` on the copy, run `2026-11-07T15:30:48Z-8d99`, 771 calls | Digest `bef586206c99b535`, count 942, 182 pairs: 12 account `order`, 1 account add and 1 remove (NY_Style), 3 rekordbox adds, 27 `ambiguous`, 198 `unmatched`, 585 `on-hold`, **no `acquire`**, and **5 rekordbox `order`**. All 32 of sitting 86's stopped orders read "finishes run ...fda8's write". Forecast: "about 785, 560 to check the lists and 225 to write". | rehearsed |
+| A finding | the 5 rekordbox `order` items | Progressive August House, Openers & Closers, Grenada 2025 Lisa Sunset, Deep House Warmup Chill Set and EP Grenada Reprise, all five among sitting 86's 11 stopped "neither order" pairs, read "whose additions and removals are read as that write's; the account was reordered since, so its order is read as yours". Nobody reordered them: rekordbox's order equals its base on all five, and the account reads, stable 3 s apart, are the stopped write's front moves then the old order (Progressive August House `11, x, x, 16, 17, x, 0, 2, 3, 5 ...` in rekordbox's numbering). The write would have put that scramble into four GIG READY sets. **Filed as #623 (U234), P1**; A108 (#592), A88 (#514) and A91 (#521) now depend on it, and no full live sync pair was run. | finding |
+| A109, Welcoming vibe | single pair, rehearsal and live run `2026-11-07T15:35:36Z-4d50`, digest `23ace0912f8a1913` | **Three rekordbox `add` items and no `acquire`**: MAGNUM `Evolution`, Laurent Bardainne `Porsche 944`, Pachyman `Sunset Sound`, each the row its landing through `Daily 11-5-26` made. The write: `rekordbox_added` 3, **`queued_jobs` empty**, 34 calls. Read back on a fresh copy: the three at 7 to 9 of nine. | met |
+| A112, the reorder | rekordbox: `Disco Funky House` (`DOWNLOADED Disco Funky House`, outside GIG READY) | Before: SCHEINY `Ain't Nobody`, Murphy's Law `Ain't No Other Man`, Block & Crown `Let's Go Dancin'`, Rex The Dog `Change This Pain`, both sides equal. After: Rex The Dog moved first. | done |
+| A112, two syncs | single pair twice, runs `2026-11-07T15:36:05Z-27e6` and `...15:36:25Z-fa5b`, both digest `930e89c6a34bda28`, count 0 | Each "order follows rekordbox's; the account's order is kept only for pairs under GIG READY, so it is left as it is there", no order item on either side, **`no_op` with `sync-pair-nothing`**, 34 calls each. Read back after both: Rex The Dog, SCHEINY, Murphy's Law, Block & Crown. | met |
+| A110 and A108, the stopped orders | 12 single pairs, each rehearsed with an equal digest: Melodic_Journey, Melodic/Prog Bequia 25, duncan_bday, sxm_lisa_sub&slices, SP Happy House, Happy Candy Reprise, SP Prog Melodic Energy Down, med_energy_clubnight, sxm_lisa_dd_open, bequia_lisa_spring, Lisa_open_energy, NY_Style | **Each finished from the leading side with an account `order` only, 1 to 19 moves sent blind, and each `settle` reading `done` on its first reading after 30 s, `window_lagged` 0, nothing `pending`.** Write calls 12 to 51 against forecasts of 8 to 44 (one extra listing and the settle read each). Melodic_Journey read back in rekordbox's order, and its second sync (`2026-11-07T15:38:00Z-27a7`, digest `4d18c72f5b987a40`) was `no_op`, 34 calls. NY_Style's first write (`...15:41:39Z-9b3a`) added Har.lem `Apolo Mission` and then **refused `outbound-remove-refused`** ("declares 17 ... 18 could be read"); for 25 minutes after, the `/tracks` read declared 18 and returned 17, leaving out the added track that `/items` listed as available. A fresh plan (`...16:13:12Z-5e46`, digest `411fee42336ee727`, `Think` already gone) finished it, 5 moves, settled on the first reading. **12 of the 32 finished; the 5 misread wait on #623; the other 15 plan no item.** | measured |
+| A106 and A107, the unpaged read | the client on `DOWNLOADED Dutch Vibez`, the longest pair | **`len(p.tracks())` 543 beside `num_tracks` 543**, not capped at a hundred; the paged read the same order. The version tag after `tracks()` and after `tracks(offset=99)` equal, `"1783082014195"`. `Forgotten Ghosts` moved from 151 to 121 on the account (the client's `move_by_index`, 16:14:16Z): **served at 121 by `tracks(offset=99)` on a fresh playlist 17 s later**, with a new tag `"1794068056842"` on both reads. | met |
+| A107, the sync | single pair, run `2026-11-07T16:15:38Z-4abc`, digest `17672c34c1097fd0` | Not left out; one rekordbox `order` (the account's move, outside GIG READY), 6 `ambiguous` as before; `read_backs` empty (no account write). rekordbox read back with `Forgotten Ghosts` after `Magnolia`. **Undone**: moved back on the account, synced (`...16:16:44Z-a7e9`, digest `3b3e498f4f9abfce`), and both sides read the same order again, 529 linked tracks in sequence. | met, undone |
+| A105 | `crate doctor` | `deadca7.push`: "DEADCA7 is installed here and has recorded no push into rekordbox's database", naming `/Applications/DEADCA7.app` and the `deadcatalog` state folder, the push backup folder "unconfirmed until a push is read". | met |
+| A90, the filing | `organize --only mirror-edits --only mirror-downloads --only mirror` | The first copy rehearsal still read "rekordbox's place stands" for `Porsche 944`: the copy script left the job queue out of the copy's installation state, U230's own record's case. With the job queue copied, rehearsal and live run `2026-11-07T16:22:24Z-49b9` both **digest `cda13afdab6bf44a`: `Porsche 944` moved from Afro House High to Jazz Med**, "landed for the account's edit: its landing filed it in Afro House High by its own tags, which is no change made in rekordbox". Both gates answered as `session`; the account gate mirrored 41 adds and two new INBOX batches. Job `40b0` then **cancelled**, since the next pass would have downloaded the filed track again. A further organize on a fresh copy: mirror-edits and mirror-downloads both nothing. The Tidal hand edits A90 also asks for are not made. | partly |
+| A94 | `ps -axo stat` | No zombies up; nothing to prove. | not met |
+
+**Met:** **A109 (#601)**, **A112 (#615)**, **A106 (#586)**, **A107 (#589)**, **A110 (#605)**: twelve settle readings `done` at 30 s, none pending, so no pair needed the minute by minute read; the account served a move 17 s after it; Melodic_Journey's second sync `no_op` at 34 calls. **A105 (#581)**, and **A111 (#611)**: the closed suite green on the third run as on the release's open run, the first run's one failure filed as #626. **Not met:** A108 (#592), A88 (#514) and A91 (#521), held on #623; A90 (#518), the hand edits; A94 (#528). **Left:** the 5 misread stopped orders as they are on the account, rekordbox untouched and leading; 15 stopped pairs that plan nothing. **Calls:** about 6,300 for the sitting, no command over 1,500.
+
 ## Next sitting
 
-**The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
-He stopped the root step and is deleting the ten ` LIBRARY` copies and
-filing the rest himself. Before the next account step: read the root back
-first, since it will not match any plan written here. Owed from sitting 41,
-in this order: R-1017 landed, then U140's Signal rename live
-(`crate export set --rename 2026-10-10T14:59:24Z-a4b0`, read back as
-`3_25_26 Public Service NYC Live at Signal 2-26`, `export set` planning no
-twin), then `organize --only sets` archiving it into `Downloaded Sets 2026`
-(read back 19 plus 1; Vonking is on the account under no name and in no
-ledger map), then `organize --only root` twice over whatever he left. Budget
-each by its listings (the trap above). The pairing candidates for U130 are
-listed in sitting 41; Phillip names the pairs, and nothing is marked until he
-does. R-1016 is the card that makes any of this fast.
+**Open attended cards, as of 2026-11-07.** A88 (#514) and A91 (#521), the
+quiet sync's calls, and A108 (#592), which finishes the 32 account orders
+sitting 86 left part way, wait on U234 (#623). Every card the rest wait on
+has closed, so each is ready for a sitting: A90 (#518), the filing after
+U230; A94 (#528); A95 (#535); A105 (#581); A106 (#586); A107 (#589); A109
+(#601); A110 (#605); A111 (#611), the macOS battery with rekordbox open; and
+A112 (#615). Four
+more wait on a circumstance rather than a card: A56 (#414), whose retirement
+half waits on the first batch due to rotate, on 2026-11-08 at the earliest;
+A57 (#415), a DEADCA7 push onto a library copy; A72 (#446), new Bandcamp
+purchases from a followed label; and A76 (#459), a full build of a large
+label. A33 (#293) is a brainstorm, and A5 (#178) keeps lines 8 and 9 above.
 
-**The INBOX account playlists, Soul, Hip-Hop and Jazz are current as of
-sitting 39 (2026-10-13), unattended.** A35 and A38 closed; the Signal set is
-named for its posted day in rekordbox, the account half waits on U140 (#317);
-the account's root playlists are filed by U131's rule (U137's first live run). As of sitting 38 before it,
-the favourites, the vocal tags and the taxonomy were current. A34, A36 and A37 closed on equal digests; A35 (#301)
-waits on U134, the refill verb. Owed from that sitting: A38, letting Soul and
-Hip-Hop into the live taxonomy by hand and moving their tracks; the Vonking
-set's account playlist once R-949 or U136 names the day; U136's attended
-rename of the two Public Service playlists to their posted dates. U126's
-live proof still stands as owed: the first native landing on the rebuilt
-copy, one landed row dragged to a deck and recorded here, and
-`link-majority-unclear` on its gate is R-969.
+**The account root is Phillip's by hand since sitting 41 (2026-10-14)**, and
+he declined the root step's report at sitting 48. Read the root back before
+any account step, since it will not match a plan written here.
+
+Owed from sittings 38 and 39: the Vonking set's account playlist, whose job
+carries no `upload_date` and which is in no ledger map. U126's live proof
+still stands as owed: one native landed row dragged to a deck and recorded
+here; `link-majority-unclear` on its gate is R-969.
 
 The genre work's last item, `crate delete review` over the 36 tracks removed
 at sitting 29, closed at sitting 45 another way: the rows are gone outright,
 so the pass cannot offer them (the residual filed there), and the files went
 to the volume's Trash by Phillip's hand as `Removed_from_collection`.
 
-Owed by the author: the 2,416 label releases in review and a look at the
-339 held; a genre on the rows that still carry none, 1,308 by adoption's
-count, 637 of them with no genre on the file either; the 20 label tracks
-held as other versions.
+Owed by the author: the 8 label releases left in review at sitting 31 and a
+look at the 339 held; a genre on the rows that still carry none, 1,308 by
+adoption's count at sitting 39, with 672 files carrying none at sitting 79;
+the 20 label tracks held as other versions.
 
-Owed, the author's: the first `crate label sync` run, label by label, and its
-go; one label built with `crate label playlists` and read in the web player,
-which label being his call given R-872 and R-836; one label's created year
-playlists pruned with `crate label prune` and read back, which closes R-836
-and says whether R-894 occurs; the set `tech_house_hits -
-Phil`, on the account since sitting 30, archived after its download; the
-DJ_tools docs commit #252's task left unpushed.
+Owed, the author's: one label's created year playlists pruned with `crate
+label prune` and read back, which says whether R-894 occurs; the DJ_tools
+docs commit #252's task left unpushed. The first `crate label sync` and its
+go ran at sitting 31, and label playlists were built and read in the web
+player from sitting 30.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and

@@ -46494,6 +46494,8 @@ container. Ledger only.
 
 **Closes when:** Phillip answers the second question on #608; keeping it closes this as decided. Ledger only.
 
+**Closed 2026-11-07, R-1416 (#620).** Phillip answered `608-outside-order-2` against the recommendation: the first sync of a pair whose account order is not kept keeps rekordbox's order. `pair_merge.merge` takes `order_kept` from `plan_pair`, and such a first sync, with no stopped write and rekordbox holding a track, is led by rekordbox; R-1376's root test changes its assertion by that decision. The record is `docs/restart/r1416.md`.
+
 ---
 
 ## R-1417. The pair verb's tests of the agreed order decide their stand in's refusal by the adapter's own rule
@@ -46682,3 +46684,63 @@ The last three came after `main` was merged in at c2e3d056, on runs that measure
 **Measured cost.** Driven by round one's review: pair A listing `t40` and pair B listing `t41`, both coded `USZZZ2600040`, queued two jobs in one command with no awaiting row. Whether the second job downloads a second copy or resolves owned by the first file's ISRC when it runs was not driven. `main` behaves the same.
 
 **Closes when:** the plan also keys what is asked and held by ISRC, as U208 aliases releases by ISRC within one pair. Ledger only until a second copy of one recording is seen in the library.
+
+---
+
+## R-1427. The docs guard's readers miss five shapes of drift and would refuse one true shape
+
+**Found:** at the review of #622, U233, 2026-11-07.
+
+**The mechanism.** `tests/test_docs_current.py` reads the guide and the README with regular expressions, and Fable's round one drove five shapes past them, each on doctored text. A verb group written alone as a command (`crate label --help`) is reported as an unknown verb though argparse accepts it, so the first true line of that shape reddens the guard. A flag in a code span of its own (`` `--report` writes nothing ``) is judged against no verb. One stray backtick in a paragraph re-pairs every later span, so a mention after it can vanish unreported. `dotted_keys` matches `[a-z_]+\.[a-z_]+`, so a hyphenated doctor check (`provider.isrc-cache`) or a misspelling of one is never read. And a verb is "named" by any span opening with its words, so a verb's section can be deleted while one passing mention keeps the check green.
+
+**Measured cost.** None today: the reviewer drove every candidate line in both docs, and neither carries any of the five shapes (zero odd parity paragraphs, the one stray flag span is `--yes`, which the guide says does not exist, no group alone as a command, no hyphenated key misspelt). A guard that misses a drift is a guard that kills nothing for that drift, maintainer facing.
+
+**Closes when:** the readers accept a group alone followed by a help flag, judge a lone flag span against the verb its sentence names or the union of all flags, count backticks per paragraph, read hyphenated keys, and, if wanted, require a verb's `crate VERB` form somewhere. Ledger only.
+
+---
+
+## R-1428. The config key analysis.energy_calibration is accepted and read by no verb
+
+**Found:** at the docs sweep of #622, U233, 2026-11-07.
+
+**The mechanism.** `AnalysisConfig.energy_calibration` in `src/cratekit/core/config.py` defaults to `"auto"`, round trips through the file, and is fingerprinted with every queued job, but nothing outside `config.py` reads it (a grep of `src/cratekit` for `.energy_calibration` finds no reader) and the validator checks no value of it. The energy calibration a verb uses is the library state file `energy_calibration.json`, chosen by `analyze calibrate`, never by this key.
+
+**Measured cost.** None driven. A person who sets the key changes nothing and is told nothing; `docs/GUIDE.md`'s settings table now says no verb reads it, so the guide does not mislead.
+
+**Closes when:** the key is read by the analysis verbs or removed from the schema with its migration. Ledger only: a wording of the settings table already tells the truth, and nothing is lost.
+
+---
+
+## R-1429. README's install commands name a release tag that no release step updates
+
+**Found:** at the docs sweep of #622, U233, 2026-11-07.
+
+**The mechanism.** `README.md`'s install and extras commands spell a literal tag (`@v0.13.1` since U233). `scripts/release.py cut` writes the new version into `pyproject.toml` and `src/cratekit/__init__.py` only, and the release skill names no README step, so every release leaves the README one tag behind. U233 found it at `v0.11.1` with `v0.13.0` released, and corrected it to `v0.13.0` three minutes after `v0.13.1` was cut, so the branch corrected it again before it merged.
+
+**Measured cost.** A DJ copying the command installs an older release than the newest; the line after it says to use the newest tag, and `crate doctor`'s `install.release` check names the newer one, so nothing is lost and the upgrade is one command.
+
+**Closes when:** the release step rewrites the README tag with the version, or the README stops naming one. Ledger only: a count in a document.
+
+---
+
+## R-1430. A landed twin's first pair sync keeps the twin's landing order over a Tidal reorder made since the landing
+
+**Found:** at the review of #620, R-1416, round one, 2026-11-07.
+
+**The mechanism.** A landing marks each twin's pair with no snapshot (`sync/twins.py`, `pair_landed`), so the pair's next `sync pair` is a first sync. The twin sits under `Custom Playlists <year>`, outside GIG READY, so since R-1416 that first sync is led by rekordbox: the twin keeps the order the landing wrote it in, which was the account's order at the landing. A Tidal reorder made between the landing and that first sync is therefore not taken into the twin, where before R-1416 it was. A short backfill of `sync twins` that records no snapshot reaches the same branch.
+
+**Measured cost.** Driven by the round one reviewer through the dispatcher on the disposable database: a twin of 1, 2, 3, the account reordered to 3, 1, 2 after the landing; on main the first sync wrote the twin 3, 1, 2, on the branch it stays 1, 2, 3, the gate saying the order follows rekordbox's, so nothing false is said and nothing is lost. A later Tidal reorder still brings Tidal's whole order (608-outside-order-1). The brief's out of scope line leaves adopted and discovered pairs to the rule as it falls out; the session kept the rule general, since keeping rekordbox's order writes less into rekordbox.
+
+**Closes when:** Phillip says whether a twin's first sync should follow the account instead (a `twin` check beside `order_kept` in `plan_pair`), or that it stands. Ledger only.
+
+---
+
+## R-1431. A pair's first sync over a short account listing plans an account addition of a withheld track every sync and never records a snapshot
+
+**Found:** at the review of #620, R-1416, round one, 2026-11-07.
+
+**The mechanism.** On a first sync the account listing comes back short when the provider withholds a track it holds. The withheld track is held in rekordbox, so the merge plans it as an account addition, and since a short listing records no snapshot the pair stays a first sync and plans the same addition at the next run.
+
+**Measured cost.** Driven by the round one reviewer on the fake account: a hand pair at the root with `t2` withheld and rekordbox 3, 1, 2 plans `account add t2` on every run, each run says `sync-pair-written`, and `held.first` stays true. The items are identical on main at 5f08ae57, so it predates R-1416. On a real provider that is an addition of a track the playlist already holds; measured only on the fake, which drops the duplicate, so the real provider's answer is unmeasured.
+
+**Closes when:** a first sync over a short listing plans no account addition of a track the account counts but does not serve, driven on the fake with a provider that keeps duplicates. Ledger only until the real provider's answer is measured.
