@@ -547,8 +547,14 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
 - A fresh `sync pair` after a write that stopped part way through putting a
   Tidal playlist in order finishes that order, from the side that led it,
   rather than reading its half done order as your edit. The gate names the
-  run it finishes. A move you made on Tidal since still leads, and so does a
-  reorder in rekordbox since. It remembers that stop however long you wait
+  run it finishes. A Tidal order that no part of those moves leaves is read
+  as Tidal's half done state rather than your edit too, so rekordbox's order
+  stands and, under GIG READY, the rest of the order is sent to Tidal from
+  that reading; the gate says so. A move you make on Tidal after a sync has
+  read the stopped playlist still leads, since that sync kept its reading
+  and the next one sees the order change; one made before any sync read it
+  cannot be told from the half done order and is put back. A reorder in
+  rekordbox since leads. It remembers that stop however long you wait
   before the next sync, until a sync finishes the pair, and also when the
   pair's rekordbox playlist was deleted and you pair the Tidal playlist again
   with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`: that first
