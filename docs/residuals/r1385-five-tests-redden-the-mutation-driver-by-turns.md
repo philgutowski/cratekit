@@ -6,7 +6,7 @@ issue: no
 
 **The mechanism.** Not traced. `scripts/mutate.py` runs the full suite under `-n auto` for its baseline and its null control, and on the container that built R-1385 one test failed in most runs, a different one each time, none in the card's area, each green when run alone straight after. The driver rightly refuses such a batch, so a table needs as many runs as it takes for one to come up clean.
 
-**Measured cost.** Seven driver runs on 2026-11-07, three valid. The deaths, each once:
+**Measured cost.** Eight driver runs finished on 2026-11-07, three valid, and one more was lost to a container restart. The deaths, each once:
 `tests/test_sync_land.py::test_a_fresh_pass_never_reuses_another_lists_download_job` (passed alone twice),
 `tests/test_sync_pair_stopped_order.py::test_a_stopped_write_a_fresh_sync_finished_is_left_behind_by_the_snapshot` (alone three times and with its file),
 `tests/test_sync_bandcamp_native.py::test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label` (alone twice),
