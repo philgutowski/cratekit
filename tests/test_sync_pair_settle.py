@@ -1253,13 +1253,235 @@ def test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_pl
     for _ in range(2):
         code, envelope = sync()
         assert code == int(ExitCode.OK), envelope
-    # The readable tracks in rekordbox's order; t9 is kept once, where the
-    # finish's own plan places an unread track, behind the one it now
-    # follows (residual r1418-a).
-    finished = world.account.playlists[account_id]
-    assert [one for one in finished if one != "t9"] == _ids("2", "3", "4", "1", "5")
-    assert finished.count("t9") == 1
+    # The readable tracks in rekordbox's order, and t9 where the stopped
+    # write was taking it, behind t4, not in front where its one move left
+    # it (R-1432).
+    assert world.account.playlists[account_id] == [*_ids("2", "3", "4"), "t9", *_ids("1", "5")]
     assert world.held(opener) == ["2", "3", "4", "1", "5"]
+
+
+def _finished_after_one_move(
+    world, monkeypatch, account_id: str, envelopes: list[dict] | None = None
+) -> list[str]:
+    """Stop the account order after its first move, then sync until the stopped write finishes.
+
+    Answers the playlist as the stopped move left it, and keeps each later
+    sync's answer in ``envelopes`` when given. The provider serves the
+    account as it stands, so the pending order is read at once and the
+    readings agree on the next sync.
+    """
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    for _ in range(2):
+        code, envelope = _synced_keeping_gates(envelopes)
+        assert code == int(ExitCode.OK), envelope
+        if envelopes is not None:
+            envelopes.append(envelope)
+    return reached
+
+
+def _synced_keeping_gates(envelopes: list[dict] | None):
+    """``sync()``, each gate answered apply, keeping every envelope it was asked at in ``envelopes``."""
+    run_id = None
+    for _ in range(3):
+        code, envelope = drive([*(["--run", run_id] if run_id else []), *VERB])
+        if code != int(ExitCode.DECISION_REQUIRED):
+            return code, envelope
+        if envelopes is not None:
+            envelopes.append(envelope)
+        run_id = envelope["run_id"]
+        gate = envelope["cause"]["detail"]["gate"]
+        decided, said = drive(["run", "decide", run_id, gate, "apply", "--actor", "a-person"])
+        assert decided == int(ExitCode.OK), said
+    return code, envelope
+
+
+def test_a_finish_puts_an_unread_track_the_stopped_move_put_in_front_where_the_write_was_taking_it(
+    world, owed, cfg, monkeypatch
+):
+    """R-1432: the stopped write's first move put t9, which the provider cannot read, in front.
+
+    The account lists t1 to t4 and then t9 with no title, and rekordbox's
+    2, 3, 4, 1 asks 2, 3, 4, 9, 1. The finish reads every readable track as
+    the write would have left it, and places t9 by that write's own target,
+    behind t4, rather than behind the track the stopped move left it after,
+    which is none, so the front.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    envelopes: list[dict] = []
+    reached = _finished_after_one_move(world, monkeypatch, account_id, envelopes)
+    assert reached == ["t9", *_ids("1", "2", "3", "4")]
+    assert world.account.playlists[account_id] == [*_ids("2", "3", "4"), "t9", "t1"]
+    # The gate says so, rather than that the unread track stays where it is
+    # (the review's round one).
+    finishing = [one for one in envelopes if pair_cli.FINISHING in _codes(one)]
+    assert finishing, envelopes
+    said = _said(finishing[-1], pair_cli.UNREAD)
+    assert (
+        "a pair finishing a stopped order puts each where that order was taking it, "
+        "or else behind the track it follows" in said
+    )
+    shown = [
+        str(fact)
+        for one in envelopes
+        if one.get("cause")
+        for fact in one["cause"]["detail"]["shown"].values()
+    ]
+    assert any(
+        "the account's order puts each where the stopped order was taking it" in one
+        for one in shown
+    ), shown
+    assert world.held(opener) == ["2", "3", "4", "1"]
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == (*_ids("2", "3", "4"), "t9", "t1")
+
+
+def test_a_finish_keeps_an_unread_track_the_stopped_write_did_not_move_in_its_place(
+    world, owed, cfg, monkeypatch
+):
+    """R-1432: an unread track at the tail the stopped write kept stays at the tail.
+
+    Rekordbox's 1, 3, 2, 4 asks 1, 3, 2, 4, 9, whose moves are t3 then t1,
+    so t9 is never moved; the write stops after t3's, and the finish leaves
+    t9 behind t4 as both the listing and the target place it.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "1", "3", "2", "4")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    reached = _finished_after_one_move(world, monkeypatch, account_id)
+    assert reached == [*_ids("3", "1", "2", "4"), "t9"]
+    assert world.account.playlists[account_id] == [*_ids("1", "3", "2", "4"), "t9"]
+    assert world.held(opener) == ["1", "3", "2", "4"]
+
+
+def test_an_unread_track_taken_off_the_account_after_the_stop_is_never_put_back(
+    world, owed, cfg, monkeypatch
+):
+    """R-1432, the review's round one: the stopped write's target names t9, the account no longer lists it.
+
+    The finish places only what the account lists, so t9 is neither in the
+    order it asks nor in the snapshot it records.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert world.account.playlists[account_id] == ["t9", *_ids("1", "2", "3", "4")]
+    asked_before = len(world.account.ordered)
+    world.account.playlists[account_id].remove("t9")
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids("2", "3", "4", "1")
+    asked = world.account.ordered[asked_before:]
+    assert asked and all("t9" not in order for _playlist, order in asked), asked
+    assert world.held(opener) == ["2", "3", "4", "1"]
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == tuple(_ids("2", "3", "4", "1"))
+
+
+def _stopped_after_t9s_move(world, owed, monkeypatch, *, rekordbox: str = "apply"):
+    """R-1418's stop: t9 untitled behind t4, rekordbox's 2, 3, 4, 1, a stop after t9's move to the front."""
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync(rekordbox=rekordbox)
+    assert code != int(ExitCode.OK), stopped
+    assert world.account.playlists[account_id] == ["t9", *_ids("1", "2", "3", "4")]
+    return opener, account_id
+
+
+def test_a_hand_move_of_the_unread_track_read_first_after_the_stop_is_finished_by_the_target(
+    world, owed, cfg, monkeypatch
+):
+    """R-1432 with U234: an order off the stopped write's path is its partial state until readings settle.
+
+    The person drags t9 between t2 and t3 before any sync reads the stop, so
+    the first reading is off the path and nothing kept says a person moved
+    it: the stopped write is finished, t9 where it was taking it, and
+    rekordbox keeps its order.
+    """
+    opener, account_id = _stopped_after_t9s_move(world, owed, monkeypatch)
+    world.account.playlists[account_id] = [*_ids("1", "2"), "t9", *_ids("3", "4")]
+    envelopes: list[dict] = []
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        envelopes.append(envelope)
+    assert any(pair_cli.FINISHING in _codes(one) for one in envelopes), envelopes
+    assert world.held(opener) == ["2", "3", "4", "1"]
+    assert world.account.playlists[account_id] == [*_ids("2", "3", "4"), "t9", "t1"]
+
+
+def test_a_reorder_settled_readings_show_keeps_the_unread_track_where_the_person_put_it(
+    world, owed, cfg, monkeypatch
+):
+    """R-1432, the review's round one, with U234: only a finish places an unread track by the target.
+
+    The stop skips rekordbox, so nothing of it is folded and rekordbox's
+    2, 3, 4, 1 still leads against the old base. The person drags t9
+    between t2 and t3, two plans read that settled, and the person then
+    drags it between t3 and t4: settled readings show a reorder, so the
+    plan finishes nothing and t9 keeps the place the person gave it, behind
+    t3, rather than the one the stopped write was taking it to, behind t4.
+    """
+    opener, account_id = _stopped_after_t9s_move(world, owed, monkeypatch, rekordbox="skip")
+    world.account.playlists[account_id] = [*_ids("1", "2"), "t9", *_ids("3", "4")]
+    # The pending stop is read first, then its reading is kept and settled.
+    for _ in range(4):
+        plan_only()
+        held = pairs.PairStore(cfg).get(account_id)
+        if held is not None and held.stop_seen is not None and held.stop_seen.settled:
+            break
+    assert held is not None and held.stop_seen is not None and held.stop_seen.settled, held
+    world.account.playlists[account_id] = [*_ids("1", "2", "3"), "t9", "t4"]
+    envelopes: list[dict] = []
+    # Held while the change settles, then written: rekordbox still leads.
+    for left_out in (True, True, False):
+        code, envelope = _synced_keeping_gates(envelopes)
+        assert code == int(ExitCode.OK), envelope
+        envelopes.append(envelope)
+        assert (pair_cli.LEFT_OUT in _codes(envelope)) is left_out, envelope
+    assert world.held(opener) == ["2", "3", "4", "1"]
+    assert world.account.playlists[account_id] == [*_ids("2", "3"), "t9", *_ids("4", "1")], (
+        "the person's move of t9 was overridden by the stopped write's target"
+    )
+    # Nor does the gate say so (the review's round two): no finish, no clause.
+    warned = [_said(one, pair_cli.UNREAD) for one in envelopes if pair_cli.UNREAD in _codes(one)]
+    assert warned, envelopes
+    assert not any("finishing a stopped order" in one for one in warned), warned
+    shown = [
+        str(fact)
+        for one in envelopes
+        if one.get("cause")
+        for fact in one["cause"]["detail"]["shown"].values()
+    ]
+    assert any("with no title or no artist" in one for one in shown), shown
+    assert not any("where the stopped order was taking it" in one for one in shown), shown
+
+
+def test_a_finish_with_no_unread_track_is_put_in_rekordboxs_order(world, owed, cfg, monkeypatch):
+    """R-1432: with every track read, the finish leaves the account in rekordbox's order, as before."""
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    reached = _finished_after_one_move(world, monkeypatch, account_id)
+    assert reached == _ids("4", "1", "2", "3")
+    assert world.account.playlists[account_id] == _ids("2", "3", "4", "1")
+    assert world.held(opener) == ["2", "3", "4", "1"]
 
 
 class _InMemorySteps(pair_cli.PairSteps):
@@ -1332,3 +1554,76 @@ def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
     assert asked == [("acct", ("t6", "t5"), None)]
     assert after == ("t6", "t5")
     assert done.order_refused is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1432. Where a finish puts an unread track, read alone
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize(
+    ("ordered", "listed", "expected"),
+    [
+        (["t2", "t1"], ["t9", "t1", "t2"], ("t9", "t2", "t1")),
+        (["t2", "t1"], ["t1", "t9", "t2"], ("t2", "t1", "t9")),
+        (["t2", "t1"], ["t1", "t2", "t9"], ("t2", "t9", "t1")),
+        (["t2", "t1"], ["t1", "t2"], ("t2", "t1")),
+    ],
+)
+def test_with_no_stopped_write_an_unread_track_follows_the_one_listed_before_it(
+    ordered, listed, expected
+):
+    """R-1264's rule, unchanged where no write stopped: behind the track listed before it."""
+    assert pair_cli._with_unread_placed(ordered, listed) == expected
+    assert pair_cli._with_unread_placed(ordered, listed, ()) == expected
+
+
+@pytest.mark.parametrize(
+    ("ordered", "listed", "target", "expected"),
+    [
+        # The brief's: the stopped move put t9 in front, the target puts it behind t4.
+        (
+            ["t2", "t3", "t4", "t1", "t5"],
+            ["t9", "t1", "t2", "t3", "t4", "t5"],
+            ["t2", "t3", "t4", "t9", "t1"],
+            ("t2", "t3", "t4", "t9", "t1", "t5"),
+        ),
+        # Two unread ids the target names, in either order the moves left them.
+        (
+            ["t2", "t1"],
+            ["u2", "u1", "t1", "t2"],
+            ["t2", "u1", "u2", "t1"],
+            ("t2", "u1", "u2", "t1"),
+        ),
+        (
+            ["t2", "t1"],
+            ["u1", "u2", "t1", "t2"],
+            ["t2", "u1", "u2", "t1"],
+            ("t2", "u1", "u2", "t1"),
+        ),
+        # The track the target puts before it is gone: behind the one before that.
+        (
+            ["t2", "t1"],
+            ["t9", "t1", "t2"],
+            ["t2", "t3", "t9", "t1"],
+            ("t2", "t9", "t1"),
+        ),
+        # First in the target: the front.
+        (["t2", "t1"], ["t1", "t2", "t9"], ["t9", "t2", "t1"], ("t9", "t2", "t1")),
+        # An unread id listed since, which the target does not name, follows
+        # the track listed before it; the one it names follows the target.
+        (
+            ["t2", "t1"],
+            ["t9", "t8", "t1", "t2"],
+            ["t2", "t9", "t1"],
+            ("t2", "t9", "t8", "t1"),
+        ),
+        # An unread id of the target the playlist no longer holds is never put back.
+        (["t2", "t1"], ["t1", "t2"], ["t2", "t9", "t1"], ("t2", "t1")),
+    ],
+)
+def test_at_a_finish_an_unread_track_is_placed_by_the_stopped_writes_target(
+    ordered, listed, target, expected
+):
+    """R-1432: each unread id the target names stands behind the track the target puts before it."""
+    assert pair_cli._with_unread_placed(ordered, listed, target) == expected

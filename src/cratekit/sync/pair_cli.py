@@ -208,8 +208,10 @@ addition and undo it (the review's round one). The account's order is read and
 written whole too: each key sits at its first release's place in the listing,
 and a reorder puts each unread track back behind the track listed before it,
 since an order withheld while the snapshot moved let the account lead the next
-sync and undo a rekordbox reorder (the review's round two). The gate names
-each. A listing the reader cannot use at all, a row carrying no provider id,
+sync and undo a rekordbox reorder (the review's round two). At a finish of a
+stopped order (R-1432) each unread track the stopped write's target names goes
+behind the track that target puts before it instead, since the listing shows
+where an interrupted move left it. The gate names each. A listing the reader cannot use at all, a row carrying no provider id,
 leaves its pair out of a sync of every pair, named, and refuses a pair named
 alone.
 
@@ -1827,8 +1829,13 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         order_unkept = wanted_keys != firsts and not order_kept
         if wanted_keys != firsts and not order_unkept:
             # A ROW'S RELEASES MOVE TOGETHER, in the order the account holds them.
+            # R-1432. A FINISH PLACES AN UNREAD TRACK WHERE THE STOPPED WRITE
+            # WAS TAKING IT, as it reads every readable track, and not where
+            # an interrupted move left it.
             account_order = _with_unread_placed(
-                [one for key in wanted_keys for one in after if alias(one) == key], after
+                [one for key in wanted_keys for one in after if alias(one) == key],
+                after,
+                stopped_write.target if stopped is not None and stopped_write is not None else (),
             )
             account_before = tuple(listed_order or account_now)
 
@@ -2071,25 +2078,44 @@ def _keeps_order(cfg: config.Config, rekordbox: playlist_pair.Playlist, home: An
     return len(path) > 1 and path[0] == ORDER_FOLDER
 
 
-def _with_unread_placed(ordered: list[str], listed: Sequence[str]) -> tuple[str, ...]:
+def _with_unread_placed(
+    ordered: list[str], listed: Sequence[str], target: Sequence[str] = ()
+) -> tuple[str, ...]:
     """``ordered`` with every id of ``listed`` it lacks put back after its neighbour (R-1264).
 
     An unread track is never moved by the merge, which cannot read it, so it
     keeps its place behind the track the account listed before it, or the
     front when none was. The order is then the whole playlist, and an account
     reorder written from it leaves no track for the provider to place.
+
+    R-1432. AT A FINISH OF A STOPPED ORDER ``target`` is the order the
+    stopped write was putting the account in, and the listing is where its
+    interrupted moves left it, so an unread track one of them moved stands
+    where no order wanted it. Each unread id ``target`` names is placed
+    first, in its order, behind the track ``target`` puts before it, or the
+    front when none of those is held; an id it does not name, one listed
+    since, keeps its place behind the track listed before it. An id of
+    ``target`` the listing no longer holds is never put back.
     """
     placed = list(ordered)
     held = set(placed)
+
+    def behind(before: Sequence[str]) -> int:
+        for one in reversed(before):
+            if one in held:
+                return placed.index(one) + 1
+        return 0
+
+    holding = set(listed)
+    for index, one in enumerate(target):
+        if one in held or one not in holding:
+            continue
+        placed.insert(behind(target[:index]), one)
+        held.add(one)
     for index, one in enumerate(listed):
         if one in held:
             continue
-        at = 0
-        for before in reversed(listed[:index]):
-            if before in held:
-                at = placed.index(before) + 1
-                break
-        placed.insert(at, one)
+        placed.insert(behind(listed[:index]), one)
         held.add(one)
     return tuple(placed)
 
@@ -3042,6 +3068,14 @@ def facts(planned: Plan) -> dict[str, Any]:
             + (
                 f"; the account lists {len(one.unread)} track(s) with no title or no "
                 f"artist, so each is left where it is on both sides"
+                + (
+                    # R-1432. A finish puts one back where the stopped order
+                    # was taking it, not where an interrupted move left it.
+                    ", and the account's order puts each where the stopped order was "
+                    "taking it, or else behind the track it follows"
+                    if one.finishing_order and one.account_order
+                    else ""
+                )
                 if one.unread
                 else ""
             )
@@ -4126,12 +4160,24 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
         )
     unread = [(one, named) for one in planned.pairs for named in one.unread]
     if unread:
+        # R-1432. A finish of a stopped order puts an unread track where that
+        # order was taking it, which is not where an interrupted move left it.
+        finished_unread = any(
+            one.finishing_order and one.account_order for one, _named in unread
+        )
         said.append(
             {
                 "code": UNREAD,
                 "message": (
                     f"the account lists {len(unread)} track(s) that cannot be read, so each "
-                    f"stays where it is on both sides until it reads: "
+                    f"stays where it is on both sides until it reads"
+                    + (
+                        ", except that a pair finishing a stopped order puts each where "
+                        "that order was taking it, or else behind the track it follows"
+                        if finished_unread
+                        else ""
+                    )
+                    + ": "
                     + "; ".join(
                         f"{one.name!r}: {named.artist or '?'} - {named.title or '?'} "
                         f"({named.reason})"

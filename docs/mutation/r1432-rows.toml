@@ -1,0 +1,141 @@
+name = "r1432"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_finish_passes_no_target"
+description = "the brief's row: a finish passes no target, so an unread track the stopped move put in front is placed behind the track the listing shows before it, where the interrupted move left it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                stopped_write.target if stopped is not None and stopped_write is not None else (),'''
+new = '''                (),'''
+
+[[rows]]
+id = "P2_target_passed_off_the_path"
+description = "the guard on the target: passed whenever a write stopped, also when a person's move took the account off its path, so the stopped write's target overrides the person's place for an unread track"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                stopped_write.target if stopped is not None and stopped_write is not None else (),'''
+new = '''                stopped_write.target if stopped_write is not None else (),'''
+
+[[rows]]
+id = "P3_target_id_no_longer_listed_put_back"
+description = "an unread id the target names and the account no longer lists is put back into the asked order"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        if one in held or one not in holding:'''
+new = '''        if one in held:'''
+
+[[rows]]
+id = "P4_target_id_already_held_put_twice"
+description = "a target id the order already holds, a readable track, is inserted again, so the asked order holds it twice"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        if one in held or one not in holding:'''
+new = '''        if one not in holding:'''
+
+[[rows]]
+id = "P5_target_placed_by_the_listing"
+description = "each unread id the target names is placed behind the track the listing shows before it, not the one the target puts before it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        placed.insert(behind(target[:index]), one)'''
+new = '''        placed.insert(behind(listed[: list(listed).index(one)]), one)'''
+
+[[rows]]
+id = "P6_target_behind_the_first_held"
+description = "an unread id is placed behind the first track the target puts before it that the order holds, not the nearest"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        for one in reversed(before):'''
+new = '''        for one in before:'''
+
+[[rows]]
+id = "P7_none_held_goes_last"
+description = "an unread id with no held track before it goes to the end rather than the front"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                return placed.index(one) + 1
+        return 0'''
+new = '''                return placed.index(one) + 1
+        return len(placed)'''
+
+[[rows]]
+id = "P8_placed_in_front_of_its_neighbour"
+description = "an unread id is put in front of the track it follows rather than behind it, the target's and the listing's alike (R-1418's F6, in this unit's shape)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                return placed.index(one) + 1'''
+new = '''                return placed.index(one)'''
+
+[[rows]]
+id = "P9_facts_say_it_stays"
+description = "the gate's facts at a finish say only that an unread track is left where it is, as before the review's round one"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                    if one.finishing_order and one.account_order
+                    else ""'''
+new = '''                    if False
+                    else ""'''
+
+[[rows]]
+id = "P10_warning_says_it_stays"
+description = "the sync-pair-unread warning at a finish says only that each stays where it is"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                        if finished_unread'''
+new = '''                        if False'''
+
+[[rows]]
+id = "E1_listed_rule_puts_it_first"
+description = "existing guard, R-1264: an unread track not named by a target goes to the front rather than behind the track listed before it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        placed.insert(behind(listed[:index]), one)'''
+new = '''        placed.insert(0, one)'''
+
+[[rows]]
+id = "E2_agreed_is_the_readable_tracks"
+description = "existing guard, R-1418's F1: a finish is held to the tracks the provider could read"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            {"agreed": tuple(one.account_before)}'''
+new = '''            {"agreed": tuple(one.account_now)}'''
+
+[[rows]]
+id = "E3_expect_not_at_a_finish"
+description = "existing guard, R-1394: a finish with nothing added or removed is not held to the check's listing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                or (one.finishing_order and not (one.account_removes or one.account_adds))'''
+new = '''                or False'''
+
+[[rows]]
+id = "E4_finished_from_the_readable_tracks"
+description = "existing guard, U225: the plan reads the account as the stopped write would have left it from the readable tracks alone"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                    listed_order or account_now, stopped_write.target'''
+new = '''                    account_now, stopped_write.target'''
+
+[[rows]]
+id = "P11_warning_clause_without_an_order"
+description = "the warning's finish clause shown for a finishing pair that asks no account order, where nothing is reordered"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            one.finishing_order and one.account_order for one, _named in unread'''
+new = '''            one.finishing_order for one, _named in unread'''
