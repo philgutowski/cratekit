@@ -3628,7 +3628,10 @@ def _write_account(
         # one's review): a continue's check reads what the playlist holds and
         # not its order, and a plan made again in this command has no check
         # at all. Passed only when set, so a stand in for the adapter that
-        # does not take it is asked what it always was.
+        # does not take it is asked what it always was. R-1418: and only when
+        # the plan read the account, since an empty reading agrees on no
+        # order. No plan reaches here with one: with nothing listed the
+        # additions go in the merged order, so the plan asks no order.
         agreed = (
             {"agreed": tuple(one.account_before)}
             if one.finishing_order and one.account_before
