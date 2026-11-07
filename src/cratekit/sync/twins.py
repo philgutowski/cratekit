@@ -312,9 +312,10 @@ def read_library(cfg: config.Config, db: Any, account_ids: Iterable[str]) -> Lib
     links = ledger.mirror_links(cfg)
     live = playlist_pair.content(db, links)
     # THE UNREAD HALF IS DROPPED HERE BY THIS READER'S OWN POLICY (R-1383).
-    # ``sync twins`` refuses at the session gate on any entry the log cannot
-    # read before it plans, and the backfill holds a track it finds no row
-    # for and queues nothing, so an unread record never reaches a download.
+    # The backfill holds a track it finds no row for and queues nothing, and
+    # its write refuses at the session gate on any entry the log cannot read,
+    # so an unread record never reaches a download; the gate before that
+    # write shows its misses with no word of the record (a residual).
     mirrors, _unread = pair_cli.landed_inbox_playlists(cfg)
     landed = {
         account_id: pair_cli.landed_isrcs(cfg, db, playlist_ids)
