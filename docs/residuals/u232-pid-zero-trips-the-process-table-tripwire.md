@@ -23,6 +23,6 @@ whole branch suite. No product writer of a pid less holder record was found;
 the candidates are a hand edited or truncated lock file, not driven.
 
 **Closes when:** the session's liveness check answers pid zero without asking
-psutil, as no process a lock names, or the tripwire lets `pid_exists` through
-by name. Ledger only: it costs a future test's author a misleading message,
+psutil, as no process a lock names, or the tripwire on `pids` lets a call
+made from inside `pid_exists` through. Ledger only: it costs a future test's author a misleading message,
 not a DJ anything.
