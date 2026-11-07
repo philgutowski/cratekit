@@ -374,3 +374,56 @@ def test_a_continue_of_a_refused_order_that_also_added_holds_a_reorder_made_sinc
     assert world.account.playlists[account_id] == _ids("2", "4", "1", "3", "5")
     assert world.account.ordered == ordered
     assert world.held(opener) == ["4", "3", "1", "2", "5"]
+
+
+@pytest.mark.parametrize("stop", ["credential-missing", "parked"])
+def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_since(
+    world, cfg, monkeypatch, stop
+):
+    """R-1420, one step over: an order stopped before ``begun`` by a stop that is no order refusal.
+
+    A rejected session stops the whole write and a cooldown parks it, each
+    after the order was marked begun and before any move was sent, so the
+    run carries ``ordering`` and no ``order-refused``. The person's reorder
+    on the account before the continue is held as moved all the same.
+    """
+    from cratekit.core import jobs
+
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    _reordered(world, opener, "4", "3", "1", "2")
+    account_id = world.titled("GIG READY Opener")
+    real = world.account.order_tracks
+    stopping = [True]
+
+    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
+        if playlist_id == account_id and stopping:
+            stopping.clear()
+            if stop == "parked":
+                raise jobs.Parked(
+                    refuse(
+                        "provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "order")
+                    ).cause
+                )
+            raise refuse(
+                "credential-missing",
+                "the streaming provider rejected the session",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                scope=Scope.ITEM,
+                origin=("test", "order"),
+            )
+        return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
+
+    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert world.account.playlists[account_id] == _ids("1", "2", "3", "4")
+    world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
+    code, refused = drive(["--run", stopped["run_id"], *VERB])
+    assert world.account.playlists[account_id] == _ids("2", "4", "1", "3"), (
+        "the continue wrote over the person's reorder"
+    )
+    assert code == int(ExitCode.DECISION_STALE), refused
+    assert world.held(opener) == ["4", "3", "1", "2"]

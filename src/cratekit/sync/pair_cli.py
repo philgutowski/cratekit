@@ -3547,9 +3547,9 @@ def _write_account(
         steps.carry()
         # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
         # the adapter's reading agrees with the check's own listing of it.
-        # R-1420. That listing was judged in order by the check, where the
-        # refusal sent no move and this is no finish, so a person's reorder
-        # since stopped the write before here (`_ordered_by_this_run`).
+        # R-1420. That listing was judged in order by the check, where no
+        # move began and this is no finish, so a person's reorder since
+        # stopped the write before here (`_ordered_by_this_run`).
         # R-1394. NOR DOES ONE THAT FINISHES A STOPPED ORDER: the plan read
         # the playlist where that order's moves left it, at or past what was
         # sent, and a reading the adapter takes seconds later may still lag
@@ -4592,24 +4592,18 @@ def _ordered_by_this_run(one: PairPlan, steps: PairSteps) -> bool:
     """Whether a part written pair's account order can be this run's own doing, so the check leaves it unread.
 
     U210. Once the write began to order the playlist, its order is read as
-    the moves' and not judged. R-1420. BUT AN ORDER REFUSED BEFORE ANY MOVE
-    WAS SENT moved nothing: since U231 the moves are recorded (``moving``)
-    before the first is sent, so a refusal with no such step left the
-    playlist where the plan read it, with this write's removals and
-    additions. Unread, a person's reorder between the refused command and a
-    continue passed the check, was the reading the continue expected, and
-    was written over. So the order is read as before the write began, and a
-    change refuses as moved. A FINISH OF A STOPPED ORDER is left as R-1411
-    holds it, to the plan's reading at the adapter, since the plan read it
-    where earlier moves left it and the check's listing can lag them.
+    the moves' and not judged. R-1420. BUT AN ORDER WHOSE MOVES NEVER BEGAN
+    moved nothing: since U231 the moves are recorded (``moving``) before the
+    first is sent, so an order stopped with no such step, refused, parked or
+    stopped with the whole write, left the playlist where the plan read it,
+    with this write's removals and additions. Unread, a person's reorder
+    between that command and a continue passed the check and was written
+    over. So the order is read as before the write began, and a change
+    refuses as moved. A FINISH OF A STOPPED ORDER is left as R-1411 holds
+    it, to the plan's reading at the adapter, since the plan read it where
+    earlier moves left it and the check's listing can lag them.
     """
-    if not steps.has(STEP_ORDERING):
-        return False
-    return not (
-        steps.has(STEP_ORDER_REFUSED)
-        and not steps.has(STEP_MOVING)
-        and not one.finishing_order
-    )
+    return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)
 
 
 def _beyond(one: PairPlan, now: Sequence[str], *, ordering: bool = False) -> str:
