@@ -423,3 +423,19 @@ def test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order():
     assert merge(shared, Side(("a", "b", "z")), Side(("z", "a", "b", "r"))).leader == (
         pair_merge.REKORDBOX
     )
+
+
+def test_the_base_s_disagreement_is_read_at_the_base_not_between_the_sides_now():
+    """Round one's review: the same track added on both sides at two places is no disagreement at the base."""
+    base = Base(account=("a", "b"), rekordbox=("a", "b"))
+    merged = merge(base, Side(("a", "x", "b")), Side(("x", "a", "b")))
+    assert merged.leader == pair_merge.ACCOUNT
+    assert merged.order == ("a", "x", "b")
+
+
+def test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_account_now():
+    """Round one's review: a track the account holds now that only rekordbox held at the base decides nothing."""
+    base = Base(account=("a", "b"), rekordbox=("a", "r", "b"))
+    merged = merge(base, Side(("r", "a", "b")), Side(("a", "r", "b")))
+    assert merged.leader == pair_merge.ACCOUNT
+    assert merged.order == ("r", "a", "b")

@@ -518,8 +518,9 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
 - Tidal's order is kept in rekordbox's order only for pairs under GIG READY;
   set `outbound.pair_order_every_pair = true` to keep every pair's. Other
   pairs still sync their tracks both ways, and a reorder you make in
-  rekordbox stays there sync after sync, while a reorder you make on Tidal
-  is still taken into rekordbox.
+  rekordbox stays there until you reorder that playlist on Tidal: a Tidal
+  reorder is still taken into rekordbox, and it brings Tidal's whole order,
+  not only the tracks you moved.
 - An order is sent in one go, then read once, about 30 seconds later or
   after the other pairs are written. Not served yet, the pair is pending: the
   run ends ok and names it, every track is on Tidal and rekordbox is
