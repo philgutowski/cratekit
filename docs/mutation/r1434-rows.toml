@@ -104,3 +104,50 @@ pairs_with = "S4_unread_keys_keep_a_readable_release"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
 old = '''    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'''
 new = '''    unread_keys: set[str] = set()'''
+
+[[rows]]
+id = "M5_unread_move_never_read"
+description = "the fix round's guard dropped: a person's move of an unread track is never read, so every finish puts it where the stopped write's target puts it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        unread_moved = shown and not off_path'''
+new = '''        unread_moved = False'''
+
+[[rows]]
+id = "M6_unread_move_read_on_the_narrowed_start"
+description = "the unread track's move read on the same narrowed start as the lead, so it never strays and its move is never shown"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        stray = off_path or not pair_stopped.reached(
+            stopped_write.start, stopped_write.target, reading
+        )'''
+new = '''        stray = off_path'''
+
+[[rows]]
+id = "M7_target_passed_for_a_moved_unread_track"
+description = "the finish passes the stopped write's target although a person moved the unread track, so it is put back"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                if stopped is not None and stopped_write is not None and not unread_moved'''
+new = '''                if stopped is not None and stopped_write is not None'''
+
+[[rows]]
+id = "M8_gate_clause_for_a_moved_unread_track"
+description = "the gate's facts line says the order puts an unread track where the stopped order was taking it although a person moved it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                    if one.finishing_order and one.account_order and not one.unread_moved'''
+new = '''                    if one.finishing_order and one.account_order'''
+
+[[rows]]
+id = "M9_moved_nothing_said_for_an_unread_move"
+description = "a write that sent no move and an unread track moved: the gate says the account's order is read as the person's, though it does not lead"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        moved_nothing = moved_nothing and off_path'''
+new = '''        moved_nothing = moved_nothing'''
