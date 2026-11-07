@@ -1060,6 +1060,7 @@ def test_a_differing_order_waits_the_agreement_window(world, strayed, monkeypatc
     """With the window kept, a settled reading and one new reading agree with nothing yet."""
     closer, account_id, _run = strayed
     plan_only()
+    plan_only()
     held = pairs.PairStore(world.cfg).get(account_id)
     assert held is not None and not held.stop_seen.settled, "settled inside the window"
     _agreeing_at_once(monkeypatch)

@@ -62,7 +62,7 @@ new = '''    if kept is None:
 
 [[rows]]
 id = "O7_settled_without_the_window"
-description = "a kept reading settles on the next plan however soon, so two readings seconds apart settle a lag"
+description = "a kept reading settles on the next plan however soon, so two readings seconds apart settle a lag (measured again once a test held two plans inside the window)"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 old = '''        elif first is not None and _now() - first >= AGREE_AFTER:'''
