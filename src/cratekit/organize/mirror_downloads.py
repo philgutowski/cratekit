@@ -189,6 +189,29 @@ def _queued_at(cfg: config.Config) -> dict[str, str]:
     return held
 
 
+def queued_from(cfg: config.Config) -> dict[str, frozenset[str]]:
+    """Each account track a mirror job holds, to the remote playlists whose jobs queued it (U230).
+
+    Read from the same jobs as :func:`_queued_at`. A queue that cannot be read
+    gives none, and the edit rule reads every base as before U230.
+    """
+    from cratekit.intake import cli as intake_cli
+
+    try:
+        found = _jobs(cfg)
+    except (CratekitError, OSError, ValueError):
+        return {}
+    held: dict[str, set[str]] = {}
+    for job in found:
+        payload = job.payload or {}
+        source = str(payload.get(intake_cli.SOURCE) or "")
+        if not source:
+            continue
+        for remote in payload.get(intake_cli.TRACKS) or {}:
+            held.setdefault(str(remote), set()).add(source)
+    return {remote: frozenset(sources) for remote, sources in held.items()}
+
+
 def _adopted(cfg: config.Config) -> frozenset[str]:
     """Every approval a person gave ``crate adopt apply`` on this library, by its plan digest.
 
@@ -564,6 +587,7 @@ __all__ = [
     "Planned",
     "add_step",
     "filed",
+    "queued_from",
     "landed",
     "outcomes",
     "plan",

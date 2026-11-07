@@ -491,7 +491,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   playlist already on the account.
 - `sync pair` keeps each pair one list both ways: additions and removals on
   either side land on both, and a track the library lacks is queued once.
-  When one side added and the other removed between syncs, the later change
+  A track a landing brought in through any account playlist is the library's
+  and is added, never queued again. When one side added and the other removed between syncs, the later change
   wins; with either time unknown the track stays and is named.
 - A twin's missing tracks are held, not downloaded, until `sync release`
   names that twin.
@@ -608,7 +609,8 @@ plans just those steps; a side with no kind named is not asked.
   and energy so `route unplaced` lists it. The first organize after the
   mirror exists reads every difference as rekordbox's.
 - A track downloaded for your edit is filed where you put it, though its
-  landing first filed it by its tags ("landed for the account's edit"); a
+  landing first filed it by its tags ("landed for the account's edit"), even
+  when the mirror has no snapshot of the playlist you put it in yet; a
   change you make in rekordbox after the landing still wins.
 - An answer given on a later run applies the plan you were shown; a change
   on Tidal since refuses as stale.

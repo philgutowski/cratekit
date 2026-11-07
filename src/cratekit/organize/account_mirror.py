@@ -652,6 +652,8 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
             matcher.adopt(content_id, remote)
         owner[remote] = set(rows)
     read: list[edits.Mirrored] = []
+    #: Each recorded remote playlist read here, to its title (U230).
+    titled: dict[str, str] = {}
     for folder in edited:
         held = reading.recorded.get(folder.name)
         for source in folder.playlists:
@@ -672,6 +674,8 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
                 ):
                     added[remote] = row.added
             mine = held.playlists.get(source.name) if held is not None else None
+            if mine is not None and mine.remote_id:
+                titled[mine.remote_id] = source.name
             if mine is None:
                 read.append(edits.Mirrored(place=place, rekordbox=frozenset(wanted)))
                 continue
@@ -705,8 +709,15 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
     # so that filing is read as the landing's and the edit it was queued for
     # is carried, never read as a change a person made in rekordbox.
     landings = mirror_downloads.filed(cfg, declared, owner)
+    # AND WHICH PLAYLIST'S JOB QUEUED EACH (U230), whose base is read as it
+    # stood at the queue while the landing's filing stands.
+    queued_on = {
+        remote: frozenset(titled[one] for one in sources if one in titled)
+        for remote, sources in mirror_downloads.queued_from(cfg).items()
+        if remote in landings
+    }
     reading.decided = edits.decide(
-        read, {remote: sorted(rows) for remote, rows in owner.items()}, landings
+        read, {remote: sorted(rows) for remote, rows in owner.items()}, landings, queued_on
     )
 
 
