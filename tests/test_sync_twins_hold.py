@@ -161,6 +161,21 @@ def test_a_held_track_another_account_playlist_landed_is_added_and_the_rest_stay
     assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "9"]
 
 
+def test_a_twins_held_track_stays_on_hold_beside_an_unreadable_landing_record(world, cfg):
+    """R-1383, round one's finding 3: the twin's hold names its remedy, never the landing's."""
+    from cratekit.core import session
+
+    _three_missing(world)
+    assert backfill()[0] == int(ExitCode.OK)
+    torn = session.log_path("s-torn", cfg)
+    torn.parent.mkdir(parents=True, exist_ok=True)
+    torn.write_text('{"session_id": "s-to')
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
+    assert envelope["data"]["totals"]["landing_unread"] == 0
+
 def test_a_second_twin_stays_held_when_the_first_is_released(world, cfg):
     _two_twins(world)
     assert backfill()[0] == int(ExitCode.OK)

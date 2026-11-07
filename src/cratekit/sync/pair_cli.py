@@ -164,7 +164,12 @@ anybody's when the account stands where the adapter's moves could have left
 it, and the side that led it leads again unless a side changed order since;
 and when it committed rekordbox too, the plan merges against what it left on
 both sides, so its additions and removals are not read as the person's
-either. The gate names the pair as finishing that run.
+either. The gate names the pair as finishing that run. A FIRST SYNC reads the
+stop on its account playlist too, whatever the pair's mark (R-1376): a pair
+released after a stop and paired again with a new rekordbox playlist has no
+snapshot, so the account's half done order would lead and be put into
+rekordbox. Its order is finished the same way, and nothing of it is folded,
+since a first sync has no base.
 
 **THE SNAPSHOT MOVES ONLY WHEN THE WHOLE PAIR WAS WRITTEN.** Both gates
 applied, every write landed, and the account listed the whole playlist: only
@@ -284,8 +289,14 @@ FINISHING = "sync-pair-finishing"
 #: U225. Runs' steps a plan could not read, so a stopped write in them was
 #: not looked for.
 STOPPED_UNREAD = "sync-pair-stopped-unread"
+#: R-1383. Account tracks the library lacks that a landing record the session
+#: log cannot read may have brought in, held and never queued until it reads.
+LANDING_UNREAD = "sync-pair-landing-unread"
 #: U221. The gate's item for one of them.
 ON_HOLD_ACTION = "on-hold"
+#: R-1383. The gate's item for a track a landing record the log cannot read
+#: may have brought in.
+LANDING_UNREAD_ACTION = "landing-unread"
 
 #: The refusals that are about one pair's own playlists, which a sync of every
 #: pair names and passes over rather than stopping at. R-1264: and an account
@@ -620,6 +631,10 @@ class PairPlan:
     #: U221. Account tracks the library lacks that a twin holds for the
     #: author's choice, named and never queued until ``sync release``.
     on_hold: tuple[Named, ...] = ()
+    #: R-1383. Account tracks the library lacks that carry an ISRC, held and
+    #: never queued while a landing record the session log cannot read may
+    #: have brought them in.
+    landing_unread: tuple[Named, ...] = ()
     #: Account tracks two live library rows carry, so no row is chosen.
     ambiguous: tuple[Named, ...] = ()
     #: U208. Rekordbox rows matched as one of several releases that all agree.
@@ -694,6 +709,13 @@ class PairPlan:
             **(
                 {"on_hold": sorted(named.remote_id for named in self.on_hold)}
                 if self.on_hold
+                else {}
+            ),
+            # R-1383, ONLY WHEN ANY, so a plan reading every landing record
+            # digests as it did.
+            **(
+                {"landing_unread": sorted(named.remote_id for named in self.landing_unread)}
+                if self.landing_unread
                 else {}
             ),
             # U225, ONLY WHEN ONE, so a pair no stopped write left digests as it did.
@@ -893,9 +915,18 @@ class _Reader:
         return pair_jobs(self.cfg, self.store)
 
     @cached_property
+    def landings(self) -> tuple[dict[str, frozenset[str]], tuple[Path, ...]]:
+        """The landing records' INBOX playlists, and the log's entries unread, read once per plan.
+
+        R-1383. Both halves of one scan, so a landing whose record does not
+        read is never read as no landing.
+        """
+        return landed_inbox_playlists(self.cfg)
+
+    @property
     def mirrors(self) -> dict[str, frozenset[str]]:
         """Each account playlist's INBOX playlists, as the landing records name them (U128)."""
-        return landed_inbox_playlists(self.cfg)
+        return self.landings[0]
 
     @cached_property
     def stopped(self) -> tuple[dict[str, tuple[Any, Any]], tuple[str, ...]]:
@@ -952,6 +983,22 @@ class _Reader:
             synced = placeholders.parse_hearted(held.synced)
             if synced is None or not began > synced:
                 return None
+        return write
+
+    def first_stop(self, account_id: str) -> Any:
+        """The write that stopped part way through ordering this account playlist, for a first sync, or None (R-1376).
+
+        A pair released after a stop and paired again, or marked and never
+        written whole, syncs first with no snapshot, and the account it reads
+        is the stopped write's scramble, which a first sync's order would put
+        into rekordbox. Read whatever the mark, since the stop predates the
+        new one, and FOR ITS ORDER ALONE: its bases are another pair's, and a
+        first sync has none to fold. The latest write that began to order the
+        playlist and that no later run finished, as :meth:`stopped` keeps it.
+        """
+        if not account_id:
+            return None
+        _began, write = self.stopped[0].get(account_id, (None, None))
         return write
 
     def see(self, account_id: str, order: Sequence[str]) -> None:
@@ -1079,18 +1126,27 @@ def _owned_by_jobs(
     }
 
 
-def landed_inbox_playlists(cfg: config.Config) -> dict[str, frozenset[str]]:
-    """Each account playlist's INBOX playlists, as the landing records name them (U128).
+def landed_inbox_playlists(
+    cfg: config.Config,
+) -> tuple[dict[str, frozenset[str]], tuple[Path, ...]]:
+    """Each account playlist's INBOX playlists, as the landing records name them (U128), and the unread.
 
     PUBLIC because the custom playlist twins' backfill (U149) finds a landed
     track's row the same way a pair does.
+
+    THE UNREAD HALF IS KEPT (R-1383). Every entry of the log this build
+    cannot read is answered beside the playlists, the log itself when it is
+    there and cannot be listed, as the session log's own gates count every
+    one (``session.assert_no_unresolved_session``): a torn record cannot say
+    its workflow, and a state a later build wrote cannot say whether its
+    landing stands, so none of them is read as no landing.
     """
     standing = {
         session.SessionState.AWAITING_IMPORT,
         session.SessionState.COMMITTED_UNVERIFIED,
         session.SessionState.CLOSED,
     }
-    records, _unreadable = session.scan_log(cfg)
+    records, unreadable = session.scan_log(cfg)
     found: dict[str, set[str]] = {}
     for record in records:
         if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in standing:
@@ -1101,7 +1157,7 @@ def landed_inbox_playlists(cfg: config.Config) -> dict[str, frozenset[str]]:
             account_id = str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "")
             if account_id:
                 found.setdefault(account_id, set()).add(str(entry["id"]))
-    return {account_id: frozenset(ids) for account_id, ids in found.items()}
+    return {account_id: frozenset(ids) for account_id, ids in found.items()}, tuple(unreadable)
 
 
 def mirror_codes(cfg: config.Config, db: Any, mirror: str) -> tuple[tuple[str, str], ...]:
@@ -1412,9 +1468,18 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # that would have recorded them, so a row it linked and that is gone from
     # rekordbox since is still read as the account track it was.
     stopped_write = reader.stopped_write(target.account_id, held)
+    # R-1376. A FIRST SYNC READS THE STOP ON ITS ACCOUNT PLAYLIST WHATEVER THE
+    # MARK: a pair released after a stop and paired again, or marked and never
+    # written whole, has no snapshot, so its account order, the stopped
+    # write's scramble, would lead and be put into rekordbox. Its order is
+    # finished below as any stop's is; nothing of it is folded into a base.
+    first_sync = held is None or held.first
+    if stopped_write is None and first_sync:
+        stopped_write = reader.first_stop(target.account_id)
     if stopped_write is not None and stopped_write.pending:
         # U231. AN ORDER SENT WITH NO READ BACK is pending until it is read:
-        # raises to hold the pair whole while no reading can be trusted.
+        # raises to hold the pair whole while no reading can be trusted. A
+        # first sync's stop is held the same way (R-1376), after it is read.
         _pending(reader, target, held, name, stopped_write, tuple(listed_order or account_now))
     stopped_links = (
         {row: remote for remote, row in stopped_write.links.items()}
@@ -1431,9 +1496,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # U225. WHEN THE STOPPED WRITE COMMITTED REKORDBOX as well, both sides
     # hold what it wrote, so the bases are what it left, the snapshot it would
     # have recorded; when it did not, neither base moves (record both or
-    # neither).
-    folded = stopped_write is not None and stopped_write.written
-    if held is not None and not held.first:
+    # neither). A first sync has no base, so nothing is folded (R-1376), and
+    # the gate never names a fold that was not made.
+    folded = stopped_write is not None and stopped_write.written and not first_sync
+    if not first_sync:
         base_account = pair_merge.distinct(
             alias(one)
             for one in (
@@ -1580,6 +1646,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     acquire: dict[str, dict[str, Any]] = {}
     awaiting: list[Named] = []
     on_hold: list[Named] = []
+    landing_unread: list[Named] = []
     ambiguous: list[Named] = []
     lacking = [
         remote_of(key) for key in merged.add_rekordbox if remote_of(key) not in known
@@ -1628,6 +1695,14 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             # U221. A TWIN'S MISSING TRACK WAITS FOR THE AUTHOR'S CHOICE, named
             # and never queued, until ``sync release`` lets its twin's go.
             on_hold.append(names[key])
+        elif (
+            match.isrc_token((tracks.get(remote_id) or {}).get("isrc")) and reader.landings[1]
+        ):
+            # R-1383. A LANDING RECORD THE LOG CANNOT READ IS NEVER NO LANDING.
+            # Any of them may have brought this track in, and a landed row is
+            # found by its ISRC, so a track carrying one waits, named, until
+            # every record reads; a track carrying none no landing could name.
+            landing_unread.append(names[key])
         else:
             acquire[remote_id] = dict(tracks[remote_id])
     order = tuple(
@@ -1697,6 +1772,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         acquire=acquire,
         awaiting=tuple(awaiting),
         on_hold=tuple(on_hold),
+        landing_unread=tuple(landing_unread),
         ambiguous=tuple(ambiguous),
         tied=tuple(tied),
         siblings=siblings,
@@ -1762,7 +1838,13 @@ def _pending(
     if pair_stopped.shows(write.end, now):
         return
     assert write.moving_at is not None
-    seen_at = placeholders.parse_hearted(held.seen_at) if held.seen is not None else None
+    # A FIRST SYNC BY HAND HAS NO RECORD to keep a reading on (R-1376), so it
+    # is held until the account shows where the moves leave it.
+    seen_at = (
+        placeholders.parse_hearted(held.seen_at)
+        if held is not None and held.seen is not None
+        else None
+    )
     kept = seen_at is not None and seen_at >= write.moving_at and tuple(held.seen) == now
     agreed = kept and _now() - seen_at >= AGREE_AFTER
     if agreed:
@@ -2057,6 +2139,9 @@ class Plan:
     #: U225. Runs' steps the plan could not read, each said, so a write that
     #: stopped part way in one of them was not looked for.
     stopped_unread: tuple[str, ...] = ()
+    #: R-1383. The session log's entries the plan could not read when it
+    #: looked for a landing, each said, or the log itself when it cannot be listed.
+    landings_unread: tuple[str, ...] = ()
 
     @property
     def digest(self) -> str:
@@ -2238,9 +2323,26 @@ def plan(
             matched=frozenset(reader.matched),
             listed_back=tuple(listed_back),
             stopped_unread=reader.stopped[1] if "stopped" in reader.__dict__ else (),
+            landings_unread=(
+                _landings_said(cfg, reader.landings[1]) if "landings" in reader.__dict__ else ()
+            ),
         )
     finally:
         rb_writer.close_db(db)
+
+
+def _landings_said(cfg: config.Config, unread: Sequence[Path]) -> tuple[str, ...]:
+    """The log's unread entries as a warning names them: the log itself, or each record (R-1383)."""
+    if session.log_unlisted(unread, cfg):
+        return (
+            f"the session log at {session.log_dir(cfg)}, which exists and cannot be listed "
+            f"by this account, and reads once this account may list it",
+        )
+    return tuple(
+        f"the record {Path(path).name} in {Path(path).parent}, which reads under the "
+        f"later build that wrote it, or is torn and is a defect to report"
+        for path in unread
+    )
 
 
 def _discovered(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple[list, list]:
@@ -2558,6 +2660,8 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
         items.append(row("library", "awaiting", named))
     for named in one.on_hold:
         items.append(row("library", ON_HOLD_ACTION, named))
+    for named in one.landing_unread:
+        items.append(row("library", LANDING_UNREAD_ACTION, named))
     for named in one.unmatched:
         items.append(row("account", "unmatched", named))
     for named in one.ambiguous:
@@ -2630,6 +2734,8 @@ def payload(planned: Plan) -> dict[str, Any]:
             "awaiting": count("library", "awaiting"),
             # U221. A twin's tracks held for the author's choice.
             "on_hold": count("library", ON_HOLD_ACTION),
+            # R-1383. Tracks an unread landing record may have brought in.
+            "landing_unread": count("library", LANDING_UNREAD_ACTION),
             "unmatched": count("account", "unmatched"),
             "ambiguous": count("rekordbox", "ambiguous"),
             "unpaired": count("pairs", "unpair"),
@@ -3776,6 +3882,32 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                         )
                         for one in finishing
                     )
+                ),
+            }
+        )
+    if planned.landings_unread:
+        waiting = [(one, named) for one in planned.pairs for named in one.landing_unread]
+        said.append(
+            {
+                "code": LANDING_UNREAD,
+                "message": (
+                    "the session log could not be read whole, so a landing it records may "
+                    "have brought in a track the library lacks, and "
+                    + (
+                        f"{len(waiting)} account track(s) that carry an ISRC were held and "
+                        f"not queued until it reads: "
+                        + "; ".join(
+                            f"{one.name!r}: {named.artist or '?'} - {named.title or '?'}"
+                            for one, named in waiting
+                        )
+                        if waiting
+                        # THE SCAN WAS READ AND NOTHING WAITED ON IT (round one's
+                        # finding 7): said as that, never as zero tracks held.
+                        else "no track this plan would queue waited on it"
+                    )
+                    + ". Unread: "
+                    + "; ".join(planned.landings_unread)
+                    + ". This verb never moves or repairs a record"
                 ),
             }
         )
@@ -5041,6 +5173,8 @@ __all__ = [
     "NOT_DISCOVERED",
     "ON_HOLD",
     "ON_HOLD_ACTION",
+    "LANDING_UNREAD",
+    "LANDING_UNREAD_ACTION",
     "RELEASED",
     "TIME_UNKNOWN",
     "Done",
