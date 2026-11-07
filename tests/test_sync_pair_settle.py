@@ -1215,3 +1215,143 @@ def test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading():
     assert asked == [("acct", ("t6", "t5"), None)]
     assert after == ("t6", "t5")
     assert done.order_refused is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1434: a stopped write over a playlist listing an unread track, read
+# against the account by the tracks the plan reads
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _with_unread_t9(world, owed, monkeypatch):
+    """The account lists t1 to t4 and then t9 with no title, and rekordbox is reordered 2, 3, 4, 1.
+
+    The plan keeps t9 unread behind t4 (R-1264) and asks the account 2, 3,
+    4, 9, 1. Answers the rekordbox playlist and the account playlist.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    return opener, account_id
+
+
+def _stopped_before_the_first_send(world, owed, monkeypatch):
+    """The write stops after its ordering step and before its first move is sent.
+
+    The provider drops the order's one write before it moves anything, as a
+    dropped connection does: the ordering step is recorded, its start the
+    plan's whole reading with t9 in its place, and no moving step.
+    """
+    opener, account_id = _with_unread_t9(world, owed, monkeypatch)
+    world.account.fail_on = frozenset({account_id})
+    world.account.transient = True
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    world.account.fail_on = frozenset()
+    assert world.account.ordered == [], "a move was sent"
+    assert world.account.playlists[account_id] == [*_ids("1", "2", "3", "4"), "t9"]
+    assert world.held(opener) == ["2", "3", "4", "1"]
+    return opener, account_id
+
+
+def _moved(world, account_id: str, remote_id: str, at: int) -> None:
+    """The person moves one track on the account, to ``at``."""
+    members = world.account.playlists[account_id]
+    members.remove(remote_id)
+    members.insert(at, remote_id)
+
+
+def _moved_twice_and_synced(world, account_id: str, remote_id: str, *, plans: int, syncs: int):
+    """The person moves ``remote_id`` behind t1, ``plans`` plans read it, then behind t2, and ``syncs`` syncs run.
+
+    Two moves read across plans the agreement window apart are what U234
+    takes as the person's reorder after a stop; before U234 one reading off
+    the path was. Each sync is answered, so whichever rule reads the account
+    has acted by the last. Answers the last sync's envelope.
+    """
+    _moved(world, account_id, remote_id, 1)
+    for _ in range(plans):
+        plan_only()
+    _moved(world, account_id, remote_id, 2)
+    assert world.account.playlists[account_id][:3] == ["t1", "t2", remote_id]
+    envelope: dict = {}
+    for _ in range(syncs):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    return envelope
+
+
+def test_a_stop_before_the_first_send_with_nothing_moved_is_finished_from_its_start(
+    world, owed, cfg, monkeypatch
+):
+    """R-1434: the account still stands where the write began, so the finish puts it in the asked order."""
+    opener, account_id = _stopped_before_the_first_send(world, owed, monkeypatch)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.FINISHING in _codes(envelope)
+    assert world.account.playlists[account_id] == ["t2", "t3", "t4", "t9", "t1"]
+    assert world.held(opener) == ["2", "3", "4", "1"]
+
+
+def test_an_unread_track_moved_after_a_stop_before_the_first_send_is_kept_where_it_was_put(
+    world, owed, cfg, monkeypatch
+):
+    """R-1434: a move of a track the plan cannot read is never read as a reorder of the tracks it can.
+
+    The stopped write sent no move, and the merge cannot carry the move of a
+    track it cannot read, which keeps the place the person gave it (R-1264).
+    Judged on the start with t9 in it, the move read the account off the
+    write's path, and the readable tracks, still in the order the write began
+    from, led into rekordbox as the person's reorder, putting rekordbox's own
+    reorder back: on one reading until U234, on two settled since.
+    """
+    _agreeing_at_once(monkeypatch)
+    opener, account_id = _stopped_before_the_first_send(world, owed, monkeypatch)
+    _moved_twice_and_synced(world, account_id, "t9", plans=2, syncs=2)
+    assert world.held(opener) == ["2", "3", "4", "1"], "rekordbox took the order the write began from"
+    # The readable tracks in rekordbox's order, t9 where the person put it, behind t2.
+    assert world.account.playlists[account_id] == ["t2", "t9", "t3", "t4", "t1"]
+
+
+def test_an_unread_track_moved_after_a_stop_part_way_is_kept_where_it_was_put(
+    world, owed, cfg, monkeypatch
+):
+    """R-1434: the same for a write whose moves went, its first taking t9 to the front (R-1418).
+
+    A lag of those moves is told by the moving step's whole start, before the
+    path is read (U231, R-1394), so the path is read on the readable tracks
+    alone here too: the person's moves of t9 never lead.
+    """
+    _agreeing_at_once(monkeypatch)
+    opener, account_id = _with_unread_t9(world, owed, monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert world.account.playlists[account_id] == ["t9", *_ids("1", "2", "3", "4")]
+    _moved_twice_and_synced(world, account_id, "t9", plans=4, syncs=3)
+    assert world.held(opener) == ["2", "3", "4", "1"], "rekordbox took the order the moves left"
+    assert world.account.playlists[account_id] == ["t2", "t9", "t3", "t4", "t1"]
+
+
+def test_a_track_unread_at_the_stop_and_read_since_is_read_as_the_persons_when_moved(
+    world, owed, cfg, monkeypatch
+):
+    """R-1434: the ordering step's start keeps the unread ids, so a track read since is judged by its place.
+
+    t9 is unread when the write records its start and readable at the next
+    plan, so the merge carries its moves: moved by the person, it leads, as
+    any move after a stop does (U225, read settled since U234). A start
+    holding only the tracks read at the stop leaves t9 out of the path check,
+    every move of it reads as on the path, and the finish puts it back where
+    the stopped write was taking it.
+    """
+    from tests.test_sync_pair_discover import LivePlaylist
+
+    _agreeing_at_once(monkeypatch)
+    reads = LivePlaylist.tracks
+    opener, account_id = _stopped_before_the_first_send(world, owed, monkeypatch)
+    monkeypatch.setattr(LivePlaylist, "tracks", reads)
+    _moved_twice_and_synced(world, account_id, "t9", plans=2, syncs=2)
+    assert world.account.playlists[account_id] == _ids("1", "2", "9", "3", "4")
+    assert world.held(opener) == ["1", "2", "9", "3", "4"]
