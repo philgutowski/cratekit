@@ -55,6 +55,18 @@ The leading side's order is kept as it stands, and each track only the other
 side holds is placed right after the track it follows on that side, so a track
 added mid playlist stays mid playlist rather than going to the end.
 
+**EXCEPT WHERE THE BASE'S TWO SIDES DISAGREE ON ORDER (R-1404).** A whole write
+always puts rekordbox in the merged order, so a base whose rekordbox order
+disagrees with its account order, on the tracks both held, records an order
+that never crossed to the account: since U231 a pair outside GIG READY has no
+account order written, so a rekordbox reorder, or a track rekordbox placed mid
+playlist that the account appended, leaves its base so. The order the last
+sync settled on is then rekordbox's, and with neither side changed since,
+rekordbox leads, rather than the account putting its older order back into
+rekordbox two syncs after the person's reorder. The account still leads when
+it changed order since the base. A base whose sides agree, which every pair
+whose account order is written holds, leaves the rule above as it was.
+
 **AFTER A WRITE STOPPED PART WAY THROUGH ITS ORDER, CHANGED SINCE THAT WRITE
 (U225).** Sitting 62's write stopped part way through putting the account in
 order, and the next sync read the stopped write's own moves as the person's
@@ -320,8 +332,13 @@ def merge(
             leader = REKORDBOX
         elif not account_moved and stopped.leader == REKORDBOX:
             leader = REKORDBOX
-    elif base is not None and order_changed(rekordbox.keys, base.rekordbox):
-        if not order_changed(account.keys, base.account):
+    elif base is not None and not order_changed(account.keys, base.account):
+        # R-1404. A BASE WHOSE SIDES DISAGREE ON ORDER HOLDS REKORDBOX'S as the
+        # order the last sync settled on, the account's never written there,
+        # so with neither side changed since, rekordbox's order stands.
+        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, base.account
+        ):
             leader = REKORDBOX
     leading, other = (
         (rekordbox.keys, account.keys) if leader == REKORDBOX else (account.keys, rekordbox.keys)
