@@ -516,7 +516,7 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   reorder in rekordbox since. It remembers that stop however long you wait
   before the next sync, until a sync finishes the pair, and also when the
   pair's rekordbox playlist was deleted and you pair the Tidal playlist again
-  with `crate sync pair ACCOUNT_PLAYLIST --rekordbox PLAYLIST_ID`: that first
+  with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`: that first
   sync finishes the stopped order rather than putting its half done order
   into the new rekordbox playlist.
 - Tidal can serve a playlist's old order or tracks to a paged read for
