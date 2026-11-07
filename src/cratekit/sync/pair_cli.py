@@ -164,7 +164,12 @@ anybody's when the account stands where the adapter's moves could have left
 it, and the side that led it leads again unless a side changed order since;
 and when it committed rekordbox too, the plan merges against what it left on
 both sides, so its additions and removals are not read as the person's
-either. The gate names the pair as finishing that run.
+either. The gate names the pair as finishing that run. A FIRST SYNC reads the
+stop on its account playlist too, whatever the pair's mark (R-1376): a pair
+released after a stop and paired again with a new rekordbox playlist has no
+snapshot, so the account's half done order would lead and be put into
+rekordbox. Its order is finished the same way, and nothing of it is folded,
+since a first sync has no base.
 
 **THE SNAPSHOT MOVES ONLY WHEN THE WHOLE PAIR WAS WRITTEN.** Both gates
 applied, every write landed, and the account listed the whole playlist: only
@@ -908,6 +913,22 @@ class _Reader:
                 return None
         return write
 
+    def first_stop(self, account_id: str) -> Any:
+        """The write that stopped part way through ordering this account playlist, for a first sync, or None (R-1376).
+
+        A pair released after a stop and paired again, or marked and never
+        written whole, syncs first with no snapshot, and the account it reads
+        is the stopped write's scramble, which a first sync's order would put
+        into rekordbox. Read whatever the mark, since the stop predates the
+        new one, and FOR ITS ORDER ALONE: its bases are another pair's, and a
+        first sync has none to fold. The latest write that began to order the
+        playlist and that no later run finished, as :meth:`stopped` keeps it.
+        """
+        if not account_id:
+            return None
+        _began, write = self.stopped[0].get(account_id, (None, None))
+        return write
+
     def see(self, account_id: str, order: Sequence[str]) -> None:
         """Keep this plan's reading of a pending order's playlist on its pair, for the next to agree with (U231)."""
         from cratekit.modules.outbound import pairs
@@ -1366,9 +1387,18 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # that would have recorded them, so a row it linked and that is gone from
     # rekordbox since is still read as the account track it was.
     stopped_write = reader.stopped_write(target.account_id, held)
+    # R-1376. A FIRST SYNC READS THE STOP ON ITS ACCOUNT PLAYLIST WHATEVER THE
+    # MARK: a pair released after a stop and paired again, or marked and never
+    # written whole, has no snapshot, so its account order, the stopped
+    # write's scramble, would lead and be put into rekordbox. Its order is
+    # finished below as any stop's is; nothing of it is folded into a base.
+    first_sync = held is None or held.first
+    if stopped_write is None and first_sync:
+        stopped_write = reader.first_stop(target.account_id)
     if stopped_write is not None and stopped_write.pending:
         # U231. AN ORDER SENT WITH NO READ BACK is pending until it is read:
-        # raises to hold the pair whole while no reading can be trusted.
+        # raises to hold the pair whole while no reading can be trusted. A
+        # first sync's stop is held the same way (R-1376), after it is read.
         _pending(reader, target, held, name, stopped_write, tuple(listed_order or account_now))
     stopped_links = (
         {row: remote for remote, row in stopped_write.links.items()}
@@ -1385,9 +1415,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # U225. WHEN THE STOPPED WRITE COMMITTED REKORDBOX as well, both sides
     # hold what it wrote, so the bases are what it left, the snapshot it would
     # have recorded; when it did not, neither base moves (record both or
-    # neither).
-    folded = stopped_write is not None and stopped_write.written
-    if held is not None and not held.first:
+    # neither). A first sync has no base, so nothing is folded (R-1376), and
+    # the gate never names a fold that was not made.
+    folded = stopped_write is not None and stopped_write.written and not first_sync
+    if not first_sync:
         base_account = pair_merge.distinct(
             alias(one)
             for one in (
@@ -1709,7 +1740,13 @@ def _pending(
     if pair_stopped.shows(write.end, now):
         return
     assert write.moving_at is not None
-    seen_at = placeholders.parse_hearted(held.seen_at) if held.seen is not None else None
+    # A FIRST SYNC BY HAND HAS NO RECORD to keep a reading on (R-1376), so it
+    # is held until the account shows where the moves leave it.
+    seen_at = (
+        placeholders.parse_hearted(held.seen_at)
+        if held is not None and held.seen is not None
+        else None
+    )
     kept = seen_at is not None and seen_at >= write.moving_at and tuple(held.seen) == now
     agreed = kept and _now() - seen_at >= AGREE_AFTER
     if agreed:
