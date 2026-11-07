@@ -258,6 +258,9 @@ NO_ISRC = "the row carries no ISRC, in the database or in its file"
 #: The warning codes the answer carries.
 UNMATCHED = "sync-pair-unmatched"
 AWAITING = "sync-pair-awaiting"
+#: R-1385. How an awaited track an earlier pair of the same plan is to queue
+#: is named: no job holds it until that pair's rekordbox side is applied.
+QUEUED_HERE = "to be queued by this sync for"
 AMBIGUOUS = "sync-pair-ambiguous"
 WITHHELD = "sync-pair-withheld"
 SKIPPED = "sync-pair-skipped"
@@ -1871,7 +1874,7 @@ def _queued_elsewhere(reader: _Reader, target: Target, remote_id: str) -> str:
             return f"queued for {name}"
     asked = reader.asked.get(remote_id)
     if asked is not None and asked[0] != target.key:
-        return f"queued by this sync for {asked[1]}"
+        return f"{QUEUED_HERE} {asked[1]}"
     return ""
 
 
@@ -3263,16 +3266,25 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
         )
     awaiting = [row for one in planned.pairs for row in one.awaiting]
     if awaiting:
-        said.append(
-            {
-                "code": AWAITING,
-                "message": (
-                    f"{len(awaiting)} account track(s) were queued for acquisition, by "
-                    f"an earlier sync or for another pair, and are not in the library "
-                    f"yet: {listed(awaiting)}"
-                ),
-            }
-        )
+        # R-1385, from the review. A TRACK ANOTHER PAIR OF THIS PLAN QUEUES is
+        # said apart, since no job holds it unless that pair's rekordbox side
+        # is applied, and a skip leaves it for the next sync to queue.
+        here = [row for row in awaiting if row.reason.startswith(QUEUED_HERE)]
+        before = [row for row in awaiting if not row.reason.startswith(QUEUED_HERE)]
+        parts: list[str] = []
+        if before:
+            parts.append(
+                f"{len(before)} account track(s) were queued for acquisition, by an "
+                f"earlier sync or for another pair, and are not in the library yet: "
+                f"{listed(before)}"
+            )
+        if here:
+            parts.append(
+                f"{len(here)} account track(s) another pair of this sync lists are "
+                f"queued once, for that pair, when its rekordbox side is applied: "
+                f"{listed(here)}"
+            )
+        said.append({"code": AWAITING, "message": "; ".join(parts)})
     holding = [one for one in planned.pairs if one.on_hold]
     if holding:
         said.append(
