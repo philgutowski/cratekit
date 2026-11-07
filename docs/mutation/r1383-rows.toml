@@ -1,0 +1,201 @@
+name = "r1383"
+pass_kind = "light"
+
+# Rows target the code R-1383 added to src/cratekit/sync/pair_cli.py: the
+# unread half landed_inbox_playlists now keeps, the hold in plan_pair, its
+# gate item, total, digest and warning, and the order the hold sits in, plus
+# two of U229's landed steps it sits beside.
+
+[[rows]]
+id = "M1_scan_drops_unread"
+description = "landed_inbox_playlists: answer no unread entry, the defect the card closes, so an unreadable landing record is read as no landing and its track queued"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_hold.py"]
+old = '''    return {account_id: frozenset(ids) for account_id, ids in found.items()}, tuple(unreadable)'''
+new = '''    return {account_id: frozenset(ids) for account_id, ids in found.items()}, ()'''
+
+[[rows]]
+id = "M2_hold_branch_removed"
+description = "plan_pair: never hold, so a track an unreadable landing record may have brought in is queued with the warning beside it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''            match.isrc_token((tracks.get(remote_id) or {}).get("isrc")) and reader.landings[1]
+        ):'''
+new = '''            False
+        ):'''
+
+[[rows]]
+id = "M3_hold_without_isrc"
+description = "plan_pair: hold a track carrying no ISRC as well, so a track no landing could name waits on the record forever"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''            match.isrc_token((tracks.get(remote_id) or {}).get("isrc")) and reader.landings[1]
+        ):'''
+new = '''            reader.landings[1]
+        ):'''
+
+[[rows]]
+id = "M4_hold_while_readable"
+description = "plan_pair: hold whenever the track carries an ISRC, so every new track waits though every record reads"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''            match.isrc_token((tracks.get(remote_id) or {}).get("isrc")) and reader.landings[1]
+        ):'''
+new = '''            match.isrc_token((tracks.get(remote_id) or {}).get("isrc"))
+        ):'''
+
+[[rows]]
+id = "M5_hold_dropped_from_plan"
+description = "plan_pair: build the pair with no held tracks, so the gate names none and the total counts none"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''        landing_unread=tuple(landing_unread),'''
+new = '''        landing_unread=(),'''
+
+[[rows]]
+id = "M6_gate_item_dropped"
+description = "_items: name no held track on the gate, so a person approving sees nothing of what waits"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''    for named in one.landing_unread:
+        items.append(row("library", LANDING_UNREAD_ACTION, named))'''
+new = '''    for named in ():
+        items.append(row("library", LANDING_UNREAD_ACTION, named))'''
+
+[[rows]]
+id = "M7_gate_item_side"
+description = "_items: name a held track on the rekordbox side rather than the library's"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py"]
+old = '''        items.append(row("library", LANDING_UNREAD_ACTION, named))'''
+new = '''        items.append(row("rekordbox", LANDING_UNREAD_ACTION, named))'''
+
+[[rows]]
+id = "M8_digest_drops_hold"
+description = "PairPlan.identity: leave the held tracks out of the digest, so a plan whose hold moved is not stale at its gate"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py"]
+old = '''                {"landing_unread": sorted(named.remote_id for named in self.landing_unread)}
+                if self.landing_unread
+                else {}'''
+new = '''                {}'''
+
+[[rows]]
+id = "M9_digest_always_keyed"
+description = "PairPlan.identity: put the key in every digest, so a plan reading every record no longer digests as it did (round one's zero)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py"]
+old = '''                if self.landing_unread
+                else {}'''
+new = '''                if True
+                else {}'''
+
+[[rows]]
+id = "M10_warning_never_said"
+description = "plan: carry no unread entry to the warning, so the hold is silent"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''                _landings_said(cfg, reader.landings[1]) if "landings" in reader.__dict__ else ()'''
+new = '''                ()'''
+
+[[rows]]
+id = "M11_warning_read_forced"
+description = "plan: read the scan for the warning whether the plan looked or not (round one's zero), so a plan with nothing lacking reads the log"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''                _landings_said(cfg, reader.landings[1]) if "landings" in reader.__dict__ else ()'''
+new = '''                _landings_said(cfg, reader.landings[1])'''
+
+[[rows]]
+id = "M12_unlisted_said_as_records"
+description = "_landings_said: never say the log is unlisted, so a refused listing is named as a record to repair"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''    if session.log_unlisted(unread, cfg):
+        return ('''
+new = '''    if False:
+        return ('''
+
+[[rows]]
+id = "M13_records_unnamed"
+description = "_landings_said: name no record, so the warning cannot say which record to look at"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''        f"the record {Path(path).name} in {Path(path).parent}, which reads under the "'''
+new = '''        f"a record in {Path(path).parent}, which reads under the "'''
+
+[[rows]]
+id = "M14_hold_before_awaiting"
+description = "plan_pair: decide the landing hold before awaiting, so a track an earlier sync queued is shown held with the wrong remedy"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''        if remote_id in queued_before:
+            awaiting.append(names[key])'''
+new = '''        if match.isrc_token((tracks.get(remote_id) or {}).get("isrc")) and reader.landings[1]:
+            landing_unread.append(names[key])
+        elif remote_id in queued_before:
+            awaiting.append(names[key])'''
+
+[[rows]]
+id = "M15_hold_before_twin"
+description = "plan_pair: decide the landing hold before a twin's hold, so a twin's held track loses its sync release remedy"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''        elif held_for_choice(held, remote_id, dates):'''
+new = '''        elif match.isrc_token((tracks.get(remote_id) or {}).get("isrc")) and reader.landings[1]:
+            landing_unread.append(names[key])
+        elif held_for_choice(held, remote_id, dates):'''
+
+[[rows]]
+id = "M16_zero_said_as_count"
+description = "_warnings: say a scan nothing waited on as zero tracks held, round one's finding 7"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py"]
+old = '''                        if waiting
+                        # THE SCAN'''
+new = '''                        if True
+                        # THE SCAN'''
+
+[[rows]]
+id = "M17_total_uncounted"
+description = "payload: count no held track in the totals"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py"]
+old = '''            "landing_unread": count("library", LANDING_UNREAD_ACTION),'''
+new = '''            "landing_unread": 0,'''
+
+[[rows]]
+id = "M18_sampled_own_landed_step"
+description = "sampled U128 guard: _owned asks no landing made for this account playlist, so its own landed track is found only by the widened step"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''        landed = _mirror_isrcs(reader, account_id)'''
+new = '''        landed = {}'''
+
+[[rows]]
+id = "M19_sampled_mirrors_empty"
+description = "sampled: _Reader.mirrors answers no INBOX playlist, so every landed track is queued again, the half R-1383 keeps beside it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py"]
+old = '''        return self.landings[0]'''
+new = '''        return {}'''
+
