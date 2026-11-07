@@ -148,6 +148,39 @@ def test_a_write_begun_ordered_and_not_finished_is_read_back_whole():
         written=True,
         links={"t9": "9"},
     )
+    # U234. Read with no moving step looked for, so nothing says no move was sent.
+    assert not write.sent_nothing
+
+
+def test_an_ordering_step_of_this_version_with_no_moving_step_sent_nothing():
+    began = _WHEN.isoformat()
+    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": _ordering()}}))[
+        "pl-1"
+    ]
+    assert write.moves_recorded and write.sent_nothing
+
+
+def test_an_ordering_step_from_before_u234_says_nothing_of_its_moves():
+    """Sitting 86's records sent their moves with no moving step, so none is read as sending nothing."""
+    began = _WHEN.isoformat()
+    old = _ordering()
+    old.pop(pair_stopped.MOVES_RECORDED)
+    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": old}}))["pl-1"]
+    assert not write.moves_recorded and not write.sent_nothing
+    flagged = {**_ordering(), pair_stopped.MOVES_RECORDED: "yes"}
+    _at, write = _read_moving(_steps("run-1", {"pl-1": {"account": began, "ordering": flagged}}))[
+        "pl-1"
+    ]
+    assert not write.moves_recorded, "a marker that is not true is no marker"
+
+
+@pytest.mark.parametrize("moving", [{"at": "not a moment"}, "moved", {"at": _WHEN.isoformat()}])
+def test_a_moving_step_that_cannot_be_read_never_says_no_move_was_sent(moving):
+    """U234: a write whose moving step is there and unreadable may have sent every move."""
+    began = _WHEN.isoformat()
+    record = _steps("run-1", {"pl-1": {"account": began, "ordering": _ordering(), "moving": moving}})
+    _at, write = _read_moving(record)["pl-1"]
+    assert not write.sent_nothing
 
 
 def test_a_finished_or_unordered_write_is_no_stopped_one():
@@ -594,3 +627,133 @@ def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
         },
     )
     assert _read_moving(pending, sending)["pl-1"][1].run_id == "run-3"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U234. A reading kept after a stop, and what shows a reorder against it
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_reading_in_another_order_is_a_reorder():
+    assert pair_stopped.reordered(["t1", "t2", "t3"], ["t2", "t1", "t3"])
+    assert not pair_stopped.reordered(["t1", "t2", "t3"], ["t1", "t2", "t3"])
+
+
+def test_a_track_added_or_taken_off_between_two_readings_is_no_reorder():
+    assert not pair_stopped.reordered(["t1", "t2", "t3"], ["t1", "t9", "t2", "t3"])
+    assert not pair_stopped.reordered(["t1", "t2", "t3"], ["t1", "t3"])
+    assert pair_stopped.reordered(["t1", "t2", "t3"], ["t9", "t3", "t1"])
+
+
+def test_two_readings_sharing_fewer_than_two_tracks_show_no_order():
+    assert not pair_stopped.reordered(["t1"], ["t1", "t2"])
+    assert not pair_stopped.reordered(["t1", "t2"], ["t3", "t4"])
+
+
+def test_a_track_held_twice_is_read_at_its_first_place():
+    assert not pair_stopped.reordered(["t1", "t2", "t1"], ["t1", "t2"])
+    assert pair_stopped.reordered(["t2", "t1", "t2"], ["t1", "t2"])
+
+
+def test_a_reading_after_a_stop_round_trips_and_goes_when_the_snapshot_moves(cfg):
+    from cratekit.modules.outbound import pairs
+
+    store = pairs.PairStore(cfg)
+    store.mark("acc", "rb", name="Mine")
+    assert store.get("acc").stop_seen is None
+    kept = pairs.StopReading("run-a", ("t2", "t1"), "2026-11-07T00:00:00+00:00")
+    store.see_stop("acc", kept)
+    assert store.get("acc").stop_seen == kept
+    later = pairs.StopReading(
+        "run-a",
+        ("t2", "t1"),
+        "2026-11-07T00:00:00+00:00",
+        settled=True,
+        after=("t1", "t2"),
+        after_at="2026-11-07T00:10:00+00:00",
+    )
+    store.see_stop("acc", later)
+    assert store.get("acc").stop_seen == later
+    # Links alone do not move the snapshot, so the reading stays.
+    store.record("acc", links={"t1": "1"})
+    assert store.get("acc").stop_seen == later
+    store.record("acc", account=("t1", "t2"), rekordbox=())
+    assert store.get("acc").stop_seen is None
+    assert store.see_stop("other", kept) is None
+
+
+@pytest.mark.parametrize(
+    "kept",
+    [
+        {"order": "t1", "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": False},
+        {"order": ["t1", ""], "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": False},
+        {"order": ["t1"], "run": "r", "settled": False},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "settled": False},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "", "settled": False},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "r"},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": "yes"},
+        {
+            "order": ["t1"],
+            "at": "2026-11-07T00:00:00+00:00",
+            "run": "r",
+            "settled": True,
+            "after": {"order": ["t1"]},
+        },
+        {
+            "order": ["t1"],
+            "at": "2026-11-07T00:00:00+00:00",
+            "run": "r",
+            "settled": True,
+            "after": {"order": [""], "at": "2026-11-07T00:00:00+00:00"},
+        },
+        ["t1"],
+    ],
+)
+def test_a_reading_after_a_stop_that_is_not_an_order_refuses_the_store(cfg, kept):
+    from cratekit.core.cause import CratekitError
+    from cratekit.modules.outbound import pairs
+
+    store = pairs.PairStore(cfg)
+    store.mark("acc", "rb", name="Mine")
+    raw = json.loads(store.path.read_text())
+    raw["pairs"]["acc"]["stop_seen"] = kept
+    store.path.write_text(json.dumps(raw))
+    with pytest.raises(CratekitError):
+        store.get("acc")
+
+
+def _write(**moments) -> pair_stopped.StoppedWrite:
+    return pair_stopped.StoppedWrite(
+        run_id="run-a",
+        account_id="acc",
+        at=datetime(2026, 11, 7, 10, tzinfo=UTC),
+        start=("t1", "t2"),
+        target=("t2", "t1"),
+        leader="rekordbox",
+        rekordbox=(),
+        written=True,
+        links={},
+        **moments,
+    )
+
+
+def test_a_kept_reading_counts_only_for_its_run_at_or_after_its_moves():
+    from types import SimpleNamespace
+
+    from cratekit.modules.outbound import pairs
+
+    def held(at: str, run: str = "run-a"):
+        return SimpleNamespace(stop_seen=pairs.StopReading(run, ("t1", "t2"), at))
+
+    write = _write()
+    found = pair_cli._kept_after(held("2026-11-07T10:00:00+00:00"), write)
+    assert found is not None and found.order == ("t1", "t2")
+    assert pair_cli._kept_after(held("2026-11-07T09:59:59+00:00"), write) is None
+    assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00", "run-b"), write) is None
+    assert pair_cli._kept_after(held("not a moment"), write) is None
+    assert pair_cli._kept_after(None, write) is None
+    assert pair_cli._kept_after(SimpleNamespace(stop_seen=None), write) is None
+    # A write that sent its moves blind is read after they began, not its order step.
+    blind = _write(moving_at=datetime(2026, 11, 7, 12, tzinfo=UTC))
+    assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00"), blind) is None
+    assert pair_cli._kept_after(held("2026-11-07T12:00:00+00:00"), blind) is not None
