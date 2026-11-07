@@ -1,0 +1,221 @@
+name = "u231"
+pass_kind = "full"
+
+[[rows]]
+id = "M1_begun_never_called"
+description = "adapter order: the caller is never told the moves are about to go, so nothing records them"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if begun is not None:
+            begun(tuple(before), tuple(end))'''
+new = '''        if False:
+            begun(tuple(before), tuple(end))'''
+
+[[rows]]
+id = "M2_412_resent_once_only"
+description = "adapter order: a move answered 412 is sent again once, not up to ORDER_REREADS times"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                    if stale >= ORDER_REREADS or not _stale_tag(exc):'''
+new = '''                    if stale >= 1 or not _stale_tag(exc):'''
+
+[[rows]]
+id = "M3_412_never_resent"
+description = "adapter order: a move answered 412 is raised at once, never sent again"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                    if stale >= ORDER_REREADS or not _stale_tag(exc):'''
+new = '''                    if True or not _stale_tag(exc):'''
+
+[[rows]]
+id = "M4_resend_with_the_stale_tag"
+description = "adapter order: a 412's move is sent again without opening the playlist for its current tag"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                    playlist = self._playlist(identifier)
+                    continue'''
+new = '''                    continue'''
+
+[[rows]]
+id = "M5_positions_not_advanced"
+description = "adapter order: each move's position is read off the reading as it was, not with the moves before it applied"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            now = _fronted(now, one)
+            note["moved"] += 1'''
+new = '''            note["moved"] += 1'''
+
+[[rows]]
+id = "M6_settle_lag_taken"
+description = "adapter settle: a reading whose window lags is answered as the order"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        if window == listing.WINDOW_LAGS:
+            note["window_lagged"] += 1
+            note["outcome"] = "lags"
+            return None'''
+new = '''        if False:
+            return None'''
+
+[[rows]]
+id = "M7_continue_resends"
+description = "write: a continue whose pair's moves began sends the order again rather than only reading it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if isinstance(moving, Mapping):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M8_no_record_sends_blind"
+description = "write: a write that keeps no record sends its order's moves anyway (round one's BLOCKING row)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if steps.steps is None:
+            # U231, ROUND ONE'S REVIEW.'''
+new = '''        if False:
+            # U231, ROUND ONE'S REVIEW.'''
+
+[[rows]]
+id = "M9_moving_unrecorded"
+description = "write: the moving step is not marked before the first move, only carried"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            steps.mark(STEP_MOVING, pair_stopped.moving_step(at=timestamp(), start=start, end=end))'''
+new = '''            pass'''
+
+[[rows]]
+id = "M10_moved_unrecorded"
+description = "write: every move accepted is not recorded, so a later lag on the path is finished from"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        steps.mark(STEP_MOVED, timestamp())'''
+new = '''        pass'''
+
+[[rows]]
+id = "M11_snapshot_from_the_order_sent"
+description = "write: the order as sent is recorded as the snapshot, with no settle reading"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        done.settle = Settle(
+            one=one, steps=steps, end=sent, moved_at=_now(), rekordbox_after=None
+        )
+        return None'''
+new = '''        return sent'''
+
+[[rows]]
+id = "M12_settle_takes_any_reading"
+description = "settle: any reading finishes the pair, the order the moves leave or not"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if reading is not None and tuple(reading) == tuple(settle.end):'''
+new = '''        if reading is not None:'''
+
+[[rows]]
+id = "M13_settle_sleeps_the_whole_window"
+description = "settle: the whole window is waited, the time spent on other pairs' writes not counted"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        left = SETTLE_SECONDS - (_now() - settle.moved_at).total_seconds()'''
+new = '''        left = SETTLE_SECONDS'''
+
+[[rows]]
+id = "M14_settle_reading_not_kept"
+description = "settle: a reading short of the order is not kept on the pair for the next plan to agree with"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if reading is not None:
+            pairs.PairStore(cfg).see(settle.one.target.account_id, reading, at=timestamp())'''
+new = '''        if False:
+            pairs.PairStore(cfg).see(settle.one.target.account_id, reading, at=timestamp())'''
+
+[[rows]]
+id = "M15_pending_not_read"
+description = "plan: a pending order is planned as U225 would, with no agreement asked"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if stopped_write is not None and stopped_write.pending:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M16_shown_order_not_finished"
+description = "plan: a reading showing the order the moves leave still waits for agreement"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if pair_stopped.shows(write.end, now):
+        return'''
+new = '''    if False:
+        return'''
+
+[[rows]]
+id = "M17_agreement_gap_ignored"
+description = "plan: a reading equal to the one kept agrees however soon after it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    agreed = kept and _now() - seen_at >= AGREE_AFTER'''
+new = '''    agreed = kept'''
+
+[[rows]]
+id = "M18_reading_before_the_moves_kept"
+description = "plan: a reading kept before the moves began counts toward agreement"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    kept = seen_at is not None and seen_at >= write.moving_at and tuple(held.seen) == now'''
+new = '''    kept = seen_at is not None and tuple(held.seen) == now'''
+
+[[rows]]
+id = "M19_accepted_lag_finished"
+description = "plan: an agreed reading on the moves' path is finished from though every move was accepted"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        lags = write.moved and pair_stopped.reached(write.start, write.target, now)'''
+new = '''        lags = False and pair_stopped.reached(write.start, write.target, now)'''
+
+[[rows]]
+id = "M20_every_reading_kept"
+description = "plan: every reading replaces the one kept, so one too soon resets the wait"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if not kept:
+        reader.see(target.account_id, now)'''
+new = '''    if True:
+        reader.see(target.account_id, now)'''
+
+[[rows]]
+id = "M21_scope_off"
+description = "plan: every pair keeps the account's order, GIG READY or not"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        order_unkept = wanted_keys != firsts and not _keeps_order(cfg, rekordbox, home)'''
+new = '''        order_unkept = False'''
+
+[[rows]]
+id = "M22_root_playlist_named_gig_ready"
+description = "scope: a root playlist named GIG READY is read as under the folder (round one's row 6)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        return bool(rekordbox.ancestors) and rekordbox.top[1] == ORDER_FOLDER'''
+new = '''        return rekordbox.top[1] == ORDER_FOLDER'''
+
+[[rows]]
+id = "M23_carried_moving_unread"
+description = "continue: the carried record is not read when the run's steps cannot show the moves (round two's row 4)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            moving = steps.carried(STEP_MOVING)'''
+new = '''            moving = None'''
+
+[[rows]]
+id = "M24_forecast_without_the_settle_reading"
+description = "forecast: an order's settle reading is not counted"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+old = '''            calls += moves * (1 + REPARSE) + judged_calls(len(now))'''
+new = '''            calls += moves * (1 + REPARSE)'''
+
+[[rows]]
+id = "M25_null"
+description = "null control: a comment changed, which no test can see"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+old = '''    # U231. EVERY ORDER SENT IS READ ONCE, after the others' writes.'''
+new = '''    # U231. every order sent is read once, after the others' writes.'''

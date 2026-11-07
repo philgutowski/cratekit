@@ -1,0 +1,234 @@
+name = "u230"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_lift"
+description = "decide genre: never lift the queuing playlist's base, so sitting 86's shape reads no edit"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        lifted = _as_queued(track, playlists, filed, queued)'''
+new = '''        lifted = frozenset()'''
+
+[[rows]]
+id = "M2_lift_not_in_was"
+description = "placed: the lift is ignored in the base places, so the account side still reads as no change"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            and not (side == "base" and one.place.title in lifted)'''
+new = '''            and True'''
+
+[[rows]]
+id = "M3_lift_not_in_held"
+description = "landed check: the lifted playlist's base still counts as a snapshot holding the track"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''bool(held_by.get(track, frozenset()) - lifted)'''
+new = '''bool(held_by.get(track, frozenset()))'''
+
+[[rows]]
+id = "M4_other_bases_ignored"
+description = "landed check: no snapshot counts, so another playlist's word on the row is lost"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''bool(held_by.get(track, frozenset()) - lifted)'''
+new = '''False'''
+
+[[rows]]
+id = "M5_any_title"
+description = "_as_queued: lift every playlist holding the track, not only the queuing one"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        if one.place.title in titles
+'''
+new = '''        if True
+'''
+
+[[rows]]
+id = "M6_no_landing_guard"
+description = "_as_queued: lift whatever rekordbox holds, so a band a person chose after the landing is beaten"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    if not _filed_by_landing(there, places):
+        return frozenset()'''
+new = '''    if False:
+        return frozenset()'''
+
+[[rows]]
+id = "M8_rekordbox_dropped"
+description = "_as_queued: lift though rekordbox already holds it where the account put it"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        and track not in one.rekordbox
+'''
+new = '''        and True
+'''
+
+[[rows]]
+id = "M10_all_to_any"
+description = "_filed_by_landing: one band the landing filed is enough"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    return bool(there) and all((place.folder, place.playlist) in places for place in there)'''
+new = '''    return bool(there) and any((place.folder, place.playlist) in places for place in there)'''
+
+[[rows]]
+id = "M11_empty_there"
+description = "_filed_by_landing: a track rekordbox holds in no band reads as the landing's filing"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    return bool(there) and all((place.folder, place.playlist) in places for place in there)'''
+new = '''    return all((place.folder, place.playlist) in places for place in there)'''
+
+[[rows]]
+id = "M12_queue_not_handed"
+description = "decide: hand the genre rule no queue"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''                    queued=by_queue,'''
+new = '''                    queued={},'''
+
+[[rows]]
+id = "M13_held_by_dropped"
+description = "decide: hand the genre rule no per playlist holders, so the lift never reaches the landed check"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''                    held_by={track: frozenset(titles) for track, titles in held_by.items()},'''
+new = '''                    held_by=None,'''
+
+[[rows]]
+id = "M14_no_titles_guard"
+description = "_as_queued: a track with landing places and no queue is lifted on every playlist"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    if not titles or not places:'''
+new = '''    if not places:
+        titles = frozenset(one.place.title for one in playlists)
+    if not places:'''
+
+[[rows]]
+id = "M15_source_blank"
+description = "queued_from: name no source for any job"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''            held.setdefault(str(remote), set()).add(source)'''
+new = '''            held.setdefault(str(remote), set()).add("")'''
+
+[[rows]]
+id = "M16_unread_raises"
+description = "queued_from: a queue that cannot be read raises, stopping the organize"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    except (CratekitError, OSError, ValueError):
+        return {}
+    held: dict[str, set[str]] = {}'''
+new = '''    except (CratekitError, OSError, ValueError):
+        raise
+    held: dict[str, set[str]] = {}'''
+
+[[rows]]
+id = "M17_blank_source_kept"
+description = "queued_from: a job with no source names a blank playlist (maintainer)"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "maintainer"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        if not source:
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "M18_titles_not_recorded"
+description = "_read_edits: record no titles for the queue's remote playlists"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''                titled[mine.remote_id] = source.name'''
+new = '''                pass'''
+
+[[rows]]
+id = "M19_every_title"
+description = "_read_edits: name every recorded playlist as the one that queued each track"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        remote: frozenset(titled[one] for one in sources if one in titled)'''
+new = '''        remote: frozenset(titled.values())'''
+
+[[rows]]
+id = "M20_queue_not_passed"
+description = "_read_edits: decide without the queue"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''landings, queued_on
+'''
+new = '''landings, {}
+'''
+
+[[rows]]
+id = "M21_landings_filter"
+description = "_read_edits: name the queue for tracks with no landing places too (maintainer)"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "maintainer"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        if remote in landings
+'''
+new = '''        if True
+'''
+
+[[rows]]
+id = "K2_u227_known_guard"
+description = "_landed_there (U227, sample): a track a snapshot held is still read as landed"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''    if not places or held:'''
+new = '''    if not places:'''
+
+[[rows]]
+id = "M22_agreed_lifted"
+description = "_as_queued: lift an agreed snapshot too, so a drag back after the carry is carried back (round one's BLOCKING)"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        and one.agreed is None
+'''
+new = '''        and True
+'''
+
+[[rows]]
+id = "M23_short_lifted"
+description = "_as_queued: lift a short listing, so an edit is read off an account side nobody read (round one's row 3)"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
+old = '''        and not one.short
+'''
+new = '''        and True
+'''
+
+# --- considered and not run ---------------------------------------------------
+
+[[dropped]]
+id = "M7_account_dropped"
+description = "_as_queued: lift though the account no longer lists the track there (U227's K1)"
+reason = "equivalent since the review of U230, round one: the lift now takes only a never agreed playlist, whose base IS its account side (Mirrored.base), so ``track in one.base`` and ``track in one.account`` answer alike and either guard alone measures the other; measured zero on the first table, both runs kept in the record"
+
+[[dropped]]
+id = "M9_base_dropped"
+description = "_as_queued: lift a playlist whose base does not hold the track (maintainer)"
+reason = "equivalent since the review of U230, round one: the lift now takes only a never agreed playlist, whose base IS its account side (Mirrored.base), so ``track in one.base`` and ``track in one.account`` answer alike and either guard alone measures the other; measured zero on the first table, both runs kept in the record"

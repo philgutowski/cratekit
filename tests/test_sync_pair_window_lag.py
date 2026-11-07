@@ -194,9 +194,9 @@ def test_the_runs_totals_carry_each_read_backs_readings_and_wait(world, monkeypa
     }
     real = world.account.order_tracks
 
-    def order_tracks(playlist_id, remote_ids, *, expect=None):
+    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None):
         world.account.judged.append(dict(record))
-        return real(playlist_id, remote_ids, expect=expect)
+        return real(playlist_id, remote_ids, expect=expect, begun=begun)
 
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
     code, envelope = sync()

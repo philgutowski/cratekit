@@ -354,9 +354,10 @@ def test_the_forecast_on_a_continue_counts_only_what_is_left(made_world):
     # (U226), and the root folders read once.
     check = pair_calls.judged_calls(0) + pair_calls.READ_FOLDER
     # The write: the first pair filled after its membership is read, and the
-    # other four made and filled; their folder is made already.
-    fill = pair_calls.listing_calls(0) + 1 + 1
-    others = 4 * (pair_calls.MAKE_PLAYLIST + 1 + 1)
+    # other four made and filled; their folder is made already. Each add
+    # counts the client's read after it (U231).
+    fill = pair_calls.listing_calls(0) + 1 + 1 + pair_calls.REPARSE
+    others = 4 * (pair_calls.MAKE_PLAYLIST + 1 + 1 + pair_calls.REPARSE)
     assert stopped["cause"]["detail"]["expected"] == check + fill + others
 
 

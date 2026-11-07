@@ -8,7 +8,7 @@ component: tooling
 severity: high
 root_cause: wrong_api
 resolution_type: code_fix
-tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220]
+tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220, u231, reparse, pending]
 applies_when:
   - "Anything moves, removes or adds tracks on a playlist on the streaming account"
   - "A write on the account is answered 412, or its read back does not show it"
@@ -60,6 +60,41 @@ stopped every later pair.
    `no-progress`. The mutation table's planner that kept no tail moved the
    playlist until its run was killed; a write loop on an account wants a bound
    even where the arithmetic says it ends.
+
+## Changed by U231, after Sitting 86
+
+Sitting 86 measured the provider's reads lagging its moves for minutes, and
+reads 3 seconds apart serving two or three different orders 28 minutes after
+the moves. The read back after every move (points 1 and 2 above) then spent
+four readings on 41 moves and stopped 32 of 65 orders whose moves had all
+landed, at 5,794 calls against a forecast of 4,142. So:
+
+- **The moves are planned from one judged reading and sent with no read back
+  between them.** Each move's position comes from that reading with the
+  moves before it applied. Whether the order landed is one judged reading
+  after a settle window (`settled_order`), taken once every pair of the run
+  is written.
+- **A 412 is now "send the same move again"**, after a pause, once the
+  playlist is opened again for its current tag, at most three times a move.
+  It changed nothing, and planning afresh from a reading that lags would
+  plan from the wrong order.
+- **The client reads the playlist after every write it sends**
+  (`UserPlaylist._reparse`, a GET of the playlist for its next tag). The
+  adapter never asks for it and the provider counts it: the forecast counts
+  one per add chunk, removal request and move (`pair_calls.REPARSE`).
+- **A move sent blind is not sent again from a reading that has not been
+  agreed.** The write marks and carries a `moving` step before the first
+  move, and a write that keeps no record (its plan could not be held) sends
+  no order at all, since nothing would tell the next sync its moves went; a
+  continue of the run only reads the order, and a later plan holds the pair
+  until the account shows the order the moves leave, or two readings at
+  least five minutes apart agree. When every move was accepted, an agreed
+  reading on their path short of their end is still a lag and stays held:
+  moving from it would scramble the playlist. When a write stopped part way,
+  an agreed reading on the path is finished from, as U225 finishes a stopped
+  write, so a lag that outlasts the five minutes and agrees with itself
+  would have the rest of the moves sent by position from it: the one
+  remaining exposure, recorded as a residual.
 
 ## Still unmeasured
 

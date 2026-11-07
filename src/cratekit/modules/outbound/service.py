@@ -59,7 +59,7 @@ applying it when the run merely started.
 
 from __future__ import annotations
 
-from collections.abc import Iterable
+from collections.abc import Callable, Iterable
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Protocol
@@ -307,17 +307,29 @@ class RemoteAccount(Protocol):
         remote_ids: tuple[str, ...],
         *,
         expect: tuple[str, ...] | None = None,
+        begun: Callable[[tuple[str, ...], tuple[str, ...]], None] | None = None,
     ) -> tuple[str, ...]:
         """Put one playlist's tracks in this order, and change nothing else (U130).
 
         REFUSED BEFORE ANY PROVIDER CALL on :meth:`remove_tracks`'s rule. A
         track the playlist does not hold is not added and one it holds that
-        the order does not name stays on it. Returns the playlist's order once
-        the moves are done, read back.
+        the order does not name stays on it. Returns the order the moves
+        leave, as sent: since U231 the moves are sent with no read back
+        between them, and :meth:`settled_order` reads whether they landed.
 
         ``expect`` is a reading of the playlist the caller took (U220): no
         track is moved until the adapter's own reading agrees with it, and a
-        reading that never does refuses with nothing moved.
+        reading that never does refuses with nothing moved. ``begun`` is
+        called with the reading the moves were planned from and the order they
+        leave before the first is sent, and not at all when nothing moves
+        (U231); whatever it raises stops the order with nothing sent.
+        """
+
+    def settled_order(self, playlist_id: str, *, wait: float = 0.0) -> tuple[str, ...] | None:
+        """One judged reading of a playlist an order was sent to, after ``wait`` seconds (U231).
+
+        Reads only. Answers the playlist's tracks in order, or None when the
+        provider's reads of it disagree so that no reading can be trusted.
         """
 
     def remove_playlist(self, playlist_id: str) -> None:

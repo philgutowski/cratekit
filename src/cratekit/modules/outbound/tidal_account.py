@@ -116,16 +116,16 @@ NOT_FOUND_NAMES = frozenset({"ObjectNotFound", "InvalidISRC"})
 
 
 #: U220. How many times a reading of a playlist being put in order is taken
-#: again: when the first reading does not agree with what is known of the
-#: playlist, when a read back still shows the playlist as it was before the
-#: move, and when the provider refuses a move's version tag as stale.
+#: again when it does not agree with what is known of the playlist, and, since
+#: U231, how many times one move the provider refuses as carrying a stale
+#: version tag is sent again.
 ORDER_REREADS = 3
 
 #: U220. The pause before each reading taken again, the first before the first;
-#: past the last, the last repeats. Unmeasured: how long the provider's reads
-#: lag its writes is owed to an attended sitting. A read back waits at most
-#: seven seconds; the readings after 412s wait longer, at most 41 seconds over
-#: the whole of one order, since each starts its pauses where the last ended.
+#: past the last, the last repeats. Since U231 also the pause before a move
+#: answered 412 is sent again, counted afresh for each move: seven seconds at
+#: most for one move. Sitting 86 measured the provider's reads lagging its
+#: moves for minutes, which is why no read back is taken between moves.
 ORDER_PAUSES = (1.0, 2.0, 4.0)
 
 #: U220. The status the provider answers a write whose version tag is not the
@@ -180,6 +180,11 @@ def _to_the_front(before: list[str], remote_ids: Iterable[str]) -> list[str]:
         if keep < len(wanted) and one == wanted[len(wanted) - 1 - keep]:
             keep += 1
     return list(reversed(wanted[: len(wanted) - keep]))
+
+
+def _fronted(order: list[str], one: str) -> list[str]:
+    """``order`` with the track ``one``, held once, moved to the front, as a move to the front leaves it (U231)."""
+    return [one, *(other for other in order if other != one)]
 
 
 class _Absent:
@@ -1202,7 +1207,12 @@ class TidalAccount:
         "window_lagged", "outcome"}``: ``after`` is ``"order"`` for the
         reading an order is planned from (again after a 412),
         ``"removal positions"`` for the reading a removal is planned from,
-        ``"move"`` or ``"removal"`` for a write's read back; ``waited`` the seconds paused between readings;
+        ``"removal"`` for a removal's read back, ``"moves"`` for an order's
+        moves, sent with no read back between them (U231), which carries
+        ``moved``, the moves accepted, and ``stale``, the 412s met and sent
+        again, and ``"settle"`` for the one reading an order sent that way is
+        decided by, whose outcome is ``"lags"`` when its window lagged;
+        ``waited`` the seconds paused between readings;
         ``window_lagged`` how many readings' window read disagreed with the
         unpaged read while that read was not the whole playlist; ``outcome``
         ``"done"`` or ``"refused"``. A copy of each, so a caller cannot change
@@ -1336,8 +1346,9 @@ class TidalAccount:
         remote_ids: tuple[str, ...],
         *,
         expect: tuple[str, ...] | None = None,
+        begun: Callable[[tuple[str, ...], tuple[str, ...]], None] | None = None,
     ) -> tuple[str, ...]:
-        """Put the playlist's tracks in this order, one move at a time. NO MOVE IS SENT TWICE.
+        """Put the playlist's tracks in this order, the moves sent with no read back between. NO MOVE IS SENT TWICE.
 
         THE SAME TWO RECORDS ARE ASKED FIRST as :meth:`remove_tracks` asks,
         before the playlist is opened.
@@ -1352,41 +1363,39 @@ class TidalAccount:
         moved to the front, the last of them first, which leaves the asked
         tracks in exactly the asked order. A track not asked stays where it
         stood among the kept tail, so it ends after the moved tracks and may
-        stand between two of the kept ones. The moves are worked out again
-        from each reading, so a reading taken again is planned from as it is.
+        stand between two of the kept ones.
 
-        THE FIRST READING MUST AGREE WITH WHAT IS KNOWN OF THE PLAYLIST, see
-        :meth:`_settled`: ``expect``, a reading the caller took, or else what
-        this adapter's own writes and reads in this command left on it. A
-        reading that does not agree is taken again after a pause, at most
-        :data:`ORDER_REREADS` times, and then refused with nothing moved.
+        PLANNED FROM ONE JUDGED READING, SENT BLIND (U231). The reading must
+        agree with what is known of the playlist, see :meth:`_settled`:
+        ``expect``, a reading the caller took, or else what this adapter's own
+        writes and reads in this command left on it; one that does not agree
+        is taken again after a pause, at most :data:`ORDER_REREADS` times, and
+        then refused with nothing moved. Every move is then planned from it,
+        each position worked out from the reading with the moves before it
+        applied, and sent with NO READ BACK BETWEEN: Sitting 86 measured the
+        provider's reads lagging its moves for minutes, so a read back after
+        each move spent four readings on 41 moves and stopped 32 orders whose
+        moves had all landed. Whether the order landed is read once, later,
+        by the caller (:meth:`settled_order`).
+
+        ``begun``, when given, is called once with the reading planned from
+        and the order the moves leave, before the first move is sent, so the
+        caller records what is being sent before any of it is; whatever it
+        raises stops the order with nothing sent. Nothing is called when
+        nothing needs to move.
 
         BY POSITION, through :meth:`_positions`, which refuses a playlist whose
-        positions cannot be trusted. The version tag the client sends with a
-        move is the one the reading of those positions came with, so a reading
-        the provider has moved on from is answered 412 with nothing changed
-        (Sitting 62's first failure). That answer, and only that one, is met
-        by reading the playlist again and planning from the new reading, at
-        most :data:`ORDER_REREADS` times. Any other failure of a move is raised
-        and nothing is sent again: a move that reached the provider and then
-        timed out, sent again, would move whatever stands at that position.
-
-        AT MOST ONE MOVE PER ASKED TRACK from any one reading, since each move
-        grows the kept tail by one; a reading that needs more is refused,
-        ``outbound-remove-refused`` with the problem ``no-progress``, rather
-        than moved without end.
-
-        READ BACK after every move, see :meth:`_read_back`, which must be what
-        it held with that one track moved to the front. A reading still equal
-        to the playlist before the move is a read that lags the move (Sitting
-        62's continues) and is taken again after a pause, at most
-        :data:`ORDER_REREADS` times; anything else is refused at once,
-        ``outbound-remove-refused``, and nothing more is sent. A move changes
-        no membership, so a refusal part way leaves every track on the
-        playlist.
+        positions cannot be trusted. A move answered 412 changed nothing
+        (Sitting 62): the adapter pauses, opens the playlist again for the
+        version tag it now carries, and sends THE SAME MOVE again, at most
+        :data:`ORDER_REREADS` times for one move; past that the 412 is raised.
+        Any other failure of a move is raised and nothing is sent again: a
+        move that reached the provider and then timed out, sent again, would
+        move whatever stands at that position.
 
         A track the playlist does not hold, or holds twice, is not moved. The
-        return is the playlist's order once the moves are done.
+        return is the order the moves leave the playlist in, as sent and not
+        read back.
         """
         identifier = str(playlist_id)
         self._vouched(identifier, "no track was moved")
@@ -1396,65 +1405,77 @@ class TidalAccount:
             tuple(expect) if expect is not None else (tuple(known) if known is not None else None),
             exact=expect is not None,
         )
+        moves = _to_the_front(before, remote_ids)
+        if not moves:
+            return tuple(before)
+        end = list(before)
+        for one in moves:
+            end = _fronted(end, one)
+        if begun is not None:
+            begun(tuple(before), tuple(end))
         doing = f"put the playlist {identifier} in order"
-        stale = 0
-        moved = 0
-        while True:
-            pending = _to_the_front(before, remote_ids)
-            if not pending:
-                return tuple(before)
-            if moved >= len(remote_ids):
-                # EVERY MOVE GROWS THE KEPT TAIL BY ONE, so a reading needs at
-                # most one move per asked track. More means the moves are not
-                # taking the playlist toward the order, and an order that goes
-                # on moving would write to the account without end.
-                raise refuse(
-                    "outbound-remove-refused",
-                    f"the playlist {identifier} was moved {moved} times, one for every "
-                    f"track asked, and is still not in the asked order, so nothing "
-                    f"more was moved; every track is still on it",
-                    steps=("check the playlist's order by hand in the provider's own player",),
-                    scope=Scope.RUN,
-                    origin=("outbound", "account"),
-                    detail={"playlist_id": identifier, "problem": "no-progress"},
-                )
-            one = pending[0]
-            at = before.index(one)
-            try:
-                accepted = self._call(
-                    doing,
-                    lambda at=at, playlist=playlist: playlist.move_by_indices([at], 0),
-                    retries=0,
-                )
-            except CratekitError as exc:
-                if stale >= ORDER_REREADS or not _stale_tag(exc):
-                    raise
-                # A 412 CHANGED NOTHING, so the playlist is read again and the
-                # moves planned from that reading, with the tag it came with.
-                stale += 1
-                # THE READING AFTER A 412 IS HELD TO WHAT THE PLAYLIST HOLDS, as
-                # the first was, since a move changes no membership: a reading
-                # that lags the adds would otherwise be planned from as whole
-                # (round one's review).
-                playlist, before = self._settled(
-                    identifier,
-                    tuple(before),
-                    exact=False,
-                    pauses_from=stale,
-                    first_pause=_pause(stale),
-                )
-                # A NEW READING IS PLANNED FROM AFRESH, so its moves are counted
-                # afresh; the 412s that lead to one are bounded on their own.
-                moved = 0
-                continue
+        note = self._noting(identifier, "moves")
+        note |= {"moved": 0, "stale": 0}
+        now = list(before)
+        for one in moves:
+            at = now.index(one)
+            stale = 0
+            while True:
+                try:
+                    accepted = self._call(
+                        doing,
+                        lambda at=at, playlist=playlist: playlist.move_by_indices([at], 0),
+                        retries=0,
+                    )
+                except CratekitError as exc:
+                    if stale >= ORDER_REREADS or not _stale_tag(exc):
+                        raise
+                    # A 412 CHANGED NOTHING (Sitting 62), so the same move is
+                    # sent again once the playlist is opened for the tag it
+                    # carries now, after a pause, and never planned afresh.
+                    stale += 1
+                    note["stale"] += 1
+                    self._paused(note, _pause(stale))
+                    playlist = self._playlist(identifier)
+                    continue
+                break
             if accepted is False or accepted is _ABSENT:
                 raise account.provider_failure(
                     RuntimeError("the provider did not accept the move"), doing
                 )
-            playlist, before = self._read_back(
-                identifier, before, [one, *before[:at], *before[at + 1 :]]
-            )
-            moved += 1
+            now = _fronted(now, one)
+            note["moved"] += 1
+        note["outcome"] = "done"
+        self._members[identifier] = list(now)
+        return tuple(now)
+
+    def settled_order(self, playlist_id: str, *, wait: float = 0.0) -> tuple[str, ...] | None:
+        """The playlist's order as the provider serves it, read once after ``wait`` seconds (U231).
+
+        The one reading that decides an order sent with no read back between
+        its moves (:meth:`order_tracks`). It pauses ``wait`` seconds first,
+        counted in its record, so a caller with other playlists to write
+        waits only what is left of the window. One judged reading, as
+        :meth:`_reading` takes it, and never read again: a window that lags
+        an unpaged read that is not the whole playlist answers None, and the
+        caller leaves the order pending rather than read on. Reads only, so no
+        record is asked first. Recorded in :meth:`read_backs` as ``"settle"``,
+        its outcome ``"done"`` or ``"lags"``.
+        """
+        identifier = str(playlist_id)
+        note = self._noting(identifier, "settle")
+        if wait > 0:
+            self._paused(note, wait)
+        playlist = self._playlist(identifier)
+        note["readings"] += 1
+        members, _declared, _videos, window = self._reading(identifier, playlist)
+        if window == listing.WINDOW_LAGS:
+            note["window_lagged"] += 1
+            note["outcome"] = "lags"
+            return None
+        note["outcome"] = "done"
+        self._members[identifier] = list(members)
+        return tuple(members)
 
     def _settled(
         self,
@@ -1555,74 +1576,6 @@ class TidalAccount:
             )
         assert last is not None
         raise last
-
-    def _read_back(
-        self, identifier: str, before: list[str], expected: list[str]
-    ) -> tuple[Any, list[str]]:
-        """The playlist opened and read after a move, which must be ``expected`` (U220).
-
-        A reading still equal to ``before`` lags the move and is taken again
-        after each pause of :data:`ORDER_PAUSES`, at most
-        :data:`ORDER_REREADS` times. A reading that is neither is refused at
-        once, since a move that landed elsewhere would make every later one
-        wrong. The move is never sent again from here.
-        """
-        note = self._noting(identifier, "move")
-        reading: list[str] = []
-        lagged = False
-        window = False
-        for attempt in range(ORDER_REREADS + 1):
-            if attempt:
-                self._paused(note, _pause(attempt))
-            playlist = self._playlist(identifier)
-            note["readings"] += 1
-            try:
-                reading = self._positions(identifier, playlist)
-            except CratekitError as exc:
-                if (exc.cause.detail or {}).get("problem") != "window-lags":
-                    raise
-                # U226. THE WINDOW STILL DISAGREES WITH THE UNPAGED READ, which
-                # is not whole: the move may have landed, so it is a lag.
-                note["window_lagged"] += 1
-                lagged = window = True
-                continue
-            window = False
-            if reading == expected:
-                note["outcome"] = "done"
-                return playlist, reading
-            lagged = reading == before
-            if not lagged:
-                break
-        readings, waited = note["readings"], _waited(note["waited"])
-        if window:
-            shown = (
-                f" (its pages still read otherwise than the provider's unpaged read "
-                f"after {readings} readings and {waited} seconds)"
-            )
-        elif lagged:
-            shown = (
-                f" (it still read as it was before the move after {readings} readings "
-                f"and {waited} seconds)"
-            )
-        else:
-            shown = ""
-        raise refuse(
-            "outbound-remove-refused",
-            f"the playlist {identifier} read back after a move is not what it held "
-            f"with that track moved to the front"
-            + shown
-            + ", so nothing more was moved; every track is still on it",
-            steps=("check the playlist's order by hand in the provider's own player",),
-            scope=Scope.RUN,
-            origin=("outbound", "account"),
-            detail={
-                "playlist_id": identifier,
-                "problem": "read-back-differs",
-                "lagged": "yes" if lagged else "no",
-                "readings": str(readings),
-                "waited": waited,
-            },
-        )
 
     def remove_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
         """Take tracks off one playlist the product made or the author paired. NEVER RETRIED.

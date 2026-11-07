@@ -483,6 +483,18 @@ def let_go(run_id: str, key: str) -> bool:
     return True
 
 
+def carried_step(run_id: str, key: str, step: str) -> Any:
+    """One step of one run's carried record of one item, or None when it has none or cannot be read (U231)."""
+    try:
+        raw = json.loads(carried_path(run_id, key).read_text())
+    except (OSError, ValueError):
+        return None
+    if not isinstance(raw, dict) or raw.get("run_id") != run_id or raw.get("key") != str(key):
+        return None
+    steps = raw.get("steps")
+    return steps.get(step) if isinstance(steps, dict) else None
+
+
 def carried() -> tuple[list[Steps], list[str]]:
     """Every carried record whatever its age, each as its run's steps holding that one item, and why any could not be read.
 
@@ -547,6 +559,7 @@ __all__ = [
     "VERSION",
     "carried",
     "carried_dir",
+    "carried_step",
     "carried_path",
     "carry",
     "decode",

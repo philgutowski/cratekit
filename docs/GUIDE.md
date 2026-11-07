@@ -513,14 +513,30 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
   changed before the write refuses as stale. A write stopped by the call
   ceiling names the `crate --calls N --run RUN sync pair` that finishes it.
-- After a reorder or a removal on Tidal it cannot read back, it names the
-  playlist: look at it in the Tidal app before running anything again.
+- After a removal on Tidal it cannot read back, it names the playlist: look
+  at it in the Tidal app before running anything again.
+- Tidal's order is kept in rekordbox's order only for pairs under GIG READY;
+  set `outbound.pair_order_every_pair = true` to keep every pair's. Other
+  pairs still sync their tracks both ways.
+- An order is sent in one go, then read once, about 30 seconds later or
+  after the other pairs are written. Not served yet, the pair is pending: the
+  run ends ok and names it, every track is on Tidal and rekordbox is
+  untouched. The next `sync pair` finishes it when Tidal shows the new order,
+  and otherwise leaves the pair out until two readings at least 5 minutes
+  apart agree. Nothing is moved again meanwhile, and a continue of a stopped
+  run only reads the order. Once two readings agree on an order part way
+  there, the rest of a stopped order is sent from that reading. A run whose
+  plan cannot be kept sends no order.
 - A fresh `sync pair` after a write that stopped part way through putting a
   Tidal playlist in order finishes that order, from the side that led it,
   rather than reading its half done order as your edit. The gate names the
   run it finishes. A move you made on Tidal since still leads, and so does a
   reorder in rekordbox since. It remembers that stop however long you wait
-  before the next sync, until a sync finishes the pair.
+  before the next sync, until a sync finishes the pair, and also when the
+  pair's rekordbox playlist was deleted and you pair the Tidal playlist again
+  with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`: that first
+  sync finishes the stopped order rather than putting its half done order
+  into the new rekordbox playlist.
 - Tidal can serve a playlist's old order or tracks to a paged read for
   minutes after a change, while the plain read is current. Where it plans an
   order or checks a write, `sync pair` reads both and takes the plain read
@@ -602,7 +618,8 @@ plans just those steps; a side with no kind named is not asked.
   and energy so `route unplaced` lists it. The first organize after the
   mirror exists reads every difference as rekordbox's.
 - A track downloaded for your edit is filed where you put it, though its
-  landing first filed it by its tags ("landed for the account's edit"); a
+  landing first filed it by its tags ("landed for the account's edit"), even
+  when the mirror has no snapshot of the playlist you put it in yet; a
   change you make in rekordbox after the landing still wins.
 - An answer given on a later run applies the plan you were shown; a change
   on Tidal since refuses as stale.
@@ -989,6 +1006,7 @@ guide:
 | `reports.intake_stale_days`, `reports.intake_expired_days` | 30, 90 |
 | `analysis.drift_cut` | 1.5 |
 | `outbound.pair_skip_folders` | `["ARCHIVE"]` |
+| `outbound.pair_order_every_pair` | false (only GIG READY pairs keep Tidal's order) |
 
 An ISRC answer is shared by every verb, so a rehearsal and the live run pay
 for a lookup once. A copy run that redirects `CRATEKIT_STATE_DIR` should point
