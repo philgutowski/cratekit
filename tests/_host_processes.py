@@ -31,6 +31,13 @@ import pytest
 #: they can never be a real process's: macOS stops at 99998 and Linux at 2**22.
 OPEN: dict[int, str] = {2**31 - 3: "rekordbox", 2**31 - 2: "rekordboxAgent"}
 
+#: psutil's own enumeration, captured as this module is imported, which is
+#: before any fixture runs: ``tests/conftest.py`` imports it at the top and the
+#: plugin form is loaded before collection. So the fake host is built over the
+#: real table even when it is installed on top of the conftest's tripwire.
+_REAL_PIDS = psutil.pids
+_REAL_PROCESS = psutil.Process
+
 
 class _Open:
     """One faked process, readable the way psutil's ``Process`` is read."""
@@ -56,17 +63,14 @@ def install(monkeypatch: pytest.MonkeyPatch) -> None:
     psutil itself, so a reader of the current process, the memory probe or a
     lock holder's liveness, answers as before.
     """
-    real_pids = psutil.pids
-    real_process = psutil.Process
-
-    class Process(real_process):  # type: ignore[misc, valid-type]
+    class Process(_REAL_PROCESS):  # type: ignore[misc, valid-type]
         def __new__(cls, pid: int | None = None):  # noqa: D102
             if pid in OPEN:
                 return _Open(pid, OPEN[pid])
             return super().__new__(cls)
 
     def pids() -> list[int]:
-        return sorted({*real_pids(), *OPEN})
+        return sorted({*_REAL_PIDS(), *OPEN})
 
     def process_iter(attrs=None, ad_value=None) -> Iterator[object]:  # noqa: ARG001
         for pid in pids():

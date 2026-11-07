@@ -522,6 +522,20 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     assert pairs.PairStore(cfg).get(ACCOUNT).account != before.account
 
 
+
+def test_the_gated_sync_pair_scenario_reads_the_same_with_rekordbox_open_on_the_host(
+    rekordbox_on_the_host, world, cfg, monkeypatch, table, dying_binding
+):
+    """U232: on a Mac with rekordbox open this exited 1 where it expects 0.
+
+    The binding's own probe at commit, ``pyrekordbox.db6.database``'s bound
+    ``get_rekordbox_pid``, walked the real host and refused the commit. The
+    same scenario over a host listing rekordbox and its agent at psutil itself.
+    """
+    test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
+        world, cfg, monkeypatch, table, dying_binding
+    )
+
 def test_a_rekordbox_running_refusal_still_ends_the_run_as_failed(world, monkeypatch):
     """The kept set is this one cause, not every refusal on rekordbox's code."""
     w = world(account=("1",), rekordbox=("2",))

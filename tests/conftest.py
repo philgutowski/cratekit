@@ -1,7 +1,8 @@
 """Suite-wide isolation. Every test runs against redirected state, always.
 
-Four autouse fixtures. Three, ported in spirit from the source system's three, redirect
-every root a test could reach into a temporary directory. They are autouse rather
+Autouse fixtures, the first five of them listed here. Three, ported in spirit
+from the source system's three, redirect every root a test could reach into a
+temporary directory. They are autouse rather
 than opt-in for one reason: opt-in isolation protects the tests that remembered,
 and the tests that forget are exactly the ones that corrupt real state. The
 source system learned this twice. Its identification ledger and its sync manifest
@@ -34,8 +35,8 @@ What each fixture covers:
    to open, and would refuse with the colour read's own cause. Tests that care
    about pink override the attribute on the test's own ``monkeypatch``.
 
-A test that reaches real config, a real library, a real keychain, or a real
-rekordbox database is a bug, not a slow test.
+A test that reaches real config, a real library, a real keychain, a real
+rekordbox database or the host's real process table is a bug, not a slow test.
 
 None of these fixtures takes the ``monkeypatch`` fixture. Each holds its own
 ``pytest.MonkeyPatch`` for the life of the test, because ``monkeypatch`` is one
@@ -60,6 +61,8 @@ import importlib
 import importlib.util
 
 import pytest
+
+from tests import _host_processes
 
 #: The one call every fixture below makes to get an instance of its own. A
 #: context manager rather than ``pytest.MonkeyPatch()`` so that an exception
@@ -376,3 +379,15 @@ def _favourites_without_pink(request):
         monkeypatch.setattr(favorites_cli, "read_pink_track_ids", lambda cfg: ())
         yield
 
+
+@pytest.fixture
+def rekordbox_on_the_host():
+    """rekordbox and rekordboxAgent running on the host, at psutil itself (U232).
+
+    Beneath the stubs above, so a test under it proves the suite reads a Mac
+    with rekordbox open the way it reads one without. Installed after the
+    tripwire, so for this test psutil's enumeration answers the fake host.
+    """
+    with _own_patch() as monkeypatch:
+        _host_processes.install(monkeypatch)
+        yield _host_processes.OPEN
