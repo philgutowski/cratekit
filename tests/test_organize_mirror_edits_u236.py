@@ -16,7 +16,12 @@ account, a real person or a real track.
 
 from __future__ import annotations
 
+import sqlite3
+
+import pytest
+
 from cratekit.core import rb_writer
+from cratekit.core.cause import refuse
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
 from cratekit.organize import mirror_frozen
@@ -42,7 +47,11 @@ IN_NEW_MONTH = f"{NEW_MONTH}-14T10:00:00+00:00"
 
 
 def _placed(world) -> dict[str, frozenset[str]]:
-    return dict(ledger.mirror_folders(world.cfg)["Favorites"].placed)
+    """Each placed title to its tracks; the membership times are pinned where they matter."""
+    return {
+        title: frozenset(tracks)
+        for title, tracks in ledger.mirror_folders(world.cfg)["Favorites"].placed.items()
+    }
 
 
 def _by_hand(world, name: str, content_id: str) -> str:
@@ -203,7 +212,7 @@ def test_the_placements_are_read_as_the_gate_read_them_after_a_write_between_the
     world.take_off(SOURCE, "r2")
     shown = _gate(world)
     frozen, _said = mirror_frozen.load(world.cfg, GATE)
-    assert frozen.placed["Favorites"] == {SHOWN: frozenset({"r2"})}
+    assert set(frozen.placed["Favorites"][SHOWN]) == {"r2"}
     _edits_pass(world)
     assert world.members(world.source) == {"1"} and world.members(world.month) == {"1"}
     assert _placed(world) == {}
@@ -219,12 +228,109 @@ def test_the_placements_are_read_as_the_gate_read_them_after_a_write_between_the
 
 def test_a_frozen_folder_with_no_placements_reads_none_and_one_unread_reads_the_ledgers():
     recorded = {
-        "Favorites": ledger.MirrorFolder(name="Favorites", placed={SHOWN: frozenset({"now"})}),
-        "Other": ledger.MirrorFolder(name="Other", placed={"Other x": frozenset({"now"})}),
+        "Favorites": ledger.MirrorFolder(name="Favorites", placed={SHOWN: {"now": "t"}}),
+        "Other": ledger.MirrorFolder(name="Other", placed={"Other x": {"now": "t"}}),
     }
     frozen = mirror_frozen.Frozen(library=None, matches={}, placed={"Favorites": {}})
 
     read = mirror_frozen.overlay(recorded, frozen)
 
     assert read["Favorites"].placed == {}
-    assert read["Other"].placed == {"Other x": frozenset({"now"})}
+    assert read["Other"].placed == {"Other x": {"now": "t"}}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. Review round one (Fable): driven, then pinned
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _delete_playlist(world, playlist_id: str) -> None:
+    """A person deletes a playlist in rekordbox, with every membership it held."""
+    conn = sqlite3.connect(world.db)
+    try:
+        conn.execute("DELETE FROM djmdSongPlaylist WHERE PlaylistID = ?", (playlist_id,))
+        conn.execute("DELETE FROM djmdPlaylist WHERE ID = ?", (playlist_id,))
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def test_a_placement_the_account_refused_to_take_still_lets_the_unfavourite_through(world):
+    """Finding 1: the provider refuses the month's add, and the placement stands all the same."""
+    _favourited(world, at=IN_MONTH)
+    world.account.unaddable.add("r2")
+    world.run_all()
+    assert world.held(SHOWN) == ["r1"]
+    assert _placed(world) == {SHOWN: frozenset({"r2"})}
+
+    world.take_off(SOURCE, "r2")
+    _area, step, _queue = world.run_all()
+
+    (change,) = _items(step)
+    assert change["edit"] == edits.UNFAVOURITE, step.items
+    assert world.members(world.source) == {"1"}
+    assert world.members(world.month) == {"1"}
+
+
+@pytest.mark.parametrize("between", [True, False])
+def test_a_month_deleted_and_made_again_by_hand_is_a_persons_addition(world, between):
+    """Finding 2: the placement names its membership, which a month made again never holds."""
+    _favourited(world, at=IN_MONTH)
+    _delete_playlist(world, world.month)
+    if between:
+        world.run_all()
+    again = _by_hand(world, MONTH, "2")
+
+    world.take_off(SOURCE, "r2")
+    _area, step, _queue = world.run_all()
+
+    assert not [one for one in _items(step) if one["edit"] == edits.UNFAVOURITE], step.items
+    assert world.members(world.source) == {"1", "2"}
+    assert world.members(again) == {"2"}
+
+
+def test_a_membership_a_person_took_off_and_put_back_by_hand_is_theirs(world):
+    _favourited(world, at=IN_MONTH)
+    conn = sqlite3.connect(world.db)
+    try:
+        conn.execute(
+            "UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ? AND ContentID = '2'",
+            (world.month,),
+        )
+        conn.execute(
+            "INSERT INTO djmdSongPlaylist (ID, PlaylistID, ContentID, TrackNo, rb_local_deleted, "
+            "created_at, updated_at) VALUES ('by-hand', ?, '2', 9, 0, ?, ?)",
+            (world.month, "2099-01-01 10:00:00.000 +00:00", "2099-01-01 10:00:00.000 +00:00"),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+    world.take_off(SOURCE, "r2")
+    _area, step, _queue = world.run_all()
+
+    assert step.state == NOTHING
+    assert world.members(world.source) == {"1", "2"}
+
+
+def test_a_month_whose_listing_fails_at_the_unfavourite_still_reads_its_placement(
+    world, monkeypatch
+):
+    """Finding 4: the listing that fails reads as its snapshot, short, placement and all."""
+    _favourited(world, at=IN_MONTH)
+    world.take_off(SOURCE, "r2")
+    failing = world.remote(SHOWN)
+    real = world.account.playlist_listing
+
+    def listing(playlist_id):
+        if playlist_id == failing:
+            raise refuse("unavailable-transient", "the month could not be listed")
+        return real(playlist_id)
+
+    monkeypatch.setattr(world.account, "playlist_listing", listing)
+    _area, step, _queue = world.run_all()
+
+    (change,) = _items(step)
+    assert change["edit"] == edits.UNFAVOURITE, step.items
+    assert world.members(world.source) == {"1"}
+    assert world.members(world.month) == {"1"}

@@ -384,15 +384,26 @@ def _listed(record: Mapping[str, Any], field: str) -> list[str]:
     return [str(item) for item in value]
 
 
-def _placements(value: Any) -> dict[str, list[str]]:
-    """A mirrored folder's placements, title to tracks, each title holding at least one (U236)."""
+def _placements(value: Any) -> dict[str, dict[str, str]]:
+    """A mirrored folder's placements, title to track to its membership's time (U236).
+
+    Kept only where a track carries a time as text, and a title only while it
+    holds one, so a placement that cannot be read is dropped and its month
+    reads as before.
+    """
     if not isinstance(value, Mapping):
         return {}
-    found: dict[str, list[str]] = {}
+    found: dict[str, dict[str, str]] = {}
     for title, tracks in value.items():
-        listed = sorted({str(one) for one in tracks if str(one)}) if isinstance(tracks, list) else []
+        if not isinstance(tracks, Mapping):
+            continue
+        listed = {
+            str(track): str(at)
+            for track, at in tracks.items()
+            if str(track) and isinstance(at, str) and at
+        }
         if listed:
-            found[str(title)] = listed
+            found[str(title)] = dict(sorted(listed.items()))
     return found
 
 
@@ -1373,11 +1384,12 @@ class MirrorFolder:
     #: may be a person's. Said on the gate, never a reason to remove anything.
     created: bool = False
     playlists: Mapping[str, MirrorPlaylist] = field(default_factory=dict)
-    #: The library's own placements (U236): by account title, the tracks an
+    #: The library's own placements (U236): by account title, each track an
     #: account edit the library took placed in rekordbox on a playlist of the
-    #: folder that the account does not hold them on yet, mirrored or not, so
-    #: the edit rule never reads them as a change a person made in rekordbox.
-    placed: Mapping[str, frozenset[str]] = field(default_factory=dict)
+    #: folder that the account does not hold it on yet, mirrored or not, to
+    #: the time of the membership the write made, so the edit rule reads that
+    #: one membership, and no other, as no change a person made in rekordbox.
+    placed: Mapping[str, Mapping[str, str]] = field(default_factory=dict)
 
 
 def mirror_folders(cfg: config.Config) -> dict[str, MirrorFolder]:
@@ -1400,10 +1412,7 @@ def mirror_folders(cfg: config.Config) -> dict[str, MirrorFolder]:
                 )
                 for title, entry in (record.get("playlists") or {}).items()
             },
-            placed={
-                title: frozenset(tracks)
-                for title, tracks in _placements(record.get("placed")).items()
-            },
+            placed=_placements(record.get("placed")),
         )
         for name, record in _load(cfg)["mirrors"].items()
     }
@@ -1647,13 +1656,15 @@ def record_mirror_agreed(
             base = _listed(entry, "agreed") if isinstance(entry.get("agreed"), list) else None
             tracks = mirror_edits.agreed_after(base, after, held)
             entry["agreed"] = sorted({str(one) for one in tracks if str(one)})
-            # AND ITS PLACEMENTS (U236): one the mirror finished with no hold
-            # on its track is the snapshot's word now, and is dropped.
+            # AND ITS PLACEMENTS (U236): one whose track the account now holds
+            # here, with no hold on it, is the snapshot's word now, and is dropped.
             _place(
                 document["mirrors"][folder],
                 name,
                 mirror_edits.placed_after(
-                    _placements(document["mirrors"][folder].get("placed")).get(name, ()), held
+                    _placements(document["mirrors"][folder].get("placed")).get(name, {}),
+                    after,
+                    held,
                 ),
             )
             wrote = True
@@ -1663,10 +1674,10 @@ def record_mirror_agreed(
         lock.__exit__(None, None, None)
 
 
-def _place(record: dict[str, Any], title: str, tracks: Iterable[str]) -> None:
+def _place(record: dict[str, Any], title: str, tracks: Mapping[str, str]) -> None:
     """Set one title's placements on a mirrored folder's record, none dropping the title."""
     placed = _placements(record.get("placed"))
-    kept = sorted({str(one) for one in tracks if str(one)})
+    kept = _placements({title: dict(tracks)}).get(str(title), {})
     if kept:
         placed[str(title)] = kept
     else:
@@ -1680,7 +1691,7 @@ def _place(record: dict[str, Any], title: str, tracks: Iterable[str]) -> None:
 def settle_mirror_tracks(
     cfg: config.Config,
     settled: Iterable[tuple[str, str, str, bool]],
-    placed: Iterable[tuple[str, str, str]] = (),
+    placed: Iterable[tuple[str, str, str, str]] = (),
 ) -> None:
     """Agree tracks the library just took an account edit for, ``(folder, title, track, on)`` (U201).
 
@@ -1689,10 +1700,10 @@ def settle_mirror_tracks(
     reads the track as agreed rather than as the same edit again. A playlist
     never agreed stays never agreed.
 
-    ``placed`` is each ``(folder, title, track)`` the library placed in
-    rekordbox for the edit that the account does not hold it on (U236),
-    recorded on the folder by title whether the playlist is mirrored yet or
-    not, under the same lock. A track settled on a playlist takes the settle's
+    ``placed`` is each ``(folder, title, track, time)`` the library placed in
+    rekordbox for the edit that the account does not hold it on, with the time
+    of the membership the write made (U236), recorded on the folder by title
+    whether the playlist is mirrored yet or not, under the same lock. A track settled on a playlist takes the settle's
     word there and loses any placement it had, before the new ones are added.
     """
     wanted = list(settled)
@@ -1706,9 +1717,9 @@ def settle_mirror_tracks(
         for folder, name, track, on in wanted:
             record = document["mirrors"].get(folder)
             if record is not None:
-                before = _placements(record.get("placed")).get(str(name), [])
+                before = _placements(record.get("placed")).get(str(name), {})
                 if str(track) in before:
-                    _place(record, name, [one for one in before if one != str(track)])
+                    _place(record, name, {one: at for one, at in before.items() if one != str(track)})
                     wrote = True
             entry = ((record or {}).get("playlists") or {}).get(name)
             if not entry or not isinstance(entry.get("agreed"), list):
@@ -1717,11 +1728,15 @@ def settle_mirror_tracks(
             held = held | {str(track)} if on else held - {str(track)}
             entry["agreed"] = sorted(held)
             wrote = True
-        for folder, name, track in placements:
+        for folder, name, track, at in placements:
             record = document["mirrors"].get(folder)
-            if record is None or not str(track):
+            if record is None or not str(track) or not str(at):
                 continue
-            _place(record, name, [*_placements(record.get("placed")).get(str(name), []), str(track)])
+            _place(
+                record,
+                name,
+                {**_placements(record.get("placed")).get(str(name), {}), str(track): str(at)},
+            )
             wrote = True
         if wrote:
             _write(cfg, document)

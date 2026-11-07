@@ -104,8 +104,9 @@ class Frozen:
         default_factory=dict
     )
     #: Each mirrored folder's placements as the gate's plan read them (U236),
-    #: ``folder -> title -> tracks``, read with the snapshot they stand beside.
-    placed: Mapping[str, Mapping[str, frozenset[str]]] = field(default_factory=dict)
+    #: ``folder -> title -> track -> membership time``, read with the snapshot
+    #: they stand beside.
+    placed: Mapping[str, Mapping[str, Mapping[str, str]]] = field(default_factory=dict)
     #: Each step of the area as the gate showed it (U222), by its key.
     steps: Mapping[str, Shown] = field(default_factory=dict)
     #: Whether a gate showed this plan, or a run that applies planned it afresh
@@ -249,7 +250,7 @@ def freeze(
         "matches": {cid: list(held) for cid, held in sorted(matches.items())},
         "agreed": _agreed_json(recorded or {}),
         "placed": {
-            name: {title: sorted(tracks) for title, tracks in sorted(folder.placed.items())}
+            name: {title: dict(sorted(tracks.items())) for title, tracks in sorted(folder.placed.items())}
             for name, folder in sorted((recorded or {}).items())
         },
         "steps": {step.key: _shown_json(step) for step in steps},
@@ -369,15 +370,17 @@ def _agreed_of(data: Any) -> dict[str, dict[str, tuple[str, frozenset[str] | Non
     return found
 
 
-def _placed_of(data: Any) -> dict[str, dict[str, frozenset[str]]]:
-    """The frozen placements (U236), refused as unreadable unless each is a list of text."""
-    found: dict[str, dict[str, frozenset[str]]] = {}
+def _placed_of(data: Any) -> dict[str, dict[str, dict[str, str]]]:
+    """The frozen placements (U236), refused as unreadable unless each is a track to a time."""
+    found: dict[str, dict[str, dict[str, str]]] = {}
     for name, titles in data.items():
         found[_text(name, "a placement's folder")] = held = {}
         for title, tracks in titles.items():
-            if not isinstance(tracks, list) or not all(isinstance(one, str) for one in tracks):
-                raise ValueError(f"the placements on {title!r} are {tracks!r}, not a list of text")
-            held[_text(title, "a placement's title")] = frozenset(tracks)
+            if not isinstance(tracks, dict) or not all(
+                isinstance(track, str) and isinstance(at, str) for track, at in tracks.items()
+            ):
+                raise ValueError(f"the placements on {title!r} are {tracks!r}, not tracks to times")
+            held[_text(title, "a placement's title")] = dict(tracks)
     return found
 
 

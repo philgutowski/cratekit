@@ -156,6 +156,11 @@ def _rows(db: Any, playlist_id: str, *, timed: bool = False) -> tuple[mirror.Row
     )
 
 
+def membership_times(db: Any, playlist_id: str) -> dict[str, str]:
+    """When each live membership of one playlist was made, as the edit rule reads it (U236)."""
+    return _times(db, playlist_id)
+
+
 def _times(db: Any, playlist_id: str) -> dict[str, str]:
     """When each live membership of one playlist was made, by content row (U201).
 
@@ -659,7 +664,7 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
         for source in folder.playlists:
             # THE LIBRARY'S OWN PLACEMENTS ON IT (U236), by title, recorded
             # whether the playlist is mirrored yet or not.
-            ours = held.placed.get(source.name, frozenset()) if held is not None else frozenset()
+            recorded_placed = held.placed.get(source.name, {}) if held is not None else {}
             place = reading.places.get(source.name)
             if place is None or place.folder != folder.name:
                 continue
@@ -676,6 +681,12 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
                     or newer > edits.moment(added[remote])
                 ):
                     added[remote] = row.added
+            # ONLY WHILE REKORDBOX HOLDS IT BY THE MEMBERSHIP THE WRITE MADE,
+            # read by its time, so a month deleted and made again, or a
+            # membership a person took off and put back, is theirs (U236).
+            ours = frozenset(
+                remote for remote, at in recorded_placed.items() if at and added.get(remote) == at
+            )
             mine = held.playlists.get(source.name) if held is not None else None
             if mine is not None and mine.remote_id:
                 titled[mine.remote_id] = source.name

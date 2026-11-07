@@ -43,13 +43,22 @@ exactly what a person's addition in rekordbox looks like.
 ## What was done
 
 The write records the month it placed as the library's own placement, by the
-month's account title on the mirrored folder's ledger record (`placed`), so a
-month the write made and no mirror record holds yet is covered too. The
-Favorites rule never counts a placed month as an addition in rekordbox. A
-placement is dropped when a settle gives the track its word on that title, or
-when the mirror finishes the playlist with no hold on the track
-(`mirror_edits.placed_after`), so a person's later addition is read as theirs.
-The frozen mirror plan carries placements beside the snapshot (U222).
+month's account title on the mirrored folder's ledger record (`placed`), with
+the time of the membership row the write made, so a month the write made and
+no mirror record holds yet is covered too. The reader hands the Favorites rule
+a placement only while rekordbox still holds the track there by a membership
+of that time, so a month deleted and made again, or a membership a person took
+off and put back, is read as theirs; and the rule never counts a placed month
+as an addition in rekordbox. A placement is dropped when a settle gives the
+track its word on that title, or when the account holds the track there with
+no hold on it (`mirror_edits.placed_after`); a refused add keeps it. The
+frozen mirror plan carries placements beside the snapshot (U222).
+
+Review round one found the first cut keyed the placement by title alone and
+dropped it whenever the mirror finished the playlist. A refused add then lost
+it for good, and a month remade by hand under the same name read as the
+library's, which unfavourited a person's own favourite. The identity of a
+placement is its membership row, not its playlist's name.
 
 ## The rule
 

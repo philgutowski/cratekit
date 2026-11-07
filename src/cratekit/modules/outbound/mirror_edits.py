@@ -62,11 +62,14 @@ and a snapshot settled the month without it. Read as an addition in rekordbox,
 the month then beat the account's removal, and a favourite taken off again
 before the mirror caught up was kept (sitting 88). So each playlist carries
 the library's PLACEMENTS on it, recorded with the write and dropped once the
-mirror finished that playlist (:func:`placed_after`): a month placed is no
-addition in rekordbox, neither against an UNFAVOURITE nor as a later change
+mirror put the track on the account's side of it (:func:`placed_after`). A
+placement names the time of the membership the write made, and the reader
+hands this rule only those rekordbox still holds by that membership: a month
+placed is no addition in rekordbox, neither against an UNFAVOURITE nor as a later change
 against a FAVOURITE, and a favourite put in another month on the account
 leaves it, the person's choice replacing the library's. A month a person
-added in rekordbox since is not placed, and still beats a removal.
+added in rekordbox since, or made again, or a membership put back by hand, is
+not the library's, and still beats a removal.
 
 A DOWNLOAD (U204). A track added on the account that the library owns no row
 for, and that no snapshot of any mirrored playlist ever held, is HELD with
@@ -200,7 +203,9 @@ class Mirrored:
     rekordbox_added: Mapping[str, str] = field(default_factory=dict)
     #: The library's own placements on it (U236): tracks an account edit the
     #: library took placed here in rekordbox that the account does not hold
-    #: here yet. Read on a filing playlist of the Favorites folder only.
+    #: here yet, each still held here by the membership that write made, which
+    #: the reader checks by its time. Read on a filing playlist of the
+    #: Favorites folder only.
     placed: frozenset[str] = frozenset()
 
     @property
@@ -764,9 +769,7 @@ def _decide_favorites(
         # the track in for an account edit, which the account does not show
         # yet, is never a change a person made in rekordbox.
         ours = frozenset(
-            one.place
-            for one in playlists
-            if not one.place.primary and track in one.placed and one.place in there_m
+            one.place for one in playlists if not one.place.primary and track in one.placed
         )
         shown = {
             "was": _titles(placed(track, "base", True) | was_m),
@@ -870,7 +873,9 @@ def _decide_favorites(
                         )
                     )
                     continue
-                moved = there_m - was_m - ours
+                # The month the account put it in is no move of rekordbox's,
+                # even where a person put it there in rekordbox too.
+                moved = there_m - was_m - ours - {to}
                 if moved and not to.primary:
                     said = _later(playlists, track, to, moved)
                     if said is not None:
@@ -1023,17 +1028,21 @@ def _holds(playlists: Sequence[Mirrored], decisions: Iterable[Decision]) -> dict
     return holds
 
 
-def placed_after(placed: Iterable[str], held: Iterable[str]) -> frozenset[str]:
+def placed_after(
+    placed: Mapping[str, str], after: Iterable[str], held: Iterable[str]
+) -> dict[str, str]:
     """The placements a playlist keeps once the mirror finished it (U236).
 
-    Only those whose track its hold covers, which keep the snapshot's word as
-    :func:`agreed_after` keeps it. Every other was mirrored as rekordbox holds
-    it, so the snapshot now says what the placement said, the track on the
-    account and agreed, or rekordbox no longer holding it there; a placement
-    kept past that would read a person's later addition in rekordbox as the
-    library's own.
+    ``placed`` is each placed track to its membership's time, ``after`` the
+    account tracks the playlist holds once the mirror's writes landed and
+    ``held`` the tracks its hold covers. A placement whose track the account
+    now holds there, and no hold covers, is the snapshot's word now
+    (:func:`agreed_after`) and is dropped. Every other is kept, a refused add
+    included: it is read only while rekordbox holds the track there by the
+    membership it names, so a kept one never speaks for a person's own.
     """
-    return frozenset(placed) & frozenset(held)
+    now, kept = frozenset(after), frozenset(held)
+    return {track: at for track, at in placed.items() if track in kept or track not in now}
 
 
 def agreed_after(

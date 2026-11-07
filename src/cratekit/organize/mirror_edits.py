@@ -803,9 +803,9 @@ class Applied:
     made: list[str] = field(default_factory=list)
     #: Every edit the library took, ``(content id, tree)``, for the snapshot.
     taken: list[tuple[str, str]] = field(default_factory=list)
-    #: Each FAVOURITE the placement wrote into a month, ``(content id, month)``,
-    #: the library's own placement for the snapshot (U236).
-    months: list[tuple[str, str]] = field(default_factory=list)
+    #: Each FAVOURITE the placement wrote into a month, ``(content id, month,
+    #: the membership's time)``, the library's own placement (U236).
+    months: list[tuple[str, str, str]] = field(default_factory=list)
 
     def totals(self) -> dict[str, Any]:
         return {
@@ -935,9 +935,18 @@ def write(
         done.session_id = record.session_id
     assert_read_back(db, taken, placed=placed, home=approved.home)
     done.taken = [(one.content_id, one.tree) for one in taken]
-    done.months = [
-        (one.content_id, one.month) for one in taken if one.outcome == edits.FAVOURITE and one.month
-    ]
+    # THE MEMBERSHIP EACH MONTH PLACEMENT MADE, by its time as the edit rule
+    # reads it (U236), so only that one membership is ever read as the
+    # library's. One whose time cannot be read is recorded as nothing.
+    from cratekit.organize import account_mirror
+
+    rows = {name: row for name, row, _count in placed.months} if placed is not None else {}
+    for one in taken:
+        if one.outcome != edits.FAVOURITE or not one.month or one.month not in rows:
+            continue
+        at = account_mirror.membership_times(db, rows[one.month]).get(one.content_id, "")
+        if at:
+            done.months.append((one.content_id, one.month, at))
     return done
 
 
@@ -995,7 +1004,7 @@ def settle(
     cfg: config.Config,
     decided: edits.Decided,
     written: Iterable[Any],
-    months: Iterable[tuple[str, str]] = (),
+    months: Iterable[tuple[str, str, str]] = (),
 ) -> None:
     """Agree each edit the library took in the snapshot, so it is not read again (U201).
 
@@ -1006,7 +1015,7 @@ def settle(
     sides agreeing on the track and settles it then, writing nothing.
 
     ``months`` is each FAVOURITE the placement wrote into a month, ``(content
-    id, month)`` (U236). For one put in All Favorites alone that month is the
+    id, month, the membership's time)`` (U236). For one put in All Favorites alone that month is the
     library's choice, which the account does not hold, so it is recorded as
     the library's own placement on that month's account title, mirrored yet
     or not, and the next refresh never reads it as a change made in rekordbox.
@@ -1014,7 +1023,7 @@ def settle(
     from cratekit.modules.outbound import ledger, mirror
 
     took = {one if isinstance(one, tuple) else (str(one), edits.GENRE) for one in written}
-    month_of = dict(months)
+    month_of = {content_id: (month, at) for content_id, month, at in months}
     carried = [one for one in decided.carried if (one.content_id, one.tree) in took]
     ledger.settle_mirror_tracks(
         cfg,
@@ -1026,8 +1035,9 @@ def settle(
         placed=[
             (
                 decision.to.folder,
-                mirror.title(decision.to.folder, month_of[decision.content_id]),
+                mirror.title(decision.to.folder, month_of[decision.content_id][0]),
                 decision.track,
+                month_of[decision.content_id][1],
             )
             for decision in carried
             if decision.outcome == edits.FAVOURITE
