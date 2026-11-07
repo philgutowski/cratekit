@@ -1877,6 +1877,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
+        'landing-unread',  # 2026-11-07, R-1383.
         'on-hold',  # 2026-11-05, U221.
         'order-refused',
         'outbound-remove-refused',
@@ -1886,6 +1887,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
         'sync-pair-finishing',  # 2026-11-06, U225.
+        'sync-pair-landing-unread',  # 2026-11-07, R-1383.
         'sync-pair-later-change',
         'sync-pair-left-out',
         'sync-pair-not-brought',
