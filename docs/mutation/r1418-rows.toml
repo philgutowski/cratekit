@@ -71,3 +71,13 @@ surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
 old = '''                    one.account_before or one.account_now, removed, added'''
 new = '''                    one.account_now, removed, added'''
+
+[[rows]]
+id = "F7_composite_ordering_start_unread"
+description = "what F7 holds: a stopped write with no moving step reads no start from its ordering step, so the start F7 narrows is never read"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+pairs_with = "F7_ordering_start_from_the_readable_tracks"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    begin = sent[1] if sent is not None else start'''
+new = '''    begin = sent[1] if sent is not None else ()'''
