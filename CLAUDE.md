@@ -156,6 +156,10 @@ a green suite cannot see, as METHOD lists.
 - **No em dashes, en dashes, or double hyphens** in any prose, code comment,
   commit message, or issue body. Do not swap a dash for a colon; favor commas,
   and keep colons for a genuine list or definition.
+- **Every doc is kept up to date**, decided by Phillip on 2026-11-07. A
+  change lands with every doc it makes untrue corrected in the same pull
+  request, a user's doc and a session's alike, and its record names each one.
+  METHOD's Docs always current section has the list and the rule.
 - **Explanations are batched per phase.** A unit lands with its commit messages
   and its record. Phillip runs the explainer over a merged phase when he wants
   it. A session does not run it.

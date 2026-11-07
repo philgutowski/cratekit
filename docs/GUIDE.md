@@ -490,8 +490,9 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   writes the twin itself; `sync twins` makes one for every `DOWNLOADED`
   playlist already on the account.
 - `sync pair` keeps each pair one list both ways: additions and removals on
-  either side land on both, and a track the library lacks is queued once.
-  A track a landing brought in through any account playlist is the library's
+  either side land on both, and a track the library lacks is queued once,
+  however many pairs list it: a pair listing a track another pair's job
+  holds names it awaiting. A track a landing brought in through any account playlist is the library's
   and is added, never queued again. When one side added and the other removed between syncs, the later change
   wins; with either time unknown the track stays and is named.
 - A twin's missing tracks are held, not downloaded, until `sync release`
