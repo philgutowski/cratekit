@@ -16,6 +16,7 @@ refusal and is continued with ``--run``, and doctor's two process checks.
 from __future__ import annotations
 
 import psutil
+import pyrekordbox.utils
 import pytest
 
 from cratekit.cli import doctor, gates
@@ -46,6 +47,11 @@ REAL_PROBES = {
     "rekordbox_running": rb_writer.rekordbox_running,
     "rekordbox_agent_running": rb_writer.rekordbox_agent_running,
 }
+
+#: pyrekordbox's own walk as shipped, captured before ``tests/conftest.py``
+#: stubs it for every test (U232), so the tests that drive pyrekordbox over a
+#: fake ``psutil.process_iter`` put it back and read the walk they mean to.
+REAL_WALK = pyrekordbox.utils.get_process_id
 
 #: The error the sitting met, word for word.
 DYING = SystemError("<built-in function proc_cmdline> returned a result with an exception set")
@@ -301,8 +307,13 @@ def test_the_scan_does_not_use_process_iter(table, monkeypatch):
     assert _scanned() == ("rekordbox",)
 
 
+@pytest.mark.real_process_table
 def test_the_seam_is_psutil_when_nothing_replaces_it():
-    """Not a read of this machine's process table, which no test may depend on."""
+    """Not a read of this machine's process table, which no test may depend on.
+
+    Opted in by name, since every other test reads the seam as the empty table
+    ``tests/conftest.py`` puts there (U232).
+    """
     assert processes._platform() is psutil
 
 
@@ -316,6 +327,7 @@ def real_probes(monkeypatch):
     """The writer's probes as shipped, over a pyrekordbox scan that meets the dying process."""
     for name, probe in REAL_PROBES.items():
         monkeypatch.setattr(rb_writer, name, probe)
+    monkeypatch.setattr(pyrekordbox.utils, "get_process_id", REAL_WALK)
 
     def dying_iter(*_args, **_kwargs):
         # pyrekordbox's own walk, meeting the process as the sitting's did.
@@ -521,6 +533,20 @@ def test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
     assert "t5" in w.on_account()
     assert pairs.PairStore(cfg).get(ACCOUNT).account != before.account
 
+
+
+def test_the_gated_sync_pair_scenario_reads_the_same_with_rekordbox_open_on_the_host(
+    rekordbox_on_the_host, world, cfg, monkeypatch, table, dying_binding
+):
+    """U232: on a Mac with rekordbox open this exited 1 where it expects 0.
+
+    The binding's own probe at commit, ``pyrekordbox.db6.database``'s bound
+    ``get_rekordbox_pid``, walked the real host and refused the commit. The
+    same scenario over a host listing rekordbox and its agent at psutil itself.
+    """
+    test_a_gated_sync_pair_refused_by_the_scan_is_kept_and_continues_with_run(
+        world, cfg, monkeypatch, table, dying_binding
+    )
 
 def test_a_rekordbox_running_refusal_still_ends_the_run_as_failed(world, monkeypatch):
     """The kept set is this one cause, not every refusal on rekordbox's code."""
