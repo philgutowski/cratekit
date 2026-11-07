@@ -1625,9 +1625,20 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # that write's moves could have left it: the merge reads it in the order
     # the write was putting it in, each track added since after the track it
     # follows, and each side's change of order against what the write left.
+    # R-1434. THE PATH IS READ ON THE TRACKS THE PLAN READS. The merge cannot
+    # carry the move of a track it cannot read, which keeps the place it
+    # stands in by R-1264's rule, so where an unread track stands is no
+    # reorder of the tracks it reads. Compared, a person's move of one read the
+    # account off the path, and the readable tracks, in the order the stopped
+    # write left them, led into rekordbox as the person's reorder. A lag of a
+    # pending write's moves is told by its whole start before here
+    # (`_pending`), and a track read since the stop is compared, since the
+    # merge carries its move.
     stopped: pair_merge.Stopped | None = None
     if stopped_write is not None and pair_stopped.reached(
-        stopped_write.start, stopped_write.target, listed_order or account_now
+        tuple(one for one in stopped_write.start if alias(one) not in unread_keys),
+        stopped_write.target,
+        listed_order or account_now,
     ):
         holding = set(account_keys)
         finishing_keys = pair_merge.distinct(
