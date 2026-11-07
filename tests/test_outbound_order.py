@@ -725,3 +725,95 @@ def test_a_recorder_that_cannot_record_has_no_further_move_sent(installed):
         _adapter(installed, provider).order_tracks("mine", ("d", "c", "b", "a"), begun=begun)
     assert told == [1]
     assert len(provider.moves) == 1, "a move was sent that no record names"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1411: a reading the caller agreed on, beside what the write left
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _one_move_in_then_added(installed, *, lag: int):
+    """A stopped order one move in, b, a, c, then x added, its next readings serving a, b, c, x.
+
+    The provider's reading lags the stopped move and not the addition, so it
+    holds every track the write left and stands in the order from before the
+    move: what the adapter's own check of what the playlist holds cannot see.
+    """
+    provider = Provider(["b", "a", "c"])
+    account = _adapter(installed, provider)
+    assert account.add_tracks("mine", ("x",)) == ("x",)
+    assert provider.members == ["b", "a", "c", "x"]
+    provider.previous = (["a", "b", "c", "x"], provider.version - 1)
+    provider.lagging = lag
+    return provider, account
+
+
+def test_a_reading_that_lags_the_agreed_order_after_an_add_refuses_with_nothing_moved(
+    installed,
+):
+    provider, account = _one_move_in_then_added(installed, lag=99)
+    with pytest.raises(CratekitError) as refused:
+        account.order_tracks("mine", ("c", "b", "a", "x"), agreed=("b", "a", "c"))
+    assert refused.value.cause.reason == "outbound-remove-refused"
+    assert refused.value.cause.detail["problem"] == "read-differs"
+    assert provider.moves == [], "moves were planned from a reading that lags the agreed order"
+    assert provider.members == ["b", "a", "c", "x"]
+
+
+def test_a_reading_that_lags_the_agreed_order_once_is_read_again_and_takes_the_order(installed):
+    provider, account = _one_move_in_then_added(installed, lag=1)
+    after = account.order_tracks("mine", ("c", "b", "a", "x"), agreed=("b", "a", "c"))
+    assert after == ("c", "b", "a", "x")
+    assert provider.members == ["c", "b", "a", "x"]
+
+
+def test_an_added_track_the_provider_placed_elsewhere_is_not_refused(installed):
+    provider = Provider(["b", "a", "c"])
+    account = _adapter(installed, provider)
+    account.add_tracks("mine", ("x",))
+    provider.members[:] = ["b", "x", "a", "c"]
+    after = account.order_tracks("mine", ("c", "b", "a", "x"), agreed=("b", "a", "c"))
+    assert after == ("c", "b", "a", "x")
+    assert provider.members == ["c", "b", "a", "x"]
+
+
+def test_a_track_this_write_took_off_is_not_asked_of_the_reading(installed):
+    provider = Provider(["b", "y", "a", "c"])
+    account = _adapter(installed, provider)
+    assert account.remove_tracks("mine", ("y",)) == ("y",)
+    after = account.order_tracks("mine", ("c", "b", "a"), agreed=("b", "y", "a", "c"))
+    assert after == ("c", "b", "a")
+    assert provider.members == ["c", "b", "a"]
+
+
+def test_the_agreed_order_does_not_stand_in_for_what_the_write_left(installed):
+    """Beside the membership check, not instead of it: a reading lacking the add is still refused."""
+    provider = Provider(["b", "a", "c"], whole=True)
+    account = _adapter(installed, provider)
+    account.add_tracks("mine", ("x",))
+    provider.previous = (["b", "a", "c"], provider.version - 1)
+    provider.lagging = 99
+    with pytest.raises(CratekitError) as refused:
+        account.order_tracks("mine", ("c", "b", "a", "x"), agreed=("b", "a", "c"))
+    assert refused.value.cause.detail["problem"] == "read-differs"
+    assert provider.moves == []
+
+
+@pytest.mark.parametrize(
+    ("reading", "agreed", "stands"),
+    [
+        (("b", "a", "c"), ("b", "a", "c"), True),
+        (("a", "b", "c"), ("b", "a", "c"), False),
+        (("b", "a", "c", "x"), ("b", "a", "c"), True),
+        (("x", "b", "a", "c"), ("b", "a", "c"), True),
+        (("b", "x", "a", "c"), ("b", "a", "c"), True),
+        (("a", "x", "b", "c"), ("b", "a", "c"), False),
+        (("b", "c"), ("b", "a", "c"), True),
+        (("c", "b"), ("b", "a", "c"), False),
+        (("b", "a", "b", "c"), ("b", "a", "c"), True),
+        ((), ("b", "a", "c"), True),
+        (("b", "a", "c"), (), True),
+    ],
+)
+def test_the_agreed_order_is_read_over_the_tracks_both_hold(reading, agreed, stands):
+    assert tidal_account._in_agreed_order(list(reading), agreed) is stands

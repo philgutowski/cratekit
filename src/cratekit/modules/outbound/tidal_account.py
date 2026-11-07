@@ -187,6 +187,22 @@ def _fronted(order: list[str], one: str) -> list[str]:
     return [one, *(other for other in order if other != one)]
 
 
+def _in_agreed_order(reading: list[str], agreed: Iterable[str]) -> bool:
+    """Whether every track of ``agreed`` the reading holds stands in ``agreed``'s order (R-1411).
+
+    Read over the tracks both hold, each at its first place: a track the
+    reading holds that ``agreed`` does not name, one this command added, may
+    stand anywhere, and one ``agreed`` names that the reading no longer
+    holds, one this command took off, is not asked of it. What the reading
+    holds is the membership check's to judge, not this one's.
+    """
+    named = {str(one) for one in agreed}
+    held = set(reading)
+    return [one for one in dict.fromkeys(reading) if one in named] == [
+        one for one in dict.fromkeys(str(one) for one in agreed) if one in held
+    ]
+
+
 class _Absent:
     """The answer a lookup gives for an explicit not found, kept off the retry."""
 
@@ -1348,6 +1364,7 @@ class TidalAccount:
         expect: tuple[str, ...] | None = None,
         begun: Callable[[tuple[str, ...], tuple[str, ...]], Callable[[int, int], None] | None]
         | None = None,
+        agreed: tuple[str, ...] | None = None,
     ) -> tuple[str, ...]:
         """Put the playlist's tracks in this order, the moves sent with no read back between. NO MOVE IS SENT TWICE.
 
@@ -1378,6 +1395,14 @@ class TidalAccount:
         each move spent four readings on 41 moves and stopped 32 orders whose
         moves had all landed. Whether the order landed is read once, later,
         by the caller (:meth:`settled_order`).
+
+        AND HELD TO AN ORDER THE CALLER AGREED ON (R-1411). ``agreed`` is a
+        reading the caller judged true before this command's own writes to the
+        playlist; beside the check above, every track of it the reading still
+        holds must stand in its order, while a track it does not name, one
+        this command added, may stand anywhere. A reading that lags the order
+        holds every track the write left, so the check of what it holds alone
+        cannot see the lag; this one is taken again and refused the same way.
 
         ``begun``, when given, is called once with the reading planned from
         and the order the moves leave, before the first move is sent, so the
@@ -1415,6 +1440,7 @@ class TidalAccount:
             identifier,
             tuple(expect) if expect is not None else (tuple(known) if known is not None else None),
             exact=expect is not None,
+            agreed=tuple(str(one) for one in agreed) if agreed is not None else None,
         )
         moves = _to_the_front(before, remote_ids)
         if not moves:
@@ -1507,6 +1533,7 @@ class TidalAccount:
         after: str = "order",
         kept: str | None = None,
         first_pause: float = 0.0,
+        agreed: tuple[str, ...] | None = None,
     ) -> tuple[Any, list[str]]:
         """The playlist opened and read for an order, once the reading agrees with ``known`` (U220).
 
@@ -1516,6 +1543,12 @@ class TidalAccount:
         reading the caller took itself; otherwise the tracks held are compared
         and not where they stand, since a provider may put an added track
         somewhere other than where this adapter appended it.
+
+        ``agreed`` is an order the caller agreed on before this command wrote
+        the playlist (R-1411): a reading agrees only when, beside the check of
+        ``known``, every track of ``agreed`` it holds stands in that order
+        (:func:`_in_agreed_order`), so a reading holding every track the write
+        left in the order from before a stopped order's moves is read again.
 
         A READING THAT LAGS A WRITE IS WHAT THIS IS FOR. Sitting 62's order ran
         straight after six additions, and a reading that does not yet show
@@ -1540,6 +1573,8 @@ class TidalAccount:
         """
 
         def agrees(reading: list[str]) -> bool:
+            if agreed is not None and not _in_agreed_order(reading, agreed):
+                return False
             if known is None:
                 return True
             if exact:

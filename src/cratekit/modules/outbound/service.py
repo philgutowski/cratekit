@@ -309,6 +309,7 @@ class RemoteAccount(Protocol):
         expect: tuple[str, ...] | None = None,
         begun: Callable[[tuple[str, ...], tuple[str, ...]], Callable[[int, int], None] | None]
         | None = None,
+        agreed: tuple[str, ...] | None = None,
     ) -> tuple[str, ...]:
         """Put one playlist's tracks in this order, and change nothing else (U130).
 
@@ -328,6 +329,12 @@ class RemoteAccount(Protocol):
         have reached the provider and how many it accepted, and once more with
         the first brought back down when a move ends on a 412 that changed
         nothing (R-1394); whatever the recorder raises sends no further move.
+        ``agreed`` is an order the caller agreed on before this command's own
+        writes to the playlist (R-1411): no track is moved until every track of
+        it the adapter's reading holds stands in that order, a track it does
+        not name standing anywhere, and a reading that never does refuses
+        with nothing moved, beside whatever ``expect`` or the adapter's own
+        writes ask of what the playlist holds.
         """
 
     def settled_order(self, playlist_id: str, *, wait: float = 0.0) -> tuple[str, ...] | None:
