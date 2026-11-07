@@ -284,9 +284,9 @@ def test_the_top_level_options_that_take_a_value_are_the_parsers() -> None:
     takes_value = {
         option
         for action in parser._actions
-        if action.option_strings and action.nargs != 0 and not isinstance(
-            action, argparse._HelpAction | argparse._VersionAction
-        )
+        if action.option_strings
+        and action.nargs != 0
+        and not isinstance(action, argparse._HelpAction | argparse._VersionAction)
         for option in action.option_strings
     }
     assert takes_value == TOP_VALUED
@@ -323,8 +323,11 @@ def test_every_config_key_a_doc_spells_exists(doc: Path) -> None:
     schema = _schema_defaults()
     sections = {key.split(".")[0] for key in schema if "." in key}
     known = set(schema) | set(doctor.CHECK_KEYS)
-    stray = [f"line {line}: {key}" for line, key in dotted_keys(doc.read_text(), sections)
-             if key not in known]
+    stray = [
+        f"line {line}: {key}"
+        for line, key in dotted_keys(doc.read_text(), sections)
+        if key not in known
+    ]
     assert stray == [], f"{doc.name} spells config keys the schema does not have"
 
 
@@ -410,5 +413,11 @@ def test_a_misspelt_dotted_key_is_stray() -> None:
 
 def test_the_default_spelling_is_toml() -> None:
     assert [format_default(v) for v in (None, True, 7, 1.5, "x", ("A", "B"), ())] == [
-        "unset", "true", "7", "1.5", '"x"', '["A", "B"]', "[]",
+        "unset",
+        "true",
+        "7",
+        "1.5",
+        '"x"',
+        '["A", "B"]',
+        "[]",
     ]
