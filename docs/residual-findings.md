@@ -46493,3 +46493,126 @@ container. Ledger only.
 **Measured cost.** Driven by the round one reviewer: a hand pair of an account playlist 1, 2, 3 and a rekordbox playlist 3, 1, 2 with the key off; the first sync writes rekordbox 1, 2, 3, the gate saying the order follows the account's. Unchanged by #608, the same on main.
 
 **Closes when:** Phillip answers the second question on #608; keeping it closes this as decided. Ledger only.
+
+---
+
+## R-1417. The pair verb's tests of the agreed order decide their stand in's refusal by the adapter's own rule
+
+**Found:** at the review of #613, R-1411, 2026-11-07.
+
+**The mechanism.** `_adapter_reading` in `tests/test_sync_pair_settle.py`,
+the stand in for the adapter's order the verb tests drive, imports
+`_in_agreed_order` from `modules/outbound/tidal_account.py` to decide
+whether to refuse. So the verb tests judge the agreed rule by the rule
+itself: a wrong rule that happens to pass the reading a test chose would not
+be seen at the verb.
+
+**Measured cost.** None today. Round one's mutation of `_in_agreed_order` to
+always true killed 7 tests, 5 in the adapter's file and 2 in the verb's
+through their end state assertions, so the rule is pinned, only not
+independently at the verb.
+
+**Closes when:** the verb tests' stand in refuses on readings written out by
+hand per test, or drives the real adapter over a fake provider. Ledger only:
+a maintainer facing test shape.
+
+---
+
+## R-1418. Which reading a finish is held to is pinned only for readable tracks, and its guard for an empty reading kills nothing
+
+**Found:** at the review of #613, R-1411, 2026-11-07.
+
+**The mechanism.** `_write_account` in `sync/pair_cli.py` passes
+`one.account_before` as the agreed reading of a finishing order, the
+listing with its unread ids in place (`listed_order`). Holding the finish to
+`one.account_now`, the readable tracks alone, survives every test of the
+seven files the card touched (164), and so does dropping the clause
+`and one.account_before`, which only a held plan from before U225 could
+reach.
+
+**Measured cost.** None on the branch. Round two drove the mutation to
+`account_now` on a scratch copy: rekordbox 4, 2, 1, 3 with t3 unread on the
+account, a stop after one move (account 3, 1, 2, 4), the check and the
+adapter serving the lag 1, 2, 3, 4. On the branch the finish is refused
+with nothing moved; under the mutation the agreed reading is 1, 2, 4, the
+lag passes, and the moves leave 2, 4, 1, 3 for an asked 4, 2, 3, 1 under
+exit 0, reported written. The branch's code is right; the guard is
+reached by no test.
+
+**Closes when:** a verb test drives a finish over a playlist with an unread
+track whose first stopped move was that track, refused from a lag and
+finished once served as the move left it. Earns an issue: a guard on a path
+that writes kills nothing.
+
+---
+
+## R-1419. A continue of a refused finish is held to the check's listing beside the plan's reading, so when the check listed the lag no reading can meet both
+
+**Found:** at the review of #613, R-1411, 2026-11-07.
+
+**The mechanism.** On a continue of a run whose finish was refused,
+`_write_account` still passes `expect`, the continue's check listing
+compared exactly (`steps.has(STEP_ORDER_REFUSED)`), whose order the check
+never judged, while `agreed` is the plan's reading. When the check listed
+the lag, a true reading fails `expect` and a lagging one fails `agreed`.
+
+**Measured cost.** Driven by round two through the real adapter over the
+order suite's provider: 4 openings and 7 seconds of pauses spent on a
+refusal that is knowable before the first read, and a true reading refused
+once. The outcome is the safe one, nothing moved, and the next sync
+finishes once the check serves the truth too. No data cost.
+
+**Closes when:** a continue whose plan finishes a stopped order passes the
+plan's reading alone, or `expect` is dropped where `agreed` covers it.
+Ledger only.
+
+---
+
+## R-1420. A continue of a refused order that is not a finish writes rekordbox's order over a reorder a person made on the account between the two commands
+
+**Found:** at the review of #613, R-1411, 2026-11-07.
+
+**The mechanism.** Pre-existing, from U220, and not changed by R-1411. For
+an order that is not a finish and was refused once, a continue of the run
+passes as `expect` the continue's check listing, which the check judges for
+what it holds and not its order (`_beyond(ordering=True)` in
+`sync/pair_cli.py`). A person's reorder on the account between the refusal
+and the continue passes the check and is the reading expected, so the
+continue writes rekordbox's order over it.
+
+**Measured cost.** Driven by round two on a scratch copy: the `owed` world
+(rekordbox 4, 3, 1, 2), the order refused once `read-differs`, the person
+setting the account to 2, 4, 1, 3, then `crate --run RUN sync pair`: exit 0,
+reported written, the account 4, 3, 1, 2 and the person's order lost. A
+fresh sync over the same two reorders takes the account's order into
+rekordbox instead. It needs a refusal and a hand reorder between two
+commands of one run.
+
+**Closes when:** a continue's check judges the order of a pair whose order
+was refused against the plan's reading, and holds the pair as moved when a
+person changed it. Earns an issue: a person's hand reorder on the account is
+lost under a clean report.
+
+---
+
+## R-1421. An order that is not a finish still plans its moves from a reading checked by membership alone
+
+**Found:** at the review of #613, R-1411, 2026-11-07.
+
+**The mechanism.** R-1411 holds only a finish of a stopped order to the
+plan's reading (`one.finishing_order` in `_write_account`). A fresh order,
+or one after additions and removals, still plans its moves from the
+adapter's reading checked by what it holds (`_settled`), so a provider
+serving an older order of the same tracks seconds after the plan's reading
+has the moves sent by position from it, as R-1411's cost was.
+
+**Measured cost.** Not driven. Whether the provider serves an order older
+than the plan's to a reading seconds later, outside a stopped write, rests
+on Sitting 86's reads 3 seconds apart disagreeing 28 minutes after moves.
+The mutation passing the plan's reading at every order survives every test
+(row W5 of `docs/mutation/r1411.md`), so the scope limit is pinned by
+nothing either way.
+
+**Closes when:** every order write is held to the plan's reading, or a
+measurement shows the provider never serves an older order to a reading
+after the plan's outside a stopped write. Ledger only until driven.
