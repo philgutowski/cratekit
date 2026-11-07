@@ -66,24 +66,10 @@ description = "plan_pair: ask another pair's job before the twin's hold, so a tw
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
-old = '''        elif held_for_choice(held, remote_id, dates):
-            # U221. A TWIN'S MISSING TRACK WAITS FOR THE AUTHOR'S CHOICE, named
-            # and never queued, until ``sync release`` lets its twin's go.
-            # Asked before another pair's job, so a plain pair listing it
-            # leaves the twin's choice where it was (R-1385).
-            on_hold.append(names[key])
-        elif why := _queued_elsewhere(reader, target, remote_id):
-            # R-1385. ONE DOWNLOAD FOR THE LIBRARY, whichever pairs list it.
-            awaiting.append(_with_reason(names[key], why))'''
+old = '''        elif held_for_choice(held, remote_id, dates):'''
 new = '''        elif why := _queued_elsewhere(reader, target, remote_id):
-            # R-1385. ONE DOWNLOAD FOR THE LIBRARY, whichever pairs list it.
             awaiting.append(_with_reason(names[key], why))
-        elif held_for_choice(held, remote_id, dates):
-            # U221. A TWIN'S MISSING TRACK WAITS FOR THE AUTHOR'S CHOICE, named
-            # and never queued, until ``sync release`` lets its twin's go.
-            # Asked before another pair's job, so a plain pair listing it
-            # leaves the twin's choice where it was (R-1385).
-            on_hold.append(names[key])'''
+        elif held_for_choice(held, remote_id, dates):'''
 
 [[rows]]
 id = "M8_own_reads_every_job"
