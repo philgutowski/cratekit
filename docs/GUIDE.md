@@ -521,13 +521,6 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   ceiling names the `crate --calls N --run RUN sync pair` that finishes it.
 - After a removal on Tidal it cannot read back, it names the playlist: look
   at it in the Tidal app before running anything again.
-- A track Tidal lists with no title or no artist never stops `sync pair`. It
-  is left where it is on both sides and named on the gate, and every other
-  track of the playlist syncs both ways, removals and order included; a
-  reorder keeps such a track behind the one listed before it. When a
-  playlist's listing cannot be used at all, a row with no track id, a sync of
-  every pair leaves that pair out, names it and syncs the others; named
-  alone, it refuses.
 - Tidal's order is kept in rekordbox's order only for pairs under GIG READY;
   set `outbound.pair_order_every_pair = true` to keep every pair's. Other
   pairs still sync their tracks both ways and keep rekordbox's order: the
@@ -578,10 +571,12 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   takes longer. A sync in between that reads the earlier order again
   finishes the stopped order and puts the move back, and so does any move
   made before those readings, since it cannot be told from the half done
-  order or from Tidal still serving an older one. A track Tidal lists with
-  no title or no artist counts in none of these: moved, it stays where you
-  put it and never leads. A reorder in rekordbox since leads. It
-  remembers that stop however long you wait
+  order or from Tidal still serving an older one. A move of a track Tidal
+  lists with no title or no artist never makes Tidal's order lead: the
+  other tracks are finished in the stopped order, and that track stays where
+  you put it once those readings show the move, or at once where no move was
+  sent, and is otherwise put where the stopped order was taking it. A
+  reorder in rekordbox since leads. It remembers that stop however long you wait
   before the next sync, until a sync finishes the pair, and also when the
   pair's rekordbox playlist was deleted and you pair the Tidal playlist again
   with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`: that first
@@ -591,7 +586,10 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   still syncs: the track is never added to rekordbox nor read as taken off,
   and the gate names it. An order written on Tidal keeps it behind the track
   it follows there, except that a sync finishing a stopped order puts it
-  where that order was taking it, not where the stopped move left it.
+  where that order was taking it, not where the stopped move left it, unless
+  you moved it since (above). When a playlist's listing cannot be used at
+  all, a row with no track id, a sync of every pair leaves that pair out,
+  names it and syncs the others; named alone, it refuses.
 - Tidal can serve a playlist's old order or tracks to a paged read for
   minutes after a change, while the plain read is current. Where it plans an
   order or checks a write, `sync pair` reads both and takes the plain read
