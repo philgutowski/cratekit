@@ -19,6 +19,7 @@ from __future__ import annotations
 from cratekit.core import rb_writer
 from cratekit.modules.outbound import ledger
 from cratekit.modules.outbound import mirror_edits as edits
+from cratekit.organize import mirror_frozen
 from cratekit.organize.steps import LISTED, NOTHING
 from tests.test_label_workers import installed as installed  # noqa: PLC0414
 from tests.test_organize_mirror_edits import _field_policies as _field_policies  # noqa: PLC0414
@@ -187,3 +188,43 @@ def test_a_favourite_put_in_another_month_on_the_account_leaves_the_placed_month
     _area, step, queue, shared = world.plan_all()
     assert step.state == NOTHING and queue.state == NOTHING
     assert shared.reading().decided.decisions == ()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 3. The two acts of a gated run (U222)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_the_placements_are_read_as_the_gate_read_them_after_a_write_between_the_acts(world):
+    """The library step between the acts drops the placement; the apply reads the gate's."""
+    from tests.test_organize_mirror_frozen_u222 import GATE, _answered, _apply, _edits_pass, _gate
+
+    _favourited(world, at=IN_MONTH)
+    world.take_off(SOURCE, "r2")
+    shown = _gate(world)
+    frozen, _said = mirror_frozen.load(world.cfg, GATE)
+    assert frozen.placed["Favorites"] == {SHOWN: frozenset({"r2"})}
+    _edits_pass(world)
+    assert world.members(world.source) == {"1"} and world.members(world.month) == {"1"}
+    assert _placed(world) == {}
+
+    applied = _answered(world)
+
+    assert applied.digest() == shown.digest()
+    _apply(applied)
+    # The account was never given the track back over the edit.
+    assert world.held(SOURCE) == ["r1"]
+    assert world.held(SHOWN) == ["r1"]
+
+
+def test_a_frozen_folder_with_no_placements_reads_none_and_one_unread_reads_the_ledgers():
+    recorded = {
+        "Favorites": ledger.MirrorFolder(name="Favorites", placed={SHOWN: frozenset({"now"})}),
+        "Other": ledger.MirrorFolder(name="Other", placed={"Other x": frozenset({"now"})}),
+    }
+    frozen = mirror_frozen.Frozen(library=None, matches={}, placed={"Favorites": {}})
+
+    read = mirror_frozen.overlay(recorded, frozen)
+
+    assert read["Favorites"].placed == {}
+    assert read["Other"].placed == {"Other x": frozenset({"now"})}

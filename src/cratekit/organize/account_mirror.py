@@ -657,6 +657,9 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
     for folder in edited:
         held = reading.recorded.get(folder.name)
         for source in folder.playlists:
+            # THE LIBRARY'S OWN PLACEMENTS ON IT (U236), by title, recorded
+            # whether the playlist is mirrored yet or not.
+            ours = held.placed.get(source.name, frozenset()) if held is not None else frozenset()
             place = reading.places.get(source.name)
             if place is None or place.folder != folder.name:
                 continue
@@ -677,7 +680,7 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
             if mine is not None and mine.remote_id:
                 titled[mine.remote_id] = source.name
             if mine is None:
-                read.append(edits.Mirrored(place=place, rekordbox=frozenset(wanted)))
+                read.append(edits.Mirrored(place=place, rekordbox=frozenset(wanted), placed=ours))
                 continue
             try:
                 listing = reading.account.playlist_listing(mine.remote_id)
@@ -690,6 +693,7 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
                         agreed=mine.agreed,
                         short=True,
                         rekordbox_added=added,
+                        placed=ours,
                     )
                 )
                 continue
@@ -703,6 +707,7 @@ def _read_edits(cfg: config.Config, reading: Reading, links: dict[str, tuple[str
                     short=listing.short,
                     account_added=dict(listing.added),
                     rekordbox_added=added,
+                    placed=ours,
                 )
             )
     # AND WHERE EACH QUEUED TRACK'S LANDING FILED ITS ROW BY ITS TAGS (U227),

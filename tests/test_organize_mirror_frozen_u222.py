@@ -376,13 +376,16 @@ def test_a_never_agreed_snapshot_is_frozen_and_read_back_as_never_agreed(world):
     assert frozen.agreed["INBOX"]["emptied"] == ("p5", frozenset())
 
 
-def test_a_version_5_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(world):
+def test_an_older_record_or_an_unreadable_snapshot_or_step_is_planned_afresh(world):
     _gate(world)
     path = config.state_path("mirror_plans", world.cfg) / f"{GATE}.json"
     document = json.loads(path.read_text(encoding="utf-8"))
-    assert document["version"] == mirror_frozen.VERSION == 6
+    assert document["version"] == mirror_frozen.VERSION == 7
     for changed in (
         {"version": 5},
+        {"version": 6},
+        {"placed": {"Favorites": {"Favorites 2026-10": "r1"}}},
+        {"placed": {"Favorites": {"Favorites 2026-10": ["r1", 7]}}},
         {"agreed": {"INBOX": {INBOX_A: ["p1", "not a list"]}}},
         {"agreed": {"INBOX": {INBOX_A: [7, None]}}},
         {"steps": {"mirror:INBOX": {"title": "t", "digest": 7, "lines": {}}}},

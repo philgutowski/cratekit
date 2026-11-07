@@ -572,6 +572,7 @@ def test_a_version_four_frozen_plan_is_planned_afresh(installed):
 
     frozen, said = mirror_frozen.load(installed, "2026-11-05T00:00:00Z-cd34")
 
-    # 6 since U222, which froze the snapshots too; a version 4 record is still refused.
-    assert mirror_frozen.VERSION == 6
+    # 7 since U236, which froze the placements beside the snapshots U222 froze;
+    # a version 4 record is still refused.
+    assert mirror_frozen.VERSION == 7
     assert frozen is None and "version 4" in said
