@@ -72,9 +72,10 @@ Decided by Phillip on #608 (608-outside-order-2). Outside GIG READY, unless
 ``outbound.pair_order_every_pair`` keeps every pair's, the account's order is
 never written (U231), so a first sync led by the account would put rekordbox
 in the account's order for good. The caller says whether the order is kept
-(``order_kept``), and when it is not, no stopped write was found and rekordbox
-holds a track, rekordbox leads that first sync: its tracks keep their order,
-and each track only the account holds is placed after its neighbour there.
+(``order_kept``), and when it is not, no stopped write is handed in (none was
+found, or the account stands off its path) and rekordbox holds a track,
+rekordbox leads that first sync: its tracks keep their order, and each track
+only the account holds is placed after its neighbour there.
 The next sync then reads a base whose sides disagree, so rekordbox's order
 stands until the account changes order, which brings the account's whole
 order. An empty or new rekordbox playlist has no order to keep, and is led by
