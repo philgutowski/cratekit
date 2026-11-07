@@ -46746,3 +46746,98 @@ The last three came after `main` was merged in at c2e3d056, on runs that measure
 **Measured cost.** Driven by the round one reviewer on the fake account: a hand pair at the root with `t2` withheld and rekordbox 3, 1, 2 plans `account add t2` on every run, each run says `sync-pair-written`, and `held.first` stays true. The items are identical on main at 5f08ae57, so it predates R-1416. On a real provider that is an addition of a track the playlist already holds; measured only on the fake, which drops the duplicate, so the real provider's answer is unmeasured.
 
 **Closes when:** a first sync over a short listing plans no account addition of a track the account counts but does not serve, driven on the fake with a provider that keeps duplicates. Ledger only until the real provider's answer is measured.
+
+---
+
+## R-1432. A finish of a stopped order leaves an unread track where the stopped move put it, not where the stopped write was taking it
+
+**Found:** at the build of #618, R-1418, 2026-11-07.
+
+**The mechanism.** `_with_unread_placed` in `src/cratekit/sync/pair_cli.py`
+puts each unread track back behind the track the account lists before it
+now. A write stopped part way through its order may already have moved an
+unread track, and the plan that finishes it places that track by where the
+stopped move left it, since nothing of the stopped write's target is read
+for an unread id. So the finish makes the interrupted move permanent for the
+one track the merge cannot read.
+
+**Measured cost.** Driven by
+`test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_place`
+in `tests/test_sync_pair_settle.py`: the account lists t1, t2, t3, t4, then
+t9 with no title; rekordbox's 2, 3, 4, 1 asks 2, 3, 4, 9, 1, whose first
+move puts t9 in front; the write stops there and the finish, once served as
+the move left it, leaves t9, t2, t3, t4, t1, t5, where the stopped write's
+own target put t9 behind t4. Every readable track is in rekordbox's order and
+no track is lost or added; the cost is the place on the account of one
+track rekordbox does not hold, which the gate the person answered shows as
+planned. Not driven: whether a person notices or minds.
+
+Pre-existing on main since U225 and R-1264; this branch changes no
+behaviour, and its own scenario is the producer.
+
+**Closes when:** the plan of a finish places an unread track the stopped
+write moved from that write's target. It earns an issue under the board
+bar's (a): the account playlist's order is the person's, and a track
+Cratekit moved and cannot read is left where its interrupted move put it,
+reported finished.
+
+---
+
+## R-1433. The clause that passes no agreed reading for an empty plan reading is dead through a plan, and is pinned only by a synthetic stand in
+
+**Found:** at the review of #618, R-1418, 2026-11-07.
+
+**The mechanism.** `_write_account` in `src/cratekit/sync/pair_cli.py`
+passes `agreed` at a finish only when `one.account_before` is not empty. The
+block runs only under `if one.account_order`, and a plan with nothing listed
+appends its additions in the merged order, so `wanted_keys` equals `firsts`
+and the plan asks no order: no plan reaches the clause with an empty
+reading. For the real adapter it is also equivalent, since an empty agreed
+order holds a reading to nothing. Kept rather than dropped, because dropping
+it changes the write guard with no failing test to prove it.
+
+**Measured cost.** None. Four producers of a finish with an empty reading
+were driven, the author's and the review's: the account emptied after the
+stop with tracks added in rekordbox, only the unread track left on the
+account, every account track unread under a rekordbox reorder; each asked no
+order. A held plan from before U225 cannot carry `finishing_order`. Sibling
+releases and R-1376's first sync stop argued from source only. The unit test
+`test_a_finish_whose_plan_read_no_account_passes_no_agreed_reading` pins the
+clause on a hand built plan with an adapter stand in that takes no `agreed`,
+the only such stand in in the tree, so it dies by a signature and not a
+behaviour. A reader may believe the clause protects something.
+
+**Closes when:** the clause is dropped by a unit that changes the account
+write anyway, or a plan is found that reaches it. Ledger only, a maintainer
+facing guard.
+
+---
+
+## R-1434. The ordering step's start keeps a pair's unread ids, and no test kills dropping them
+
+**Found:** at the mutation table of #618, R-1418, 2026-11-07.
+
+**The mechanism.** `_write_account` in `src/cratekit/sync/pair_cli.py`
+records the ordering step's start from `one.account_before or
+one.account_now`, the plan's whole reading with its unread ids (R-1264).
+`pair_stopped.stopped_write` reads that start only for a write with no
+moving step, one that stopped after its ordering step and before its first
+move was sent; every other stopped write starts from the moving step's own
+record. A start without the unread ids leaves them out of `reached` and
+`positions`, which compare only the tracks the start and the listing share,
+so where an unread track stands is not read when the next plan decides
+whether the account stands on the stopped write's path.
+
+**Measured cost.** Row F7 of `docs/mutation/r1418.md`, the start recorded
+from the readable tracks alone, killed none of 17440 tests on the full
+suite. Its composite, a stopped write with no moving step read with no
+start at all, killed 4 on its subset, so the start is read and pinned; its
+unread ids are not. What a person pays was not driven: no sync was built
+that stops between the ordering step and the first send with an unread
+track a person then moves.
+
+**Closes when:** a verb test stops a write before its first move over a
+playlist listing an unread track, moves that track, and shows the next plan
+reads the move as the person's; or the start is shown not to need the
+unread ids. It earns an issue under the board bar's (d), a guard on a path
+that writes kills nothing.
