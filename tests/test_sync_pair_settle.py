@@ -1024,8 +1024,13 @@ def test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_che
     asked, run_id = _refused_finish(world, monkeypatch, account_id, lag)
     assert world.account.playlists[account_id] == [*reached, *added]
     world.account.served[account_id] = list(lag)
+    before = len(asked)
     code, envelope = drive(["--run", run_id, *VERB])
     assert world.account.playlists[account_id] == [*reached, *added], "moves were sent from a lag"
+    # Round two's row 4: the continue reached the adapter and was refused there.
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["detail"]["problem"] == "read-differs", envelope
+    assert len(asked) == before + 1, "the continue stopped before its order"
     assert asked[-1] == tuple(reached), "the continue was not held to the plan's reading"
     assert world.held(opener) == ["4", "3", "2", "1", *(["5"] if adding else [])]
     # Served as the moves left it, a later sync finishes the stopped write.

@@ -3310,7 +3310,10 @@ def apply_pair(
     """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot.
 
     ``account_listed`` is the account playlist as the check before the write
-    read it (U209), equal to what the plan read. A pair with nothing to write
+    read it (U209), equal to what the plan read until this run marks the
+    pair's order begun; on a continue after that it is checked for what it
+    holds and not its order, so a finish is held to the plan's own reading
+    (R-1411), never to this listing. A pair with nothing to write
     on the account records it as the side's snapshot rather than listing the
     playlist again; a pair that writes there lists it after the write, as
     every pair did before.
