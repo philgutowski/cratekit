@@ -46986,3 +46986,32 @@ the read back has just read the row.
 **Closes when:** the step warns when a FAVOURITE's month placement has no time,
 or the placement is recorded from the plan's own month and the read back's
 rows, and a test drives each. Ledger only.
+
+---
+
+## R-1441. A track put in a genre playlist on the account, whose only library match is another version of it, is queued and never downloaded until a person answers the version review
+
+**Found:** at sitting 89 (A90, #518), 2026-11-07, on v0.14.0.
+
+**The mechanism.** A90's genre edit put Dennis Ferrer `Change The World
+(Jihad Muhammad Vox Mix)` in `House / Funky House / Disco Med` on the account.
+`mirror-edits` holds it with `acquire` and `mirror-downloads` queued it once
+(job `2026-11-07T16:44:20Z-4356`, sitting 88). The sync pass took the job, but
+`intake/missing_cli.py` does not list the track as missing: the library holds
+`Change The World (Instrumental)`, and the matcher reads the vocal mix as
+`version-differs`, which it offers as a review question
+(`rv_c2c129dd92430ec947f5365e`) rather than a download. So the job succeeds
+with nothing downloaded, every later organize names the edit "held" and "named
+and not queued", and the track stays on the account playlist with no library
+row. This is the rule working as written: whether the instrumental stands for
+the vocal mix is Phillip's call.
+
+**Measured cost.** One track not filed; every organize's account area carries
+one held edit. No call cost beyond the read.
+
+**Closes when:** Phillip answers the review item. If he answers that the vocal
+mix is a different track, the next `crate sync land` downloads it and the
+organize after it files it in `House / Funky House / Disco Med`, which is the
+download half of A90. If he answers that the instrumental stands for it, the
+edit is taken against the instrumental. Ledger only: the behaviour is the
+documented review rule, and the step left is a person's answer.

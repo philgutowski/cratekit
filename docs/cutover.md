@@ -2412,20 +2412,39 @@ The same install and acknowledgment as sitting 87, which ran just before; no Cra
 
 **Met:** **A76 (#459)**: the listing's calls, each run's calls, the kept and reused counts, and a resume that read only the rest (across sittings, the earlier run having stopped at 506). **Not met:** A90 (#518), the unfavourite on #628 and the download on Phillip's review answer; A56 (#414), the retirement after the next rotate; A95 (#535), no staged batch; A94 (#528), no zombies. **Calls:** about 13,000 for the sitting, no command over 1,500.
 
+## Sitting 89, 2026-11-07, the attended session on v0.14.0, no rekordbox visit: the unfavourite U236 owes proven live, A90 and A115 met, the battery for A114
+
+Installed copy 0.14.0, the latest release, which carries U236 (#628). Both backup ages under five days (4 and 3), the session's acknowledgment from sitting 87 still valid. No Cratekit job running, and `rekordbox` and `rekordboxAgent` gone before every verb. Every database write rehearsed on a fresh disposable copy with library state redirected and the job queue copied in; every live digest equal to its rehearsal's. The account side never approved from a copy. Account edits made through the product client, read back 20 s later. The track is sitting 88's, Pachyman `Sunset Sound`, held in the library and not hearted on the account.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Round A on the account | the client, 19:35:02Z | `Sunset Sound` put in `All Favorites`; not in `Favorites 2026-11`. | done |
+| Round A organize | `organize --only mirror-edits --only mirror-downloads --only mirror`, rehearsal and live run `2026-11-07T19:38:25Z-4a06b44c5636318f`, rekordbox digest `dc6c2fcaca1104a9` | **Favourited**, to `Favorites / All Favorites` and `Favorites / 2026-11`; already Pink since sitting 88, so the colour is not proven again here. The Ferrer track held as before. Account area 0 to apply, digest `7519735c10807a23`. **The ledger's Favorites record took the placement**: `placed`, `Favorites 2026-11`, the track, 19:43:05Z. | done |
+| Round B on the account | the client, 19:45:32Z, no organize between | `Sunset Sound` taken off `All Favorites`. | done |
+| Round B organize | the same, rehearsal and live run `2026-11-07T19:49:31Z-70869078edde1c86`, rekordbox digest `607eff1c57f20c6f` | **Unfavourited**, out of `Favorites / All Favorites` and `Favorites / 2026-11`, with "it stays hearted on the account ... its colour is left as it is". No "an addition beats a removal". Account area 0 to apply, `7519735c10807a23`. | done |
+| The organize after | live run `2026-11-07T19:53:51Z-1788e4f84f78a668` | rekordbox digest `06cdd0d13e3c655a`, 0 to apply; account `7519735c10807a23`, 0 to apply; `no_op`. The `placed` entry is gone. The one edit named and not queued is the Ferrer track. | done |
+| Read back | a fresh copy of the live database, and the account | `Sunset Sound` in no Favorites playlist, only its INBOX batch; colour Pink. On the account, in neither `All Favorites` nor `Favorites 2026-11`. Not read in rekordbox's own window. | done |
+| The re-organize asked about on #628 | the three runs above | **No longer needed in this flow.** The account's month never took the track, since an organize mirrors a favourite's month to the account only at the next organize (R-1029), and the unfavourite came first. Sitting 88's extra organize was needed because its round 2 account area had put the track back in the account's month. A favourite left through one more organize before it is taken off still takes one further organize to leave the account's month, which is R-1029's lag and not U236's. | answered |
+| The download half | the review item | The Ferrer vocal mix waits on review `rv_c2c129dd92430ec947f5365e`, Phillip's call. **Filed as a residual** (`a90-a-genre-add-whose-only-match-is-another-version-waits-on-a-review`) rather than holding A90 open. | residual |
+| A114, the battery | `ruff`, `pytest` under `-n auto`, `scan_repo.py`, on `main` at `b18eee76` (v0.14.0) | **Green**: ruff clean, 17,556 passed and 1 skipped in 389 s, the scan clean, 19:59Z to 20:06Z. Among the passes `test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on` (sitting 87's one failure) and the identifier tests `test_two_runs_starting_in_the_same_second_get_different_identifiers`, `test_two_thousand_identifiers_minted_inside_one_second_are_all_distinct` and `test_a_run_identifier_carries_sixty_four_bits_of_random_tail`. Every run this sitting printed an identifier ending in sixteen hex characters, `4a06b44c5636318f` above. | met |
+| A stray read | `crate sync pair`, 20:08:14Z, started by mistake when the session's shell expanded a backticked phrase while this record was being written | Stopped at the 500 call ceiling while planning, before either gate, `REFUSED_BY_POLICY`; no run recorded, and neither the database nor any library state file changed after 19:58Z. 500 read calls, nothing written. | no effect |
+
+**Met:** **A90 (#518)**, every edit kind proven live across sittings 88 and 89 and the organize after planning nothing; the download on the residual. **A115 (#636)**, steps 2, 4 and 5. **A114 (#633)**, the battery and the identifier. U236's owed macOS battery is this one, on the merged head. **Calls:** 704 per organize command that read the account, eight of them, and the stray read's 500, 6,132 for the sitting.
+
 ## Next sitting
 
-**Open attended cards, as of 2026-11-07.** A88 (#514) and A91 (#521), the
-quiet sync's calls, and A108 (#592), which finishes the 32 account orders
-sitting 86 left part way, wait on U234 (#623). Every card the rest wait on
-has closed, so each is ready for a sitting: A90 (#518), the filing after
-U230; A94 (#528); A95 (#535); A105 (#581); A106 (#586); A107 (#589); A109
-(#601); A110 (#605); A111 (#611), the macOS battery with rekordbox open; and
-A112 (#615). Four
-more wait on a circumstance rather than a card: A56 (#414), whose retirement
-half waits on the first batch due to rotate, on 2026-11-08 at the earliest;
-A57 (#415), a DEADCA7 push onto a library copy; A72 (#446), new Bandcamp
-purchases from a followed label; and A76 (#459), a full build of a large
-label. A33 (#293) is a brainstorm, and A5 (#178) keeps lines 8 and 9 above.
+**Open attended cards, as of 2026-11-07, after sitting 89.** A88 (#514) and
+A91 (#521), the quiet sync's calls, and A108 (#592), which finishes the 32
+account orders sitting 86 left part way, wait on U234 (#623). A113 (#627), a
+hand pair outside GIG READY keeping rekordbox's order, is ready for the next
+attended `crate sync pair`. A94 (#528) waits on leaking zombies and A95 (#535)
+on an unlanded batch still staged. Three more wait on a circumstance rather
+than a card: A56 (#414), whose retirement half waits on the first batch due to
+rotate, on 2026-11-08 at the earliest; A57 (#415), a DEADCA7 push onto a
+library copy; and A72 (#446), new Bandcamp purchases from a followed label.
+A90's download half waits on Phillip's answer to the version review of the
+Dennis Ferrer vocal mix, recorded as a residual. A33 (#293) is a brainstorm,
+and A5 (#178) keeps lines 8 and 9 above.
 
 **The account root is Phillip's by hand since sitting 41 (2026-10-14)**, and
 he declined the root step's report at sitting 48. Read the root back before
