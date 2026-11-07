@@ -642,6 +642,10 @@ plans just those steps; a side with no kind named is not asked.
   landing first filed it by its tags ("landed for the account's edit"), even
   when the mirror has no snapshot of the playlist you put it in yet; a
   change you make in rekordbox after the landing still wins.
+- A track you add to `All Favorites` on Tidal is favourited in rekordbox in
+  the month of its added time, and the account's month takes it at the next
+  organize. Taking it off `All Favorites` again, even before that organize,
+  unfavourites it; a month you add it to in rekordbox yourself still keeps it.
 - An answer given on a later run applies the plan you were shown; a change
   on Tidal since refuses as stale.
 - `--rematch` asks the provider again about rows the mirror remembers as
