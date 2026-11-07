@@ -108,6 +108,8 @@ def new_stamp(now: datetime | None = None) -> str:
     attempt's, and those bytes are in no capture. Eight bytes of tail costs twelve
     characters in a directory name and moves that number below any rate worth
     reasoning about. ``tests/test_snapshot.py`` pins the width.
+    ``cli.output.new_run_id`` carries the same sixty four bits since U235, for
+    the same reason, so a change to either width is a change to read both.
 
     No colon and no space, unlike the run identifier, because this string becomes
     a directory name on whatever filesystem the user's library lives on and a
