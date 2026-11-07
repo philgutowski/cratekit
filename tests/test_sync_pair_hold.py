@@ -297,6 +297,31 @@ def test_the_calls_are_on_a_no_op_answer_too(world, counted):
     assert envelope["data"]["totals"]["calls"] == {"plan": 2, "check": 0, "write": 0}
 
 
+@pytest.mark.parametrize("found", ["by its row's isrc", "by another account playlist's landing"])
+def test_a_track_found_by_another_landing_costs_the_plan_no_call(world, counted, cfg, tmp_path, found):
+    """U229. Reading every landed INBOX playlist asks the provider nothing.
+
+    The same pair plans the same add whichever way the library's row is
+    found, by the row's own ISRC or by a landing through another account
+    playlist, and the provider is asked the same number of times for both.
+    """
+    from tests.test_sync_pair import _landed_for, _untagged_row, isrc
+
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    if found != "by its row's isrc":
+        _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+        _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    w.account.playlists[ACCOUNT].append("t8")
+    seen = counted(w)
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "8"]
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert envelope["data"]["totals"]["calls"]["plan"] == 1
+    assert seen.lookups == 0
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # A held plan that cannot be used is planned again, and says so
 # ═══════════════════════════════════════════════════════════════════════════
