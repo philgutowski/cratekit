@@ -978,3 +978,91 @@ def test_a_finish_that_also_removes_is_refused_on_a_reading_that_lags_the_stoppe
         assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == _ids("4", "2", "1")
     assert world.held(opener) == ["4", "2", "1"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1411, round one's review: the agreed reading is the plan's, on every path
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _refused_finish(world, monkeypatch, account_id: str, lag: list[str]) -> tuple[list[object], str]:
+    """The adapter's reading lagging the stopped move: held once, then the finish refused.
+
+    Answers the agreed readings asked and the run whose finish was refused,
+    for a continue of it.
+    """
+    asked = _adapter_reading(world, monkeypatch, account_id, lag)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    code, refused = sync()
+    assert code != int(ExitCode.OK), refused
+    return asked, refused["run_id"]
+
+
+@pytest.mark.parametrize("adding", [True, False])
+def test_a_continue_of_a_refused_finish_is_held_to_the_plans_reading_not_the_checks(
+    world, owed, cfg, monkeypatch, adding
+):
+    """Row 1 of round one: on a continue the check's listing is read for what it holds, not its order.
+
+    The provider serves the order from before the stopped move to the
+    continue's check and to the adapter alike, so the check's listing is
+    the lag; held to it, the moves went by position from the lag and left
+    4, 3, 1, 2 under an ok exit.
+    """
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    added = ["t5"] if adding else []
+    if adding:
+        world.rekordbox_add(opener, "5")
+    lag = [*_ids("1", "2", "3", "4"), *added]
+    asked, run_id = _refused_finish(world, monkeypatch, account_id, lag)
+    assert world.account.playlists[account_id] == [*reached, *added]
+    world.account.served[account_id] = list(lag)
+    code, envelope = drive(["--run", run_id, *VERB])
+    assert world.account.playlists[account_id] == [*reached, *added], "moves were sent from a lag"
+    assert asked[-1] == tuple(reached), "the continue was not held to the plan's reading"
+    assert world.held(opener) == ["4", "3", "2", "1", *(["5"] if adding else [])]
+    # Served as the moves left it, a later sync finishes the stopped write.
+    del world.account.served[account_id]
+    _adapter_reading(world, monkeypatch, account_id, [*reached, *added])
+    for _ in range(3):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == [*_ids("4", "3", "2", "1"), *added]
+
+
+def test_a_finish_planned_again_in_the_writing_command_is_held_to_its_own_reading(
+    world, owed, cfg, monkeypatch
+):
+    """Row 2 of round one: a held plan that cannot be read leaves no check listing to pass."""
+    opener, account_id, reached = _stopped_then_added(world, owed, monkeypatch)
+    asked = _adapter_reading(world, monkeypatch, account_id, _ids("1", "2", "3", "4", "5"))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    answers = {pair_cli.REKORDBOX_GATE: "apply", pair_cli.ACCOUNT_GATE: "apply"}
+    run_id = None
+    for _ in range(3):
+        resume = ["--run", run_id] if run_id else []
+        code, envelope = drive([*resume, *VERB])
+        if code != int(ExitCode.DECISION_REQUIRED):
+            break
+        run_id = envelope["run_id"]
+        gate = envelope["cause"]["detail"]["gate"]
+        decided, said = drive(["run", "decide", run_id, gate, answers[gate], "--actor", "a-person"])
+        assert decided == int(ExitCode.OK), said
+        if gate == pair_cli.ACCOUNT_GATE:
+            held_plan.path(run_id).write_text("{not json")
+    # Refused, read-differs: the plan made again in this command, its finish
+    # held to that plan's own reading of the account, which the write's
+    # addition is not yet on.
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["detail"]["problem"] == "read-differs", envelope
+    assert world.account.playlists[account_id] == [*reached, "t5"], "moves were sent from a lag"
+    assert asked == [tuple(reached)], "the finish planned again passed no agreed reading"
+    assert world.held(opener) == ["4", "3", "2", "1", "5"]
