@@ -291,7 +291,8 @@ def merge(
     left, when the caller found one, and the order rule then reads each side's
     change of order against it (U225). ``order_kept`` is whether the account
     is put in the merged order, which the caller decides (U231); a first sync
-    whose order is not kept is led by rekordbox when it holds a track (R-1416).
+    whose order is not kept, with no ``stopped`` handed in, is led by
+    rekordbox when it holds a track (R-1416).
     """
     held_account = set(account.keys)
     held_rekordbox = set(rekordbox.keys)
