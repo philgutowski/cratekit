@@ -1,0 +1,96 @@
+name = "r1434"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_path_read_on_the_whole_start"
+description = "the unit's guard reverted: the path of a stopped write is read on its whole start, an unread track included, so a person's move of one reads the account off the path"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            tuple(one for one in stopped_write.start if alias(one) not in unread_keys),
+            stopped_write.target,
+            reading,'''
+new = '''            stopped_write.start,
+            stopped_write.target,
+            reading,'''
+
+[[rows]]
+id = "M2_unread_matched_by_id_not_key"
+description = "the start's ids matched against the unread keys unaliased, so no id is ever left out"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            tuple(one for one in stopped_write.start if alias(one) not in unread_keys),'''
+new = '''            tuple(one for one in stopped_write.start if one not in unread_keys),'''
+
+[[rows]]
+id = "M3_pending_write_read_on_its_whole_start"
+description = "the narrowing kept for a write that sent no move only, so a pending write is read on its moving step's whole start and a person's move of an unread track reads it off the path"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            tuple(one for one in stopped_write.start if alias(one) not in unread_keys),'''
+new = '''            stopped_write.start if stopped_write.pending else tuple(one for one in stopped_write.start if alias(one) not in unread_keys),'''
+
+[[rows]]
+id = "M4_readable_now_left_out_too"
+description = "every track of the start left out of the path read, so the account is always read as on the path and a person's move of any track never leads"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            tuple(one for one in stopped_write.start if alias(one) not in unread_keys),'''
+new = '''            tuple(one for one in stopped_write.start if alias(one) in unread_keys),'''
+
+[[rows]]
+id = "F7_ordering_start_from_the_readable_tracks"
+description = "R-1418's zero row, now the card's pin: the ordering step records its start from the readable tracks, so a track unread at the stop and read since is left out of the path read and its move by the person is put back"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                    one.account_before or one.account_now, removed, added'''
+new = '''                    one.account_now, removed, added'''
+
+[[rows]]
+id = "S1_sent_nothing_off_path_waits_for_settled_readings"
+description = "existing guard, U234: an order off the path of a write known to have sent no move no longer leads at once"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        moved_nothing = off_path and stopped_write.sent_nothing'''
+new = '''        moved_nothing = False'''
+
+[[rows]]
+id = "S2_positions_compare_every_track_listed"
+description = "existing guard, U225: the path compares every track listed now, a track added since included, so an addition reads the account off the path"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    common = set(current) & set(start)'''
+new = '''    common = set(current)'''
+
+[[rows]]
+id = "S3_unread_track_placed_at_the_front"
+description = "existing guard, R-1264: an unread track a reorder does not move is put at the front rather than behind the track listed before it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                at = placed.index(before) + 1'''
+new = '''                at = 0'''
+
+[[rows]]
+id = "S4_unread_keys_keep_a_readable_release"
+description = "existing guard, R-1264: a key the account lists both unread and readable counts as unread"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'''
+new = '''    unread_keys = {alias(remote_id) for remote_id in unread}'''
+
+[[rows]]
+id = "S5_folded_base_keeps_unread_keys"
+description = "existing guard, R-1264: the base keeps an unread track's key, so it is read as taken off the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            base_account = tuple(key for key in base_account if key not in unread_keys)'''
+new = '''            base_account = tuple(base_account)'''
