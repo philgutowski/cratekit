@@ -168,6 +168,7 @@ def test_every_move_accepted_and_an_agreed_reading_short_of_their_end_is_still_a
     assert len(world.account.ordered) == ordered, "a lagging reading was ordered from"
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert world.held(opener) == ["4", "3", "1", "2"]
+    assert "every move run" in _said(envelope, pair_cli.LEFT_OUT)
 
 
 def _age(days: int) -> None:
@@ -408,6 +409,26 @@ def test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the
         assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == _ids("4", "3", "2", "1")
     assert world.held(opener) == ["4", "3", "2", "1"]
+
+
+def test_a_stopped_writes_counts_are_carried_past_its_runs_steps(world, owed, cfg, monkeypatch):
+    """R-1372's carried record holds the counts too, so a run whose steps are gone still holds a lag."""
+    opener, account_id = owed
+    _three_moves(world, opener)
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    held_plan.steps_path(stopped["run_id"]).unlink()
+    reached = list(world.account.playlists[account_id])
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    ordered = len(world.account.ordered)
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert len(world.account.ordered) == ordered, "moves were sent from a lagging reading"
+    assert world.account.playlists[account_id] == reached
 
 
 def test_a_first_move_refused_on_its_412s_is_sent_again_from_the_start_once(
