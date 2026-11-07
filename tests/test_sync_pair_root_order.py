@@ -1,4 +1,4 @@
-"""R-1404: a rekordbox reorder of a pair whose account order is not kept stays in rekordbox.
+"""R-1404 and R-1416: a pair whose account order is not kept keeps rekordbox's order.
 
 Since U231 a pair whose rekordbox playlist is not under GIG READY never has
 its account order written, so once rekordbox leads a reorder the pair's
@@ -20,6 +20,7 @@ from cratekit.core import config
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs
 from cratekit.sync import pair_cli
+from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
 from tests.test_rebuild import cfg as cfg  # noqa: PLC0414
@@ -132,3 +133,114 @@ def test_a_pair_whose_order_is_kept_still_follows_a_rekordbox_reorder(world, mon
     envelope = _again(w)
     assert pair_cli.NOTHING in _codes(envelope), envelope
     assert w.held() == ["3", "1", "2"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1416: a hand pair's first sync outside GIG READY keeps rekordbox's order
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Decided by Phillip on #608 (608-outside-order-2): outside GIG READY Tidal's
+# order is never written (U231), so a first sync that put rekordbox in Tidal's
+# order lost the DJ's arrangement for good. The first sync keeps the order
+# rekordbox stands in; a later Tidal reorder still brings Tidal's whole order
+# (608-outside-order-1).
+
+
+def _paired(world, monkeypatch, *, account, rekordbox, every: bool = False):
+    """A hand pair at the rekordbox root, not yet synced, with the key as asked."""
+    w = world(account=account, rekordbox=rekordbox)
+    _kept(monkeypatch, w, every=every)
+    return w
+
+
+def _line(w) -> str:
+    """The pair's gate line on its first sync, read before anything is answered."""
+    code, envelope = drive(w.args())
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    return envelope["cause"]["detail"]["shown"][f"pair {ACCOUNT}"]
+
+
+def test_a_hand_pairs_first_sync_outside_gig_ready_keeps_rekordbox_s_order(world, monkeypatch):
+    """The brief's scenario: Tidal 1, 2, 3 and rekordbox 3, 1, 2, each left as it stands."""
+    w = _paired(world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "1", "2"))
+    line = _line(w)
+    assert "first sync, additions only" in line, line
+    assert "order follows rekordbox's" in line, line
+    assert "order follows the account's" not in line, line
+    code, envelope = sync(w.args())
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["3", "1", "2"], "the first sync put rekordbox in Tidal's order"
+    assert w.on_account() == ["t1", "t2", "t3"], "the account order was written outside GIG READY"
+    envelope = _again(w)
+    assert pair_cli.NOTHING in _codes(envelope), envelope
+    assert w.held() == ["3", "1", "2"]
+    assert w.on_account() == ["t1", "t2", "t3"]
+
+
+def test_a_track_only_tidal_holds_lands_after_its_neighbour_in_rekordbox_s_order(
+    world, monkeypatch
+):
+    """Track 4 follows 3 on Tidal, so it lands after 3 and the rest keep rekordbox's order."""
+    w = _paired(world, monkeypatch, account=("1", "2", "3", "4"), rekordbox=("3", "1", "2"))
+    code, envelope = sync(w.args())
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["3", "4", "1", "2"]
+    assert w.on_account() == ["t1", "t2", "t3", "t4"]
+    envelope = _again(w)
+    assert pair_cli.NOTHING in _codes(envelope), envelope
+    assert w.held() == ["3", "4", "1", "2"]
+
+
+def test_a_track_only_rekordbox_holds_is_appended_to_the_account_and_nothing_else_moves(
+    world, monkeypatch
+):
+    w = _paired(world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "5", "1", "2"))
+    code, envelope = sync(w.args())
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["3", "5", "1", "2"]
+    assert w.on_account() == ["t1", "t2", "t3", "t5"]
+    envelope = _again(w)
+    assert pair_cli.NOTHING in _codes(envelope), envelope
+    assert w.held() == ["3", "5", "1", "2"]
+    assert w.on_account() == ["t1", "t2", "t3", "t5"]
+
+
+def test_a_hand_pairs_first_sync_with_every_pairs_order_kept_follows_tidal(world, monkeypatch):
+    """With ``outbound.pair_order_every_pair`` on the first sync follows Tidal, as it always has."""
+    w = _paired(
+        world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "1", "2"), every=True
+    )
+    line = _line(w)
+    assert "order follows the account's" in line, line
+    code, envelope = sync(w.args())
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "2", "3"]
+    assert w.on_account() == ["t1", "t2", "t3"]
+
+
+def test_an_empty_rekordbox_playlist_paired_by_hand_is_planned_as_before(world, monkeypatch):
+    """Nothing in rekordbox to keep: it takes Tidal's tracks in Tidal's order, the gate as before."""
+    w = _paired(world, monkeypatch, account=("3", "1", "2"), rekordbox=())
+    line = _line(w)
+    assert "order follows the account's" in line, line
+    code, envelope = sync(w.args())
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["3", "1", "2"]
+    assert w.on_account() == ["t3", "t1", "t2"]
+
+
+def test_after_the_first_sync_a_tidal_reorder_still_leads_and_a_rekordbox_reorder_stands(
+    world, monkeypatch
+):
+    """608-outside-order-1: a Tidal reorder brings Tidal's whole order; a rekordbox one stays."""
+    w = _paired(world, monkeypatch, account=("1", "2", "3"), rekordbox=("3", "1", "2"))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    w.account.playlists[ACCOUNT] = ["t2", "t3", "t1"]
+    _again(w)
+    assert w.held() == ["2", "3", "1"], "a Tidal reorder after the first sync was not taken"
+    assert w.on_account() == ["t2", "t3", "t1"]
+    w.rekordbox_order("1", "3", "2")
+    for _ in range(2):
+        _again(w)
+        assert w.held() == ["1", "3", "2"], "a rekordbox reorder after the first sync was put back"
+        assert w.on_account() == ["t2", "t3", "t1"]

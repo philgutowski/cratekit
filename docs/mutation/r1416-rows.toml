@@ -1,0 +1,113 @@
+name = "r1416"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_rekordbox_does_not_lead"
+description = "merge: a first sync whose account order is not kept is led by the account again, the defect R-1416 names"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        # order rekordbox stands in, or the DJ's arrangement is lost for good.
+        leader = REKORDBOX'''
+new = '''        # order rekordbox stands in, or the DJ's arrangement is lost for good.
+        leader = ACCOUNT'''
+
+[[rows]]
+id = "M2_order_kept_ignored"
+description = "merge: the flag is ignored, so a first sync under GIG READY or with every pair's order kept is led by rekordbox"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''    elif base is None and not order_kept and rekordbox.keys:'''
+new = '''    elif base is None and rekordbox.keys:'''
+
+[[rows]]
+id = "M3_empty_rekordbox_leads"
+description = "merge: an empty rekordbox side leads its first sync, so the gate says the order follows rekordbox's where it takes the account's"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''    elif base is None and not order_kept and rekordbox.keys:'''
+new = '''    elif base is None and not order_kept:'''
+
+[[rows]]
+id = "M4_first_sync_unguarded"
+description = "merge: a pair whose order is not kept is led by rekordbox whatever its base, so an account reorder after the first sync no longer reaches rekordbox"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''    elif base is None and not order_kept and rekordbox.keys:'''
+new = '''    elif not order_kept and rekordbox.keys:'''
+
+[[rows]]
+id = "M5_stopped_write_yields"
+description = "merge: outside the scope a stopped write no longer decides the order, so the new first sync rule takes its place"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''    if stopped is not None:
+        # U225.'''
+new = '''    if stopped is not None and order_kept:
+        # U225.'''
+
+[[rows]]
+id = "M6_default_not_kept"
+description = "merge: the keyword's default reads the order as not kept, so a caller that says nothing is led by rekordbox on a first sync"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "maintainer"
+old = '''    order_kept: bool = True,'''
+new = '''    order_kept: bool = False,'''
+
+[[rows]]
+id = "M7_cli_tells_kept"
+description = "pair_cli: the merge is always told the order is kept, so a root pair's first sync puts rekordbox in the account's order again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        order_kept=order_kept,'''
+new = '''        order_kept=True,'''
+
+[[rows]]
+id = "M8_cli_tells_not_kept"
+description = "pair_cli: the merge is always told the order is not kept, so a GIG READY pair's first sync keeps rekordbox's order"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        order_kept=order_kept,'''
+new = '''        order_kept=False,'''
+
+[[rows]]
+id = "M9_cli_scope_key_only"
+description = "pair_cli: the flag read before the merge is the config key alone, so a GIG READY pair reads as not kept"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    order_kept = _keeps_order(cfg, rekordbox, home)'''
+new = '''    order_kept = cfg.outbound.pair_order_every_pair'''
+
+[[rows]]
+id = "M10_cli_account_write_kept"
+description = "pair_cli: the account write reads the order as always kept, so a root pair's first sync writes rekordbox's order onto the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        order_unkept = wanted_keys != firsts and not order_kept'''
+new = '''        order_unkept = False'''
+
+[[rows]]
+id = "S1_disagreeing_base"
+description = "sample, R-1404: a base whose sides disagree no longer lets rekordbox lead, so the second sync after a rekordbox led first sync puts the account's order into rekordbox"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        if order_changed(rekordbox.keys, base.rekordbox) or order_changed(
+            base.rekordbox, base.account
+        ):'''
+new = '''        if order_changed(rekordbox.keys, base.rekordbox) or False:'''
+
+[[rows]]
+id = "S2_placed_after_neighbour"
+description = "sample, U130: a track only the following side holds goes to the start rather than after its neighbour"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        anchor += 1
+        result.insert(anchor, key)'''
+new = '''        result.insert(0, key)'''
+
+[[rows]]
+id = "S3_scope_under_the_folder"
+description = "sample, U231: a playlist under GIG READY is no longer read as kept, so its first sync is led by rekordbox"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        return bool(rekordbox.ancestors) and rekordbox.top[1] == ORDER_FOLDER'''
+new = '''        return False'''

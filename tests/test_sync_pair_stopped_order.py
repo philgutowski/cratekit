@@ -677,7 +677,31 @@ def test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before(w
     code, envelope = sync(paired)
     assert code == int(ExitCode.OK), envelope
     assert pair_cli.FINISHING not in _codes(envelope)
-    # The first sync's account leads, as it always has.
+    # R-1416. CHANGED BY PHILLIP'S DECISION on #608 (608-outside-order-2), not
+    # weakened: this root pair's account order is not kept (U231), so its
+    # first sync keeps the order rekordbox stands in and leaves the account's
+    # as it is. Before, the account led and rekordbox took 3, 1, 2.
+    assert world.held(mine) == ["1", "2", "3"]
+    assert world.account.playlists[theirs] == _ids("3", "1", "2")
+
+
+def test_a_first_sync_of_an_account_playlist_with_no_stop_under_gig_ready_follows_the_account(
+    world,
+):
+    """R-1416 leaves a pair whose account order is kept as it was: the account leads its first sync."""
+    gig = world.folder("GIG READY")
+    world.playlist("Intro", "1", "2", "3", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    theirs = world.account.create_playlist("Theirs")
+    world.account.playlists[theirs] = _ids("3", "1", "2")
+    mine = world.playlist("Mine", "1", "2", "3", under=gig)
+    paired = [*VERB, theirs, "--rekordbox", mine]
+    code, first = drive(paired)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert "order follows the account's" in first["cause"]["detail"]["shown"][f"pair {theirs}"]
+    code, envelope = sync(paired)
+    assert code == int(ExitCode.OK), envelope
     assert world.held(mine) == ["3", "1", "2"]
     assert world.account.playlists[theirs] == _ids("3", "1", "2")
 
