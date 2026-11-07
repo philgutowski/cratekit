@@ -1474,6 +1474,144 @@ def test_a_reorder_settled_readings_show_keeps_the_unread_track_where_the_person
     assert not any("where the stopped order was taking it" in one for one in shown), shown
 
 
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1446. A settled move of an unread track alone is no reorder of the readable ones
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _settled_then_moved(world, cfg, account_id: str, settled: list[str], moved: list[str]) -> None:
+    """Have plans keep and settle ``settled`` as the account's order after the stop, then list ``moved``."""
+    world.account.playlists[account_id] = list(settled)
+    for _ in range(4):
+        plan_only()
+        held = pairs.PairStore(cfg).get(account_id)
+        if held is not None and held.stop_seen is not None and held.stop_seen.settled:
+            break
+    assert held is not None and held.stop_seen is not None and held.stop_seen.settled, held
+    world.account.playlists[account_id] = list(moved)
+
+
+def test_a_settled_move_of_the_unread_track_alone_still_finishes_the_stopped_write(
+    world, owed, cfg, monkeypatch
+):
+    """R-1446: the person moves only t9, which neither side's merge reads, after a stop whose rekordbox side was written.
+
+    The account lists t1 to t4 and then t9 with no title, rekordbox's
+    2, 3, 4, 1 asks 2, 3, 4, 9, 1, and the write stops after its first
+    move put t9 in front, rekordbox written, so the bases are what the
+    stopped write left. The person drags t9 between t2 and t3, plans read
+    that settled, and the person drags it between t3 and t4. Every
+    readable track still stands where the stopped write left it, so no
+    reorder of them is shown: the stopped write is finished, rekordbox
+    keeps the order the DJ made, and the account is put in it, t9 kept
+    where the person put it. Before, the readings compared t9's place too,
+    the account led, and its half done order was put into rekordbox as
+    1, 2, 3, 4.
+    """
+    opener, account_id = _stopped_after_t9s_move(world, owed, monkeypatch)
+    _settled_then_moved(
+        world,
+        cfg,
+        account_id,
+        [*_ids("1", "2"), "t9", *_ids("3", "4")],
+        [*_ids("1", "2", "3"), "t9", "t4"],
+    )
+    envelopes: list[dict] = []
+    # Held while the change settles, as any change after a settled reading is.
+    for left_out in (True, True, False):
+        code, envelope = _synced_keeping_gates(envelopes)
+        assert code == int(ExitCode.OK), envelope
+        envelopes.append(envelope)
+        assert (pair_cli.LEFT_OUT in _codes(envelope)) is left_out, envelope
+    assert world.held(opener) == ["2", "3", "4", "1"], "the DJ's rekordbox order was undone"
+    # The readable tracks finished in rekordbox's order, and t9 where the
+    # person put it, behind t3, since its settled move was theirs.
+    assert world.account.playlists[account_id] == [*_ids("2", "3"), "t9", *_ids("4", "1")]
+    finishing = [
+        _said(one, pair_cli.FINISHING) for one in envelopes if pair_cli.FINISHING in _codes(one)
+    ]
+    assert finishing, envelopes
+    assert not any("so its order leads" in one for one in finishing), finishing
+    assert any("order follows rekordbox" in one for one in finishing), finishing
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == (*_ids("2", "3"), "t9", *_ids("4", "1"))
+    assert held.stop_seen is None
+
+
+def test_a_settled_move_of_a_readable_track_beside_an_unread_one_still_leads(
+    world, owed, cfg, monkeypatch
+):
+    """R-1446 keeps U234: a settled reorder of the readable tracks is the person's, an unread track listed beside them.
+
+    The same stop, rekordbox written. Plans read the account settled with
+    t9 between t2 and t3, then the person moves t3 to the front, leaving
+    t9 where it was. Held while the change settles, the account's order
+    is then read as theirs and leads, as U234 made it, and rekordbox
+    takes it.
+    """
+    opener, account_id = _stopped_after_t9s_move(world, owed, monkeypatch)
+    _settled_then_moved(
+        world,
+        cfg,
+        account_id,
+        [*_ids("1", "2"), "t9", *_ids("3", "4")],
+        [*_ids("3", "1", "2"), "t9", "t4"],
+    )
+    envelopes: list[dict] = []
+    for left_out in (True, True, False):
+        code, envelope = _synced_keeping_gates(envelopes)
+        assert code == int(ExitCode.OK), envelope
+        envelopes.append(envelope)
+        assert (pair_cli.LEFT_OUT in _codes(envelope)) is left_out, envelope
+    assert world.held(opener) == ["3", "1", "2", "4"], "the person's settled reorder did not lead"
+    finishing = [_said(one, pair_cli.FINISHING) for one in envelopes if pair_cli.FINISHING in _codes(one)]
+    assert any("reordered since syncs after the stop read it settled" in one for one in finishing), (
+        finishing
+    )
+
+
+def test_a_move_of_the_unread_track_alone_after_a_stop_that_sent_nothing_is_no_reorder(
+    world, owed, cfg, monkeypatch
+):
+    """R-1446, one step over: an order refused before its first move, then only t9 moved by hand.
+
+    U234 reads an account off the path of a write known to have sent no
+    move as the person's at once (R-1420). Off the path here only by where
+    the person put t9, which neither side's merge reads, so the readable
+    tracks still stand where the write began: the stopped write is
+    finished, rekordbox keeps its order, and t9 stays where it was put.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    real = world.account.order_tracks
+    refused: list[str] = []
+
+    def order_tracks(asked_id, remote_ids, *, expect=None, begun=None, **agreed):
+        if asked_id != account_id or refused:
+            return real(asked_id, remote_ids, expect=expect, begun=begun, **agreed)
+        refused.append(asked_id)
+        raise refuse(
+            "outbound-remove-refused",
+            f"the playlist {asked_id} read differs, so nothing was moved",
+            scope=Scope.RUN,
+            origin=("test", "order"),
+            detail={"playlist_id": asked_id, "problem": "read-differs"},
+        )
+
+    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert refused and world.account.playlists[account_id] == [*_ids("1", "2", "3", "4"), "t9"]
+    world.account.playlists[account_id][:] = [*_ids("1", "2"), "t9", *_ids("3", "4")]
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.held(opener) == ["2", "3", "4", "1"], "the DJ's rekordbox order was undone"
+    assert world.account.playlists[account_id] == [*_ids("2"), "t9", *_ids("3", "4", "1")]
+
+
 def test_a_finish_with_no_unread_track_is_put_in_rekordboxs_order(world, owed, cfg, monkeypatch):
     """R-1432: with every track read, the finish leaves the account in rekordbox's order, as before."""
     opener, account_id = owed
