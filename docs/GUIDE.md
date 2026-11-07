@@ -546,6 +546,12 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   long it agrees, until Tidal shows the moves, you move the playlist by hand
   in the Tidal app, or you release the pair. A run whose plan cannot be kept
   sends no order.
+- An order stopped before any move was sent, refused by Tidal, parked on a
+  cooldown or stopped by a rejected session, is finished by
+  `crate --run RUN sync pair` only while the Tidal playlist still stands in
+  the order the plan read, with that sync's own additions after it. A
+  reorder you made on Tidal since stops the continue as moved, nothing
+  written; a fresh `sync pair` then takes your order.
 - A fresh `sync pair` after a write that stopped part way through putting a
   Tidal playlist in order finishes that order, from the side that led it,
   rather than reading its half done order as your edit. The gate names the
@@ -647,6 +653,10 @@ plans just those steps; a side with no kind named is not asked.
   landing first filed it by its tags ("landed for the account's edit"), even
   when the mirror has no snapshot of the playlist you put it in yet; a
   change you make in rekordbox after the landing still wins.
+- A track you add to `All Favorites` on Tidal is favourited in rekordbox in
+  the month of its added time, and the account's month takes it at the next
+  organize. Taking it off `All Favorites` again, even before that organize,
+  unfavourites it; a month you add it to in rekordbox yourself still keeps it.
 - An answer given on a later run applies the plan you were shown; a change
   on Tidal since refuses as stale.
 - `--rematch` asks the provider again about rows the mirror remembers as

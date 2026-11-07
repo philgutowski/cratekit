@@ -62,7 +62,10 @@ THE FAVORITES FOLDER AND INBOX, SINCE U204, in the same session:
 
 THE SNAPSHOT TAKES EACH EDIT THE LIBRARY TOOK (:func:`settle`), once the commit
 landed, so the next refresh reads the track as agreed, and a move made in
-rekordbox after it is rekordbox's to carry to the account.
+rekordbox after it is rekordbox's to carry to the account. The month a
+FAVOURITE put in All Favorites alone was placed in is recorded beside it as
+the library's own placement (U236), since the account does not hold it there
+until the mirror's next refresh, and read then as no change made in rekordbox.
 
 THE PLAN A GATE SHOWS IS THE PLAN ITS APPLY WRITES. The apply plans again on its
 write handle from the same decisions and refuses ``decision-stale`` when the
@@ -800,6 +803,9 @@ class Applied:
     made: list[str] = field(default_factory=list)
     #: Every edit the library took, ``(content id, tree)``, for the snapshot.
     taken: list[tuple[str, str]] = field(default_factory=list)
+    #: Each FAVOURITE the placement wrote into a month, ``(content id, month,
+    #: the membership's time)``, the library's own placement (U236).
+    months: list[tuple[str, str, str]] = field(default_factory=list)
 
     def totals(self) -> dict[str, Any]:
         return {
@@ -929,6 +935,18 @@ def write(
         done.session_id = record.session_id
     assert_read_back(db, taken, placed=placed, home=approved.home)
     done.taken = [(one.content_id, one.tree) for one in taken]
+    # THE MEMBERSHIP EACH MONTH PLACEMENT MADE, by its time as the edit rule
+    # reads it (U236), so only that one membership is ever read as the
+    # library's. One whose time cannot be read is recorded as nothing.
+    from cratekit.organize import account_mirror
+
+    rows = {name: row for name, row, _count in placed.months} if placed is not None else {}
+    for one in taken:
+        if one.outcome != edits.FAVOURITE or not one.month or one.month not in rows:
+            continue
+        at = account_mirror.membership_times(db, rows[one.month]).get(one.content_id, "")
+        if at:
+            done.months.append((one.content_id, one.month, at))
     return done
 
 
@@ -982,7 +1000,12 @@ def assert_read_back(
             )
 
 
-def settle(cfg: config.Config, decided: edits.Decided, written: Iterable[Any]) -> None:
+def settle(
+    cfg: config.Config,
+    decided: edits.Decided,
+    written: Iterable[Any],
+    months: Iterable[tuple[str, str, str]] = (),
+) -> None:
     """Agree each edit the library took in the snapshot, so it is not read again (U201).
 
     ``written`` is each edit taken as ``(content id, tree)``, or a bare content
@@ -990,17 +1013,38 @@ def settle(cfg: config.Config, decided: edits.Decided, written: Iterable[Any]) -
     apply, whose record keeps this word for a track it holds. A ledger that
     cannot take it leaves the snapshot as it was: the next refresh reads both
     sides agreeing on the track and settles it then, writing nothing.
+
+    ``months`` is each FAVOURITE the placement wrote into a month, ``(content
+    id, month, the membership's time)`` (U236). For one put in All Favorites alone that month is the
+    library's choice, which the account does not hold, so it is recorded as
+    the library's own placement on that month's account title, mirrored yet
+    or not, and the next refresh never reads it as a change made in rekordbox.
     """
-    from cratekit.modules.outbound import ledger
+    from cratekit.modules.outbound import ledger, mirror
 
     took = {one if isinstance(one, tuple) else (str(one), edits.GENRE) for one in written}
+    month_of = {content_id: (month, at) for content_id, month, at in months}
+    carried = [one for one in decided.carried if (one.content_id, one.tree) in took]
     ledger.settle_mirror_tracks(
         cfg,
         [
             (folder, title, decision.track, on)
-            for decision in decided.carried
-            if (decision.content_id, decision.tree) in took
+            for decision in carried
             for folder, title, on in decision.settle
+        ],
+        placed=[
+            (
+                decision.to.folder,
+                mirror.title(decision.to.folder, month_of[decision.content_id][0]),
+                decision.track,
+                month_of[decision.content_id][1],
+            )
+            for decision in carried
+            if decision.outcome == edits.FAVOURITE
+            and decision.tree == edits.FAVORITES
+            and decision.to is not None
+            and decision.to.primary
+            and month_of.get(decision.content_id)
         ],
     )
 
@@ -1086,7 +1130,7 @@ def add_step(cfg: config.Config, declared: Any, registry: Any, shared: Any) -> S
                 )
             finally:
                 rb_writer.close_db(handle)
-            settle(cfg, decided, done.taken)
+            settle(cfg, decided, done.taken, done.months)
             if done.untagged:
                 step.warnings.append(
                     {

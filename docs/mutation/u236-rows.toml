@@ -1,0 +1,232 @@
+name = "u236"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_ours_empty"
+description = "decide favorites: read no placement, so the library's own month beats the unfavourite again (sitting 88)"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''        ours = frozenset(
+            one.place for one in playlists if not one.place.primary and track in one.placed
+        )'''
+new = '''        ours = frozenset()'''
+
+[[rows]]
+id = "M2_unfavourite_counts_ours"
+description = "decide favorites: count a placed month as rekordbox's addition against an UNFAVOURITE"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                if (there_s and not was_s) or (there_m - was_m - ours):'''
+new = '''                if (there_s and not was_s) or (there_m - was_m):'''
+
+[[rows]]
+id = "M3_moved_counts_ours"
+description = "decide favorites: count a placed month as a move of rekordbox's against a FAVOURITE"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                moved = there_m - was_m - ours - {to}'''
+new = '''                moved = there_m - was_m - {to}'''
+
+[[rows]]
+id = "M4_moved_counts_to"
+description = "decide favorites: count the month the account asked for as rekordbox's move (round one, finding 5)"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                moved = there_m - was_m - ours - {to}'''
+new = '''                moved = there_m - was_m - ours'''
+
+[[rows]]
+id = "M5_mine_not_left"
+description = "decide favorites: a favourite put in another month keeps the placed month"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            mine = ours - now_m'''
+new = '''            mine = frozenset()'''
+
+[[rows]]
+id = "M6_mine_includes_now"
+description = "decide favorites: leave a placed month the account holds too"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            mine = ours - now_m'''
+new = '''            mine = ours'''
+
+[[rows]]
+id = "M7_placed_after_keeps_all"
+description = "placed_after: never drop a placement, so a later hand membership could outlast it"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''    return {track: at for track, at in placed.items() if track in kept or track not in now}'''
+new = '''    return dict(placed)'''
+
+[[rows]]
+id = "M8_placed_after_drops_unheld"
+description = "placed_after: drop every placement no hold covers, round one's finding 1"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''    return {track: at for track, at in placed.items() if track in kept or track not in now}'''
+new = '''    return {track: at for track, at in placed.items() if track in kept}'''
+
+[[rows]]
+id = "M9_placed_after_ignores_hold"
+description = "placed_after: drop a held placement the account holds"
+file = "src/cratekit/modules/outbound/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''    return {track: at for track, at in placed.items() if track in kept or track not in now}'''
+new = '''    return {track: at for track, at in placed.items() if track not in now}'''
+
+[[rows]]
+id = "M10_reader_no_time_check"
+description = "read edits: hand the rule every recorded placement, whatever membership holds it (round one, finding 2)"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                remote for remote, at in recorded_placed.items() if at and added.get(remote) == at'''
+new = '''                remote for remote, at in recorded_placed.items() if at'''
+
+[[rows]]
+id = "M11_reader_never_placed"
+description = "read edits: hand the rule no placement on a playlist never mirrored, the month the write made"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                read.append(edits.Mirrored(place=place, rekordbox=frozenset(wanted), placed=ours))'''
+new = '''                read.append(edits.Mirrored(place=place, rekordbox=frozenset(wanted)))'''
+
+[[rows]]
+id = "M12_reader_short_branch"
+description = "read edits: drop the placements of a month whose listing failed (round one, finding 4)"
+file = "src/cratekit/organize/account_mirror.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                        rekordbox_added=added,
+                        placed=ours,'''
+new = '''                        rekordbox_added=added,'''
+
+[[rows]]
+id = "M13_write_records_no_month"
+description = "write: record no month placement, so settle records none"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''        if at:
+            done.months.append((one.content_id, one.month, at))'''
+new = '''        if False:
+            done.months.append((one.content_id, one.month, at))'''
+
+[[rows]]
+id = "M14_write_wrong_time"
+description = "write: record a time no membership carries"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            done.months.append((one.content_id, one.month, at))'''
+new = '''            done.months.append((one.content_id, one.month, at + "x"))'''
+
+[[rows]]
+id = "M15_settle_month_title"
+description = "settle: record the placement under the month's bare name, not its account title"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                mirror.title(decision.to.folder, month_of[decision.content_id][0]),'''
+new = '''                month_of[decision.content_id][0],'''
+
+[[rows]]
+id = "M16_settle_any_favourite"
+description = "settle: record a placement for a favourite put in a month on the account too"
+file = "src/cratekit/organize/mirror_edits.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            and decision.to.primary
+            and month_of.get(decision.content_id)'''
+new = '''            and month_of.get(decision.content_id)'''
+
+[[rows]]
+id = "M17_ledger_settle_keeps_placement"
+description = "ledger settle: a settled track keeps its placement on that title"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                if str(track) in before:
+                    _place(record, name, {one: at for one, at in before.items() if one != str(track)})
+                    wrote = True'''
+new = '''                if False:
+                    _place(record, name, {one: at for one, at in before.items() if one != str(track)})
+                    wrote = True'''
+
+[[rows]]
+id = "M18_ledger_placement_not_written"
+description = "ledger settle: never write a placement"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            _place(
+                record,
+                name,
+                {**_placements(record.get("placed")).get(str(name), {}), str(track): str(at)},
+            )
+            wrote = True'''
+new = '''            wrote = True'''
+
+[[rows]]
+id = "M19_ledger_normalizer_drops"
+description = "ledger load: drop every folder's placements on read and write"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                    {"placed": placed}
+                    if (placed := _placements(value.get("placed")))
+                    else {}'''
+new = '''                    {}'''
+
+[[rows]]
+id = "M20_agreed_never_drops"
+description = "record_mirror_agreed: never drop a placement the account now holds"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''                mirror_edits.placed_after(
+                    _placements(document["mirrors"][folder].get("placed")).get(name, {}),
+                    after,
+                    held,
+                ),'''
+new = '''                _placements(document["mirrors"][folder].get("placed")).get(name, {}),'''
+
+[[rows]]
+id = "M21_frozen_not_overlaid"
+description = "overlay: read the ledger's placements now beside the gate's snapshot"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            folder, playlists=playlists, placed=frozen.placed.get(name, folder.placed)'''
+new = '''            folder, playlists=playlists, placed=folder.placed'''
+
+[[rows]]
+id = "M22_frozen_not_written"
+description = "freeze: freeze no placements"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            name: {title: dict(sorted(tracks.items())) for title, tracks in sorted(folder.placed.items())}'''
+new = '''            name: {}'''
+
+[[rows]]
+id = "M23_frozen_reads_malformed"
+description = "load: accept placements that are not tracks to times"
+file = "src/cratekit/organize/mirror_frozen.py"
+surface = "user"
+tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u236.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u236.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py", "tests/test_inbox_unmirrored.py"]
+old = '''            if not isinstance(tracks, dict) or not all(
+                isinstance(track, str) and isinstance(at, str) for track, at in tracks.items()
+            ):'''
+new = '''            if False:'''

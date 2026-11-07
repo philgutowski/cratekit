@@ -46867,3 +46867,151 @@ happens: the insert is refused inside its transaction.
 **Closes when:** `enqueue` catches the duplicate key on its INSERT and either
 mints again or refuses naming the identifier and the job that holds it.
 Ledger only.
+
+---
+
+## R-1436. A continue of a run held from before U231, whose order was refused after moves landed, is held as reordered by a person nobody was
+
+**Found:** at the review of #619, R-1420, 2026-11-07.
+
+**The mechanism.** R-1420 reads a part written pair's account order at the
+check before a continue whenever its steps carry `ordering` and no `moving`
+(`_ordered_by_this_run` in `sync/pair_cli.py`), since U231's adapter records
+its moves before the first is sent. A run planned and refused under a build
+from before U231 moved tracks with no `moving` step, so its continue finds
+the playlist where those moves left it and refuses `decision-stale`, "was
+reordered since the plan".
+
+**Measured cost.** Driven on the fake account only, by the rewritten
+`test_a_stopped_write_its_continue_holds_is_finished_by_the_next_sync_and_leaves_nothing`:
+the continue refuses as moved with nothing written, and a fresh `crate sync
+pair` finishes the stopped write from the side that led (U225). No loss; the
+person is told of a reorder nobody made and runs one more command.
+Reachability unmeasured: it needs a run held on the machine from the U220 to
+U231 window, refused after moves and not yet continued.
+
+**Closes when:** a held run from before U231 has aged out, or the check
+tells a pre U231 record from a refusal that sent nothing. Ledger only.
+
+---
+
+## R-1437. A continue of an order that moved nothing is held as reordered when the provider placed an added track anywhere but the end
+
+**Found:** at the build of #619, R-1420, 2026-11-07.
+
+**The mechanism.** The check reads the order of a part written pair whose
+moves never began as the write leaves it (`_beyond` with `ordering` false in
+`sync/pair_cli.py`): the plan's reading in its order, then this write's
+additions after it. R-1411 found the provider may place an added track
+elsewhere and lets it stand anywhere at the adapter; the check does not, so
+such a continue refuses `decision-stale`, "was reordered since the plan".
+The same rule held a continue stopped between its additions and its order
+before R-1420; R-1420 applies it to every order that moved nothing.
+
+**Measured cost.** Not driven against the provider: the shipped adapter
+adds through the client's playlist add, which appends, and the discovery
+suite's fake appends. Where it happens the cost is nothing written, a false
+reorder named, and one more command, a fresh sync.
+
+**Closes when:** the check reads the kept tracks' order and lets an added
+track stand anywhere, as the adapter's agreed order does. Ledger only.
+
+---
+
+## R-1438. A continue of a refused finish is handed the check's listing by a clause no test pins
+
+**Found:** at the mutation table of #619, R-1420, 2026-11-07.
+
+**The mechanism.** Since R-1420 the write in `_write_account` in
+`sync/pair_cli.py` hands a continue the check's listing as `expect` when an
+earlier command began the order and the plan is no finish. The older clause
+beside it, `steps.has(STEP_ORDER_REFUSED)`, now matters only for a refused
+finish that also adds or removes, which is R-1419's shape: `expect` beside
+the plan's reading as `agreed`.
+
+**Measured cost.** None on the branch. Row E1 of `docs/mutation/r1420.md`,
+the clause removed, killed none of 17448 on the full suite. A refused
+finish so continued is asked `agreed` alone, which R-1419 says is the
+reading it should be held to; no data cost either way.
+
+**Closes when:** R-1419 decides whether a refused finish keeps `expect`,
+and a test pins the choice. Ledger only.
+
+---
+
+## R-1439. A month membership a person makes by hand in the very millisecond of the library's own placement reads as the library's
+
+**Found:** at the review of #628, U236, 2026-11-07.
+
+**The mechanism.** A placement is identified by the `created_at` of the
+membership the write made, as `account_mirror._times` reads it, and the reader
+honours it only while rekordbox's newest live membership of the track on that
+title carries the same text. A membership a person made in rekordbox carrying
+that exact time, in a month deleted and made again under the same name, would
+be read as the library's, and an unfavourite on the account would take it out.
+
+**Measured cost.** Driven by Fable's round two only by setting the row's time
+by hand in SQL. Rekordbox stamps a membership with the moment it is made, to
+the millisecond, so a person cannot produce it; rekordbox's undo restoring the
+library's own row is read as the library's, which is right. Reachability is
+unmeasured.
+
+**Closes when:** a placement is keyed by the membership row's identifier
+beside its time, if an undo can be shown to keep that identifier, and a test
+drives a remade month. Ledger only.
+
+---
+
+## R-1440. A favourite's month placement whose membership time is not read at the write is not recorded, and its unfavourite is again beaten by the library's own month
+
+**Found:** at the review of #628, U236, 2026-11-07.
+
+**The mechanism.** `organize/mirror_edits.write` reads the time of the
+membership each FAVOURITE's month placement made
+(`account_mirror.membership_times`) after `assert_read_back`, and `settle`
+records the placement after `write` returns. Both run only on the happy path.
+A database that refuses that read gives no time, and the placement is skipped
+with nothing said. A read back refusal after the commit (`session-committed-unverified`)
+leaves the month written and nothing settled or placed. Either way the next
+refresh reads the library's own month as an addition made in rekordbox, sitting
+88's shape, for that one track.
+
+**Measured cost.** Fable's round two drove the cost by forcing the time read
+empty during the carry: the unfavourite was listed "placed in the favourites in
+rekordbox since: an addition beats a removal" and the track stayed a favourite.
+The direction is conservative, a favourite kept, never one removed. No real
+producer was driven: `rb_writer` writes `created_at` on every membership, and
+the read back has just read the row.
+
+**Closes when:** the step warns when a FAVOURITE's month placement has no time,
+or the placement is recorded from the plan's own month and the read back's
+rows, and a test drives each. Ledger only.
+
+---
+
+## R-1441. A track put in a genre playlist on the account, whose only library match is another version of it, is queued and never downloaded until a person answers the version review
+
+**Found:** at sitting 89 (A90, #518), 2026-11-07, on v0.14.0.
+
+**The mechanism.** A90's genre edit put Dennis Ferrer `Change The World
+(Jihad Muhammad Vox Mix)` in `House / Funky House / Disco Med` on the account.
+`mirror-edits` holds it with `acquire` and `mirror-downloads` queued it once
+(job `2026-11-07T16:44:20Z-4356`, sitting 88). The sync pass took the job, but
+`intake/missing_cli.py` does not list the track as missing: the library holds
+`Change The World (Instrumental)`, and the matcher reads the vocal mix as
+`version-differs`, which it offers as a review question
+(`rv_c2c129dd92430ec947f5365e`) rather than a download. So the job succeeds
+with nothing downloaded, every later organize names the edit "held" and "named
+and not queued", and the track stays on the account playlist with no library
+row. This is the rule working as written: whether the instrumental stands for
+the vocal mix is Phillip's call.
+
+**Measured cost.** One track not filed; every organize's account area carries
+one held edit. No call cost beyond the read.
+
+**Closes when:** Phillip answers the review item. If he answers that the vocal
+mix is a different track, the next `crate sync land` downloads it and the
+organize after it files it in `House / Funky House / Disco Med`, which is the
+download half of A90. If he answers that the instrumental stands for it, the
+edit is taken against the instrumental. Ledger only: the behaviour is the
+documented review rule, and the step left is a person's answer.
