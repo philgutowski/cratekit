@@ -538,7 +538,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   long it agrees, until Tidal shows the moves, you move the playlist by hand
   in the Tidal app, or you release the pair. A run whose plan cannot be kept
   sends no order.
-- An order Tidal refused before any move was sent is finished by
+- An order stopped before any move was sent, refused by Tidal, parked on a
+  cooldown or stopped by a rejected session, is finished by
   `crate --run RUN sync pair` only while the Tidal playlist still stands in
   the order the plan read, with that sync's own additions after it. A
   reorder you made on Tidal since stops the continue as moved, nothing

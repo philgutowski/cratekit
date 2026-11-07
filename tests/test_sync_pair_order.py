@@ -427,3 +427,60 @@ def test_a_continue_of_an_order_stopped_before_any_move_holds_a_reorder_made_sin
     )
     assert code == int(ExitCode.DECISION_STALE), refused
     assert world.held(opener) == ["4", "3", "1", "2"]
+
+
+@pytest.mark.parametrize("stop", ["credential-missing", "parked", "refused"])
+def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_listing(
+    world, cfg, monkeypatch, stop
+):
+    """Round one's row 2: whatever stopped the order before any move, the continue agrees first.
+
+    A refused order's continue passed the check's listing as ``expect``;
+    one parked or stopped with the whole write passed nothing, so a reorder
+    landing between the check and the adapter's reading was ordered from.
+    """
+    from cratekit.core import jobs
+
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    _reordered(world, opener, "4", "3", "1", "2")
+    account_id = world.titled("GIG READY Opener")
+    real = world.account.order_tracks
+    stopping = [True]
+
+    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
+        if playlist_id == account_id and stopping:
+            stopping.clear()
+            if stop == "parked":
+                raise jobs.Parked(
+                    refuse(
+                        "provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "order")
+                    ).cause
+                )
+            if stop == "refused":
+                raise refuse(
+                    "outbound-remove-refused",
+                    "the reading may lag a write and no track was moved",
+                    scope=Scope.RUN,
+                    origin=("test", "order"),
+                    detail={"playlist_id": playlist_id, "problem": "read-differs"},
+                )
+            raise refuse(
+                "credential-missing",
+                "the streaming provider rejected the session",
+                remedy=Remedy.REAUTHENTICATE_PROVIDER,
+                scope=Scope.ITEM,
+                origin=("test", "order"),
+            )
+        return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
+
+    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    code, done = drive(["--run", stopped["run_id"], *VERB])
+    assert code == int(ExitCode.OK), done
+    assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
+    assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
+    assert world.held(opener) == ["4", "3", "1", "2"]

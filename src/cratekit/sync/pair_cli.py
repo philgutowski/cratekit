@@ -3512,6 +3512,12 @@ def _write_account(
             ).cause
             done.name = one.name
             return None
+        # R-1420, ROUND ONE'S REVIEW. WHETHER AN EARLIER COMMAND OF THIS RUN
+        # BEGAN THIS ORDER, read before this one marks it: with no move sent
+        # (the branch above returned otherwise), it was refused, parked or
+        # stopped with the whole write, and its continue agrees first. A
+        # finish keeps what R-1411 holds it to.
+        continued = steps.has(STEP_ORDERING)
         # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
         # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
         # it stopped reads its moves as this write's: the order it starts
@@ -3547,9 +3553,12 @@ def _write_account(
         steps.carry()
         # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
         # the adapter's reading agrees with the check's own listing of it.
-        # R-1420. That listing was judged in order by the check, where no
-        # move began and this is no finish, so a person's reorder since
-        # stopped the write before here (`_ordered_by_this_run`).
+        # R-1420. AND ONE AN EARLIER COMMAND BEGAN AND STOPPED BEFORE ANY
+        # MOVE, whatever stopped it, not only a refusal (round one's review).
+        # That listing was judged in order by the check where this is no
+        # finish, so a person's reorder before the check stopped the write
+        # before here (`_ordered_by_this_run`), and one after it is refused
+        # by the adapter's agreement with it.
         # R-1394. NOR DOES ONE THAT FINISHES A STOPPED ORDER: the plan read
         # the playlist where that order's moves left it, at or past what was
         # sent, and a reading the adapter takes seconds later may still lag
@@ -3561,6 +3570,7 @@ def _write_account(
             if account_listed is not None
             and (
                 steps.has(STEP_ORDER_REFUSED)
+                or (continued and not one.finishing_order)
                 or (one.finishing_order and not (one.account_removes or one.account_adds))
             )
             else None
