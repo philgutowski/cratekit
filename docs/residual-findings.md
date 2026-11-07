@@ -46457,3 +46457,39 @@ driven on a Mac, where the volume's counter may keep it steady.
 **Closes when:** the test gives its file an inode it controls, or reads the
 bound from the volume it writes to, so its result no longer depends on the
 container. Ledger only.
+
+---
+
+## R-1414. Outside GIG READY a Tidal reorder after a rekordbox reorder brings Tidal's whole stale order into rekordbox
+
+**Found:** at the review of #608, R-1404, round one, 2026-11-07.
+
+**The mechanism.** Outside GIG READY the account's order is never written (U231), so once rekordbox leads a reorder the pair's snapshot holds rekordbox's new order and the account's old one, and since R-1404 rekordbox keeps leading while neither side moves. When the account then changes order since that snapshot, `pair_merge.merge` lets the account lead and its whole order stands, the tracks it never moved included, since the merge places a whole order and has no reading of a move.
+
+**Measured cost.** Driven by the round one reviewer through the dispatcher on the disposable database: a hand pair at the root of 1 to 5, rekordbox reordered 5, 4, 3, 2, 1 and synced (nothing written), then tracks 1 and 2 swapped on the account: rekordbox becomes 2, 1, 3, 4, 5. The gate says "order follows the account's" before it writes, so it is said, not silent. It is the card's own scenario ("the account reordered to 2, 3, 1 should still lead rekordbox") and U231's recorded call, kept as built; a merge of the account's moves alone would leave that scenario's rekordbox at 3, 1, 2.
+
+**Closes when:** Phillip answers the Question for Phillip on #608: keep it as built (then this closes as decided), apply only the moved tracks, or never take the account's order into rekordbox outside GIG READY (either a card of its own). Ledger only until he answers.
+
+---
+
+## R-1415. Both sides reordered since a base whose sides disagree, the account wins and rekordbox's newer reorder is undone
+
+**Found:** at the review of #608, R-1404, round one, 2026-11-07.
+
+**The mechanism.** `pair_merge.merge` lets the account lead when both sides changed order since the base, the rule since U130. Outside GIG READY the account's order is not written, so the account's order that wins is one rekordbox already left behind.
+
+**Measured cost.** Driven by the round one reviewer: a root hand pair whose rekordbox was reordered 3, 1, 2 and synced, then rekordbox reordered 2, 3, 1 and the account reordered t3, t1, t2 together; the sync writes rekordbox back to 3, 1, 2, the gate naming the account as the order's leader. Two reorders between two syncs on two sides is rare, and the brief named this case out of scope.
+
+**Closes when:** the both reordered rule is decided for pairs whose account order is not kept, with the answer to #608's question. Ledger only.
+
+---
+
+## R-1416. A hand pair's first sync outside GIG READY puts rekordbox in the account's order
+
+**Found:** at the review of #608, R-1404, round one, 2026-11-07.
+
+**The mechanism.** A first sync has no base, and `pair_merge.merge` lets the account lead on it, as every first sync always has (U130); R-1376's `test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before` pins it. Outside GIG READY the account's order is never written afterwards, so a rekordbox playlist paired by hand in its own order takes the account's at its first sync and never gets its own back.
+
+**Measured cost.** Driven by the round one reviewer: a hand pair of an account playlist 1, 2, 3 and a rekordbox playlist 3, 1, 2 with the key off; the first sync writes rekordbox 1, 2, 3, the gate saying the order follows the account's. Unchanged by #608, the same on main.
+
+**Closes when:** Phillip answers the second question on #608; keeping it closes this as decided. Ledger only.
