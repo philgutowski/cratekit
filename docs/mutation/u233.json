@@ -1,0 +1,306 @@
+{
+  "name": "u233",
+  "pass_kind": "light",
+  "branch": "cloud/622-every-current-doc-reads-true-aga",
+  "head": "48aa8b05",
+  "when": "2026-11-07 15:20 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 17456,
+  "baseline_exit": 1,
+  "pytest_runs": 12,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 161,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/config.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/config.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "a8e2cb818565bb2e",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 17456,
+    "baseline_collected": 17456,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "C1_schema_default_moves",
+      "description": "config: labels.offer_per_sweep's default goes from 10 to 12, so the guide's settings table states an old default",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ac733207b2eafa73",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_a_settings_row_with_a_changed_default_disagrees",
+        "tests/test_docs_current.py::test_the_settings_table_is_the_schema"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "DEFAULT_LABEL_OFFER = 10",
+      "new": "DEFAULT_LABEL_OFFER = 12"
+    },
+    {
+      "id": "C2_schema_gains_a_key",
+      "description": "config: LabelsConfig gains a key a person can set, which the guide's settings table has no row for",
+      "file": "src/cratekit/core/config.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ccf815b2c098d935",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_the_settings_table_is_the_schema"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    new_playlist_age_days: int = DEFAULT_NEW_PLAYLIST_AGE_DAYS\n",
+      "new": "    new_playlist_age_days: int = DEFAULT_NEW_PLAYLIST_AGE_DAYS\n    sweep_note_days: int = 3\n"
+    },
+    {
+      "id": "D1_guide_drops_a_verb",
+      "description": "guide: the one mention of tombstone list, wrapped across a line, is reworded to name no verb",
+      "file": "docs/GUIDE.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8fd87e7d071b2822",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_the_guide_names_every_verb"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "removed in rekordbox; confirmed ones go to the system Trash only. `crate\ntombstone list` shows what was removed;",
+      "new": "removed in rekordbox; confirmed ones go to the system Trash only. The\ntombstone listing shows what was removed;"
+    },
+    {
+      "id": "D2_guide_invents_a_verb",
+      "description": "guide: crate route pending in a fenced block becomes route pendings, a verb help does not list",
+      "file": "docs/GUIDE.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "40f84918c5231c0d",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_every_verb_a_doc_names_exists_with_its_flags[GUIDE.md]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "crate route pending\n",
+      "new": "crate route pendings\n"
+    },
+    {
+      "id": "D3_guide_invents_a_flag",
+      "description": "guide: intake missing --run becomes --runs, a flag the verb does not take",
+      "file": "docs/GUIDE.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "74c786a230842d71",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_every_verb_a_doc_names_exists_with_its_flags[GUIDE.md]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "crate intake missing --run RUN_ID     # a whole sync all pass, one list",
+      "new": "crate intake missing --runs RUN_ID    # a whole sync all pass, one list"
+    },
+    {
+      "id": "D4_guide_default_moves",
+      "description": "guide: the settings table states analysis.drift_cut as 1.4 against the schema's 1.5",
+      "file": "docs/GUIDE.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b31aa6d3c2e46b54",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_the_settings_table_is_the_schema"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "| `analysis.drift_cut` | 1.5 |",
+      "new": "| `analysis.drift_cut` | 1.4 |"
+    },
+    {
+      "id": "D5_guide_drops_a_key_row",
+      "description": "guide: the settings table loses its provider.cooldown_s row",
+      "file": "docs/GUIDE.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "fec8a3cf02ee428b",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_the_settings_table_is_the_schema"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "| `provider.cooldown_s` | 900 |\n",
+      "new": ""
+    },
+    {
+      "id": "D6_guide_misspells_a_key",
+      "description": "guide: prose spells labels.offers_per_sweep, a key the schema does not have",
+      "file": "docs/GUIDE.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "731bd15848932b91",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_every_config_key_a_doc_spells_exists[GUIDE.md]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "(releases kept in review per sweep, `labels.offer_per_sweep` by default),",
+      "new": "(releases kept in review per sweep, `labels.offers_per_sweep` by default),"
+    },
+    {
+      "id": "D7_readme_invents_a_flag",
+      "description": "README: crate login NAME --from-file becomes --from-path, a flag login does not take",
+      "file": "README.md",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "1bf6400848032e4a",
+      "subset": [
+        "tests/test_docs_current.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_docs_current.py::test_every_verb_a_doc_names_exists_with_its_flags[README.md]"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "`crate login NAME --from-file PATH` records a credential in the keychain.",
+      "new": "`crate login NAME --from-path PATH` records a credential in the keychain."
+    }
+  ],
+  "dropped": []
+}

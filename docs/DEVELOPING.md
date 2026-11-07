@@ -44,7 +44,8 @@ Nothing merges until all three are clean:
   touched.
 - The suite is a macOS proof. On Linux run `scripts/cloud_battery.py baseline`
   on the base commit and `scripts/cloud_battery.py compare` on the branch; it
-  fails only on tests the branch newly breaks.
+  fails on tests the branch newly breaks, and stops first on a red ruff or
+  scan or a missing baseline.
 - `scripts/scan_repo.py` scans every tracked file, the vendored tree included,
   for personal literals (home directories, volumes, accounts, machine names)
   and credential-shaped content.

@@ -1,15 +1,22 @@
 # Cutover
 
-The per workflow record U29 asks for. The board says every unit is closed and
-the parity table says every Feature Inventory row has a verb. This file says
-which workflows have actually run on the live library, what each run observed,
-and what still stands between the product and a full sync cycle on Cratekit
-alone. It is written by the attended sittings, never by a session, and a
+The per workflow record U29 asks for. The parity table,
+`tests/test_cutover_parity.py`, says every Feature Inventory row has a verb.
+This file says which workflows have actually run on the live library, what
+each run observed, and what still stands between the product and retiring
+DJ_tools. It is written by the session that runs each attended sitting, and a
 workflow moves to "cut over" only after it has run correctly on the live
-library at least once and the author has lived on it.
+library at least once and the author has lived on it. Each sitting's rows are
+a record of the version that sitting ran and are never rewritten; the two
+sections that say where things stand now are "What blocks retiring DJ_tools",
+after sitting 42, and "Next sitting", at the end.
 
-Standing rule for every sitting: rekordbox and its agent closed, the volume
-mounted, `crate doctor` read before anything else, one workflow per sitting.
+Standing rule for every sitting: the volume mounted, `crate doctor` read
+before anything else, `crate backup run` first when either backup age is five
+days or more, rekordbox opened only by the attended session, and no Cratekit
+job running and `rekordbox` and `rekordboxAgent` both confirmed gone before
+every verb. A sitting may take several attended cards, each recorded in its
+own rows.
 
 ## Sitting 1, 2026-09-16
 
@@ -1392,14 +1399,17 @@ the mirror's unmatched rows are a tie between agreeing releases the matcher
 refuses (`s42-the-mirror-leaves...`); the backfill opens its gate with nothing
 to place where the split ends NO_OP (`s42-the-backfill-asks...`).
 
-## What blocks a full sync cycle, stated plainly
+## What blocks retiring DJ_tools, stated plainly
 
-**Nothing on the board, as of sitting 15.** #212 closed on 2026-09-29: the
-routing tree is database native and adoption has written it. Sitting 10's
-finding stands for every tree still on the xml bridge, `inbox` and
-`record_labels`: an import lands a playlist at the root (R-687) and sets
-attributes only on rows it creates (R-688). Line 4 of #178, the full sync
-cycle, is next and is attended.
+**As of sitting 86 (2026-11-06).** The full sync cycle has run on Cratekit
+alone: #178 line 4, at sittings 23 and 32, and `crate sync land` has landed
+passes natively since sitting 51. The routing tree has been database native
+since sitting 15 (#212) and `inbox` since sitting 31. Record Labels stays on
+the xml bridge in the registry, and a native landing appends to it (U156).
+Sitting 10's finding stands for a tree still on the bridge: an import lands a
+playlist at the root (R-687) and sets attributes only on rows it creates
+(R-688). U29 waits on #178 lines 8 and 9, art on a real player and a bare
+metal restore onto a spare drive, both the author's.
 
 ## Sitting 43, 2026-10-16, the operator session, U153's live colour backfill
 
@@ -2366,50 +2376,43 @@ From v0.12.0, which carries U225, U226, U227, U224, R-1360 and R-1349. Both back
 
 ## Next sitting
 
-**The account root is Phillip's by hand as of sitting 41 (2026-10-14).**
-He stopped the root step and is deleting the ten ` LIBRARY` copies and
-filing the rest himself. Before the next account step: read the root back
-first, since it will not match any plan written here. Owed from sitting 41,
-in this order: R-1017 landed, then U140's Signal rename live
-(`crate export set --rename 2026-10-10T14:59:24Z-a4b0`, read back as
-`3_25_26 Public Service NYC Live at Signal 2-26`, `export set` planning no
-twin), then `organize --only sets` archiving it into `Downloaded Sets 2026`
-(read back 19 plus 1; Vonking is on the account under no name and in no
-ledger map), then `organize --only root` twice over whatever he left. Budget
-each by its listings (the trap above). The pairing candidates for U130 are
-listed in sitting 41; Phillip names the pairs, and nothing is marked until he
-does. R-1016 is the card that makes any of this fast.
+**Open attended cards, as of 2026-11-07.** A88 (#514) and A91 (#521), the
+quiet sync's calls, and A108 (#592), which finishes the 32 account orders
+sitting 86 left part way, wait on U234 (#623). Every card the rest wait on
+has closed, so each is ready for a sitting: A90 (#518), the filing after
+U230; A94 (#528); A95 (#535); A105 (#581); A106 (#586); A107 (#589); A109
+(#601); A110 (#605); A111 (#611), the macOS battery with rekordbox open; and
+A112 (#615). Four
+more wait on a circumstance rather than a card: A56 (#414), whose retirement
+half waits on the first batch due to rotate, on 2026-11-08 at the earliest;
+A57 (#415), a DEADCA7 push onto a library copy; A72 (#446), new Bandcamp
+purchases from a followed label; and A76 (#459), a full build of a large
+label. A33 (#293) is a brainstorm, and A5 (#178) keeps lines 8 and 9 above.
 
-**The INBOX account playlists, Soul, Hip-Hop and Jazz are current as of
-sitting 39 (2026-10-13), unattended.** A35 and A38 closed; the Signal set is
-named for its posted day in rekordbox, the account half waits on U140 (#317);
-the account's root playlists are filed by U131's rule (U137's first live run). As of sitting 38 before it,
-the favourites, the vocal tags and the taxonomy were current. A34, A36 and A37 closed on equal digests; A35 (#301)
-waits on U134, the refill verb. Owed from that sitting: A38, letting Soul and
-Hip-Hop into the live taxonomy by hand and moving their tracks; the Vonking
-set's account playlist once R-949 or U136 names the day; U136's attended
-rename of the two Public Service playlists to their posted dates. U126's
-live proof still stands as owed: the first native landing on the rebuilt
-copy, one landed row dragged to a deck and recorded here, and
-`link-majority-unclear` on its gate is R-969.
+**The account root is Phillip's by hand since sitting 41 (2026-10-14)**, and
+he declined the root step's report at sitting 48. Read the root back before
+any account step, since it will not match a plan written here.
+
+Owed from sittings 38 and 39: the Vonking set's account playlist, whose job
+carries no `upload_date` and which is in no ledger map. U126's live proof
+still stands as owed: one native landed row dragged to a deck and recorded
+here; `link-majority-unclear` on its gate is R-969.
 
 The genre work's last item, `crate delete review` over the 36 tracks removed
 at sitting 29, closed at sitting 45 another way: the rows are gone outright,
 so the pass cannot offer them (the residual filed there), and the files went
 to the volume's Trash by Phillip's hand as `Removed_from_collection`.
 
-Owed by the author: the 2,416 label releases in review and a look at the
-339 held; a genre on the rows that still carry none, 1,308 by adoption's
-count, 637 of them with no genre on the file either; the 20 label tracks
-held as other versions.
+Owed by the author: the 8 label releases left in review at sitting 31 and a
+look at the 339 held; a genre on the rows that still carry none, 1,308 by
+adoption's count at sitting 39, with 672 files carrying none at sitting 79;
+the 20 label tracks held as other versions.
 
-Owed, the author's: the first `crate label sync` run, label by label, and its
-go; one label built with `crate label playlists` and read in the web player,
-which label being his call given R-872 and R-836; one label's created year
-playlists pruned with `crate label prune` and read back, which closes R-836
-and says whether R-894 occurs; the set `tech_house_hits -
-Phil`, on the account since sitting 30, archived after its download; the
-DJ_tools docs commit #252's task left unpushed.
+Owed, the author's: one label's created year playlists pruned with `crate
+label prune` and read back, which says whether R-894 occurs; the DJ_tools
+docs commit #252's task left unpushed. The first `crate label sync` and its
+go ran at sitting 31, and label playlists were built and read in the web
+player from sitting 30.
 
 Owed for R-790, issue #234: follow a new label, sweep it once, and record
 here that it filed `labels.offer_per_sweep` releases, ten unless set, and
