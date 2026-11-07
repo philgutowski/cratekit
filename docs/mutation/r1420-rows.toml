@@ -120,3 +120,11 @@ file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 old = '''        continued = steps.has(STEP_ORDERING)'''
 new = '''        continued = steps.has(STEP_ORDERING) or True'''
+
+[[rows]]
+id = "C4_carried_record_unread"
+description = "a continue whose run's steps cannot be read does not read the carried record, so its order of a pair that moved nothing is asked with no listing to agree with"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        continued = steps.has(STEP_ORDERING) or steps.carried(STEP_ORDERING) is not None'''
+new = '''        continued = steps.has(STEP_ORDERING) or steps.carried(STEP_ORDERING) is None and False'''
