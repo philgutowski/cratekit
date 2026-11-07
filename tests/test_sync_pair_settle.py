@@ -1206,7 +1206,10 @@ def test_a_finish_puts_an_unread_track_the_stopped_move_put_in_front_where_the_w
     finishing = [one for one in envelopes if pair_cli.FINISHING in _codes(one)]
     assert finishing, envelopes
     said = _said(finishing[-1], pair_cli.UNREAD)
-    assert "a pair finishing a stopped order puts each where that order was taking it" in said
+    assert (
+        "a pair finishing a stopped order puts each where that order was taking it, "
+        "or else behind the track it follows" in said
+    )
     shown = [
         str(fact)
         for one in envelopes
@@ -1292,10 +1295,24 @@ def test_a_hand_move_of_the_unread_track_after_the_stop_is_not_put_back_by_the_s
     assert code != int(ExitCode.OK), stopped
     assert world.account.playlists[account_id] == ["t9", *_ids("1", "2", "3", "4")]
     world.account.playlists[account_id] = [*_ids("1", "2"), "t9", *_ids("3", "4")]
+    envelopes: list[dict] = []
     for _ in range(2):
-        code, envelope = sync()
+        code, envelope = _synced_keeping_gates(envelopes)
         assert code == int(ExitCode.OK), envelope
+        envelopes.append(envelope)
         assert pair_cli.FINISHING not in _codes(envelope), envelope
+    # Nor does the gate say so (the review's round two): no finish, no clause.
+    warned = [_said(one, pair_cli.UNREAD) for one in envelopes if pair_cli.UNREAD in _codes(one)]
+    assert warned, envelopes
+    assert not any("finishing a stopped order" in one for one in warned), warned
+    shown = [
+        str(fact)
+        for one in envelopes
+        if one.get("cause")
+        for fact in one["cause"]["detail"]["shown"].values()
+    ]
+    assert any("with no title or no artist" in one for one in shown), shown
+    assert not any("where the stopped order was taking it" in one for one in shown), shown
     assert world.held(opener) == ["2", "3", "4", "1"]
     assert world.account.playlists[account_id] == ["t2", "t9", *_ids("3", "4", "1")], (
         "the person's move of t9 was overridden by the stopped write's target"
