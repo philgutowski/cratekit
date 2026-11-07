@@ -103,6 +103,36 @@ class Membership:
 
 
 @dataclass(frozen=True, slots=True)
+class StopReading:
+    """The account's order as plans read it after one run's order stopped part way (U234).
+
+    ``order`` was first read at ``at``; ``settled`` says a plan at least the
+    agreement window later read it again in the same order, so the provider
+    no longer moves it. ``after`` is a later order differing from a settled
+    one, first read at ``after_at``, which becomes the person's reorder only
+    once it settles in turn. Times are ISO 8601 text.
+    """
+
+    run: str
+    order: tuple[str, ...]
+    at: str
+    settled: bool = False
+    after: tuple[str, ...] | None = None
+    after_at: str = ""
+
+    def to_json(self) -> dict[str, Any]:
+        record: dict[str, Any] = {
+            "run": self.run,
+            "order": list(self.order),
+            "at": self.at,
+            "settled": self.settled,
+        }
+        if self.after is not None:
+            record["after"] = {"order": list(self.after), "at": self.after_at}
+        return record
+
+
+@dataclass(frozen=True, slots=True)
 class Pair:
     """One pair and what each side held when its last sync finished.
 
@@ -147,14 +177,12 @@ class Pair:
     #: such reading is held; cleared once the pair's snapshot moves.
     seen: tuple[str, ...] | None = None
     seen_at: str = ""
-    #: U234. The account playlist's order as a plan read it after a write on
-    #: this pair stopped part way through its order, when it was read, and
-    #: the run that stopped: a later reading off that write's path in another
-    #: order is the person's reorder, which one reading alone never shows.
-    #: None when no such reading is held; cleared once the snapshot moves.
-    stop_seen: tuple[str, ...] | None = None
-    stop_seen_at: str = ""
-    stop_seen_run: str = ""
+    #: U234. The account playlist's order as plans read it after a write on
+    #: this pair stopped part way through its order, so a later order the
+    #: person made is told from the provider's partial state, which one
+    #: reading alone never tells. None when no such reading is held; cleared
+    #: once the snapshot moves.
+    stop_seen: StopReading | None = None
 
     @property
     def first(self) -> bool:
@@ -185,11 +213,7 @@ class Pair:
         if self.seen is not None:
             record["seen"] = {"order": list(self.seen), "at": self.seen_at}
         if self.stop_seen is not None:
-            record["stop_seen"] = {
-                "order": list(self.stop_seen),
-                "at": self.stop_seen_at,
-                "run": self.stop_seen_run,
-            }
+            record["stop_seen"] = self.stop_seen.to_json()
         return record
 
 
@@ -431,18 +455,8 @@ class PairStore:
         ):
             raise self._unusable(f"the pair {account_id!r} holds a reading that is not an order")
         stop_seen = value.get("stop_seen")
-        if stop_seen is not None and not (
-            isinstance(stop_seen, Mapping)
-            and isinstance(stop_seen.get("order"), list)
-            and all(isinstance(one, str) and one for one in stop_seen["order"])
-            and isinstance(stop_seen.get("at"), str)
-            and stop_seen["at"]
-            and isinstance(stop_seen.get("run"), str)
-            and stop_seen["run"]
-        ):
-            raise self._unusable(
-                f"the pair {account_id!r} holds a reading after a stop that is not an order"
-            )
+        if stop_seen is not None:
+            stop_seen = self._stop_reading(account_id, stop_seen)
         return Pair(
             account_id=account_id,
             rekordbox_id=rekordbox_id,
@@ -459,9 +473,40 @@ class PairStore:
             on_hold=None if on_hold is None else MappingProxyType(dict(on_hold)),
             seen=None if seen is None else tuple(seen["order"]),
             seen_at="" if seen is None else seen["at"],
-            stop_seen=None if stop_seen is None else tuple(stop_seen["order"]),
-            stop_seen_at="" if stop_seen is None else stop_seen["at"],
-            stop_seen_run="" if stop_seen is None else stop_seen["run"],
+            stop_seen=stop_seen,
+        )
+
+    def _stop_reading(self, account_id: str, value: Any) -> StopReading:
+        """A pair's reading after a stopped order, read back whole or refused (U234)."""
+
+        def order(one: Any) -> bool:
+            return isinstance(one, list) and all(isinstance(it, str) and it for it in one)
+
+        def moment(one: Any) -> bool:
+            return isinstance(one, str) and bool(one)
+
+        after = value.get("after") if isinstance(value, Mapping) else None
+        if not (
+            isinstance(value, Mapping)
+            and order(value.get("order"))
+            and moment(value.get("at"))
+            and moment(value.get("run"))
+            and isinstance(value.get("settled"), bool)
+            and (
+                after is None
+                or (isinstance(after, Mapping) and order(after.get("order")) and moment(after.get("at")))
+            )
+        ):
+            raise self._unusable(
+                f"the pair {account_id!r} holds a reading after a stop that is not an order"
+            )
+        return StopReading(
+            run=value["run"],
+            order=tuple(value["order"]),
+            at=value["at"],
+            settled=value["settled"],
+            after=None if after is None else tuple(after["order"]),
+            after_at="" if after is None else after["at"],
         )
 
     def _write(self, pairs: Mapping[str, Pair], document: Document | None = None) -> None:
@@ -602,8 +647,6 @@ class PairStore:
                 # U234. AND LATER THAN ANY READING HELD after a stopped order,
                 # since a snapshot that moved is past that stop.
                 stop_seen=None if moved else held.stop_seen,
-                stop_seen_at="" if moved else held.stop_seen_at,
-                stop_seen_run="" if moved else held.stop_seen_run,
             )
             pairs[str(account_id)] = pair
             self._write(pairs)
@@ -627,27 +670,18 @@ class PairStore:
             self._write(pairs)
             return pair
 
-    def see_stop(
-        self, account_id: str, order: Sequence[str], *, at: str, run_id: str
-    ) -> Pair | None:
-        """Keep one reading of a playlist a stopped order left, read after the stop (U234).
+    def see_stop(self, account_id: str, reading: StopReading) -> Pair | None:
+        """Keep the readings of a playlist a stopped order left, read after the stop (U234).
 
-        ``order`` is the playlist as the reading served it, ``at`` when it was
-        read and ``run_id`` the run whose order stopped. Replaces any such
-        reading held. Answers the pair, or None when no such pair is marked,
-        which keeps nothing.
+        Replaces any such reading held. Answers the pair, or None when no such
+        pair is marked, which keeps nothing.
         """
         with self._locked():
             pairs = self._load()
             held = pairs.get(str(account_id))
             if held is None:
                 return None
-            pair = replace(
-                held,
-                stop_seen=tuple(str(one) for one in order),
-                stop_seen_at=str(at),
-                stop_seen_run=str(run_id),
-            )
+            pair = replace(held, stop_seen=reading)
             pairs[str(account_id)] = pair
             self._write(pairs)
             return pair
@@ -898,6 +932,7 @@ __all__ = [
     "Pair",
     "PairStore",
     "Released",
+    "StopReading",
     "conflict",
     "paired",
     "paired_ids",

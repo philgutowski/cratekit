@@ -20,6 +20,8 @@ D1 applies. Nothing here names a real account, a real person or a real track.
 
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
 from cratekit.core.cause import Scope, refuse
@@ -101,6 +103,11 @@ def _ids(*content_ids: str) -> list[str]:
     return [f"t{one}" for one in content_ids]
 
 
+def _agreeing_at_once(monkeypatch) -> None:
+    """Two readings agree however close together, as if minutes had passed between runs (U234)."""
+    monkeypatch.setattr(pair_cli, "AGREE_AFTER", timedelta(0))
+
+
 def test_a_fresh_sync_orders_the_account_to_rekordbox_and_plans_no_rekordbox_order(
     world, stopped
 ):
@@ -135,18 +142,32 @@ def test_the_gate_names_the_pair_as_finishing_the_stopped_run(world, stopped):
     assert run_id in said and "GIG READY Intro" in said
 
 
-def test_a_move_the_person_made_on_the_account_after_a_sync_read_it_still_leads(world, stopped):
-    """U234: the move is shown by the account's order changing between two syncs after the stop."""
+def test_a_move_the_person_made_on_the_account_after_a_sync_read_it_still_leads(
+    world, stopped, monkeypatch
+):
+    """U234: the move is shown by settled readings after the stop in two orders.
+
+    Two syncs read the stopped account in one order, settling it, the person moves a track, and the new order holds the
+    pair until a reading the agreement window later agrees with it.
+    """
+    _agreeing_at_once(monkeypatch)
     intro, account_id, _run = stopped
     plan_only()
+    plan_only()
+    held = pairs.PairStore(world.cfg).get(account_id)
+    assert held is not None and held.stop_seen is not None and held.stop_seen.settled
     members = world.account.playlists[account_id]
     members.remove("t3")
     members.insert(0, "t3")
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
+    assert pair_cli.LEFT_OUT in _codes(envelope), "one reading of the new order led"
+    assert world.held(intro) == list(LED)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == ["t3", "t2", "t7", "t1", "t4", "t5", "t6"]
     assert world.held(intro) == ["3", "2", "7", "1", "4", "5", "6"]
-    assert "the account was reordered since a sync after the stop read it" in _said(
+    assert "the account was reordered since syncs after the stop read it settled" in _said(
         envelope, pair_cli.FINISHING
     )
 
@@ -887,25 +908,132 @@ def test_an_account_left_off_its_path_outside_gig_ready_leaves_rekordbox_untouch
     assert world.account.playlists[account_id] == _ids(*LEFT)
 
 
-def test_a_reorder_seen_changing_between_two_syncs_after_the_stop_leads(world, strayed):
-    """The person moved the account after a sync read it, so the second reading is theirs."""
-    closer, account_id, _run = strayed
+def test_a_reorder_seen_changing_between_two_syncs_after_the_stop_leads(
+    world, strayed, monkeypatch
+):
+    """The person moved the account after syncs read it settled, so the new settled order is theirs."""
+    _agreeing_at_once(monkeypatch)
+    closer, account_id, run_id = strayed
+    plan_only()
     plan_only()
     held = pairs.PairStore(world.cfg).get(account_id)
-    assert held is not None and held.stop_seen == tuple(_ids(*LEFT))
+    assert held is not None and held.stop_seen == pairs.StopReading(
+        run_id, tuple(_ids(*LEFT)), held.stop_seen.at, settled=True
+    )
     members = world.account.playlists[account_id]
     members.remove("t6")
     members.insert(0, "t6")
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert "changed since a sync read it settled" in _said(envelope, pair_cli.LEFT_OUT)
+    assert world.held(closer) == list(BACK)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == ["t6", "t4", "t1", "t3", "t2", "t5", "t7"]
     assert world.held(closer) == ["6", "4", "1", "3", "2", "5", "7"]
-    assert "reordered since a sync after the stop read it" in _said(
+    assert "reordered since syncs after the stop read it settled" in _said(
         envelope, pair_cli.FINISHING
     )
 
 
-def test_two_syncs_reading_the_same_order_off_the_path_are_no_reorder(world, strayed):
+def test_a_kept_reading_that_never_settled_shows_no_reorder(world, strayed):
+    """Round one's review: the provider moving between two plans is not the person.
+
+    The first plan after the stop is served the order from before the moves,
+    a lag, and the next the stop's partial state: two readings that differ,
+    neither settled, so the stopped write is finished and rekordbox untouched.
+    """
+    closer, account_id, _run = strayed
+    world.account.served[account_id] = _ids("1", "2", "3", "4", "5", "6", "7")
+    plan_only()
+    held = pairs.PairStore(world.cfg).get(account_id)
+    assert held is not None and not held.stop_seen.settled
+    del world.account.served[account_id]
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(closer) == list(BACK), "rekordbox took the half done order"
+    assert world.account.playlists[account_id] == _ids(*BACK)
+
+
+def test_a_settled_reading_on_the_path_then_the_partial_state_shows_no_reorder_at_once(
+    world, strayed, monkeypatch
+):
+    """Round one's review, settled: the next order differing holds the pair, never writes it into rekordbox."""
+    _agreeing_at_once(monkeypatch)
+    closer, account_id, _run = strayed
+    world.account.served[account_id] = _ids("2", "1", "3", "4", "5", "6", "7")
+    plan_only()
+    plan_only()
+    del world.account.served[account_id]
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert world.held(closer) == list(BACK)
+    assert world.account.playlists[account_id] == _ids(*LEFT)
+
+
+def test_a_differing_order_that_moves_again_before_it_settles_is_held_again(
+    world, strayed, monkeypatch
+):
+    """The order after a settled one leads only once two readings of it agree."""
+    _agreeing_at_once(monkeypatch)
+    closer, account_id, _run = strayed
+    plan_only()
+    plan_only()
+    for served in (("6", "4", "1", "3", "2", "5", "7"), ("5", "4", "1", "3", "2", "6", "7")):
+        world.account.served[account_id] = _ids(*served)
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        assert pair_cli.LEFT_OUT in _codes(envelope), served
+    assert world.held(closer) == list(BACK)
+    # The order it moved to is the one waited on: read again, it leads.
+    world.account.playlists[account_id][:] = _ids("5", "4", "1", "3", "2", "6", "7")
+    del world.account.served[account_id]
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(closer) == ["5", "4", "1", "3", "2", "6", "7"]
+
+
+def test_a_reading_that_moved_before_it_settled_starts_again(world, strayed, monkeypatch):
+    """A lag then the partial state: the second reading is kept afresh, never settled as the first."""
+    _agreeing_at_once(monkeypatch)
+    closer, account_id, _run = strayed
+    world.account.served[account_id] = _ids("1", "2", "3", "4", "5", "6", "7")
+    plan_only()
+    del world.account.served[account_id]
+    plan_only()
+    held = pairs.PairStore(world.cfg).get(account_id)
+    assert held is not None and held.stop_seen.order == tuple(_ids(*LEFT))
+    assert not held.stop_seen.settled
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert pair_cli.LEFT_OUT not in _codes(envelope), "the partial state was held as a reorder"
+    assert world.held(closer) == list(BACK)
+    assert world.account.playlists[account_id] == _ids(*BACK)
+
+
+def test_a_differing_order_waits_the_agreement_window(world, strayed, monkeypatch):
+    """With the window kept, a settled reading and one new reading agree with nothing yet."""
+    closer, account_id, _run = strayed
+    plan_only()
+    held = pairs.PairStore(world.cfg).get(account_id)
+    assert held is not None and not held.stop_seen.settled, "settled inside the window"
+    _agreeing_at_once(monkeypatch)
+    plan_only()
+    monkeypatch.setattr(pair_cli, "AGREE_AFTER", timedelta(minutes=5))
+    world.account.served[account_id] = _ids("6", "4", "1", "3", "2", "5", "7")
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert world.held(closer) == list(BACK)
+
+
+def test_two_syncs_reading_the_same_order_off_the_path_are_no_reorder(
+    world, strayed, monkeypatch
+):
+    _agreeing_at_once(monkeypatch)
     closer, account_id, _run = strayed
     plan_only()
     plan = plan_only()
@@ -917,11 +1045,20 @@ def test_two_syncs_reading_the_same_order_off_the_path_are_no_reorder(world, str
     assert world.account.playlists[account_id] == _ids(*BACK)
 
 
-def test_a_reading_kept_for_another_run_shows_no_reorder(world, strayed):
+def test_a_reading_kept_for_another_run_shows_no_reorder(world, strayed, monkeypatch):
     """A reading is evidence only for the stop it was read after (identity, not order alone)."""
+    _agreeing_at_once(monkeypatch)
     closer, account_id, _run = strayed
     pairs.PairStore(world.cfg).see_stop(
-        account_id, _ids(*BACK), at="2099-01-01T00:00:00+00:00", run_id="another-run"
+        account_id,
+        pairs.StopReading(
+            "another-run",
+            tuple(_ids(*BACK)),
+            "2099-01-01T00:00:00+00:00",
+            settled=True,
+            after=tuple(_ids(*LEFT)),
+            after_at="2099-01-01T00:00:00+00:00",
+        ),
     )
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
@@ -929,10 +1066,19 @@ def test_a_reading_kept_for_another_run_shows_no_reorder(world, strayed):
     assert world.account.playlists[account_id] == _ids(*BACK)
 
 
-def test_a_reading_kept_before_the_stop_shows_no_reorder(world, strayed):
+def test_a_reading_kept_before_the_stop_shows_no_reorder(world, strayed, monkeypatch):
+    _agreeing_at_once(monkeypatch)
     closer, account_id, run_id = strayed
     pairs.PairStore(world.cfg).see_stop(
-        account_id, _ids(*BACK), at="2000-01-01T00:00:00+00:00", run_id=run_id
+        account_id,
+        pairs.StopReading(
+            run_id,
+            tuple(_ids(*BACK)),
+            "2000-01-01T00:00:00+00:00",
+            settled=True,
+            after=tuple(_ids(*LEFT)),
+            after_at="2000-01-01T00:00:00+00:00",
+        ),
     )
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
@@ -940,21 +1086,28 @@ def test_a_reading_kept_before_the_stop_shows_no_reorder(world, strayed):
     assert world.account.playlists[account_id] == _ids(*BACK)
 
 
-def test_a_track_added_on_the_account_between_two_readings_is_no_reorder(world, strayed):
+def test_a_track_added_on_the_account_between_two_readings_is_no_reorder(
+    world, strayed, monkeypatch
+):
+    _agreeing_at_once(monkeypatch)
     closer, account_id, _run = strayed
+    plan_only()
     plan_only()
     world.account.playlists[account_id].insert(3, "t8")
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
-    assert "reordered since a sync after the stop read it" not in str(envelope)
+    assert pair_cli.LEFT_OUT not in _codes(envelope)
+    assert "reordered since" not in str(envelope)
     assert [one for one in world.held(closer) if one != "8"] == list(BACK)
 
 
 def test_a_later_reading_still_on_the_moves_path_is_finished_never_read_as_a_reorder(
-    world, stopped
+    world, stopped, monkeypatch
 ):
     """U234: only an order off the path is compared with the kept reading; on it, the stop finishes."""
+    _agreeing_at_once(monkeypatch)
     intro, account_id, _run = stopped
+    plan_only()
     plan_only()
     # One more of the write's own moves shows: still on its path, in another order.
     members = world.account.playlists[account_id]

@@ -215,15 +215,20 @@ def test_a_pending_pair_the_person_reordered_after_a_sync_read_it_is_merged_as_t
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert pair_cli.LEFT_OUT in _codes(envelope), "one reading was taken as agreed"
-    # A sync reads it agreed and writes nothing, keeping that reading.
+    # Two syncs read it agreed and write nothing, keeping that reading, settled.
+    plan_only()
     plan_only()
     held = pairs.PairStore(cfg).get(account_id)
-    assert held is not None and held.stop_seen == tuple(_ids("2", "4", "1", "3"))
-    # And the person moves it again: two agreed readings after the stop differ.
+    assert held is not None and held.stop_seen is not None
+    assert held.stop_seen.order == tuple(_ids("2", "4", "1", "3")) and held.stop_seen.settled
+    # And the person moves it again: U231 holds the new reading until it agrees,
+    # then U234 holds it until it agrees as the order after the settled one.
     world.account.playlists[account_id][:] = _ids("3", "2", "4", "1")
-    code, envelope = sync()
-    assert code == int(ExitCode.OK), envelope
-    assert pair_cli.LEFT_OUT in _codes(envelope), "one reading was taken as agreed"
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+        assert pair_cli.LEFT_OUT in _codes(envelope), "one reading was taken as agreed"
+        assert world.held(opener) == ["4", "3", "1", "2"]
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert world.held(opener) == ["3", "2", "4", "1"]

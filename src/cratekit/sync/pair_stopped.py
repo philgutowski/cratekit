@@ -28,9 +28,11 @@ comparison any track added or taken off since, which moves nothing.
 accounts a stopped write left in orders none of its moves leaves, after moves
 answered 412 or sent by position on a reading that lagged: the provider's
 partial state as often as a person's edit. Such an order is read as the
-stopped write's too, finished as one on the path is, unless a reading a plan
-kept after the stop shows the account in another order (:func:`reordered`),
-which a provider's state settled after a stop does not do and a person's move does.
+stopped write's too, finished as one on the path is, unless readings plans
+kept after the stop, each settled over the agreement window, show the account
+moved from one order to another (:func:`reordered`). One reading shows
+nothing, and nor do two that differ, since the provider serves a playlist's
+older orders for minutes after a change (``sync/pair_cli``).
 
 **AND ITS ADDITIONS AND REMOVALS, WHEN IT WROTE BOTH SIDES.** A write begins
 its order only once its removals and additions on the account have returned,
@@ -446,8 +448,9 @@ def reached(start: Sequence[str], target: Sequence[str], now: Sequence[str]) -> 
     """Whether the account's order ``now`` is one a write ordering ``start`` toward ``target`` left.
 
     A track added or taken off since is left out of the comparison, since
-    neither moves the tracks both hold; a track the write would have moved
-    standing anywhere else is a move somebody made.
+    neither moves the tracks both hold. A track the write would have moved
+    standing anywhere else is off the path, which is a move somebody made or
+    the provider's partial state, and is read as neither on that alone (U234).
     """
     return bool(positions(start, target, now))
 

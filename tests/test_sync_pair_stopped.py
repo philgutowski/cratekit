@@ -628,27 +628,52 @@ def test_a_reading_after_a_stop_round_trips_and_goes_when_the_snapshot_moves(cfg
     store = pairs.PairStore(cfg)
     store.mark("acc", "rb", name="Mine")
     assert store.get("acc").stop_seen is None
-    store.see_stop("acc", ("t2", "t1"), at="2026-11-07T00:00:00+00:00", run_id="run-a")
-    held = store.get("acc")
-    assert held.stop_seen == ("t2", "t1")
-    assert (held.stop_seen_at, held.stop_seen_run) == ("2026-11-07T00:00:00+00:00", "run-a")
+    kept = pairs.StopReading("run-a", ("t2", "t1"), "2026-11-07T00:00:00+00:00")
+    store.see_stop("acc", kept)
+    assert store.get("acc").stop_seen == kept
+    later = pairs.StopReading(
+        "run-a",
+        ("t2", "t1"),
+        "2026-11-07T00:00:00+00:00",
+        settled=True,
+        after=("t1", "t2"),
+        after_at="2026-11-07T00:10:00+00:00",
+    )
+    store.see_stop("acc", later)
+    assert store.get("acc").stop_seen == later
     # Links alone do not move the snapshot, so the reading stays.
     store.record("acc", links={"t1": "1"})
-    assert store.get("acc").stop_seen == ("t2", "t1")
+    assert store.get("acc").stop_seen == later
     store.record("acc", account=("t1", "t2"), rekordbox=())
-    held = store.get("acc")
-    assert held.stop_seen is None and held.stop_seen_at == "" and held.stop_seen_run == ""
-    assert store.see_stop("other", ("t1",), at="x", run_id="run-a") is None
+    assert store.get("acc").stop_seen is None
+    assert store.see_stop("other", kept) is None
 
 
 @pytest.mark.parametrize(
     "kept",
     [
-        {"order": "t1", "at": "2026-11-07T00:00:00+00:00", "run": "r"},
-        {"order": ["t1", ""], "at": "2026-11-07T00:00:00+00:00", "run": "r"},
-        {"order": ["t1"], "run": "r"},
-        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00"},
-        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": ""},
+        {"order": "t1", "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": False},
+        {"order": ["t1", ""], "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": False},
+        {"order": ["t1"], "run": "r", "settled": False},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "settled": False},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "", "settled": False},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "r"},
+        {"order": ["t1"], "at": "2026-11-07T00:00:00+00:00", "run": "r", "settled": "yes"},
+        {
+            "order": ["t1"],
+            "at": "2026-11-07T00:00:00+00:00",
+            "run": "r",
+            "settled": True,
+            "after": {"order": ["t1"]},
+        },
+        {
+            "order": ["t1"],
+            "at": "2026-11-07T00:00:00+00:00",
+            "run": "r",
+            "settled": True,
+            "after": {"order": [""], "at": "2026-11-07T00:00:00+00:00"},
+        },
+        ["t1"],
     ],
 )
 def test_a_reading_after_a_stop_that_is_not_an_order_refuses_the_store(cfg, kept):
@@ -682,11 +707,14 @@ def _write(**moments) -> pair_stopped.StoppedWrite:
 def test_a_kept_reading_counts_only_for_its_run_at_or_after_its_moves():
     from types import SimpleNamespace
 
+    from cratekit.modules.outbound import pairs
+
     def held(at: str, run: str = "run-a"):
-        return SimpleNamespace(stop_seen=("t1", "t2"), stop_seen_at=at, stop_seen_run=run)
+        return SimpleNamespace(stop_seen=pairs.StopReading(run, ("t1", "t2"), at))
 
     write = _write()
-    assert pair_cli._kept_after(held("2026-11-07T10:00:00+00:00"), write) == ("t1", "t2")
+    found = pair_cli._kept_after(held("2026-11-07T10:00:00+00:00"), write)
+    assert found is not None and found.order == ("t1", "t2")
     assert pair_cli._kept_after(held("2026-11-07T09:59:59+00:00"), write) is None
     assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00", "run-b"), write) is None
     assert pair_cli._kept_after(held("not a moment"), write) is None
@@ -695,4 +723,4 @@ def test_a_kept_reading_counts_only_for_its_run_at_or_after_its_moves():
     # A write that sent its moves blind is read after they began, not its order step.
     blind = _write(moving_at=datetime(2026, 11, 7, 12, tzinfo=UTC))
     assert pair_cli._kept_after(held("2026-11-07T11:00:00+00:00"), blind) is None
-    assert pair_cli._kept_after(held("2026-11-07T12:00:00+00:00"), blind) == ("t1", "t2")
+    assert pair_cli._kept_after(held("2026-11-07T12:00:00+00:00"), blind) is not None
