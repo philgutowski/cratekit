@@ -260,10 +260,11 @@ def new_run_id(now: datetime | None = None) -> str:
     about once in 4,700 runs of one test, measured by forcing each pair, and a
     meeting either read an earlier pass's run as the new one's or refused a
     second job at enqueue as a duplicate key. Sixty four bits is the width
-    ``snapshot.new_stamp`` already carries, and ``tests/test_cli_contract.py``
-    pins it. The stamp before the tail is unchanged, colons included, so an
-    identifier written before the widening reads, sorts and names a file as
-    one written after it does.
+    ``snapshot.new_stamp`` already carries, so a change to either width is a
+    change to read both, and ``tests/test_cli_contract.py`` pins it. The stamp
+    before the tail is unchanged, colons included, so an identifier written
+    before the widening reads, sorts and names a file as one written after it
+    does; ``intake.shelve`` reads a batch named for a run at either width.
 
     U5 ships before the job engine, so this is the identifier space U10 adopts
     rather than a second one it invents.

@@ -829,9 +829,8 @@ def test_a_run_identifier_carries_sixty_four_bits_of_random_tail():
     disk reads, sorts and names a file as a new one does.
     """
     instant = datetime(2026, 11, 7, 16, 48, 26, tzinfo=timezone.utc)
-    assert re.fullmatch(
-        r"2026-11-07T16:48:26Z-[0-9a-f]{16}", output.new_run_id(instant)
-    ), output.new_run_id(instant)
+    minted = output.new_run_id(instant)
+    assert re.fullmatch(r"2026-11-07T16:48:26Z-[0-9a-f]{16}", minted), minted
 
 
 # ═══════════════════════════════════════════════════════════════════════════
