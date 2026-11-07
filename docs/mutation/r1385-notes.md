@@ -64,6 +64,19 @@ taken out of the sidecar and measured again for this table.
 None: 15 rows under a medium card's table, every guard the diff adds
 measured.
 
+## M7 after `main` was merged in
+
+Merging `main` at c2e3d056 put R-1383's landing hold between the twin's hold
+and `_queued_elsewhere`, so M7's old text, which swapped the two, no longer
+matched. M7 was rewritten at `e01846e1` to the same mutation on the merged
+planner (another pair's job asked before the twin's hold, by a branch put
+ahead of it) and three driver runs were started to measure it. All three
+were refused, two by a null control death and one by a red baseline, each a
+different test far from this card and green alone, filed as
+`r1385-five-tests-redden-the-mutation-driver-by-turns`. M7's number in the
+table, 2 kills, is its pre-merge text's; the rows file carries the merged
+text so it runs on `main`.
+
 ## Where each number was measured
 
 The 13 killed rows are run two's, at `710e270a`, reused; M3, M5, the
