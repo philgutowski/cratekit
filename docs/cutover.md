@@ -2425,7 +2425,7 @@ Installed copy 0.14.0, the latest release, which carries U236 (#628). Both backu
 | The organize after | live run `2026-11-07T19:53:51Z-1788e4f84f78a668` | rekordbox digest `06cdd0d13e3c655a`, 0 to apply; account `7519735c10807a23`, 0 to apply; `no_op`. The `placed` entry is gone. The one edit named and not queued is the Ferrer track. | done |
 | Read back | a fresh copy of the live database, and the account | `Sunset Sound` in no Favorites playlist, only its INBOX batch; colour Pink. On the account, in neither `All Favorites` nor `Favorites 2026-11`. Not read in rekordbox's own window. | done |
 | The re-organize asked about on #628 | the three runs above | **No longer needed in this flow.** The account's month never took the track, since an organize mirrors a favourite's month to the account only at the next organize (R-1029), and the unfavourite came first. Sitting 88's extra organize was needed because its round 2 account area had put the track back in the account's month. A favourite left through one more organize before it is taken off still takes one further organize to leave the account's month, which is R-1029's lag and not U236's. | answered |
-| The download half | the review item | The Ferrer vocal mix waits on review `rv_c2c129dd92430ec947f5365e`, Phillip's call. **Filed as a residual** (`a90-a-genre-add-whose-only-match-is-another-version-waits-on-a-review`) rather than holding A90 open. | residual |
+| The download half | the review item | The Ferrer vocal mix waits on review `rv_c2c129dd92430ec947f5365e`, Phillip's call. **Filed as R-1441**, ledger only, rather than holding A90 open. | residual |
 | A114, the battery | `ruff`, `pytest` under `-n auto`, `scan_repo.py`, on `main` at `b18eee76` (v0.14.0) | **Green**: ruff clean, 17,556 passed and 1 skipped in 389 s, the scan clean, 19:59Z to 20:06Z. Among the passes `test_an_earlier_pass_left_open_beside_a_new_one_is_named_with_its_way_on` (sitting 87's one failure) and the identifier tests `test_two_runs_starting_in_the_same_second_get_different_identifiers`, `test_two_thousand_identifiers_minted_inside_one_second_are_all_distinct` and `test_a_run_identifier_carries_sixty_four_bits_of_random_tail`. Every run this sitting printed an identifier ending in sixteen hex characters, `4a06b44c5636318f` above. | met |
 | A stray read | `crate sync pair`, 20:08:14Z, started by mistake when the session's shell expanded a backticked phrase while this record was being written | Stopped at the 500 call ceiling while planning, before either gate, `REFUSED_BY_POLICY`; no run recorded, and neither the database nor any library state file changed after 19:58Z. 500 read calls, nothing written. | no effect |
 
@@ -2443,7 +2443,7 @@ than a card: A56 (#414), whose retirement half waits on the first batch due to
 rotate, on 2026-11-08 at the earliest; A57 (#415), a DEADCA7 push onto a
 library copy; and A72 (#446), new Bandcamp purchases from a followed label.
 A90's download half waits on Phillip's answer to the version review of the
-Dennis Ferrer vocal mix, recorded as a residual. A33 (#293) is a brainstorm,
+Dennis Ferrer vocal mix, R-1441. A33 (#293) is a brainstorm,
 and A5 (#178) keeps lines 8 and 9 above.
 
 **The account root is Phillip's by hand since sitting 41 (2026-10-14)**, and
