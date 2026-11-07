@@ -688,6 +688,9 @@ class PairPlan:
     finishing_off_path: bool = False
     reordered_since_stop: bool = False
     finishing_folded: bool = False
+    #: U234. Whether that write is known to have sent no move, so the
+    #: account's order off its path was read as the person's.
+    stop_moved_nothing: bool = False
     #: U231. Whether the merge asked the account a new order that this pair
     #: does not keep, since its rekordbox playlist is outside GIG READY.
     order_unkept: bool = False
@@ -1653,12 +1656,16 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     stopped: pair_merge.Stopped | None = None
     off_path = False
     reordered_since_stop = False
+    moved_nothing = False
     if stopped_write is not None:
         reading = tuple(listed_order or account_now)
         off_path = not pair_stopped.reached(
             stopped_write.start, stopped_write.target, reading
         )
-        reordered_since_stop = _moved_since_stop(
+        # A WRITE KNOWN TO HAVE SENT NO MOVE left no partial state, so an order
+        # off its path is a person's, as before U234 (R-1420's refused order).
+        moved_nothing = off_path and stopped_write.sent_nothing
+        reordered_since_stop = moved_nothing or _moved_since_stop(
             reader, target, name, held, stopped_write, reading, off_path=off_path
         )
     if stopped_write is not None and not reordered_since_stop:
@@ -1874,6 +1881,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         finishing_off_path=stopped is not None and off_path,
         reordered_since_stop=reordered_since_stop,
         finishing_folded=folded,
+        stop_moved_nothing=moved_nothing,
         order_unkept=order_unkept,
     )
 
@@ -3007,8 +3015,13 @@ def facts(planned: Plan) -> dict[str, Any]:
                         if one.finishing_folded
                         else ""
                     )
-                    + "the account was reordered since syncs after the stop read it "
-                    "settled, so its order is read as yours; "
+                    + (
+                        "none of its moves was sent, so the account's order is read "
+                        "as yours; "
+                        if one.stop_moved_nothing
+                        else "the account was reordered since syncs after the stop read "
+                        "it settled, so its order is read as yours; "
+                    )
                 )
                 if one.finishing
                 else ""
@@ -4147,6 +4160,9 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                         + (
                             f"order follows {'the account' if one.merged.leader == pair_merge.ACCOUNT else 'rekordbox'})"
                             if one.finishing_order
+                            else "none of its moves was sent, so the account's order "
+                            "leads)"
+                            if one.stop_moved_nothing
                             else "the account was reordered since syncs after the stop "
                             "read it settled, so its order leads)"
                         )

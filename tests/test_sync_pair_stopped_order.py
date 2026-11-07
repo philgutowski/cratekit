@@ -27,7 +27,7 @@ import pytest
 from cratekit.core.cause import Scope, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.modules.outbound import pairs, tidal_account
-from cratekit.sync import pair_cli
+from cratekit.sync import pair_cli, pair_stopped
 from tests.cli_drive import drive
 from tests.test_rebuild import _platform_seams as _platform_seams  # noqa: PLC0414
 from tests.test_rebuild import _release_process_locks as _release_process_locks  # noqa: PLC0414
@@ -44,14 +44,35 @@ from tests.test_sync_pair_order import _reordered
 LED = ("4", "5", "1", "6", "2", "7", "3")
 
 
+def _as_before_u231(monkeypatch) -> None:
+    """Record every ordering step as v0.13.1 did, saying nothing of a moving step (U234).
+
+    The stops below send their moves with no moving step, as the adapter did
+    before U231 read its moves back one at a time, and as Sitting 86's live
+    records were written. A record of this version promises a moving step
+    before any move, so one written here without it would be read as a write
+    that sent nothing.
+    """
+    real = pair_stopped.ordering_step
+
+    def ordering_step(**kwargs):
+        step = real(**kwargs)
+        step.pop(pair_stopped.MOVES_RECORDED, None)
+        return step
+
+    monkeypatch.setattr(pair_stopped, "ordering_step", ordering_step)
+
+
 def _stopping(world, monkeypatch, playlist_id: str, moves: int) -> list[int]:
     """Make the account's order on one playlist stop after ``moves`` moves, as the adapter makes them.
 
     The moves are the shipped adapter's own (``_to_the_front``), each a track
     taken to the front, and the stop is the refusal a read back that differs
     raises (U220), which stops that pair alone. Answers a list the number of
-    stops is appended to.
+    stops is appended to. Sent with no moving step, so recorded as before
+    U231 (:func:`_as_before_u231`).
     """
+    _as_before_u231(monkeypatch)
     real = world.account.order_tracks
     stops: list[int] = []
 
@@ -838,8 +859,10 @@ def _left_off_the_path(world, monkeypatch, playlist_id: str) -> list[int]:
     """The order on one playlist stops with the account at :data:`LEFT`, as a refused move stops it.
 
     Stops the pair alone, as U225's stop does, with no record of moves sent
-    blind, so the next plan reads the account as it stands.
+    blind, so the next plan reads the account as it stands: Sitting 86's
+    records, written before U231 (:func:`_as_before_u231`).
     """
+    _as_before_u231(monkeypatch)
     real = world.account.order_tracks
     stops: list[int] = []
 
@@ -1179,3 +1202,48 @@ def test_a_later_reading_still_on_the_moves_path_is_finished_never_read_as_a_reo
     assert code == int(ExitCode.OK), envelope
     assert world.held(intro) == list(LED), "rekordbox took a point on the stopped write's path"
     assert world.account.playlists[account_id] == _ids(*LED)
+
+
+def test_a_stop_this_version_recorded_with_no_move_sent_leaves_a_reorder_the_persons(
+    world, monkeypatch
+):
+    """U234 keeps R-1420's case: an order refused before its first move left no partial state.
+
+    The write records its moving step before any move, so an ordering step
+    with none beside it sent nothing, and an order off its path can only be
+    somebody's: the account leads, and the gate says why.
+    """
+    gig = world.folder("GIG READY")
+    closer = world.playlist("Closer", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    account_id = world.titled("GIG READY Closer")
+    _reordered(world, closer, "4", "3", "1", "2")
+    real = world.account.order_tracks
+    refused: list[str] = []
+
+    def order_tracks(asked_id, remote_ids, *, expect=None, begun=None, **agreed):
+        if asked_id != account_id or refused:
+            return real(asked_id, remote_ids, expect=expect, begun=begun, **agreed)
+        refused.append(asked_id)
+        raise refuse(
+            "outbound-remove-refused",
+            f"the playlist {asked_id} read differs, so nothing was moved",
+            scope=Scope.RUN,
+            origin=("test", "order"),
+            detail={"playlist_id": asked_id, "problem": "read-differs"},
+        )
+
+    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert refused and world.account.playlists[account_id] == _ids("1", "2", "3", "4")
+    world.account.playlists[account_id][:] = _ids("2", "4", "1", "3")
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    line = first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    assert "none of its moves was sent" in line and "none of its moves leaves" not in line, line
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(closer) == ["2", "4", "1", "3"]
+    assert world.account.playlists[account_id] == _ids("2", "4", "1", "3")

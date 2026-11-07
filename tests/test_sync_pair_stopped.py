@@ -147,7 +147,22 @@ def test_a_write_begun_ordered_and_not_finished_is_read_back_whole():
         rekordbox=(("1", "r1"), ("2", "r2")),
         written=True,
         links={"t9": "9"},
+        moves_recorded=True,
     )
+    # U234. Written by this version, with no moving step: known to have sent no move.
+    assert write.sent_nothing
+
+
+def test_an_ordering_step_from_before_u234_says_nothing_of_its_moves():
+    """Sitting 86's records sent their moves with no moving step, so none is read as sending nothing."""
+    began = _WHEN.isoformat()
+    old = _ordering()
+    old.pop(pair_stopped.MOVES_RECORDED)
+    _at, write = _read(_steps("run-1", {"pl-1": {"account": began, "ordering": old}}))["pl-1"]
+    assert not write.moves_recorded and not write.sent_nothing
+    flagged = {**_ordering(), pair_stopped.MOVES_RECORDED: "yes"}
+    _at, write = _read(_steps("run-1", {"pl-1": {"account": began, "ordering": flagged}}))["pl-1"]
+    assert not write.moves_recorded, "a marker that is not true is no marker"
 
 
 def test_a_finished_or_unordered_write_is_no_stopped_one():

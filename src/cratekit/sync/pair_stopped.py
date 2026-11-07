@@ -88,6 +88,11 @@ LINKS = "links"
 #: R-1394. The moves that may have reached the provider, and the moves it accepted.
 SENT = "sent"
 LANDED = "landed"
+#: U234. That the write records its moving step before its first move is
+#: sent, as every write has since U231, so its ordering step with no moving
+#: step beside it sent no move. A record without it, written before U234,
+#: says nothing either way: before U231 the moves were sent with no record.
+MOVES_RECORDED = "moves_recorded"
 
 
 @dataclass(frozen=True, slots=True)
@@ -129,6 +134,14 @@ class StoppedWrite:
     #: nothing known, none landed and every one maybe sent.
     landed: int = 0
     sent: int = 0
+    #: U234. Whether its ordering step says the write records its moving
+    #: step before its first move (:data:`MOVES_RECORDED`).
+    moves_recorded: bool = False
+
+    @property
+    def sent_nothing(self) -> bool:
+        """Whether this write is known to have sent no move: it records its moves, and recorded none (U234)."""
+        return self.moves_recorded and self.moving_at is None
 
     @property
     def pending(self) -> bool:
@@ -207,6 +220,7 @@ def ordering_step(
 ) -> dict[str, Any]:
     """What a write records as it begins an account order, for a later plan to read."""
     return {
+        MOVES_RECORDED: True,
         AT: str(at),
         START: [str(one) for one in start],
         TARGET: [str(one) for one in target],
@@ -279,6 +293,7 @@ def _read(
         moved=sent is not None and bool(moved),
         landed=landed,
         sent=reached_by,
+        moves_recorded=value.get(MOVES_RECORDED) is True,
     )
 
 
