@@ -2897,6 +2897,14 @@ def facts(planned: Plan) -> dict[str, Any]:
             + (
                 f"; the account lists {len(one.unread)} track(s) with no title or no "
                 f"artist, so each is left where it is on both sides"
+                + (
+                    # R-1432. A finish puts one back where the stopped order
+                    # was taking it, not where an interrupted move left it.
+                    ", and the account's order puts each where the stopped order was "
+                    "taking it, or else behind the track it follows"
+                    if one.finishing_order and one.account_order
+                    else ""
+                )
                 if one.unread
                 else ""
             )
@@ -3964,12 +3972,24 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
         )
     unread = [(one, named) for one in planned.pairs for named in one.unread]
     if unread:
+        # R-1432. A finish of a stopped order puts an unread track where that
+        # order was taking it, which is not where an interrupted move left it.
+        finished_unread = any(
+            one.finishing_order and one.account_order for one, _named in unread
+        )
         said.append(
             {
                 "code": UNREAD,
                 "message": (
                     f"the account lists {len(unread)} track(s) that cannot be read, so each "
-                    f"stays where it is on both sides until it reads: "
+                    f"stays where it is on both sides until it reads"
+                    + (
+                        ", except that a pair finishing a stopped order puts each where "
+                        "that order was taking it"
+                        if finished_unread
+                        else ""
+                    )
+                    + ": "
                     + "; ".join(
                         f"{one.name!r}: {named.artist or '?'} - {named.title or '?'} "
                         f"({named.reason})"
