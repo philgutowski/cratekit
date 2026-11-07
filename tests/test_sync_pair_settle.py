@@ -1533,6 +1533,22 @@ def test_a_settled_move_of_the_unread_track_alone_still_finishes_the_stopped_wri
     assert finishing, envelopes
     assert not any("so its order leads" in one for one in finishing), finishing
     assert any("order follows rekordbox" in one for one in finishing), finishing
+    assert any("only tracks the account cannot read were moved since" in one for one in finishing)
+    # The gate says t9 stays where it was put, and never that the finish
+    # takes it where the stopped order was taking it.
+    shown = [
+        str(fact)
+        for one in envelopes
+        if one.get("cause")
+        for fact in one["cause"]["detail"]["shown"].values()
+    ]
+    assert any(
+        "only tracks the account lists with no title or no artist were moved since" in one
+        for one in shown
+    ), shown
+    assert not any("where the stopped order was taking it" in one for one in shown), shown
+    warned = [_said(one, pair_cli.UNREAD) for one in envelopes if pair_cli.UNREAD in _codes(one)]
+    assert warned and not any("finishing a stopped order" in one for one in warned), warned
     held = pairs.PairStore(cfg).get(account_id)
     assert held is not None and held.account == (*_ids("2", "3"), "t9", *_ids("4", "1"))
     assert held.stop_seen is None
@@ -1564,10 +1580,13 @@ def test_a_settled_move_of_a_readable_track_beside_an_unread_one_still_leads(
         envelopes.append(envelope)
         assert (pair_cli.LEFT_OUT in _codes(envelope)) is left_out, envelope
     assert world.held(opener) == ["3", "1", "2", "4"], "the person's settled reorder did not lead"
-    finishing = [_said(one, pair_cli.FINISHING) for one in envelopes if pair_cli.FINISHING in _codes(one)]
-    assert any("reordered since syncs after the stop read it settled" in one for one in finishing), (
-        finishing
-    )
+    finishing = [
+        _said(one, pair_cli.FINISHING) for one in envelopes if pair_cli.FINISHING in _codes(one)
+    ]
+    assert any(
+        "reordered since syncs after the stop read it settled" in one for one in finishing
+    ), finishing
+    assert not any("cannot read were moved since" in one for one in finishing), finishing
 
 
 def test_a_move_of_the_unread_track_alone_after_a_stop_that_sent_nothing_is_no_reorder(
@@ -1765,3 +1784,81 @@ def test_at_a_finish_an_unread_track_is_placed_by_the_stopped_writes_target(
 ):
     """R-1432: each unread id the target names stands behind the track the target puts before it."""
     assert pair_cli._with_unread_placed(ordered, listed, target) == expected
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1446. Whether a reorder read after a stop moved a readable track, read alone
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _write_from(start: list[str], target: list[str]):
+    from datetime import UTC, datetime
+
+    from cratekit.sync import pair_stopped
+
+    return pair_stopped.StoppedWrite(
+        run_id="run-1",
+        account_id="acct",
+        at=datetime(2026, 11, 7, tzinfo=UTC),
+        start=tuple(start),
+        target=tuple(target),
+        leader="rekordbox",
+        rekordbox=(),
+        written=True,
+        links={},
+    )
+
+
+START = ["t1", "t2", "t3", "t4", "t9"]
+TARGET = ["t2", "t3", "t4", "t9", "t1"]
+
+
+@pytest.mark.parametrize(
+    ("kept", "reading", "unread", "moved"),
+    [
+        # Only the unread track moved between the settled reading and now.
+        (["t1", "t2", "t9", "t3", "t4"], ["t1", "t2", "t3", "t9", "t4"], {"t9"}, False),
+        # A readable track moved, the unread one with it or not.
+        (["t1", "t2", "t9", "t3", "t4"], ["t3", "t1", "t2", "t9", "t4"], {"t9"}, True),
+        (["t1", "t2", "t9", "t3", "t4"], ["t9", "t3", "t1", "t2", "t4"], {"t9"}, True),
+        # With t9 readable now, its move is a reorder of the tracks the merge reads.
+        (["t1", "t2", "t9", "t3", "t4"], ["t1", "t2", "t3", "t9", "t4"], set(), True),
+        # Two unread tracks moving round each other.
+        (["u1", "t1", "u2", "t2"], ["u2", "t1", "t2", "u1"], {"u1", "u2"}, False),
+    ],
+)
+def test_a_settled_reorder_moved_a_readable_track_only_when_one_moved(kept, reading, unread, moved):
+    """R-1446: the settled reading and now are compared with every unread id left out."""
+    settled = pairs.StopReading("run-1", tuple(kept), "2026-11-07T00:00:00+00:00", settled=True)
+    write = _write_from(START, TARGET)
+    assert pair_cli._readable_moved(write, settled, reading, unread, moved_nothing=False) is moved
+
+
+def test_with_no_settled_reading_a_reorder_stands_as_read():
+    """R-1446: a reorder read with no settled reading kept to compare is left as it was read."""
+    write = _write_from(START, TARGET)
+    reading = ["t1", "t2", "t3", "t9", "t4"]
+    assert pair_cli._readable_moved(write, None, reading, {"t9"}, moved_nothing=False)
+    unsettled = pairs.StopReading("run-1", tuple(reading), "2026-11-07T00:00:00+00:00")
+    assert pair_cli._readable_moved(write, unsettled, reading, {"t9"}, moved_nothing=False)
+
+
+@pytest.mark.parametrize(
+    ("reading", "unread", "moved"),
+    [
+        # Off the path only by where the unread track stands.
+        (["t1", "t2", "t9", "t3", "t4"], {"t9"}, False),
+        # A readable track off the path.
+        (["t2", "t1", "t9", "t3", "t4"], {"t9"}, True),
+        (["t2", "t1", "t3", "t4", "t9"], {"t9"}, True),
+        # Nothing unread: the place of t9 is read too.
+        (["t1", "t2", "t9", "t3", "t4"], set(), True),
+    ],
+)
+def test_after_a_write_that_sent_nothing_only_readable_tracks_off_its_path_are_a_reorder(
+    reading, unread, moved
+):
+    """R-1446: a write known to have sent no move is off its path only where a readable track is."""
+    write = _write_from(START, TARGET)
+    assert pair_cli._readable_moved(write, None, reading, unread, moved_nothing=True) is moved
+
