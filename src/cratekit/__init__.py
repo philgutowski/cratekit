@@ -14,6 +14,6 @@ Version lives here rather than being read from installed metadata so that a
 source checkout without an install still reports something coherent.
 """
 
-__version__ = "0.14.0"
+__version__ = "0.15.0"
 
 __all__ = ["__version__"]

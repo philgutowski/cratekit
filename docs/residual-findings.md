@@ -47015,3 +47015,106 @@ organize after it files it in `House / Funky House / Disco Med`, which is the
 download half of A90. If he answers that the instrumental stands for it, the
 edit is taken against the instrumental. Ledger only: the behaviour is the
 documented review rule, and the step left is a person's answer.
+
+---
+
+## R-1442. A Tidal reorder made after a stopped order and before two syncs five minutes apart read the playlist is put back to rekordbox's order
+
+**Found:** at the build of #623, U234, 2026-11-07.
+
+**The mechanism.** `_moved_since_stop` in `sync/pair_cli.py` reads an
+account off the stopped write's path as the person's only once a reading
+kept on the pair after the stop has settled (read again in the same order at
+least `AGREE_AFTER` later) and a later order differing from it has settled
+too. A move the DJ makes on Tidal before the first reading settles, or the
+first sync after the stop that applies its gates, cannot be told from the
+provider's partial state or from Tidal still serving an older order, so that
+sync finishes the stopped order from rekordbox's side and puts the move back.
+A hand pairing has no record to keep a reading on, so nothing it reads leads.
+
+**Measured cost.** Driven by the card's own tests: the move is put back, the
+gate line naming the account as read where none of the stopped write's moves
+leaves it, so the DJ sees it before approving and can skip the account gate.
+This is the card's conservative call, which a P1 card about a scrambled set
+asked for; how often a DJ reorders a stopped playlist on Tidal before the
+next sync is not measured.
+
+**Closes when:** Phillip decides a reorder should be read from something
+else, such as the provider's own modification time for the playlist. Ledger
+only.
+
+---
+
+## R-1443. A provider that serves one order steadily for five minutes after a stop and then another steadily for five more is read as the DJ's reorder
+
+**Found:** at round one of the review of #623, U234, 2026-11-07.
+
+**The mechanism.** The person's reorder after a stop is read from two
+settled readings in different orders (`_moved_since_stop`). Each is settled
+by agreement over `AGREE_AFTER`, U231's window. A provider that served one
+partial state for more than the window and then another for more than the
+window again would pass both, and the account would lead into rekordbox.
+Round two's review drove the same with the baseline on the moves' path (a lag
+of the whole write settled, then the partial state settled), and the second
+fix round closed that half: a reading on the path is never kept. Sitting 87's
+own record names a producer with no person in it, a move that answered 412
+and had in fact landed, which changes the provider's state after the stop by
+itself; whether it does so after holding still for the window is the
+unmeasured part.
+
+**Measured cost.** Round one's review drove the shape on the suite's fake
+provider through U231's pending path (D3), with the window set to nothing:
+before the fix round it wrote the second order into rekordbox; since the fix
+round each order must settle on its own, and the drive finishes from
+rekordbox. With the real window the producer is a provider whose served order
+holds still for minutes twice and changes between, which no sitting has
+measured: Sitting 86 measured reads seconds apart that differ, not reads
+minutes apart that agree and then move. Unmeasured, so a residual.
+
+**Closes when:** a sitting measures whether a provider's served order after
+a stop ever moves off the path after holding still off it for the window, or
+the person's reorder is read from something the provider says itself, such
+as the playlist's modification time. Ledger only.
+
+---
+
+## R-1444. A Tidal move held as the order after a settled reading is put back when one sync in between reads the settled order again
+
+**Found:** at round two of the review of #623, U234, 2026-11-07.
+
+**The mechanism.** `_moved_since_stop` in `sync/pair_cli.py`: while an order
+differing from the settled reading is held as the one after, a reading back
+at the settled order (or on the moves' path) clears it and the stop is
+finished from rekordbox's side. One such reading is trusted at once, though
+the card rests on one reading after a stop being untrustworthy.
+
+**Measured cost.** Round two's review drove it on the fixture (D2): the DJ's
+move, held once as possibly theirs, was put back to rekordbox's order, the
+gate naming the account as off the moves' path. On the real adapter R-1411's
+agreed reading refuses the moves when the adapter's own read shows the DJ's
+order, so the cost reaches Tidal only when that read lags too; not driven on
+a provider. Holding the pair instead could hold it for good, which the
+session judged the larger cost; `docs/GUIDE.md` says a reading in between
+puts the move back.
+
+**Closes when:** a sitting measures whether Tidal serves an older order again
+after serving a newer one for the window. Ledger only.
+
+---
+
+## R-1445. A pair's reading after a stop with no settled flag makes the whole pairs store unusable
+
+**Found:** at round two of the review of #623, U234, 2026-11-07.
+
+**The mechanism.** `PairStore._stop_reading` in `modules/outbound/pairs.py`
+refuses a `stop_seen` record missing `settled`, and one unusable pair refuses
+the store, as every other malformed field of a pair does. The shape without
+it was written only by this branch's commits before its first fix round,
+never on `main` or in a release.
+
+**Measured cost.** Driven by the branch's own parametrized test, which
+asserts the refusal. No store of that shape is known to exist, so nobody
+pays it; a store written by an unmerged commit of a cloud branch would need
+the field added by hand.
+
+**Closes when:** never needed while no such store exists. Ledger only.
