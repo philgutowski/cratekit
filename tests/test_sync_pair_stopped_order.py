@@ -586,7 +586,10 @@ def test_a_first_sync_whose_account_side_was_skipped_still_never_takes_the_scram
     assert world.held(rebuilt) == list(LED)
     code, first = drive(VERB)
     assert code == int(ExitCode.DECISION_REQUIRED), first
-    assert f"finishes run {run_id}" in first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    line = first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    assert f"finishes run {run_id}" in line, line
+    # Still a first sync, with no base built from a snapshot it never took.
+    assert "first sync, additions only" in line, line
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert world.held(rebuilt) == list(LED), "rekordbox took the stopped write's scramble"
