@@ -47,7 +47,7 @@ def _refusing(world, monkeypatch, refused_on: set[str], *, reason: str = "outbou
     """Make the account's order refuse on the named playlists, as the live adapter refused."""
     real = world.account.order_tracks
 
-    def order_tracks(playlist_id, remote_ids, *, expect=None):
+    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None):
         if playlist_id in refused_on:
             world.account.expected.append((playlist_id, expect))
             if reason == "credential-missing":
@@ -66,7 +66,7 @@ def _refusing(world, monkeypatch, refused_on: set[str], *, reason: str = "outbou
                 origin=("test", "order"),
                 detail={"playlist_id": playlist_id, "problem": "read-back-differs"},
             )
-        return real(playlist_id, remote_ids, expect=expect)
+        return real(playlist_id, remote_ids, expect=expect, begun=begun)
 
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
 
@@ -180,7 +180,7 @@ def test_a_continue_after_moves_that_landed_agrees_with_the_playlist_as_it_is_no
     refused_on = {opener_account}
     real = world.account.order_tracks
 
-    def order_tracks(playlist_id, remote_ids, *, expect=None):
+    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None):
         if playlist_id in refused_on:
             world.account.expected.append((playlist_id, expect))
             # One move landed somewhere the read back did not expect.
@@ -192,7 +192,7 @@ def test_a_continue_after_moves_that_landed_agrees_with_the_playlist_as_it_is_no
                 origin=("test", "order"),
                 detail={"playlist_id": playlist_id, "problem": "read-back-differs"},
             )
-        return real(playlist_id, remote_ids, expect=expect)
+        return real(playlist_id, remote_ids, expect=expect, begun=begun)
 
     monkeypatch.setattr(world.account, "order_tracks", order_tracks)
     code, stopped = sync()

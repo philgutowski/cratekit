@@ -537,7 +537,10 @@ def test_the_library_keeps_every_landed_account_playlists_source(world, cfg, mon
     monkeypatch.setattr(
         pair_cli,
         "landed_inbox_playlists",
-        lambda _cfg: {"A": frozenset({"pa"}), "B": frozenset({"pb"}), "C": frozenset({"pc"})},
+        lambda _cfg: (
+            {"A": frozenset({"pa"}), "B": frozenset({"pb"}), "C": frozenset({"pc"})},
+            (),
+        ),
     )
     monkeypatch.setattr(
         pair_cli, "landed_isrcs", lambda _cfg, _db, ids: {"USZZZ2600099": tuple(sorted(ids))}

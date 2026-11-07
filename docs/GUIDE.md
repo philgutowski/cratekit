@@ -497,6 +497,11 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   wins; with either time unknown the track stays and is named.
 - A twin's missing tracks are held, not downloaded, until `sync release`
   names that twin.
+- While a session log record cannot be read (torn, or written by a later
+  build), or the log cannot be listed, any landing it holds may have
+  brought a track in, so a missing track that carries an ISRC is held and
+  named, not downloaded, until the record reads. The warning names each
+  record; a track with no ISRC is queued as before.
 - With no argument, `sync pair` also pairs every plain playlist you made in
   rekordbox: a top folder becomes a root folder on the account, each playlist
   one private playlist titled folder first (`GIG READY Opener`); a root
@@ -509,14 +514,38 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
   changed before the write refuses as stale. A write stopped by the call
   ceiling names the `crate --calls N --run RUN sync pair` that finishes it.
-- After a reorder or a removal on Tidal it cannot read back, it names the
-  playlist: look at it in the Tidal app before running anything again.
+- After a removal on Tidal it cannot read back, it names the playlist: look
+  at it in the Tidal app before running anything again.
+- Tidal's order is kept in rekordbox's order only for pairs under GIG READY;
+  set `outbound.pair_order_every_pair = true` to keep every pair's. Other
+  pairs still sync their tracks both ways, and a reorder you make in
+  rekordbox after the pair's first sync stays there until you reorder that
+  playlist on Tidal (the first sync itself follows Tidal's order): a Tidal
+  reorder is still taken into rekordbox, and it brings Tidal's whole order,
+  not only the tracks you moved.
+- An order is sent in one go, then read once, about 30 seconds later or
+  after the other pairs are written. Not served yet, the pair is pending: the
+  run ends ok and names it, every track is on Tidal and rekordbox is
+  untouched. The next `sync pair` finishes it when Tidal shows the new order,
+  and otherwise leaves the pair out until two readings at least 5 minutes
+  apart agree. Nothing is moved again meanwhile, and a continue of a stopped
+  run only reads the order. A stopped order records how many moves Tidal
+  accepted before it stopped; once two readings agree on an order at or past
+  those moves, the rest is sent from that reading. A reading from before
+  them, or at a move whose landing is not known, leaves the pair out however
+  long it agrees, until Tidal shows the moves, you move the playlist by hand
+  in the Tidal app, or you release the pair. A run whose plan cannot be kept
+  sends no order.
 - A fresh `sync pair` after a write that stopped part way through putting a
   Tidal playlist in order finishes that order, from the side that led it,
   rather than reading its half done order as your edit. The gate names the
   run it finishes. A move you made on Tidal since still leads, and so does a
   reorder in rekordbox since. It remembers that stop however long you wait
-  before the next sync, until a sync finishes the pair.
+  before the next sync, until a sync finishes the pair, and also when the
+  pair's rekordbox playlist was deleted and you pair the Tidal playlist again
+  with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`: that first
+  sync finishes the stopped order rather than putting its half done order
+  into the new rekordbox playlist.
 - Tidal can serve a playlist's old order or tracks to a paged read for
   minutes after a change, while the plain read is current. Where it plans an
   order or checks a write, `sync pair` reads both and takes the plain read
@@ -986,6 +1015,7 @@ guide:
 | `reports.intake_stale_days`, `reports.intake_expired_days` | 30, 90 |
 | `analysis.drift_cut` | 1.5 |
 | `outbound.pair_skip_folders` | `["ARCHIVE"]` |
+| `outbound.pair_order_every_pair` | false (only GIG READY pairs keep Tidal's order) |
 
 An ISRC answer is shared by every verb, so a rehearsal and the live run pay
 for a lookup once. A copy run that redirects `CRATEKIT_STATE_DIR` should point

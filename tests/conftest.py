@@ -1,7 +1,8 @@
 """Suite-wide isolation. Every test runs against redirected state, always.
 
-Four autouse fixtures. Three, ported in spirit from the source system's three, redirect
-every root a test could reach into a temporary directory. They are autouse rather
+Autouse fixtures, the first five of them listed here. Three, ported in spirit
+from the source system's three, redirect every root a test could reach into a
+temporary directory. They are autouse rather
 than opt-in for one reason: opt-in isolation protects the tests that remembered,
 and the tests that forget are exactly the ones that corrupt real state. The
 source system learned this twice. Its identification ledger and its sync manifest
@@ -34,8 +35,14 @@ What each fixture covers:
    to open, and would refuse with the colour read's own cause. Tests that care
    about pink override the attribute on the test's own ``monkeypatch``.
 
-A test that reaches real config, a real library, a real keychain, or a real
-rekordbox database is a bug, not a slow test.
+5. ``_no_host_process_table`` reads the host as a machine with no rekordbox
+   running (U232). Both routes to the process table, the careful scan's
+   ``core.processes._platform`` and pyrekordbox's ``utils.get_process_id``,
+   answer no process, and psutil's own enumeration beneath them fails the test
+   that reaches it. A test marked ``real_process_table`` keeps the real table.
+
+A test that reaches real config, a real library, a real keychain, a real
+rekordbox database or the host's real process table is a bug, not a slow test.
 
 None of these fixtures takes the ``monkeypatch`` fixture. Each holds its own
 ``pytest.MonkeyPatch`` for the life of the test, because ``monkeypatch`` is one
@@ -58,8 +65,11 @@ from __future__ import annotations
 
 import importlib
 import importlib.util
+import traceback
 
 import pytest
+
+from tests import _host_processes
 
 #: The one call every fixture below makes to get an instance of its own. A
 #: context manager rather than ``pytest.MonkeyPatch()`` so that an exception
@@ -376,3 +386,113 @@ def _favourites_without_pink(request):
         monkeypatch.setattr(favorites_cli, "read_pink_track_ids", lambda cfg: ())
         yield
 
+
+#: The marker a test carries to keep the host's real process table (U232).
+REAL_PROCESS_TABLE = "real_process_table"
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        f"{REAL_PROCESS_TABLE}: keep the host's real process table, which every "
+        "other test reads as a machine with no rekordbox (U232)",
+    )
+
+
+class _NoProcesses:
+    """A process table with nothing on it, in the shape the scan reads psutil."""
+
+    def __init__(self, psutil):
+        self.NoSuchProcess = psutil.NoSuchProcess
+        self.ZombieProcess = psutil.ZombieProcess
+        self.AccessDenied = psutil.AccessDenied
+        self.STATUS_ZOMBIE = psutil.STATUS_ZOMBIE
+
+    def pids(self):
+        return []
+
+    def Process(self, pid):  # noqa: N802 - psutil's own name
+        raise self.NoSuchProcess(pid)
+
+
+@pytest.fixture(autouse=True)
+def _no_host_process_table(request):
+    """Read the host as a machine with no rekordbox on it, in every test (U232).
+
+    The v0.13.0 cut was refused on a red Mac battery because rekordbox was open
+    on the machine and two tests read the host's real process table: one
+    exited 21 for a rekordbox it should never have seen, and the other exited 1
+    at a commit pyrekordbox refused. Both routes to the table are answered here:
+
+    * ``core.processes._platform``, the seam every careful scan reads
+      (``running_processes``, ``running_process_names``, a lister left as
+      ``None``), answers an empty table;
+    * pyrekordbox's ``utils.get_process_id``, the walk behind
+      ``get_rekordbox_pid``, ``get_rekordbox_agent_pid`` and the binding's own
+      ``db6.database.get_rekordbox_pid`` at construction and commit, answers no
+      process, exactly as pyrekordbox does on a clean machine.
+
+    Under both, psutil's own enumeration, ``process_iter`` and ``pids``, is a
+    tripwire: a call is refused AND recorded, and the test fails at teardown
+    over anything recorded, since the careful scan turns every exception into
+    a refusal of its own and a refusal alone would be swallowed. A test that
+    fakes rekordbox running keeps faking it at either seam, on its own
+    ``monkeypatch``, which is set up after this and so wins. A test marked
+    ``real_process_table`` keeps the real table, so the real scan is driven
+    somewhere.
+    """
+    if request.node.get_closest_marker(REAL_PROCESS_TABLE) is not None:
+        yield
+        return
+    import psutil
+
+    from cratekit.core import processes
+
+    reached: list[str] = []
+
+    def tripwire(name):
+        def refused(*_args, **_kwargs):
+            where = "".join(traceback.format_stack(limit=6)[:-1])
+            reached.append(f"psutil.{name} was called from:\n{where}")
+            raise AssertionError(
+                f"a test reached the host's real process table through psutil.{name}; "
+                f"fake it at core.processes._platform or pyrekordbox.utils.get_process_id, "
+                f"or mark the test {REAL_PROCESS_TABLE}"
+            )
+
+        return refused
+
+    def no_process(name, raise_exec=False):
+        if raise_exec:
+            # pyrekordbox's own words, which name rekordbox whatever was asked.
+            raise RuntimeError("No process with name 'rekordbox' found!")
+        return 0
+
+    empty = _NoProcesses(psutil)
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(psutil, "process_iter", tripwire("process_iter"))
+        monkeypatch.setattr(psutil, "pids", tripwire("pids"))
+        monkeypatch.setattr(processes, "_platform", lambda: empty)
+        utils = _module_if_present("pyrekordbox.utils")
+        if utils is not None:
+            monkeypatch.setattr(utils, "get_process_id", no_process)
+        yield
+    if reached:
+        pytest.fail(
+            f"the test reached the host's real process table without the "
+            f"{REAL_PROCESS_TABLE} marker:\n" + "\n".join(reached),
+            pytrace=False,
+        )
+
+
+@pytest.fixture
+def rekordbox_on_the_host():
+    """rekordbox and rekordboxAgent running on the host, at psutil itself (U232).
+
+    Beneath the stubs above, so a test under it proves the suite reads a Mac
+    with rekordbox open the way it reads one without. Installed after the
+    tripwire, so for this test psutil's enumeration answers the fake host.
+    """
+    with _own_patch() as monkeypatch:
+        _host_processes.install(monkeypatch)
+        yield _host_processes.OPEN

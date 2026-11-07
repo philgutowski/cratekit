@@ -46058,3 +46058,438 @@ download half reads "rekordbox's place stands" again after the merge.
 library state were taken after the queue and the landing (the solutions entry
 on copy rehearsals of the mirror edit rule), and reads either the carry or
 which input was missing. Ledger only: it closes at an attended sitting.
+
+---
+
+## R-1394. An order stopped part way whose two readings agree on a lag longer than five minutes has its remaining moves sent by position from that lag
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** A write stopped part way through its order (no `moved`
+step) is pending; once two readings at least `AGREE_AFTER` (five minutes)
+apart agree on an order on the moves' path, `_pending` in
+`sync/pair_cli.py` lets the plan finish it from the leading side, as U225
+finishes a stopped write and as the brief asks. If the provider serves the
+same stale order for longer than five minutes, the agreed reading is that
+lag, and the remaining moves are planned from it and sent by position, one
+of them already sent, which scrambles the account playlist.
+
+**Measured cost.** Driven by round one's review on the fakes (T7, the verb)
+and on the order suite's provider (T9, the adapter): the second order write
+went out from the served old order and left d, c, b, a for an asked d, c, a,
+b. Whether the live provider's lag after a stopped write outlasts five
+minutes and agrees with itself was not driven; Sitting 86 measured orders
+not served after 28 minutes, but reads 3 s apart then disagreed.
+
+**Closes when:** a stopped write is finished only from a reading that also
+agrees with where the recorded moves could have left it after a longer wait,
+or the attended proof (A88, A91) measures the lag and the window is sized to
+it. Earns an issue: an account playlist can be damaged.
+
+---
+
+## R-1395. After every move of an order was accepted, a reorder by hand back onto the moves' path holds the pair until it is moved off it or released
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** When every move was accepted, `_pending` reads an agreed
+reading on the moves' path short of their end as a lag however long it
+agrees, so it never moves from it. A person who puts the account playlist
+back to one of those orders by hand is held the same way, and the pair's
+membership stops syncing both ways meanwhile.
+
+**Measured cost.** Driven by round one's review (T6): three runs each held
+the pair, and a track added in rekordbox never reached the account. The held
+message now says a reorder by hand back onto the path is read the same way,
+and that moving it off the path in the provider's player or releasing the
+pair frees it (T6b shows an off path order merged as the person's).
+
+**Closes when:** the held message's remedy is enough for Phillip, or a later
+card offers a verb that releases a pending order. Ledger only: the product
+says what holds it and how to free it.
+
+---
+
+## R-1396. A later pair raising outside an order's own refusals after an earlier pair's moves went out skips the settle reading of every order sent
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** `sync_pair` reads every order sent once all pairs are
+written (`_settle`). A later pair whose write raises anything that stops the
+whole write leaves the loop before `_settle`, so an earlier pair's order is
+not read, no reading is kept on it, and no pending warning names it.
+
+**Measured cost.** Driven by round one's review (T2d): the carried record
+held `moving` and `moved`, no move was sent again, the pair was held two
+runs and finished on the run after the provider caught up. One extra run
+while the provider lags; the state is honest.
+
+**Closes when:** the settle runs in a `finally` that cannot itself mask a
+park, or the stop names the pairs whose order it did not read. Ledger only.
+
+---
+
+## R-1397. The gate's forecast for a plan that could not be held counts the account order calls a write that keeps no record never makes
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** Since round one's fix a write that keeps no record sends
+no order (`_write_account`), but `_expected` still counts the order's
+reading, moves and settle reading when `steps` is None.
+
+**Measured cost.** Driven by round two's review (C2): `_expected` answered
+ten write calls on the owed pair while the write sent none. A number too high
+on the gate's provider calls line, on a run that then stops naming why.
+
+**Closes when:** `_expected` leaves an order out when the plan is not held.
+Ledger only.
+
+---
+
+## R-1398. Guards of U231's order and pending path that the reviews measured killing no test
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** Of the twelve guards round one measured killing nothing,
+the fix rounds pinned the agreement gap, a reading kept before the moves,
+the settle window's overlap, a settle refused for another reason, a reading
+replaced too soon, the root playlist named GIG READY, both validations and
+the continue's window. Left unpinned: the moving step's start taking the
+place of the ordering step's start (`pair_stopped._read`), and the reworded
+lag clause of the held message (round two's G5), which no test reads.
+
+**Measured cost.** None measured; the start matters only where the provider
+placed an added track elsewhere than the plan appended it.
+
+**Closes when:** a test drives an order whose adapter reading differs from
+the plan's appended start. Ledger only.
+
+---
+
+## R-1399. The steps unread note says anything an earlier command wrote refuses stale, which an account order's blind moves never did
+
+**Found:** at the review of #595, U231, 2026-11-07.
+
+**The mechanism.** `sync_pair`'s `sync-pair-steps-unread` note says that
+with the run's steps unreadable "anything an earlier command of run N wrote
+refuses stale rather than being written twice". Round two's review drove a
+continue whose steps were unreadable or gone sending an order's moves a
+second time, the check passing because the provider still served the order
+from before them. The second fix round closed the resend by reading the
+carried record (`PairSteps.carried`); the note's sentence is still stronger
+than what holds for the rest of a pair's write.
+
+**Measured cost.** None left for the order after the fix; a wording that
+overclaims.
+
+**Closes when:** the note says the carried record is read for an order and
+names what else refuses stale. Ledger only.
+
+---
+
+## R-1400. A rekordbox playlist rebuilt in a stopped write's half done order, and paired again, is read as a rekordbox reorder since the stop, and the gate names a finish that keeps the scramble
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** R-1376's first sync reads the stop on a re-paired account playlist and measures each side's change of order against what the stopped write left (`pair_merge.merge(..., stopped=...)`). A new rekordbox playlist built in the account's half done order, as importing the scrambled account playlist into rekordbox would make it, differs from the old pair's rekordbox order, so rekordbox is read as reordered since the stop and leads. Both sides end in the scramble, the gate says the pair "finishes run X's write ... so its moves are not read as anybody's; order follows rekordbox's", and the new snapshot lets the carried record go, so the stop is then forgotten.
+
+**Measured cost.** Driven by the round one reviewer on the fake account: the U225 stop, the rekordbox playlist deleted, the pair released, a rebuilt playlist made as 2, 7, 1, 3, 4, 5, 6, hand paired, both gates applied. Nothing is written wrong: rekordbox already held that order, put there by the person, and the account already held it. The person reads a finishing sentence over a pair whose stopped order is never reached. The base reached the same end state and said nothing.
+
+**Closes when:** the finishing sentence is said only where the finish changes the order, or names that rekordbox's order was taken as the person's. Ledger only: no write is wrong, and the sentence's clauses each hold under U225's reorder since rule.
+
+---
+
+## R-1401. The mark guard on a stopped write kills only its pure tests, since a first sync now reads the stop through first_stop and a later sync's snapshot guard covers it
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** `_Reader.stopped_write` refuses a write that began before the pair was marked (R-1372). Since R-1376 every first sync, one with no pair record or one with no snapshot, reads the stop through `_Reader.first_stop` whatever the mark, and every later sync has a snapshot no earlier than its mark, which the snapshot guard already compares. So the mark guard decides no plan the dispatcher can reach, short of a pairs document holding a snapshot with no sync time.
+
+**Measured cost.** Maintainer facing. The reviewer's row removing the guard killed 2 of 84, both the pure reader tests in `tests/test_sync_pair_stopped.py`; no scenario test dies. Kept, since the card asked that every existing refusal stay.
+
+**Closes when:** the guard is removed with its pure test, or a reachable input it decides is driven and pinned. Ledger only.
+
+---
+
+## R-1402. A stop on a pair's own first sync, with the account reordered past it since, is no longer named on the gate
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** R-1376 makes a first sync fold nothing, since it has no base, so a first sync names a stop only when its order is finished (`finishing` is set from `folded or stopped`). A pair marked whose first sync stopped part way through its order after committing rekordbox, with the account then reordered off the stopped write's path, plans as any first sync with the account leading, and the gate no longer says a stopped write was found.
+
+**Measured cost.** Driven by the round one reviewer: a hand pairing whose first sync's order stopped before any move, the account then reordered to 3, 2, 1, 4. The base's gate said "finishes run X's write ... whose additions and removals are read as that write's; the account was reordered since, so its order is read as yours", whose first clause was untrue on a first sync, which folds nothing. The branch's says only "order follows the account's". Both end at 3, 2, 1, 4 on both sides. Nothing is written differently.
+
+**Closes when:** the gate names a stop it found and set aside as a person's reorder, on a first sync as on a later one, without claiming a fold. Ledger only.
+
+---
+
+## R-1403. The empty identifier guard in first_stop is an equivalent mutant, so its pure assertion pins nothing
+
+**Found:** at the review of #597, R-1376, round one, 2026-11-07.
+
+**The mechanism.** `_Reader.first_stop` answers None for an empty account playlist identifier before it looks the stop up, but the lookup `stopped[0].get("")` answers None anyway, since no stop is keyed by an empty identifier.
+
+**Measured cost.** Maintainer facing: the reviewer's row removing the guard killed no test of 84. None at the verbs.
+
+**Closes when:** the guard is dropped, or kept as documentation with this line. Ledger only.
+
+---
+
+## R-1404. A pair outside GIG READY reordered in rekordbox has its order put back to the account's two syncs later
+
+**Found:** at the review of #597, R-1376, round two, 2026-11-07.
+
+**The mechanism.** Since U231 (#595) a pair whose rekordbox playlist is not under GIG READY never has its account order written (`_keeps_order`, unless `outbound.pair_order_every_pair`). A reorder made in rekordbox leads the next sync, which writes nothing on the account and moves the snapshot, so the snapshot holds rekordbox's new order and the account's old one. On the sync after, neither side has changed order since that snapshot, `pair_merge.merge` lets the account lead by default, and the plan writes the account's old order into rekordbox.
+
+**Measured cost.** Driven on main at 1cadb924 with no R-1376 code: a pair made by hand of an account playlist 1, 2, 3 and a root rekordbox playlist 1, 2, 3, the rekordbox playlist reordered to 3, 1, 2; the next sync answers `sync-pair-nothing` and leaves 3, 1, 2; the one after answers `sync-pair-written` and rekordbox holds 1, 2, 3 again. A DJ's reorder of any paired playlist outside GIG READY is undone in the library with nothing said. It is also the way a stopped write's scramble still reaches rekordbox for a pair released and paired again at the root (R-1376): that pair's first sync keeps rekordbox's order and leaves the account in the scramble, and the next sync writes the scramble into rekordbox (driven on the merged branch).
+
+**Closes when:** a sync of a pair whose account order is not kept never writes rekordbox an order the account did not change to since the snapshot, and the root case is driven through the dispatcher. It meets the board bar: a person using the shipped verbs pays it, a write into the library.
+
+---
+
+## R-1405. A pair made by hand over a pending account order keeps no reading, so it is held until the provider serves the order the moves leave
+
+**Found:** at the review of #597, R-1376, round two, 2026-11-07.
+
+**The mechanism.** A first sync by hand has no pair record, and U231's pending hold keeps its reading on the record (`PairStore.see` keeps nothing for a pair not marked), so no two readings can ever agree. The pair is held (`sync-pair-account-settling`) until the account shows exactly the order the stopped write's moves leave, the one case `_pending` lets through without agreement.
+
+**Measured cost.** Driven where every move was accepted and the provider caught up: held twice, then finished, nothing written into rekordbox meanwhile. Not driven: a pending write some of whose moves the provider refused, whose end the account never shows; that pair would be held on every sync until released. It needs a U231 pending order, the pair's rekordbox playlist deleted while pending, a hand pairing and a refused move together. Nothing is written wrong.
+
+**Closes when:** a first sync by hand over a pending order can keep its reading somewhere a later run agrees with, or the hold says to wait for the order the moves leave. Ledger only.
+
+---
+
+## R-1406. A landing record torn after a sync pair's plan was held at its gate is not looked for again, so the held plan queues its download with a clean report
+
+**Found:** at the review of #599, R-1383, 2026-11-07.
+
+**The mechanism.** `sync pair` plans once and its two gates reuse the held plan (U209), so the hold R-1383 added is decided when the plan is made. A session log record that turns unreadable between the plan and the answered gates is never read by the write, which queues the plan's `acquire` with `sync-pair-written` only.
+
+**Measured cost.** Driven by round one's review by hand: records readable, `t40` lacking with an ISRC, the gate shown, the record then torn, both gates answered, and `t40` queued with no warning naming the record. A duplicate download needs a landing of that very track written and torn inside the window between the plan and the answer; that natural producer was not driven. Records are written atomically, so a torn one is a defect or a hand edit.
+
+**Closes when:** the write reads the scan again before it queues and holds what the fresh scan cannot rule out, or the window is shown to have no producer. Ledger only: the producer is a hand edit inside a gate's window.
+
+---
+
+## R-1407. sync twins shows its gate over a landing record the session log cannot read, naming the tracks it brought in as having no row, and refuses only after the answer
+
+**Found:** at the review of #599, R-1383, 2026-11-07.
+
+**The mechanism.** `twins.read_library` in `src/cratekit/sync/twins.py` unpacks `pair_cli.landed_inbox_playlists` and drops its unread half by its own policy. `twins_cli.sync_twins` plans before any session gate, so the backfill's approve gate shows a twin's track that only an unreadable landing record brought in as a miss, "the library holds no row for it", with no warning naming the record. Only `twins.write` enters `session.assert_gates`, which refuses on the unread entry after the person answered approve.
+
+**Measured cost.** Driven by round two's review on a torn record and on one carrying a state this build does not know: the gate showed three misses with no warning, and after approve the write refused with "the session log holds 1 entry this build cannot read". Nothing was written and nothing was queued. Both producers driven were hand edits; a record a later build writes was not driven.
+
+**Closes when:** the backfill names the unread entries beside its misses on the gate, as `sync pair` does since R-1383. Ledger only: the write refuses before anything is written, and the backfill never queues a download.
+
+---
+
+## R-1408. A lock record with no pid trips the suite's process table tripwire, since psutil answers pid zero from its whole listing
+
+**Found:** at the review of #606, U232, 2026-11-07.
+
+**The mechanism.** U232's autouse fixture in `tests/conftest.py` leaves
+`psutil.pid_exists` real, which is right for the lock liveness path, and trips
+on `psutil.pids` and `psutil.process_iter`. On POSIX psutil answers
+`pid_exists(0)` as `0 in pids()`, so `core.session.process_exists(0)` and
+`holder_alive` over a holder record with no pid field (`from_json` defaults
+the pid to 0) reach the tripwire. The product turns the refusal into an
+unknown answer, `None`, read towards alive, where this Linux host answers
+`False`, and the test fails at teardown with a message naming the two seams
+U232 stubs, neither of which is the route. Read from psutil's source and not
+measured: a Mac lists `kernel_task` at pid 0, so `process_exists(0)` is
+already `True` on a Mac and `False` on Linux on `main`, before this unit.
+
+**Measured cost.** Maintainer facing only. Driven by the review with a scratch
+test under the real conftest: both calls error at teardown with a stack naming
+`core/session.py` line 740. No test in the suite reaches it, measured over the
+whole branch suite. No product writer of a pid less holder record was found;
+the candidates are a hand edited or truncated lock file, not driven.
+
+**Closes when:** the session's liveness check answers pid zero without asking
+psutil, as no process a lock names, or the tripwire on `pids` lets a call
+made from inside `pid_exists` through. Ledger only: it costs a future test's author a misleading message,
+not a DJ anything.
+
+---
+
+## R-1409. A stopped order whose last move's landing is not known, and which never landed, holds its pair until the playlist is moved by hand or the pair is released
+
+**Found:** at the build of #604, R-1394, 2026-11-07.
+
+**The mechanism.** Since R-1394 a pending order records, before each move,
+how many moves may have reached the provider (`sent`) and how many it
+accepted (`landed`). When a move fails any way but its last 412 (a dropped
+connection, a timeout, a crash, a record that could not be written after it
+was accepted), its landing is not known, so `_pending` in `sync/pair_cli.py`
+holds an agreed reading at `landed` moves rather than finish from it: that
+reading may be the provider lagging the move. If the move in fact never
+landed, the provider serves that order for good and the pair is held every
+run, `sync-pair-account-settling`, until the DJ moves the playlist off the
+moves' way in the provider's player or releases the pair.
+
+**Measured cost.** Driven on the fakes by
+`test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after`:
+held across three runs with nothing sent. How often a live move fails with
+its landing unknown was not measured. Built with the recommended answer to
+the Question for Phillip on the card (hold, never scramble); his other two
+options were to finish after the five minute agreement, or after a longer
+window.
+
+**Closes when:** Phillip answers the question on #604, or the attended
+measure of the provider's lag (A88, A91) sizes a window after which an
+agreed reading at `landed` is the truth. Ledger only: the DJ has a named way
+out and nothing is damaged.
+
+---
+
+## R-1410. A move the provider answers false or not found is read as one whose landing is not known
+
+**Found:** at the build of #604, R-1394, 2026-11-07.
+
+**The mechanism.** `order_tracks` in `modules/outbound/tidal_account.py`
+brings the record's `sent` count back down only for a move whose last answer
+was a 412, the one answer Sitting 62 measured as changing nothing. A move
+the client answers `False` (a response that was not ok) or not found is
+raised as "the provider did not accept the move" with `sent` left counting
+it, so a stopped order whose last move was refused that way holds an agreed
+reading at the moves before it, as for a dropped connection (the residual
+beside this one), although that move most likely changed nothing.
+
+**Measured cost.** Not driven against the live provider; what a not ok
+answer to a move leaves on the playlist was not measured. The cost is a pair
+held that could have finished, never a scramble.
+
+**Closes when:** an attended sitting reads a playlist after a move the
+provider answered not ok, and the answer is added to the ones that bring
+`sent` down if it changed nothing. Ledger only.
+
+---
+
+## R-1411. A write that finishes a stopped order and also adds or removes tracks still plans its moves from a reading checked by membership alone
+
+**Found:** at the review of #604, R-1394, 2026-11-07.
+
+**The mechanism.** Round one's review drove the second half of R-1394's
+measured cost: the plan finishes a stopped write only from an agreed reading
+at or past the moves sent, but the write that follows plans its remaining
+moves from the adapter's own fresh reading, which `_settled` in
+`modules/outbound/tidal_account.py` accepts on the tracks it holds, not
+their order. Its fix round passes the check's listing as `expect` (compared
+in order) when a write finishes a stopped order, in `_write_account` in
+`sync/pair_cli.py`. Where that same write also adds or removes tracks on the
+account, the listing is no longer the playlist and the old membership check
+stands, so a reading that lags the stopped order's moves seconds after a
+true one still has the moves sent by position from it.
+
+**Measured cost.** Round one drove the adapter half on the order suite's
+provider: one move in, the next read lagging it, `order_tracks` left d, c,
+a, b for an asked d, c, b, a and reported it done. The case with additions
+or removals alongside was not driven, and whether the live provider lags a
+read seconds after serving the truth was measured at Sitting 86 (reads 3 s
+apart disagreed), not here.
+
+**Closes when:** the adapter takes an agreed order beside its membership
+check, every track of the agreed reading it still holds standing in that
+order, and the finishing write passes it whatever else it writes. Earns an
+issue: an account playlist can be damaged.
+
+---
+
+## R-1412. Five narrower shapes R-1394's review drove, a damaged moving time, a carry that fails after its mark, an empty reading on the path, a first moving step read as nothing sent, a finish whose count is wrong rereads before refusing
+
+**Found:** at the review of #604, R-1394, rounds one and two, 2026-11-07.
+
+**The mechanism.** Five shapes the review drove and left, each narrower
+than the card's:
+
+- A moving step whose time cannot be read makes `_moving` in
+  `sync/pair_stopped.py` answer None, so the write is not pending and U225
+  finishes it at once from any reading on the moves' path, a lag included.
+  Driven by a hand edit of the steps file and the carried record; no tool
+  path writes a damaged time (pre-existing since U231).
+- A carry that fails after its mark leaves the run's steps one move ahead of
+  the carried record, and the pair held as a move in flight though none was
+  sent. Conservative, and the steps file is always written first, so the
+  counts stay bounds in the direction the design needs.
+- `positions` has no guard for a reading that shares no track with the start,
+  unlike `shows`: an empty or wholly replaced reading matches every order on
+  the path. `_pending` returns on such a reading either way, since off the
+  path it is the person's change; U226's window judge stands before it.
+  Pre-existing in `reached` since U225.
+- The first moving step is written with counts of 0, which read as nothing
+  sent; an `order_tracks` that calls `begun` and drops the recorder it
+  answers would finish from any agreed reading. The adapter tells the
+  recorder before every send, so only a test double drops it. And the not
+  yet agreed hold's detail carries no counts while the agreed one does.
+- Round two: a write that finishes a stopped order now passes `expect`, so
+  a reading whose positions cannot be trusted (a playlist declaring more
+  tracks than it serves) is read again three times, about seven seconds of
+  pauses, before the same refusal that without `expect` is raised at once.
+  Nothing is moved either way; pre-existing on U220's continue path.
+
+**Measured cost.** Each driven by the review on the fakes; none has a
+producer on the shipped verbs beyond a hand edit, an injected write failure,
+or a double.
+
+**Closes when:** a later unit in this area reads a damaged moving time as
+pending with nothing known, guards `positions` as `shows` is guarded, and
+writes the first moving step with no counts. Ledger only.
+
+---
+
+## R-1413. The repair rows test of an inode above the bound passes or fails on a Linux container by the inode its temporary file is given
+
+**Found:** at the mutation table of #604, R-1394, 2026-11-07.
+
+**The mechanism.** `tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random`
+writes a temporary file and records its real `st_ino` as the row's file id,
+then asserts the plan counts it within the bound. On this cloud container
+the test passed alone once and failed alone the next run, with no change to
+the tree, so its result follows the inode the filesystem hands out rather
+than the code. The base's measured baseline did not catch it red, so the
+mutation driver refused its first baseline over it. R-1372's landing met
+the same test newly failing in its compare.
+
+**Measured cost.** Maintainer facing: a cloud battery or mutation baseline
+reddened by a test none of the branch's files reach, costing a rerun. Not
+driven on a Mac, where the volume's counter may keep it steady.
+
+**Closes when:** the test gives its file an inode it controls, or reads the
+bound from the volume it writes to, so its result no longer depends on the
+container. Ledger only.
+
+---
+
+## R-1414. Outside GIG READY a Tidal reorder after a rekordbox reorder brings Tidal's whole stale order into rekordbox
+
+**Found:** at the review of #608, R-1404, round one, 2026-11-07.
+
+**The mechanism.** Outside GIG READY the account's order is never written (U231), so once rekordbox leads a reorder the pair's snapshot holds rekordbox's new order and the account's old one, and since R-1404 rekordbox keeps leading while neither side moves. When the account then changes order since that snapshot, `pair_merge.merge` lets the account lead and its whole order stands, the tracks it never moved included, since the merge places a whole order and has no reading of a move.
+
+**Measured cost.** Driven by the round one reviewer through the dispatcher on the disposable database: a hand pair at the root of 1 to 5, rekordbox reordered 5, 4, 3, 2, 1 and synced (nothing written), then tracks 1 and 2 swapped on the account: rekordbox becomes 2, 1, 3, 4, 5. The gate says "order follows the account's" before it writes, so it is said, not silent. It is the card's own scenario ("the account reordered to 2, 3, 1 should still lead rekordbox") and U231's recorded call, kept as built; a merge of the account's moves alone would leave that scenario's rekordbox at 3, 1, 2.
+
+**Closes when:** Phillip answers the Question for Phillip on #608: keep it as built (then this closes as decided), apply only the moved tracks, or never take the account's order into rekordbox outside GIG READY (either a card of its own). Ledger only until he answers.
+
+---
+
+## R-1415. Both sides reordered since a base whose sides disagree, the account wins and rekordbox's newer reorder is undone
+
+**Found:** at the review of #608, R-1404, round one, 2026-11-07.
+
+**The mechanism.** `pair_merge.merge` lets the account lead when both sides changed order since the base, the rule since U130. Outside GIG READY the account's order is not written, so the account's order that wins is one rekordbox already left behind.
+
+**Measured cost.** Driven by the round one reviewer: a root hand pair whose rekordbox was reordered 3, 1, 2 and synced, then rekordbox reordered 2, 3, 1 and the account reordered t3, t1, t2 together; the sync writes rekordbox back to 3, 1, 2, the gate naming the account as the order's leader. Two reorders between two syncs on two sides is rare, and the brief named this case out of scope.
+
+**Closes when:** the both reordered rule is decided for pairs whose account order is not kept, with the answer to #608's question. Ledger only.
+
+---
+
+## R-1416. A hand pair's first sync outside GIG READY puts rekordbox in the account's order
+
+**Found:** at the review of #608, R-1404, round one, 2026-11-07.
+
+**The mechanism.** A first sync has no base, and `pair_merge.merge` lets the account lead on it, as every first sync always has (U130); R-1376's `test_a_first_sync_of_an_account_playlist_with_no_stop_is_planned_as_before` pins it. Outside GIG READY the account's order is never written afterwards, so a rekordbox playlist paired by hand in its own order takes the account's at its first sync and never gets its own back.
+
+**Measured cost.** Driven by the round one reviewer: a hand pair of an account playlist 1, 2, 3 and a rekordbox playlist 3, 1, 2 with the key off; the first sync writes rekordbox 1, 2, 3, the gate saying the order follows the account's. Unchanged by #608, the same on main.
+
+**Closes when:** Phillip answers the second question on #608; keeping it closes this as decided. Ledger only.

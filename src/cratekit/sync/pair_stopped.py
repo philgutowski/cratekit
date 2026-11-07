@@ -34,6 +34,28 @@ would have recorded had its order finished. Where it skipped rekordbox
 neither base moves, since a base moved for one side alone reads the other
 side's removals as never made (``docs/solutions``, the two sided snapshot).
 
+**SENT BLIND, A WRITE IS PENDING UNTIL IT CAN BE READ (U231).** Since U231
+the adapter sends an order's moves with no read back between them, and the
+write records, before the first is sent, the reading they were planned from
+and the order they leave (:func:`moving_step`); it records too when every
+move was accepted. Sitting 86 measured the provider serving old orders for
+minutes after the moves landed, so a write that began sending is read as
+pending: the next plan finishes it when the account shows the order the
+moves leave (:func:`shows`), and otherwise waits for two readings that agree
+(``sync/pair_cli``). When every move was accepted, a reading on the moves'
+path short of their end can only be a lag, however long it agrees.
+
+**AND HOW FAR THE MOVES CAN HAVE GOT (R-1394).** Before each move is sent the
+write records two counts on its moving step: ``sent``, the moves that may
+have reached the provider, this one included, and ``landed``, the moves it
+accepted. Written before the move, both are bounds by construction: no move
+past ``sent`` was ever sent, and every move up to ``landed`` was accepted. A
+move that ended on its last 412, which changed nothing (Sitting 62), brings
+``sent`` back down. So the account, unless a person moved it, stands at one
+of the orders ``landed`` to ``sent`` moves leave (:func:`positions`), and a
+reading on the path before them is a lag however long it agrees: moved again
+from it, the remaining moves land by position on the wrong tracks.
+
 Pure: it reads and writes nothing. Layer: modules.
 """
 
@@ -54,6 +76,9 @@ LEADER = "leader"
 REKORDBOX = "rekordbox"
 WRITTEN = "rekordbox_written"
 LINKS = "links"
+#: R-1394. The moves that may have reached the provider, and the moves it accepted.
+SENT = "sent"
+LANDED = "landed"
 
 
 @dataclass(frozen=True, slots=True)
@@ -81,6 +106,84 @@ class StoppedWrite:
     rekordbox: tuple[tuple[str, str], ...]
     written: bool
     links: Mapping[str, str]
+    #: U231. When the write began sending its moves, None for a write that
+    #: sent none or recorded none (any write before U231), and the order they
+    #: leave; ``start`` is then the reading they were planned from. ``moved``
+    #: says every move was accepted.
+    moving_at: datetime | None = None
+    end: tuple[str, ...] = ()
+    moved: bool = False
+    #: R-1394. How many of the moves from ``start`` toward ``target`` the
+    #: provider accepted, and how many may have reached it, so the account
+    #: stands at one of the orders ``landed`` to ``sent`` moves leave. A
+    #: moving step whose counts are missing or do not fit its moves is read as
+    #: nothing known, none landed and every one maybe sent.
+    landed: int = 0
+    sent: int = 0
+
+    @property
+    def pending(self) -> bool:
+        """Whether its moves were sent with no read back, so it is read as pending (U231)."""
+        return self.moving_at is not None
+
+
+def moving_step(
+    *, at: str, start: Sequence[str], end: Sequence[str], sent: int = 0, landed: int = 0
+) -> dict[str, Any]:
+    """What a write records just before its first move is sent (U231), and before each after (R-1394).
+
+    ``start`` is the reading the adapter planned the moves from and ``end``
+    the order they leave. ``sent`` is how many moves may have reached the
+    provider, the one about to be sent included, and ``landed`` how many it
+    accepted.
+    """
+    return {
+        AT: str(at),
+        START: [str(one) for one in start],
+        TARGET: [str(one) for one in end],
+        SENT: int(sent),
+        LANDED: int(landed),
+    }
+
+
+def _moving(
+    value: Any,
+) -> tuple[datetime, tuple[str, ...], tuple[str, ...], int | None, int | None] | None:
+    """A moving step read back: when, the reading moved from, the order left and its counts, or None.
+
+    A count that is not a whole number at least zero is read as None, not known.
+    """
+    if not isinstance(value, Mapping):
+        return None
+    at = placeholders.parse_hearted(value.get(AT))
+    start = _ids(value.get(START))
+    end = _ids(value.get(TARGET))
+    if at is None or start is None or end is None:
+        return None
+    return at, start, end, _count(value.get(SENT)), _count(value.get(LANDED))
+
+
+def _count(value: Any) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
+def _counts(
+    start: Sequence[str], target: Sequence[str], sent: int | None, landed: int | None, moved: bool
+) -> tuple[int, int]:
+    """``(landed, sent)`` for a pending write's moves from ``start`` toward ``target`` (R-1394).
+
+    Every move landed once all were accepted. Counts that are missing, as on a
+    write from before R-1394, or that do not fit the moves, are read as
+    nothing known: none landed, and every one maybe sent.
+    """
+    total = len(front_moves(start, target))
+    if moved:
+        return total, total
+    if sent is None or landed is None or not landed <= sent <= total:
+        return 0, total
+    return landed, sent
 
 
 def ordering_step(
@@ -111,8 +214,15 @@ def _ids(value: Any) -> tuple[str, ...] | None:
     return tuple(value)
 
 
-def _read(run_id: str, account_id: str, value: Any) -> StoppedWrite | None:
-    """One ordering step read back, or None when it is not one this module wrote."""
+def _read(
+    run_id: str, account_id: str, value: Any, moving: Any = None, moved: bool = False
+) -> StoppedWrite | None:
+    """One ordering step read back, or None when it is not one this module wrote.
+
+    ``moving`` is the pair's moving step (U231), when it has one: its write
+    is then pending, and its start is the reading the moves were planned
+    from, the truest record of where the account stood.
+    """
     if not isinstance(value, Mapping):
         # A RECORD WRITTEN BEFORE U225 says only that the order began.
         return None
@@ -140,16 +250,26 @@ def _read(run_id: str, account_id: str, value: Any) -> StoppedWrite | None:
         )
     ):
         return None
+    sent = _moving(moving)
+    begin = sent[1] if sent is not None else start
+    landed, reached_by = (
+        _counts(begin, target, sent[3], sent[4], bool(moved)) if sent is not None else (0, 0)
+    )
     return StoppedWrite(
         run_id=run_id,
         account_id=account_id,
         at=at,
-        start=start,
+        start=begin,
         target=target,
         leader=leader,
         rekordbox=tuple((one[0], one[1]) for one in rows),
         written=written,
         links=dict(links),
+        moving_at=sent[0] if sent is not None else None,
+        end=sent[2] if sent is not None else (),
+        moved=sent is not None and bool(moved),
+        landed=landed,
+        sent=reached_by,
     )
 
 
@@ -198,6 +318,8 @@ def stopped_writes(
     ordering: str,
     made: str,
     done: str,
+    moving: str = "",
+    moved: str = "",
 ) -> dict[str, tuple[datetime, StoppedWrite]]:
     """Each pair's write stopped part way through its order, by account playlist, with when it began.
 
@@ -214,7 +336,18 @@ def stopped_writes(
     it (round one's review): its steps are kept as the stopped write's are,
     and its additions and removals move no track the stopped write ordered.
     A record written before U225 carries no detail and no time, and is read
-    as no write at all, as it was.
+    as no write at all, as it was. ``moving`` and ``moved`` name the steps a
+    write records as it begins sending its moves and once every one was
+    accepted (U231).
+
+    A PENDING WRITE IS NOT HIDDEN BY A LATER ONE THAT SENT NO MOVE (R-1394,
+    round two's review), for the reason a later run stopped before its order
+    began hides nothing: a later write whose order was refused before its
+    first move (a finish whose reading was not the agreed one, a read that
+    failed) left the account where the pending write's moves left it, and
+    only the pending write's counts say how far that was. Read in its place,
+    the next plan would take a reading lagging those moves as the person's
+    reorder and merge it into rekordbox.
     """
     stopped: dict[str, tuple[datetime, StoppedWrite]] = {}
     finished: dict[str, datetime] = {}
@@ -232,11 +365,17 @@ def stopped_writes(
                 if account_id not in finished or began > finished[account_id]:
                     finished[account_id] = began
                 continue
-            write = _read(record.run_id, account_id, steps.get(ordering))
+            write = _read(
+                record.run_id,
+                account_id,
+                steps.get(ordering),
+                steps.get(moving) if moving else None,
+                bool(moved) and moved in steps,
+            )
             if write is None:
                 continue
             held = stopped.get(account_id)
-            if held is None or write.at > held[1].at:
+            if held is None or (write.pending, write.at) > (held[1].pending, held[1].at):
                 stopped[account_id] = (began, write)
     return {
         account_id: (began, write)
@@ -303,22 +442,52 @@ def reached(start: Sequence[str], target: Sequence[str], now: Sequence[str]) -> 
     neither moves the tracks both hold; a track the write would have moved
     standing anywhere else is a move somebody made.
     """
+    return bool(positions(start, target, now))
+
+
+def positions(start: Sequence[str], target: Sequence[str], now: Sequence[str]) -> tuple[int, ...]:
+    """How many moves from ``start`` toward ``target`` leave the order ``now``, each count that does (R-1394).
+
+    Read as :func:`reached` reads it, a track added or taken off since left
+    out, so two orders on the path that differ only by such a track both
+    count. Empty when ``now`` is off the path.
+    """
     current = list(dict.fromkeys(now))
     common = set(current) & set(start)
     shown = [one for one in current if one in common]
-    return any(
-        [one for one in dict.fromkeys(state) if one in common] == shown
-        for state in passed(start, target)
+    return tuple(
+        index
+        for index, state in enumerate(passed(start, target))
+        if [one for one in dict.fromkeys(state) if one in common] == shown
     )
+
+
+def shows(end: Sequence[str], now: Sequence[str]) -> bool:
+    """Whether the account's order ``now`` is the order ``end`` a write's moves leave (U231).
+
+    A track added or taken off since is left out of the comparison, as
+    :func:`reached` leaves it out, since neither moves the tracks both hold.
+    An end sharing no track with ``now`` is not shown.
+    """
+    current = list(dict.fromkeys(now))
+    common = set(current) & set(end)
+    if not common:
+        return False
+    return [one for one in current if one in common] == [
+        one for one in dict.fromkeys(end) if one in common
+    ]
 
 
 __all__ = [
     "StoppedWrite",
     "finished",
     "front_moves",
+    "moving_step",
+    "shows",
     "ordering_step",
     "passed",
     "passed_by",
+    "positions",
     "reached",
     "stopped_writes",
 ]

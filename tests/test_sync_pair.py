@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -92,6 +93,12 @@ class World:
     """The account, its catalogue and the rekordbox playlist, wired together."""
 
     def __init__(self, cfg, monkeypatch, *, account=(), rekordbox=()) -> None:
+        # U231. THE PLAYLIST SITS AT THE REKORDBOX ROOT, outside GIG READY, and
+        # these suites drive the account's order, so every pair keeps it, as
+        # ``outbound.pair_order_every_pair`` says. The scope itself is held by
+        # ``tests/test_sync_pair_settle.py``.
+        cfg = replace(cfg, outbound=replace(cfg.outbound, pair_order_every_pair=True))
+        monkeypatch.setattr(config, "load", lambda *args, **kwargs: cfg)
         self.cfg = cfg
         self.account = outbound_fakes.FakeAccount(
             {content_id: remote(content_id) for content_id in ROWS}
@@ -1077,6 +1084,180 @@ def test_each_landed_file_is_read_once_per_plan(world, cfg, tmp_path, monkeypatc
         f"{cfg.library.root}/Music/8.flac"
     ]
 
+
+# R-1383. A landing record the session log cannot read is never read as no
+# landing: a track only it may have brought in is held, named, and never queued.
+
+
+def _damaged_landing(w, cfg, tmp_path, how: str) -> tuple[Path, bytes]:
+    """Land row eight through another account playlist, then damage its record as asked.
+
+    Answers the record's path and the bytes it held while it read.
+    """
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    path = session.log_path("s-other", cfg)
+    whole = path.read_bytes()
+    if how == "torn":
+        path.write_bytes(whole[: len(whole) // 2])
+    else:
+        data = json.loads(whole)
+        data[session.STATE_KEY] = "landed-by-a-later-build"
+        path.write_text(json.dumps(data))
+    return path, whole
+
+
+def _said(envelope, code: str) -> str:
+    return " ".join(
+        warning["message"] for warning in envelope.get("warnings") or () if warning["code"] == code
+    )
+
+
+@pytest.mark.parametrize("how", ["unknown-state", "torn"])
+def test_an_unreadable_landing_record_holds_the_track_it_may_have_brought_in(
+    world, cfg, tmp_path, how
+):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    path, _whole = _damaged_landing(w, cfg, tmp_path, how)
+    w.account.playlists[ACCOUNT].append("t8")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1"]
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert envelope["data"]["totals"]["acquire"] == 0
+    assert envelope["data"]["totals"]["landing_unread"] == 1
+    said = _said(envelope, pair_cli.LANDING_UNREAD)
+    assert path.name in said
+    held = [
+        item
+        for item in envelope["data"]["items"]
+        if item["action"] == pair_cli.LANDING_UNREAD_ACTION
+    ]
+    assert [(item["side"], item.get("remote_id")) for item in held] == [("library", "t8")]
+
+
+@pytest.mark.parametrize("how", ["unknown-state", "torn"])
+def test_the_same_plan_with_the_record_readable_adds_the_row(world, cfg, tmp_path, how):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    path, whole = _damaged_landing(w, cfg, tmp_path, how)
+    w.account.playlists[ACCOUNT].append("t8")
+    assert sync([*VERB, ACCOUNT])[0] == int(ExitCode.OK)
+    path.write_bytes(whole)
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "8"]
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert pair_cli.LANDING_UNREAD not in _codes(envelope)
+
+
+def test_a_session_log_that_cannot_be_listed_holds_the_track(world, cfg, tmp_path, monkeypatch):
+    """The container runs as root, which no mode bars, so the listing is made to refuse."""
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    w.account.playlists[ACCOUNT].append("t8")
+    real = session._listed
+    closed = session.log_dir(cfg)
+
+    def refused(directory):
+        if Path(directory) == closed:
+            raise PermissionError(13, "Permission denied", str(directory))
+        return real(directory)
+
+    monkeypatch.setattr(session, "_listed", refused)
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1"]
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert "cannot be listed" in _said(envelope, pair_cli.LANDING_UNREAD)
+
+
+def test_a_track_carrying_no_isrc_is_still_queued_beside_an_unreadable_record(
+    world, cfg, tmp_path
+):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _damaged_landing(w, cfg, tmp_path, "torn")
+    w.codes["t40"] = ""
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert _acquired(envelope) == ["t40"]
+
+
+def test_a_track_no_landing_brought_in_is_held_while_a_record_is_unread(world, cfg, tmp_path):
+    """No unread record can be ruled out, so a new track with a code waits for it to read."""
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _damaged_landing(w, cfg, tmp_path, "unknown-state")
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert pair_cli.LANDING_UNREAD in _codes(envelope)
+
+
+def test_a_track_an_earlier_sync_queued_is_awaiting_beside_an_unreadable_record(
+    world, cfg, tmp_path
+):
+    """Round one's finding 4: a track already queued is awaiting, never held as landing unread."""
+    w = world(account=("1",), rekordbox=("1",))
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].append("t40")
+    code, first = sync(w.args())
+    assert code == int(ExitCode.OK), first
+    assert _acquired(first) == ["t40"]
+    _damaged_landing(w, cfg, tmp_path, "torn")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["awaiting"] == 1
+    assert envelope["data"]["totals"]["landing_unread"] == 0
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    said = _said(envelope, pair_cli.LANDING_UNREAD)
+    assert "no track this plan would queue waited on it" in said
+    assert "0 account track" not in said
+
+def test_a_plan_with_every_landing_record_readable_warns_nothing_of_them(world, cfg, tmp_path):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert _acquired(envelope) == ["t40"]
+    assert pair_cli.LANDING_UNREAD not in _codes(envelope)
+    assert envelope["data"]["totals"]["landing_unread"] == 0
+
+def test_the_pairs_digest_moves_with_the_landing_hold_and_only_when_any():
+    """R-1383, the mutation table's two digest zeros: the held tracks bind the gate, and none leaves it as it was."""
+    from cratekit.sync import pair_merge
+    from cratekit.write import playlist_pair
+
+    target = pair_cli.Target(account_id="a", rekordbox_id="1", marked=True)
+    named = pair_cli.Named(key="r:t1", artist="A", title="B", remote_id="t1")
+
+    def plan(landing_unread):
+        return pair_cli.PairPlan(
+            target=target,
+            name="x",
+            rekordbox_name="x",
+            first=False,
+            merged=pair_merge.merge(None, pair_merge.Side(()), pair_merge.Side(())),
+            account_now=(),
+            rekordbox_before=(),
+            change=playlist_pair.Change(playlist_id="1", before=(), adds=(), removes=(), order=()),
+            landing_unread=landing_unread,
+        )
+
+    assert "landing_unread" not in plan(()).identity()
+    assert plan((named,)).identity()["landing_unread"] == ["t1"]
+    assert plan((named,)).identity() != plan(()).identity()
 
 def test_two_rows_carrying_one_isrc_add_neither_and_say_so(world, cfg):
     w = world(account=("1",), rekordbox=("1",))

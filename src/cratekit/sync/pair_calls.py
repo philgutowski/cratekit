@@ -26,11 +26,18 @@ fixed shape, and each count here follows it:
   more than a listing, :data:`UNPAGED_READ`, and more past a page, since the
   unpaged read walks on past a capped first page one track back per request
   (R-1360), :func:`unpaged_calls`;
-* an ORDER moves one track to the front per request, each followed by a
-  fresh open and read, after the longest run at the tail of the asked order
-  already standing is kept (U220). A reading the adapter takes again, after a
-  read that lags a write or a stale tag, is not counted: it happens only when
-  the provider lags, and the ceiling's margin is what covers it.
+* an ORDER is planned from one judged reading and moves one track to the
+  front per request, after the longest run at the tail of the asked order
+  already standing is kept (U220), with NO READ BACK BETWEEN MOVES (U231);
+  once they are sent, one judged reading decides it, the settle reading. A
+  reading the adapter takes again, after a read that lags a write, and a move
+  sent again after a stale tag, are not counted: they happen only when the
+  provider lags, and the ceiling's margin is what covers them;
+* EVERY WRITE, an add chunk, a removal request and a move, is followed by
+  the client's own read of the playlist for its next version tag
+  (``UserPlaylist._reparse``), a request the adapter never asks for and the
+  provider counts all the same, :data:`REPARSE` (U231; Sitting 86's write
+  made 5,794 calls against a forecast of 4,142 that left it out).
 
 The adapter's own chunk sizes cannot be imported here, since its module needs
 the provider library the slim profile does not install, so a test pins these
@@ -53,6 +60,9 @@ PLAYLIST_PAGE = listing.PAGE_SIZES["playlist_tracks"]
 #: its pages, wherever a write is judged or an order planned, when its first
 #: request holds the playlist whole; :func:`unpaged_calls` counts the rest.
 UNPAGED_READ = 1
+#: U231. The request the client makes after every write it sends, reading the
+#: playlist again for the version tag the next write carries.
+REPARSE = 1
 #: Tracks one add request carries and one removal request takes off, the
 #: account adapter's ``ADD_CHUNK`` and ``REMOVE_CHUNK``, pinned by a test.
 ADD_CHUNK = 100
@@ -137,6 +147,7 @@ def account_write(
     order: Sequence[str] | None = None,
     made: bool = False,
     listed: bool = True,
+    sent: bool = False,
 ) -> int:
     """The calls one account playlist's writes are expected to make.
 
@@ -144,7 +155,9 @@ def account_write(
     write made it, so the adapter already holds its (empty) membership and
     the make itself is counted by the caller. ``listed`` says the check before
     the write listed it, which a playlist with nothing to write records as its
-    snapshot rather than listing again (U209).
+    snapshot rather than listing again (U209). ``sent`` says an earlier
+    command of the run sent the order's moves (U231), so only its settle
+    reading is left.
     """
     if not (adds or removes or order) and listed:
         return 0
@@ -165,7 +178,7 @@ def account_write(
                 taken = min(owed, REMOVE_CHUNK)
                 owed -= taken
                 length -= taken
-                calls += 1 + judged_calls(length)
+                calls += 1 + REPARSE + judged_calls(length)
             now = [one for one in now if one not in gone]
         known = True
     lacking = [one for one in dict.fromkeys(str(one) for one in adds) if one not in set(now)]
@@ -174,24 +187,30 @@ def account_write(
             calls += listing_calls(len(now))
             known = True
         if lacking:
-            calls += 1 + math.ceil(len(lacking) / ADD_CHUNK)
+            calls += 1 + math.ceil(len(lacking) / ADD_CHUNK) * (1 + REPARSE)
             now = [*now, *lacking]
-    if order:
+    if order and sent:
+        # The moves went in an earlier command; only the reading that decides them is left.
         calls += judged_calls(len(now))
-        calls += _moves(now, order) * (1 + judged_calls(len(now)))
+    elif order:
+        calls += judged_calls(len(now))
+        moves = _moves(now, order)
+        if moves:
+            calls += moves * (1 + REPARSE) + judged_calls(len(now))
     elif not known:
         # The write lists the playlist once to record its snapshot.
         calls += listing_calls(len(now))
     return calls
 
 
-def pair_write(one: Any, *, made_before: bool = False) -> int:
+def pair_write(one: Any, *, made_before: bool = False, sent: bool = False) -> int:
     """The calls one pair's account side is expected to make, a made playlist's make included.
 
     ``one`` is a ``pair_cli.PairPlan``. ``made_before`` says an earlier command
     of the run made the account side, so only its filling is left, and the
     adapter, a fresh process's, reads its membership first rather than
-    holding the empty one its own make left.
+    holding the empty one its own make left. ``sent`` says it sent the
+    order's moves too (U231).
     """
     new = bool(one.target.new)
     calls = MAKE_PLAYLIST if new and not made_before else 0
@@ -202,6 +221,7 @@ def pair_write(one: Any, *, made_before: bool = False) -> int:
         order=one.account_order,
         made=new and not made_before,
         listed=not made_before,
+        sent=sent,
     )
 
 
@@ -255,6 +275,7 @@ __all__ = [
     "PLAYLIST_PAGE",
     "READ_FOLDER",
     "REMOVE_CHUNK",
+    "REPARSE",
     "ROUND_TO",
     "UNPAGED_READ",
     "account_write",

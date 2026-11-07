@@ -419,6 +419,22 @@ def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
     assert read("", synced=(_WHEN + timedelta(seconds=1)).isoformat()) is None
 
 
+def test_a_first_sync_reads_the_stop_on_its_account_playlist_whatever_the_mark():
+    """R-1376: a pair released after a stop and paired again has no snapshot, and the stop predates the mark."""
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
+    reader = SimpleNamespace(stopped=(write, ()))
+    assert pair_cli._Reader.first_stop(reader, "pl-1").run_id == "run-1"
+    assert pair_cli._Reader.first_stop(reader, "pl-9") is None
+    # An account side still to be made has no playlist to have stopped on.
+    assert pair_cli._Reader.first_stop(reader, "") is None
+    # The pair's own rule still keeps it from a pair marked after it.
+    held = SimpleNamespace(marked=(_WHEN + timedelta(seconds=1)).isoformat(), synced="")
+    assert pair_cli._Reader.stopped_write(reader, "pl-1", held) is None
+
+
 def test_a_carried_record_naming_another_run_is_named(cfg):
     where = held_plan.carried_path("run-f", "pl-6")
     where.parent.mkdir(parents=True, exist_ok=True)
@@ -461,3 +477,120 @@ def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan
     held_plan.Steps("run-1", "d2", {"pl-1": {**began, "done": "pl-1"}}).begin()
     stopped, _unread = pair_cli._Reader.stopped.func(None)
     assert stopped["pl-1"][1].run_id == "run-1"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1394: how far a pending write's moves can have got
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_positions_counts_the_moves_that_leave_each_order_on_the_path():
+    seen = pair_stopped.passed(START, TARGET)
+    for index, state in enumerate(seen):
+        assert pair_stopped.positions(START, TARGET, state) == (index,), state
+    assert pair_stopped.positions(START, TARGET, ("e", "d", "c", "b", "a")) == ()
+    # A track added since is left out, as reached leaves it out.
+    assert pair_stopped.positions(START, TARGET, ("z", *seen[2])) == (2,)
+
+
+def test_orders_on_the_path_that_differ_only_by_a_track_taken_off_all_count():
+    # The first move fronts e and the second a, back in front of it; with e
+    # taken off since, the order before them and after each read the same.
+    seen = pair_stopped.passed(START, TARGET)
+    assert seen[1][0] == "e"
+    shown = tuple(one for one in seen[0] if one != "e")
+    assert pair_stopped.positions(START, TARGET, shown) == (0, 1, 2)
+
+
+def _pending(moving: dict, *, moved: bool = False):
+    began = _WHEN.replace(second=40).isoformat()
+    steps = {"account": began, "ordering": _ordering(), "moving": moving}
+    if moved:
+        steps["moved"] = began
+    record = _steps("run-1", {"pl-1": steps})
+    found = pair_stopped.stopped_writes(
+        [record],
+        new=pair_cli.NEW,
+        account=pair_cli.STEP_ACCOUNT,
+        ordering=pair_cli.STEP_ORDERING,
+        made=pair_cli.STEP_MADE,
+        done=pair_cli.STEP_DONE,
+        moving=pair_cli.STEP_MOVING,
+        moved=pair_cli.STEP_MOVED,
+    )
+    return found["pl-1"][1]
+
+
+def _moving(**counts):
+    return pair_stopped.moving_step(at=_WHEN.isoformat(), start=START, end=TARGET, **counts)
+
+
+def test_a_moving_step_reads_back_its_counts():
+    write = _pending(_moving(sent=2, landed=1))
+    assert (write.landed, write.sent) == (1, 2)
+    assert write.pending and not write.moved
+
+
+def test_every_move_accepted_reads_as_every_move_landed_whatever_the_counts():
+    total = len(pair_stopped.front_moves(START, TARGET))
+    write = _pending(_moving(sent=1, landed=0), moved=True)
+    assert (write.landed, write.sent) == (total, total)
+
+
+@pytest.mark.parametrize(
+    "counts",
+    [
+        {},
+        {"sent": "2", "landed": 1},
+        {"sent": 1, "landed": 2},
+        {"sent": 99, "landed": 0},
+        {"sent": 2, "landed": -1},
+        {"sent": True, "landed": 0},
+    ],
+)
+def test_counts_missing_or_not_fitting_the_moves_are_read_as_nothing_known(counts):
+    moving = _moving()
+    moving.pop(pair_stopped.SENT)
+    moving.pop(pair_stopped.LANDED)
+    moving.update(counts)
+    write = _pending(moving)
+    assert (write.landed, write.sent) == (0, len(pair_stopped.front_moves(START, TARGET)))
+
+
+def _read_moving(*records):
+    return pair_stopped.stopped_writes(
+        records,
+        new=pair_cli.NEW,
+        account=pair_cli.STEP_ACCOUNT,
+        ordering=pair_cli.STEP_ORDERING,
+        made=pair_cli.STEP_MADE,
+        done=pair_cli.STEP_DONE,
+        moving=pair_cli.STEP_MOVING,
+        moved=pair_cli.STEP_MOVED,
+    )
+
+
+def test_a_later_write_that_sent_no_move_does_not_hide_a_pending_one():
+    """R-1394, round two: a refused finish left the account where the pending moves left it."""
+    early = _WHEN.replace(second=40).isoformat()
+    pending = _steps(
+        "run-1",
+        {"pl-1": {"account": early, "ordering": _ordering(), "moving": _moving(sent=1, landed=1)}},
+    )
+    later = _WHEN.replace(hour=18).isoformat()
+    refused = _steps("run-2", {"pl-1": {"account": later, "ordering": _ordering(at=later)}})
+    for records in ((pending, refused), (refused, pending)):
+        write = _read_moving(*records)["pl-1"][1]
+        assert write.run_id == "run-1" and write.pending, records
+    # A later write that did send moves is the one read, as before.
+    sending = _steps(
+        "run-3",
+        {
+            "pl-1": {
+                "account": later,
+                "ordering": _ordering(at=later),
+                "moving": _moving(sent=1, landed=0),
+            }
+        },
+    )
+    assert _read_moving(pending, sending)["pl-1"][1].run_id == "run-3"

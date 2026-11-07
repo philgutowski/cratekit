@@ -205,6 +205,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'sync-mark-record-unusable',
     'sync-marks-blocked',
     'sync-pair-account-lagging',  # 2026-11-06, U226: a pair held while its account window lags.
+    'sync-pair-account-settling',  # 2026-11-06, U231: a pair held while its sent account order is unread.
     # 2026-10-10, U130: the four sync pair causes joined.
     'sync-pair-conflict',
     'sync-pair-out-of-scope',
@@ -928,6 +929,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-marks-blocked',
         # 2026-10-10, U130: the four sync pair causes joined.
         'sync-pair-account-lagging',  # 2026-11-06, U226.
+        'sync-pair-account-settling',  # 2026-11-06, U231.
         'sync-pair-conflict',
         'sync-pair-out-of-scope',
         'sync-pair-steps-unwritten',  # 2026-11-05, U210.
@@ -1705,11 +1707,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     # 2026-10-13, U143: the account root removals' five refusal problems joined.
     # 2026-11-05, U220: an order's first reading that never agrees, read-differs,
-    # and an order whose moves never reach it, no-progress.
+    # and an order whose moves never reach it, no-progress, which left with U231's blind moves.
     'modules/outbound/tidal_account.py': [
         'internal-error',
         'ledger-claimed',
-        'no-progress',
         'not-a-legacy-folder',
         'not-a-root-kind',
         'not-empty',
@@ -1877,21 +1878,26 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-stale',
         'intake-list-unusable',
         'label-playlist-unreadable',
+        'landing-unread',  # 2026-11-07, R-1383.
         'on-hold',  # 2026-11-05, U221.
+        'order-pending',  # 2026-11-06, U231.
         'order-refused',
         'outbound-remove-refused',
         'playlist-pair',
         'rekordbox-home',
         'sync-pair-account-lagging',  # 2026-11-06, U226.
+        'sync-pair-account-settling',  # 2026-11-06, U231.
         'sync-pair-ambiguous',
         'sync-pair-awaiting',
         'sync-pair-finishing',  # 2026-11-06, U225.
+        'sync-pair-landing-unread',  # 2026-11-07, R-1383.
         'sync-pair-later-change',
         'sync-pair-left-out',
         'sync-pair-not-brought',
         'sync-pair-not-discovered',
         'sync-pair-nothing',
         'sync-pair-on-hold',  # 2026-11-05, U221.
+        'sync-pair-order-pending',  # 2026-11-06, U231.
         'sync-pair-out-of-scope',
         'sync-pair-released',
         'sync-pair-replanned',
@@ -2276,7 +2282,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-05, U210: the refusal a write step it could not record stops it with.
-    'sync/pair_cli.py': ['sync-pair-account-lagging', 'sync-pair-steps-unwritten'],  # 2026-11-06, U226.
+    'sync/pair_cli.py': ['sync-pair-account-lagging', 'sync-pair-account-settling', 'sync-pair-steps-unwritten'],  # 2026-11-06, U226; U231 settling.
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     'acquire/adapter.py': [
@@ -2376,7 +2382,7 @@ PINNED_NAMED_WITH_OWN = {
     # 2026-10-15, U147: the account mirror joined.
     'modules/outbound/mirror.py': ['account-mirror-ambiguous'],
     # 2026-11-05, U210: the refusal a write step it could not record stops it with.
-    'sync/pair_cli.py': ['sync-pair-account-lagging', 'sync-pair-steps-unwritten'],  # 2026-11-06, U226.
+    'sync/pair_cli.py': ['sync-pair-account-lagging', 'sync-pair-account-settling', 'sync-pair-steps-unwritten'],  # 2026-11-06, U226; U231 settling.
     'acquire/adapter.py': [
         'adapter-broken',
         'auth-failed',
@@ -3152,6 +3158,7 @@ PINNED_LITERAL_HOLDERS = {
         'label-playlist-unreadable',
         'outbound-remove-refused',
         'sync-pair-account-lagging',  # 2026-11-06, U226.
+        'sync-pair-account-settling',  # 2026-11-06, U231.
         'sync-pair-out-of-scope',
         'sync-pair-steps-unwritten',
         'sync-pair-unknown',

@@ -28,8 +28,17 @@ class Counter:
         self.requests = 0
 
 
+#: U231. The client reads a playlist again after every write it sends, for the
+#: next version tag (``UserPlaylist._reparse``), a request of its own.
+REPARSE = 1
+
+
 class Playlist:
-    """One opened playlist over the account's live members: every request counted."""
+    """One opened playlist over the account's live members: every request counted.
+
+    Each write counts the request it sends and the client's hidden read after
+    it (:data:`REPARSE`), as the installed client makes them.
+    """
 
     num_videos = 0
 
@@ -49,19 +58,19 @@ class Playlist:
 
     def add(self, media_ids: list[str], allow_duplicates: bool = False) -> list[str]:
         del allow_duplicates
-        self.counter.requests += 1
+        self.counter.requests += 1 + REPARSE
         fresh = [one for one in media_ids if one not in self.members]
         self.members.extend(fresh)
         return list(media_ids)
 
     def remove_by_indices(self, indices: list[int]) -> bool:
-        self.counter.requests += 1
+        self.counter.requests += 1 + REPARSE
         gone = set(indices)
         self.members[:] = [one for at, one in enumerate(self.members) if at not in gone]
         return True
 
     def move_by_indices(self, indices: list[int], position: int) -> bool:
-        self.counter.requests += 1
+        self.counter.requests += 1 + REPARSE
         (at,) = indices
         self.members.insert(position, self.members.pop(at))
         return True
@@ -195,13 +204,31 @@ def test_an_existing_playlists_removals_and_additions_cost_what_is_expected(
         (ids(1, 130), list(reversed(ids(1, 130)))[:5] + ids(1, 125)),
     ],
 )
-def test_an_order_costs_its_read_and_one_move_and_read_back_per_track_moved(
-    client, before, order
-):
+def test_an_order_costs_its_reading_its_moves_and_one_settle_reading(client, before, order):
+    """U231: one judged reading, each move and the client's read after it, then the settle reading."""
     client.members["acc"] = list(before)
     account = adapter(client)
-    account.order_tracks("acc", tuple(order))
+    after = account.order_tracks("acc", tuple(order))
+    if after != tuple(before):
+        account.settled_order("acc")
     assert client.counter.requests == pair_calls.account_write(before, order=order)
+
+
+def test_a_300_track_order_with_adds_and_removals_stays_inside_its_forecast(client):
+    """U231: Sitting 86 made 5,794 calls against a forecast of 4,142; the forecast counts what is sent."""
+    before = ids(1, 300)
+    client.members["acc"] = list(before)
+    account = adapter(client)
+    taking = tuple(before[:20])
+    adding = tuple(ids(1000, 30))
+    account.remove_tracks("acc", taking)
+    account.add_tracks("acc", adding)
+    held = [one for one in before if one not in set(taking)] + list(adding)
+    order = tuple(reversed(held))
+    account.order_tracks("acc", order)
+    account.settled_order("acc")
+    expected = pair_calls.account_write(before, adds=adding, removes=taking, order=order)
+    assert client.counter.requests == expected
 
 
 def test_a_playlist_with_nothing_to_write_costs_nothing_once_the_check_listed_it():

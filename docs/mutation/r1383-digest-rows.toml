@@ -1,0 +1,26 @@
+name = "r1383-digest"
+pass_kind = "light"
+
+# The two digest zeros of r1383.md, measured again after the test that pins them.
+
+[[rows]]
+id = "M8_digest_drops_hold"
+description = "PairPlan.identity: leave the held tracks out of the digest, so a plan whose hold moved is not stale at its gate"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py"]
+old = '''                {"landing_unread": sorted(named.remote_id for named in self.landing_unread)}
+                if self.landing_unread
+                else {}'''
+new = '''                {}'''
+
+[[rows]]
+id = "M9_digest_always_keyed"
+description = "PairPlan.identity: put the key in every digest, so a plan reading every record no longer digests as it did (round one's zero)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_twins_hold.py", "tests/test_sync_pair_hold.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py"]
+old = '''                if self.landing_unread
+                else {}'''
+new = '''                if True
+                else {}'''

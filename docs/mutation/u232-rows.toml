@@ -1,0 +1,109 @@
+name = "u232"
+pass_kind = "light"
+
+# U232 adds no source. Its guards are test infrastructure: the conftest's two
+# stubs, its tripwire and opt in, the fake host, and the U211 fixture that puts
+# pyrekordbox's real walk back. A test only change to a static fixture, so the
+# table is sized as a static registry's, about eight rows, each guard layer
+# reverted alone. Each row names the test files that exercise it; a zero on
+# them is promoted to the full suite by the driver.
+
+[[rows]]
+id = "A1_platform_stub"
+description = "_no_host_process_table: leave core.processes._platform as psutil, so the careful scan reads the host"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py", "tests/test_process_scan.py", "tests/test_sync_bandcamp.py", "tests/test_process_scan_jobs.py"]
+old = '''        monkeypatch.setattr(processes, "_platform", lambda: empty)'''
+new = '''        pass'''
+
+[[rows]]
+id = "A2_pyrekordbox_stub"
+description = "_no_host_process_table: leave pyrekordbox's get_process_id walking the host, the refused cut's own route"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py", "tests/test_process_scan.py", "tests/test_sync_bandcamp.py", "tests/test_process_scan_jobs.py"]
+old = '''            monkeypatch.setattr(utils, "get_process_id", no_process)'''
+new = '''            pass'''
+
+[[rows]]
+id = "A3_stub_raise_exec"
+description = "_no_host_process_table: the no process stub answers zero under raise_exec, where pyrekordbox raises"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py"]
+old = '''        if raise_exec:
+            # pyrekordbox's own words, which name rekordbox whatever was asked.'''
+new = '''        if False:
+            # pyrekordbox's own words, which name rekordbox whatever was asked.'''
+
+[[rows]]
+id = "A4_tripwire_records"
+description = "tripwire: refuse without recording, so a call the code swallows passes silently"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py"]
+old = '''            reached.append(f"psutil.{name} was called from:\n{where}")'''
+new = '''            where = where'''
+
+[[rows]]
+id = "A5_tripwire_refuses"
+description = "tripwire: record without refusing, answering an empty listing instead"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py"]
+old = '''            raise AssertionError(
+                f"a test reached the host's real process table through psutil.{name}; "'''
+new = '''            return []
+            raise AssertionError(
+                f"a test reached the host's real process table through psutil.{name}; "'''
+
+[[rows]]
+id = "A6_teardown_check"
+description = "_no_host_process_table: never fail the test over what the tripwire recorded"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py"]
+old = '''    if reached:
+        pytest.fail('''
+new = '''    if False:
+        pytest.fail('''
+
+[[rows]]
+id = "A7_tripwire_on_pids"
+description = "_no_host_process_table: trip on process_iter only, leaving psutil.pids, the careful scan's own read, open"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py"]
+old = '''        monkeypatch.setattr(psutil, "pids", tripwire("pids"))'''
+new = '''        pass'''
+
+[[rows]]
+id = "A8_opt_in"
+description = "_no_host_process_table: ignore the real_process_table marker, so no test can reach the real table"
+file = "tests/conftest.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py", "tests/test_process_scan.py"]
+old = '''    if request.node.get_closest_marker(REAL_PROCESS_TABLE) is not None:
+        yield
+        return
+    import psutil'''
+new = '''    import psutil'''
+
+[[rows]]
+id = "A9_fake_host_iter"
+description = "the fake host: leave psutil.process_iter real, so pyrekordbox's walk never sees rekordbox"
+file = "tests/_host_processes.py"
+surface = "maintainer"
+tests = ["tests/test_host_process_table.py", "tests/test_process_scan.py", "tests/test_sync_bandcamp.py"]
+old = '''    monkeypatch.setattr(psutil, "process_iter", process_iter)'''
+new = '''    pass'''
+
+[[rows]]
+id = "A10_real_walk_restored"
+description = "real_probes: leave pyrekordbox's walk stubbed, so the U211 tests over a dying process_iter read nothing"
+file = "tests/test_process_scan.py"
+surface = "maintainer"
+tests = ["tests/test_process_scan.py"]
+old = '''    monkeypatch.setattr(pyrekordbox.utils, "get_process_id", REAL_WALK)'''
+new = '''    pass'''

@@ -166,7 +166,12 @@ anybody's when the account stands where the adapter's moves could have left
 it, and the side that led it leads again unless a side changed order since;
 and when it committed rekordbox too, the plan merges against what it left on
 both sides, so its additions and removals are not read as the person's
-either. The gate names the pair as finishing that run.
+either. The gate names the pair as finishing that run. A FIRST SYNC reads the
+stop on its account playlist too, whatever the pair's mark (R-1376): a pair
+released after a stop and paired again with a new rekordbox playlist has no
+snapshot, so the account's half done order would lead and be put into
+rekordbox. Its order is finished the same way, and nothing of it is folded,
+since a first sync has no base.
 
 **THE SNAPSHOT MOVES ONLY WHEN THE WHOLE PAIR WAS WRITTEN.** Both gates
 applied, every write landed, and the account listed the whole playlist: only
@@ -210,6 +215,7 @@ from __future__ import annotations
 import shlex
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
+from datetime import UTC, datetime, timedelta
 from functools import cached_property
 from pathlib import Path
 from typing import Any
@@ -270,6 +276,11 @@ LEFT_OUT = "sync-pair-left-out"
 #: of step: its window read disagrees with its unpaged read, which is not the
 #: whole playlist, so neither is the playlist as it stands.
 LAGGING = "sync-pair-account-lagging"
+#: U231. The refusal of a pair whose account order was sent and not yet read
+#: back by two readings that agree, held whole for this run.
+SETTLING = "sync-pair-account-settling"
+#: U231. Pairs whose order this run sent and the provider does not yet serve.
+PENDING = "sync-pair-order-pending"
 WRITTEN = "sync-pair-written"
 #: A custom playlist twin's pair forgotten because its account playlist is gone (U149).
 UNPAIRED = "sync-pair-twin-unpaired"
@@ -283,8 +294,14 @@ FINISHING = "sync-pair-finishing"
 #: U225. Runs' steps a plan could not read, so a stopped write in them was
 #: not looked for.
 STOPPED_UNREAD = "sync-pair-stopped-unread"
+#: R-1383. Account tracks the library lacks that a landing record the session
+#: log cannot read may have brought in, held and never queued until it reads.
+LANDING_UNREAD = "sync-pair-landing-unread"
 #: U221. The gate's item for one of them.
 ON_HOLD_ACTION = "on-hold"
+#: R-1383. The gate's item for a track a landing record the log cannot read
+#: may have brought in.
+LANDING_UNREAD_ACTION = "landing-unread"
 
 #: The refusals that are about one pair's own playlists, which a sync of every
 #: pair names and passes over rather than stopping at. R-1264: and an account
@@ -297,6 +314,8 @@ PER_PAIR_REASONS = frozenset(
         "intake-list-unusable",
         # U226. Its account playlist's window read lags its unpaged read.
         LAGGING,
+        # U231. Its account order was sent and is not yet read as landed.
+        SETTLING,
     }
 )
 #: U202. The refusals one account playlist brought from a synced folder may
@@ -427,6 +446,86 @@ def _lagging(account_id: str, name: str) -> CratekitError:
     )
 
 
+def _settling(
+    account_id: str,
+    name: str,
+    run_id: str,
+    *,
+    lag: bool,
+    write: pair_stopped.StoppedWrite | None = None,
+    at: int = 0,
+) -> CratekitError:
+    """The pair held whole for this run, its account order sent and not yet read as landed (U231).
+
+    HELD WHOLE, as a lagging pair is (U226): a reading that lags the moves
+    may lag a membership change as well, and an order read from it and
+    written into rekordbox, or moved again on the account, is the scramble
+    Sitting 86's orders would have left. ``lag`` says the readings agree on
+    an order on the moves' way short of where they can have left it: ``at``
+    moves from ``write``'s start leave it, and the message names why that is
+    short (R-1394): every move accepted, a stop after more moves landed, a
+    move whose landing is not known, or a write that recorded no count.
+    """
+    after = (
+        "a read that lags them serves that, and so would a reorder by hand back onto "
+        "their way, which leaves the pair held until the playlist is moved off it in "
+        "the provider's player or the pair is released"
+    )
+    total = len(pair_stopped.front_moves(write.start, write.target)) if write else 0
+    if not lag:
+        said = (
+            f"run {run_id}'s write sent its order's moves and no two readings of the "
+            f"playlist since agree on where they left it"
+        )
+    elif write is None or write.moved:
+        said = (
+            f"every move run {run_id}'s write sent was accepted, and the playlist still "
+            f"reads as one of the orders on their way, short of the order they leave: "
+            f"{after}"
+        )
+    elif at < write.landed:
+        said = (
+            f"the provider accepted {write.landed} of the {total} moves run {run_id}'s "
+            f"write sent before it stopped, and the playlist still reads as an order "
+            f"from before the last of them: {after}"
+        )
+    elif write.sent - write.landed == 1:
+        said = (
+            f"run {run_id}'s write stopped while move {write.sent} of its {total} was "
+            f"being sent, so whether it landed is not known, and the playlist still reads "
+            f"as the order before it: moved again from that, the rest would land on the "
+            f"wrong tracks if it did, so the pair is held until the provider serves that "
+            f"move landed, the playlist is moved off their way in the provider's player, "
+            f"or the pair is released"
+        )
+    else:
+        said = (
+            f"run {run_id}'s write stopped part way through its {total} moves and "
+            f"recorded no count of how many landed, so the playlist's reading on their "
+            f"way may lag them: moved again from it, the rest would land on the wrong "
+            f"tracks, so the pair is held until the provider serves the order they "
+            f"leave, the playlist is moved off their way in the provider's player, or "
+            f"the pair is released"
+        )
+    return refuse(
+        SETTLING,
+        f"the account playlist {name or account_id}'s order is pending: {said}; the "
+        f"pair was not synced this run, and nothing is moved again until the provider "
+        f"serves it",
+        steps=(
+            "sync the pair again in a few minutes, once the provider serves the "
+            "playlist as it stands",
+        ),
+        origin=_ORIGIN,
+        detail={
+            "account_id": account_id,
+            "run_id": run_id,
+            "problem": "order-pending",
+            **({"landed": write.landed, "sent": write.sent, "moves": total} if write else {}),
+        },
+    )
+
+
 def _out_of_scope(message: str, **detail: Any) -> CratekitError:
     return refuse(
         "sync-pair-out-of-scope",
@@ -538,6 +637,10 @@ class PairPlan:
     #: U221. Account tracks the library lacks that a twin holds for the
     #: author's choice, named and never queued until ``sync release``.
     on_hold: tuple[Named, ...] = ()
+    #: R-1383. Account tracks the library lacks that carry an ISRC, held and
+    #: never queued while a landing record the session log cannot read may
+    #: have brought them in.
+    landing_unread: tuple[Named, ...] = ()
     #: Account tracks two live library rows carry, so no row is chosen.
     ambiguous: tuple[Named, ...] = ()
     #: U208. Rekordbox rows matched as one of several releases that all agree.
@@ -572,6 +675,9 @@ class PairPlan:
     #: stood where that write's moves left it, so its order was finished.
     finishing: str = ""
     finishing_order: bool = False
+    #: U231. Whether the merge asked the account a new order that this pair
+    #: does not keep, since its rekordbox playlist is outside GIG READY.
+    order_unkept: bool = False
 
     @property
     def account_writes(self) -> bool:
@@ -611,8 +717,17 @@ class PairPlan:
                 if self.on_hold
                 else {}
             ),
+            # R-1383, ONLY WHEN ANY, so a plan reading every landing record
+            # digests as it did.
+            **(
+                {"landing_unread": sorted(named.remote_id for named in self.landing_unread)}
+                if self.landing_unread
+                else {}
+            ),
             # U225, ONLY WHEN ONE, so a pair no stopped write left digests as it did.
             **({"finishing": self.finishing} if self.finishing else {}),
+            # U231, ONLY WHEN SO, so a pair that keeps its order digests as it did.
+            **({"order_unkept": True} if self.order_unkept else {}),
         }
 
 
@@ -809,9 +924,18 @@ class _Reader:
         return pair_jobs(self.cfg, self.store)
 
     @cached_property
+    def landings(self) -> tuple[dict[str, frozenset[str]], tuple[Path, ...]]:
+        """The landing records' INBOX playlists, and the log's entries unread, read once per plan.
+
+        R-1383. Both halves of one scan, so a landing whose record does not
+        read is never read as no landing.
+        """
+        return landed_inbox_playlists(self.cfg)
+
+    @property
     def mirrors(self) -> dict[str, frozenset[str]]:
         """Each account playlist's INBOX playlists, as the landing records name them (U128)."""
-        return landed_inbox_playlists(self.cfg)
+        return self.landings[0]
 
     @cached_property
     def stopped(self) -> tuple[dict[str, tuple[Any, Any]], tuple[str, ...]]:
@@ -839,6 +963,8 @@ class _Reader:
                 ordering=STEP_ORDERING,
                 made=STEP_MADE,
                 done=STEP_DONE,
+                moving=STEP_MOVING,
+                moved=STEP_MOVED,
             ),
             tuple(problems),
         )
@@ -867,6 +993,28 @@ class _Reader:
             if synced is None or not began > synced:
                 return None
         return write
+
+    def first_stop(self, account_id: str) -> Any:
+        """The write that stopped part way through ordering this account playlist, for a first sync, or None (R-1376).
+
+        A pair released after a stop and paired again, or marked and never
+        written whole, syncs first with no snapshot, and the account it reads
+        is the stopped write's scramble, which a first sync's order would put
+        into rekordbox. Read whatever the mark, since the stop predates the
+        new one, and FOR ITS ORDER ALONE: its bases are another pair's, and a
+        first sync has none to fold. The latest write that began to order the
+        playlist and that no later run finished, as :meth:`stopped` keeps it.
+        """
+        if not account_id:
+            return None
+        _began, write = self.stopped[0].get(account_id, (None, None))
+        return write
+
+    def see(self, account_id: str, order: Sequence[str]) -> None:
+        """Keep this plan's reading of a pending order's playlist on its pair, for the next to agree with (U231)."""
+        from cratekit.modules.outbound import pairs
+
+        pairs.PairStore(self.cfg).see(account_id, order, at=timestamp())
 
     def mirror_codes(self, mirror: str) -> tuple[tuple[str, str], ...]:
         """One landed INBOX playlist's ISRC and row pairs, read once per plan (U229)."""
@@ -1004,18 +1152,27 @@ def _owned_by_jobs(
     }
 
 
-def landed_inbox_playlists(cfg: config.Config) -> dict[str, frozenset[str]]:
-    """Each account playlist's INBOX playlists, as the landing records name them (U128).
+def landed_inbox_playlists(
+    cfg: config.Config,
+) -> tuple[dict[str, frozenset[str]], tuple[Path, ...]]:
+    """Each account playlist's INBOX playlists, as the landing records name them (U128), and the unread.
 
     PUBLIC because the custom playlist twins' backfill (U149) finds a landed
     track's row the same way a pair does.
+
+    THE UNREAD HALF IS KEPT (R-1383). Every entry of the log this build
+    cannot read is answered beside the playlists, the log itself when it is
+    there and cannot be listed, as the session log's own gates count every
+    one (``session.assert_no_unresolved_session``): a torn record cannot say
+    its workflow, and a state a later build wrote cannot say whether its
+    landing stands, so none of them is read as no landing.
     """
     standing = {
         session.SessionState.AWAITING_IMPORT,
         session.SessionState.COMMITTED_UNVERIFIED,
         session.SessionState.CLOSED,
     }
-    records, _unreadable = session.scan_log(cfg)
+    records, unreadable = session.scan_log(cfg)
     found: dict[str, set[str]] = {}
     for record in records:
         if record.workflow != ingest.INTAKE_WORKFLOW or record.state not in standing:
@@ -1026,7 +1183,7 @@ def landed_inbox_playlists(cfg: config.Config) -> dict[str, frozenset[str]]:
             account_id = str(entry.get(ingest.INBOX_ACCOUNT_KEY) or "")
             if account_id:
                 found.setdefault(account_id, set()).add(str(entry["id"]))
-    return {account_id: frozenset(ids) for account_id, ids in found.items()}
+    return {account_id: frozenset(ids) for account_id, ids in found.items()}, tuple(unreadable)
 
 
 def mirror_codes(cfg: config.Config, db: Any, mirror: str) -> tuple[tuple[str, str], ...]:
@@ -1337,6 +1494,19 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # that would have recorded them, so a row it linked and that is gone from
     # rekordbox since is still read as the account track it was.
     stopped_write = reader.stopped_write(target.account_id, held)
+    # R-1376. A FIRST SYNC READS THE STOP ON ITS ACCOUNT PLAYLIST WHATEVER THE
+    # MARK: a pair released after a stop and paired again, or marked and never
+    # written whole, has no snapshot, so its account order, the stopped
+    # write's scramble, would lead and be put into rekordbox. Its order is
+    # finished below as any stop's is; nothing of it is folded into a base.
+    first_sync = held is None or held.first
+    if stopped_write is None and first_sync:
+        stopped_write = reader.first_stop(target.account_id)
+    if stopped_write is not None and stopped_write.pending:
+        # U231. AN ORDER SENT WITH NO READ BACK is pending until it is read:
+        # raises to hold the pair whole while no reading can be trusted. A
+        # first sync's stop is held the same way (R-1376), after it is read.
+        _pending(reader, target, held, name, stopped_write, tuple(listed_order or account_now))
     stopped_links = (
         {row: remote for remote, row in stopped_write.links.items()}
         if stopped_write is not None
@@ -1352,9 +1522,10 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # U225. WHEN THE STOPPED WRITE COMMITTED REKORDBOX as well, both sides
     # hold what it wrote, so the bases are what it left, the snapshot it would
     # have recorded; when it did not, neither base moves (record both or
-    # neither).
-    folded = stopped_write is not None and stopped_write.written
-    if held is not None and not held.first:
+    # neither). A first sync has no base, so nothing is folded (R-1376), and
+    # the gate never names a fold that was not made.
+    folded = stopped_write is not None and stopped_write.written and not first_sync
+    if not first_sync:
         base_account = pair_merge.distinct(
             alias(one)
             for one in (
@@ -1501,6 +1672,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     acquire: dict[str, dict[str, Any]] = {}
     awaiting: list[Named] = []
     on_hold: list[Named] = []
+    landing_unread: list[Named] = []
     ambiguous: list[Named] = []
     lacking = [
         remote_of(key) for key in merged.add_rekordbox if remote_of(key) not in known
@@ -1551,6 +1723,14 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             # Asked before another pair's job, so a plain pair listing it
             # leaves the twin's choice where it was (R-1385).
             on_hold.append(names[key])
+        elif (
+            match.isrc_token((tracks.get(remote_id) or {}).get("isrc")) and reader.landings[1]
+        ):
+            # R-1383. A LANDING RECORD THE LOG CANNOT READ IS NEVER NO LANDING.
+            # Any of them may have brought this track in, and a landed row is
+            # found by its ISRC, so a track carrying one waits, named, until
+            # every record reads; a track carrying none no landing could name.
+            landing_unread.append(names[key])
         elif why := _queued_elsewhere(reader, target, remote_id):
             # R-1385. ONE DOWNLOAD FOR THE LIBRARY, whichever pairs list it.
             awaiting.append(_with_reason(names[key], why))
@@ -1578,6 +1758,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     account_removes: tuple[str, ...] = ()
     account_order: tuple[str, ...] | None = None
     account_before: tuple[str, ...] = ()
+    order_unkept = False
     if short is None:
         # EVERY RELEASE OF A REMOVED TRACK GOES (U208), the one a tie linked
         # and any other of it the account holds.
@@ -1597,7 +1778,9 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             alias(one) for one in after if alias(one) not in unread_keys
         )
         wanted_keys = pair_merge.as_held(merged.order, set(firsts))
-        if wanted_keys != firsts:
+        # U231. ONLY A PAIR THAT KEEPS THE ACCOUNT'S ORDER has it written there.
+        order_unkept = wanted_keys != firsts and not _keeps_order(cfg, rekordbox, home)
+        if wanted_keys != firsts and not order_unkept:
             # A ROW'S RELEASES MOVE TOGETHER, in the order the account holds them.
             account_order = _with_unread_placed(
                 [one for key in wanted_keys for one in after if alias(one) == key], after
@@ -1622,6 +1805,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         acquire=acquire,
         awaiting=tuple(awaiting),
         on_hold=tuple(on_hold),
+        landing_unread=tuple(landing_unread),
         ambiguous=tuple(ambiguous),
         tied=tuple(tied),
         siblings=siblings,
@@ -1645,7 +1829,86 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         account_before=account_before,
         finishing=stopped_write.run_id if (folded or stopped is not None) else "",
         finishing_order=stopped is not None,
+        order_unkept=order_unkept,
     )
+
+
+def _pending(
+    reader: _Reader,
+    target: Target,
+    held: Any,
+    name: str,
+    write: pair_stopped.StoppedWrite,
+    now: tuple[str, ...],
+) -> None:
+    """Return when this plan may read a pending order's account as it stands, else hold the pair (U231).
+
+    SHOWN AS THE MOVES LEAVE IT, the order is read as landed, since no lag
+    can serve that order before every move landed: the plan goes on, and
+    U225's reading of the stopped write finishes the pair with nothing moved.
+
+    ANY OTHER READING MUST AGREE with one kept on the pair, taken after the
+    moves were sent and at least :data:`AGREE_AFTER` before this one, by a
+    run before this (Sitting 86 read two or three orders 3 s apart, 28
+    minutes after the moves). Until then the pair is held and this reading
+    kept for the next run; a reading equal to the one kept but too soon after
+    it keeps the older, so the next run can agree with it. Agreed, the plan
+    goes on: an order on the moves' path is a stopped write U225 finishes
+    from the side that led, any other the person's change, merged as theirs.
+
+    EXCEPT SHORT OF WHERE THE MOVES CAN HAVE LEFT IT (R-1394). The write
+    recorded how many moves the provider accepted and how many may have
+    reached it, so the account, unless a person moved it, stands at one of
+    the orders ``write.landed`` to ``write.sent`` moves leave. An agreed
+    reading on their path before ``write.sent`` moves is finished from only
+    when it stands at or past them: before ``write.landed`` it can only lag
+    them, however long it agrees (every move accepted is the case where
+    ``write.landed`` is all of them), and at a move whose landing is not
+    known it may be that lag too. Moved again from either, the remaining
+    moves land by position on the wrong tracks. Held, and the reading not
+    kept again.
+    """
+    if pair_stopped.shows(write.end, now):
+        return
+    assert write.moving_at is not None
+    # A FIRST SYNC BY HAND HAS NO RECORD to keep a reading on (R-1376), so it
+    # is held until the account shows where the moves leave it.
+    seen_at = (
+        placeholders.parse_hearted(held.seen_at)
+        if held is not None and held.seen is not None
+        else None
+    )
+    kept = seen_at is not None and seen_at >= write.moving_at and tuple(held.seen) == now
+    agreed = kept and _now() - seen_at >= AGREE_AFTER
+    if agreed:
+        at = pair_stopped.positions(write.start, write.target, now)
+        if not at or max(at) >= write.sent:
+            return
+        raise _settling(target.account_id, name, write.run_id, lag=True, write=write, at=max(at))
+    if not kept:
+        reader.see(target.account_id, now)
+    raise _settling(target.account_id, name, write.run_id, lag=False)
+
+
+def _now() -> datetime:
+    """Now, in UTC, which a pending order's readings are aged against (U231)."""
+    return datetime.now(UTC)
+
+
+def _keeps_order(cfg: config.Config, rekordbox: playlist_pair.Playlist, home: Any) -> bool:
+    """Whether this pair's account playlist is put in rekordbox's order (U231).
+
+    Only under the top folder :data:`ORDER_FOLDER`, the one played from, unless
+    ``outbound.pair_order_every_pair`` keeps every pair's.
+    """
+    if cfg.outbound.pair_order_every_pair:
+        return True
+    if rekordbox.playlist_id:
+        # UNDER THE FOLDER, never a playlist of its name at the root, which
+        # is its own top (round one's review).
+        return bool(rekordbox.ancestors) and rekordbox.top[1] == ORDER_FOLDER
+    path = tuple(getattr(home, "path", ()) or ())
+    return len(path) > 1 and path[0] == ORDER_FOLDER
 
 
 def _with_unread_placed(ordered: list[str], listed: Sequence[str]) -> tuple[str, ...]:
@@ -1926,6 +2189,9 @@ class Plan:
     #: U225. Runs' steps the plan could not read, each said, so a write that
     #: stopped part way in one of them was not looked for.
     stopped_unread: tuple[str, ...] = ()
+    #: R-1383. The session log's entries the plan could not read when it
+    #: looked for a landing, each said, or the log itself when it cannot be listed.
+    landings_unread: tuple[str, ...] = ()
 
     @property
     def digest(self) -> str:
@@ -2107,9 +2373,26 @@ def plan(
             matched=frozenset(reader.matched),
             listed_back=tuple(listed_back),
             stopped_unread=reader.stopped[1] if "stopped" in reader.__dict__ else (),
+            landings_unread=(
+                _landings_said(cfg, reader.landings[1]) if "landings" in reader.__dict__ else ()
+            ),
         )
     finally:
         rb_writer.close_db(db)
+
+
+def _landings_said(cfg: config.Config, unread: Sequence[Path]) -> tuple[str, ...]:
+    """The log's unread entries as a warning names them: the log itself, or each record (R-1383)."""
+    if session.log_unlisted(unread, cfg):
+        return (
+            f"the session log at {session.log_dir(cfg)}, which exists and cannot be listed "
+            f"by this account, and reads once this account may list it",
+        )
+    return tuple(
+        f"the record {Path(path).name} in {Path(path).parent}, which reads under the "
+        f"later build that wrote it, or is torn and is a defect to report"
+        for path in unread
+    )
 
 
 def _discovered(cfg: config.Config, reader: _Reader, db: Any, document) -> tuple[list, list]:
@@ -2427,6 +2710,8 @@ def _items(one: PairPlan) -> list[dict[str, Any]]:
         items.append(row("library", "awaiting", named))
     for named in one.on_hold:
         items.append(row("library", ON_HOLD_ACTION, named))
+    for named in one.landing_unread:
+        items.append(row("library", LANDING_UNREAD_ACTION, named))
     for named in one.unmatched:
         items.append(row("account", "unmatched", named))
     for named in one.ambiguous:
@@ -2499,6 +2784,8 @@ def payload(planned: Plan) -> dict[str, Any]:
             "awaiting": count("library", "awaiting"),
             # U221. A twin's tracks held for the author's choice.
             "on_hold": count("library", ON_HOLD_ACTION),
+            # R-1383. Tracks an unread landing record may have brought in.
+            "landing_unread": count("library", LANDING_UNREAD_ACTION),
             "unmatched": count("account", "unmatched"),
             "ambiguous": count("rekordbox", "ambiguous"),
             "unpaired": count("pairs", "unpair"),
@@ -2566,6 +2853,12 @@ def facts(planned: Plan) -> dict[str, Any]:
                 else ""
             )
             + f"order follows {lead}"
+            + (
+                f"; the account's order is kept only for pairs under {ORDER_FOLDER}, so "
+                f"it is left as it is there"
+                if one.order_unkept
+                else ""
+            )
             + (
                 f"; the account withheld {one.withheld.get('withheld', 0)} track(s), so "
                 f"nothing is removed or reordered there"
@@ -2637,6 +2930,12 @@ class Done:
     #: U226. The account adapter's record of each reading it judged this
     #: pair's writes by: its readings, its wait and its window's lag.
     read_backs: list[dict[str, Any]] = field(default_factory=list)
+    #: U231. The pair's order, sent and not yet read, which the write reads
+    #: once every pair is written; None once read, or for a pair with none.
+    settle: Settle | None = None
+    #: U231. Whether its order was read short of where its moves leave it,
+    #: so it is pending on the pair for a later sync.
+    pending: bool = False
 
     @property
     def wrote(self) -> bool:
@@ -2651,6 +2950,19 @@ class Done:
             or self.created
             or self.created_in_rekordbox
         )
+
+
+@dataclass
+class Settle:
+    """One pair's account order sent with no read back, waiting for the reading that decides it (U231)."""
+
+    one: PairPlan
+    steps: PairSteps
+    #: The order the moves leave the account playlist in.
+    end: tuple[str, ...]
+    #: When its last move was sent, or the moves began in an earlier command.
+    moved_at: datetime
+    rekordbox_after: tuple[playlist_pair.Row, ...] | None
 
 
 def _record(
@@ -2872,7 +3184,29 @@ STEP_ACCOUNT = "account"
 STEP_ORDERING = "ordering"
 #: U220. The pair's account order was refused part way, its message the value.
 STEP_ORDER_REFUSED = "order-refused"
+#: U231. The order's moves are about to be sent with no read back between
+#: them: when, the reading they were planned from and the order they leave
+#: (``pair_stopped.moving_step``), marked and carried before the first is sent,
+#: so no command of any run sends them again. And when every one was accepted.
+STEP_MOVING = "moving"
+STEP_MOVED = "moved"
 STEP_DONE = "done"
+
+#: U231. The rekordbox top folder whose pairs keep the account's order, the one
+#: played from, unless ``outbound.pair_order_every_pair`` keeps every pair's.
+ORDER_FOLDER = "GIG READY"
+
+#: U231. Seconds from an order's last move to the one reading that decides it.
+#: Spent on the other pairs' writes where there are any, and slept only for
+#: what is left. UNMEASURED as a fit: Sitting 86 read most moves back on the
+#: first reading, 18 on a second and 41 not after seven seconds, and some
+#: orders not after 28 minutes; what this window does not cover is pending.
+SETTLE_SECONDS = 30.0
+
+#: U231. How long before a reading a pending order's earlier reading must have
+#: been taken for the two to agree, since reads seconds apart served different
+#: orders 28 minutes after the moves (Sitting 86).
+AGREE_AFTER = timedelta(minutes=5)
 
 #: U220. The refusals an account order may end in that stop that pair alone:
 #: a read back or a reading the adapter would not trust, and the provider
@@ -2922,6 +3256,19 @@ class PairSteps:
             held_plan.carry(self.steps, self.key)
         except OSError as exc:
             raise steps_unwritten(self.steps.run_id, exc) from None
+
+    def carried(self, step: str) -> Any:
+        """One step of what this pair's steps carried past its run, or None (U231).
+
+        Read when the run's own steps do not hold it: a continue whose steps
+        file could not be read, or is gone, still finds the moves its order
+        sent in the record carried beside it, so it never sends them again.
+        """
+        if self.steps is None:
+            return None
+        from cratekit.core import held_plan
+
+        return held_plan.carried_step(self.steps.run_id, self.key, step)
 
     def let_go(self) -> None:
         """Let go of what this pair's steps carried past its run, once the pair is done (R-1372).
@@ -3132,6 +3479,10 @@ def apply_pair(
         finally:
             done.read_backs = list(remote.read_backs()[first:])
         if account_after is None:
+            if done.settle is not None:
+                done.settle.rekordbox_after = (
+                    tuple(rekordbox_after) if rekordbox_after is not None else None
+                )
             return done
     done.snapshot = _record(
         cfg, one, rekordbox_after=rekordbox_after, account_after=account_after
@@ -3166,6 +3517,48 @@ def _write_account(
         added = tuple(remote.add_tracks(playlist_id, one.account_adds))
         done.account_added = len(set(added))
     if one.account_order:
+        moving = steps.get(STEP_MOVING)
+        if not isinstance(moving, Mapping):
+            # ROUND TWO'S REVIEW: the run's steps unreadable or gone, the
+            # record carried beside them still says the moves went.
+            moving = steps.carried(STEP_MOVING)
+        if isinstance(moving, Mapping):
+            # U231. AN EARLIER COMMAND OF THIS RUN BEGAN SENDING THESE MOVES,
+            # and how many reached the provider before it stopped is not
+            # known: sent again from a reading, a move lands on whatever now
+            # stands at its position. So none is sent; the order is read once
+            # the other pairs are written, and pending if it has not landed.
+            end = moving.get(pair_stopped.TARGET)
+            began = placeholders.parse_hearted(moving.get(pair_stopped.AT))
+            done.settle = Settle(
+                one=one,
+                steps=steps,
+                end=tuple(str(x) for x in end) if isinstance(end, list) else (),
+                moved_at=began or _now(),
+                rekordbox_after=None,
+            )
+            return None
+        if steps.steps is None:
+            # U231, ROUND ONE'S REVIEW. MOVES SENT WITH NO READ BACK MUST BE
+            # RECORDED, or nothing tells a later sync they were sent, and it
+            # sends them again by position from a reading that lags them. A
+            # write that keeps no record sends no order; this pair alone
+            # stops, its additions and removals landed.
+            done.order_refused = refuse(
+                STEPS_UNWRITTEN,
+                f"the account order of {one.name or playlist_id} was not sent: this "
+                f"run's plan could not be held, so it keeps no record of its steps, and "
+                f"moves sent with no read back between them that no record names "
+                f"would be sent again by the next sync",
+                steps=(
+                    "make Cratekit's state directory writable, then run crate sync "
+                    "pair again and answer both gates over the plan it shows",
+                ),
+                origin=_ORIGIN,
+                detail={"account_id": playlist_id},
+            ).cause
+            done.name = one.name
+            return None
         # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
         # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
         # it stopped reads its moves as this write's: the order it starts
@@ -3201,14 +3594,53 @@ def _write_account(
         steps.carry()
         # U220. AN ORDER THIS RUN ALREADY SAW REFUSED moves nothing until
         # the adapter's reading agrees with the check's own listing of it.
+        # R-1394. NOR DOES ONE THAT FINISHES A STOPPED ORDER: the plan read
+        # the playlist where that order's moves left it, at or past what was
+        # sent, and a reading the adapter takes seconds later may still lag
+        # them, which its own check of what the playlist holds cannot see.
+        # Where this write also adds or removes, the listing no longer is
+        # the playlist, and the adapter's check of what it holds stands.
         expect = (
             tuple(account_listed)
-            if steps.has(STEP_ORDER_REFUSED) and account_listed is not None
+            if account_listed is not None
+            and (
+                steps.has(STEP_ORDER_REFUSED)
+                or (one.finishing_order and not (one.account_removes or one.account_adds))
+            )
             else None
         )
+
+        moves_sent: list[tuple[str, ...]] = []
+
+        def begun(
+            start: tuple[str, ...], end: tuple[str, ...]
+        ) -> Callable[[int, int], None]:
+            # U231. RECORDED AND CARRIED BEFORE THE FIRST MOVE IS SENT, so a
+            # continue or a later plan knows the moves went blind and never
+            # sends them again from a reading that may lag them.
+            at = timestamp()
+            steps.mark(STEP_MOVING, pair_stopped.moving_step(at=at, start=start, end=end))
+            steps.carry()
+            moves_sent.append(end)
+
+            def sending(sent: int, landed: int) -> None:
+                # R-1394. AND HOW FAR THEY CAN HAVE GOT, before each move is
+                # sent, so a later plan never finishes the order from a reading
+                # before the moves the provider accepted: one that cannot be
+                # recorded sends no further move.
+                steps.mark(
+                    STEP_MOVING,
+                    pair_stopped.moving_step(
+                        at=at, start=start, end=end, sent=sent, landed=landed
+                    ),
+                )
+                steps.carry()
+
+            return sending
+
         try:
-            account_after = tuple(
-                remote.order_tracks(playlist_id, one.account_order, expect=expect)
+            sent = tuple(
+                remote.order_tracks(playlist_id, one.account_order, expect=expect, begun=begun)
             )
         except jobs.Parked:
             raise
@@ -3223,12 +3655,74 @@ def _write_account(
             done.order_refused = exc.cause
             done.name = one.name
             return None
+        if not moves_sent:
+            # NOTHING MOVED: the adapter's one judged reading already stood
+            # in the asked order, so it is the playlist as it stands.
+            return sent
+        steps.mark(STEP_MOVED, timestamp())
+        steps.carry()
         done.account_ordered = True
+        done.settle = Settle(
+            one=one, steps=steps, end=sent, moved_at=_now(), rekordbox_after=None
+        )
+        return None
     elif account_listed is not None and not (one.account_removes or one.account_adds):
         account_after = tuple(account_listed)
     else:
         account_after = tuple(remote.playlist_tracks(playlist_id))
     return account_after
+
+
+def _settle(cfg: config.Config, done: Sequence[Done]) -> None:
+    """Read each order sent this command once, after its window, and finish or leave it pending (U231).
+
+    RUN ONCE EVERY PAIR IS WRITTEN, so each order's window from its last
+    move is spent on the other pairs' writes and only what is left of it is
+    slept, earliest first. One judged reading each (``settled_order``).
+    Read as the moves leave it: the pair's snapshot is recorded and the pair
+    is done, as a pair whose writes all read back always was. Anything else,
+    a lag, another order or a reading refused: the pair is left pending, its
+    snapshot unmoved, its reading kept on the pair for the next plan to agree
+    with, and its carried record (R-1372) keeps the moves it sent.
+    """
+    from cratekit.modules.outbound import account as outbound_account
+    from cratekit.modules.outbound import pairs
+
+    settling = sorted((one for one in done if one.settle is not None), key=lambda d: d.settle.moved_at)
+    if not settling:
+        return
+    remote = outbound_account.resolve(cfg)
+    for one in settling:
+        settle = one.settle
+        assert settle is not None
+        left = SETTLE_SECONDS - (_now() - settle.moved_at).total_seconds()
+        first = len(remote.read_backs())
+        reading: tuple[str, ...] | None
+        try:
+            reading = remote.settled_order(settle.one.target.account_id, wait=max(0.0, left))
+        except jobs.Parked:
+            raise
+        except CratekitError as exc:
+            if exc.cause.reason not in ORDER_REFUSALS:
+                raise
+            reading = None
+        finally:
+            one.read_backs.extend(remote.read_backs()[first:])
+        one.settle = None
+        if reading is not None and tuple(reading) == tuple(settle.end):
+            one.snapshot = _record(
+                cfg,
+                settle.one,
+                rekordbox_after=settle.rekordbox_after,
+                account_after=reading,
+            )
+            settle.steps.mark(STEP_DONE, one.account_id or settle.one.target.key)
+            settle.steps.let_go()
+            continue
+        one.pending = True
+        one.name = settle.one.name
+        if reading is not None:
+            pairs.PairStore(cfg).see(settle.one.target.account_id, reading, at=timestamp())
 
 
 def _warnings(planned: Plan) -> list[dict[str, str]]:
@@ -3448,6 +3942,32 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                         )
                         for one in finishing
                     )
+                ),
+            }
+        )
+    if planned.landings_unread:
+        waiting = [(one, named) for one in planned.pairs for named in one.landing_unread]
+        said.append(
+            {
+                "code": LANDING_UNREAD,
+                "message": (
+                    "the session log could not be read whole, so a landing it records may "
+                    "have brought in a track the library lacks, and "
+                    + (
+                        f"{len(waiting)} account track(s) that carry an ISRC were held and "
+                        f"not queued until it reads: "
+                        + "; ".join(
+                            f"{one.name!r}: {named.artist or '?'} - {named.title or '?'}"
+                            for one, named in waiting
+                        )
+                        if waiting
+                        # THE SCAN WAS READ AND NOTHING WAITED ON IT (round one's
+                        # finding 7): said as that, never as zero tracks held.
+                        else "no track this plan would queue waited on it"
+                    )
+                    + ". Unread: "
+                    + "; ".join(planned.landings_unread)
+                    + ". This verb never moves or repairs a record"
                 ),
             }
         )
@@ -4215,7 +4735,9 @@ def _expected(planned: Plan, steps: Any) -> tuple[int, int]:
             # Its listing is the check's now, as any paired playlist's is,
             # with the unpaged read beside it (U226, round one's review).
             check_calls += pair_calls.judged_calls(0)
-        write_calls += pair_calls.pair_write(one, made_before=made)
+        write_calls += pair_calls.pair_write(
+            one, made_before=made, sent=_steps_of(steps, one).has(STEP_MOVING)
+        )
     return check_calls, write_calls
 
 
@@ -4330,7 +4852,8 @@ def _unordered(
             f"every other write of these, and recorded each step it took, so "
             f"continuing the run tries their order again with no new plan and no "
             f"new answer, and moves nothing until its reading agrees with the "
-            f"check's; first do what each refusal above asks, then: "
+            f"check's, while an order whose moves had begun is only read, never "
+            f"moved again; first do what each refusal above asks, then: "
             + shlex.join(["crate", "--run", run_id, *(argv or VERB_PATH)])
         )
         detail.update({"run_id": run_id, "finished": finished})
@@ -4535,6 +5058,8 @@ def sync_pair(ctx) -> Envelope:
                             steps=_steps_of(steps, one),
                         )
                     )
+                # U231. EVERY ORDER SENT IS READ ONCE, after the others' writes.
+                _settle(cfg, done)
             finally:
                 calls["write"] = _spent() - before
         except jobs.Parked as exc:
@@ -4543,6 +5068,21 @@ def sync_pair(ctx) -> Envelope:
             raise jobs.Parked(
                 _stopped(exc.cause, planned, steps, run_id=run_id, argv=ctx.run.argv, cfg=cfg)
             ) from None
+    pending = [one for one in done if one.pending]
+    if pending:
+        warnings.append(
+            {
+                "code": PENDING,
+                "message": (
+                    f"the account order of {len(pending)} pair(s) was sent and the "
+                    f"provider does not yet serve it, so each is pending: every track "
+                    f"is on the account, rekordbox's order is untouched, and a later "
+                    f"crate sync pair finishes it once the provider's readings agree, "
+                    f"moving nothing again: "
+                    + "; ".join(one.name or one.account_id for one in pending)
+                ),
+            }
+        )
     unordered = [one for one in done if one.order_refused is not None]
     if unordered:
         # U220. EVERY OTHER PAIR WAS WRITTEN, and the run stops here, held, so
@@ -4618,12 +5158,15 @@ def sync_pair(ctx) -> Envelope:
         # many readings it took and how long it waited, so an attended
         # sitting reads how far the provider's read lagged.
         "read_backs": [record for d in done for record in d.read_backs],
+        # U231. The pairs whose order was sent and is pending.
+        "pending": [d.account_id for d in done if d.pending],
     }
     answered = {"rekordbox": on_rekordbox, "the account": on_account}
     sides = [side for side, on in answered.items() if on]
     skipped = [side for side, on in answered.items() if not on]
     message = (
-        f"{len(done)} pair(s) synced on {' and '.join(sides)}"
+        f"{len(done) - len(pending)} pair(s) synced on {' and '.join(sides)}"
+        + (f" and {len(pending)} pending" if pending else "")
         + (f" ({len(finished)} more finished earlier in this run)" if finished else "")
         + (
             f", {len(totals['created_playlists'])} account playlist(s) made"
@@ -4666,6 +5209,13 @@ __all__ = [
     "STEP_MAKING",
     "STEP_ORDERING",
     "STEP_ORDER_REFUSED",
+    "STEP_MOVING",
+    "STEP_MOVED",
+    "SETTLE_SECONDS",
+    "AGREE_AFTER",
+    "ORDER_FOLDER",
+    "PENDING",
+    "SETTLING",
     "ORDER_REFUSALS",
     "STEP_QUEUED",
     "STEP_REKORDBOX",
@@ -4684,6 +5234,8 @@ __all__ = [
     "NOT_DISCOVERED",
     "ON_HOLD",
     "ON_HOLD_ACTION",
+    "LANDING_UNREAD",
+    "LANDING_UNREAD_ACTION",
     "RELEASED",
     "TIME_UNKNOWN",
     "Done",
