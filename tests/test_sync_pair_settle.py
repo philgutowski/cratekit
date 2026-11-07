@@ -350,3 +350,160 @@ def test_the_config_key_keeps_the_account_order_of_every_pair(world, cfg, monkey
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope
     assert world.account.playlists[account_id] == _ids("3", "1", "2")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round one's review
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_write_that_keeps_no_record_sends_no_order(world, owed, cfg, monkeypatch):
+    """R1 of round one: moves sent with no read back must be recorded, or a later sync sends them again."""
+    _opener, account_id = owed
+    real_hold = pair_cli._hold
+    monkeypatch.setattr(pair_cli, "_hold", lambda *args, **kwargs: "the state directory is full")
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert world.account.ordered == [], "an order went out with nothing to record it by"
+    assert world.account.playlists[account_id] == _ids("1", "2", "3", "4")
+    assert stopped["cause"]["reason"] == pair_cli.STEPS_UNWRITTEN
+    assert "GIG READY Opener" in stopped["cause"]["message"]
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == tuple(_ids("1", "2", "3", "4"))
+    # Once a plan can be held again, the order is sent once and recorded.
+    monkeypatch.setattr(pair_cli, "_hold", real_hold)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert len(world.account.ordered) == 1
+    assert pair_cli.PENDING in _codes(envelope)
+
+
+def test_two_readings_agree_only_once_minutes_apart(world, owed, cfg, monkeypatch):
+    """R4 of round one: the agreement rule's gap, AGREE_AFTER, is what a later run waits out."""
+    opener, account_id = owed
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    code, envelope = sync()
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    kept = pairs.PairStore(cfg).get(account_id)
+    assert kept is not None and kept.seen == tuple(reached)
+    # Read again at once, it agrees too soon: held, and the older reading kept.
+    code, envelope = sync()
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    again = pairs.PairStore(cfg).get(account_id)
+    assert again is not None and again.seen_at == kept.seen_at, "a too soon reading replaced the older"
+    assert world.account.playlists[account_id] == reached
+    # Minutes on, the same reading agrees, and the stopped write is finished.
+    from datetime import UTC, datetime
+
+    later = pair_cli.AGREE_AFTER + timedelta(seconds=1)
+    monkeypatch.setattr(pair_cli, "_now", lambda: datetime.now(UTC) + later)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids("4", "3", "1", "2"), (
+        envelope["warnings"], pairs.PairStore(cfg).get(account_id)
+    )
+    assert world.held(opener) == ["4", "3", "1", "2"]
+
+
+def test_a_reading_kept_from_before_the_moves_is_no_agreement(world, owed, cfg, monkeypatch):
+    """R4 of round one: a reading kept for an earlier write does not vouch for this one's."""
+    _opener, account_id = owed
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    # A reading equal to this one, kept before the moves began.
+    pairs.PairStore(cfg).see(account_id, reached, at="2026-01-01T00:00:00+00:00")
+    code, envelope = sync()
+    assert pair_cli.LEFT_OUT in _codes(envelope)
+    assert world.account.playlists[account_id] == reached
+
+
+def test_the_settle_window_counts_the_time_spent_on_other_writes(world, owed, cfg, monkeypatch):
+    """R4 of round one: only what is left of the window is waited."""
+    from datetime import UTC, datetime
+
+    start = datetime(2026, 11, 6, 12, 0, tzinfo=UTC)
+    ticks = iter(range(0, 10_000, 20))
+    monkeypatch.setattr(pair_cli, "_now", lambda: start + timedelta(seconds=next(ticks)))
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.account.settle_waits
+    assert world.account.settle_waits[0] <= pair_cli.SETTLE_SECONDS - 20
+
+
+def test_a_settle_reading_refused_for_another_reason_stops_the_write(world, owed, monkeypatch):
+    """R4 of round one: only an order's own refusals leave it pending; a rejected session still stops."""
+    from cratekit.core.cause import Remedy
+
+    def rejected(playlist_id, *, wait=0.0):
+        raise refuse(
+            "credential-missing",
+            "the streaming provider rejected the session",
+            remedy=Remedy.REAUTHENTICATE_PROVIDER,
+            scope=Scope.ITEM,
+            origin=("test", "settle"),
+        )
+
+    monkeypatch.setattr(world.account, "settled_order", rejected)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert stopped["cause"]["reason"] == "credential-missing"
+
+
+def test_a_root_playlist_named_gig_ready_is_not_under_gig_ready(world, cfg):
+    """R6 of round one: the scope is the folder, not a playlist of that name."""
+    root = world.playlist("GIG READY", "1", "2", "3")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    _reordered(world, root, "3", "1", "2")
+    plan = plan_only()
+    assert _items(plan, "account", "order") == []
+
+
+def test_a_pending_run_does_not_count_its_pending_pair_as_synced(world, owed):
+    """R7 of round one: the headline says pending, not synced, for a pair whose snapshot did not move."""
+    _opener, account_id = owed
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    said = _said(envelope, pair_cli.WRITTEN)
+    assert said.startswith("0 pair(s) synced"), said
+    assert "1 pending" in said
+
+
+def test_the_config_key_is_true_or_false():
+    problems = config._validate_pair_order_every_pair({"outbound": {"pair_order_every_pair": "yes"}})
+    assert problems and config.PAIR_ORDER_EVERY_PAIR_KEY in problems[0]
+    assert config._validate_pair_order_every_pair({"outbound": {"pair_order_every_pair": True}}) == []
+    assert config._validate_pair_order_every_pair({}) == []
+
+
+@pytest.mark.parametrize(
+    "seen",
+    [{"order": "t1", "at": "2026-11-06T00:00:00+00:00"}, {"order": ["t1", ""], "at": "x"}, {"order": ["t1"]}],
+)
+def test_a_reading_kept_on_a_pair_that_is_not_an_order_refuses_the_store(cfg, seen):
+    import json
+
+    from cratekit.core.cause import CratekitError
+
+    store = pairs.PairStore(cfg)
+    store.mark("acc", "rb", name="Mine")
+    raw = json.loads(store.path.read_text())
+    raw["pairs"]["acc"]["seen"] = seen
+    store.path.write_text(json.dumps(raw))
+    with pytest.raises(CratekitError):
+        store.get("acc")
+
+
+def test_a_pair_document_from_before_u231_reads_with_no_reading_kept(cfg):
+    store = pairs.PairStore(cfg)
+    store.mark("acc", "rb", name="Mine")
+    held = store.get("acc")
+    assert held is not None and held.seen is None and held.seen_at == ""

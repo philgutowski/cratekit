@@ -518,7 +518,9 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   untouched. The next `sync pair` finishes it when Tidal shows the new order,
   and otherwise leaves the pair out until two readings at least 5 minutes
   apart agree. Nothing is moved again meanwhile, and a continue of a stopped
-  run never resends a move.
+  run only reads the order. Once two readings agree on an order part way
+  there, the rest of a stopped order is sent from that reading. A run whose
+  plan cannot be kept sends no order.
 - A fresh `sync pair` after a write that stopped part way through putting a
   Tidal playlist in order finishes that order, from the side that led it,
   rather than reading its half done order as your edit. The gate names the

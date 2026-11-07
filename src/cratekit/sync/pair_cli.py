@@ -441,8 +441,11 @@ def _settling(account_id: str, name: str, run_id: str, *, lag: bool) -> Cratekit
     it, which only a read that lags can serve.
     """
     said = (
-        "every move run {run}'s write sent was accepted, and the provider still "
-        "serves the playlist short of the order they leave, so its reads still lag them"
+        "every move run {run}'s write sent was accepted, and the playlist still reads "
+        "as one of the orders on their way, short of the order they leave: a read that "
+        "lags them serves that, and so would a reorder by hand back onto their way, "
+        "which leaves the pair held until the playlist is moved off it in the "
+        "provider's player or the pair is released"
         if lag
         else "run {run}'s write sent its order's moves and no two readings of the "
         "playlist since agree on where they left it"
@@ -1663,7 +1666,9 @@ def _keeps_order(cfg: config.Config, rekordbox: playlist_pair.Playlist, home: An
     if cfg.outbound.pair_order_every_pair:
         return True
     if rekordbox.playlist_id:
-        return rekordbox.top[1] == ORDER_FOLDER
+        # UNDER THE FOLDER, never a playlist of its name at the root, which
+        # is its own top (round one's review).
+        return bool(rekordbox.ancestors) and rekordbox.top[1] == ORDER_FOLDER
     path = tuple(getattr(home, "path", ()) or ())
     return bool(path) and path[0] == ORDER_FOLDER
 
@@ -3217,6 +3222,27 @@ def _write_account(
                 rekordbox_after=None,
             )
             return None
+        if steps.steps is None:
+            # U231, ROUND ONE'S REVIEW. MOVES SENT WITH NO READ BACK MUST BE
+            # RECORDED, or nothing tells a later sync they were sent, and it
+            # sends them again by position from a reading that lags them. A
+            # write that keeps no record sends no order; this pair alone
+            # stops, its additions and removals landed.
+            done.order_refused = refuse(
+                STEPS_UNWRITTEN,
+                f"the account order of {one.name or playlist_id} was not sent: this "
+                f"run's plan could not be held, so it keeps no record of its steps, and "
+                f"moves sent with no read back between them that no record names "
+                f"would be sent again by the next sync",
+                steps=(
+                    "make Cratekit's state directory writable, then run crate sync "
+                    "pair again and answer both gates over the plan it shows",
+                ),
+                origin=_ORIGIN,
+                detail={"account_id": playlist_id},
+            ).cause
+            done.name = one.name
+            return None
         # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
         # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
         # it stopped reads its moves as this write's: the order it starts
@@ -4758,7 +4784,8 @@ def sync_pair(ctx) -> Envelope:
     sides = [side for side, on in answered.items() if on]
     skipped = [side for side, on in answered.items() if not on]
     message = (
-        f"{len(done)} pair(s) synced on {' and '.join(sides)}"
+        f"{len(done) - len(pending)} pair(s) synced on {' and '.join(sides)}"
+        + (f" and {len(pending)} pending" if pending else "")
         + (f" ({len(finished)} more finished earlier in this run)" if finished else "")
         + (
             f", {len(totals['created_playlists'])} account playlist(s) made"

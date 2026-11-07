@@ -82,13 +82,19 @@ landed, at 5,794 calls against a forecast of 4,142. So:
   (`UserPlaylist._reparse`, a GET of the playlist for its next tag). The
   adapter never asks for it and the provider counts it: the forecast counts
   one per add chunk, removal request and move (`pair_calls.REPARSE`).
-- **Once a move is sent blind, it is never sent again from a reading.** The
-  write marks and carries a `moving` step before the first move; a continue
-  of the run only reads the order, and a later plan holds the pair until the
-  account shows the order the moves leave, or two readings at least five
-  minutes apart agree. When every move was accepted, an agreed reading on
-  their path short of their end is still a lag and stays held: moving from
-  it would scramble the playlist.
+- **A move sent blind is not sent again from a reading that has not been
+  agreed.** The write marks and carries a `moving` step before the first
+  move, and a write that keeps no record (its plan could not be held) sends
+  no order at all, since nothing would tell the next sync its moves went; a
+  continue of the run only reads the order, and a later plan holds the pair
+  until the account shows the order the moves leave, or two readings at
+  least five minutes apart agree. When every move was accepted, an agreed
+  reading on their path short of their end is still a lag and stays held:
+  moving from it would scramble the playlist. When a write stopped part way,
+  an agreed reading on the path is finished from, as U225 finishes a stopped
+  write, so a lag that outlasts the five minutes and agrees with itself
+  would have the rest of the moves sent by position from it: the one
+  remaining exposure, recorded as a residual.
 
 ## Still unmeasured
 
