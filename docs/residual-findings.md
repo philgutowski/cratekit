@@ -46616,3 +46616,69 @@ nothing either way.
 **Closes when:** every order write is held to the plan's reading, or a
 measurement shows the provider never serves an older order to a reading
 after the plan's outside a stopped write. Ledger only until driven.
+
+---
+
+## R-1422. Another pair's finished job holds a track it never brought in, so no pair queues that track again
+
+**Found:** at the review of #600, R-1385, 2026-11-07.
+
+**The mechanism.** Since R-1385, `_Reader.held_by_jobs` in `src/cratekit/sync/pair_cli.py` reads every `sync pair` intake job on the library that did not fail or cancel, a SUCCEEDED or BLOCKED one included, as holding its tracks for every pair. A pair's own jobs were read that way before, so a finished job whose report left a track neither owned nor landed (missing, offered, suppressed, or a landed file deleted since) names it `awaiting` on every later sync, now for every pair listing it, and nothing queues it again.
+
+**Measured cost.** Driven by round one's review with the job's reports stubbed: a SUCCEEDED job of another pair reporting `t40` missing kept `t40` awaiting "queued for Another" on every sync. The real producer is an ordinary intake run: `handle` in `src/cratekit/intake/cli.py` reports a track the provider cannot serve as `missing` and the job still succeeds; that run was not driven to the stall. `crate job cancel` does not free it, since a finished job is returned unchanged (round two's review). Read as the conservative side of the card, since not counting a finished job would download again a track it left waiting to land.
+
+**Closes when:** a pair job's track is read as held only while the job is unfinished or its report says the track was downloaded and waits to land. Ledger only: the warning names every such track and the pair whose job holds it, and nothing is downloaded twice.
+
+---
+
+## R-1423. A mutation row reused by the driver's resume keeps the surface, description and pairing it was stored with, not the row file's
+
+**Found:** at the mutation table of #600, R-1385, 2026-11-07.
+
+**The mechanism.** `measure_batch` in `scripts/mutate.py` reuses a stored row under `--resume` when its fingerprint matches, and the fingerprint covers the id, file, old text, new text and kind only, as it should, since nothing else changes the measurement. But the reused result is rebuilt whole from the sidecar, `RowResult(**cached)`, so the row file's current `surface`, `description` and `pairs_with` are dropped for what the earlier run stored.
+
+**Measured cost.** R-1385 read two zero rows, M3 and M5, as maintainer facing in its row file at 64ebdc11 and ran the driver with `--resume`: the table at 9c564d02 still listed both as user facing, each "USER FACING ZERO WITH NO COMPOSITE", with their old descriptions. The two rows were taken out of the sidecar and measured again. A row reclassified or given a composite and then resumed reads as the opposite of what its author wrote, in either direction: a row reclassified as user facing would lose the composite it now owes.
+
+**Closes when:** a reused row takes its counts from the sidecar and its surface, description and pairing from the row file, with a test that resumes a row whose surface changed. Ledger only; the workaround is a run without `--resume` or the row's entry removed from the sidecar.
+
+---
+
+## R-1424. Five tests far from one another each reddened one mutation driver run's null control or baseline on one cloud container, and each passed alone
+
+**Found:** at the mutation table of #600, R-1385, 2026-11-07.
+
+**The mechanism.** Not traced. `scripts/mutate.py` runs the full suite under `-n auto` for its baseline and its null control, and on the container that built R-1385 one test failed in most runs, a different one each time, none in the card's area, each green when run alone straight after. The driver rightly refuses such a batch, so a table needs as many runs as it takes for one to come up clean.
+
+**Measured cost.** Eight driver runs finished on 2026-11-07, three valid, and one more was lost to a container restart. The deaths, each once:
+`tests/test_sync_land.py::test_a_fresh_pass_never_reuses_another_lists_download_job` (passed alone twice),
+`tests/test_sync_pair_stopped_order.py::test_a_stopped_write_a_fresh_sync_finished_is_left_behind_by_the_snapshot` (alone three times and with its file),
+`tests/test_sync_bandcamp_native.py::test_one_new_puls_release_and_one_owned_land_one_batch_filed_under_its_label` (alone twice),
+`tests/test_export_set.py::test_the_archive_prefixes_records_and_files_it_in_a_year_folder_made_once` (alone once),
+`tests/test_outbound_workers.py::test_new_playlist_does_not_hide_a_record_the_crate_already_has`, in the baseline (alone once).
+The last three came after `main` was merged in at c2e3d056, on runs that measured one row; R-1385's M7 was left at its pre-merge number after three of them. `cloud_battery.py compare` at the merged head saw none of the five fail. R-591 and R-1164 are earlier tests of the same kind.
+
+**Closes when:** the five are run under `-n auto` with the full suite until each fails again and its cause is named, or the container's load is shown to be the cause and the driver says so. Ledger only until a sixth turns up or one fails twice.
+
+---
+
+## R-1425. The sync pair awaiting warning counts each pair's listing of a track as a track, in two sentences joined like its rows
+
+**Found:** at the review of #600, R-1385, 2026-11-07.
+
+**The mechanism.** `_warnings` in `src/cratekit/sync/pair_cli.py` counts awaiting rows, one per pair listing the track, and calls them tracks, so two pairs listing `t40` read "2 account track(s)" over one track and one job. Since R-1385 the warning has two sentences, what a job holds and what another pair of this sync is to queue, joined with the same "; " as the rows inside each. And `if here:` before the second sentence kills no test: a warning of only the first kind would otherwise gain an empty second sentence.
+
+**Measured cost.** Driven by round two's review: the count and the join read as above; every sentence is true. The `if here:` mutation passed the sync tests and added no sync failure to the full suite.
+
+**Closes when:** the warning counts distinct tracks, separates its sentences from its rows, and a test pins a warning holding only tracks a job holds. Ledger only.
+
+---
+
+## R-1426. Two pairs listing two releases of one recording still queue it twice in one sync pair command
+
+**Found:** at the review of #600, R-1385, 2026-11-07.
+
+**The mechanism.** R-1385 keeps a track queued once by its remote id: `_Reader.asked` and `_Reader.held_by_jobs` in `src/cratekit/sync/pair_cli.py` are keyed by the account's track id. Two pairs listing two releases of one recording, two ids carrying one ISRC, each plan an `acquire`, and so does a pair beside another pair's job holding the other release.
+
+**Measured cost.** Driven by round one's review: pair A listing `t40` and pair B listing `t41`, both coded `USZZZ2600040`, queued two jobs in one command with no awaiting row. Whether the second job downloads a second copy or resolves owned by the first file's ISRC when it runs was not driven. `main` behaves the same.
+
+**Closes when:** the plan also keys what is asked and held by ISRC, as U208 aliases releases by ISRC within one pair. Ledger only until a second copy of one recording is seen in the library.

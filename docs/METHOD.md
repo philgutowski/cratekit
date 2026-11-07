@@ -596,9 +596,42 @@ finding left that holds the merge; the mutation table is measured to the
 card's size; the record, the residuals and the owed attended cards are
 filed; and the docs are updated wherever behaviour changed (`docs/GUIDE.md`
 and `docs/cutover.md` when a workflow's state changes, `docs/solutions/` when
-a trap cost real time). Two fix rounds that do not reach done end as the
+a trap cost real time), as Docs always current below says. Two fix rounds that do not reach done end as the
 merge bar says, what is still open filed as a residual, with one question on
 the card for Phillip about what is blocking.
+
+## Docs always current, decided by Phillip on 2026-11-07
+
+Phillip asked for every doc to be kept up to date, always. A doc that says
+what the code no longer does is a defect the change made, and it is the
+author's to fix in the same pull request, never filed for later.
+
+**What counts as a doc.** `README.md`; everything under `docs/` a person or a
+session reads for how things are now: `GUIDE.md`, `cutover.md`,
+`adapters.md`, `DEVELOPING.md`, `BOARD.md`, `HANDOFF.md`, `vendoring.md`,
+`METHOD.md`, `METHOD-local.md`, `solutions/`; `CONCEPTS.md`; `CLAUDE.md`;
+the skills and agents under `.claude/`; and the text the tool itself shows, a
+verb's help, its docstring where help is drawn from it, a gate's wording and
+a refusal's message. `docs/history/`, `docs/plans/`, `docs/restart/`, the
+ledger and the mutation tables are records of what was true when written and
+are never rewritten to match.
+
+**The rule.**
+1. Before the record, grep the docs above for the verb, the config key, the
+   message and the behaviour the change touched, and correct every line it
+   made untrue, an example, a count or a default included. A new verb, key,
+   flag or behaviour a person can see goes into `GUIDE.md` and, where it
+   changes setup, `README.md`.
+2. A doc found stale for a reason this change did not cause is corrected in
+   the same branch when it sits in a doc the branch already edits, and is
+   otherwise left for the next docs sweep card, named in the record.
+3. The record carries a `Docs` line naming each doc corrected, or `none,
+   because` and the reason, so a reviewer reads the claim rather than
+   trusting it.
+4. Fable's review reports a doc the branch made untrue, quoting the line and
+   what the code now does. It is fixed in the fix round, not filed as a
+   residual: the merge bar's floor still decides what holds a merge of code,
+   and this rule is part of a card being done.
 
 ## Local and attended work, releases
 

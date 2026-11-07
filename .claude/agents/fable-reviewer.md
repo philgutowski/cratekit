@@ -42,6 +42,11 @@ Hunt in this order, since each one has found a shipped defect here:
 5. A clean report over state the tool could not read, a declared write it
    never performs, and a path that writes or deletes with no gate.
 6. Anything that could write a beat grid, in any container. That is absolute.
+7. A doc the branch made untrue, by METHOD's Docs always current: grep the
+   docs it lists for the verb, key and message the diff touched, and quote
+   each line that no longer holds beside what the code now does. Report it
+   as DOCS, neither BLOCKING nor RESIDUAL: the author fixes it in the fix
+   round.
 
 **How to report.** One table, then one line per row. Each row: the finding,
 the input you drove to reach it, the user facing cost, and your verdict under

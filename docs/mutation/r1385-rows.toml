@@ -1,0 +1,151 @@
+name = "r1385"
+pass_kind = "light"
+
+# Rows target the code R-1385 added to src/cratekit/sync/pair_cli.py: the
+# plan's reads of every pair's jobs and of its own asks, their place beside
+# the twin's hold, the reason and warning, the apply time check, and one
+# sampled guard of pair_jobs that the widened read sits behind.
+
+[[rows]]
+id = "M1_no_job_holds_anything"
+description = "_Reader.held_by_jobs: read no job's tracks, so every track a job holds is queued again, a pair's own included"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        return {remote_id: tuple(held) for remote_id, held in found.items()}'''
+new = '''        return {}'''
+
+[[rows]]
+id = "M2_other_jobs_not_asked"
+description = "_queued_elsewhere: ask no other pair's job, so a track another pair's pending job holds is queued again (the card's second scenario)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''    for source, name in reader.held_by_jobs.get(remote_id, ()):'''
+new = '''    for source, name in ():'''
+
+[[rows]]
+id = "M3_own_job_guard"
+description = "_queued_elsewhere: read a pair's own job as another's; unreachable while plan_pair asks the pair's own jobs first, so only a reordering of those checks reaches it, and M9 measures the check that shadows it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        if source != target.account_id:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "M4_plan_not_asked"
+description = "_queued_elsewhere: ask nothing of this plan, so two pairs listing one lacking track queue it twice (the card's first scenario)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''    asked = reader.asked.get(remote_id)'''
+new = '''    asked = None'''
+
+[[rows]]
+id = "M5_own_ask_guard"
+description = "_queued_elsewhere: read a pair's own ask as another pair's; unreachable while plan() plans each pair once, so only a caller planning a pair twice reaches it, and M6 measures the registry it refines"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''    if asked is not None and asked[0] != target.key:'''
+new = '''    if asked is not None:'''
+
+[[rows]]
+id = "M6_ask_not_registered"
+description = "plan_pair: register nothing this pair asks to acquire, so a later pair of the plan queues it again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        reader.asked.setdefault(remote_id, (target.key, name))'''
+new = '''        pass'''
+
+[[rows]]
+id = "M7_hold_after_elsewhere"
+description = "plan_pair: ask another pair's job before the twin's hold, so a twin's held track is named awaiting and its choice lost"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        elif held_for_choice(held, remote_id, dates):'''
+new = '''        elif why := _queued_elsewhere(reader, target, remote_id):
+            awaiting.append(_with_reason(names[key], why))
+        elif held_for_choice(held, remote_id, dates):'''
+
+[[rows]]
+id = "M8_own_reads_every_job"
+description = "_queued: read every pair's job as this pair's own, so another pair's job is named with no pair and asked before a twin's hold"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        if any(source == account_id for source, _name in held)'''
+new = '''        if held'''
+
+[[rows]]
+id = "M9_own_reads_no_job"
+description = "_queued: read none of this pair's own jobs, so its own queued track is named for no pair or held on a twin"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        if any(source == account_id for source, _name in held)'''
+new = '''        if False'''
+
+[[rows]]
+id = "M10_reason_dropped"
+description = "plan_pair: name a track another pair holds awaiting with no reason, so the gate never says which pair holds it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''            awaiting.append(_with_reason(names[key], why))'''
+new = '''            awaiting.append(names[key])'''
+
+[[rows]]
+id = "M11_name_fallback"
+description = "_Reader.held_by_jobs: no fallback to the account playlist for a job naming no playlist, so its reason names nothing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''            name = str(payload.get(intake_cli.PLAYLIST_NAME) or "") or source'''
+new = '''            name = str(payload.get(intake_cli.PLAYLIST_NAME) or "")'''
+
+[[rows]]
+id = "M12_check_reads_no_job"
+description = "check: read no job at apply time, so a job another sync queued since the plan is queued again beside it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''            for job in pair_jobs(cfg, store)
+            for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
+        }'''
+new = '''            for job in ()
+            for item in (job.payload or {}).get(intake_cli.TRACKS) or {}
+        }'''
+
+[[rows]]
+id = "M13_warning_unsplit"
+description = "_warnings: say every awaited track was queued, so a skip that queued nothing is reported as queued (round one's finding)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        before = [row for row in awaiting if not row.reason.startswith(QUEUED_HERE)]'''
+new = '''        before = awaiting'''
+
+[[rows]]
+id = "M14_warning_here_dropped"
+description = "_warnings: never say a track another pair of this sync is to queue"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        if here:
+            parts.append('''
+new = '''        if False:
+            parts.append('''
+
+[[rows]]
+id = "M15_failed_jobs_hold"
+description = "pair_jobs: read a failed or cancelled job as holding its tracks, so a track whose download failed is never queued again (sampled guard)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_hold.py", "tests/test_sync_twins_hold.py", "tests/test_sync_twins.py", "tests/test_sync_pair_discover.py", "tests/test_sync_pair_back.py", "tests/test_sync_pair_unread.py", "tests/test_intake_land_twins.py"]
+old = '''        and job.state not in (jobs.JobState.FAILED, jobs.JobState.CANCELLED)
+    )'''
+new = '''    )'''

@@ -161,6 +161,55 @@ def test_a_held_track_another_account_playlist_landed_is_added_and_the_rest_stay
     assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "9"]
 
 
+#: Sorts before the twin, so a sync of every pair plans it first.
+WARM = "acc-amber"
+WARM_NAME = "Warmup"
+
+
+def _warmup(world, *, sync: bool) -> str:
+    """A plain pair, ``Warmup``, listing row one and t22, a track the twin holds."""
+    world.playlist(WARM, WARM_NAME, ["t1", "t22"], folder="")
+    made = world.make(WARM_NAME)
+    world.rekordbox_add(made, "1")
+    if sync:
+        code, envelope = sync_pair(WARM, "--rekordbox", made)
+        assert code == int(ExitCode.OK), envelope
+        assert _queued(envelope) == ["t22"]
+    else:
+        pairs.PairStore(world.cfg).mark(WARM, made, name=WARM_NAME)
+    return made
+
+
+def test_a_twins_held_track_another_pairs_job_holds_is_still_held(world, cfg):
+    """R-1385. Another pair's job holding a twin's held track leaves it held, never awaiting."""
+    _three_missing(world)
+    assert backfill()[0] == int(ExitCode.OK)
+    _warmup(world, sync=True)
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
+    awaiting = [
+        (item["pair"], item["remote_id"])
+        for item in envelope["data"]["items"]
+        if item["action"] == "awaiting"
+    ]
+    assert awaiting == [(WARM, "t22")]
+
+
+def test_a_twins_held_track_a_plain_pair_lists_is_queued_once_and_still_held(world, cfg):
+    """R-1385. In one plan, the plain pair queues t22 once and the twin still holds it."""
+    _warmup(world, sync=False)
+    _three_missing(world)
+    assert backfill()[0] == int(ExitCode.OK)
+    code, envelope = sync_pair()
+    assert code == int(ExitCode.OK), envelope
+    assert _queued(envelope) == ["t22"]
+    assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
+    planned = [item["pair"] for item in envelope["data"]["items"] if item["side"] == "library"]
+    assert planned.index(WARM) < planned.index(PHIL), planned
+
+
 def test_a_twins_held_track_stays_on_hold_beside_an_unreadable_landing_record(world, cfg):
     """R-1383, round one's finding 3: the twin's hold names its remedy, never the landing's."""
     from cratekit.core import session
@@ -175,6 +224,7 @@ def test_a_twins_held_track_stays_on_hold_beside_an_unreadable_landing_record(wo
     assert envelope["data"]["totals"]["queued_jobs"] == []
     assert sorted(_on_hold(envelope)) == [(PHIL, "t20"), (PHIL, "t21"), (PHIL, "t22")]
     assert envelope["data"]["totals"]["landing_unread"] == 0
+
 
 def test_a_second_twin_stays_held_when_the_first_is_released(world, cfg):
     _two_twins(world)
