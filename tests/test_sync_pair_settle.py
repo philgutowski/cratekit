@@ -1136,13 +1136,81 @@ def test_a_finish_whose_stopped_move_was_an_unread_track_is_held_to_it_in_its_pl
     for _ in range(2):
         code, envelope = sync()
         assert code == int(ExitCode.OK), envelope
-    # The readable tracks in rekordbox's order; t9 is kept once, where the
-    # finish's own plan places an unread track, behind the one it now
-    # follows (residual r1418-a).
-    finished = world.account.playlists[account_id]
-    assert [one for one in finished if one != "t9"] == _ids("2", "3", "4", "1", "5")
-    assert finished.count("t9") == 1
+    # The readable tracks in rekordbox's order, and t9 where the stopped
+    # write was taking it, behind t4, not in front where its one move left
+    # it (R-1432).
+    assert world.account.playlists[account_id] == [*_ids("2", "3", "4"), "t9", *_ids("1", "5")]
     assert world.held(opener) == ["2", "3", "4", "1", "5"]
+
+
+def _finished_after_one_move(world, monkeypatch, account_id: str) -> list[str]:
+    """Stop the account order after its first move, then sync until the stopped write finishes.
+
+    Answers the playlist as the stopped move left it. The provider serves
+    the account as it stands, so the pending order is read at once and the
+    readings agree on the next sync.
+    """
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    reached = list(world.account.playlists[account_id])
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    return reached
+
+
+def test_a_finish_puts_an_unread_track_the_stopped_move_put_in_front_where_the_write_was_taking_it(
+    world, owed, cfg, monkeypatch
+):
+    """R-1432: the stopped write's first move put t9, which the provider cannot read, in front.
+
+    The account lists t1 to t4 and then t9 with no title, and rekordbox's
+    2, 3, 4, 1 asks 2, 3, 4, 9, 1. The finish reads every readable track as
+    the write would have left it, and places t9 by that write's own target,
+    behind t4, rather than behind the track the stopped move left it after,
+    which is none, so the front.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    reached = _finished_after_one_move(world, monkeypatch, account_id)
+    assert reached == ["t9", *_ids("1", "2", "3", "4")]
+    assert world.account.playlists[account_id] == [*_ids("2", "3", "4"), "t9", "t1"]
+    assert world.held(opener) == ["2", "3", "4", "1"]
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == (*_ids("2", "3", "4"), "t9", "t1")
+
+
+def test_a_finish_keeps_an_unread_track_the_stopped_write_did_not_move_in_its_place(
+    world, owed, cfg, monkeypatch
+):
+    """R-1432: an unread track at the tail the stopped write kept stays at the tail.
+
+    Rekordbox's 1, 3, 2, 4 asks 1, 3, 2, 4, 9, whose moves are t3 then t1,
+    so t9 is never moved; the write stops after t3's, and the finish leaves
+    t9 behind t4 as both the listing and the target place it.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "1", "3", "2", "4")
+    _listed_unread(monkeypatch, "t9")
+    world.account.playlists[account_id].append("t9")
+    reached = _finished_after_one_move(world, monkeypatch, account_id)
+    assert reached == [*_ids("3", "1", "2", "4"), "t9"]
+    assert world.account.playlists[account_id] == [*_ids("1", "3", "2", "4"), "t9"]
+    assert world.held(opener) == ["1", "3", "2", "4"]
+
+
+def test_a_finish_with_no_unread_track_is_put_in_rekordboxs_order(world, owed, cfg, monkeypatch):
+    """R-1432: with every track read, the finish leaves the account in rekordbox's order, as before."""
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    reached = _finished_after_one_move(world, monkeypatch, account_id)
+    assert reached == _ids("4", "1", "2", "3")
+    assert world.account.playlists[account_id] == _ids("2", "3", "4", "1")
+    assert world.held(opener) == ["2", "3", "4", "1"]
 
 
 class _InMemorySteps(pair_cli.PairSteps):
