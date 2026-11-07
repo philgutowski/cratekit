@@ -60,34 +60,12 @@ new = '''    if False:
         return frozenset()'''
 
 [[rows]]
-id = "M7_account_dropped"
-description = "_as_queued: lift though the account no longer lists the track there (U227's K1)"
-file = "src/cratekit/modules/outbound/mirror_edits.py"
-surface = "user"
-tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
-old = '''        and track in one.account
-'''
-new = '''        and True
-'''
-
-[[rows]]
 id = "M8_rekordbox_dropped"
 description = "_as_queued: lift though rekordbox already holds it where the account put it"
 file = "src/cratekit/modules/outbound/mirror_edits.py"
 surface = "user"
 tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
 old = '''        and track not in one.rekordbox
-'''
-new = '''        and True
-'''
-
-[[rows]]
-id = "M9_base_dropped"
-description = "_as_queued: lift a playlist whose base does not hold the track (maintainer)"
-file = "src/cratekit/modules/outbound/mirror_edits.py"
-surface = "maintainer"
-tests = ["tests/test_mirror_edits.py", "tests/test_mirror_edits_u227.py", "tests/test_mirror_edits_u230.py", "tests/test_organize_mirror_edits.py", "tests/test_organize_mirror_edits_u204.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_organize_mirror_edits_u230.py", "tests/test_mirror_downloads_queued_from_u230.py", "tests/test_mirror_downloads_filed_u227.py", "tests/test_organize_mirror_frozen.py", "tests/test_organize_mirror_frozen_u222.py"]
-old = '''        and track in one.base
 '''
 new = '''        and True
 '''
@@ -242,3 +220,15 @@ old = '''        and not one.short
 '''
 new = '''        and True
 '''
+
+# --- considered and not run ---------------------------------------------------
+
+[[dropped]]
+id = "M7_account_dropped"
+description = "_as_queued: lift though the account no longer lists the track there (U227's K1)"
+reason = "equivalent since the review of U230, round one: the lift now takes only a never agreed playlist, whose base IS its account side (Mirrored.base), so ``track in one.base`` and ``track in one.account`` answer alike and either guard alone measures the other; measured zero on the first table, both runs kept in the record"
+
+[[dropped]]
+id = "M9_base_dropped"
+description = "_as_queued: lift a playlist whose base does not hold the track (maintainer)"
+reason = "equivalent since the review of U230, round one: the lift now takes only a never agreed playlist, whose base IS its account side (Mirrored.base), so ``track in one.base`` and ``track in one.account`` answer alike and either guard alone measures the other; measured zero on the first table, both runs kept in the record"

@@ -223,3 +223,18 @@ def test_a_short_listing_of_the_queuing_playlist_lifts_nothing():
             account_added={"t9": ACCOUNT_AT},
         )
         assert edits.decide(playlists, OWNED, FILED, QUEUED).decisions == (), agreed
+
+
+def test_a_band_a_person_chose_before_any_carry_is_not_lifted_over():
+    """The landing's filing must still stand for the lift: a never agreed
+    playlist whose row a person moved, or gave a second band, in rekordbox
+    before the edit was carried reads as before, no edit at all."""
+    for rekordbox_in, at in (((AHM,), MOVED_AT), ((AHH, AHM), LANDED_AT)):
+        decided = edits.decide(_read(agreed=None, rekordbox_in=rekordbox_in, at=at), OWNED, FILED, QUEUED)
+        assert decided.decisions == (), rekordbox_in
+
+
+def test_a_row_taken_out_of_the_tree_in_rekordbox_is_not_lifted_over():
+    """A row rekordbox holds in no band has no landing's filing standing, so a
+    person's removal is not beaten by the account's addition."""
+    assert edits.decide(_read(agreed=None, rekordbox_in=()), OWNED, FILED, QUEUED).decisions == ()
