@@ -46684,3 +46684,39 @@ The last three came after `main` was merged in at c2e3d056, on runs that measure
 **Measured cost.** Driven by round one's review: pair A listing `t40` and pair B listing `t41`, both coded `USZZZ2600040`, queued two jobs in one command with no awaiting row. Whether the second job downloads a second copy or resolves owned by the first file's ISRC when it runs was not driven. `main` behaves the same.
 
 **Closes when:** the plan also keys what is asked and held by ISRC, as U208 aliases releases by ISRC within one pair. Ledger only until a second copy of one recording is seen in the library.
+
+---
+
+## R-1427. The docs guard's readers miss five shapes of drift and would refuse one true shape
+
+**Found:** at the review of #622, U233, 2026-11-07.
+
+**The mechanism.** `tests/test_docs_current.py` reads the guide and the README with regular expressions, and Fable's round one drove five shapes past them, each on doctored text. A verb group written alone as a command (`crate label --help`) is reported as an unknown verb though argparse accepts it, so the first true line of that shape reddens the guard. A flag in a code span of its own (`` `--report` writes nothing ``) is judged against no verb. One stray backtick in a paragraph re-pairs every later span, so a mention after it can vanish unreported. `dotted_keys` matches `[a-z_]+\.[a-z_]+`, so a hyphenated doctor check (`provider.isrc-cache`) or a misspelling of one is never read. And a verb is "named" by any span opening with its words, so a verb's section can be deleted while one passing mention keeps the check green.
+
+**Measured cost.** None today: the reviewer drove every candidate line in both docs, and neither carries any of the five shapes (zero odd parity paragraphs, the one stray flag span is `--yes`, which the guide says does not exist, no group alone as a command, no hyphenated key misspelt). A guard that misses a drift is a guard that kills nothing for that drift, maintainer facing.
+
+**Closes when:** the readers accept a group alone followed by a help flag, judge a lone flag span against the verb its sentence names or the union of all flags, count backticks per paragraph, read hyphenated keys, and, if wanted, require a verb's `crate VERB` form somewhere. Ledger only.
+
+---
+
+## R-1428. The config key analysis.energy_calibration is accepted and read by no verb
+
+**Found:** at the docs sweep of #622, U233, 2026-11-07.
+
+**The mechanism.** `AnalysisConfig.energy_calibration` in `src/cratekit/core/config.py` defaults to `"auto"`, round trips through the file, and is fingerprinted with every queued job, but nothing outside `config.py` reads it (a grep of `src/cratekit` for `.energy_calibration` finds no reader) and the validator checks no value of it. The energy calibration a verb uses is the library state file `energy_calibration.json`, chosen by `analyze calibrate`, never by this key.
+
+**Measured cost.** None driven. A person who sets the key changes nothing and is told nothing; `docs/GUIDE.md`'s settings table now says no verb reads it, so the guide does not mislead.
+
+**Closes when:** the key is read by the analysis verbs or removed from the schema with its migration. Ledger only: a wording of the settings table already tells the truth, and nothing is lost.
+
+---
+
+## R-1429. README's install commands name a release tag that no release step updates
+
+**Found:** at the docs sweep of #622, U233, 2026-11-07.
+
+**The mechanism.** `README.md`'s install and extras commands spell a literal tag (`@v0.13.1` since U233). `scripts/release.py cut` writes the new version into `pyproject.toml` and `src/cratekit/__init__.py` only, and the release skill names no README step, so every release leaves the README one tag behind. U233 found it at `v0.11.1` with `v0.13.0` released, and corrected it to `v0.13.0` three minutes after `v0.13.1` was cut, so the branch corrected it again before it merged.
+
+**Measured cost.** A DJ copying the command installs an older release than the newest; the line after it says to use the newest tag, and `crate doctor`'s `install.release` check names the newer one, so nothing is lost and the upgrade is one command.
+
+**Closes when:** the release step rewrites the README tag with the version, or the README stops naming one. Ledger only: a count in a document.

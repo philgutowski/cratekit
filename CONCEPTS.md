@@ -170,7 +170,8 @@ database's `held_offers` (not an item, not a tombstone). `crate label judge`
 **withholds** a pending item the gate would not file: deletes the item and writes
 the hold in one transaction; a decided item is never withheld. A hold takes a
 place in the offer window and is re-judged on every sweep. `crate label held`
-lists them as `gated`; `crate label held return RELEASE_ID` files one for good.
+lists them, each with the words it was held on; `crate label held return
+RELEASE_ID` files one for good.
 
 *Avoid:* **held** in the offer window's sense (already queued).
 
@@ -221,8 +222,8 @@ counts calls and rate limits, and allows one call in flight. Settings are
 ### Active taxonomy
 The library's copy of the taxonomy, `.cratekit/coupled/taxonomy.toml` on the
 library volume, which every verb reads through `core.active_taxonomy.load`. The
-shipped template (`taxonomy.default_taxonomy()`) is only its starting point and
-the fallback when no copy exists. `taxonomy.origin.toml` records the template
+shipped template `taxonomy.template` names is only its starting point and the
+fallback when no copy exists. `taxonomy.origin.toml` records the template
 name and the hash of what setup copied, so doctor tells a copy that fell behind
 (INFO) from one a person edited (OK). `crate taxonomy upgrade` adds the shipped
 buckets and sub classes the copy lacks and raises `schema_version`, gated, with
@@ -476,8 +477,8 @@ person.
 ### Bare metal recovery
 Recovery onto a replacement drive when the library volume is gone, unlike a
 **restore** to an earlier state. It passes substitute gates (library truly
-unreachable, empty target filesystem, a person at a terminal, an installation
-scoped lock) and runs in two **halves**, mirror then database. A target that is
+unreachable, a target that is a real filesystem and holds no database where
+this library's lands, a person at a terminal, an installation scoped lock) and runs in two **halves**, mirror then database. A target that is
 the empty folder a lost volume leaves is a **stub**.
 
 ### Kept record
@@ -695,8 +696,10 @@ Excluded from sync as `set-playlist`. Once downloaded, filed under
 
 ### Inspiration playlist
 An identified set's permanent rekordbox playlist under the taxonomy's
-`[inspiration]` folder, named `{M_DD_YY today} {DJ} {set name} {M-YY of the set}`,
-holding every owned identified track in set order. Written by a landing given
+`[inspiration]` folder, named `{M_DD_YY posted} {DJ} {set name} {M-YY of the set}`,
+the day the set went up read from its page (`--posted` overrides it, and the
+landing day stands in when the page names none), holding every owned
+identified track in set order. Written by a landing given
 `--set` or `crate intake inspiration --job`. Never rotated. Native trees only.
 
 ### Product made
