@@ -46309,3 +46309,151 @@ the candidates are a hand edited or truncated lock file, not driven.
 psutil, as no process a lock names, or the tripwire on `pids` lets a call
 made from inside `pid_exists` through. Ledger only: it costs a future test's author a misleading message,
 not a DJ anything.
+
+---
+
+## R-1409. A stopped order whose last move's landing is not known, and which never landed, holds its pair until the playlist is moved by hand or the pair is released
+
+**Found:** at the build of #604, R-1394, 2026-11-07.
+
+**The mechanism.** Since R-1394 a pending order records, before each move,
+how many moves may have reached the provider (`sent`) and how many it
+accepted (`landed`). When a move fails any way but its last 412 (a dropped
+connection, a timeout, a crash, a record that could not be written after it
+was accepted), its landing is not known, so `_pending` in `sync/pair_cli.py`
+holds an agreed reading at `landed` moves rather than finish from it: that
+reading may be the provider lagging the move. If the move in fact never
+landed, the provider serves that order for good and the pair is held every
+run, `sync-pair-account-settling`, until the DJ moves the playlist off the
+moves' way in the provider's player or releases the pair.
+
+**Measured cost.** Driven on the fakes by
+`test_a_move_whose_fate_is_unknown_holds_the_order_before_it_and_finishes_the_one_after`:
+held across three runs with nothing sent. How often a live move fails with
+its landing unknown was not measured. Built with the recommended answer to
+the Question for Phillip on the card (hold, never scramble); his other two
+options were to finish after the five minute agreement, or after a longer
+window.
+
+**Closes when:** Phillip answers the question on #604, or the attended
+measure of the provider's lag (A88, A91) sizes a window after which an
+agreed reading at `landed` is the truth. Ledger only: the DJ has a named way
+out and nothing is damaged.
+
+---
+
+## R-1410. A move the provider answers false or not found is read as one whose landing is not known
+
+**Found:** at the build of #604, R-1394, 2026-11-07.
+
+**The mechanism.** `order_tracks` in `modules/outbound/tidal_account.py`
+brings the record's `sent` count back down only for a move whose last answer
+was a 412, the one answer Sitting 62 measured as changing nothing. A move
+the client answers `False` (a response that was not ok) or not found is
+raised as "the provider did not accept the move" with `sent` left counting
+it, so a stopped order whose last move was refused that way holds an agreed
+reading at the moves before it, as for a dropped connection (the residual
+beside this one), although that move most likely changed nothing.
+
+**Measured cost.** Not driven against the live provider; what a not ok
+answer to a move leaves on the playlist was not measured. The cost is a pair
+held that could have finished, never a scramble.
+
+**Closes when:** an attended sitting reads a playlist after a move the
+provider answered not ok, and the answer is added to the ones that bring
+`sent` down if it changed nothing. Ledger only.
+
+---
+
+## R-1411. A write that finishes a stopped order and also adds or removes tracks still plans its moves from a reading checked by membership alone
+
+**Found:** at the review of #604, R-1394, 2026-11-07.
+
+**The mechanism.** Round one's review drove the second half of R-1394's
+measured cost: the plan finishes a stopped write only from an agreed reading
+at or past the moves sent, but the write that follows plans its remaining
+moves from the adapter's own fresh reading, which `_settled` in
+`modules/outbound/tidal_account.py` accepts on the tracks it holds, not
+their order. Its fix round passes the check's listing as `expect` (compared
+in order) when a write finishes a stopped order, in `_write_account` in
+`sync/pair_cli.py`. Where that same write also adds or removes tracks on the
+account, the listing is no longer the playlist and the old membership check
+stands, so a reading that lags the stopped order's moves seconds after a
+true one still has the moves sent by position from it.
+
+**Measured cost.** Round one drove the adapter half on the order suite's
+provider: one move in, the next read lagging it, `order_tracks` left d, c,
+a, b for an asked d, c, b, a and reported it done. The case with additions
+or removals alongside was not driven, and whether the live provider lags a
+read seconds after serving the truth was measured at Sitting 86 (reads 3 s
+apart disagreed), not here.
+
+**Closes when:** the adapter takes an agreed order beside its membership
+check, every track of the agreed reading it still holds standing in that
+order, and the finishing write passes it whatever else it writes. Earns an
+issue: an account playlist can be damaged.
+
+---
+
+## R-1412. Five narrower shapes R-1394's review drove, a damaged moving time, a carry that fails after its mark, an empty reading on the path, a first moving step read as nothing sent, a finish whose count is wrong rereads before refusing
+
+**Found:** at the review of #604, R-1394, rounds one and two, 2026-11-07.
+
+**The mechanism.** Five shapes the review drove and left, each narrower
+than the card's:
+
+- A moving step whose time cannot be read makes `_moving` in
+  `sync/pair_stopped.py` answer None, so the write is not pending and U225
+  finishes it at once from any reading on the moves' path, a lag included.
+  Driven by a hand edit of the steps file and the carried record; no tool
+  path writes a damaged time (pre-existing since U231).
+- A carry that fails after its mark leaves the run's steps one move ahead of
+  the carried record, and the pair held as a move in flight though none was
+  sent. Conservative, and the steps file is always written first, so the
+  counts stay bounds in the direction the design needs.
+- `positions` has no guard for a reading that shares no track with the start,
+  unlike `shows`: an empty or wholly replaced reading matches every order on
+  the path. `_pending` returns on such a reading either way, since off the
+  path it is the person's change; U226's window judge stands before it.
+  Pre-existing in `reached` since U225.
+- The first moving step is written with counts of 0, which read as nothing
+  sent; an `order_tracks` that calls `begun` and drops the recorder it
+  answers would finish from any agreed reading. The adapter tells the
+  recorder before every send, so only a test double drops it. And the not
+  yet agreed hold's detail carries no counts while the agreed one does.
+- Round two: a write that finishes a stopped order now passes `expect`, so
+  a reading whose positions cannot be trusted (a playlist declaring more
+  tracks than it serves) is read again three times, about seven seconds of
+  pauses, before the same refusal that without `expect` is raised at once.
+  Nothing is moved either way; pre-existing on U220's continue path.
+
+**Measured cost.** Each driven by the review on the fakes; none has a
+producer on the shipped verbs beyond a hand edit, an injected write failure,
+or a double.
+
+**Closes when:** a later unit in this area reads a damaged moving time as
+pending with nothing known, guards `positions` as `shows` is guarded, and
+writes the first moving step with no counts. Ledger only.
+
+---
+
+## R-1413. The repair rows test of an inode above the bound passes or fails on a Linux container by the inode its temporary file is given
+
+**Found:** at the mutation table of #604, R-1394, 2026-11-07.
+
+**The mechanism.** `tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random`
+writes a temporary file and records its real `st_ino` as the row's file id,
+then asserts the plan counts it within the bound. On this cloud container
+the test passed alone once and failed alone the next run, with no change to
+the tree, so its result follows the inode the filesystem hands out rather
+than the code. The base's measured baseline did not catch it red, so the
+mutation driver refused its first baseline over it. R-1372's landing met
+the same test newly failing in its compare.
+
+**Measured cost.** Maintainer facing: a cloud battery or mutation baseline
+reddened by a test none of the branch's files reach, costing a rerun. Not
+driven on a Mac, where the volume's counter may keep it steady.
+
+**Closes when:** the test gives its file an inode it controls, or reads the
+bound from the volume it writes to, so its result no longer depends on the
+container. Ledger only.
