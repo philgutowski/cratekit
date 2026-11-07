@@ -112,10 +112,25 @@ def test_a_test_opted_in_reads_the_real_host():
 
 @pytest.mark.real_process_table
 def test_the_fake_host_is_what_the_real_scan_reads(rekordbox_on_the_host):
-    """The fake host models the Mac the cut was refused on, read without the stubs."""
+    """The fake host models the Mac the cut was refused on, read without the stubs.
+
+    pyrekordbox answers the FIRST process of a name, so on a host where
+    rekordbox is really open that is the real one, never asserted to be a
+    faked pid (U232, review round one): what is asserted is that the walk
+    finds a rekordbox and that the faked pids are on the table it walks.
+    """
     assert processes.rekordbox_processes_running() == ("rekordbox", "rekordboxAgent")
-    assert pyrekordbox.utils.get_rekordbox_pid() in rekordbox_on_the_host
-    assert database.get_rekordbox_pid() in rekordbox_on_the_host
+    for found, name in (
+        (pyrekordbox.utils.get_rekordbox_pid(), "rekordbox"),
+        (pyrekordbox.utils.get_rekordbox_agent_pid(), "rekordboxAgent"),
+        (database.get_rekordbox_pid(), "rekordbox"),
+    ):
+        assert found != 0
+        assert psutil.Process(found).name() == name
+    # Names read for the faked pids only: a real process can be gone or denied
+    # by the time it is read, which is the host's business, not this test's.
+    walked = {proc.pid: proc for proc in psutil.process_iter()}
+    assert {pid: walked[pid].name() for pid in rekordbox_on_the_host if pid in walked} == _host_processes.OPEN
     assert rb_writer.rekordbox_processes_running() == "rekordbox, rekordboxAgent"
 
 
