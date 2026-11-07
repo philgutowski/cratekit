@@ -1703,8 +1703,9 @@ def settle_mirror_tracks(
     ``placed`` is each ``(folder, title, track, time)`` the library placed in
     rekordbox for the edit that the account does not hold it on, with the time
     of the membership the write made (U236), recorded on the folder by title
-    whether the playlist is mirrored yet or not, under the same lock. A track settled on a playlist takes the settle's
-    word there and loses any placement it had, before the new ones are added.
+    whether the playlist is mirrored yet or not, under the same lock. A track
+    settled on a playlist takes the settle's word there and loses any
+    placement it had, before the new ones are added.
     """
     wanted = list(settled)
     placements = list(placed)
