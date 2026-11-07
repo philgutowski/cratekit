@@ -1,0 +1,140 @@
+name = "r1411"
+pass_kind = "light"
+
+[[rows]]
+id = "A1_agreed_order_always_stands"
+description = "the agreed order check passes every reading, so a reading in the order from before the stopped moves is planned from"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    return [one for one in dict.fromkeys(reading) if one in named] == [
+        one for one in dict.fromkeys(str(one) for one in agreed) if one in held
+    ]'''
+new = '''    return bool(named or held or True)'''
+
+[[rows]]
+id = "A2_removed_tracks_asked_of_the_reading"
+description = "the agreed order check asks every agreed track of the reading, so a track this write took off refuses the finish"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''        one for one in dict.fromkeys(str(one) for one in agreed) if one in held'''
+new = '''        one for one in dict.fromkeys(str(one) for one in agreed)'''
+
+[[rows]]
+id = "A3_added_tracks_asked_of_the_agreed_order"
+description = "the agreed order check reads every track of the reading, so a track this write added refuses the finish"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    return [one for one in dict.fromkeys(reading) if one in named] == ['''
+new = '''    return [one for one in dict.fromkeys(reading)] == ['''
+
+[[rows]]
+id = "A5_duplicates_counted_twice"
+description = "the agreed order check reads a track the reading holds twice at both places"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''    return [one for one in dict.fromkeys(reading) if one in named] == ['''
+new = '''    return [one for one in reading if one in named] == ['''
+
+[[rows]]
+id = "S1_settled_ignores_agreed"
+description = "the judged reading never asks the agreed order, so only what it holds is checked"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            if agreed is not None and not _in_agreed_order(reading, agreed):
+                return False'''
+new = '''            if False:
+                return False'''
+
+[[rows]]
+id = "S2_agreed_stands_in_for_membership"
+description = "a reading in the agreed order is taken without the check of what it holds"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            if agreed is not None and not _in_agreed_order(reading, agreed):
+                return False'''
+new = '''            if agreed is not None:
+                return _in_agreed_order(reading, agreed)'''
+
+[[rows]]
+id = "S3_order_does_not_pass_agreed"
+description = "order_tracks takes agreed and never hands it to the judged reading"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            agreed=tuple(str(one) for one in agreed) if agreed is not None else None,'''
+new = '''            agreed=None,'''
+
+[[rows]]
+id = "W1_finish_passes_no_agreed"
+description = "the pair write passes no agreed reading at a finish, the measured cost R-1411 names"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            if one.finishing_order and one.account_before'''
+new = '''            if False'''
+
+[[rows]]
+id = "W2_finish_passes_agreed_only_with_nothing_else"
+description = "the pair write passes agreed only at a finish that adds and removes nothing, as before this card"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            if one.finishing_order and one.account_before'''
+new = '''            if one.finishing_order
+            and one.account_before
+            and not (one.account_removes or one.account_adds)'''
+
+[[rows]]
+id = "W3_agreed_is_the_asked_order"
+description = "the pair write passes the order it asks as the agreed reading rather than the plan's reading"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            {"agreed": tuple(one.account_before)}'''
+new = '''            {"agreed": tuple(one.account_order)}'''
+
+[[rows]]
+id = "W4_agreed_is_the_checks_listing"
+description = "round one's BLOCKING shape: the pair write passes the check's listing as the agreed reading when there is one"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            {"agreed": tuple(one.account_before)}'''
+new = '''            {"agreed": tuple(account_listed or one.account_before)}'''
+
+[[rows]]
+id = "E1_expect_compared_as_membership"
+description = "existing guard, U220: an expected reading is compared by the tracks it holds, not their order"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''                return list(dict.fromkeys(reading)) == list(dict.fromkeys(known))'''
+new = '''                return sorted(dict.fromkeys(reading)) == sorted(dict.fromkeys(known))'''
+
+[[rows]]
+id = "E2_finish_with_nothing_else_passes_no_expect"
+description = "existing guard, R-1394: a finish that adds and removes nothing passes no expected reading, agreed alone standing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                or (one.finishing_order and not (one.account_removes or one.account_adds))'''
+new = '''                or False'''
+
+[[rows]]
+id = "E3_refused_order_passes_no_expect"
+description = "existing guard, U220: an order this run already saw refused passes no expected reading"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                steps.has(STEP_ORDER_REFUSED)
+                or'''
+new = '''                False
+                or'''
+
+[[rows]]
+id = "E4_membership_always_agrees"
+description = "existing guard, U220: a reading after this command's own writes is taken whatever it holds"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+old = '''            return sorted(reading) == sorted(known)'''
+new = '''            return bool(reading) or True'''
+
+[[rows]]
+id = "W5_agreed_at_every_order"
+description = "the pair write passes the plan's reading as agreed at every order, not only a finish: a scope limit, expected to survive"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+old = '''            if one.finishing_order and one.account_before'''
+new = '''            if one.account_before'''
