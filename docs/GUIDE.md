@@ -587,6 +587,11 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`: that first
   sync finishes the stopped order rather than putting its half done order
   into the new rekordbox playlist.
+- A track Tidal lists with no title or no artist cannot be read, and the pair
+  still syncs: the track is never added to rekordbox nor read as taken off,
+  and the gate names it. An order written on Tidal keeps it behind the track
+  it follows there, except that a sync finishing a stopped order puts it
+  where that order was taking it, not where the stopped move left it.
 - Tidal can serve a playlist's old order or tracks to a paged read for
   minutes after a change, while the plain read is current. Where it plans an
   order or checks a write, `sync pair` reads both and takes the plain read

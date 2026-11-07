@@ -1,0 +1,13 @@
+name = "r1432-composites"
+pass_kind = "light"
+
+[[rows]]
+id = "C4_finish_reads_the_listing_unfinished"
+description = "what E4 holds: at a finish the readable tracks are read as the account lists them, with the stopped write's remaining moves not applied, so its half done order is read as the account's"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                for one in pair_stopped.finished(
+                    listed_order or account_now, stopped_write.target
+                )'''
+new = '''                for one in (listed_order or account_now)'''

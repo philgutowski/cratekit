@@ -47118,3 +47118,89 @@ pays it; a store written by an unmerged commit of a cloud branch would need
 the field added by hand.
 
 **Closes when:** never needed while no such store exists. Ledger only.
+
+---
+
+## R-1446. A move of an unread track alone, read settled after a stop whose rekordbox side was written, lets the account lead and undoes rekordbox's reorder
+
+**Found:** at the review of #630, R-1432, 2026-11-07.
+
+**The mechanism.** `plan_pair` in `src/cratekit/sync/pair_cli.py` finishes
+a stopped write whether the account stands on its moves' path or off it
+(U225, U234), until readings kept after the stop show the order changed
+since a sync read it settled (`_moved_since_stop`). Those readings compare
+every track the account lists, an unread one (R-1264) among them, so a
+person who moves only an unread track, which neither side's merge reads,
+is read as reordering the account. The plan then finishes nothing, the
+account leads, and its readable tracks, still in the stopped write's half
+done order, are put into rekordbox.
+
+**Measured cost.** Found by Fable's round one review of #630 (its D1) on the
+base before U234, where the first reading off the path already led. Driven
+again on the branch with U234 merged in: the account t1 to t4 then untitled
+t9, rekordbox reordered to 2, 3, 4, 1, a write stopped after its first move
+put t9 in front, rekordbox written. The person drags t9 between t2 and t3;
+plans read that settled, and the person drags it between t3 and t4. Two
+syncs leave the pair out while the change settles, and the third writes
+under `sync-pair-finishing` ("reordered since syncs after the stop read it
+settled"): rekordbox 1, 2, 3, 4 and the account t1, t2, t3, t9, t4. The DJ's
+rekordbox reorder, which the stopped write was carrying, is undone by moves
+of a track rekordbox never held. With the stop's rekordbox side skipped,
+rekordbox leads and keeps its order (the branch's test of that case). Not
+driven: whether a person reads the gate's line before applying it.
+
+**Closes when:** a settled change of order that moves only unread tracks is
+not read as a reorder of the readable ones, so the stopped write still
+finishes their order; or the gate names that the account's lead comes from
+unread tracks alone. It earns an issue under the board bar's (a): a playlist
+order the DJ made in rekordbox is written over.
+
+---
+
+## R-1447. The unread warning's finish clause asks the pair to write an order, and no test kills dropping that
+
+**Found:** at the mutation table of #630, R-1432, 2026-11-07.
+
+**The mechanism.** The `sync-pair-unread` warning in
+`src/cratekit/sync/pair_cli.py` adds that a pair finishing a stopped order
+puts each unread track where that order was taking it only when a pair with
+an unread track both finishes a stopped order and asks the account an order
+(`finishing_order and account_order`). A finish that asks no order moves
+nothing, so the clause would say a move that is not made.
+
+**Measured cost.** Row P11 of `docs/mutation/r1432.md`, the condition on an
+account order dropped, killed none of 17493 tests on the full suite. Its
+composite, P10, the clause never shown, killed 1, and the round two test
+pins the clause absent on a plan that finishes nothing; what is not built is
+a finishing plan with an unread track and no order to write, such as a
+pending order whose end the account already shows. Not driven: whether such
+a plan shows the warning at all.
+
+**Closes when:** a verb test finishes a stopped order that asks no account
+order over a playlist listing an unread track and reads the warning without
+the clause. Ledger only: a wording guard.
+
+---
+
+## R-1448. A finish reads the readable order from the whole listing with its unread ids, and no test kills narrowing it to the readable tracks
+
+**Found:** at the mutation table of #630, R-1432, 2026-11-07.
+
+**The mechanism.** `plan_pair` in `src/cratekit/sync/pair_cli.py` reads the
+account at a finish of a stopped order as `pair_stopped.finished` leaves the
+whole listing, unread ids included (U225 with R-1264), then keeps the
+readable tracks. The adapter's rule keeps the longest tail of the asked
+order already standing in order, so an unread track can change how long that
+tail is, and with it which readable tracks the remaining moves put in front.
+
+**Measured cost.** Row E4 of `docs/mutation/r1432.md`, `finished` read over
+the readable listing alone, killed none of 17493 tests on the full suite.
+Its composite, `docs/mutation/r1432-composites.md` row C4, the remaining
+moves not applied at all, killed 35, so the finish read is pinned; whether
+any listing makes the two readings of the readable order differ was not
+driven, and the finished order of the asked tracks is the target's either
+way, so a difference can only fall on a track added since the stop.
+
+**Closes when:** a test finds a listing where the two readings differ and
+pins the whole listing's, or the two are shown equal. Ledger only: an
+existing guard sampled by this card, its reachability unmeasured.
