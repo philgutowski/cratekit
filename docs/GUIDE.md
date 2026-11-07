@@ -552,12 +552,18 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   run it finishes. A Tidal order that no part of those moves leaves is read
   as Tidal's half done state rather than your edit too, so rekordbox's order
   stands and, under GIG READY, the rest of the order is sent to Tidal from
-  that reading; the gate says so. A move you make on Tidal still leads once
-  two syncs at least 5 minutes apart have read the stopped playlist in one
-  order: the next sync that reads another order leaves the pair out, nothing
-  written, until a reading 5 minutes later agrees, and then takes your
-  order. A move made sooner cannot be told from the half done order or from
-  Tidal still serving an older one, and is put back. A reorder in rekordbox
+  that reading; the gate says so, and the first sync you approve puts the
+  Tidal playlist in rekordbox's order. A move you make on Tidal leads only
+  when syncs that wrote nothing to the pair (its Tidal side skipped, or the
+  pair left out pending) have read the stopped playlist off those moves'
+  path in one order at least 5 minutes apart: a later sync that reads
+  another order leaves the pair out, nothing written, until a reading 5
+  minutes later agrees, and then takes your order. For a pending order each
+  of those readings first waits for two readings to agree as well, so it
+  takes longer. A sync in between that reads the earlier order again
+  finishes the stopped order and puts the move back, and so does any move
+  made before those readings, since it cannot be told from the half done
+  order or from Tidal still serving an older one. A reorder in rekordbox
   since leads. It remembers that stop however long you wait
   before the next sync, until a sync finishes the pair, and also when the
   pair's rekordbox playlist was deleted and you pair the Tidal playlist again

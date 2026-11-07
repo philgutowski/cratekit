@@ -32,12 +32,14 @@ new = '''        return False
     if kept.after is None or since is None'''
 
 [[rows]]
-id = "O4_on_path_compared_too"
-description = "the comparison with the settled reading runs on the path too, so a later point on the stopped write's own path is held as a reorder"
+id = "O4_settled_order_read_as_moved"
+description = "a reading back at the settled order is read as differing from it, so the order after is held for it and the stop is never finished"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
-old = '''    if not off_path or not pair_stopped.reordered(kept.order, reading):'''
-new = '''    if not pair_stopped.reordered(kept.order, reading):'''
+old = '''    if not pair_stopped.reordered(kept.order, reading):
+        # BACK AT THE SETTLED ORDER'''
+new = '''    if False:
+        # BACK AT THE SETTLED ORDER'''
 
 [[rows]]
 id = "O5_unsettled_reading_read_as_settled"
@@ -123,14 +125,6 @@ old = '''    if seen_at is None or seen_at < began:'''
 new = '''    if seen_at is None:'''
 
 [[rows]]
-id = "O14_kept_after_the_order_step_not_the_moves"
-description = "_kept_after measures a blind write from its order step, not from when its moves began"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "maintainer"
-old = '''    began = write.moving_at or write.at'''
-new = '''    began = write.at'''
-
-[[rows]]
 id = "O15_reordered_counts_additions"
 description = "reordered compares the readings whole, so a track added between them is read as a reorder"
 file = "src/cratekit/sync/pair_stopped.py"
@@ -145,18 +139,6 @@ new = '''    return current != list(dict.fromkeys(kept))
 
 
 __all__'''
-
-[[rows]]
-id = "O16_reordered_floor_raised"
-description = "reordered asks three shared tracks, so a reorder of two of them is not seen"
-file = "src/cratekit/sync/pair_stopped.py"
-surface = "user"
-old = '''    if len(common) < 2:
-        return False
-    return [one for one in current if one in common] != ['''
-new = '''    if len(common) < 3:
-        return False
-    return [one for one in current if one in common] != ['''
 
 [[rows]]
 id = "O18_snapshot_keeps_the_reading"
@@ -205,13 +187,34 @@ old = '''        finishing_off_path=stopped is not None and off_path,'''
 new = '''        finishing_off_path=stopped is not None,'''
 
 [[rows]]
-id = "O24_person_line_reworded"
-description = "the finishing note for a person's reorder loses the settled readings it rests on"
+id = "O25_on_path_reading_kept"
+description = "round two's fix undone: a reading on the moves' path is kept and settled as the baseline, so a lag of the whole write then the partial state is read as a reorder"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
-old = '''                            else "the account was reordered since syncs after the stop "
-                            "read it settled, so its order leads)"'''
-new = '''                            else "the account was reordered since, so its order leads)"'''
+old = '''    kept = _kept_after(held, write)
+    if not off_path:'''
+new = '''    kept = _kept_after(held, write)
+    if False:'''
+
+[[rows]]
+id = "O26_on_path_reading_keeps_the_order_after"
+description = "a reading on the path leaves an order held as the one after on its old clock, so read again it leads at once"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        # any order held as the one after, so that order waits afresh.
+        if kept is not None and kept.after is not None:'''
+new = '''        # any order held as the one after, so that order waits afresh.
+        if False:'''
+
+[[rows]]
+id = "O27_settled_order_keeps_the_order_after"
+description = "a reading back at the settled order leaves an order held as the one after on its old clock, so read again it leads at once"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        # as the one after waits afresh if it is read again.
+        if kept.after is not None:'''
+new = '''        # as the one after waits afresh if it is read again.
+        if False:'''
 
 [[rows]]
 id = "S1_sample_finish_held_to_the_plans_reading"
