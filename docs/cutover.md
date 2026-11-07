@@ -2431,13 +2431,25 @@ Installed copy 0.14.0, the latest release, which carries U236 (#628). Both backu
 
 **Met:** **A90 (#518)**, every edit kind proven live across sittings 88 and 89 and the organize after planning nothing; the download on the residual. **A115 (#636)**, steps 2, 4 and 5. **A114 (#633)**, the battery and the identifier. U236's owed macOS battery is this one, on the merged head. **Calls:** 704 per organize command that read the account, eight of them, and the stray read's 500, 6,132 for the sitting.
 
+## Sitting 90, 2026-11-07, the attended session on v0.14.0, no rekordbox visit: A113's hand pair keeps rekordbox's order over two scoped syncs
+
+The same install, acknowledgment and battery as sitting 89, which ran just before (the battery on `b18eee76`, v0.14.0, which carries R-1416). No Cratekit job running, and `rekordbox` and `rekordboxAgent` gone before every verb. **Every `sync pair` here was scoped to the one pair**, since an unscoped plan still carries the five stopped orders U234 (#623) is fixing. Each live plan rehearsed first on a fresh disposable copy with library state redirected, and each live digest equal to its rehearsal's.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| The rekordbox playlist | read from a fresh copy | `ARCHIVE / 2026 / Phil / Bequia 12_25 Closing` (3354395949), outside GIG READY and in no pair, four tracks each already linked to an account track by another pair. Order: `Murdergram Deux`, `Joan of Arc`, `Last Night in Sant Celoni`, `Querida`. | read |
+| The account playlist | the product's account client, 20:12:59Z | `create_playlist('A113 proof Bequia Closing')` at the account root, `2949297e-bad9-4d2c-baa1-93fd93cc45fb`, the same four tracks in the reverse order: `Querida`, `Last Night in Sant Celoni`, `Joan of Arc`, `Murdergram Deux`. Read back 20 s later in that order. | done |
+| The pairing | `crate sync pair 2949297e-bad9-4d2c-baa1-93fd93cc45fb --rekordbox 3354395949`, rehearsal `2026-11-07T20:13:35Z-d1b632e183842280`, live `2026-11-07T20:13:45Z-12d9875bb698a6bb` | Digest `1deccdd6e916fa83` on both, **count 0, no rekordbox order item**. The pair line: "first sync, additions only ... not yet marked, approving marks it; **order follows rekordbox's**; the account's order is kept only for pairs under GIG READY, so it is left as it is there". Both gates `apply` as `session`; the pair marked at 20:14:00Z, its record holding rekordbox's order and the account's as each stood. 26 calls to plan. | done |
+| The second sync | `crate sync pair 2949297e-bad9-4d2c-baa1-93fd93cc45fb`, rehearsal `2026-11-07T20:14:17Z-8cdebb544339fc03`, live `2026-11-07T20:14:21Z-2fe862cd4a0dcd38` | Digest `a5550646024eaf8a` on both, count 0, the same order line. A marked pair still asks both gates; answered `apply`, it ended **`no_op` with `sync-pair-nothing`**: "0 added and 0 taken off in rekordbox, 0 added and 0 taken off on the account", 26 calls to plan, 6 to check and 2 to write. | done |
+| Read back | a fresh copy of the live database, and the account | rekordbox after both syncs: `Murdergram Deux`, `Joan of Arc`, `Last Night in Sant Celoni`, `Querida`, the order before the pairing. The database file is unchanged since 19:53Z, its hash the same before the pairing and after both syncs. The account playlist holds its own reverse order unchanged. Not read in rekordbox's own window. | done |
+
+**Met:** **A113 (#627)**, both orders before the pairing and rekordbox's after each sync, the order line, no order item, `sync-pair-nothing`, and the battery. **Left on the account:** `A113 proof Bequia Closing` at the root, paired, for Phillip to keep or delete. **Calls:** about 120 for the sitting.
+
 ## Next sitting
 
-**Open attended cards, as of 2026-11-07, after sitting 89.** A88 (#514) and
+**Open attended cards, as of 2026-11-07, after sitting 90.** A88 (#514) and
 A91 (#521), the quiet sync's calls, and A108 (#592), which finishes the 32
-account orders sitting 86 left part way, wait on U234 (#623). A113 (#627), a
-hand pair outside GIG READY keeping rekordbox's order, is ready for the next
-attended `crate sync pair`. A94 (#528) waits on leaking zombies and A95 (#535)
+account orders sitting 86 left part way, wait on U234 (#623). A94 (#528) waits on leaking zombies and A95 (#535)
 on an unlanded batch still staged. Three more wait on a circumstance rather
 than a card: A56 (#414), whose retirement half waits on the first batch due to
 rotate, on 2026-11-08 at the earliest; A57 (#415), a DEADCA7 push onto a
