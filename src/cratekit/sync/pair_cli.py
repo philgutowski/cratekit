@@ -166,7 +166,13 @@ anybody's when the account stands where the adapter's moves could have left
 it, and the side that led it leads again unless a side changed order since;
 and when it committed rekordbox too, the plan merges against what it left on
 both sides, so its additions and removals are not read as the person's
-either. The gate names the pair as finishing that run. A FIRST SYNC reads the
+either. AN ACCOUNT OFF THOSE MOVES' PATH is finished the same way (U234):
+Sitting 87 read accounts left in orders no count of the moves leaves, the
+provider's partial state after refused and misplaced moves, so off the path
+leads only once readings kept on the pair after the stop, each off the path
+and settled over the agreement window, show the account moved to another
+order. The gate names the pair as finishing that run, and which of these it
+read. A FIRST SYNC reads the
 stop on its account playlist too, whatever the pair's mark (R-1376): a pair
 released after a stop and paired again with a new rekordbox playlist has no
 snapshot, so the account's half done order would lead and be put into
@@ -675,6 +681,16 @@ class PairPlan:
     #: stood where that write's moves left it, so its order was finished.
     finishing: str = ""
     finishing_order: bool = False
+    #: U234. Whether the account stood off that write's moves' path when its
+    #: order was finished, read as the provider's partial state, or was
+    #: reordered since settled readings kept after the stop, so it leads; and
+    #: whether the plan merged against what that write left (``folded``).
+    finishing_off_path: bool = False
+    reordered_since_stop: bool = False
+    finishing_folded: bool = False
+    #: U234. Whether that write is known to have sent no move, so the
+    #: account's order off its path was read as the person's.
+    stop_moved_nothing: bool = False
     #: U231. Whether the merge asked the account a new order that this pair
     #: does not keep, since its rekordbox playlist is outside GIG READY.
     order_unkept: bool = False
@@ -1015,6 +1031,12 @@ class _Reader:
         from cratekit.modules.outbound import pairs
 
         pairs.PairStore(self.cfg).see(account_id, order, at=timestamp())
+
+    def see_stop(self, account_id: str, reading: Any) -> None:
+        """Keep the readings of a playlist a stopped order left on its pair (U234)."""
+        from cratekit.modules.outbound import pairs
+
+        pairs.PairStore(self.cfg).see_stop(account_id, reading)
 
     def mirror_codes(self, mirror: str) -> tuple[tuple[str, str], ...]:
         """One landed INBOX playlist's ISRC and row pairs, read once per plan (U229)."""
@@ -1625,10 +1647,28 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # that write's moves could have left it: the merge reads it in the order
     # the write was putting it in, each track added since after the track it
     # follows, and each side's change of order against what the write left.
+    #
+    # U234. AND WHEN IT STANDS WHERE NONE OF THOSE MOVES LEAVES IT, off their
+    # path, unless readings kept after the stop show the person moved it:
+    # Sitting 87 read accounts the stopped write's refused and misplaced moves
+    # left off the path, the provider's partial state, and read alone as the
+    # person's reorder they put it into rekordbox.
     stopped: pair_merge.Stopped | None = None
-    if stopped_write is not None and pair_stopped.reached(
-        stopped_write.start, stopped_write.target, listed_order or account_now
-    ):
+    off_path = False
+    reordered_since_stop = False
+    moved_nothing = False
+    if stopped_write is not None:
+        reading = tuple(listed_order or account_now)
+        off_path = not pair_stopped.reached(
+            stopped_write.start, stopped_write.target, reading
+        )
+        # A WRITE KNOWN TO HAVE SENT NO MOVE left no partial state, so an order
+        # off its path is a person's, as before U234 (R-1420's refused order).
+        moved_nothing = off_path and stopped_write.sent_nothing
+        reordered_since_stop = moved_nothing or _moved_since_stop(
+            reader, target, name, held, stopped_write, reading, off_path=off_path
+        )
+    if stopped_write is not None and not reordered_since_stop:
         holding = set(account_keys)
         finishing_keys = pair_merge.distinct(
             alias(one) for one in stopped_write.target if alias(one) in holding
@@ -1832,9 +1872,122 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         home=home,
         account_dates=dict(dates),
         account_before=account_before,
-        finishing=stopped_write.run_id if (folded or stopped is not None) else "",
+        finishing=(
+            stopped_write.run_id
+            if (folded or stopped is not None or reordered_since_stop)
+            else ""
+        ),
         finishing_order=stopped is not None,
+        finishing_off_path=stopped is not None and off_path,
+        reordered_since_stop=reordered_since_stop,
+        finishing_folded=folded,
+        stop_moved_nothing=moved_nothing,
         order_unkept=order_unkept,
+    )
+
+
+def _kept_after(held: Any, write: pair_stopped.StoppedWrite) -> Any:
+    """The readings plans kept on this pair after ``write`` stopped, a ``pairs.StopReading``, or None (U234).
+
+    Kept for that run, and first read at or after its moves began, so a
+    reading kept for another stop, or before this one, says nothing of this
+    one.
+    """
+    kept = getattr(held, "stop_seen", None) if held is not None else None
+    if kept is None or kept.run != write.run_id:
+        return None
+    seen_at = placeholders.parse_hearted(kept.at)
+    began = write.moving_at or write.at
+    if seen_at is None or seen_at < began:
+        return None
+    return kept
+
+
+def _moved_since_stop(
+    reader: _Reader,
+    target: Target,
+    name: str,
+    held: Any,
+    write: pair_stopped.StoppedWrite,
+    reading: tuple[str, ...],
+    *,
+    off_path: bool,
+) -> bool:
+    """Whether settled readings after ``write``'s stop show the person reordered the account (U234).
+
+    ONE READING OFF THE MOVES' PATH SHOWS NOTHING: the provider's partial
+    state stands there as often as a person's edit. Nor do two readings
+    that differ, since the provider serves a playlist's older orders for
+    minutes after a change (Sitting 86, round one's review). So the first
+    reading after the stop off the moves' path is kept on the pair, and a
+    reading in the same order at least :data:`AGREE_AFTER` later settles it;
+    a reading on the path is finished and never kept, since it may be a lag
+    of the whole write (round two's review); while it is not
+    settled, a reading in another order starts it again. Once it is
+    settled, a reading off the path in another order is kept as the order
+    after it and holds the pair, nothing written, until a reading at least
+    :data:`AGREE_AFTER` later agrees with it: only then is it the person's,
+    and the account leads. Every other reading is finished as the stopped
+    write's. A pair with no record, a hand pairing, keeps nothing, so
+    nothing it reads leads on its own.
+    """
+    from dataclasses import replace
+
+    from cratekit.modules.outbound import pairs
+
+    if held is None:
+        return False
+    kept = _kept_after(held, write)
+    if not off_path:
+        # ON THE PATH THE STOP IS FINISHED, and nothing is kept: a reading on
+        # the moves' path may be a lag of the whole write, so it is never the
+        # order a later one is measured against (round two's review). It ends
+        # any order held as the one after, so that order waits afresh.
+        if kept is not None and kept.after is not None:
+            reader.see_stop(target.account_id, replace(kept, after=None, after_at=""))
+        return False
+    stamp = timestamp()
+    if kept is None:
+        reader.see_stop(target.account_id, pairs.StopReading(write.run_id, reading, stamp))
+        return False
+    first = placeholders.parse_hearted(kept.at)
+    if not kept.settled:
+        if pair_stopped.reordered(kept.order, reading):
+            reader.see_stop(target.account_id, pairs.StopReading(write.run_id, reading, stamp))
+        elif first is not None and _now() - first >= AGREE_AFTER:
+            reader.see_stop(target.account_id, replace(kept, settled=True))
+        return False
+    if not pair_stopped.reordered(kept.order, reading):
+        # BACK AT THE SETTLED ORDER: the stop is finished, and an order held
+        # as the one after waits afresh if it is read again.
+        if kept.after is not None:
+            reader.see_stop(target.account_id, replace(kept, after=None, after_at=""))
+        return False
+    since = placeholders.parse_hearted(kept.after_at) if kept.after is not None else None
+    if (
+        kept.after is not None
+        and since is not None
+        and not pair_stopped.reordered(kept.after, reading)
+        and _now() - since >= AGREE_AFTER
+    ):
+        return True
+    if kept.after is None or since is None or pair_stopped.reordered(kept.after, reading):
+        reader.see_stop(target.account_id, replace(kept, after=reading, after_at=stamp))
+    raise refuse(
+        SETTLING,
+        f"the account playlist {name or target.account_id}'s order changed since a sync "
+        f"read it settled after run {write.run_id}'s write stopped part way through its "
+        f"order, and the provider may still be serving an older order: the pair was not "
+        f"synced this run, and nothing is written until a reading at least "
+        f"{int(AGREE_AFTER.total_seconds() // 60)} minutes later agrees, when the "
+        f"account's order is read as yours",
+        steps=("sync the pair again in a few minutes",),
+        origin=_ORIGIN,
+        detail={
+            "account_id": target.account_id,
+            "run_id": write.run_id,
+            "problem": "order-moved-since-stop",
+        },
     )
 
 
@@ -1859,7 +2012,9 @@ def _pending(
     kept for the next run; a reading equal to the one kept but too soon after
     it keeps the older, so the next run can agree with it. Agreed, the plan
     goes on: an order on the moves' path is a stopped write U225 finishes
-    from the side that led, any other the person's change, merged as theirs.
+    from the side that led, and so is one off it (U234), unless settled
+    readings kept after the stop show it moved to another order, the
+    person's change, merged as theirs (:func:`_moved_since_stop`).
 
     EXCEPT SHORT OF WHERE THE MOVES CAN HAVE LEFT IT (R-1394). The write
     recorded how many moves the provider accepted and how many may have
@@ -2849,10 +3004,24 @@ def facts(planned: Plan) -> dict[str, Any]:
                 f"finishes run {one.finishing}'s write, stopped part way through its "
                 f"order, "
                 + (
-                    "so its moves are not read as anybody's; "
+                    "and the account stands where none of its moves leaves it, which "
+                    "is the provider's partial state as often as an edit, so its order "
+                    "is not read as anybody's; "
+                    if one.finishing_off_path
+                    else "so its moves are not read as anybody's; "
                     if one.finishing_order
-                    else "whose additions and removals are read as that write's; the "
-                    "account was reordered since, so its order is read as yours; "
+                    else (
+                        "whose additions and removals are read as that write's; "
+                        if one.finishing_folded
+                        else ""
+                    )
+                    + (
+                        "none of its moves was sent, so the account's order is read "
+                        "as yours; "
+                        if one.stop_moved_nothing
+                        else "the account was reordered since syncs after the stop read "
+                        "it settled, so its order is read as yours; "
+                    )
                 )
                 if one.finishing
                 else ""
@@ -3983,9 +4152,19 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                     + "; ".join(
                         f"{one.name!r} (run {one.finishing}, "
                         + (
+                            "the account stands where none of its moves leaves it, so "
+                            "it is not read as a reorder; "
+                            if one.finishing_off_path
+                            else ""
+                        )
+                        + (
                             f"order follows {'the account' if one.merged.leader == pair_merge.ACCOUNT else 'rekordbox'})"
                             if one.finishing_order
-                            else "the account was reordered since, so its order leads)"
+                            else "none of its moves was sent, so the account's order "
+                            "leads)"
+                            if one.stop_moved_nothing
+                            else "the account was reordered since syncs after the stop "
+                            "read it settled, so its order leads)"
                         )
                         for one in finishing
                     )

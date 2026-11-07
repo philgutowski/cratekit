@@ -22,8 +22,17 @@ test). From the order the write started from, the orders it can have left
 are the ones that rule passes through on the way to the asked order
 (:func:`passed`). The account is read as standing where the stopped write
 left it when its order is one of those (:func:`reached`), leaving out of the
-comparison any track added or taken off since, which moves nothing. Any other
-order is a move somebody made, and the account then leads as it always has.
+comparison any track added or taken off since, which moves nothing.
+
+**OFF THE PATH IS NOT A REORDER ON THAT ALONE (U234).** Sitting 87 read
+accounts a stopped write left in orders none of its moves leaves, after moves
+answered 412 or sent by position on a reading that lagged: the provider's
+partial state as often as a person's edit. Such an order is read as the
+stopped write's too, finished as one on the path is, unless readings plans
+kept after the stop, each off the path and settled over the agreement window,
+show the account moved from one order to another (:func:`reordered`). One reading shows
+nothing, and nor do two that differ, since the provider serves a playlist's
+older orders for minutes after a change (``sync/pair_cli``).
 
 **AND ITS ADDITIONS AND REMOVALS, WHEN IT WROTE BOTH SIDES.** A write begins
 its order only once its removals and additions on the account have returned,
@@ -79,6 +88,11 @@ LINKS = "links"
 #: R-1394. The moves that may have reached the provider, and the moves it accepted.
 SENT = "sent"
 LANDED = "landed"
+#: U234. That the write records its moving step before its first move is
+#: sent, as every write has since U231, so its ordering step with no moving
+#: step beside it sent no move. A record without it, written before U234,
+#: says nothing either way: before U231 the moves were sent with no record.
+MOVES_RECORDED = "moves_recorded"
 
 
 @dataclass(frozen=True, slots=True)
@@ -120,6 +134,15 @@ class StoppedWrite:
     #: nothing known, none landed and every one maybe sent.
     landed: int = 0
     sent: int = 0
+    #: U234. Whether its ordering step says the write records its moving
+    #: step before its first move (:data:`MOVES_RECORDED`), read only when its
+    #: moving step was looked for and is absent or readable.
+    moves_recorded: bool = False
+
+    @property
+    def sent_nothing(self) -> bool:
+        """Whether this write is known to have sent no move: it records its moves, and recorded none (U234)."""
+        return self.moves_recorded and self.moving_at is None
 
     @property
     def pending(self) -> bool:
@@ -198,6 +221,7 @@ def ordering_step(
 ) -> dict[str, Any]:
     """What a write records as it begins an account order, for a later plan to read."""
     return {
+        MOVES_RECORDED: True,
         AT: str(at),
         START: [str(one) for one in start],
         TARGET: [str(one) for one in target],
@@ -215,13 +239,21 @@ def _ids(value: Any) -> tuple[str, ...] | None:
 
 
 def _read(
-    run_id: str, account_id: str, value: Any, moving: Any = None, moved: bool = False
+    run_id: str,
+    account_id: str,
+    value: Any,
+    moving: Any = None,
+    moved: bool = False,
+    *,
+    moving_read: bool = False,
 ) -> StoppedWrite | None:
     """One ordering step read back, or None when it is not one this module wrote.
 
     ``moving`` is the pair's moving step (U231), when it has one: its write
     is then pending, and its start is the reading the moves were planned
-    from, the truest record of where the account stood.
+    from, the truest record of where the account stood. ``moving_read``
+    says the caller looked for one, so its absence can mean no move was
+    sent (U234); a moving step present and unreadable never means that.
     """
     if not isinstance(value, Mapping):
         # A RECORD WRITTEN BEFORE U225 says only that the order began.
@@ -270,6 +302,11 @@ def _read(
         moved=sent is not None and bool(moved),
         landed=landed,
         sent=reached_by,
+        moves_recorded=(
+            value.get(MOVES_RECORDED) is True
+            and moving_read
+            and (moving is None or sent is not None)
+        ),
     )
 
 
@@ -371,6 +408,7 @@ def stopped_writes(
                 steps.get(ordering),
                 steps.get(moving) if moving else None,
                 bool(moved) and moved in steps,
+                moving_read=bool(moving),
             )
             if write is None:
                 continue
@@ -439,8 +477,9 @@ def reached(start: Sequence[str], target: Sequence[str], now: Sequence[str]) -> 
     """Whether the account's order ``now`` is one a write ordering ``start`` toward ``target`` left.
 
     A track added or taken off since is left out of the comparison, since
-    neither moves the tracks both hold; a track the write would have moved
-    standing anywhere else is a move somebody made.
+    neither moves the tracks both hold. A track the write would have moved
+    standing anywhere else is off the path, which is a move somebody made or
+    the provider's partial state, and is read as neither on that alone (U234).
     """
     return bool(positions(start, target, now))
 
@@ -478,6 +517,22 @@ def shows(end: Sequence[str], now: Sequence[str]) -> bool:
     ]
 
 
+def reordered(kept: Sequence[str], now: Sequence[str]) -> bool:
+    """Whether the account's order ``now`` differs from a reading ``kept`` after the stop (U234).
+
+    Read over the tracks both hold, each at its first place, so a track added
+    or taken off between the two readings, which moves nothing, is no
+    reorder. Two readings sharing fewer than two tracks show no order.
+    """
+    current = list(dict.fromkeys(now))
+    common = set(current) & set(kept)
+    if len(common) < 2:
+        return False
+    return [one for one in current if one in common] != [
+        one for one in dict.fromkeys(kept) if one in common
+    ]
+
+
 __all__ = [
     "StoppedWrite",
     "finished",
@@ -489,5 +544,6 @@ __all__ = [
     "passed_by",
     "positions",
     "reached",
+    "reordered",
     "stopped_writes",
 ]

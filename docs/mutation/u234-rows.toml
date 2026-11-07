@@ -1,0 +1,243 @@
+name = "u234"
+pass_kind = "light"
+
+[[rows]]
+id = "O1_off_path_dropped_from_the_finish"
+description = "the defect back: an account off the stopped write's path is left out of the finish, so the folded base reads it as reordered and it is written into rekordbox"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if stopped_write is not None and not reordered_since_stop:'''
+new = '''    if stopped_write is not None and not reordered_since_stop and not off_path:'''
+
+[[rows]]
+id = "O2_off_path_never_read"
+description = "off_path is never set, so an account off the path is finished but the gate never says it read it off the path"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        off_path = not pair_stopped.reached(
+            stopped_write.start, stopped_write.target, reading
+        )'''
+new = '''        off_path = False and not pair_stopped.reached(
+            stopped_write.start, stopped_write.target, reading
+        )'''
+
+[[rows]]
+id = "O3_person_never_leads"
+description = "an order after a settled one that agrees over the window never leads, so a person's reorder is held for good"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        return True
+    if kept.after is None or since is None'''
+new = '''        return False
+    if kept.after is None or since is None'''
+
+[[rows]]
+id = "O4_settled_order_read_as_moved"
+description = "a reading back at the settled order is read as differing from it, so the order after is held for it and the stop is never finished"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if not pair_stopped.reordered(kept.order, reading):
+        # BACK AT THE SETTLED ORDER'''
+new = '''    if False:
+        # BACK AT THE SETTLED ORDER'''
+
+[[rows]]
+id = "O5_unsettled_reading_read_as_settled"
+description = "round one's defect back: a kept reading counts before it settles, so the provider moving between two plans is read as the person"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if not kept.settled:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "O6_reading_never_kept"
+description = "the plan keeps no reading after the stop, so no later sync can show a person's reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if kept is None:
+        reader.see_stop(target.account_id, pairs.StopReading(write.run_id, reading, stamp))
+        return False'''
+new = '''    if kept is None:
+        return False'''
+
+[[rows]]
+id = "O7_settled_without_the_window"
+description = "a kept reading settles on the next plan however soon, so two readings seconds apart settle a lag (measured again once a test held two plans inside the window)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        elif first is not None and _now() - first >= AGREE_AFTER:'''
+new = '''        elif first is not None:'''
+
+[[rows]]
+id = "O8_moved_reading_not_kept_afresh"
+description = "a reading in another order before the kept one settles does not replace it, so a lag is settled as the first reading"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if pair_stopped.reordered(kept.order, reading):
+            reader.see_stop(target.account_id, pairs.StopReading(write.run_id, reading, stamp))
+        elif'''
+new = '''        if False:
+            pass
+        elif'''
+
+[[rows]]
+id = "O9_after_without_the_window"
+description = "the order after a settled one leads on its next reading however soon"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        and _now() - since >= AGREE_AFTER
+    ):
+        return True'''
+new = '''    ):
+        return True'''
+
+[[rows]]
+id = "O10_after_not_compared"
+description = "the order after a settled one leads whatever the reading now, so an order that moved again leads unsettled"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        and not pair_stopped.reordered(kept.after, reading)
+        and _now() - since'''
+new = '''        and _now() - since'''
+
+[[rows]]
+id = "O11_after_not_replaced"
+description = "an order after a settled one that moves again is not kept afresh, so the order it moved to is held for good"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if kept.after is None or since is None or pair_stopped.reordered(kept.after, reading):'''
+new = '''    if kept.after is None or since is None:'''
+
+[[rows]]
+id = "O12_kept_reading_of_any_run"
+description = "_kept_after takes a reading kept for another run as this stop's"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if kept is None or kept.run != write.run_id:'''
+new = '''    if kept is None:'''
+
+[[rows]]
+id = "O13_kept_reading_before_the_stop"
+description = "_kept_after takes a reading kept before the stop as one after it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if seen_at is None or seen_at < began:'''
+new = '''    if seen_at is None:'''
+
+[[rows]]
+id = "O15_reordered_counts_additions"
+description = "reordered compares the readings whole, so a track added between them is read as a reorder"
+file = "src/cratekit/sync/pair_stopped.py"
+surface = "user"
+old = '''    return [one for one in current if one in common] != [
+        one for one in dict.fromkeys(kept) if one in common
+    ]
+
+
+__all__'''
+new = '''    return current != list(dict.fromkeys(kept))
+
+
+__all__'''
+
+[[rows]]
+id = "O18_snapshot_keeps_the_reading"
+description = "a snapshot that moved keeps the reading after the stop, so it outlives the stop it was read after"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "maintainer"
+old = '''                stop_seen=None if moved else held.stop_seen,'''
+new = '''                stop_seen=held.stop_seen,'''
+
+[[rows]]
+id = "O19_reading_not_written"
+description = "the pair's document never writes the reading after the stop, so a later sync never finds it"
+file = "src/cratekit/modules/outbound/pairs.py"
+surface = "user"
+old = '''        if self.stop_seen is not None:
+            record["stop_seen"] = self.stop_seen.to_json()'''
+new = '''        if False:
+            record["stop_seen"] = self.stop_seen.to_json()'''
+
+[[rows]]
+id = "O21_gate_says_on_path"
+description = "the gate line says on the path for an account read off it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                    if one.finishing_off_path
+                    else "so its moves are not read as anybody's; "'''
+new = '''                    if False
+                    else "so its moves are not read as anybody's; "'''
+
+[[rows]]
+id = "O22_finishing_note_silent"
+description = "the sync-pair-finishing note leaves out that the account was read off the path"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                            "it is not read as a reorder; "
+                            if one.finishing_off_path'''
+new = '''                            "it is not read as a reorder; "
+                            if False'''
+
+[[rows]]
+id = "O23_off_path_flag_on_every_finish"
+description = "finishing_off_path is set on every finish, so the gate says off the path for one on it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        finishing_off_path=stopped is not None and off_path,'''
+new = '''        finishing_off_path=stopped is not None,'''
+
+[[rows]]
+id = "O25_on_path_reading_kept"
+description = "round two's fix undone: a reading on the moves' path is kept and settled as the baseline, so a lag of the whole write then the partial state is read as a reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    kept = _kept_after(held, write)
+    if not off_path:'''
+new = '''    kept = _kept_after(held, write)
+    if False:'''
+
+[[rows]]
+id = "O26_on_path_reading_keeps_the_order_after"
+description = "a reading on the path leaves an order held as the one after on its old clock, so read again it leads at once"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        # any order held as the one after, so that order waits afresh.
+        if kept is not None and kept.after is not None:'''
+new = '''        # any order held as the one after, so that order waits afresh.
+        if False:'''
+
+[[rows]]
+id = "O27_settled_order_keeps_the_order_after"
+description = "a reading back at the settled order leaves an order held as the one after on its old clock, so read again it leads at once"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        # as the one after waits afresh if it is read again.
+        if kept.after is not None:'''
+new = '''        # as the one after waits afresh if it is read again.
+        if False:'''
+
+[[rows]]
+id = "S1_sample_finish_held_to_the_plans_reading"
+description = "sample, R-1411: the finish is not held to the plan's reading, so the rest of an off path order is moved from whatever the adapter reads"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            if one.finishing_order and one.account_before'''
+new = '''            if False and one.finishing_order and one.account_before'''
+
+[[rows]]
+id = "S2_sample_stopped_leader"
+description = "sample, U225: the side that led the stopped write is not followed, so the account leads a finish"
+file = "src/cratekit/sync/pair_merge.py"
+surface = "user"
+old = '''        elif not account_moved and stopped.leader == REKORDBOX:'''
+new = '''        elif False and not account_moved and stopped.leader == REKORDBOX:'''
+
+[[rows]]
+id = "S3_sample_finished_order"
+description = "sample, U225: the account is read as it stands, not as the stopped write would have left it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                for one in pair_stopped.finished(
+                    listed_order or account_now, stopped_write.target
+                )'''
+new = '''                for one in (listed_order or account_now)'''
