@@ -1,0 +1,121 @@
+name = "r1420"
+pass_kind = "light"
+
+[[rows]]
+id = "N1_fix_reverted"
+description = "the check leaves the order unread once ordering is marked, as before R-1420, so a person's reorder after an order that moved nothing is written over"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)'''
+new = '''    return steps.has(STEP_ORDERING)'''
+
+[[rows]]
+id = "N2_moves_begun_ignored"
+description = "a pair whose moves began has its order read, so a continue of a stop part way through the moves refuses the moves' own order as moved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)'''
+new = '''    return steps.has(STEP_ORDERING) and one.finishing_order'''
+
+[[rows]]
+id = "N3_finish_read_too"
+description = "a finish of a stopped order has its order read by the check, so a continue of a refused finish whose check lists the lag is held as moved rather than refused at the adapter"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)'''
+new = '''    return steps.has(STEP_ORDERING) and steps.has(STEP_MOVING)'''
+
+[[rows]]
+id = "N4_ordering_mark_ignored"
+description = "the order is left unread for any pair whose moves began or that finishes, ordering marked or not"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+old = '''    return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)'''
+new = '''    return steps.has(STEP_MOVING) or one.finishing_order'''
+
+[[rows]]
+id = "N5_order_always_read"
+description = "every part written pair has its order read, the moves' own included"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    return steps.has(STEP_ORDERING) and (steps.has(STEP_MOVING) or one.finishing_order)'''
+new = '''    return False and steps.has(STEP_ORDERING)'''
+
+[[rows]]
+id = "N6_call_site_never_reads_order"
+description = "the check passes ordering as true for every part written pair, so no order is read once an account write began"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                why = _beyond(one, now, ordering=_ordered_by_this_run(one, of(one)))'''
+new = '''                why = _beyond(one, now, ordering=True)'''
+
+[[rows]]
+id = "B1_beyond_order_unread"
+description = "sample: the part written check never reads the order, whatever ordering says"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''    if not parts and not ordering:'''
+new = '''    if not parts and ordering is None:'''
+
+[[rows]]
+id = "B2_beyond_tail_unread"
+description = "sample: the part written check reads the kept tracks' order but not that this write's additions stand after them"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if kept != [track for track in one.account_now if track in held] or (
+            list(now) != kept + tail
+        ):'''
+new = '''        if kept != [track for track in one.account_now if track in held] or (
+            list(now) != list(now)
+        ):'''
+
+[[rows]]
+id = "B3_beyond_removals_asked"
+description = "sample: the kept order is compared to the whole plan's reading, so a track this write took off reads as a reorder"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        if kept != [track for track in one.account_now if track in held] or ('''
+new = '''        if kept != [track for track in one.account_now] or ('''
+
+[[rows]]
+id = "E1_refused_continue_expects_nothing"
+description = "sample: a continue of a refused order passes no listing for the adapter to agree with"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                steps.has(STEP_ORDER_REFUSED)
+                or (one.finishing_order and not (one.account_removes or one.account_adds))'''
+new = '''                (one.finishing_order and not (one.account_removes or one.account_adds))'''
+
+[[rows]]
+id = "E2_finish_agreed_dropped"
+description = "sample: a finish of a stopped order is not held to the plan's reading at the adapter"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''            if one.finishing_order and one.account_before
+            else {}'''
+new = '''            if False and one.finishing_order and one.account_before
+            else {}'''
+
+[[rows]]
+id = "C1_continued_ignored"
+description = "a continue of an order parked or stopped with the whole write before any move passes the adapter no listing to agree with"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''                or (continued and not one.finishing_order)'''
+new = '''                or (continued and one.finishing_order and False)'''
+
+[[rows]]
+id = "C2_continued_takes_in_a_finish"
+description = "a continue of a finish parked before any move is held to the check's listing beside the plan's reading, R-1419's shape widened"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+old = '''                or (continued and not one.finishing_order)'''
+new = '''                or continued'''
+
+[[rows]]
+id = "C3_continued_read_after_the_mark"
+description = "whether an earlier command began the order is read as always yes, so a first order is asked to agree with the check's listing"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+old = '''        continued = steps.has(STEP_ORDERING)'''
+new = '''        continued = steps.has(STEP_ORDERING) or True'''
