@@ -45780,3 +45780,63 @@ test that reaches it, or the docstring credits the guard. Ledger only.
 **Measured cost.** None measured: 0 candidates were driven that reach a different outcome.
 
 **Closes when:** a test reaches each, or the guard is removed as dead.
+
+---
+
+## R-1376. A pair whose rekordbox side was released after a stopped order and paired again has its first sync write the stopped write's scramble into rekordbox
+
+**Found:** at the review of #591, R-1372, round one, 2026-11-06.
+
+**The mechanism.** A stopped order on a pair is read by `_Reader.stopped_write`, which `plan_pair` consults only for a pair the pairs document holds. When the pair's rekordbox playlist is deleted after the stop, a sync releases the pair (`sync-pair-released`), and when the account playlist is then paired by hand with a new rekordbox playlist, that pair's first sync runs with no pair record (`held` is None), so the stopped write is never read: the first sync takes the account's order, which is the stopped write's scramble. The carried record R-1372 keeps is on disk and read by nothing, and the second sync has a snapshot that passes it.
+
+**Measured cost.** Driven by the round one reviewer on the fake account: the U225 stop, the rekordbox playlist deleted, a sync (released), a new rekordbox playlist in rekordbox's order, `crate sync pair ACC --rekordbox NEW`. The new rekordbox playlist became 2, 7, 1, 3, 4, 5, 6, with nothing said of the stop. The same before R-1372 within thirty days, and with or without its mark guard. The producer, a deletion and a hand pairing after a stop, was driven step by step, not observed live.
+
+**Closes when:** the first sync of a pair marked on an account playlist with a stopped write carried for it finishes that order from the side that led it, or names the stop on the gate and leaves the account's order out of what it writes to rekordbox.
+
+---
+
+## R-1377. A stopped run named as finishing after a sync that finished its pair without moving the snapshot is named on every later gate, with no end date
+
+**Found:** at the review of #591, R-1372, round one, 2026-11-06.
+
+**The mechanism.** R-1373's shape, lengthened by R-1372. A sync that finishes a stopped pair's order on the account gate alone moves no snapshot, so the stopped run's carried record is not passed by one, and the next gate names the pair as finishing that run again. Before R-1372 the stopped run's steps aged out after thirty days and the sentence ended; its carried record now outlives them until a snapshot passes it.
+
+**Measured cost.** Driven by the round one reviewer: the stop, a sync with rekordbox skipped, both runs aged 31 days and pruned, a rekordbox reorder, a fresh gate. The gate still named the stopped run; both sides ended in the person's new order, so nothing wrong was written. The cost is a false sentence on the gate until a sync of both sides.
+
+**Closes when:** R-1373 closes, a finished pair's order recorded where the next plan reads it, or the sentence said only when the plan writes the pair's order.
+
+---
+
+## R-1378. A stopped write's carried record stays on disk for good when its pair is unpaired or never synced on both sides again
+
+**Found:** at the build of #591, R-1372, 2026-11-06.
+
+**The mechanism.** R-1372 lets a carried record go when its own run marks the pair done, or when a snapshot of the pair taken after it is recorded. A pair unpaired after a stop, or synced only on one side from then on, never reaches either, and nothing ages the record out, by design, since a stop must be remembered while its pair is unfinished. An unreadable carried record is likewise named on every gate until it is removed by hand.
+
+**Measured cost.** A readable record the mark guard or a snapshot passes is a small file read by nothing (`_Reader.stopped_write`). An unreadable one is not noise while its pair is unfinished: driven by the round two reviewer, the U225 stop with its steps aged and pruned and its carried record overwritten by hand, a fresh sync planned the pair as if nothing stopped and, with both gates applied, wrote rekordbox 2, 7, 1, 3, 4, 5, 6. The gate said so under `sync-pair-stopped-unread` before the approval. The one producer driven was a hand edit; a crash part way through a carry cannot leave one, since the record is replaced whole.
+
+**Closes when:** forgetting or releasing a pair lets go of its carried records, and a verb or a doctor check offers to clear one that cannot be read.
+
+---
+
+## R-1379. The held plans directory, when it cannot be listed, reads as holding no run's steps and nothing is named
+
+**Found:** at the review of #591, R-1372, round two, 2026-11-06.
+
+**The mechanism.** `core/held_plan.recorded_steps` and `prune` list with `Path.glob`, which on Python 3.12 swallows an `OSError` and answers an unlistable directory as an empty one, so their `except OSError` branches cannot be reached. R-1372's round one found the same in `carried()` and fixed that instance by listing with `iterdir`; the two listings one function over keep the shape. A held plans directory that cannot be listed reads as no run's steps, and a stop recorded only there is not looked for, with nothing said.
+
+**Measured cost.** Driven by the round two reviewer: the directory replaced by a regular file after a stop. `recorded_steps` answered no steps and no problem, `carried()` named its own listing, and the verb then stopped at `gate-sibling-run` and wrote nothing. The shape that would write, a directory that can be written and not listed, cannot be produced as root in the container; its cost is unmeasured.
+
+**Closes when:** both listings use `iterdir` and name an `OSError` other than a missing directory, as `carried()` does.
+
+---
+
+## R-1380. Two guards of R-1372's carried store kill no test, and a directory named like a record is said to leave its pair planned as if nothing stopped
+
+**Found:** at the review of #591, R-1372, round two, 2026-11-06.
+
+**The mechanism.** `held_plan.carried()` reads only names ending `.json`; removing that filter leaves both of the unit's test files green (the round two reviewer's row 6, and the unit's own mutation table). Without it, a `tmp*.tmp` left by a carry killed between `mkstemp` and `os.replace` would be named on every gate. Separately, a subdirectory named `*.json` in the carried directory is named under `sync-pair-stopped-unread`, whose sentence says a pair was planned as if nothing stopped, while the readable record beside it was read and the pair finished correctly.
+
+**Measured cost.** The filter: none reached, the producer (a kill between two calls) not driven. The directory: driven by the round two reviewer, a false clause on the gate beside the finishing note for the same pair, both sides ending in the led order; nothing in Cratekit creates such a directory, and the old `glob` listing behaved the same.
+
+**Closes when:** a test with a `.tmp` beside a record pins the filter, and the unread sentence names only what was not read.
