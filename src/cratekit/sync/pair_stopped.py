@@ -29,8 +29,8 @@ accounts a stopped write left in orders none of its moves leaves, after moves
 answered 412 or sent by position on a reading that lagged: the provider's
 partial state as often as a person's edit. Such an order is read as the
 stopped write's too, finished as one on the path is, unless readings plans
-kept after the stop, each settled over the agreement window, show the account
-moved from one order to another (:func:`reordered`). One reading shows
+kept after the stop, each off the path and settled over the agreement window,
+show the account moved from one order to another (:func:`reordered`). One reading shows
 nothing, and nor do two that differ, since the provider serves a playlist's
 older orders for minutes after a change (``sync/pair_cli``).
 

@@ -169,9 +169,10 @@ both sides, so its additions and removals are not read as the person's
 either. AN ACCOUNT OFF THOSE MOVES' PATH is finished the same way (U234):
 Sitting 87 read accounts left in orders no count of the moves leaves, the
 provider's partial state after refused and misplaced moves, so off the path
-leads only once readings kept on the pair after the stop, each settled over
-the agreement window, show the account moved to another order. The gate names the pair as finishing that run, and
-which of these it read. A FIRST SYNC reads the
+leads only once readings kept on the pair after the stop, each off the path
+and settled over the agreement window, show the account moved to another
+order. The gate names the pair as finishing that run, and which of these it
+read. A FIRST SYNC reads the
 stop on its account playlist too, whatever the pair's mark (R-1376): a pair
 released after a stop and paired again with a new rekordbox playlist has no
 snapshot, so the account's half done order would lead and be put into
@@ -1910,8 +1911,10 @@ def _moved_since_stop(
     state stands there as often as a person's edit. Nor do two readings
     that differ, since the provider serves a playlist's older orders for
     minutes after a change (Sitting 86, round one's review). So the first
-    reading after the stop is kept on the pair, and a reading in the same
-    order at least :data:`AGREE_AFTER` later settles it; while it is not
+    reading after the stop off the moves' path is kept on the pair, and a
+    reading in the same order at least :data:`AGREE_AFTER` later settles it;
+    a reading on the path is finished and never kept, since it may be a lag
+    of the whole write (round two's review); while it is not
     settled, a reading in another order starts it again. Once it is
     settled, a reading off the path in another order is kept as the order
     after it and holds the pair, nothing written, until a reading at least
@@ -1927,6 +1930,14 @@ def _moved_since_stop(
     if held is None:
         return False
     kept = _kept_after(held, write)
+    if not off_path:
+        # ON THE PATH THE STOP IS FINISHED, and nothing is kept: a reading on
+        # the moves' path may be a lag of the whole write, so it is never the
+        # order a later one is measured against (round two's review). It ends
+        # any order held as the one after, so that order waits afresh.
+        if kept is not None and kept.after is not None:
+            reader.see_stop(target.account_id, replace(kept, after=None, after_at=""))
+        return False
     stamp = timestamp()
     if kept is None:
         reader.see_stop(target.account_id, pairs.StopReading(write.run_id, reading, stamp))
@@ -1938,7 +1949,9 @@ def _moved_since_stop(
         elif first is not None and _now() - first >= AGREE_AFTER:
             reader.see_stop(target.account_id, replace(kept, settled=True))
         return False
-    if not off_path or not pair_stopped.reordered(kept.order, reading):
+    if not pair_stopped.reordered(kept.order, reading):
+        # BACK AT THE SETTLED ORDER: the stop is finished, and an order held
+        # as the one after waits afresh if it is read again.
         if kept.after is not None:
             reader.see_stop(target.account_id, replace(kept, after=None, after_at=""))
         return False
