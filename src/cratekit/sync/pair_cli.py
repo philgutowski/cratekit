@@ -3360,10 +3360,12 @@ def apply_pair(
     """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot.
 
     ``account_listed`` is the account playlist as the check before the write
-    read it (U209), equal to what the plan read until this run marks the
-    pair's order begun; on a continue after that it is checked for what it
-    holds and not its order, so a finish is held to the plan's own reading
-    (R-1411), never to this listing. A pair with nothing to write
+    read it (U209), equal to what the plan read until this run's moves of
+    the pair's order begin. On a continue of an order whose moves never
+    began and that finishes no stopped write, it was read in order and is
+    handed to the adapter to agree with first (R-1420); once the moves
+    began it is checked for what it holds and not its order, and a finish
+    is held to the plan's own reading (R-1411). A pair with nothing to write
     on the account records it as the side's snapshot rather than listing the
     playlist again; a pair that writes there lists it after the write, as
     every pair did before.
@@ -3566,8 +3568,10 @@ def _write_account(
         # BEGAN THIS ORDER, read before this one marks it: with no move sent
         # (the branch above returned otherwise), it was refused, parked or
         # stopped with the whole write, and its continue agrees first. A
-        # finish keeps what R-1411 holds it to.
-        continued = steps.has(STEP_ORDERING)
+        # finish keeps what R-1411 holds it to. ROUND TWO'S REVIEW: the run's
+        # steps unreadable or gone, the record carried beside them still
+        # says the order began, as it says the moves went.
+        continued = steps.has(STEP_ORDERING) or steps.carried(STEP_ORDERING) is not None
         # BEFORE THE FIRST MOVE (U210): from here the order is this run's.
         # U225. AND WHAT THE ORDER IS DOING, so a later fresh plan that finds
         # it stopped reads its moves as this write's: the order it starts

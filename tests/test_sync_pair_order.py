@@ -484,3 +484,47 @@ def test_a_continue_of_an_order_that_moved_nothing_hands_the_adapter_the_checks_
     assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
     assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
     assert world.held(opener) == ["4", "3", "1", "2"]
+
+
+@pytest.mark.parametrize("damage", ["unreadable", "gone"])
+def test_a_continue_whose_steps_cannot_be_read_still_agrees_with_the_checks_listing_first(
+    world, cfg, monkeypatch, damage
+):
+    """Round two's row 1: the record carried beside the run's steps still says the order began.
+
+    The order parked before any move, then the run's steps file is lost: the
+    continue reads the carried record, as it does for moves already sent,
+    and hands the adapter the check's listing to agree with.
+    """
+    from cratekit.core import held_plan, jobs
+
+    gig = world.folder("GIG READY")
+    opener = world.playlist("Opener", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    _reordered(world, opener, "4", "3", "1", "2")
+    account_id = world.titled("GIG READY Opener")
+    real = world.account.order_tracks
+    stopping = [True]
+
+    def order_tracks(playlist_id, remote_ids, *, expect=None, begun=None, **agreed):
+        if playlist_id == account_id and stopping:
+            stopping.clear()
+            raise jobs.Parked(
+                refuse("provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "order")).cause
+            )
+        return real(playlist_id, remote_ids, expect=expect, begun=begun, **agreed)
+
+    monkeypatch.setattr(world.account, "order_tracks", order_tracks)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    run_id = stopped["run_id"]
+    where = held_plan.steps_path(run_id)
+    if damage == "gone":
+        where.unlink()
+    else:
+        where.write_text("{not json\n")
+    code, done = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), done
+    assert world.account.expected[-1] == (account_id, tuple(_ids("1", "2", "3", "4")))
+    assert world.account.playlists[account_id] == _ids("4", "3", "1", "2")
