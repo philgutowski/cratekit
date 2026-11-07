@@ -1018,6 +1018,31 @@ def test_a_plan_with_every_landing_record_readable_warns_nothing_of_them(world, 
     assert pair_cli.LANDING_UNREAD not in _codes(envelope)
     assert envelope["data"]["totals"]["landing_unread"] == 0
 
+def test_the_pairs_digest_moves_with_the_landing_hold_and_only_when_any():
+    """R-1383, the mutation table's two digest zeros: the held tracks bind the gate, and none leaves it as it was."""
+    from cratekit.sync import pair_merge
+    from cratekit.write import playlist_pair
+
+    target = pair_cli.Target(account_id="a", rekordbox_id="1", marked=True)
+    named = pair_cli.Named(key="r:t1", artist="A", title="B", remote_id="t1")
+
+    def plan(landing_unread):
+        return pair_cli.PairPlan(
+            target=target,
+            name="x",
+            rekordbox_name="x",
+            first=False,
+            merged=pair_merge.merge(None, pair_merge.Side(()), pair_merge.Side(())),
+            account_now=(),
+            rekordbox_before=(),
+            change=playlist_pair.Change(playlist_id="1", before=(), adds=(), removes=(), order=()),
+            landing_unread=landing_unread,
+        )
+
+    assert "landing_unread" not in plan(()).identity()
+    assert plan((named,)).identity()["landing_unread"] == ["t1"]
+    assert plan((named,)).identity() != plan(()).identity()
+
 def test_two_rows_carrying_one_isrc_add_neither_and_say_so(world, cfg):
     w = world(account=("1",), rekordbox=("1",))
     conn = sqlite3.connect(cfg.library.db_path)
