@@ -531,7 +531,10 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   apart agree. Nothing is moved again meanwhile, and a continue of a stopped
   run only reads the order. A stopped order records how many moves Tidal
   accepted before it stopped; once two readings agree on an order at or past
-  those moves, the rest is sent from that reading. A reading from before
+  those moves, the rest is sent from that reading, and only while Tidal
+  still serves that order when the rest is sent, also when the same sync
+  adds or takes off tracks; served older, nothing is moved, the pair is left
+  pending and the next sync tries again. A reading from before
   them, or at a move whose landing is not known, leaves the pair out however
   long it agrees, until Tidal shows the moves, you move the playlist by hand
   in the Tidal app, or you release the pair. A run whose plan cannot be kept

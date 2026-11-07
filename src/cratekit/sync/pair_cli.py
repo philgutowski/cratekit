@@ -3360,7 +3360,10 @@ def apply_pair(
     """Write one pair: mark it, rekordbox and the queue, then the account, then its snapshot.
 
     ``account_listed`` is the account playlist as the check before the write
-    read it (U209), equal to what the plan read. A pair with nothing to write
+    read it (U209), equal to what the plan read until this run marks the
+    pair's order begun; on a continue after that it is checked for what it
+    holds and not its order, so a finish is held to the plan's own reading
+    (R-1411), never to this listing. A pair with nothing to write
     on the account records it as the side's snapshot rather than listing the
     playlist again; a pair that writes there lists it after the write, as
     every pair did before.
@@ -3609,6 +3612,23 @@ def _write_account(
             )
             else None
         )
+        # R-1411. AND HELD TO THE ORDER THE PLAN AGREED ON, whatever else this
+        # write does: a reading that holds every track the additions and
+        # removals left, in the order from before the stopped moves, passes
+        # the check of what it holds, and moves sent by position from it
+        # scramble the playlist. Every track of the plan's reading the
+        # adapter's still holds must stand in that order; one added may stand
+        # anywhere. THE PLAN'S READING, the one its stopped write was judged
+        # from and carried in the held plan, NOT THE CHECK'S LISTING (round
+        # one's review): a continue's check reads what the playlist holds and
+        # not its order, and a plan made again in this command has no check
+        # at all. Passed only when set, so a stand in for the adapter that
+        # does not take it is asked what it always was.
+        agreed = (
+            {"agreed": tuple(one.account_before)}
+            if one.finishing_order and one.account_before
+            else {}
+        )
 
         moves_sent: list[tuple[str, ...]] = []
 
@@ -3640,7 +3660,9 @@ def _write_account(
 
         try:
             sent = tuple(
-                remote.order_tracks(playlist_id, one.account_order, expect=expect, begun=begun)
+                remote.order_tracks(
+                    playlist_id, one.account_order, expect=expect, begun=begun, **agreed
+                )
             )
         except jobs.Parked:
             raise
