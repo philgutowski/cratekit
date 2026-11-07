@@ -3559,6 +3559,19 @@ def _write_account(
             )
             else None
         )
+        # R-1411. AND HELD TO THE ORDER THE PLAN AGREED ON, whatever else this
+        # write does: a reading that holds every track the additions and
+        # removals left, in the order from before the stopped moves, passes
+        # the check of what it holds, and moves sent by position from it
+        # scramble the playlist. Every track of the listing the reading still
+        # holds must stand in the listing's order; one added may stand
+        # anywhere. Passed only when set, so a stand in for the adapter that
+        # does not take it is asked what it always was.
+        agreed = (
+            {"agreed": tuple(account_listed)}
+            if account_listed is not None and one.finishing_order
+            else {}
+        )
 
         moves_sent: list[tuple[str, ...]] = []
 
@@ -3590,7 +3603,9 @@ def _write_account(
 
         try:
             sent = tuple(
-                remote.order_tracks(playlist_id, one.account_order, expect=expect, begun=begun)
+                remote.order_tracks(
+                    playlist_id, one.account_order, expect=expect, begun=begun, **agreed
+                )
             )
         except jobs.Parked:
             raise
