@@ -664,6 +664,14 @@ def test_a_released_pair_paired_again_at_the_root_never_takes_the_scramble_on_it
     assert world.held(rebuilt) == list(LED), "rekordbox took the stopped write's scramble"
     assert world.account.playlists[account_id] == ["t2", "t7", "t1", "t3", "t4", "t5", "t6"]
     assert run_id in _said(envelope, pair_cli.FINISHING)
+    # R-1404. Every later sync keeps rekordbox's order, and never puts the
+    # scramble the account still holds into rekordbox, named alone or with
+    # every pair.
+    for again in (paired, VERB):
+        code, envelope = sync(again)
+        assert code == int(ExitCode.OK), envelope
+        assert world.held(rebuilt) == list(LED), "a later sync wrote the scramble into rekordbox"
+    assert world.account.playlists[account_id] == ["t2", "t7", "t1", "t3", "t4", "t5", "t6"]
 
 
 def test_a_released_pair_paired_again_over_a_pending_order_is_held_until_the_provider_serves_it(
