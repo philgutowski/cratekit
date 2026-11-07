@@ -370,3 +370,56 @@ def test_a_first_sync_after_a_stopped_write_still_adds_only_and_reads_order_agai
     assert merged.remove_account == () and merged.remove_rekordbox == ()
     assert merged.leader == pair_merge.REKORDBOX
     assert merged.order == ("a", "b", "c")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1404: a base whose two sides stand in different orders
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: What a pair whose account order is not kept recorded after rekordbox led a
+#: reorder: rekordbox in its new order, the account in its old one.
+_APART = Base(account=("a", "b", "c"), rekordbox=("c", "a", "b"))
+
+
+def test_with_no_change_since_a_base_whose_sides_disagree_rekordbox_leads():
+    merged = merge(_APART, Side(("a", "b", "c")), Side(("c", "a", "b")))
+    assert merged.leader == pair_merge.REKORDBOX
+    assert merged.order == ("c", "a", "b")
+
+
+def test_a_track_the_account_adds_is_placed_in_the_order_rekordbox_holds():
+    merged = merge(_APART, Side(("a", "x", "b", "c")), Side(("c", "a", "b")))
+    assert merged.leader == pair_merge.REKORDBOX
+    assert merged.order == ("c", "a", "x", "b")
+
+
+def test_the_account_reordered_since_a_base_whose_sides_disagree_still_leads():
+    merged = merge(_APART, Side(("b", "c", "a")), Side(("c", "a", "b")))
+    assert merged.leader == pair_merge.ACCOUNT
+    assert merged.order == ("b", "c", "a")
+    both = merge(_APART, Side(("b", "c", "a")), Side(("a", "c", "b")))
+    assert both.leader == pair_merge.ACCOUNT
+
+
+def test_rekordbox_reordered_since_a_base_whose_sides_disagree_leads():
+    merged = merge(_APART, Side(("a", "b", "c")), Side(("b", "a", "c")))
+    assert merged.leader == pair_merge.REKORDBOX
+    assert merged.order == ("b", "a", "c")
+
+
+def test_a_base_whose_sides_agree_leaves_the_account_leading_when_neither_side_moved():
+    """Inside the order's scope nothing changes, the tie between two additions included."""
+    base = Base(account=("a", "b"), rekordbox=("a", "b"))
+    merged = merge(base, Side(("a", "x", "b")), Side(("a", "y", "b")))
+    assert merged.leader == pair_merge.ACCOUNT
+    assert merged.order == ("a", "y", "x", "b")
+
+
+def test_only_the_tracks_both_sides_held_at_the_base_are_read_for_their_order():
+    """A track one side alone held says nothing of whether the base's two orders disagree."""
+    alone = Base(account=("a", "b", "x"), rekordbox=("r", "a", "b"))
+    assert merge(alone, Side(("a", "b", "x")), Side(("r", "a", "b"))).leader == pair_merge.ACCOUNT
+    shared = Base(account=("a", "b", "z"), rekordbox=("z", "a", "b", "r"))
+    assert merge(shared, Side(("a", "b", "z")), Side(("z", "a", "b", "r"))).leader == (
+        pair_merge.REKORDBOX
+    )
