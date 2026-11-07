@@ -55,6 +55,11 @@ _WORD = r"[a-z][a-z0-9-]*"
 #: parser's own below.
 TOP_VALUED = frozenset({"--output", "-d", "--decision", "--run", "--calls"})
 
+#: Every top level option. Argparse takes one only before the verb, so one
+#: written between ``crate`` and the verb is judged against this set, and one
+#: written after the verb is judged as the verb's, which it is not.
+TOP_OPTIONS = TOP_VALUED | {"-h", "--help", "--version"}
+
 
 # ---------------------------------------------------------------------------
 # What the code says
@@ -68,10 +73,10 @@ def _parser_flags() -> dict[str, frozenset[str] | None]:
     profile that switches a module off cannot hide its verbs from the check. A
     verb whose extra is missing is built as a stub with no flags of its own, and
     is recorded with ``None`` so its flags are not judged against a stub.
-    Every other verb takes its own flags and the top level ones.
+    Every other verb takes its own flags only: a top level option written after
+    the verb is one argparse refuses.
     """
     parser = build_parser(membership=profiles.resolve("full"))
-    top = frozenset(s for action in parser._actions for s in action.option_strings)
     verbs: dict[str, frozenset[str] | None] = {}
 
     def walk(node: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
@@ -84,7 +89,7 @@ def _parser_flags() -> dict[str, frozenset[str] | None]:
             verbs[" ".join(path)] = None
             return
         own = frozenset(s for action in node._actions for s in action.option_strings)
-        verbs[" ".join(path)] = own | top
+        verbs[" ".join(path)] = own
 
     walk(parser, ())
     return verbs
@@ -181,7 +186,8 @@ def verb_mentions(
     word that is not one of that group's verbs is an unknown name, and so is
     anything after ``crate`` that is no verb at all. A flag is judged up to the
     next ``crate`` or the start of a comment. A top level option between
-    ``crate`` and the verb is stepped over, with its value when it takes one.
+    ``crate`` and the verb is stepped over, with its value when it takes one,
+    and is judged against :data:`TOP_OPTIONS`.
     """
     valued = "|".join(re.escape(option) for option in sorted(TOP_VALUED, key=len, reverse=True))
     singles = {verb for verb in verbs if " " not in verb}
@@ -193,10 +199,13 @@ def verb_mentions(
         text = snippet.strip().removeprefix("$ ")
         found: list[tuple[int, str, str | None, bool]] = []
         for match in re.finditer(
-            rf"\bcrate\s+(?:(?:{valued})(?:=\S+|\s+\S+)\s+|-\S+\s+)*({_WORD})(?:\s+({_WORD}))?",
+            rf"\bcrate\s+((?:(?:{valued})(?:=\S+|\s+\S+)\s+|-\S+\s+)*)({_WORD})(?:\s+({_WORD}))?",
             text,
         ):
-            found.append((match.start(1), match.group(1), match.group(2), True))
+            for option in re.findall(r"(?<![\w-])(--?[a-z][a-z0-9-]*)", match.group(1)):
+                if option not in TOP_OPTIONS:
+                    bad_flags.append(f"line {line}: crate {option}")
+            found.append((match.start(2), match.group(2), match.group(3), True))
         opening = re.match(rf"({_WORD})(?:\s+({_WORD}))?", text)
         if opening and opening.group(1) != "crate":
             found.append((0, opening.group(1), opening.group(2), False))
@@ -281,6 +290,7 @@ def test_the_parser_builds_every_landed_verb(parser_flags) -> None:
 
 def test_the_top_level_options_that_take_a_value_are_the_parsers() -> None:
     parser = build_parser(membership=profiles.resolve("full"))
+    assert {s for action in parser._actions for s in action.option_strings} == TOP_OPTIONS
     takes_value = {
         option
         for action in parser._actions
@@ -376,6 +386,15 @@ def test_an_invented_flag_is_caught_and_a_real_one_is_not() -> None:
     assert bad == []
 
 
+def test_a_top_level_option_is_judged_where_argparse_takes_it() -> None:
+    _, _, bad = verb_mentions(code_snippets("`crate status --output json`"), _VERBS)
+    assert bad == ["line 1: status --output"]
+    _, _, bad = verb_mentions(code_snippets("`crate --json status`"), _VERBS)
+    assert bad == ["line 1: crate --json"]
+    _, _, bad = verb_mentions(code_snippets("`crate --calls=9 --run R status`"), _VERBS)
+    assert bad == []
+
+
 def test_a_flag_is_judged_against_its_own_verb_only() -> None:
     text = "`crate sync land --pass-run R; crate sync pair ME --pass-run R`"
     _, _, bad = verb_mentions(code_snippets(text), _VERBS)
@@ -399,10 +418,14 @@ def test_a_settings_row_with_a_changed_default_disagrees() -> None:
         "outbound.pair_skip_folders": '["ARCHIVE"]',
         "library.music_dir": '"Music"',
     }
-    schema = _schema_defaults()
-    assert table["labels.offer_per_sweep"] != schema["labels.offer_per_sweep"]
-    assert table["outbound.pair_skip_folders"] == schema["outbound.pair_skip_folders"]
-    assert table["library.music_dir"] == schema["library.music_dir"]
+    # Judged against a fixed schema rather than the live one, so the reader is
+    # what this proves and a real change of a default cannot redden it.
+    schema = {
+        "labels.offer_per_sweep": "10",
+        "outbound.pair_skip_folders": '["ARCHIVE"]',
+        "library.music_dir": '"Music"',
+    }
+    assert {key for key in schema if table[key] != schema[key]} == {"labels.offer_per_sweep"}
 
 
 def test_a_misspelt_dotted_key_is_stray() -> None:

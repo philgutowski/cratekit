@@ -2376,12 +2376,13 @@ From v0.12.0, which carries U225, U226, U227, U224, R-1360 and R-1349. Both back
 
 ## Next sitting
 
-**Open attended cards, as of 2026-11-07.** Every card they wait on has
-closed, so each is ready for a sitting: A88 (#514) and A91 (#521), the quiet
-sync's calls after U231; A90 (#518), the filing after U230; A94 (#528); A95
-(#535); A105 (#581); A106 (#586); A107 (#589); A108 (#592), which finishes
-the 32 account orders sitting 86 left part way; A109 (#601); A110 (#605);
-A111 (#611), the macOS battery with rekordbox open; and A112 (#615). Four
+**Open attended cards, as of 2026-11-07.** A88 (#514) and A91 (#521), the
+quiet sync's calls, and A108 (#592), which finishes the 32 account orders
+sitting 86 left part way, wait on U234 (#623). Every card the rest wait on
+has closed, so each is ready for a sitting: A90 (#518), the filing after
+U230; A94 (#528); A95 (#535); A105 (#581); A106 (#586); A107 (#589); A109
+(#601); A110 (#605); A111 (#611), the macOS battery with rekordbox open; and
+A112 (#615). Four
 more wait on a circumstance rather than a card: A56 (#414), whose retirement
 half waits on the first batch due to rotate, on 2026-11-08 at the earliest;
 A57 (#415), a DEADCA7 push onto a library copy; A72 (#446), new Bandcamp
