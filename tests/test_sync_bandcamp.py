@@ -232,6 +232,19 @@ def test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_lab
     assert any("Analyze Tracks" in step for step in steps)
 
 
+
+def test_the_labels_release_reaches_the_same_gate_with_rekordbox_open_on_the_host(
+    rekordbox_on_the_host, signed_in, account, puls, chain, library
+):
+    """U232: the v0.13.0 cut was refused because this exited 21 on a Mac with rekordbox open.
+
+    The same scenario over a host whose process table lists rekordbox and its
+    agent, at psutil itself, so the suite's stubs are what keeps it at 12.
+    """
+    test_a_labels_new_release_and_its_owned_one_reach_the_gate_named_for_the_label(
+        signed_in, account, puls, chain, library
+    )
+
 def test_the_tail_runs_on_the_absolute_batch_folder(signed_in, account, puls, chain):
     run("--seller", "PULS", "--batch", BATCH)
 

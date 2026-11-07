@@ -363,7 +363,7 @@ class FakeAccount:
         remote_ids: tuple[str, ...],
         *,
         expect: tuple[str, ...] | None = None,
-        begun: Callable[[tuple[str, ...], tuple[str, ...]], None] | None = None,
+        begun: Callable[[tuple[str, ...], tuple[str, ...]], Any] | None = None,
     ) -> tuple[str, ...]:
         """Put the asked tracks it holds once in the asked order, by the adapter's rule. One write.
 
@@ -373,7 +373,8 @@ class FakeAccount:
         stood among the kept tail. ``expect`` is recorded in :attr:`expected`.
         ``begun`` is called, as the adapter calls it (U231), with the order
         moved from and the order the moves leave, before the first move and
-        only when something moves. Returns the order the moves leave.
+        only when something moves, and the recorder it answers before each
+        move (R-1394). Returns the order the moves leave.
         """
         self.expected.append((playlist_id, None if expect is None else tuple(expect)))
         self._bump(playlist_id)
@@ -390,8 +391,12 @@ class FakeAccount:
             for one in moving:
                 end.remove(one)
                 end.insert(0, one)
-            begun(tuple(members), tuple(end))
-        for one in moving:
+            told = begun(tuple(members), tuple(end))
+        else:
+            told = None
+        for number, one in enumerate(moving, start=1):
+            if told is not None:
+                told(number, number - 1)
             members.remove(one)
             members.insert(0, one)
         self.ordered.append((playlist_id, tuple(remote_ids)))
