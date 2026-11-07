@@ -1670,7 +1670,7 @@ def _keeps_order(cfg: config.Config, rekordbox: playlist_pair.Playlist, home: An
         # is its own top (round one's review).
         return bool(rekordbox.ancestors) and rekordbox.top[1] == ORDER_FOLDER
     path = tuple(getattr(home, "path", ()) or ())
-    return bool(path) and path[0] == ORDER_FOLDER
+    return len(path) > 1 and path[0] == ORDER_FOLDER
 
 
 def _with_unread_placed(ordered: list[str], listed: Sequence[str]) -> tuple[str, ...]:
@@ -2958,6 +2958,19 @@ class PairSteps:
         except OSError as exc:
             raise steps_unwritten(self.steps.run_id, exc) from None
 
+    def carried(self, step: str) -> Any:
+        """One step of what this pair's steps carried past its run, or None (U231).
+
+        Read when the run's own steps do not hold it: a continue whose steps
+        file could not be read, or is gone, still finds the moves its order
+        sent in the record carried beside it, so it never sends them again.
+        """
+        if self.steps is None:
+            return None
+        from cratekit.core import held_plan
+
+        return held_plan.carried_step(self.steps.run_id, self.key, step)
+
     def let_go(self) -> None:
         """Let go of what this pair's steps carried past its run, once the pair is done (R-1372).
 
@@ -3206,6 +3219,10 @@ def _write_account(
         done.account_added = len(set(added))
     if one.account_order:
         moving = steps.get(STEP_MOVING)
+        if not isinstance(moving, Mapping):
+            # ROUND TWO'S REVIEW: the run's steps unreadable or gone, the
+            # record carried beside them still says the moves went.
+            moving = steps.carried(STEP_MOVING)
         if isinstance(moving, Mapping):
             # U231. AN EARLIER COMMAND OF THIS RUN BEGAN SENDING THESE MOVES,
             # and how many reached the provider before it stopped is not

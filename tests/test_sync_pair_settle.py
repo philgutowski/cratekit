@@ -507,3 +507,79 @@ def test_a_pair_document_from_before_u231_reads_with_no_reading_kept(cfg):
     store.mark("acc", "rb", name="Mine")
     held = store.get("acc")
     assert held is not None and held.seen is None and held.seen_at == ""
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round two's review
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("damage", ["unreadable", "gone"])
+def test_a_continue_whose_steps_cannot_be_read_still_sends_no_move_again(
+    world, owed, cfg, monkeypatch, damage
+):
+    """R4 of round two: the carried record says the moves went when the run's steps cannot.
+
+    The run parks in its settle reading with every move sent, the provider
+    serving the order from before them, so the check before the continue's
+    write finds the playlist as the plan read it and passes.
+    """
+    from cratekit.core import jobs
+
+    _opener, account_id = owed
+    real = world.account.settled_order
+    parks: list[int] = []
+
+    def parking(playlist_id, *, wait=0.0):
+        if not parks:
+            parks.append(1)
+            raise jobs.Parked(
+                refuse("provider-cooldown", "a cooldown", scope=Scope.RUN, origin=("test", "settle")).cause
+            )
+        return real(playlist_id, wait=wait)
+
+    monkeypatch.setattr(world.account, "settled_order", parking)
+    world.account.served[account_id] = _ids("1", "2", "3", "4")
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    run_id = stopped["run_id"]
+    where = held_plan.steps_path(run_id)
+    if damage == "gone":
+        where.unlink()
+    else:
+        where.write_text("{not json\n")
+    ordered = len(world.account.ordered)
+    code, done = drive(["--run", run_id, *VERB])
+    assert len(world.account.ordered) == ordered, "a continue sent the moves again"
+    held = pairs.PairStore(cfg).get(account_id)
+    assert held is not None and held.account == tuple(_ids("1", "2", "3", "4"))
+
+
+def test_a_continues_settle_window_is_counted_from_when_the_moves_began(
+    world, owed, cfg, monkeypatch
+):
+    """R5 of round two: a continue waits only what is left of the window the moves began."""
+    from datetime import UTC, datetime
+
+    _opener, account_id = owed
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    monkeypatch.setattr(pair_cli, "_now", lambda: datetime.now(UTC) + timedelta(seconds=20))
+    code, done = drive(["--run", stopped["run_id"], *VERB])
+    assert code == int(ExitCode.OK), done
+    assert world.account.settle_waits[-1] <= pair_cli.SETTLE_SECONDS - 15
+
+
+def test_a_rekordbox_side_to_be_made_is_under_gig_ready_only_inside_the_folder(cfg):
+    """R6 of round two: the same rule for a pair whose rekordbox side is new."""
+    from cratekit.sync import pair_discover
+    from cratekit.write import playlist_pair
+
+    made = playlist_pair.Playlist(
+        playlist_id="", name="x", attribute=0, removed=False, ancestors=()
+    )
+    inside = pair_discover.Home(folder="", name="Opener", parent_id="7", path=("GIG READY", "Opener"))
+    named = pair_discover.Home(folder="", name="GIG READY", parent_id="", path=("GIG READY",))
+    assert pair_cli._keeps_order(cfg, made, inside) is True
+    assert pair_cli._keeps_order(cfg, made, named) is False
