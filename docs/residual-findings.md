@@ -45840,3 +45840,221 @@ test that reaches it, or the docstring credits the guard. Ledger only.
 **Measured cost.** The filter: none reached, the producer (a kill between two calls) not driven. The directory: driven by the round two reviewer, a false clause on the gate beside the finishing note for the same pair, both sides ending in the led order; nothing in Cratekit creates such a directory, and the old `glob` listing behaved the same.
 
 **Closes when:** a test with a `.tmp` beside a record pins the filter, and the unread sentence names only what was not read.
+
+---
+
+## R-1381. An intake job whose frozen configuration no longer reads refuses whole verbs as a configuration error rather than naming the job
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** A job's reports are read through its frozen configuration, and a configuration that no longer validates raises `config.ConfigError`, which is not a `CratekitError`. U229 passes such a job over when another pair's plan reads it, but the pair that queued it still re raises it, as the base did, so `crate sync pair` with no argument is refused for every pair (`src/cratekit/sync/pair_cli.py`, `_Reader.job_reports`). The same shape stands one file over: `src/cratekit/sync/mark_cli.py` refuses `sync mark` whole, `src/cratekit/organize/mirror_downloads.py` (`outcomes`) raises out of its step, and `src/cratekit/favorites/backfill.py` reads its jobs the same way (not driven). A `config_toml` that is not TOML at all raises `TOMLDecodeError` through U229's catch as an internal error.
+
+**Measured cost.** Driven by round two's review on a hand edited store row: exit 30 `config-unusable` with the remedy to fix the configuration file, which is not what is wrong, for every pair, and for `sync mark` no items at all. Three candidate producers were driven (a configuration frozen today with recent keys removed, one with no provider table, today's enqueue round trip) and none produces it; the required keys are unchanged since before pair jobs existed. The guard that re raises for the owning pair kills no test.
+
+**Closes when:** every reader of a job's reports names the one job whose frozen configuration does not read and goes on with the rest, or a measurement shows no build ever freezes one. Ledger only until a producer is found.
+
+---
+
+## R-1382. A track whose landing's INBOX memberships were removed is no longer found by its landing, and a sync pair queues it again
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** A landed row with no database ISRC is found by `landed_isrcs` in `src/cratekit/sync/pair_cli.py` only through its live membership of the INBOX playlist its landing made. Once those memberships are soft deleted, the row is named by nothing a plan reads, and a track listed on a pair is planned as `acquire`.
+
+**Measured cost.** Driven by round one's review: with the INBOX playlist and its memberships soft deleted the plan queued the track, and with the playlist alone deleted it still found the row. Whether rekordbox or `inbox rotate` ever soft deletes the memberships when an INBOX playlist goes was not measured.
+
+**Closes when:** the landing writes the ISRC into the row, out of U229's scope, or a measurement shows nothing removes the memberships. Ledger only until that is measured.
+
+---
+
+## R-1383. A landing record the session log cannot read is read as no landing, so a sync pair queues the landed track again with a clean report
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** `landed_inbox_playlists` in `src/cratekit/sync/pair_cli.py` takes `session.scan_log`'s records and discards its unreadable list, so a landing whose record does not read (torn, or a state value this build does not know) names no INBOX playlist, and a track only that landing brought in is planned as `acquire`. Since U229 every pair reads every landing this way, so the shape now carries the whole of the card's fix. Pattern one, absence read as evidence of absence.
+
+**Measured cost.** Driven by round one's review on two hand damaged records, one rewritten with an unknown state and one torn: both times the plan queued the landed track and warned only `sync-pair-written`. The natural producers, a record a later build writes or a log directory the account cannot list, were not driven.
+
+**Closes when:** a plan that finds an unreadable landing record names it in a warning and plans no `acquire` for a track it could not rule out, or refuses, as the session log's own gates do. It earns an issue under the board bar's (b), a clean report over state the tool could not read.
+
+---
+
+## R-1384. A sync pair plan reads the tag of every landed row lacking a database ISRC once a lacking track reaches the widened step
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** `_Reader.landed_anywhere` in `src/cratekit/sync/pair_cli.py` reads the file of each row in every INBOX playlist landed on the library, once per plan, whenever a lacking track carrying an ISRC is left by the four earlier steps. Every native landing leaves its rows without a database ISRC, so the reads grow with what has landed and not with what is asked.
+
+**Measured cost.** Round one measured four tag reads per plan for four landed rows, against none on the base, and none on a resume within the run, which holds the plan. No provider call is added. The live count, over every landing still in rekordbox's INBOX, was not measured.
+
+**Closes when:** the ISRC is written into a landed row at the landing, which the brief leaves out of scope, or the reads are measured on the live library and found small. Ledger only: it costs time, never a wrong answer.
+
+---
+
+## R-1385. One sync pair command queues a track no landing brought in once for each pair listing it, and again beside another pair's job still holding it
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** `_queued` in `src/cratekit/sync/pair_cli.py` reads only the jobs this pair queued, and `_owned` reads another pair's job only once it SUCCEEDED and only for an `owned` report. So two plain pairs listing one new track each plan it as `acquire` in one command, and a pair listing a track another pair's pending job already holds plans it again. U229 made a track a landing brought in through any account playlist the library's row; a track not yet landed is outside that brief.
+
+**Measured cost.** Driven by round one's review: two pairs listing `t40` queued two jobs holding `t40` in one command, and a pair listing `t8` beside another pair's pending job holding `t8` queued a second job. Whether the second job downloads a second copy or resolves owned by the first file's ISRC when it runs was not driven.
+
+**Closes when:** a sync pair plans a track any pending or running `sync pair` job on the library holds as `awaiting`, and two pairs in one plan listing one lacking track queue it once. It earns an issue because a second download job for one track is what the card's goal forbids, a day earlier.
+
+---
+
+## R-1386. sync twins still holds a track a landing through another account playlist brought in, which sync pair then adds
+
+**Found:** at the review of #593, U229, 2026-11-06.
+
+**The mechanism.** The twins backfill in `src/cratekit/sync/twins.py` reads `pair_cli.landed_isrcs` for each account playlist's own INBOX playlists, as `sync pair` did before U229. So a twin's track that the library holds because another account playlist's landing brought it in is recorded as held, and the next `sync pair` finds the row and adds it.
+
+**Measured cost.** Driven by round one's review: the backfill held `t20`, `t21` and `t22` with the twin holding rows 3 and 1, and the sync pair right after held `t20` and `t21` and added row 9 for `t22`. Two verbs tell two stories about one library; nothing is downloaded and the end state is right.
+
+**Closes when:** the backfill reads every landed INBOX playlist as `sync pair` now does. Ledger only: the next sync pair corrects it with no download.
+
+---
+
+## R-1387. Three of the guards on what a sync pair reads as owned kill no test, sampled by U229's mutation table
+
+**Found:** at the mutation table of #593, U229, 2026-11-07.
+
+**The mechanism.** In `src/cratekit/sync/pair_cli.py`, `landed_inbox_playlists` reads a landing still awaiting its import as a landing (U128), and `_owned_by_jobs` reads only a SUCCEEDED job and only an `owned` report (U130). Each was removed alone by U229's table, rows S3, S4 and S5, and no test in the suite died.
+
+**Measured cost.** None measured. An intake file's landing entry carries no playlist id, an unfinished job's reports may not read, and a report in another state may carry no path, so each removal may be equivalent on every input the suite builds; no input that would show otherwise was driven.
+
+**Closes when:** each guard has a test that fails when it is removed, or a measurement shows the removal equivalent. Ledger only: a maintainer facing gap in pinning.
+
+---
+
+## R-1388. A plan only organize agrees a never agreed queuing playlist with its held track, so a declined gate loses the account's edit at the next organize
+
+**Found:** at the review of #594, U230, round two, 2026-11-06.
+
+**The mechanism.** `account_mirror` records each playlist's snapshot at the
+plan for a playlist with nothing to write (`ledger.record_mirror_agreed`),
+and `mirror_edits.agreed_after(None, after, held)` takes the account's word
+now for a playlist never agreed, held track included. So a never agreed
+queuing playlist that U230 would read as it stood at the queue is agreed
+with the track by a plan whose gate is declined, or a rehearsal that stops,
+and the next organize reads the track as the library's word: no edit, and
+the mirror takes the track off the account playlist the person put it in.
+
+**Measured cost.** Driven by round two of the review on U204's world as a
+plan without its apply, with the never agreed base set by hand; the control
+with U227's agreed base keeps the carry on offer. The never agreed queued
+state has no driven producer, and the declined gate was not driven through
+the verb.
+
+**Closes when:** a held track keeps no word in a playlist never agreed
+(agreed without it), or the plan's snapshot is not taken over a held track.
+Ledger only, reachability unmeasured.
+
+---
+
+## R-1389. A mirror job whose source playlist the mirror record no longer names lifts nothing, with no word on the plan
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** `account_mirror._read_edits` maps each job's source remote
+identifier to a title through the playlists the mirror record holds now
+(`titled`). A playlist retired and made again under a new identifier since
+the queue maps to nothing, so its base is not lifted, and the plan says
+nothing of the unmapped source.
+
+**Measured cost.** Read, not driven. The edit is read as U227 reads it.
+
+**Closes when:** an unmapped source is named on the plan, or mapped by title.
+Ledger only.
+
+---
+
+## R-1390. A queuing playlist left never agreed after the carry, because its snapshot record was refused, reads a drag back into the landing's band as landed once the batch left INBOX
+
+**Found:** at the review of #594, U230, round two, 2026-11-06.
+
+**The mechanism.** Round one's BLOCKING finding closed because the carry
+run agrees the edited playlist with the track, so its base is no longer
+lifted. When that record is refused (the area fact says "not recorded"),
+the playlist stays never agreed; once the landing's batch leaves INBOX no
+other snapshot holds the track, and a person's drag in rekordbox back into
+the band the landing filed is carried back once, the plan saying it is no
+change made in rekordbox. The next run agrees the playlist, so it happens
+once.
+
+**Measured cost.** Driven by round two of the review with the record
+refused by a monkeypatch, since the ledger's lock blocks rather than
+refuses and an unwritable state directory cannot be driven as root; the
+never agreed queued state is hand set. One person's rekordbox move undone
+once, named on the gate.
+
+**Closes when:** the carry itself settles a never agreed playlist (agreed
+with the track) so the lift cannot outlive the carry, or a producer of the
+refusal is shown not to exist. Ledger only, two producer links not driven.
+
+---
+
+## R-1391. A second never agreed mirrored playlist that lists a queued track counts as a snapshot holding it, so the landing is not read and the account loses the track from both playlists
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** `Mirrored.base` is the account side of a playlist never
+agreed, and `decide` counts every base as a snapshot holding the track. U230
+lifts that reading for the queuing playlist alone. A track queued from
+`Tech House Med` and also listed on a never agreed `Tech House with vox` is
+read by the later change rule, so rekordbox's place stands and the mirror
+takes the track off both account playlists.
+
+**Measured cost.** Driven on U204's world by round one of the review, with
+the second playlist's snapshot removed by hand; the same with that playlist
+agreed carries correctly. A newly mirrored playlist is the candidate
+producer and was not driven.
+
+**Closes when:** a never agreed base the account side alone gives is not read
+as a snapshot that held the track for the landed check, or a producer is
+shown not to exist. Ledger only, reachability unmeasured.
+
+---
+
+## R-1392. A carried edit read as it stood at the queue shows the queuing playlist out of its was places while the record lists it
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** `Decision.was` is built from the lifted bases, so a
+carried landed edit shows `was` without the queuing playlist, while that
+playlist's base, its account side, holds the track.
+
+**Measured cost.** Observed in every carried item of round one's drives. No
+reader of `was` beyond `Decision.item()` was found in `src`.
+
+**Closes when:** the plan names the lifted playlist, or says it was read as
+it stood at the queue. Ledger only, cosmetic.
+
+---
+
+## R-1393. The state U230 reads as it stood at the queue, a never agreed queuing playlist that lists the queued track, has no driven producer, so sitting 86's live read may have another cause
+
+**Found:** at the review of #594, U230, 2026-11-06.
+
+**The mechanism.** U230 reads the base of the playlist whose mirror job
+queued a track without it while that playlist is never agreed, so the
+account's addition there is read as the edit and the landing's filing as the
+landing's. A never agreed playlist queues nothing, since its base is its
+account side and no addition can be read on it, so the state needs a
+playlist whose snapshot was lost after the queue. Round one of the review
+drove four candidates on U204's world with U227's producers (the queue run, a
+second organize while awaiting, plan only runs around the landing, a never
+agreed playlist) and none produced it. The why sitting 86 quotes is the later
+change rule's, which main reaches only when the edited playlist's base lacked
+the track; it also reaches it when another snapshot holds the track, or when
+`mirror_downloads.filed` gives nothing (an empty or stale job queue on a copy
+rehearsal, two rows owning the track, a ledger entry whose destination does
+not resolve). U230 changes none of those.
+
+**Measured cost.** Not driven live. If the live cause is one of those, A90's
+download half reads "rekordbox's place stands" again after the merge.
+
+**Closes when:** A90's attended proof runs on a copy whose installation and
+library state were taken after the queue and the landing (the solutions entry
+on copy rehearsals of the mirror edit rule), and reads either the carry or
+which input was missing. Ledger only: it closes at an attended sitting.

@@ -657,40 +657,216 @@ def test_a_landed_track_is_found_in_the_inbox_playlist_landed_for_the_account(
     assert _pair(cfg).links.get("t8") == "8"
 
 
-def test_a_landed_track_another_account_playlist_landed_is_not_taken(world, cfg, tmp_path):
+def _landed_for(w, cfg, account_id: str, content_ids, *, session_id: str, name: str) -> str:
+    """Record a landing that made one INBOX playlist for ``account_id``, holding the rows named."""
     from cratekit.cli import output
     from cratekit.intake import ingest
 
-    w = world(account=("1",), rekordbox=("1",))
-    assert sync(w.args())[0] == int(ExitCode.OK)
-    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
     handle = w.open()
     try:
-        mirror = handle.create_playlist("Another (INBOX)")
-        handle.add_to_playlist(mirror, "8")
+        mirror = handle.create_playlist(f"{name} (INBOX)")
+        for content_id in content_ids:
+            handle.add_to_playlist(mirror, content_id)
         handle.session.commit()
         mirror_id = str(mirror.ID)
     finally:
         rb_writer.close_db(handle)
     session.write_record(
         session.SessionRecord(
-            session_id="s-other",
+            session_id=session_id,
             workflow=ingest.INTAKE_WORKFLOW,
             started=output.timestamp(),
             state=session.SessionState.CLOSED,
             detail={
                 ingest.INBOX_PLAYLISTS_KEY: [
-                    {"id": mirror_id, "name": "Another", ingest.INBOX_ACCOUNT_KEY: "acc-other"}
+                    {"id": mirror_id, "name": name, ingest.INBOX_ACCOUNT_KEY: account_id}
                 ]
             },
         ),
         cfg,
     )
+    return mirror_id
+
+
+def _acquired(envelope) -> list[str]:
+    found: list[str] = []
+    with jobs.open_store() as store:
+        for job_id in envelope["data"]["totals"]["queued_jobs"]:
+            found.extend(sorted((jobs.get(store, job_id).payload or {}).get("tracks") or {}))
+    return sorted(found)
+
+
+# U229. A track the library holds because a landing through ANOTHER account
+# playlist brought it in is that row, never a track to download again.
+
+
+def test_a_track_another_account_playlist_landed_is_added_and_never_queued(world, cfg, tmp_path):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    w.account.playlists[ACCOUNT].append("t8")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "8"]
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+    assert envelope["data"]["totals"]["acquire"] == 0
+    assert _pair(cfg).links.get("t8") == "8"
+
+
+def test_a_track_another_account_playlist_landed_with_its_isrc_in_the_row_is_added(world, cfg):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    w.account.playlists[ACCOUNT].append("t8")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "8"]
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+
+
+def test_a_track_no_landing_brought_in_is_still_queued(world, cfg, tmp_path):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    # Another account playlist's landing holds row eight, whose file carries
+    # its own code, and the account lists a track nobody landed.
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1"]
+    assert _acquired(envelope) == ["t40"]
+
+
+def test_two_landed_rows_carrying_the_code_are_ambiguous_and_queue_nothing(world, cfg, tmp_path):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _untagged_row(cfg, "9", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    _landed_for(w, cfg, "acc-third", ("9",), session_id="s-third", name="Third")
     w.account.playlists[ACCOUNT].append("t8")
     code, envelope = sync([*VERB, ACCOUNT])
     assert code == int(ExitCode.OK), envelope
     assert w.held() == ["1"]
-    assert len(envelope["data"]["totals"]["queued_jobs"]) == 1
+    assert pair_cli.AMBIGUOUS in _codes(envelope)
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+
+
+def test_this_account_playlists_own_landing_wins_over_anothers(world, cfg, tmp_path):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _untagged_row(cfg, "9", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, ACCOUNT, ("8",), session_id="s-own", name=NAME)
+    _landed_for(w, cfg, "acc-other", ("9",), session_id="s-other", name="Another")
+    # A track nobody landed keeps the widened step asked, which must answer
+    # only what the earlier steps left lacking, never t8 again.
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].extend(["t8", "t40"])
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "8"]
+    assert pair_cli.AMBIGUOUS not in _codes(envelope)
+    assert _acquired(envelope) == ["t40"]
+
+
+def test_a_track_another_pairs_intake_job_found_owned_is_added(world, cfg, tmp_path, monkeypatch):
+    from cratekit.intake import missing_cli
+
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    # Row eight carries no code anywhere the plan reads by ISRC: only the
+    # other pair's intake job, which found it owned by its path, names it.
+    _untagged_row(cfg, "8", tmp_path, file_isrc="USZZZ2600099")
+    _other_pairs_job(cfg, state=str(jobs.JobState.SUCCEEDED))
+    owned = str(Path(cfg.library.root) / "Music" / "8.flac")
+    monkeypatch.setattr(
+        missing_cli,
+        "job_reports",
+        lambda _store, _job: ({"item_id": "t8", "state": pair_cli.OWNED_STATE, "paths": [owned]},),
+    )
+    w.account.playlists[ACCOUNT].append("t8")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "8"]
+    assert envelope["data"]["totals"]["queued_jobs"] == []
+
+
+def _other_pairs_job(cfg, *, state: str, config_toml: str | None = None) -> str:
+    """Queue a ``sync pair`` intake job for another account playlist, holding t8."""
+    from cratekit.intake import cli as intake_cli
+
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store,
+            handler_key=pair_cli.INTAKE_HANDLER,
+            payload={
+                "source_id": pair_cli.PAIR_SOURCE,
+                intake_cli.SOURCE: "acc-other",
+                intake_cli.TRACKS: {"t8": {"isrc": isrc("8")}},
+            },
+            cfg=cfg,
+            item_ids=("t8",),
+        )
+        store.conn.execute("UPDATE jobs SET state = ? WHERE job_id = ?", (state, job.job_id))
+        if config_toml is not None:
+            store.conn.execute(
+                "UPDATE jobs SET config_toml = ? WHERE job_id = ?", (config_toml, job.job_id)
+            )
+        store.conn.commit()
+    return job.job_id
+
+
+def test_another_pairs_job_that_no_longer_reads_stops_no_plan(world, cfg):
+    """U229. One pair's old job is passed over by every other pair's plan, never a refusal."""
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _other_pairs_job(cfg, state=str(jobs.JobState.SUCCEEDED), config_toml="[library]\nroot = 1\n")
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].append("t40")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert _acquired(envelope) == ["t40"]
+
+
+def test_one_row_landed_in_two_inbox_playlists_is_one_row(world, cfg, tmp_path):
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, "acc-other", ("8",), session_id="s-other", name="Another")
+    _landed_for(w, cfg, "acc-third", ("8",), session_id="s-third", name="Third")
+    w.account.playlists[ACCOUNT].append("t8")
+    code, envelope = sync([*VERB, ACCOUNT])
+    assert code == int(ExitCode.OK), envelope
+    assert w.held() == ["1", "8"]
+    assert pair_cli.AMBIGUOUS not in _codes(envelope)
+
+
+def test_each_landed_file_is_read_once_per_plan(world, cfg, tmp_path, monkeypatch):
+    """U229. This pair's own landing and every landing are one read of each file."""
+    w = world(account=("1",), rekordbox=("1",))
+    assert sync(w.args())[0] == int(ExitCode.OK)
+    _untagged_row(cfg, "8", tmp_path, file_isrc=isrc("8"))
+    _landed_for(w, cfg, ACCOUNT, ("8",), session_id="s-own", name=NAME)
+    # A track nobody landed reaches every step, so both landed reads are asked.
+    w.codes["t40"] = "USZZZ2600040"
+    w.account.playlists[ACCOUNT].append("t40")
+    read: list[str] = []
+    real = pair_cli.file_identity
+
+    def counted(config_read, recorded):
+        read.append(recorded)
+        return real(config_read, recorded)
+
+    monkeypatch.setattr(pair_cli, "file_identity", counted)
+    code, envelope = drive([*VERB, ACCOUNT])
+    assert code == int(ExitCode.DECISION_REQUIRED), envelope
+    assert [one for one in read if one.endswith("/8.flac")] == [
+        f"{cfg.library.root}/Music/8.flac"
+    ]
 
 
 def test_two_rows_carrying_one_isrc_add_neither_and_say_so(world, cfg):
