@@ -344,6 +344,10 @@ under `no longer failing` is worth a line in the record.
 
 ## 9. Record
 
+**Docs first**, by METHOD's Docs always current: grep every doc it lists
+for what the change touched and correct each line the change made untrue, in
+this branch, committed as `docs(uN): ...`. The record carries the `Docs` line.
+
 METHOD's step 5. `docs/restart/uN.md` in the form of any recent file there,
 with an OWED paragraph naming what this container could not run: the macOS
 battery, and the live verification at an attended sitting if the unit has
