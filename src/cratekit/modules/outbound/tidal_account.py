@@ -1346,7 +1346,8 @@ class TidalAccount:
         remote_ids: tuple[str, ...],
         *,
         expect: tuple[str, ...] | None = None,
-        begun: Callable[[tuple[str, ...], tuple[str, ...]], None] | None = None,
+        begun: Callable[[tuple[str, ...], tuple[str, ...]], Callable[[int, int], None] | None]
+        | None = None,
     ) -> tuple[str, ...]:
         """Put the playlist's tracks in this order, the moves sent with no read back between. NO MOVE IS SENT TWICE.
 
@@ -1384,6 +1385,16 @@ class TidalAccount:
         raises stops the order with nothing sent. Nothing is called when
         nothing needs to move.
 
+        AND TOLD HOW FAR THE MOVES CAN HAVE GOT (R-1394). ``begun`` may answer
+        a recorder, called before each move is sent, and before each time it
+        is sent again, with ``(sent, landed)``: the moves that may have
+        reached the provider, that one included, and the moves it accepted.
+        Whatever it raises stops the order before that move is sent, so no
+        move is ever sent past what it recorded. A 412 changed nothing
+        (Sitting 62), so after each the recorder is called with ``sent``
+        brought back down, before the pause and before the last is raised;
+        any other failure of a move leaves its landing not known.
+
         BY POSITION, through :meth:`_positions`, which refuses a playlist whose
         positions cannot be trusted. A move answered 412 changed nothing
         (Sitting 62): the adapter pauses, opens the playlist again for the
@@ -1411,16 +1422,17 @@ class TidalAccount:
         end = list(before)
         for one in moves:
             end = _fronted(end, one)
-        if begun is not None:
-            begun(tuple(before), tuple(end))
+        told = begun(tuple(before), tuple(end)) if begun is not None else None
         doing = f"put the playlist {identifier} in order"
         note = self._noting(identifier, "moves")
         note |= {"moved": 0, "stale": 0}
         now = list(before)
-        for one in moves:
+        for number, one in enumerate(moves, start=1):
             at = now.index(one)
             stale = 0
             while True:
+                if told is not None:
+                    told(number, number - 1)
                 try:
                     accepted = self._call(
                         doing,
@@ -1428,7 +1440,15 @@ class TidalAccount:
                         retries=0,
                     )
                 except CratekitError as exc:
-                    if stale >= ORDER_REREADS or not _stale_tag(exc):
+                    if not _stale_tag(exc):
+                        raise
+                    if told is not None:
+                        # R-1394. A 412 CHANGED NOTHING: none of this move
+                        # reached the playlist, recorded before the pause so a
+                        # stop inside it is read as no move in flight, and told
+                        # again before the move is sent once more.
+                        told(number - 1, number - 1)
+                    if stale >= ORDER_REREADS:
                         raise
                     # A 412 CHANGED NOTHING (Sitting 62), so the same move is
                     # sent again once the playlist is opened for the tag it
