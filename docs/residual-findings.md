@@ -46494,6 +46494,8 @@ container. Ledger only.
 
 **Closes when:** Phillip answers the second question on #608; keeping it closes this as decided. Ledger only.
 
+**Closed 2026-11-07, R-1416 (#620).** Phillip answered `608-outside-order-2` against the recommendation: the first sync of a pair whose account order is not kept keeps rekordbox's order. `pair_merge.merge` takes `order_kept` from `plan_pair`, and such a first sync, with no stopped write and rekordbox holding a track, is led by rekordbox; R-1376's root test changes its assertion by that decision. The record is `docs/restart/r1416.md`.
+
 ---
 
 ## R-1417. The pair verb's tests of the agreed order decide their stand in's refusal by the adapter's own rule
@@ -46718,3 +46720,27 @@ The last three came after `main` was merged in at c2e3d056, on runs that measure
 **Measured cost.** A DJ copying the command installs an older release than the newest; the line after it says to use the newest tag, and `crate doctor`'s `install.release` check names the newer one, so nothing is lost and the upgrade is one command.
 
 **Closes when:** the release step rewrites the README tag with the version, or the README stops naming one. Ledger only: a count in a document.
+
+---
+
+## R-1430. A landed twin's first pair sync keeps the twin's landing order over a Tidal reorder made since the landing
+
+**Found:** at the review of #620, R-1416, round one, 2026-11-07.
+
+**The mechanism.** A landing marks each twin's pair with no snapshot (`sync/twins.py`, `pair_landed`), so the pair's next `sync pair` is a first sync. The twin sits under `Custom Playlists <year>`, outside GIG READY, so since R-1416 that first sync is led by rekordbox: the twin keeps the order the landing wrote it in, which was the account's order at the landing. A Tidal reorder made between the landing and that first sync is therefore not taken into the twin, where before R-1416 it was. A short backfill of `sync twins` that records no snapshot reaches the same branch.
+
+**Measured cost.** Driven by the round one reviewer through the dispatcher on the disposable database: a twin of 1, 2, 3, the account reordered to 3, 1, 2 after the landing; on main the first sync wrote the twin 3, 1, 2, on the branch it stays 1, 2, 3, the gate saying the order follows rekordbox's, so nothing false is said and nothing is lost. A later Tidal reorder still brings Tidal's whole order (608-outside-order-1). The brief's out of scope line leaves adopted and discovered pairs to the rule as it falls out; the session kept the rule general, since keeping rekordbox's order writes less into rekordbox.
+
+**Closes when:** Phillip says whether a twin's first sync should follow the account instead (a `twin` check beside `order_kept` in `plan_pair`), or that it stands. Ledger only.
+
+---
+
+## R-1431. A pair's first sync over a short account listing plans an account addition of a withheld track every sync and never records a snapshot
+
+**Found:** at the review of #620, R-1416, round one, 2026-11-07.
+
+**The mechanism.** On a first sync the account listing comes back short when the provider withholds a track it holds. The withheld track is held in rekordbox, so the merge plans it as an account addition, and since a short listing records no snapshot the pair stays a first sync and plans the same addition at the next run.
+
+**Measured cost.** Driven by the round one reviewer on the fake account: a hand pair at the root with `t2` withheld and rekordbox 3, 1, 2 plans `account add t2` on every run, each run says `sync-pair-written`, and `held.first` stays true. The items are identical on main at 5f08ae57, so it predates R-1416. On a real provider that is an addition of a track the playlist already holds; measured only on the fake, which drops the duplicate, so the real provider's answer is unmeasured.
+
+**Closes when:** a first sync over a short listing plans no account addition of a track the account counts but does not serve, driven on the fake with a provider that keeps duplicates. Ledger only until the real provider's answer is measured.
