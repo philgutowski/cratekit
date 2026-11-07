@@ -514,7 +514,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   Tidal playlist in order finishes that order, from the side that led it,
   rather than reading its half done order as your edit. The gate names the
   run it finishes. A move you made on Tidal since still leads, and so does a
-  reorder in rekordbox since.
+  reorder in rekordbox since. It remembers that stop however long you wait
+  before the next sync, until a sync finishes the pair.
 - Tidal can serve a playlist's old order or tracks to a paged read for
   minutes after a change, while the plain read is current. Where it plans an
   order or checks a write, `sync pair` reads both and takes the plain read

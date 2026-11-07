@@ -335,3 +335,165 @@ def test_a_later_run_that_failed_before_its_order_began_does_not_hide_the_stoppe
     assert code == int(ExitCode.OK), envelope
     assert world.held(intro) == [*LED, "8"], "rekordbox took the stopped write's scramble"
     assert world.account.playlists[account_id] == _ids(*LED, "8")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1372: a stopped write is kept past the age a held plan is kept for
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _aged(run_id: str, days: int = 31) -> None:
+    """Date a run's held plan and steps ``days`` back, as that long without a sync leaves them.
+
+    The round two review of U225 drove the finding this way: the producer,
+    thirty days without a sync after a stop, is the files' time.
+    """
+    import os
+    import time
+
+    from cratekit.core import held_plan
+
+    then = time.time() - days * 86400
+    for where in (held_plan.path(run_id), held_plan.steps_path(run_id)):
+        if where.exists():
+            os.utime(where, (then, then))
+
+
+def test_a_stop_older_than_a_held_plan_is_kept_is_still_finished_from_the_side_that_led(
+    world, stopped
+):
+    intro, account_id, run_id = stopped
+    _aged(run_id)
+    plan = plan_only()
+    pair = [item for item in plan["items"] if item["pair"] == account_id]
+    assert [item for item in pair if item["side"] == "rekordbox"] == [], (
+        "the plan writes rekordbox the scramble of a write stopped more than thirty days ago"
+    )
+    assert [item["action"] for item in pair if item["side"] == "account"] == ["order"]
+    code, first = drive(VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    assert f"finishes run {run_id}" in first["cause"]["detail"]["shown"][f"pair {account_id}"]
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(intro) == list(LED), "rekordbox took an order nobody chose"
+    assert world.account.playlists[account_id] == _ids(*LED)
+
+
+def test_a_stop_whose_held_plan_and_steps_were_pruned_is_still_finished(world, stopped):
+    """A later run's hold prunes the aged plan and steps, and the stop is still read."""
+    from cratekit.core import held_plan
+
+    intro, account_id, run_id = stopped
+    _aged(run_id)
+    held_plan.prune()
+    assert not held_plan.steps_path(run_id).exists()
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(intro) == list(LED), "rekordbox took an order nobody chose"
+    assert world.account.playlists[account_id] == _ids(*LED)
+    assert run_id in _said(envelope, pair_cli.FINISHING)
+
+
+def test_a_continue_of_the_stopped_run_after_its_plan_aged_out_still_finishes_it(
+    world, stopped
+):
+    """The run plans again, its gates refuse the new plan stale, and a fresh sync then finishes it."""
+    intro, account_id, run_id = stopped
+    _aged(run_id)
+    code, refused = drive(["--run", run_id, *VERB])
+    assert code != int(ExitCode.OK), refused
+    assert world.account.playlists[account_id] == ["t2", "t7", "t1", "t3", "t4", "t5", "t6"]
+    assert world.held(intro) == list(LED)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert world.held(intro) == list(LED), "rekordbox took an order nobody chose"
+    assert world.account.playlists[account_id] == _ids(*LED)
+
+
+def test_a_kept_stop_whose_pair_a_later_sync_finished_is_let_go(world, stopped):
+    from cratekit.core import held_plan
+
+    _intro, account_id, run_id = stopped
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    # The snapshot moved past the stop, so nothing of it is kept past its run.
+    records, problems = held_plan.carried()
+    assert problems == []
+    assert [one.run_id for one in records] == [], "a stop the snapshot passed is still kept"
+    _aged(run_id)
+    code, again = sync()
+    assert code == int(ExitCode.OK), again
+    assert pair_cli.FINISHING not in _codes(again)
+    assert [item for item in again["data"]["items"] if item["pair"] == account_id] == []
+
+
+def test_a_kept_stop_the_snapshot_passed_is_read_as_no_write_even_when_still_on_disk(
+    world, stopped
+):
+    """A record the snapshot passed and that was never let go, read by a later plan."""
+    from cratekit.core import held_plan
+
+    _intro, account_id, run_id = stopped
+    kept = {one: one.read_bytes() for one in held_plan.carried_dir().glob("*.json")}
+    assert kept, "the stop was not kept past its run"
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    for where, payload in kept.items():
+        where.write_bytes(payload)
+    _aged(run_id)
+    code, again = sync()
+    assert code == int(ExitCode.OK), again
+    assert pair_cli.FINISHING not in _codes(again)
+    assert [item for item in again["data"]["items"] if item["pair"] == account_id] == []
+
+
+def test_a_kept_stop_that_cannot_be_read_is_named(world, stopped):
+    from cratekit.core import held_plan
+
+    _intro, _account_id, run_id = stopped
+    _aged(run_id)
+    held_plan.prune()
+    for one in held_plan.carried_dir().glob("*.json"):
+        one.write_text("{not json")
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    assert run_id in _said(envelope, pair_cli.STOPPED_UNREAD)
+
+
+def test_a_stop_that_cannot_be_kept_past_its_run_moves_nothing(world, monkeypatch):
+    """The record is kept before the first move, so a write that cannot keep it stops first."""
+    from cratekit.core import held_plan
+
+    gig = world.folder("GIG READY")
+    intro = world.playlist("Intro", "1", "2", "3", "4", under=gig)
+    code, envelope = sync()
+    assert code == int(ExitCode.OK), envelope
+    account_id = world.titled("GIG READY Intro")
+    world.rekordbox_add(intro, "5", "6", "7")
+    _reordered(world, intro, *LED)
+
+    def refused(steps, key):
+        raise PermissionError("read only")
+
+    monkeypatch.setattr(held_plan, "carry", refused)
+    code, envelope = sync()
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] == pair_cli.STEPS_UNWRITTEN, envelope["cause"]
+    # The additions landed and not one track was moved.
+    assert world.account.playlists[account_id] == _ids("1", "2", "3", "4", "5", "6", "7")
+
+
+def test_a_run_that_finished_the_pair_without_moving_its_snapshot_keeps_nothing_of_its_own(
+    world, stopped
+):
+    """Its own carried record is let go when the pair is done, whatever the snapshot did."""
+    from cratekit.core import held_plan
+
+    _intro, account_id, run_id = stopped
+    code, envelope = sync(rekordbox="skip")
+    assert code == int(ExitCode.OK), envelope
+    assert world.account.playlists[account_id] == _ids(*LED)
+    # The stopped run is still kept, since no snapshot passed it; the finishing run is not.
+    records, _problems = held_plan.carried()
+    assert [one.run_id for one in records] == [run_id]
+    assert envelope["run_id"] != run_id

@@ -264,3 +264,200 @@ def test_a_record_older_than_a_held_plan_is_kept_is_none(cfg):
     # A held plan beside it is not a record of steps.
     held_plan.path("run-new").write_text("{}")
     assert held_plan.recorded_steps() == ([], [])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1372: a pair's steps carried past its run
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _age(where, days: int = 31) -> None:
+    then = time.time() - days * 86400
+    os.utime(where, (then, then))
+
+
+def test_a_carried_item_reads_back_as_its_runs_steps_for_that_item_whatever_its_age(cfg):
+    steps = held_plan.Steps("run-a", "d1", {"pl-1": {"account": "x", "ordering": {"at": "y"}}})
+    steps.done["pl-2"] = {"account": "z"}
+    held_plan.carry(steps, "pl-1")
+    where = held_plan.carried_path("run-a", "pl-1")
+    assert where.parent == held_plan.carried_dir()
+    _age(where, 400)
+    records, problems = held_plan.carried()
+    assert problems == []
+    assert [(one.run_id, one.digest, one.done) for one in records] == [
+        ("run-a", "d1", {"pl-1": {"account": "x", "ordering": {"at": "y"}}})
+    ]
+
+
+def test_a_carried_item_is_kept_from_prune_and_release_and_let_go_only_when_asked(cfg):
+    steps = held_plan.Steps("run-a", "d1", {"pl-1": {"account": "x"}})
+    steps.begin()
+    held_plan.carry(steps, "pl-1")
+    held_plan.path("run-a").write_text("{}")
+    for where in (held_plan.path("run-a"), held_plan.steps_path("run-a"),
+                  held_plan.carried_path("run-a", "pl-1")):
+        _age(where)
+    assert held_plan.prune() == 2
+    held_plan.release("run-a")
+    assert held_plan.carried_path("run-a", "pl-1").exists()
+    assert held_plan.let_go("run-a", "pl-1") is True
+    assert not held_plan.carried_path("run-a", "pl-1").exists()
+    # A record already gone is let go.
+    assert held_plan.let_go("run-a", "pl-1") is True
+    assert held_plan.carried() == ([], [])
+
+
+def test_two_items_of_one_run_are_carried_apart(cfg):
+    steps = held_plan.Steps("run-a", "d1", {"pl-1": {"account": "x"}, "new:9": {"made": "pl-9"}})
+    held_plan.carry(steps, "pl-1")
+    held_plan.carry(steps, "new:9")
+    records, _problems = held_plan.carried()
+    assert sorted(next(iter(one.done)) for one in records) == ["new:9", "pl-1"]
+    held_plan.let_go("run-a", "pl-1")
+    records, _problems = held_plan.carried()
+    assert [one.done for one in records] == [{"new:9": {"made": "pl-9"}}]
+
+
+def test_a_carried_record_that_cannot_be_read_is_named_never_read_as_no_write(cfg):
+    held_plan.carry(held_plan.Steps("run-a", "d1", {"pl-1": {"account": "x"}}), "pl-1")
+    directory = held_plan.carried_dir()
+    (directory / "run-b.0123.json").write_text("{not json")
+    (directory / "run-c.0123.json").write_text(json.dumps({"version": 99}))
+    moved = held_plan.carried_path("run-d", "pl-4")
+    moved.write_text(
+        json.dumps(
+            {
+                "version": held_plan.CARRIED_VERSION,
+                "run_id": "run-d",
+                "digest": "d",
+                "key": "pl-5",
+                "steps": {},
+            }
+        )
+    )
+    unkeyed = held_plan.carried_path("run-e", "pl-5")
+    unkeyed.write_text(
+        json.dumps(
+            {
+                "version": held_plan.CARRIED_VERSION,
+                "run_id": "run-e",
+                "digest": "d",
+                "key": "pl-5",
+                "steps": [],
+            }
+        )
+    )
+    records, problems = held_plan.carried()
+    assert [one.run_id for one in records] == ["run-a"]
+    assert len(problems) == 4, problems
+    for run_id in ("run-b", "run-c", "run-d", "run-e"):
+        assert sum(run_id in problem for problem in problems) == 1, (run_id, problems)
+
+
+def test_a_carry_that_cannot_be_written_raises(cfg, monkeypatch):
+    from cratekit.core import config
+
+    def refused(payload, where, **_kw):
+        raise PermissionError("read only")
+
+    monkeypatch.setattr(config, "atomic_write_bytes", refused)
+    with pytest.raises(OSError):
+        held_plan.carry(held_plan.Steps("run-a", "d1", {"pl-1": {}}), "pl-1")
+
+
+def _passed(records, account_id: str, moment: datetime):
+    return pair_stopped.passed_by(
+        records,
+        account_id=account_id,
+        moment=moment,
+        new=pair_cli.NEW,
+        account=pair_cli.STEP_ACCOUNT,
+        made=pair_cli.STEP_MADE,
+    )
+
+
+def test_a_snapshot_passes_the_carried_records_of_its_pair_that_began_before_it():
+    from datetime import timedelta
+
+    before = _WHEN.isoformat()
+    after = (_WHEN + timedelta(seconds=5)).isoformat()
+    records = [
+        _steps("run-1", {"pl-1": {"account": before, "ordering": _ordering()}}),
+        _steps("run-2", {"pl-1": {"account": after, "ordering": _ordering()}}),
+        _steps("run-3", {"pl-2": {"account": before}}),
+        _steps("run-4", {f"{pair_cli.NEW}x": {"made": "pl-1", "account": before}}),
+        _steps("run-5", {f"{pair_cli.NEW}y": {"account": before}}),
+        _steps("run-6", {"pl-1": {"account": True}}),
+    ]
+    moment = _WHEN + timedelta(seconds=1)
+    assert _passed(records, "pl-1", moment) == [("run-1", "pl-1"), ("run-4", f"{pair_cli.NEW}x")]
+    # A snapshot at the very moment a write began passes it, as the plan reads it.
+    assert _passed(records, "pl-1", _WHEN) == [("run-1", "pl-1"), ("run-4", f"{pair_cli.NEW}x")]
+    assert _passed(records, "pl-9", moment) == []
+
+
+def test_a_stop_from_before_the_pair_was_marked_again_is_not_its_stop():
+    """A carried record outlives a pair forgotten and marked again, and is not the new pair's."""
+    from datetime import timedelta
+    from types import SimpleNamespace
+
+    write = _read(_steps("run-1", {"pl-1": {"account": _WHEN.isoformat(), "ordering": _ordering()}}))
+    reader = SimpleNamespace(stopped=(write, ()))
+
+    def read(marked: str, synced: str = ""):
+        held = SimpleNamespace(marked=marked, synced=synced)
+        return pair_cli._Reader.stopped_write(reader, "pl-1", held)
+
+    assert read((_WHEN + timedelta(seconds=1)).isoformat()) is None
+    assert read((_WHEN - timedelta(seconds=1)).isoformat()).run_id == "run-1"
+    # Marked the same moment the write began is the pair it began on.
+    assert read(_WHEN.isoformat()).run_id == "run-1"
+    # A mark that cannot be read as a moment leaves the snapshot to decide.
+    assert read("").run_id == "run-1"
+    assert read("", synced=(_WHEN - timedelta(seconds=1)).isoformat()).run_id == "run-1"
+    assert read("", synced=(_WHEN + timedelta(seconds=1)).isoformat()) is None
+
+
+def test_a_carried_record_naming_another_run_is_named(cfg):
+    where = held_plan.carried_path("run-f", "pl-6")
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text(
+        json.dumps(
+            {
+                "version": held_plan.CARRIED_VERSION,
+                "run_id": "run-x",
+                "digest": "d",
+                "key": "pl-6",
+                "steps": {},
+            }
+        )
+    )
+    records, problems = held_plan.carried()
+    assert records == []
+    assert len(problems) == 1 and "run-f" in problems[0], problems
+
+
+def test_a_carried_directory_that_cannot_be_listed_is_named_never_read_as_none(cfg):
+    """No directory is no record; one that cannot be listed says so (the round one review)."""
+    assert held_plan.carried() == ([], [])
+    where = held_plan.carried_dir()
+    where.parent.mkdir(parents=True, exist_ok=True)
+    where.write_text("not a directory")
+    records, problems = held_plan.carried()
+    assert records == []
+    assert len(problems) == 1 and "could not be listed" in problems[0], problems
+
+
+def test_a_carried_copy_gives_way_to_its_own_runs_steps_kept_under_the_same_plan(cfg):
+    """The run's steps say whether the pair finished, which the copy, taken before, cannot."""
+    began = {"account": _WHEN.isoformat(), "ordering": _ordering()}
+    held_plan.Steps("run-1", "d1", {"pl-1": {**began, "done": "pl-1"}}).begin()
+    held_plan.carry(held_plan.Steps("run-1", "d1", {"pl-1": dict(began)}), "pl-1")
+    stopped, unread = pair_cli._Reader.stopped.func(None)
+    assert unread == ()
+    assert stopped == {}, "a pair its own run finished is read as stopped from its copy"
+    # Steps under another plan of the same run are not the copy's run as it wrote.
+    held_plan.Steps("run-1", "d2", {"pl-1": {**began, "done": "pl-1"}}).begin()
+    stopped, _unread = pair_cli._Reader.stopped.func(None)
+    assert stopped["pl-1"][1].run_id == "run-1"
