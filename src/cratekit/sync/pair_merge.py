@@ -50,8 +50,8 @@ every track either side holds is kept.
 **THE ORDER FOLLOWS THE SIDE THAT CHANGED ORDER.** A side changed order when the
 tracks it holds now and held at the base stand in a different relative order.
 Rekordbox leads when it alone changed order; the account leads otherwise, which
-is when it alone did, when both did, when neither did, and on the first sync.
-The leading side's order is kept as it stands, and each track only the other
+is when it alone did, when both did, when neither did, and on the first sync of
+a pair whose account order is kept. The leading side's order is kept as it stands, and each track only the other
 side holds is placed right after the track it follows on that side, so a track
 added mid playlist stays mid playlist rather than going to the end.
 
@@ -66,6 +66,20 @@ rekordbox leads, rather than the account putting its older order back into
 rekordbox two syncs after the person's reorder. The account still leads when
 it changed order since the base. A base whose sides agree, which every pair
 whose account order is written holds, leaves the rule above as it was.
+
+**EXCEPT ON THE FIRST SYNC OF A PAIR WHOSE ACCOUNT ORDER IS NOT KEPT (R-1416).**
+Decided by Phillip on #608 (608-outside-order-2). Outside GIG READY, unless
+``outbound.pair_order_every_pair`` keeps every pair's, the account's order is
+never written (U231), so a first sync led by the account would put rekordbox
+in the account's order for good. The caller says whether the order is kept
+(``order_kept``), and when it is not, no stopped write is handed in (none was
+found, or the account stands off its path) and rekordbox holds a track,
+rekordbox leads that first sync: its tracks keep their order, and each track
+only the account holds is placed after its neighbour there.
+The next sync then reads a base whose sides disagree, so rekordbox's order
+stands until the account changes order, which brings the account's whole
+order. An empty or new rekordbox playlist has no order to keep, and is led by
+the account as before.
 
 **AFTER A WRITE STOPPED PART WAY THROUGH ITS ORDER, CHANGED SINCE THAT WRITE
 (U225).** Sitting 62's write stopped part way through putting the account in
@@ -263,14 +277,22 @@ def placed(leading: Sequence[str], other: Sequence[str]) -> tuple[str, ...]:
 
 
 def merge(
-    base: Base | None, account: Side, rekordbox: Side, *, stopped: Stopped | None = None
+    base: Base | None,
+    account: Side,
+    rekordbox: Side,
+    *,
+    stopped: Stopped | None = None,
+    order_kept: bool = True,
 ) -> Merged:
     """Decide the list both sides should hold. Pure.
 
     ``base`` is None on the first sync of a pair, which adds only.
     ``stopped`` is what a write stopped part way through its account order
     left, when the caller found one, and the order rule then reads each side's
-    change of order against it (U225).
+    change of order against it (U225). ``order_kept`` is whether the account
+    is put in the merged order, which the caller decides (U231); a first sync
+    whose order is not kept, with no ``stopped`` handed in, is led by
+    rekordbox when it holds a track (R-1416).
     """
     held_account = set(account.keys)
     held_rekordbox = set(rekordbox.keys)
@@ -332,6 +354,10 @@ def merge(
             leader = REKORDBOX
         elif not account_moved and stopped.leader == REKORDBOX:
             leader = REKORDBOX
+    elif base is None and not order_kept and rekordbox.keys:
+        # R-1416. A FIRST SYNC WHOSE ACCOUNT ORDER IS NEVER WRITTEN keeps the
+        # order rekordbox stands in, or the DJ's arrangement is lost for good.
+        leader = REKORDBOX
     elif base is not None and not order_changed(account.keys, base.account):
         # R-1404. A BASE WHOSE SIDES DISAGREE ON ORDER HOLDS REKORDBOX'S as the
         # order the last sync settled on, the account's never written there,

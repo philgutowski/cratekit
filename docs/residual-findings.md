@@ -46494,6 +46494,8 @@ container. Ledger only.
 
 **Closes when:** Phillip answers the second question on #608; keeping it closes this as decided. Ledger only.
 
+**Closed 2026-11-07, R-1416 (#620).** Phillip answered `608-outside-order-2` against the recommendation: the first sync of a pair whose account order is not kept keeps rekordbox's order. `pair_merge.merge` takes `order_kept` from `plan_pair`, and such a first sync, with no stopped write and rekordbox holding a track, is led by rekordbox; R-1376's root test changes its assertion by that decision. The record is `docs/restart/r1416.md`.
+
 ---
 
 ## R-1417. The pair verb's tests of the agreed order decide their stand in's refusal by the adapter's own rule

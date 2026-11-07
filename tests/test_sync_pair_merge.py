@@ -439,3 +439,58 @@ def test_the_base_s_disagreement_is_read_against_the_account_s_base_not_the_acco
     merged = merge(base, Side(("r", "a", "b")), Side(("a", "r", "b")))
     assert merged.leader == pair_merge.ACCOUNT
     assert merged.order == ("r", "a", "b")
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1416: a first sync whose account order is not kept, led by rekordbox
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_first_sync_whose_order_is_not_kept_leads_with_rekordbox():
+    merged = merge(None, Side(("a", "b", "c")), Side(("c", "a", "b")), order_kept=False)
+    assert merged.first is True
+    assert merged.leader == pair_merge.REKORDBOX
+    assert merged.order == ("c", "a", "b")
+    assert merged.add_account == () and merged.add_rekordbox == ()
+
+
+def test_a_first_sync_whose_order_is_kept_leads_with_the_account():
+    for told in ({}, {"order_kept": True}):
+        merged = merge(None, Side(("a", "b", "c")), Side(("c", "a", "b")), **told)
+        assert merged.leader == pair_merge.ACCOUNT, told
+        assert merged.order == ("a", "b", "c"), told
+
+
+def test_a_first_sync_led_by_rekordbox_places_the_accounts_tracks_after_their_neighbours():
+    merged = merge(
+        None, Side(("a", "b", "c", "d")), Side(("c", "y", "a", "b")), order_kept=False
+    )
+    assert merged.order == ("c", "d", "y", "a", "b")
+    assert merged.add_rekordbox == ("d",)
+    assert merged.add_account == ("y",)
+    assert merged.remove_account == () and merged.remove_rekordbox == ()
+
+
+def test_a_first_sync_into_an_empty_rekordbox_side_is_led_by_the_account_whatever_the_order():
+    merged = merge(None, Side(("c", "a", "b")), Side(()), order_kept=False)
+    assert merged.leader == pair_merge.ACCOUNT
+    assert merged.order == ("c", "a", "b")
+
+
+def test_a_first_sync_after_a_stopped_write_reads_its_order_against_it_whatever_the_order():
+    left = pair_merge.Stopped(
+        account=("b", "a"), rekordbox=("a", "b", "c"), leader=pair_merge.ACCOUNT
+    )
+    # Neither side changed order since the stopped write, which the account led.
+    merged = merge(None, Side(("b", "a")), Side(("a", "b", "c")), stopped=left, order_kept=False)
+    assert merged.leader == pair_merge.ACCOUNT
+    # Led by the account, "c" follows "b", its predecessor in rekordbox.
+    assert merged.order == ("b", "c", "a")
+
+
+def test_a_base_is_read_as_before_whatever_the_order():
+    base = Base(account=("a", "b", "c"), rekordbox=("a", "b", "c"))
+    for kept in (True, False):
+        merged = merge(base, Side(("b", "c", "a")), Side(("a", "b", "c")), order_kept=kept)
+        assert merged.leader == pair_merge.ACCOUNT, kept
+        assert merged.order == ("b", "c", "a"), kept
