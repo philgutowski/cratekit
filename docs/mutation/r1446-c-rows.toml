@@ -1,0 +1,44 @@
+name = "r1446-c"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_every_unread_kept_its_place"
+description = "round one's BLOCKING reverted: once only unread tracks moved, no target at all, so an unread track nobody moved keeps the interrupted move's place"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py"]
+old = '''                    else tuple(one for one in stopped_write.target if one not in moved_unread)'''
+new = '''                    else ()'''
+
+[[rows]]
+id = "F2_no_unread_id_read_as_moved"
+description = "every unread id read as unmoved, so the one the person moved is put where the stopped order was taking it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py"]
+old = '''    return frozenset(one for one in now if one in left_out and one not in held)'''
+new = '''    return frozenset()'''
+
+[[rows]]
+id = "F3_readable_ids_weighed_as_unread"
+description = "the shared run unweighted, so it may keep unread ids in place of a readable one and read the wrong unread track as moved"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py"]
+old = '''        value = top[0] + (1 if one in left_out else heavy)'''
+new = '''        value = top[0] + 1'''
+
+[[dropped]]
+id = "F4_others_clause_never_shown"
+description = "the facts line never names an unread track nobody moved, though the finish places it by the target"
+reason = "ranked below the cap of 25 rows, 22 in r1446 and three here; r1446-b's C1 is the composite of M10 and M11, which drives two zeros rather than adding a row: pinned by the two unread tracks test's facts line assertion, written with it"
+
+[[dropped]]
+id = "F5_others_clause_always_shown"
+description = "the facts line names other unread tracks when there are none"
+reason = "ranked below the cap of 25 rows, 22 in r1446 and three here; r1446-b's C1 is the composite of M10 and M11, which drives two zeros rather than adding a row: its direction is pinned by the card's own settled test, which must not say where the stopped order was taking it"
+
+[[dropped]]
+id = "F6_an_id_one_order_lacks_read_as_moved"
+description = "an unread id either order lacks read as moved too"
+reason = "ranked below the cap of 25 rows, 22 in r1446 and three here; r1446-b's C1 is the composite of M10 and M11, which drives two zeros rather than adding a row: maintainer facing, such an id is in no shared run and the target places it by the listing either way"
