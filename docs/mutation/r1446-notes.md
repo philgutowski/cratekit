@@ -45,3 +45,21 @@ carrying that inode bound test's id, with the measurement as a comment, as the
 solutions entry says; two earlier runs of it were refused on that test, a red
 baseline and then the null control killing it, and `/var/tmp` gave an inode
 near 576,000, under the bound. The measured baseline file was not edited.
+
+## The review's fix rows, `r1446-c.md`
+
+Three rows at 010700cc over the code the review's two fix rounds added, the
+same pass, so the unit's rows are 25 (22 in `r1446.md` and three here, C1
+being the composite that drives M10 and M11). All three killed on their
+subsets of 252: F1, round one's BLOCKING reverted, no target once only
+unread tracks moved, 2; F2, no unread id read as moved, 3; F3, the shared
+run unweighted, so it may keep unread ids in place of a readable one, 3.
+The null control killed none of 17588. Three rows were dropped at the cap
+and are logged in the rows file with their reasons. The batch ran with the
+same scratch known failures copy as `r1446-b`.
+
+`r1446.md` was measured at 4f602ca4, before the review. Since then the
+target's condition (M5's line) and the facts and warning clauses (M15 to
+M17's lines) were rewritten by the fix rounds, so those four rows read code
+that has changed; the behaviour each guarded is pinned again by the review's
+tests and by F1 to F3. Every row is the author's.
