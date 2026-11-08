@@ -704,6 +704,9 @@ class PairPlan:
     #: R-1446. Whether, on that finish, an unread track nobody moved is still
     #: placed by the write's target.
     stop_unread_others: bool = False
+    #: R-1446. Whether that write had sent no move, so the account was read
+    #: against where it began rather than against a settled reading.
+    stop_unread_unsent: bool = False
     #: U231. Whether the merge asked the account a new order that this pair
     #: does not keep, since its rekordbox playlist is outside GIG READY.
     order_unkept: bool = False
@@ -1672,6 +1675,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     moved_nothing = False
     unread_moved = False
     moved_unread: frozenset[str] = frozenset()
+    unread_unsent = False
     if stopped_write is not None:
         reading = tuple(listed_order or account_now)
         off_path = not pair_stopped.reached(
@@ -1703,6 +1707,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             moved_unread = _unread_moved(
                 stopped_write, kept_after, reading, unread, moved_nothing=moved_nothing
             )
+            unread_unsent = moved_nothing
             reordered_since_stop = False
             moved_nothing = False
             unread_moved = True
@@ -1939,6 +1944,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         stop_moved_nothing=moved_nothing,
         stop_unread_moved=unread_moved,
         stop_unread_others=bool(moved_unread) and bool(set(unread) - moved_unread),
+        stop_unread_unsent=unread_unsent,
         order_unkept=order_unkept,
     )
 
@@ -1997,13 +2003,17 @@ def _unread_moved(
     *,
     moved_nothing: bool,
 ) -> frozenset[str]:
-    """The unread ids the person moved since ``write``'s stop, read by the track before each (R-1446).
+    """The unread ids the person moved since ``write``'s stop (R-1446).
 
     Compared with the reading settled after the stop, ``kept``, or for a
-    write known to have sent no move with where it began. An unread id is
-    moved when the id listed just before it, over the ids both orders hold,
-    is another; one either order lacks is not read as moved. With nothing
-    to compare, none is.
+    write known to have sent no move with where it began, over the ids both
+    orders hold. The ids that kept their order are the longest run both
+    orders share, every readable id weighed above all the unread ones
+    together, so the readable tracks are held where they stand; an unread id
+    outside that run is moved. So a block of unread tracks dragged together
+    is moved whole, and one nobody moved stays unmoved whatever lands next
+    to it. An id either order lacks is not read as moved. With nothing to
+    compare, none is.
     """
     if moved_nothing:
         before: Sequence[str] = write.start
@@ -2012,18 +2022,34 @@ def _unread_moved(
     else:
         return frozenset()
     common = set(before) & set(reading)
-
-    def behind(order: Sequence[str]) -> dict[str, str | None]:
-        last: str | None = None
-        found: dict[str, str | None] = {}
-        for one in dict.fromkeys(order):
-            if one in common:
-                found[one] = last
-                last = one
-        return found
-
-    was, now = behind(before), behind(reading)
-    return frozenset(one for one in unread if one in common and was[one] != now[one])
+    left_out = set(unread)
+    was = [one for one in dict.fromkeys(before) if one in common]
+    now = [one for one in dict.fromkeys(reading) if one in common]
+    place = {one: index for index, one in enumerate(was)}
+    heavy = len(now) + 1
+    # The heaviest chain through ``now`` whose places in ``was`` rise, kept in
+    # a tree over those places so each step reads the best chain before it.
+    tree: list[tuple[int, int]] = [(0, -1)] * (len(was) + 1)
+    back: list[int] = []
+    best: list[int] = []
+    for index, one in enumerate(now):
+        at, top = place[one], (0, -1)
+        while at > 0:
+            top = max(top, tree[at])
+            at -= at & -at
+        value = top[0] + (1 if one in left_out else heavy)
+        best.append(value)
+        back.append(top[1])
+        at = place[one] + 1
+        while at <= len(was):
+            tree[at] = max(tree[at], (value, index))
+            at += at & -at
+    held: set[str] = set()
+    step = max(range(len(now)), key=best.__getitem__, default=-1)
+    while step >= 0:
+        held.add(now[step])
+        step = back[step]
+    return frozenset(one for one in now if one in left_out and one not in held)
 
 
 def _moved_since_stop(
@@ -3149,9 +3175,15 @@ def facts(planned: Plan) -> dict[str, Any]:
                 f"order, "
                 + (
                     # R-1446. Only its unread tracks were moved since, by hand.
-                    "and only tracks the account lists with no title or no artist were "
-                    "moved since the stop, which neither side's order reads, so each "
-                    "one moved stays where it was put, "
+                    (
+                        "and the account stands off its moves' path only by where tracks "
+                        "the account lists with no title or no artist stand, "
+                        if one.stop_unread_unsent
+                        else "and only tracks the account lists with no title or no artist "
+                        "were moved since the stop, "
+                    )
+                    + "which neither side's order reads, so each one moved stays where "
+                    "it was put, "
                     + (
                         "any other goes where the stopped order was taking it or else "
                         "behind the track it follows, "
@@ -3203,7 +3235,9 @@ def facts(planned: Plan) -> dict[str, Any]:
                     # was taking it, not where an interrupted move left it.
                     ", and the account's order puts each where the stopped order was "
                     "taking it, or else behind the track it follows"
-                    if one.finishing_order and one.account_order and not one.stop_unread_moved
+                    if one.finishing_order
+                    and one.account_order
+                    and (not one.stop_unread_moved or one.stop_unread_others)
                     else ""
                 )
                 if one.unread
@@ -4293,9 +4327,12 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
         # R-1432. A finish of a stopped order puts an unread track where that
         # order was taking it, which is not where an interrupted move left it.
         # R-1446. Not one whose unread tracks the person moved since the
-        # stop, which keep the place they were given.
+        # stop, which keep the place they were given, unless another unread
+        # track is still placed by the target.
         finished_unread = any(
-            one.finishing_order and one.account_order and not one.stop_unread_moved
+            one.finishing_order
+            and one.account_order
+            and (not one.stop_unread_moved or one.stop_unread_others)
             for one, _named in unread
         )
         said.append(
@@ -4331,8 +4368,13 @@ def _warnings(planned: Plan) -> list[dict[str, str]]:
                     + "; ".join(
                         f"{one.name!r} (run {one.finishing}, "
                         + (
-                            "only tracks the account cannot read were moved since, so "
-                            "it is not read as a reorder; "
+                            (
+                                "the account stands off its path only by where tracks the "
+                                "account cannot read stand, so it is not read as a reorder; "
+                                if one.stop_unread_unsent
+                                else "only tracks the account cannot read were moved since, "
+                                "so it is not read as a reorder; "
+                            )
                             if one.stop_unread_moved
                             else "the account stands where none of its moves leaves it, so "
                             "it is not read as a reorder; "
