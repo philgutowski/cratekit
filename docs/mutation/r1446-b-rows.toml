@@ -3,10 +3,9 @@ pass_kind = "light"
 
 [[rows]]
 id = "C1_composite_no_unread_left_out"
-description = "what M10 and M11 hold together: the settled reading and the reading now both compared with their unread ids in place, so a move of an unread track alone reads as a reorder again; either filter alone is equivalent, since reordered reads only the tracks both readings hold"
+description = "the composite of r1446 rows M10 and M11, what they hold together: the settled reading and the reading now both compared with their unread ids in place, so a move of an unread track alone reads as a reorder again; either filter alone is equivalent, since reordered reads only the tracks both readings hold"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
-pairs_with = "M11_now_with_unread"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py"]
 old = '''        [one for one in kept.order if one not in left_out], readable'''
 new = '''        list(kept.order), list(reading)'''
