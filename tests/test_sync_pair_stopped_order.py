@@ -974,6 +974,8 @@ def test_a_reorder_seen_changing_between_two_syncs_after_the_stop_leads(
     assert code == int(ExitCode.OK), envelope
     assert pair_cli.LEFT_OUT in _codes(envelope)
     assert "changed since a sync read it settled" in _said(envelope, pair_cli.LEFT_OUT)
+    # R-1434: a reorder of tracks the plan reads is promised the lead it then takes.
+    assert "when the account's order is read as yours" in _said(envelope, pair_cli.LEFT_OUT)
     assert world.held(closer) == list(BACK)
     code, envelope = sync()
     assert code == int(ExitCode.OK), envelope

@@ -1831,7 +1831,7 @@ def test_a_reorder_after_a_track_read_at_the_stop_turned_unread_leads(world, cfg
         code, envelope = sync()
         assert code == int(ExitCode.OK), envelope
     assert world.held(opener) == ["3", "1", "2", "5", "4"], "the person's reorder did not lead"
-    assert world.account.playlists[account_id][:3] == ["t3", "t1", "t2"]
+    assert world.account.playlists[account_id] == ["t3", "t1", "t2", "t4", "t5"]
 
 
 def test_a_reorder_after_a_finish_stopped_before_its_first_send_leads(world, cfg, monkeypatch):
@@ -1862,3 +1862,33 @@ def test_a_reorder_after_a_finish_stopped_before_its_first_send_leads(world, cfg
         assert code == int(ExitCode.OK), envelope
     assert world.held(opener) == ["3", "1", "2", "4"], "the person's reorder did not lead"
     assert world.account.playlists[account_id] == ["t3", "t1", "t2", "t4", "t9"]
+
+
+@pytest.mark.parametrize("unread", [False, True], ids=["all-read", "t9-unread"])
+def test_a_drag_to_the_top_after_a_write_that_sent_no_move_leads(world, owed, cfg, monkeypatch, unread):
+    """R-1434, round two: a write known to have sent no move left the account where it began.
+
+    So the only order it can have left is its start, and any other is the
+    person's (R-1420). Read against the whole path, a drag of one track to
+    the top stands where the write's own first move would have put it, and
+    was finished over: on main with every track read, and on more orders on
+    this branch, where the unread t9 is left out of the comparison.
+    """
+    _agreeing_at_once(monkeypatch)
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    if unread:
+        _listed_unread(monkeypatch, "t9")
+        world.account.playlists[account_id].append("t9")
+    world.account.fail_on = frozenset({account_id})
+    world.account.transient = True
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    world.account.fail_on = frozenset()
+    assert world.account.ordered == [], "a move was sent"
+    _moved(world, account_id, "t4", 0)
+    for _ in range(2):
+        code, envelope = sync()
+        assert code == int(ExitCode.OK), envelope
+    assert world.held(opener) == ["4", "1", "2", "3"], "the person's drag did not lead"
+    assert world.account.playlists[account_id] == [*_ids("4", "1", "2", "3"), *(["t9"] if unread else [])]
