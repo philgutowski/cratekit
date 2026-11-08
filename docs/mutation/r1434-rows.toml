@@ -119,13 +119,11 @@ new = '''        unread_moved = False'''
 
 [[rows]]
 id = "M6_unread_move_read_on_the_narrowed_start"
-description = "the unread track's move read on the same narrowed start as the lead, so it never strays and its move is never shown"
+description = "the unread track's move read with the unread tracks left out, as the lead is, so it never strays and its move is never shown"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''        stray = off_path or not pair_stopped.reached(
-            stopped_write.start, stopped_write.target, reading
-        )'''
+old = '''        stray = off_path or not pair_stopped.reached(stopped_write.start, toward, reading)'''
 new = '''        stray = off_path'''
 
 [[rows]]
@@ -153,12 +151,12 @@ file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
 old = '''            stopped_write.start,
-            stopped_write.target,
+            toward,
             reading,
             leaving={one for one in stopped_write.start if alias(one) in unread_keys},
 '''
 new = '''            tuple(one for one in stopped_write.start if alias(one) not in unread_keys),
-            stopped_write.target,
+            toward,
             reading,
 '''
 
@@ -170,6 +168,24 @@ surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
 old = '''            unread_only=not off_path,'''
 new = '''            unread_only=False,'''
+
+[[rows]]
+id = "M12_hold_withholds_the_lead_from_a_readable_reorder"
+description = "the hold while a reorder of readable tracks settles says the other tracks are finished in the stopped order, though the account's order then leads"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            unread_only=not off_path,'''
+new = '''            unread_only=True,'''
+
+[[rows]]
+id = "M13_write_that_sent_nothing_read_on_its_whole_path"
+description = "round two's shape: a write known to have sent no move is read against its whole path, so a person's drag of one track to the top, where its first move would have put it, is finished over"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        toward = stopped_write.start if stopped_write.sent_nothing else stopped_write.target'''
+new = '''        toward = stopped_write.target'''
 
 [[dropped]]
 id = "M9_moved_nothing_said_for_an_unread_move"

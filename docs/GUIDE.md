@@ -561,7 +561,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   that reading; the gate says so, and the first sync you approve puts the
   Tidal playlist in rekordbox's order. Where the stopped write is known to
   have sent none of its moves (a write by this version that stopped before
-  its first move), an order off them is yours and leads at once. A move you make on Tidal leads only
+  its first move), any order but the one it began from is yours and leads
+  at once, even one its first moves would have left. A move you make on Tidal leads only
   when syncs that wrote nothing to the pair (its Tidal side skipped, or the
   pair left out pending) have read the stopped playlist off those moves'
   path in one order at least 5 minutes apart: a later sync that reads
@@ -572,11 +573,13 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   finishes the stopped order and puts the move back, and so does any move
   made before those readings, since it cannot be told from the half done
   order or from Tidal still serving an older one. A move of a track Tidal
-  lists with no title or no artist never makes Tidal's order lead: the
+  lists with no title or no artist does not make Tidal's order lead: the
   other tracks are finished in the stopped order, and that track stays where
   you put it once those readings show the move, or at once where no move was
-  sent, and is otherwise put where the stopped order was taking it. A
-  reorder in rekordbox since leads. It remembers that stop however long you wait
+  sent, and is otherwise put where the stopped order was taking it. One case
+  still slips: where those readings settled on a half done Tidal order that
+  no part of the moves leaves, a later move of such a track is read as yours,
+  and that half done order leads. A reorder in rekordbox since leads. It remembers that stop however long you wait
   before the next sync, until a sync finishes the pair, and also when the
   pair's rekordbox playlist was deleted and you pair the Tidal playlist again
   with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`: that first

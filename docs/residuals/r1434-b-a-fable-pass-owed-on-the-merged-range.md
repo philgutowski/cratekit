@@ -1,14 +1,15 @@
 ---
 title: The R-1434 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
 found: at the review of #631, R-1434, 2026-11-08.
-issue: yes
+issue: no
 ---
 
 **The gap.** Fable's review of #631 was refused on its usage limit on every
 retry from 2026-11-07 to 2026-11-08, so by Phillip's rule of 2026-11-08 (PR
 #640) Opus 5.5 at high effort reviewed the branch in its place, following the
 `fable-reviewer` definition under the same merge bar and round cap. Its round
-one found one BLOCKING defect, fixed with failing tests first. The merged
+one found one BLOCKING defect and its round two one more, each fixed with
+failing tests first. The merged
 range has not had the reviewer the cloud lane names.
 
 **What it covers.** The merge of `cloud/631-the-ordering-step-s-start-keeps`:
@@ -22,5 +23,6 @@ track bullets, and the table `docs/mutation/r1434.md`. It guards the order
 
 **Closes when:** a Fable review at high effort of the merged range against
 METHOD's merge bar reports, and each BLOCKING finding is fixed or filed. It
-is queued as an issue, though a review owed is maintainer facing, because a
-pass nobody queues is a pass nobody runs, and the path it reviews writes.
+earns no issue: a review owed is maintainer facing, which the board bar
+leaves to the ledger (round two's review), so the coordinator is told of it
+at the landing.
