@@ -57,6 +57,15 @@ not load the repository's agents by name; then run a general purpose agent
 on the `fable` model at high effort and tell it to read the reviewer
 definition's body first and follow it, which is the same review.
 
+**When Fable is out of usage**, decided by Phillip on 2026-11-08: if the
+review is refused on Fable's usage limit, run the same reviewer definition
+on Opus 5.5 at high effort instead (a general purpose agent on the `opus`
+model told to read the `fable-reviewer` body first and follow it, under the
+same merge bar and round cap). Say so in the Progress comment, the record
+and the pull request body (`Review: Opus 5.5 at high effort, Fable out of
+usage`), and file a residual owing a Fable pass on the merged range. Any
+other refusal or failure of the review is retried, never substituted.
+
 ## Writes you never make
 
 A beat grid in any container. Anything under a real config path or a real
