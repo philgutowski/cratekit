@@ -1,0 +1,40 @@
+name = "r1446-c"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_every_unread_kept_its_place"
+description = "the review's BLOCKING reverted: once only unread tracks moved, no target at all, so an unread track nobody moved keeps the interrupted move's place"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py"]
+old = '''                    else tuple(one for one in stopped_write.target if one not in moved_unread)'''
+new = '''                    else ()'''
+
+[[rows]]
+id = "F2_no_unread_id_read_as_moved"
+description = "every unread id read as unmoved, so the one the person moved is put where the stopped order was taking it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py"]
+old = '''    return frozenset(one for one in unread if one in common and was[one] != now[one])'''
+new = '''    return frozenset()'''
+
+[[rows]]
+id = "F4_others_clause_never_shown"
+description = "the facts line never names an unread track nobody moved, though the finish places it by the target"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py"]
+old = '''                        if one.stop_unread_others'''
+new = '''                        if False'''
+
+[[dropped]]
+id = "F3_an_id_one_order_lacks_read_as_moved"
+description = "an unread id either order lacks read as moved too"
+reason = "ranked below the 25 row cap (22 in r1446, C1 in r1446-b, three here): maintainer facing, an id the target names that either order lacks is placed by the listing either way"
+
+[[dropped]]
+id = "F5_others_clause_always_shown"
+description = "the facts line names other unread tracks when there are none"
+reason = "ranked below the 25 row cap: its direction is pinned by the card's own settled test, whose facts line carries one unread track, moved, and must not say where the stopped order was taking it"
+
