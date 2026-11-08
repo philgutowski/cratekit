@@ -585,7 +585,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   where that order was taking it, not where the stopped move left it. Moving
   only such tracks on Tidal after a stop is not read as reordering the
   playlist: the sync still finishes the stopped order, so rekordbox keeps
-  your order, and each track you moved stays where you put it.
+  your order, and each track you moved stays where you put it while one you
+  did not move goes where the stopped order was taking it.
 - Tidal can serve a playlist's old order or tracks to a paged read for
   minutes after a change, while the plain read is current. Where it plans an
   order or checks a write, `sync pair` reads both and takes the plain read
