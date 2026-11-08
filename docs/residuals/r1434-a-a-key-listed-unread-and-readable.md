@@ -13,7 +13,7 @@ unread: left out of the order the merge asks, stripped from the base, and its
 removal on either side is not read.
 
 **Measured cost.** Row S4 of `docs/mutation/r1434.md`, the subtraction
-dropped, killed none of 17559 tests on the full suite; its composite, no
+dropped, killed none of 17576 tests on the full suite (its one death, R-1413's inode test, fails on the clean tree); its composite, no
 track unread at all, is measured in the same table, so the unread set is
 pinned and its narrowing to rows with no readable release is not. What a
 person pays was not driven: no test builds a row matched to two releases
