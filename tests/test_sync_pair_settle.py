@@ -1435,9 +1435,11 @@ def test_a_reorder_settled_readings_show_keeps_the_unread_track_where_the_person
     The stop skips rekordbox, so nothing of it is folded and rekordbox's
     2, 3, 4, 1 still leads against the old base. The person drags t9
     between t2 and t3, two plans read that settled, and the person then
-    drags it between t3 and t4: settled readings show a reorder, so the
-    plan finishes nothing and t9 keeps the place the person gave it, behind
-    t3, rather than the one the stopped write was taking it to, behind t4.
+    drags it between t3 and t4: settled readings show a reorder, and since
+    R-1446 one of the unread track alone, so the plan finishes the stopped
+    write with rekordbox leading and t9 keeps the place the person gave it,
+    behind t3, rather than the one the stopped write was taking it to,
+    behind t4.
     """
     opener, account_id = _stopped_after_t9s_move(world, owed, monkeypatch, rekordbox="skip")
     world.account.playlists[account_id] = [*_ids("1", "2"), "t9", *_ids("3", "4")]
@@ -1460,7 +1462,8 @@ def test_a_reorder_settled_readings_show_keeps_the_unread_track_where_the_person
     assert world.account.playlists[account_id] == [*_ids("2", "3"), "t9", *_ids("4", "1")], (
         "the person's move of t9 was overridden by the stopped write's target"
     )
-    # Nor does the gate say so (the review's round two): no finish, no clause.
+    # Nor does the gate say so (the review's round two): the finish clause of
+    # R-1432 is not shown, since t9 is not put where the target takes it.
     warned = [_said(one, pair_cli.UNREAD) for one in envelopes if pair_cli.UNREAD in _codes(one)]
     assert warned, envelopes
     assert not any("finishing a stopped order" in one for one in warned), warned
@@ -1629,6 +1632,59 @@ def test_a_move_of_the_unread_track_alone_after_a_stop_that_sent_nothing_is_no_r
         assert code == int(ExitCode.OK), envelope
     assert world.held(opener) == ["2", "3", "4", "1"], "the DJ's rekordbox order was undone"
     assert world.account.playlists[account_id] == [*_ids("2"), "t9", *_ids("3", "4", "1")]
+
+
+def test_of_two_unread_tracks_only_the_one_the_person_moved_keeps_its_place(
+    world, owed, cfg, monkeypatch
+):
+    """R-1446, the review's round one: t8 and t9 listed untitled, only t8 moved after a settled reading.
+
+    The stop leaves t9 in front where its interrupted move put it. The person
+    moves t8 behind t1, plans read that settled, and the person moves t8
+    behind t2. No readable track moved, so the stopped write is finished and
+    rekordbox keeps its order; t8 keeps the place the person gave it, and
+    t9, which nobody moved, is put where the stopped order was taking it,
+    not left at the front. Before, every unread track kept the listing's
+    place once one was moved, so t9 stayed first.
+    """
+    opener, account_id = owed
+    _reordered(world, opener, "2", "3", "4", "1")
+    _listed_unread(monkeypatch, "t8", "t9")
+    world.account.playlists[account_id].extend(["t8", "t9"])
+    _agreeing_at_once(monkeypatch)
+    _stopping_after(world, monkeypatch, account_id, 1)
+    code, stopped = sync()
+    assert code != int(ExitCode.OK), stopped
+    assert world.account.playlists[account_id] == ["t9", *_ids("1", "2", "3", "4"), "t8"]
+    _settled_then_moved(
+        world,
+        cfg,
+        account_id,
+        ["t9", "t1", "t8", *_ids("2", "3", "4")],
+        ["t9", *_ids("1", "2"), "t8", *_ids("3", "4")],
+    )
+    envelopes: list[dict] = []
+    for _ in range(3):
+        code, envelope = _synced_keeping_gates(envelopes)
+        assert code == int(ExitCode.OK), envelope
+        envelopes.append(envelope)
+    assert world.held(opener) == ["2", "3", "4", "1"], "the DJ's rekordbox order was undone"
+    listed = world.account.playlists[account_id]
+    assert listed[0] != "t9", listed
+    assert listed == [*_ids("2"), "t8", *_ids("3", "4"), "t9", "t1"], listed
+    # The gate says the one moved stays and the other goes where the
+    # stopped order was taking it.
+    shown = [
+        str(fact)
+        for one in envelopes
+        if one.get("cause")
+        for fact in one["cause"]["detail"]["shown"].values()
+    ]
+    assert any(
+        "each one moved stays where it was put, any other goes where the stopped order "
+        "was taking it" in one
+        for one in shown
+    ), shown
 
 
 def test_a_finish_with_no_unread_track_is_put_in_rekordboxs_order(world, owed, cfg, monkeypatch):
@@ -1862,3 +1918,31 @@ def test_after_a_write_that_sent_nothing_only_readable_tracks_off_its_path_are_a
     write = _write_from(START, TARGET)
     assert pair_cli._readable_moved(write, None, reading, unread, moved_nothing=True) is moved
 
+
+def test_an_unread_track_moved_since_the_stop_is_read_by_the_track_before_it():
+    """R-1446: an unread id is moved when the id listed just before it is another, over ids both hold."""
+    write = _write_from(START, TARGET)
+    kept = pairs.StopReading("run-1", ("t9", "t1", "t8", "t2", "t3", "t4"), "2026-11-07T00:00:00+00:00", settled=True)
+    assert pair_cli._unread_moved(
+        write, kept, ["t9", "t1", "t2", "t8", "t3", "t4"], {"t8": None, "t9": None},
+        moved_nothing=False,
+    ) == {"t8"}
+    # Two unread tracks swapped are both moved; a track added since moves none.
+    assert pair_cli._unread_moved(
+        write, kept, ["t1", "t9", "t8", "t2", "t3", "t4"], {"t8": None, "t9": None},
+        moved_nothing=False,
+    ) == {"t8", "t9"}
+    assert pair_cli._unread_moved(
+        write, kept, ["t9", "t5", "t1", "t8", "t2", "t3", "t4"], {"t8": None, "t9": None},
+        moved_nothing=False,
+    ) == set()
+    # A write that sent nothing is read against where it began.
+    assert pair_cli._unread_moved(
+        write, None, ["t1", "t2", "t9", "t3", "t4"], {"t9": None}, moved_nothing=True
+    ) == {"t9"}
+    # With no settled reading there is nothing to compare.
+    unsettled = pairs.StopReading("run-1", ("t1", "t9"), "2026-11-07T00:00:00+00:00", settled=False)
+    assert pair_cli._unread_moved(
+        write, unsettled, ["t9", "t1"], {"t9": None}, moved_nothing=False
+    ) == set()
+    assert pair_cli._unread_moved(write, None, ["t9", "t1"], {"t9": None}, moved_nothing=False) == set()
