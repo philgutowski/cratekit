@@ -56,7 +56,7 @@ description = "existing guard, U234: an order off the path of a write known to h
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''        moved_nothing = off_path and stopped_write.sent_nothing'''
+old = '''        moved_nothing = stray and stopped_write.sent_nothing'''
 new = '''        moved_nothing = False'''
 
 [[rows]]
@@ -74,8 +74,8 @@ description = "existing guard, R-1264: an unread track a reorder does not move i
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''                at = placed.index(before) + 1'''
-new = '''                at = 0'''
+old = '''                return placed.index(one) + 1'''
+new = '''                return 0'''
 
 [[rows]]
 id = "S4_unread_keys_keep_a_readable_release"
@@ -143,11 +143,7 @@ tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "te
 old = '''                    if one.finishing_order and one.account_order and not one.unread_moved'''
 new = '''                    if one.finishing_order and one.account_order'''
 
-[[rows]]
+[[dropped]]
 id = "M9_moved_nothing_said_for_an_unread_move"
-description = "a write that sent no move and an unread track moved: the gate says the account's order is read as the person's, though it does not lead"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''        moved_nothing = moved_nothing and off_path'''
-new = '''        moved_nothing = moved_nothing'''
+description = "a write that sent no move and an unread track moved: the plan's stop_moved_nothing kept true though the account's order does not lead"
+reason = "equivalent: stop_moved_nothing is read only where finishing_order is false, which needs the stopped order dropped, which needs reordered_since_stop and so off_path, the clause the mutation removes; the line keeps the field true to its comment and no output can show it"
