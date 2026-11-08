@@ -1675,11 +1675,17 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         # order the stopped write left them, led into rekordbox as the
         # person's reorder. A lag of a pending write's moves is told by its
         # whole start before here (`_pending`), and a track read since the
-        # stop is compared, since the merge carries its move.
+        # stop is compared, since the merge carries its move. The path stays
+        # the write's own, from its whole start, with the unread tracks left
+        # out of each order it compares: worked out again from a start without
+        # them it is another path wherever the target places an unread track
+        # other than the start lists it (R-1432's finish), and a person's
+        # reorder on that other path was finished over.
         off_path = not pair_stopped.reached(
-            tuple(one for one in stopped_write.start if alias(one) not in unread_keys),
+            stopped_write.start,
             stopped_write.target,
             reading,
+            leaving={one for one in stopped_write.start if alias(one) in unread_keys},
         )
         # AND WHERE AN UNREAD TRACK STANDS IS READ ON THE WHOLE START, by the
         # same rules, for where the finish puts it (R-1432): off the path by
@@ -1693,7 +1699,14 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         # off its path is a person's, as before U234 (R-1420's refused order).
         moved_nothing = stray and stopped_write.sent_nothing
         shown = moved_nothing or _moved_since_stop(
-            reader, target, name, held, stopped_write, reading, off_path=stray
+            reader,
+            target,
+            name,
+            held,
+            stopped_write,
+            reading,
+            off_path=stray,
+            unread_only=not off_path,
         )
         reordered_since_stop = shown and off_path
         unread_moved = shown and not off_path
@@ -1951,6 +1964,7 @@ def _moved_since_stop(
     reading: tuple[str, ...],
     *,
     off_path: bool,
+    unread_only: bool = False,
 ) -> bool:
     """Whether settled readings after ``write``'s stop show the person reordered the account (U234).
 
@@ -1969,6 +1983,11 @@ def _moved_since_stop(
     and the account leads. Every other reading is finished as the stopped
     write's. A pair with no record, a hand pairing, keeps nothing, so
     nothing it reads leads on its own.
+
+    R-1434. ``unread_only`` is a reading off the path by a track the plan
+    cannot read alone: the account's order never leads for it, so the hold
+    says the track stays where the person put it, and the other tracks are
+    finished in the stopped order.
     """
     from dataclasses import replace
 
@@ -2018,8 +2037,13 @@ def _moved_since_stop(
         f"read it settled after run {write.run_id}'s write stopped part way through its "
         f"order, and the provider may still be serving an older order: the pair was not "
         f"synced this run, and nothing is written until a reading at least "
-        f"{int(AGREE_AFTER.total_seconds() // 60)} minutes later agrees, when the "
-        f"account's order is read as yours",
+        f"{int(AGREE_AFTER.total_seconds() // 60)} minutes later agrees, when "
+        + (
+            "each track the account lists with no title or no artist stays where you "
+            "put it and the others are finished in the stopped order"
+            if unread_only
+            else "the account's order is read as yours"
+        ),
         steps=("sync the pair again in a few minutes",),
         origin=_ORIGIN,
         detail={

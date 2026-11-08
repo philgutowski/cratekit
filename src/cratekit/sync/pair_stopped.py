@@ -473,26 +473,44 @@ def finished(now: Sequence[str], target: Sequence[str]) -> tuple[str, ...]:
     return tuple(result)
 
 
-def reached(start: Sequence[str], target: Sequence[str], now: Sequence[str]) -> bool:
+def reached(
+    start: Sequence[str],
+    target: Sequence[str],
+    now: Sequence[str],
+    *,
+    leaving: Iterable[str] = (),
+) -> bool:
     """Whether the account's order ``now`` is one a write ordering ``start`` toward ``target`` left.
 
     A track added or taken off since is left out of the comparison, since
     neither moves the tracks both hold. A track the write would have moved
     standing anywhere else is off the path, which is a move somebody made or
     the provider's partial state, and is read as neither on that alone (U234).
+
+    R-1434. ``leaving`` names tracks left out of the comparison too, a
+    track the plan cannot read, while the path stays the write's own from
+    its whole start: a path worked out again from a start without them is
+    another path, where the target places such a track other than the
+    start lists it.
     """
-    return bool(positions(start, target, now))
+    return bool(positions(start, target, now, leaving=leaving))
 
 
-def positions(start: Sequence[str], target: Sequence[str], now: Sequence[str]) -> tuple[int, ...]:
+def positions(
+    start: Sequence[str],
+    target: Sequence[str],
+    now: Sequence[str],
+    *,
+    leaving: Iterable[str] = (),
+) -> tuple[int, ...]:
     """How many moves from ``start`` toward ``target`` leave the order ``now``, each count that does (R-1394).
 
-    Read as :func:`reached` reads it, a track added or taken off since left
-    out, so two orders on the path that differ only by such a track both
-    count. Empty when ``now`` is off the path.
+    Read as :func:`reached` reads it, a track added or taken off since and
+    each of ``leaving`` left out, so two orders on the path that differ only
+    by such a track both count. Empty when ``now`` is off the path.
     """
     current = list(dict.fromkeys(now))
-    common = set(current) & set(start)
+    common = (set(current) & set(start)) - set(leaving)
     shown = [one for one in current if one in common]
     return tuple(
         index
