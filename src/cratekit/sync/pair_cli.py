@@ -1681,9 +1681,16 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         # them it is another path wherever the target places an unread track
         # other than the start lists it (R-1432's finish), and a person's
         # reorder on that other path was finished over.
+        #
+        # A WRITE KNOWN TO HAVE SENT NO MOVE has one state, its start, since
+        # nothing it asked moved anything: an order its moves would have left
+        # is a person's as much as any other (R-1420), and read against the
+        # whole path a drag of one track to the top, where its first move
+        # would have put it, was finished over (round two's review).
+        toward = stopped_write.start if stopped_write.sent_nothing else stopped_write.target
         off_path = not pair_stopped.reached(
             stopped_write.start,
-            stopped_write.target,
+            toward,
             reading,
             leaving={one for one in stopped_write.start if alias(one) in unread_keys},
         )
@@ -1692,9 +1699,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
         # an unread track alone, the account is still finished, and the track
         # keeps the place a person gave it once those rules show the move was
         # theirs, rather than the one the stopped write was taking it to.
-        stray = off_path or not pair_stopped.reached(
-            stopped_write.start, stopped_write.target, reading
-        )
+        stray = off_path or not pair_stopped.reached(stopped_write.start, toward, reading)
         # A WRITE KNOWN TO HAVE SENT NO MOVE left no partial state, so an order
         # off its path is a person's, as before U234 (R-1420's refused order).
         moved_nothing = stray and stopped_write.sent_nothing
