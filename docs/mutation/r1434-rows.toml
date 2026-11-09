@@ -2,47 +2,49 @@ name = "r1434"
 pass_kind = "light"
 
 [[rows]]
-id = "M1_path_read_on_the_whole_start"
-description = "the unit's guard reverted: the path of a stopped write is compared on every track, an unread one included, so a person's move of one reads the account off the path"
+id = "M1_write_that_sent_nothing_read_on_its_whole_path"
+description = "round two's shape: a write known to have sent no move is read against its whole path, so a person's drag of one track to the top, where its first move would have put it, is finished over"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''            leaving={one for one in stopped_write.start if alias(one) in unread_keys},
-'''
-new = ''''''
+old = '''    return tuple(write.start) if write.sent_nothing else tuple(write.target)'''
+new = '''    return tuple(write.target)'''
 
 [[rows]]
-id = "M2_unread_matched_by_id_not_key"
-description = "the start's ids matched against the unread keys unaliased, so no id is ever left out"
+id = "M2_plan_reads_a_write_that_sent_nothing_on_its_whole_path"
+description = "the plan's path read alone back on the whole path for a write that sent no move, R-1446's check of a readable move keeping the start"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''            leaving={one for one in stopped_write.start if alias(one) in unread_keys},
-'''
-new = '''            leaving={one for one in stopped_write.start if one in unread_keys},
-'''
+old = '''            stopped_write.start, _toward(stopped_write), reading'''
+new = '''            stopped_write.start, stopped_write.target, reading'''
 
 [[rows]]
-id = "M3_pending_write_read_on_its_whole_start"
-description = "the narrowing kept for a write that sent no move only, so a pending write is read on its moving step's whole start and a person's move of an unread track reads it off the path"
+id = "M3_readable_move_after_a_write_that_sent_nothing_read_on_its_whole_path"
+description = "R-1446's check of a readable move alone back on the whole path for a write that sent no move, so a drag of a readable track to the top with an unread track listed reads as an unread move"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''            leaving={one for one in stopped_write.start if alias(one) in unread_keys},
-'''
-new = '''            leaving=() if stopped_write.pending else {one for one in stopped_write.start if alias(one) in unread_keys},
-'''
+old = '''        return not pair_stopped.reached(write.start, _toward(write), readable)'''
+new = '''        return not pair_stopped.reached(write.start, write.target, readable)'''
 
 [[rows]]
-id = "M4_readable_now_left_out_too"
-description = "the comparison leaves out the tracks the plan reads instead of the unread ones"
+id = "M4_hold_promises_the_accounts_order_for_an_unread_move"
+description = "the hold while a move of unread tracks alone settles says the account's order is then read as the person's, though the others are finished in the stopped order"
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''            leaving={one for one in stopped_write.start if alias(one) in unread_keys},
-'''
-new = '''            leaving={one for one in stopped_write.start if alias(one) not in unread_keys},
-'''
+old = '''            if unread and not _readable_moved(write, kept, reading, unread, moved_nothing=False)'''
+new = '''            if False'''
+
+[[rows]]
+id = "M5_hold_withholds_the_lead_from_a_readable_reorder"
+description = "the hold while a reorder of readable tracks settles says the others are finished in the stopped order, though the account's order then leads"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            if unread and not _readable_moved(write, kept, reading, unread, moved_nothing=False)'''
+new = '''            if True'''
 
 [[rows]]
 id = "F7_ordering_start_from_the_readable_tracks"
@@ -59,7 +61,7 @@ description = "existing guard, U234: an order off the path of a write known to h
 file = "src/cratekit/sync/pair_cli.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''        moved_nothing = stray and stopped_write.sent_nothing'''
+old = '''        moved_nothing = off_path and stopped_write.sent_nothing'''
 new = '''        moved_nothing = False'''
 
 [[rows]]
@@ -68,8 +70,8 @@ description = "existing guard, U225: the path compares every track listed now, a
 file = "src/cratekit/sync/pair_stopped.py"
 surface = "user"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''    common = (set(current) & set(start)) - set(leaving)'''
-new = '''    common = set(current) - set(leaving)'''
+old = '''    common = set(current) & set(start)'''
+new = '''    common = set(current)'''
 
 [[rows]]
 id = "S3_unread_track_placed_at_the_front"
@@ -107,87 +109,3 @@ pairs_with = "S4_unread_keys_keep_a_readable_release"
 tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
 old = '''    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'''
 new = '''    unread_keys: set[str] = set()'''
-
-[[rows]]
-id = "M5_unread_move_never_read"
-description = "the fix round's guard dropped: a person's move of an unread track is never read, so every finish puts it where the stopped write's target puts it"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''        unread_moved = shown and not off_path'''
-new = '''        unread_moved = False'''
-
-[[rows]]
-id = "M6_unread_move_read_on_the_narrowed_start"
-description = "the unread track's move read with the unread tracks left out, as the lead is, so it never strays and its move is never shown"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''        stray = off_path or not pair_stopped.reached(stopped_write.start, toward, reading)'''
-new = '''        stray = off_path'''
-
-[[rows]]
-id = "M7_target_passed_for_a_moved_unread_track"
-description = "the finish passes the stopped write's target although a person moved the unread track, so it is put back"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''                if stopped is not None and stopped_write is not None and not unread_moved'''
-new = '''                if stopped is not None and stopped_write is not None'''
-
-[[rows]]
-id = "M8_gate_clause_for_a_moved_unread_track"
-description = "the gate's facts line says the order puts an unread track where the stopped order was taking it although a person moved it"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''                    if one.finishing_order and one.account_order and not one.unread_moved'''
-new = '''                    if one.finishing_order and one.account_order'''
-
-[[rows]]
-id = "M10_path_worked_out_again_on_the_narrowed_start"
-description = "the review's round one shape: the path is worked out again from a start with the unread tracks removed, another path where the target places one other than the start lists it, so a person's reorder after a write that sent no move is finished over"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''            stopped_write.start,
-            toward,
-            reading,
-            leaving={one for one in stopped_write.start if alias(one) in unread_keys},
-'''
-new = '''            tuple(one for one in stopped_write.start if alias(one) not in unread_keys),
-            toward,
-            reading,
-'''
-
-[[rows]]
-id = "M11_hold_promises_the_accounts_order_for_an_unread_move"
-description = "the hold while an unread track's move settles says the account's order is then read as the person's, though the other tracks are finished in the stopped order"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''            unread_only=not off_path,'''
-new = '''            unread_only=False,'''
-
-[[rows]]
-id = "M12_hold_withholds_the_lead_from_a_readable_reorder"
-description = "the hold while a reorder of readable tracks settles says the other tracks are finished in the stopped order, though the account's order then leads"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''            unread_only=not off_path,'''
-new = '''            unread_only=True,'''
-
-[[rows]]
-id = "M13_write_that_sent_nothing_read_on_its_whole_path"
-description = "round two's shape: a write known to have sent no move is read against its whole path, so a person's drag of one track to the top, where its first move would have put it, is finished over"
-file = "src/cratekit/sync/pair_cli.py"
-surface = "user"
-tests = ["tests/test_sync_pair_settle.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
-old = '''        toward = stopped_write.start if stopped_write.sent_nothing else stopped_write.target'''
-new = '''        toward = stopped_write.target'''
-
-[[dropped]]
-id = "M9_moved_nothing_said_for_an_unread_move"
-description = "a write that sent no move and an unread track moved: the plan's stop_moved_nothing kept true though the account's order does not lead"
-reason = "equivalent: stop_moved_nothing is read only where finishing_order is false, which needs the stopped order dropped, which needs reordered_since_stop and so off_path, the clause the mutation removes; the line keeps the field true to its comment and no output can show it"

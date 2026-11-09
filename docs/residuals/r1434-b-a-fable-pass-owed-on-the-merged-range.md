@@ -12,14 +12,17 @@ one found one BLOCKING defect and its round two one more, each fixed with
 failing tests first. The merged
 range has not had the reviewer the cloud lane names.
 
-**What it covers.** The merge of `cloud/631-the-ordering-step-s-start-keeps`:
-`plan_pair` in `src/cratekit/sync/pair_cli.py` (the stopped write's path read
-with the unread tracks left out, `stray`, `unread_moved`, the hold's wording
-for an unread move), `reached` and `positions` in
-`src/cratekit/sync/pair_stopped.py` (`leaving`), the R-1434 block of
-`tests/test_sync_pair_settle.py`, `docs/GUIDE.md`'s stopped order and unread
-track bullets, and the table `docs/mutation/r1434.md`. It guards the order
-`crate sync pair` writes onto the account and into rekordbox.
+**What it covers.** The merge of `cloud/631-the-ordering-step-s-start-keeps`
+after R-1446 (#639) landed in the same path and its rule was kept: in
+`src/cratekit/sync/pair_cli.py`, `_toward` (a write known to have sent no
+move read against its start alone, in `plan_pair` and in R-1446's
+`_readable_moved`) and the hold's wording for a move of unread tracks alone
+in `_moved_since_stop`; the R-1434 block of `tests/test_sync_pair_settle.py`;
+`docs/GUIDE.md`'s sentence for a write that sent no move; and the table
+`docs/mutation/r1434.md`. It guards the order `crate sync pair` writes onto
+the account and into rekordbox. The two review rounds read this branch's
+earlier design, which the merge with R-1446 replaced; R-1446 had its own
+review.
 
 **Closes when:** a Fable review at high effort of the merged range against
 METHOD's merge bar reports, and each BLOCKING finding is fixed or filed. It
