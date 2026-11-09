@@ -47204,3 +47204,109 @@ way, so a difference can only fall on a track added since the stop.
 **Closes when:** a test finds a listing where the two readings differ and
 pins the whole listing's, or the two are shown equal. Ledger only: an
 existing guard sampled by this card, its reachability unmeasured.
+
+---
+
+## R-1449. A move of unread tracks alone after a settled reading still holds the pair while it settles, under a line saying the account's order will be read as yours
+
+**Found:** at the build of #639, R-1446, 2026-11-07.
+
+**The mechanism.** `_moved_since_stop` in `src/cratekit/sync/pair_cli.py`
+still compares the readings kept after a stop over every id the account
+lists, an unread one (R-1264) included, so a person who moves only an unread
+track after a sync read the account settled is held by U234's
+`sync-pair-account-settling` refusal, problem `order-moved-since-stop`, until
+a reading at least `AGREE_AFTER` later agrees. Only then does `plan_pair`
+ask whether a readable track moved (`_readable_moved`) and, finding none,
+finish the stopped write. The hold's line says that once a later reading
+agrees "the account's order is read as yours", which is true of the unread
+track's place and not of the readable tracks' order, which the finish puts
+in rekordbox's.
+
+**Measured cost.** Driven by the card's own test
+(`test_a_settled_move_of_the_unread_track_alone_still_finishes_the_stopped_write`):
+the pair is left out of two syncs before the third finishes it, nothing
+written while it waits and rekordbox's order kept after. A delay and a
+hold line that overstates what the person's move will do; no order is lost.
+Kept deliberately: the card requires the stop with its rekordbox side
+skipped to keep today's result, whose existing test pins those two holds.
+
+**Closes when:** a settled change that moves only unread tracks is read
+without the hold, or the hold's line names that only tracks the account
+cannot read moved. Ledger only: a wording and a delay, nothing lost.
+
+---
+
+## R-1450. The merged range of R-1446 owes a Fable review, since Opus 5.5 at high effort reviewed it with Fable out of usage
+
+**Found:** at the build of #639, R-1446, 2026-11-08.
+
+**The mechanism.** METHOD's review is Fable's at high effort. Fable's review
+of this branch was refused on the account's usage limit from 2026-11-08
+03:00 UTC on, so by Phillip's decision of 2026-11-08 (PR #640) Opus 5.5 at
+high effort ran the same reviewer definition in its place, under the same
+merge bar and round cap. The range was therefore reviewed by the model that
+also built it.
+
+**Measured cost.** None measured: the substitution is the gap. The review's
+findings and the mutation table are in `docs/restart/r1446.md`.
+
+**Closes when:** Fable reviews the merged range, the R-1446 merge commit's
+diff against its first parent, and any finding it raises is filed or fixed.
+Ledger only: a review owed, nothing lost.
+
+---
+
+## R-1451. An unread track that the account reads after a stop and the person then moves still lets the account lead, as any readable move does
+
+**Found:** at the review of #639, R-1446, round one, 2026-11-08.
+
+**The mechanism.** `_readable_moved` in `src/cratekit/sync/pair_cli.py`
+leaves out only the ids the account lists unreadably now. A track unread at
+the stop, read settled while unread, and readable once Tidal fills in its
+title is a readable track to U234's settled comparison, so a move of it after
+that is read as the person's reorder and the account leads, its readable
+tracks in the stopped write's half done order.
+
+**Measured cost.** Driven by the review (round one, P8): rekordbox goes to 1,
+2, 3, 9, 4, the same on main. It is U234's rule that a settled move of a
+readable track leads, applied to a track that was unread when the stop was
+read. How often Tidal fills in a title after the fact is not measured.
+
+**Closes when:** a track read unread at the stop is read by its place at the
+stop rather than as readable since, or the case is decided to be the person's
+reorder and recorded so. Ledger only: U234's own rule on a track whose
+reading changed.
+
+---
+
+## R-1452. Paths of R-1446's finish no test drives, and a fallback branch that kills nothing
+
+**Found:** at the review of #639, R-1446, rounds one and two, 2026-11-08.
+
+**The mechanism.** In `src/cratekit/sync/pair_cli.py`:
+
+- `plan_pair` passes no target at all when only unread tracks moved and
+  `_unread_moved` names none of them, the `else ()` branch. On a settled
+  reading that cannot happen, since an order of the shared ids that changed
+  with the readable ones held drops an unread id from the shared run; on a
+  stop that sent nothing it can, when a readable track moved along the
+  write's path. The review's round two mutated it to pass the whole target
+  and killed nothing in `tests/test_sync_pair_settle.py`.
+- `_readable_moved`'s branch for no settled reading is reached by its unit
+  tests only, since `plan_pair` asks it only after `_moved_since_stop` read a
+  reorder from a settled reading or the write sent nothing.
+- Not driven, named by the review's round one: an unread release of a row
+  whose other release is readable (an alias), a track readable when the
+  reading settled and unread now, and on a stop that sent nothing any step
+  of the write's path accepted as its partial state.
+- A move of an unread track to the very front is not pinned by a dispatcher
+  test.
+
+**Measured cost.** None driven. In each the readable tracks are finished in
+rekordbox's order and rekordbox keeps its own; what is at stake is where an
+unread track is put on the account.
+
+**Closes when:** each is driven by a dispatcher test or shown unreachable,
+and the fallback branch is pinned or removed. Ledger only: an unread
+track's place on the account, nothing in rekordbox.

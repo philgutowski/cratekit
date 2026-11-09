@@ -1,0 +1,164 @@
+{
+  "name": "r1446-c",
+  "pass_kind": "light",
+  "branch": "cloud/639-a-move-of-an-unread-track-alone",
+  "head": "010700cc",
+  "when": "2026-11-08 22:20 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 17588,
+  "baseline_exit": 1,
+  "pytest_runs": 6,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 162,
+  "known_source": "/tmp/claude-0/-home-user-cratekit/d3983fb2-93c4-5826-80da-5cb9c0726e3a/scratchpad/known-r1446.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/sync/pair_cli.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/sync/pair_cli.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "f2776bce1e5e35c0",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 17588,
+    "baseline_collected": 17588,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "F1_every_unread_kept_its_place",
+      "description": "round one's BLOCKING reverted: once only unread tracks moved, no target at all, so an unread track nobody moved keeps the interrupted move's place",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ae1cedbb6cdaf3e8",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 252,
+      "baseline_collected": 252,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_of_two_unread_tracks_only_the_one_the_person_moved_keeps_its_place",
+        "tests/test_sync_pair_settle.py::test_two_unread_tracks_dragged_together_both_keep_the_place_the_person_gave_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                    else tuple(one for one in stopped_write.target if one not in moved_unread)",
+      "new": "                    else ()"
+    },
+    {
+      "id": "F2_no_unread_id_read_as_moved",
+      "description": "every unread id read as unmoved, so the one the person moved is put where the stopped order was taking it",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b2ec523cb74d456a",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 252,
+      "baseline_collected": 252,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_of_two_unread_tracks_only_the_one_the_person_moved_keeps_its_place",
+        "tests/test_sync_pair_settle.py::test_the_unread_tracks_moved_since_the_stop_are_those_off_the_order_both_readings_share",
+        "tests/test_sync_pair_settle.py::test_two_unread_tracks_dragged_together_both_keep_the_place_the_person_gave_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return frozenset(one for one in now if one in left_out and one not in held)",
+      "new": "    return frozenset()"
+    },
+    {
+      "id": "F3_readable_ids_weighed_as_unread",
+      "description": "the shared run unweighted, so it may keep unread ids in place of a readable one and read the wrong unread track as moved",
+      "file": "src/cratekit/sync/pair_cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "f2a1597936e0060f",
+      "subset": [
+        "tests/test_sync_pair_settle.py",
+        "tests/test_sync_pair_unread.py",
+        "tests/test_sync_pair_stopped_order.py",
+        "tests/test_sync_pair_order.py",
+        "tests/test_sync_pair_stopped.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 252,
+      "baseline_collected": 252,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_sync_pair_settle.py::test_of_two_unread_tracks_only_the_one_the_person_moved_keeps_its_place",
+        "tests/test_sync_pair_settle.py::test_the_unread_tracks_moved_since_the_stop_are_those_off_the_order_both_readings_share",
+        "tests/test_sync_pair_settle.py::test_two_unread_tracks_dragged_together_both_keep_the_place_the_person_gave_them"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        value = top[0] + (1 if one in left_out else heavy)",
+      "new": "        value = top[0] + 1"
+    }
+  ],
+  "dropped": [
+    {
+      "id": "F4_others_clause_never_shown",
+      "description": "the facts line never names an unread track nobody moved, though the finish places it by the target",
+      "reason": "ranked below the cap of 25 rows, 22 in r1446 and three here; r1446-b's C1 is the composite of M10 and M11, which drives two zeros rather than adding a row: pinned by the two unread tracks test's facts line assertion, written with it"
+    },
+    {
+      "id": "F5_others_clause_always_shown",
+      "description": "the facts line names other unread tracks when there are none",
+      "reason": "ranked below the cap of 25 rows, 22 in r1446 and three here; r1446-b's C1 is the composite of M10 and M11, which drives two zeros rather than adding a row: its direction is pinned by the card's own settled test, which must not say where the stopped order was taking it"
+    },
+    {
+      "id": "F6_an_id_one_order_lacks_read_as_moved",
+      "description": "an unread id either order lacks read as moved too",
+      "reason": "ranked below the cap of 25 rows, 22 in r1446 and three here; r1446-b's C1 is the composite of M10 and M11, which drives two zeros rather than adding a row: maintainer facing, such an id is in no shared run and the target places it by the listing either way"
+    }
+  ]
+}

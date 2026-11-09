@@ -2463,13 +2463,31 @@ Installed copy 0.15.0, the latest release, which carries U234 (#623). Both backu
 
 **Met:** **A108 (#592)**, the stopped run, the gate lines, no rekordbox order item, and the account's order after the write. **A88 (#514)**, the tie count, GIG READY's count and the quiet sync's calls. **A91 (#521)**, each phase's calls for both syncs, the answers making no plan calls. The battery on the merged head for all three. Nothing was written over a moved list and no plan was made again unexplained, so no card is filed. **Calls:** about 6,200 for the sitting, no command over 1,500.
 
+## Sitting 92, 2026-11-08, the attended session on v0.15.1, no rekordbox visit: A56's retirement, the first batch rotated out and its account playlist removed
+
+Installed copy 0.15.1, the latest release, which carries R-1432 (#638). No Cratekit job running, and `rekordbox` and `rekordboxAgent` gone before every verb. Both backup ages read 5 days at the start, at the rule's limit, so `crate backup run` ran first; the session then minted the acknowledgment with `crate session ack --as session` on both ages at 0 days. Each live plan rehearsed first on a fresh disposable copy with library state redirected and the job queue copied in, the copy refreshed after the live rotate, and each live digest equal to its rehearsal's. Every command under 1,500 calls, and every `run decide --continue` given `--calls 1500`.
+
+| Step | Ran | Observed | State |
+|---|---|---|---|
+| Backup | `crate backup run`, job `2026-11-08T21:56:25Z-8b4b`, driven with `--job` after the first call only queued it | Both items done, 21:56Z to 23:22Z. The mirror took 5,116 s in the fast mode, 98,299 files checked on both sides, 1,443 sent; then the database snapshot `2026-11-08T232214Z`. `doctor` reads both ages 0 days. | done |
+| Acknowledgment | `crate session ack --as session` | Recorded on both ages known, valid until 2026-11-09T11:25Z. | done |
+| Rotate, rehearsal | `inbox rotate --as-of 2026-11-08` on a fresh copy, run `2026-11-08T23:26:57Z-bcef`, `approve` as `session` | Digest `2009ade0c21400bb`, count 51: **`Phil 9-30-26` (168 tracks, landed 2026-10-08, 31 days by its run record) moves into Old**; 33 batches kept; 17 left alone (`2026-10-08 Labels` not recognised as a batch, Analyze, Old, and 14 hand made playlists in Old); 0 removed. Applied: 1 moved, every node read back where the plan put it, no track left the collection. | rehearsed |
+| Rotate, live | run `2026-11-08T23:27:20Z-8746`, digest `2009ade0c21400bb`, equal to the rehearsal's; `approve` as `session` | The same plan and the same applied line, 23:27:33Z. Undo is a restore of session `2026-11-08T23:27:27Z-2212`. | done |
+| The account before | the installed copy's account client, 23:28Z | The root folder `INBOX` holds **27 playlists and no subfolder**, `INBOX Phil 9-30-26` among them with 160 tracks. | read |
+| `organize --report --only mirror` | live, read only | Account digest `c5734fcdee4419f5`, 1 to apply and 23 with nothing to do. The INBOX step: create 0, add 0, remove 0, 110 rows unmatched and named, **remove 1 playlist whose batch left it**, `INBOX Phil 9-30-26`, "what it mirrors left INBOX, so the product removes the playlist it made"; the other 26 reused with nothing to add or take off; `2026-10-08 Labels`, Analyze and Old not mirrored, each with its reason. 222 account requests to plan, 700 calls for the run. | read |
+| Mirror, rehearsal | `organize --only mirror` on the refreshed copy, run `2026-11-08T23:31:53Z-ed5b` | Digest `c5734fcdee4419f5`, equal to the report's, the same removal at the gate. The account gate answered `abort`, since the account is live from the copy too. 700 calls. | rehearsed |
+| Mirror, live | run `2026-11-08T23:33:31Z-9f93`, digest `c5734fcdee4419f5`; `organize.account.apply` answered `apply` as `session` with `--calls 1500` | `ok`: "remove 1 playlist(s) whose batch left it" applied, nothing else written. **704 calls**, none answered with a rate limit. | done |
+| The account after | the account client, 23:36:43Z | **26 playlists, no subfolder. Gone: `INBOX Phil 9-30-26` alone. The other 26 unchanged in name and track count against the read before**, and none new. Opening the removed playlist's id is refused, "the provider has no playlist", so it was deleted rather than moved; the account still holds one `INBOX` folder. | met |
+| The battery | `ruff`, `pytest` under `-n auto`, `scan_repo.py`, on `main` at `24fbad88`, v0.15.1 | **Green**: ruff clean, 17,613 passed and 1 skipped in 381 s, the scan clean, 23:37Z to 23:44Z. `config.toml` unchanged, sha256 `9e545aa4...`. | met |
+
+**Met:** **A56 (#414)**, the retirement half: the rotate moved the first batch due, the mirror's gate named its playlist's removal, the read back shows it gone and every other INBOX playlist unchanged, and the battery on the merged head. The first half was met at sitting 78; the Defected batch proof went to A45 (#369), since closed. **Calls:** about 2,200 for the sitting (700, 700 and 704 for the three organize runs, about 90 for the account client's reads, none for the rotate or the backup), no command over 1,500.
+
 ## Next sitting
 
-**Open attended cards, as of 2026-11-07, after sitting 91.** A94 (#528) waits on leaking zombies and A95 (#535)
-on an unlanded batch still staged. Three more wait on a circumstance rather
-than a card: A56 (#414), whose retirement half waits on the first batch due to
-rotate, on 2026-11-08 at the earliest; A57 (#415), a DEADCA7 push onto a
-library copy; and A72 (#446), new Bandcamp purchases from a followed label.
+**Open attended cards, as of 2026-11-08, after sitting 92.** A94 (#528) waits on leaking zombies and A95 (#535)
+on an unlanded batch still staged. Two more wait on a circumstance rather
+than a card: A57 (#415), a DEADCA7 push onto a library copy; and A72 (#446),
+new Bandcamp purchases from a followed label.
 A90's download half waits on Phillip's answer to the version review of the
 Dennis Ferrer vocal mix, R-1441. A33 (#293) is a brainstorm,
 and A5 (#178) keeps lines 8 and 9 above.
