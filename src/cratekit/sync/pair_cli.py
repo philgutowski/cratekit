@@ -1679,13 +1679,13 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     if stopped_write is not None:
         reading = tuple(listed_order or account_now)
         off_path = not pair_stopped.reached(
-            stopped_write.start, stopped_write.target, reading
+            stopped_write.start, _toward(stopped_write), reading
         )
         # A WRITE KNOWN TO HAVE SENT NO MOVE left no partial state, so an order
         # off its path is a person's, as before U234 (R-1420's refused order).
         moved_nothing = off_path and stopped_write.sent_nothing
         reordered_since_stop = moved_nothing or _moved_since_stop(
-            reader, target, name, held, stopped_write, reading, off_path=off_path
+            reader, target, name, held, stopped_write, reading, off_path=off_path, unread=unread
         )
         # R-1446. A MOVE OF UNREAD TRACKS ALONE IS NO REORDER OF THE READABLE
         # ONES: neither side's merge reads an unread track, so a person who
@@ -1966,6 +1966,18 @@ def _kept_after(held: Any, write: pair_stopped.StoppedWrite) -> Any:
     return kept
 
 
+def _toward(write: pair_stopped.StoppedWrite) -> tuple[str, ...]:
+    """Where the moves ``write`` sent could have taken the account (R-1434, round two's review).
+
+    A write known to have sent no move moved nothing, so its one state is
+    its start, and any other order is a person's (R-1420): read against its
+    whole path, a drag of one track to the top, where its first move would
+    have put it, was finished over. Any other write is read along its path
+    toward its target.
+    """
+    return tuple(write.start) if write.sent_nothing else tuple(write.target)
+
+
 def _readable_moved(
     write: pair_stopped.StoppedWrite,
     kept: Any,
@@ -1987,7 +1999,7 @@ def _readable_moved(
     left_out = set(unread)
     readable = [one for one in reading if one not in left_out]
     if moved_nothing:
-        return not pair_stopped.reached(write.start, write.target, readable)
+        return not pair_stopped.reached(write.start, _toward(write), readable)
     if kept is None or not kept.settled:
         return True
     return pair_stopped.reordered(
@@ -2061,6 +2073,7 @@ def _moved_since_stop(
     reading: tuple[str, ...],
     *,
     off_path: bool,
+    unread: Iterable[str] = (),
 ) -> bool:
     """Whether settled readings after ``write``'s stop show the person reordered the account (U234).
 
@@ -2130,8 +2143,15 @@ def _moved_since_stop(
         f"read it settled after run {write.run_id}'s write stopped part way through its "
         f"order, and the provider may still be serving an older order: the pair was not "
         f"synced this run, and nothing is written until a reading at least "
-        f"{int(AGREE_AFTER.total_seconds() // 60)} minutes later agrees, when the "
-        f"account's order is read as yours",
+        f"{int(AGREE_AFTER.total_seconds() // 60)} minutes later agrees, when "
+        + (
+            # R-1434. A move of unread tracks alone never leads (R-1446), so
+            # the hold says what the plan then does.
+            "each track the account lists with no title or no artist stays where you "
+            "put it and the others are finished in the stopped order"
+            if unread and not _readable_moved(write, kept, reading, unread, moved_nothing=False)
+            else "the account's order is read as yours"
+        ),
         steps=("sync the pair again in a few minutes",),
         origin=_ORIGIN,
         detail={
