@@ -561,7 +561,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
   that reading; the gate says so, and the first sync you approve puts the
   Tidal playlist in rekordbox's order. Where the stopped write is known to
   have sent none of its moves (a write by this version that stopped before
-  its first move), an order off them is yours and leads at once. A move you make on Tidal leads only
+  its first move), any order but the one it began from is yours and leads
+  at once, even one its first moves would have left. A move you make on Tidal leads only
   when syncs that wrote nothing to the pair (its Tidal side skipped, or the
   pair left out pending) have read the stopped playlist off those moves'
   path in one order at least 5 minutes apart: a later sync that reads
