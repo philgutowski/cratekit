@@ -458,3 +458,24 @@ def test_a_row_held_only_as_an_unread_release_stays_where_the_account_lists_it(
         # REKORDBOX KEEPS ITS ORDER and the account keeps t4 behind t3.
         assert world.held(twin_id) == ["3", "1", "2", "4"]
         assert world.account.playlists[PHIL] == ["t3", "t4", "t1", "t20", "t2"]
+
+
+def test_a_row_whose_listed_release_is_its_unread_second_stays_in_rekordbox(
+    world, cfg, every_order
+):
+    """From the mutation table: the unread keys are read through the row's one key."""
+    twin_id = _siblings(world, _HALF_READ)
+    assert world.held(twin_id) == ["3", "4", "1", "2"]
+    # The account drops t4, the row's first release, and lists t24 with no
+    # title: the row is still on the account, through a release it cannot read.
+    world.account.playlists[PHIL].remove("t4")
+    world.names["t24"] = ""
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+        assert [one[0] for one in _unread(envelope)] == ["t24"]
+        # READ BY ITS OWN KEY rather than the row's, t24 would never strip the
+        # row from the base, and the row would be read as taken off the account
+        # and removed from rekordbox.
+        assert world.held(twin_id) == ["3", "4", "1", "2"]
+        assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2", "t24"]
