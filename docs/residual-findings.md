@@ -47310,3 +47310,86 @@ unread track is put on the account.
 **Closes when:** each is driven by a dispatcher test or shown unreachable,
 and the fallback branch is pinned or removed. Ledger only: an unread
 track's place on the account, nothing in rekordbox.
+
+---
+
+## R-1453. A row the account lists as one unread release and one readable is counted as readable by no test
+
+**Found:** at the mutation table of #631, R-1434, 2026-11-07.
+
+**The mechanism.** `plan_pair` in `src/cratekit/sync/pair_cli.py` takes the
+unread keys as `{alias(remote_id) for remote_id in unread} - readable_keys`
+(R-1264), so a row held as two releases, one the provider lists with no
+title and one it reads, is a readable row: it is ordered by the merge, kept in
+the base, and read as taken off when it is. Without the subtraction the row is
+unread: left out of the order the merge asks, stripped from the base, and its
+removal on either side is not read.
+
+**Measured cost.** Row S4 of `docs/mutation/r1434.md`, the subtraction
+dropped, killed none of 17596 tests on the full suite; its composite, no
+track unread at all, is measured in the same table, so the unread set is
+pinned and its narrowing to rows with no readable release is not. What a
+person pays was not driven: no test builds a row matched to two releases
+(U208) whose first the provider lists unreadably, and the producer on the
+account is unmeasured.
+
+**Closes when:** a verb test syncs a pair whose account lists one row as an
+unread release and a readable one, reorders or removes that row in rekordbox,
+and shows the account follows; dropping the subtraction then fails it. It
+earns an issue under the board bar's (d), a guard on a path that writes kills
+nothing.
+
+---
+
+## R-1454. The R-1434 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #631, R-1434, 2026-11-08.
+
+**The gap.** Fable's review of #631 was refused on its usage limit on every
+retry from 2026-11-07 to 2026-11-08, so by Phillip's rule of 2026-11-08 (PR
+#640) Opus 5.5 at high effort reviewed the branch in its place, following the
+`fable-reviewer` definition under the same merge bar and round cap. Its round
+one found one BLOCKING defect and its round two one more, each fixed with
+failing tests first. The merged
+range has not had the reviewer the cloud lane names.
+
+**What it covers.** The merge of `cloud/631-the-ordering-step-s-start-keeps`
+after R-1446 (#639) landed in the same path and its rule was kept: in
+`src/cratekit/sync/pair_cli.py`, `_toward` (a write known to have sent no
+move read against its start alone, in `plan_pair` and in R-1446's
+`_readable_moved`) and the hold's wording for a move of unread tracks alone
+in `_moved_since_stop`; the R-1434 block of `tests/test_sync_pair_settle.py`;
+`docs/GUIDE.md`'s sentence for a write that sent no move; and the table
+`docs/mutation/r1434.md`. It guards the order `crate sync pair` writes onto
+the account and into rekordbox. The two review rounds read this branch's
+earlier design, which the merge with R-1446 replaced; R-1446 had its own
+review.
+
+**Closes when:** a Fable review at high effort of the merged range against
+METHOD's merge bar reports, and each BLOCKING finding is fixed or filed. It
+earns no issue: a review owed is maintainer facing, which the board bar
+leaves to the ledger (round two's review), so the coordinator is told of it
+at the landing.
+
+---
+
+## R-1455. The hold for a move of an unread track forecasts a finish that a title served since makes untrue
+
+**Found:** at review round two of #631, R-1434, 2026-11-08.
+
+**The mechanism.** `_moved_since_stop` in `src/cratekit/sync/pair_cli.py`
+holds a pair off the stopped write's path by a track the plan cannot read,
+and its message ends that the track stays where the person put it and the
+others are finished in the stopped order. That is the outcome only while the
+track stays unread: when the provider serves its title before the move
+settles, the next plan reads the move and the account's order leads, by the
+rule for a track read since the stop.
+
+**Measured cost.** Driven by the review (test 3's setup, t9's title served
+after the hold): the hold's forecast, then the account leads and rekordbox
+takes 1, 2, 9, 3, 4. The outcome is the rule's; only the forecast the person
+read is stale. A wording finding, so no issue.
+
+**Closes when:** the hold says what follows while the track is unread and
+that a title served since lets the account's order lead, or the plan holds
+its forecast to the reading that settles it.
