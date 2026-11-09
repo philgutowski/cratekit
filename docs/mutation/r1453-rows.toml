@@ -1,0 +1,78 @@
+name = "r1453"
+pass_kind = "light"
+
+[[rows]]
+id = "S4_unread_keys_keep_a_readable_release"
+description = "the brief's row, R-1434's S4: the unread keys keep a key a readable release carries, so a row held as an unread release and a readable one is unread, left out of the order and its removal not read"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'''
+new = '''    unread_keys = {alias(remote_id) for remote_id in unread}'''
+
+[[rows]]
+id = "S4_composite_no_track_unread"
+description = "what S4 holds: no track is unread at all, so an unread track is offered to the account, read as taken off it, and moved by the merge"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+pairs_with = "S4_unread_keys_keep_a_readable_release"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'''
+new = '''    unread_keys: set[str] = set()'''
+
+[[rows]]
+id = "U1_unread_keys_unaliased"
+description = "a nearby value: the unread keys read by each release's own key rather than its row's, so an unread release of a row held twice never meets the readable release's key"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''    unread_keys = {alias(remote_id) for remote_id in unread} - readable_keys'''
+new = '''    unread_keys = {remote_key(remote_id) for remote_id in unread} - readable_keys'''
+
+[[rows]]
+id = "U2_base_keeps_unread_keys"
+description = "R-1264's base strip gone: the base keeps an unread key, so an unread track is read as taken off the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        if unread_keys:
+            unseen |= {key for key in base_account if key in unread_keys}'''
+new = '''        if False:
+            unseen |= {key for key in base_account if key in unread_keys}'''
+
+[[rows]]
+id = "U3_order_counts_unread_keys"
+description = "the order's firsts take an unread key, so an unread only row is moved by the merge rather than kept behind the track listed before it"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            alias(one) for one in after if alias(one) not in unread_keys'''
+new = '''            alias(one) for one in after'''
+
+[[rows]]
+id = "U4_removal_takes_only_the_linked_release"
+description = "U208's every release of a removed track goes, narrowed to the key's own release, so the readable release of a row held twice stays on the account"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''                    [held for held in account_now if alias(held) == key] or [remote_of(key)]'''
+new = '''                    [remote_of(key)]'''
+
+[[rows]]
+id = "U5_account_keys_take_unread_only_rows"
+description = "the account's keys read every listed id, an unread only row included, so it is placed by the merge as a readable row"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''            for remote_id in (listed_order or account_now)
+            if alias(remote_id) in readable_keys'''
+new = '''            for remote_id in (listed_order or account_now)'''
+
+[[rows]]
+id = "U6_account_adds_offer_unread_keys"
+description = "the account's additions offer an unread key, so a track the account already lists unreadably is offered to it again"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_unread.py", "tests/test_sync_pair_settle.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_order.py", "tests/test_sync_pair_stopped.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_root_order.py", "tests/test_sync_twins.py", "tests/test_outbound_order.py"]
+old = '''        if remote_of(key) and key not in unseen and key not in unread_keys'''
+new = '''        if remote_of(key) and key not in unseen'''
