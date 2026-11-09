@@ -369,3 +369,92 @@ def test_a_release_turning_unread_beside_a_readable_one_moves_nothing(
         code, envelope = sync_pair()
         assert code == int(ExitCode.OK), envelope
         assert world.held(twin_id) == moved
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1453: a row listed as an unread release and a readable one is readable
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# R-1264's rule: the unread keys are the unread releases' keys LESS every key a
+# readable release carries, so a row held as two releases (U208), the first
+# listed with no title and the second read, is ordered by the merge, kept in
+# the base and read as taken off. Dropping that subtraction killed no test
+# (S4 of the R-1434 table), so each scenario below moves or removes that row.
+
+#: Row four held as t4 and t24, t4 listed first and with no title from then on.
+_HALF_READ = ["t3", "t4", "t1", "t20", "t2", "t24"]
+
+
+def _half_read(world) -> str:
+    """The twin of ``_siblings`` with t4 turned unread, settled by two syncs."""
+    twin_id = _siblings(world, _HALF_READ)
+    world.names["t4"] = ""
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+    assert [one[0] for one in _unread(envelope)] == ["t4"]
+    return twin_id
+
+
+def test_a_row_read_through_its_second_release_moves_on_the_account_with_rekordbox(
+    world, cfg, every_order
+):
+    """Reordered in rekordbox, the row moves on the account with both its releases."""
+    twin_id = _half_read(world)
+    assert world.held(twin_id) == ["3", "4", "1", "2"]
+    _rekordbox_move_last(world, twin_id, "4")
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+        # THE ROW IS ORDERED BY THE MERGE: read as unread, it would be left
+        # behind t3, and the next sync would undo the person's reorder.
+        assert world.held(twin_id) == ["3", "1", "2", "4"]
+        assert world.account.playlists[PHIL] == ["t3", "t1", "t20", "t2", "t4", "t24"]
+    after = pairs.PairStore(cfg).get(PHIL)
+    assert after is not None and after.account == ("t3", "t1", "t20", "t2", "t4", "t24")
+
+
+def test_a_row_read_through_its_second_release_removed_in_rekordbox_leaves_the_account(
+    world, cfg, every_order
+):
+    """Removed in rekordbox, the row's readable release is taken off and stays off."""
+    twin_id = _half_read(world)
+    world.rekordbox_remove(twin_id, "4")
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+        # THE ROW IS READ AS TAKEN OFF: read as unread, its removal would not
+        # be read, and the account would put it back into rekordbox.
+        assert world.held(twin_id) == ["3", "1", "2"]
+        assert "t24" not in world.account.playlists[PHIL]
+        # The unread release t4 is never taken off either side (R-1287), so it
+        # is left out of what this asserts.
+        assert [one for one in world.account.playlists[PHIL] if one != "t4"] == [
+            "t3",
+            "t1",
+            "t20",
+            "t2",
+        ]
+
+
+def test_a_row_held_only_as_an_unread_release_stays_where_the_account_lists_it(
+    world, cfg, every_order
+):
+    """The control: with no readable release the row is unread, as R-1264 says."""
+    _phil(world)
+    world.account.playlists[PHIL] = ["t3", "t4", "t1", "t20", "t2"]
+    assert backfill()[0] == int(ExitCode.OK)
+    twin_id = world.twin("Phil 9-30-26")
+    for _ in range(3):
+        assert sync_pair()[0] == int(ExitCode.OK)
+    world.names["t4"] = ""
+    assert sync_pair()[0] == int(ExitCode.OK)
+    assert world.held(twin_id) == ["3", "4", "1", "2"]
+    _rekordbox_move_last(world, twin_id, "4")
+    for _ in range(2):
+        code, envelope = sync_pair()
+        assert code == int(ExitCode.OK), envelope
+        assert [one[0] for one in _unread(envelope)] == ["t4"]
+        # REKORDBOX KEEPS ITS ORDER and the account keeps t4 behind t3.
+        assert world.held(twin_id) == ["3", "1", "2", "4"]
+        assert world.account.playlists[PHIL] == ["t3", "t4", "t1", "t20", "t2"]
