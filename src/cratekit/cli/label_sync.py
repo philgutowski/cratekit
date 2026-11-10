@@ -30,10 +30,11 @@ hand from the step that stopped, or whole again by ``--go`` under the same run,
 which takes the run's own download on since U239.
 
 THE LANDING IT REACHED IS RECORDED ON THE GO'S RUN (U239). When the tail
-stops at the landing's gate, the landing's run is kept on this run under
-:data:`cratekit.label.go.LANDING_ROLE`, so a later ``--go`` under the same run,
-which takes the run's own download on, names that landing rather than run the
-tail a second time. A go that refuses with a landing in its detail, because a
+stops at the landing's gate, the landing's run is kept under the download's
+job (:func:`cratekit.label.go.landing_role`) on the run whose go queued that
+job, which is another run when a fresh go resumed it, so a later ``--go``
+under that run, which takes the run's own download on, names that landing
+rather than run the tail a second time. A go that refuses with a landing in its detail, because a
 later go's download shares the folder, has the tail named as commands to type.
 
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
@@ -199,8 +200,8 @@ def _remember(
     under the run runs the tail again. Recorded UNDER THE JOB, on the run whose
     go queued it: that is the run a later ``--go`` takes the job on under, and
     a fresh go that resumed the job is not. This run's record is saved as the
-    verb returns; another run's is saved here, and one that cannot be is a
-    warning, since a later go under that run would run the tail a second time.
+    verb returns; another run's is saved here, and one that cannot be read or
+    saved is a warning naming the run, the job and why, never a refusal.
     """
     landed = (stop.cause.detail or {}).get("run_id")
     job, owner = land.get("job"), land.get("run")
@@ -216,14 +217,17 @@ def _remember(
         state = gates.load(owner)
         state.related_runs[role] = str(landed)
         gates.save(state)
-    except (CratekitError, OSError) as exc:
+    except Exception as exc:  # noqa: BLE001 - see below
+        # ANY FAILURE OF ANOTHER RUN'S RECORD IS A WARNING, as ``gates.siblings``
+        # reads one: the landing is planned by now, and a refusal raised here
+        # would replace the envelope that names it.
         return [
             {
                 "code": UNRECORDED_WARNING,
                 "message": (
                     f"the landing under run {landed} could not be recorded on run "
-                    f"{owner}, whose go queued job {job} ({exc}); a later go under "
-                    f"that run would run the tail again"
+                    f"{owner}, whose go queued job {job} ({type(exc).__name__}: {exc}); "
+                    f"a later go under that run does not know this landing was planned"
                 ),
             }
         ]

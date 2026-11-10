@@ -1880,3 +1880,29 @@ def test_a_walk_under_a_landed_run_that_records_an_answer_is_not_a_no_op(
     assert code == int(ExitCode.OK), envelope
     assert envelope["outcome"] == "ok"
     assert "land-run" in check(envelope, "landing")["detail"]
+
+
+def test_a_landing_another_runs_record_cannot_keep_is_a_warning_and_the_go_still_ends_at_it(
+    installed, monkeypatch, script, tail
+):
+    first_run, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    saved = gates.save
+
+    def refusing(state):
+        if state.run_id == first_run:
+            raise PermissionError("the run record is not writable")
+        return saved(state)
+
+    monkeypatch.setattr(gates, "save", refusing)
+    resuming = asked()["run_id"]
+    decided(resuming, "apply")
+
+    code, envelope = gone(resuming)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert tail.calls[-1] == landing_argv(installed, job, first_run)
+    (warned,) = [one for one in envelope["warnings"] if one["code"] == "label-sync-landing-unrecorded"]
+    assert first_run in warned["message"] and job.job_id in warned["message"]
+    assert "PermissionError" in warned["message"]
+    assert gates.load(first_run).related_runs == {}
