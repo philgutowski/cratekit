@@ -1535,6 +1535,38 @@ def test_a_harvested_name_is_confirmed_only_by_a_matching_copyright_line():
     assert adapter.check_label("Harbour Lights")["verdict"] == "confirmed"
 
 
+def test_a_longer_act_name_holding_the_needle_neither_confirms_nor_discovers():
+    """U237: the Rawax needle confirmed three releases credited to RAWAXXX, another act."""
+    client = FakeClient(albums=[Release("r1", copyright="(P) 2026 RAWAXXX")])
+    adapter = tidal_catalogue.TidalCatalogue(client)
+    assert adapter.check_label("Rawax")["verdict"] == "unconfirmed"
+    client.albums.append(Release("r2", copyright="℗ 2026 Rawax Records"))
+    assert adapter.check_label("Rawax") == {
+        "verdict": "confirmed",
+        "resolved_label": "Rawax Records",
+        "source": tidal_catalogue.SOURCE,
+    }
+
+    act, compilation = _credited("Act A", "10", copyright="(P) 2026 RAWAXXX")
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[act], albums=[compilation]))
+    with pytest.raises(tidal_catalogue.LabelUnresolvable):
+        adapter.artist_for(labels.LabelEntry(label_id="rawax", name="Rawax"))
+
+
+def test_a_credit_starting_with_p_or_c_is_resolved_whole():
+    """U237: a copyright line read for verification keeps the label's first letter."""
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient())
+    for line, label in (
+        ("(P) 2021 Cadenza", "Cadenza"),
+        ("2021 Pressure Traxx", "Pressure Traxx"),
+        ("© 2024 Cronos", "Cronos"),
+    ):
+        assert adapter.search_release(label, Release("r1", copyright=line))["resolved_label"] == label
+    act, compilation = _credited("Act A", "10", copyright="(P) 2021 Cadenza")
+    adapter = tidal_catalogue.TidalCatalogue(FakeClient(artists=[act], albums=[compilation]))
+    assert adapter.artist_for(labels.LabelEntry(label_id="cadenza", name="Cadenza")).artists == [act]
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # R-261 and R-393: a crawl that did not read everything says so
 # ═══════════════════════════════════════════════════════════════════════════

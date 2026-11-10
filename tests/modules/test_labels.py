@@ -1239,3 +1239,153 @@ def test_a_rate_limit_is_recognized_through_the_errors_it_was_declared_from():
     looped.__context__ = looped
     assert sweep._lookup_failure("m", looped).rate_limited is False
     assert str(sweep._lookup_failure("the words", limit)) == "the words"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U237: a copyright line keeps the label's first letter, and a needle
+# confirms only the label it names
+# ═══════════════════════════════════════════════════════════════════════════
+
+# Names measured clipped on a live pass: a bare leading P or C was read as a
+# phonographic or copyright mark and dropped.
+U237_NAMES = ("Cadenza", "Pressure Traxx", "Cronos", "Puls", "Cronos Barac", "Gettraum, LaMez")
+U237_PREFIXES = ("", "2021 ", "(P) 2021 ", "(C) 2021 ", "(p) 2021 ", "(c) 2021 ", "℗ 2021 ", "© 2021 ",
+                 "(P)", "(C) ", "℗", "© ", "(P)(C) 2021 ", "℗ © 2021 ")
+
+
+def _copyright_track(text: str, *, field: str = "copyright"):
+    from tests.label_fakes import FakeTrack
+
+    return FakeTrack("t1", **{field: text})
+
+
+@pytest.mark.parametrize("prefix", U237_PREFIXES)
+@pytest.mark.parametrize("name", U237_NAMES)
+def test_a_copyright_line_keeps_the_label_name_whole_under_every_prefix(prefix, name):
+    from cratekit.label import harvest
+
+    assert harvest.labels_from_copyright(_copyright_track(prefix + name)) == (name,)
+
+
+@pytest.mark.parametrize("name", U237_NAMES)
+def test_a_label_credit_read_when_no_copyright_line_keeps_its_first_letter(name):
+    from cratekit.label import harvest
+
+    assert harvest.labels_from_copyright(_copyright_track(name, field="label")) == (name,)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("(P) 2021 Cadenza", ("Cadenza",)),
+        ("℗ 2021 Cadenza", ("Cadenza",)),
+        ("© 2025 Gettraum, LaMez", ("Gettraum, LaMez",)),
+        ("2013 Cadenza", ("Cadenza",)),
+        ("2013 Cadenza.", ("Cadenza",)),
+        # A label that is only the letter P or C keeps it, prefix or none.
+        ("2021 P", ("P",)),
+        ("2021 C", ("C",)),
+        ("(P) 2021 C", ("C",)),
+        ("© 2021 P", ("P",)),
+        ("(C) P", ("P",)),
+        # A line that is only a mark and a year names no label at all.
+        ("(P) 2021", ()),
+        ("℗ 2021", ()),
+        ("2021", ()),
+        ("(C)", ()),
+        ("", ()),
+    ],
+)
+def test_only_the_parenthesised_or_symbol_mark_and_the_year_are_stripped(text, expected):
+    from cratekit.label import harvest
+
+    assert harvest.labels_from_copyright(_copyright_track(text)) == expected
+
+
+def test_a_letter_after_a_mark_is_not_a_second_mark():
+    from cratekit.label import harvest
+
+    # ``(P) Cadenza`` loses the mark and keeps every letter after it; ``P Cadenza``
+    # and ``C 2021 Puls`` carry no mark this reader knows, so nothing is stripped.
+    assert harvest.labels_from_copyright(_copyright_track("(P) Cadenza")) == ("Cadenza",)
+    assert harvest.labels_from_copyright(_copyright_track("P Cadenza")) == ("P Cadenza",)
+    assert harvest.labels_from_copyright(_copyright_track("C 2021 Puls")) == ("C 2021 Puls",)
+
+
+def test_harvest_offers_cadenza_not_adenza(cfg):
+    from cratekit.label import harvest
+
+    asked: list[str] = []
+
+    def verify_name(name: str) -> dict:
+        asked.append(name)
+        return {"verdict": "confirmed", "resolved_label": name, "notes": ""}
+
+    tracks = [_copyright_track("(P) 2021 Cadenza"), _copyright_track("Pressure Traxx")]
+    with review.open_store(cfg) as queue:
+        report = harvest.from_tracks(tracks, store=queue, verify=verify_name)
+        names = {item.payload["name"] for item in review.list_items(queue, queue=Queue.LABEL_RELEASE)}
+
+    assert asked == ["Cadenza", "Pressure Traxx"]
+    assert names == {"Cadenza", "Pressure Traxx"}
+    assert report.dropped == ()
+
+
+@pytest.mark.parametrize(
+    ("needle", "credit"),
+    [
+        ("Rawax", "Rawax"),
+        ("Rawax", "RAWAX"),
+        ("Rawax", "Rawax Records"),
+        ("Rawax Records", "Rawax"),
+        ("Liebe*Detail", "Liebe Detail"),
+        ("Liebe*Detail", "Liebe*Detail"),
+        ("Liebe*Detail", "Liebe Detail Spezial"),
+        ("Crosstown", "Crosstown Rebels"),
+        ("HL", "HL"),
+        ("Harbour Lights", "Harbour Lights Ltd"),
+        ("Some Label Rec", "Some Label Rec"),
+        ("stil vor talent", "Stil Vor Talent"),
+        ("all day i dream", "All Day I Dream Records"),
+        ("Gettraum", "Gettraum, LaMez"),
+        ("Cronos", "Cronos Barac"),
+        ("Cadenza", "Cadenza Music"),
+    ],
+)
+def test_a_needle_confirms_its_label_on_whole_words(needle, credit):
+    from cratekit.label import verify
+
+    assert verify.labels_match(needle, credit)
+
+
+@pytest.mark.parametrize(
+    ("needle", "credit"),
+    [
+        ("Rawax", "RAWAXXX"),
+        ("RAWAXXX", "Rawax"),
+        ("Rawax", "Rawaxxx Records"),
+        ("adenza", "Cadenza"),
+        ("ronos", "Cronos"),
+        ("Puls", "Pulse"),
+        ("tide", "Tidewater"),
+        ("Rawax", ""),
+        ("", "Rawax"),
+        ("***", "Rawax"),
+    ],
+)
+def test_a_needle_inside_a_longer_word_confirms_nothing(needle, credit):
+    from cratekit.label import verify
+
+    assert not verify.labels_match(needle, credit)
+
+
+def test_a_release_credited_to_a_longer_act_name_is_a_mismatch_not_a_confirmation():
+    from cratekit.label import verify
+
+    def search(claimed, release):
+        del claimed, release
+        return {"resolved_label": "RAWAXXX", "source": "fake"}
+
+    verdict = verify.verify_release("Rawax", object(), search=search)
+    assert verdict["verdict"] == "mismatch"
+    assert verdict["notes"] == "credited as 'RAWAXXX'"
