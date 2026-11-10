@@ -1290,6 +1290,9 @@ def test_a_label_credit_read_when_no_copyright_line_keeps_its_first_letter(name)
         ("(C) P", ("P",)),
         # A line that is only a mark and a year names no label at all.
         ("(P) 2021", ()),
+        ("(P) 2021.", ()),
+        # Four digits run into more digits are not a year: nothing is stripped.
+        ("20211 Label", ("20211 Label",)),
         ("℗ 2021", ()),
         ("2021", ()),
         ("(C)", ()),
@@ -1350,6 +1353,9 @@ def test_harvest_offers_cadenza_not_adenza(cfg):
         ("Gettraum", "Gettraum, LaMez"),
         ("Cronos", "Cronos Barac"),
         ("Cadenza", "Cadenza Music"),
+        ("Some Label Records", "(P) Some Label Records"),
+        ("Rawax", "Exclusive licence to Rawax"),
+        ("Rawax", "Under licence to Rawax Records"),
     ],
 )
 def test_a_needle_confirms_its_label_on_whole_words(needle, credit):
@@ -1371,6 +1377,9 @@ def test_a_needle_confirms_its_label_on_whole_words(needle, credit):
         ("Rawax", ""),
         ("", "Rawax"),
         ("***", "Rawax"),
+        # Two sides that both fold to nothing are not a match of nothing.
+        ("***", "---"),
+        ("\u65e5\u672c", "\u041f\u043b\u0430\u0441\u0442\u0438\u043d\u043a\u0430"),
     ],
 )
 def test_a_needle_inside_a_longer_word_confirms_nothing(needle, credit):

@@ -66,7 +66,7 @@ neighbouring imprint with a similar name gets pulled in and has to be unpicked
 by hand later.
 
 ```bash
-crate label registry add "Some Label" --match "Some Label Rec"
+crate label registry add "Some Label" --match "Some Label Records"
 ```
 
 Supply `--match` when the string the catalogue actually credits is not the name
@@ -74,8 +74,8 @@ you want to see in the library. The needle is used for verification, the name is
 used for display, and keeping them apart is what lets you call a label whatever
 you like without breaking the check. The needle matches whole words, so a
 clipped needle confirms nothing: `Rawax` confirms `Rawax Records` and never
-`RAWAXXX`, and `Some Label Rec` confirms `Some Label Rec` but not `Some Label
-Records`.
+`RAWAXXX`, and `Some Label Rec` would confirm `Some Label Rec` but not `Some
+Label Records`.
 
 ## Seed artists and the track limit
 

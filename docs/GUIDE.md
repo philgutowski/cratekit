@@ -385,7 +385,7 @@ does not make the next `sync all` offer the playlist again. `crate organize
 
 ```bash
 crate label registry                                 # list who you follow
-crate label registry add "Some Label" --match "Some Label Rec"
+crate label registry add "Some Label" --match "Some Label Records"
 crate label registry set "Some Label" --genre Rominimal --bandcamp somelabel
 crate label registry rename "Some Label" --to "New Name"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID

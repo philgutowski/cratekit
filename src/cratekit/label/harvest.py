@@ -22,7 +22,7 @@ HANDLER_KEY = "label.harvest"
 # P or C is the label's own first letter: ``Cadenza``, ``Pressure Traxx``.
 _YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)+", re.IGNORECASE)
 # A year alone, with no name after it, names no label.
-_YEAR_NUM = re.compile(r"^\d{4}(?:\s+|$)")
+_YEAR_NUM = re.compile(r"^\d{4}(?:\s+|\.?$)")
 
 
 @dataclass(frozen=True, slots=True)
