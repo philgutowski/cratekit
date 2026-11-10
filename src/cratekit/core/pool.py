@@ -137,6 +137,29 @@ depends on cores anywhere downstream is the defect above wearing this module's
 name, and the test that checks it walks the tree rather than reading this
 paragraph.
 
+**A ceiling may come from the cores, and it comes from outside this module
+(U241).** How many workers a machine can carry is this module's question and
+is answered from memory. How many are worth starting is another, and past the
+number of cores a further worker only waits its turn. A caller that knows
+its workers are cheap enough for that to bind passes ``ceiling`` from
+:func:`cratekit.core.cores.worker_ceiling`, the one place a core count is
+read. Nothing changes here: the ceiling was always the caller's argument, it
+can only lower a plan, and the pressure gate and the byte arithmetic still
+decide underneath it.
+
+**A third seam, for work whose results are wanted one at a time (U241).**
+:func:`map_workers` hands back every result at once, which suits a batch and
+does not suit a job engine that settles one item, makes it durable, and only
+then asks for the next. :func:`stream_workers` runs the same plan the same
+way, spawned, in generations, in this process for a plan of one, and hands
+back each item's result when it is asked for by position, while the workers
+run on ahead. Everything that writes stays with the caller, in the caller's
+order. Its children ignore the terminal's interrupt, because an interrupt
+that killed a worker mid item would surface in the caller as a failed item
+rather than as an interrupt the caller chose where to honour, and they leave
+when their parent dies, because a killed caller would otherwise leave them
+holding their memory for ever.
+
 **Thread pools are a different question and are deliberately out of scope.**
 Threads share one address space, so a second thread does not cost a second model.
 The bound on a thread pool is what the far end tolerates, which is why acquisition
@@ -161,15 +184,19 @@ names no verb, no feature module, and no taxonomy.
 from __future__ import annotations
 
 import multiprocessing
+import os
 import pickle
+import signal
 import sys
-from concurrent.futures import ProcessPoolExecutor
+import threading
+from concurrent.futures import Future, ProcessPoolExecutor
 from concurrent.futures import process as _process_pool
 from dataclasses import dataclass
 from enum import StrEnum
+from multiprocessing import connection as _connection
 from pathlib import Path
 from types import MappingProxyType
-from typing import Any, Callable, Iterable, Mapping, TypeVar
+from typing import Any, Callable, Generic, Iterable, Mapping, TypeVar
 
 #: The hard ceiling on workers for a pool whose children each hold a model.
 #: Ported as the number it is: two is the count survival-tested on a real run of
@@ -399,6 +426,52 @@ class Pressure:
     used_percent: float
 
 
+class PressureGate(StrEnum):
+    """Which of the two pressure gates refused a pool (U241).
+
+    Two values because the two readings fail in different directions and a
+    person told "memory pressure" cannot tell which to act on: swap in use is
+    history, sticky on darwin until a restart, and the used percent is the
+    present, cleared by closing something.
+    """
+
+    SWAP = "swap"
+    USED_PERCENT = "used_percent"
+
+
+@dataclass(frozen=True)
+class GateReading:
+    """One pressure gate that refused, with the reading it saw and the limit it held.
+
+    Carried on the plan so the line a caller logs can say the two numbers
+    rather than the word pressure. ``reading`` and ``limit`` are bytes for the
+    swap gate and a percent for the used percent gate.
+    """
+
+    gate: PressureGate
+    reading: float
+    limit: float
+
+    def sentence(self) -> str:
+        """The refusal in words a person can act on."""
+        if self.gate is PressureGate.SWAP:
+            return (
+                f"{shown_bytes(int(self.reading))} of swap is in use, at or over "
+                f"the {shown_bytes(int(self.limit))} gate"
+            )
+        return (
+            f"memory is {self.reading:.0f} percent in use, at or over "
+            f"the {self.limit:.0f} percent gate"
+        )
+
+
+def shown_bytes(count: int) -> str:
+    """A byte count as a person reads it: megabytes under a gigabyte, else gigabytes."""
+    if count >= 1024**3:
+        return f"{count / 1024**3:.1f} GB"
+    return f"{count / 1024**2:.0f} MB"
+
+
 @dataclass(frozen=True)
 class PoolPlan:
     """The decided shape of one pool: how wide, why, over how much, and in what generations.
@@ -426,6 +499,14 @@ class PoolPlan:
     worker_bytes: int
     available_bytes: int | None
     max_tasks_per_child: int | None
+    #: The ceiling the plan was decided under (U241), so "fewer than the
+    #: ceiling" is a question the plan can answer about itself. None on a plan
+    #: built by hand, which no shipped module builds.
+    ceiling: int | None = None
+    #: The pressure gates that refused a pool, in the order they are checked,
+    #: empty when neither did. Both when both did, because a person who clears
+    #: one and is refused again by the other was told half of it.
+    refused_by: tuple[GateReading, ...] = ()
 
     @property
     def in_process(self) -> bool:
@@ -459,6 +540,39 @@ class PoolPlan:
         """One line saying what the count is and what decided it."""
         where = "in process" if self.in_process else f"{self.workers} workers"
         return f"{where}, bound by {BOUND_PHRASES[self.bound]}"
+
+    def account(self) -> str:
+        """The numbers behind :meth:`explain`, for a person deciding what to do (U241).
+
+        Which gate refused and at what reading, or what the available memory
+        afforded at this worker's cost, or the ceiling itself. A plan that
+        cannot say, one built by hand or one whose reading was never taken,
+        says only what :meth:`explain` already does, never an invented number.
+        """
+        ceiling = "" if self.ceiling is None else f", under a ceiling of {self.ceiling}"
+        cost = shown_bytes(self.worker_bytes)
+        if self.bound is Bound.MEMORY_PRESSURE and self.refused_by:
+            gates = " and ".join(reading.sentence() for reading in self.refused_by)
+            return f"{gates}, so no pool was planned{ceiling}"
+        if self.available_bytes is not None and self.bound in (
+            Bound.AVAILABLE_MEMORY,
+            Bound.INSUFFICIENT_MEMORY,
+        ):
+            had = shown_bytes(self.available_bytes)
+            if self.bound is Bound.INSUFFICIENT_MEMORY:
+                return (
+                    f"{had} available does not afford one worker at {cost} after "
+                    f"the reserve and the headroom{ceiling}"
+                )
+            return (
+                f"{had} available affords {self.workers} at {cost} a worker after "
+                f"the reserve and the headroom{ceiling}"
+            )
+        if self.bound is Bound.CEILING and self.ceiling is not None:
+            return f"the ceiling of {self.ceiling} is what held it, at {cost} a worker"
+        if self.bound is Bound.WORK_ITEMS:
+            return f"{self.items} item(s) to run{ceiling}"
+        return BOUND_PHRASES[self.bound]
 
 
 #: Where the kernel publishes a container's own memory limit.
@@ -1051,13 +1165,16 @@ def plan_pool(
             worker_bytes=worker_bytes,
             available_bytes=None,
             max_tasks_per_child=None,
+            ceiling=ceiling,
         )
 
     pressure = _read_pressure(read_pressure or memory_pressure)
-    if pressure is not None and (
-        pressure.swap_used_bytes >= swap_pressure_bytes
-        or pressure.used_percent >= used_percent_ceiling
-    ):
+    refused = _gates_refusing(
+        pressure,
+        swap_pressure_bytes=swap_pressure_bytes,
+        used_percent_ceiling=used_percent_ceiling,
+    )
+    if refused:
         return PoolPlan(
             workers=1,
             items=items,
@@ -1065,6 +1182,8 @@ def plan_pool(
             worker_bytes=worker_bytes,
             available_bytes=available,
             max_tasks_per_child=None,
+            ceiling=ceiling,
+            refused_by=refused,
         )
 
     budget = max(0, available - reserve_bytes)
@@ -1101,7 +1220,33 @@ def plan_pool(
         # reporting a recycle count for a pool that does not exist is a number
         # somebody eventually acts on.
         max_tasks_per_child=None if workers == 1 else max_tasks_per_child,
+        ceiling=ceiling,
     )
+
+
+def _gates_refusing(
+    pressure: Pressure | None, *, swap_pressure_bytes: int, used_percent_ceiling: int
+) -> tuple[GateReading, ...]:
+    """Every pressure gate this reading meets, swap first, or none.
+
+    The refusal itself is unchanged from the single test it replaces: either
+    gate met refuses the pool. What changed is that the plan now carries WHICH,
+    with the reading and the limit, so the reason can be said (U241).
+    """
+    if pressure is None:
+        return ()
+    refused: list[GateReading] = []
+    if pressure.swap_used_bytes >= swap_pressure_bytes:
+        refused.append(
+            GateReading(PressureGate.SWAP, float(pressure.swap_used_bytes), float(swap_pressure_bytes))
+        )
+    if pressure.used_percent >= used_percent_ceiling:
+        refused.append(
+            GateReading(
+                PressureGate.USED_PERCENT, float(pressure.used_percent), float(used_percent_ceiling)
+            )
+        )
+    return tuple(refused)
 
 
 def _read_available(reader: AvailableReader) -> int | None:
@@ -1293,6 +1438,238 @@ def map_workers(
     return results
 
 
+class StreamBroken(RuntimeError):
+    """The stream's workers are gone, so no further result will come from them.
+
+    Raised by :meth:`WorkStream.result` when a child died under its work, a
+    kill from outside or the kernel's own, which the executor reports as a
+    broken pool. It is the POOL that failed and not the item: nothing is known
+    about the item, and the caller that wants its result measures it some other
+    way. Kept apart from an exception the work itself raised, which arrives as
+    itself.
+    """
+
+
+def _leave_when_the_parent_does() -> None:
+    """Exit this worker the moment the process that spawned it is gone.
+
+    A spawned worker blocks on its call queue and holds the queue's write end
+    itself, so a parent killed outright never closes it and the worker waits
+    for ever with everything it has loaded. The parent's sentinel is the one
+    thing that does end with the parent. A thread waits on it and leaves hard,
+    since by then there is nobody to return a result to and nothing here
+    writes anything a clean exit would flush.
+    """
+    parent = multiprocessing.parent_process()
+    if parent is None:
+        return
+
+    def watch() -> None:
+        try:
+            _connection.wait([parent.sentinel])
+        except Exception:
+            return
+        os._exit(0)
+
+    threading.Thread(target=watch, name="cratekit-pool-parent-watch", daemon=True).start()
+
+
+def _enter_stream_worker(
+    initializer: Callable[..., None] | None, initargs: tuple[Any, ...]
+) -> None:
+    """What every stream worker runs first: the two rules, then the caller's own.
+
+    THE TERMINAL'S INTERRUPT IS IGNORED HERE. Ctrl-C reaches every process in
+    the foreground group, so a worker with the default handler dies mid item,
+    the executor breaks, and the caller sees a failed item where the person
+    asked for a stop. The caller owns the stop: it notes the signal, finishes
+    what it is committing, and closes the stream, which ends these workers.
+    """
+    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _leave_when_the_parent_does()
+    if initializer is not None:
+        initializer(*initargs)
+
+
+def _end_workers(executor: ProcessPoolExecutor) -> None:
+    """Stop an executor's children now rather than after the work nobody will read.
+
+    A plain shutdown waits for every running item, which for a stream being
+    closed early is minutes of measuring whose results are thrown away. The
+    interpreter's own way to end them is used where it exists and the
+    executor's process table where it does not; with neither, the shutdown
+    that follows simply waits, which is slower and still correct.
+    """
+    terminate = getattr(executor, "terminate_workers", None)
+    if callable(terminate):
+        try:
+            terminate()
+        except Exception:  # noqa: BLE001 - the waiting shutdown still follows
+            pass
+        return
+    for process in list((getattr(executor, "_processes", None) or {}).values()):
+        try:
+            process.terminate()
+        except Exception:  # noqa: BLE001 - one already gone is not a failure
+            pass
+
+
+class WorkStream(Generic[_Item, _Result]):
+    """``function`` over ``items`` at the plan's width, one result asked for at a time.
+
+    The contract :func:`map_workers` gives, reshaped for a caller that settles
+    one item before it wants the next:
+
+    * a plan of one worker runs each item in THIS process, when its result is
+      asked for, after calling the initializer here once, so on a machine that
+      affords no pool the stream is exactly the loop it replaced;
+    * a wider plan spawns one generation of children at a time, hands the
+      generation its items at once, and the children run ahead of the caller;
+    * an unsendable function, initializer or argument is refused on both
+      paths, at construction, so the call means one thing on every machine.
+
+    EACH POSITION IS READ ONCE, on both paths, and a second read raises. A
+    pooled result is dropped once handed over, so it is not held for the rest
+    of the run, and the in process path refuses the same second read rather
+    than quietly computing the item again.
+
+    WHAT THE WORK RAISED IS RAISED TO THE READER OF THAT POSITION, as it would
+    have been in a loop. A pool that died is :class:`StreamBroken`, which says
+    nothing about the item. :meth:`close` ends the children without waiting
+    for work nobody will read, and is safe to call twice; use the stream as a
+    context manager so it is called on every way out.
+    """
+
+    def __init__(
+        self,
+        plan: PoolPlan,
+        function: Callable[[_Item], _Result],
+        items: Iterable[_Item],
+        *,
+        initializer: Callable[..., None] | None = None,
+        initargs: tuple[Any, ...] = (),
+    ) -> None:
+        _refuse_what_no_child_could_receive(function, "function")
+        if initializer is not None:
+            _refuse_what_no_child_could_receive(initializer, "initializer")
+        for position, argument in enumerate(initargs):
+            _refuse_what_no_child_could_receive(argument, f"initializer argument {position}")
+        self.plan = plan
+        self._function = function
+        self._items: list[_Item] = list(items)
+        self._initializer = initializer
+        self._initargs = initargs
+        self._initialized_here = False
+        self._executor: ProcessPoolExecutor | None = None
+        self._generation: int | None = None
+        self._futures: dict[int, Future[_Result]] = {}
+        self._read: set[int] = set()
+        self._closed = False
+
+    def __len__(self) -> int:
+        return len(self._items)
+
+    def __enter__(self) -> WorkStream[_Item, _Result]:
+        return self
+
+    def __exit__(self, *exc_info: object) -> None:
+        self.close()
+
+    @property
+    def closed(self) -> bool:
+        return self._closed
+
+    def result(self, position: int) -> _Result:
+        """The result of the item at ``position``, waiting for it if it is not in yet."""
+        if self._closed:
+            raise ValueError("this stream is closed, so it has no further results")
+        if isinstance(position, bool) or not isinstance(position, int):
+            raise TypeError("a position is a whole number")
+        if not 0 <= position < len(self._items):
+            raise IndexError(f"position {position} is outside the {len(self._items)} item(s)")
+        if position in self._read:
+            raise ValueError(f"position {position} was already read, and each is read once")
+        if self.plan.in_process:
+            self._read.add(position)
+            if not self._initialized_here:
+                self._initialized_here = True
+                if self._initializer is not None:
+                    self._initializer(*self._initargs)
+            return self._function(self._items[position])
+        size = self.plan.tasks_per_generation or len(self._items) or 1
+        generation = position // size
+        if generation != self._generation:
+            self._stop()
+            self._start(generation, size)
+        self._read.add(position)
+        future = self._futures.pop(position)
+        try:
+            return future.result()
+        except _process_pool.BrokenProcessPool as broken:
+            self.close()
+            raise StreamBroken(
+                f"the pool's workers ended before item {position} was measured ({broken})"
+            ) from broken
+
+    def _start(self, generation: int, size: int) -> None:
+        """Build one generation's executor and hand it every item not yet read."""
+        executor = ProcessPoolExecutor(
+            **executor_arguments(
+                self.plan,
+                initializer=_enter_stream_worker,
+                initargs=(self._initializer, self._initargs),
+            )
+        )
+        self._executor = executor
+        self._generation = generation
+        first = generation * size
+        try:
+            for position in range(first, min(first + size, len(self._items))):
+                if position not in self._read:
+                    self._futures[position] = executor.submit(
+                        self._function, self._items[position]
+                    )
+        except BaseException:
+            self._stop()
+            raise
+
+    def _stop(self) -> None:
+        """End the current generation: nothing queued starts, nothing running is waited for."""
+        executor, self._executor = self._executor, None
+        futures, self._futures = self._futures, {}
+        self._generation = None
+        if executor is None:
+            return
+        for future in futures.values():
+            future.cancel()
+        _end_workers(executor)
+        executor.shutdown(wait=True, cancel_futures=True)
+
+    def close(self) -> None:
+        """End the stream. Idempotent, and never waits for work nobody will read."""
+        if self._closed:
+            return
+        self._closed = True
+        self._stop()
+
+
+def stream_workers(
+    plan: PoolPlan,
+    function: Callable[[_Item], _Result],
+    items: Iterable[_Item],
+    *,
+    initializer: Callable[..., None] | None = None,
+    initargs: tuple[Any, ...] = (),
+) -> WorkStream[_Item, _Result]:
+    """Run ``function`` over ``items`` at the plan's width, results read by position.
+
+    The seam beside :func:`map_workers` for a caller that settles one item at a
+    time. Nothing is spawned until the first result is asked for. See
+    :class:`WorkStream` for the contract, and close what this returns.
+    """
+    return WorkStream(plan, function, items, initializer=initializer, initargs=initargs)
+
+
 __all__ = [
     "AvailableReader",
     "BOUND_PHRASES",
@@ -1308,10 +1685,14 @@ __all__ = [
     "DEFAULT_USED_PERCENT_CEILING",
     "DEFAULT_WORKER_CEILING",
     "GENERAL_HEADROOM_PERCENT",
+    "GateReading",
     "PoolPlan",
     "Pressure",
+    "PressureGate",
     "PressureReader",
     "ProbeRunner",
+    "StreamBroken",
+    "WorkStream",
     "available_bytes",
     "cgroup_memory_headroom_bytes",
     "default_headroom_percent",
@@ -1322,4 +1703,6 @@ __all__ = [
     "plan_pool",
     "platform_worker_ceiling",
     "resident_bytes",
+    "shown_bytes",
+    "stream_workers",
 ]
