@@ -25,8 +25,9 @@ session, and the rekordbox visit after. A tail step that does not succeed ends
 the verb there with the step's own refusal, the go's report in its detail and
 the rest of the tail named as the way on, so nothing is landed over files the
 tail did not finish. The download is kept either way, and the answers it took
-are settled, so a second go would not take them again: the tail is run on by
-hand from the step that stopped.
+are settled, so a fresh go would not take them again: the tail is run on by
+hand from the step that stopped, or whole again by ``--go`` under the same run,
+which takes the run's own download on since U239.
 
 THE LANDING IT REACHED IS RECORDED ON THE GO'S RUN (U239). When the tail
 stops at the landing's gate, the landing's run is kept on this run under
@@ -242,8 +243,10 @@ def _ended(
     """The refusal a stopped tail ends the go with: the step's own, the way on added.
 
     THE WAY ON IS THE TAIL BY HAND, FROM THE STEP THAT STOPPED. The download is
-    kept and its answers are settled, so ``label sync --go`` again would take
-    nothing, and the go's report, in the detail, says what it downloaded.
+    kept and its answers are settled, so a fresh ``label sync --go`` would take
+    nothing, and the go's report, in the detail, says what it downloaded. A
+    ``--go`` under the same run runs the whole tail again (U239), since a stop
+    before the landing's gate records no landing on the run.
     """
     cause = stop.error.cause
     chain.summary["stopped_at"] = stop.step
