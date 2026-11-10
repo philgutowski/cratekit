@@ -615,6 +615,13 @@ def test_a_saved_split_that_cannot_be_read_reads_as_a_bound(unreadable):
     assert "up to 17 more past this run's window, not yet checked" in sync_cli._counts(question)
 
 
+def test_a_saved_split_of_zero_says_every_release_as_the_labels():
+    saved = {"label_id": SLUG, "label_name": LABEL, "beyond": 17, "beyond_unchecked": 0}
+    question = sync_cli.Question.from_json(saved)
+    assert (question.beyond, question.beyond_unchecked) == (17, 0)
+    assert "17 more of the label's release(s) past this run's window" in sync_cli._counts(question)
+
+
 def test_a_saved_split_larger_than_its_figure_is_held_to_the_figure():
     saved = {"label_id": SLUG, "label_name": LABEL, "beyond": 3, "beyond_unchecked": 5}
     assert sync_cli.Question.from_json(saved).beyond_unchecked == 3
