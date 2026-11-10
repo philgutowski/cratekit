@@ -25,7 +25,7 @@ import pytest
 from cratekit.core import config, review, tombstone
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.review import DecisionStore, Queue
-from cratekit.label import catalogue, sweep
+from cratekit.label import catalogue, harvest, sweep
 from cratekit.label import marks as label_marks
 from cratekit.label import registry as labels
 from cratekit.sync import artifacts, run, watermarks
@@ -319,6 +319,108 @@ def test_a_watermark_past_every_release_still_offers_the_unowned_unoffered_ones(
     )
     assert list(result.processed) == [f"r{y}" for y in range(2026, 2016, -1)]
     assert source.listings[0][1].beyond == 2
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U238: what lies past the window is counted by the label's own copyright line
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def mixed_roster(label: str = LABEL) -> list[FakeRelease]:
+    """Two artists on one roster, newest first, and two releases with no line.
+
+    The label's act on the even years 2026 to 2008, each crediting the label;
+    another act on the odd years 2025 to 2007, each crediting another label;
+    then 2006 and 2005 by the label's act with no copyright line at all, the
+    shape a listing that omitted the field leaves. Measured live (Atipic, 414
+    counted past the window for about 27 of its own) this is the roster that
+    used to be counted whole.
+    """
+    own = [
+        FakeRelease(f"own{year}", year=str(year), copyright=f"(P) {year} {label}")
+        for year in range(2026, 2007, -2)
+    ]
+    other = [
+        FakeRelease(
+            f"other{year}",
+            year=str(year),
+            artist="Elsewhere Act",
+            copyright=f"(P) {year} Elsewhere Records",
+        )
+        for year in range(2025, 2006, -2)
+    ]
+    bare = [FakeRelease(f"bare{year}", year=str(year)) for year in (2006, 2005)]
+    return [*own, *other, *bare]
+
+
+def confirm_by_line(claimed, release):
+    """The real verifier's judgement: the copyright line, else no credit."""
+    del claimed
+    names = harvest.labels_from_copyright(release)
+    return {"resolved_label": names[0] if names else "", "source": "fixture"}
+
+
+def test_past_the_window_counts_only_the_labels_own_releases_and_the_unchecked(
+    installed, entry
+):
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(mixed_roster()),
+        verify=confirm_by_line,
+        limit=3,
+    )
+    # The window itself is what it was: three of the label's, the two of
+    # another label's it read on the way dropped as mismatches.
+    assert [c.identity for c in found.candidates] == ["own2026", "own2024", "own2022"]
+    assert [d.identity for d in found.dropped] == ["other2025", "other2023"]
+    assert found.listed == 22
+    # Past it: seven of the label's own (2020 to 2008), eight of another
+    # label's left out, and two with no line counted as unchecked.
+    assert found.beyond == 9
+    assert found.beyond_unchecked == 2
+
+
+def test_a_release_with_no_copyright_line_is_unchecked_never_dropped(installed, entry):
+    verify, asked = counting_confirm()
+    found = sweep.list_for_label(
+        installed, entry, artist=FakePagedArtist(catalogue_of(20)), verify=verify, limit=5
+    )
+    assert found.beyond == 15
+    assert found.beyond_unchecked == 15
+    # Counting past the window asks the provider nothing.
+    assert len(asked) == 5
+
+
+def test_the_count_past_the_window_uses_the_labels_match_needle(installed, entry):
+    found = sweep.list_for_label(
+        installed,
+        replace(entry, match="Deep Recordings"),
+        artist=FakePagedArtist(mixed_roster("Deep Recordings Ltd")),
+        verify=confirm_by_line,
+        limit=3,
+    )
+    assert [c.identity for c in found.candidates] == ["own2026", "own2024", "own2022"]
+    assert (found.beyond, found.beyond_unchecked) == (9, 2)
+
+
+def test_a_round_records_the_most_the_label_could_still_offer(installed, monkeypatch):
+    register("--offer", "3")
+    fake = FakeCatalogue(
+        artists={SLUG: FakePagedArtist(mixed_roster())},
+        confirmed={f"own{year}" for year in range(2026, 2007, -2)} | {"bare2006", "bare2005"},
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    sweep_once()
+
+    assert [item.payload["identity"] for item in filed(installed)] == [
+        "own2026",
+        "own2024",
+        "own2022",
+    ]
+    (row,) = grouped("label")
+    # Seven of the label's and two unchecked, never another label's eight.
+    assert row["beyond"] == 9
 
 
 def test_the_first_run_stays_the_filing_run_when_an_open_item_is_offered_again(installed):

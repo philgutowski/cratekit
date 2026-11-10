@@ -486,7 +486,130 @@ def test_a_newly_followed_label_is_offered_at_most_its_offer_per_sweep_newest(
     ]
     assert question["new"] == installed.labels.offer_per_sweep == 10
     assert question["beyond"] == 40
-    assert "40 more past this run's window" in checks(drive(["label", "sync", "--next"])[1], "question")[0]["detail"]
+    # U238: no release here carries a copyright line, so none of the forty
+    # could be confirmed without a provider read, and the figure is a bound.
+    assert question["beyond_unchecked"] == 40
+    detail = checks(drive(["label", "sync", "--next"])[1], "question")[0]["detail"]
+    assert "up to 40 more past this run's window, not yet checked" in detail
+    assert "of the label's" not in detail
+
+
+def mixed_roster() -> list[FakeRelease]:
+    """Two artists on one label's roster, and two releases with no line (U238).
+
+    The label's act on the even years 2026 to 2008, each crediting the label;
+    another act on the odd years 2025 to 2007, crediting another label; then
+    2006 and 2005 by the label's act with no copyright line at all.
+    """
+    own = [
+        FakeRelease(f"own{year}", year=str(year), copyright=f"(P) {year} {LABEL}")
+        for year in range(2026, 2007, -2)
+    ]
+    other = [
+        FakeRelease(
+            f"other{year}",
+            year=str(year),
+            artist="Elsewhere Act",
+            copyright=f"(P) {year} Elsewhere Records",
+        )
+        for year in range(2025, 2006, -2)
+    ]
+    bare = [FakeRelease(f"bare{year}", year=str(year)) for year in (2006, 2005)]
+    return [*own, *other, *bare]
+
+
+class UnreadArtist(FakePagedArtist):
+    """A roster that could not read one artist's listing while it was built."""
+
+    unread = (
+        catalogue.Unread(
+            artist="Missing Act",
+            listing="artist_releases",
+            reason="TooManyRequests: slow down",
+            transient=True,
+        ),
+    )
+
+
+def bind_mixed(monkeypatch, artist_type: type = FakePagedArtist) -> Provider:
+    releases = mixed_roster()
+    fake = Provider(
+        artists={SLUG: artist_type(releases)},
+        releases={one.id: (rows_for(one.id, 1), int(one.year)) for one in releases},
+        confirmed={one.id for one in releases if not one.id.startswith("other")},
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    return fake
+
+
+def test_a_question_counts_only_the_labels_own_releases_past_its_window(
+    installed, monkeypatch
+):
+    """U238, measured live: Atipic said 414 more for about 27 of its own."""
+    register(LABEL, "--offer", "3")
+    bind_mixed(monkeypatch)
+
+    question = next_question()
+
+    assert [one["identity"] for one in question["releases"]] == [
+        "own2026",
+        "own2024",
+        "own2022",
+    ]
+    assert question["beyond"] == 9
+    assert question["beyond_unchecked"] == 2
+    (line,) = checks(drive(["label", "sync", "--next"])[1], "question")
+    assert (
+        "; 7 more of the label's release(s) past this run's window, and up to 2 "
+        "more not yet checked;" in line["detail"]
+    )
+    assert "17 more" not in line["detail"]
+
+
+def test_an_unread_listing_still_says_so_beside_the_count_past_the_window(
+    installed, monkeypatch
+):
+    register(LABEL, "--offer", "3")
+    bind_mixed(monkeypatch, UnreadArtist)
+
+    question = next_question()
+
+    assert question["unread"] == 1
+    (line,) = checks(drive(["label", "sync", "--next"])[1], "question")
+    assert "7 more of the label's release(s) past this run's window" in line["detail"]
+    assert "1 listing(s) of the label could not be read" in line["detail"]
+
+
+def test_the_phrase_past_the_window_is_a_count_or_a_bound_and_never_zero():
+    assert sync_cli._past_window(0, 0) == ""
+    assert sync_cli._past_window(5, 0) == "5 more of the label's release(s) past this run's window"
+    assert sync_cli._past_window(5, 5) == "up to 5 more past this run's window, not yet checked"
+    assert sync_cli._past_window(9, 2) == (
+        "7 more of the label's release(s) past this run's window, "
+        "and up to 2 more not yet checked"
+    )
+
+
+def test_a_question_saved_before_the_count_was_split_reads_as_a_bound():
+    """A question an earlier build saved counted every release past the window."""
+    saved = {"label_id": SLUG, "label_name": LABEL, "run": "r", "listed_at": "", "beyond": 414}
+    question = sync_cli.Question.from_json(saved)
+    assert (question.beyond, question.beyond_unchecked) == (414, 414)
+    assert "up to 414 more past this run's window, not yet checked" in sync_cli._counts(question)
+    again = sync_cli.Question.from_json(question.to_json())
+    assert (again.beyond, again.beyond_unchecked) == (414, 414)
+
+
+def test_nothing_new_says_the_count_past_the_window_the_same_way(installed):
+    entry = labels.LabelEntry(label_id=SLUG, name=LABEL)
+    listing = sweep.LabelListing(
+        candidates=(), dropped=(), suppressed=(), beyond=9, beyond_unchecked=2
+    )
+    check = sync_cli._nothing_check(entry, sync_cli._Listed(listing=listing))
+    assert check["detail"] == (
+        f"{LABEL}: nothing new since it was last asked; 7 more of the label's "
+        f"release(s) past this run's window, and up to 2 more not yet checked"
+    )
 
 
 def test_a_labels_own_offer_bounds_a_first_question(installed, monkeypatch):
