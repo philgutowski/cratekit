@@ -1,4 +1,4 @@
-"""Catalogue verification. A substring match is a heuristic, never an identity.
+"""Catalogue verification. A name match is a heuristic, never an identity.
 
 The crawl finds candidates by copyright text and artist credits. That is
 discovery. This module asks an external catalogue whether the claimed label
@@ -26,10 +26,20 @@ def fold_label(value: str) -> str:
     return _NORM.sub(" ", (value or "").lower()).strip()
 
 
+def _words_within(needle: str, credit: str) -> bool:
+    """Whether the folded ``needle`` is a run of whole words inside ``credit``."""
+    return f" {needle} " in f" {credit} "
+
+
 def labels_match(claimed: str, resolved: str) -> bool:
-    """Substring either way. Discovery heuristic, used only after a web hit."""
+    """Whole words either way. Discovery heuristic, used only after a web hit.
+
+    Both sides are folded first, so case and punctuation never decide it. Then
+    one side must appear in the other as whole words (U237): ``Rawax`` matches
+    ``RAWAX`` and ``Rawax Records``, and never ``RAWAXXX``, another act.
+    """
     left, right = fold_label(claimed), fold_label(resolved)
-    return bool(left) and bool(right) and (left in right or right in left)
+    return bool(left) and bool(right) and (_words_within(left, right) or _words_within(right, left))
 
 
 def cache_path(label_id: str) -> Path:
