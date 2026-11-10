@@ -1478,7 +1478,8 @@ def test_a_go_stopped_at_the_ceiling_names_its_own_go_to_continue_not_the_job(
 ):
     run_id, envelope = stopped_at_the_ceiling(monkeypatch, script)
 
-    command = f"crate --run {run_id} --calls 1000 label sync --go"
+    # The test driver's own global option is kept, as the dispatcher keeps it.
+    command = f"crate --output json --run {run_id} --calls 1000 label sync --go"
     cause = envelope["cause"]
     assert cause["detail"]["continue"] == command
     assert cause["remediation"]["steps"][0] == f"continue with a higher ceiling for one run: {command}"

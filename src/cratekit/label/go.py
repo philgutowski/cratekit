@@ -34,7 +34,8 @@ another version to the match queue rather than listing it, and writes the list
 and its manifest through the one emitter. The list is then queued through
 :func:`cratekit.acquire.cli.queue_list`, one item per track, and driven here.
 A run stopped part way is resumed by ``label sync --go`` again, by ``acquire
-download --job``, or by ``job resume``, and claims only the items still to run.
+download --job``, or by ``job resume``, and claims only the items still to run;
+whichever finished it, ``--go`` under the go's own run then lands it (U239).
 
 A SECOND START NEVER ASKS FOR A TRACK TWICE. Every job a go queues carries
 :data:`ORIGIN_KEY`, and a track that is an item of one, done or still to run, is
@@ -88,10 +89,27 @@ go on the job's own refusal. Each refused track is named on the ``downloaded``
 check and under ``refused`` in the report, a declined one by the worker's own
 warning and a failed one by :data:`REFUSED_WARNING`. A go whose every track was
 refused runs no tail and names none, since there is nothing in the folder to land.
+
+A GO UNDER ITS OWN RUN TAKES ITS OWN DOWNLOAD ON, ASKING NOTHING (U239). The
+attended label pass of 2026-11-10 stopped at the provider call ceiling part
+way, finished its job with the ``job resume`` the refusal named, and then ran
+``--go`` under the same run, which refused ``decision-stale`` over an empty
+plan: the answers were settled and the job had succeeded, so nothing was left
+to summarise, and the tail never ran. Now a ``--go`` under a run whose go
+queued a job, with ``apply`` recorded, resumes that job if it is unfinished,
+reads it once it has settled by whatever path, and names its landing, so the
+tail runs and stops at the landing's gate with no new decision. A cancelled job
+is not taken on and the gate refuses as before. A go job queued after it into
+the same folder refuses the tail, with the commands, since the landing would
+take both batches as one; and a run whose tail already reached its landing
+names that landing and runs nothing (:data:`LANDING_ROLE`). The ceiling's own
+continue command names that ``--go`` rather than the job, and every other stop
+a go can take on adds it as a step (:func:`_carried`).
 """
 
 from __future__ import annotations
 
+import dataclasses
 import shlex
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -101,8 +119,8 @@ from typing import Any
 from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import download
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import config, jobs, review
-from cratekit.core.cause import CratekitError, Outcome, refuse
+from cratekit.core import config, jobs, provider_gate, review
+from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.review import Verdict
 from cratekit.intake.land_cli import default_name
@@ -112,6 +130,13 @@ from cratekit.label import gate as genre_gate
 
 #: The one gate, declared on the ``label.sync`` registry entry.
 GATE = "label.sync.confirm"
+#: The gate's answer that starts a download.
+APPLY = "apply"
+#: The role a go's run records the landing its tail stopped at under (U239), in
+#: :attr:`cratekit.cli.gates.RunState.related_runs`. Written by the CLI layer,
+#: which runs the tail, and read here, so a later go under the run names that
+#: landing rather than run the tail a second time.
+LANDING_ROLE = "landing"
 #: The verb whose job the go queues. Its worker downloads; the go composes.
 DOWNLOAD = "acquire.download"
 #: The payload key a go's download job carries, naming the run and the manifest.
@@ -503,14 +528,20 @@ def _drive(
     ended FAILED only by tracks refused for good, which is a download that
     landed what it landed. Its warnings are then the declined tracks' alone,
     read off the item rows, since the drive's own went with the refusal.
+
+    A refusal that is re-raised names how the download reaches its landing
+    afterwards, through :func:`_carried` (U239).
     """
     try:
         job, said = acquire_cli.drive_queued(ctx, store, job_id)
-    except CratekitError:
+    except CratekitError as exc:
         job = jobs.get(store, job_id)
         read = acquire_cli.read_download(store, job)
         if not read.settled:
-            raise
+            carried = _carried(exc, store, job)
+            if carried is exc:
+                raise
+            raise carried from None
         said = acquire_cli.declined_warnings(store, job)
     else:
         read = acquire_cli.read_download(store, job)
@@ -565,6 +596,22 @@ def go(
     document = sync_cli.load_record(cfg)
     with jobs.open_store() as store:
         summary = summarise(document, held_by_goes(store), cfg)
+    # ABSOLUTE, as ``sync land`` takes it: a relative root resolves against the
+    # working directory, and the tail named over it once planned nothing (U169).
+    staging = Path(cfg.paths.download_staging).expanduser().absolute()
+    own = _own(ctx)
+    if own is not None:
+        # THIS RUN'S GO ALREADY STARTED A DOWNLOAD (U239), so its recorded
+        # decision is the one that download runs under: taken on, not asked again.
+        base = dict(data or {})
+        return _carry_on(
+            ctx,
+            own,
+            summary,
+            staging,
+            list(base.pop("checks", [])),
+            dict(base.pop("summary", {}) or {}),
+        )
     facts: dict[str, Any] = {}
     if walk is not None:
         facts["answered_this_run"] = list(walk)
@@ -591,9 +638,6 @@ def go(
             outcome=Outcome.OK if wrote else Outcome.NO_OP,
         )
 
-    # ABSOLUTE, as ``sync land`` takes it: a relative root resolves against the
-    # working directory, and the tail named over it once planned nothing (U169).
-    staging = Path(cfg.paths.download_staging).expanduser().absolute()
     if summary.open_jobs:
         return _resume(ctx, summary, staging, checks, report, wrote=wrote)
 
@@ -853,9 +897,281 @@ def _resume(
     )
 
 
+def own_job(store: jobs.JobStore, run_id: str) -> jobs.Job | None:
+    """The download job this run's go queued, or None when it queued none (U239).
+
+    A go queues at most one job, and the job carries the run in its origin, so
+    the job store is the record of it, as it is of every track a go holds.
+    """
+    for job in jobs.list_jobs(store):
+        origin = (job.payload or {}).get(ORIGIN_KEY)
+        if (
+            job.handler_key == DOWNLOAD
+            and isinstance(origin, Mapping)
+            and origin.get("run") == run_id
+        ):
+            return job
+    return None
+
+
+def _own(ctx) -> str | None:
+    """The job a go under this run takes on with no new decision, or None (U239).
+
+    ONLY UNDER A RECORDED APPLY, and only a job this run's own go queued, so
+    the decision taken on is the one that started that download. A CANCELLED
+    job is not taken on: a cancel is a person's stop, so the go falls through
+    to its gate, which refuses the moved plan and asks again.
+    """
+    recorded = ctx.gate.state.decisions.get(GATE)
+    if recorded is None or recorded.option != APPLY:
+        return None
+    with jobs.open_store() as store:
+        job = own_job(store, ctx.run.run_id)
+    if job is None or job.state is jobs.JobState.CANCELLED:
+        return None
+    return job.job_id
+
+
+def _beside(store: jobs.JobStore, job: jobs.Job) -> list[jobs.Job]:
+    """The go jobs queued after ``job`` that hold downloaded tracks or are still open.
+
+    Each downloads into the same staging folder, and ``intake land`` lands a
+    whole folder, so a tail run now would land both batches as one. A job
+    queued in the same second is counted, since which came first cannot be
+    told, and counting it refuses rather than mixes.
+    """
+    found: list[jobs.Job] = []
+    for other in jobs.list_jobs(store):
+        if other.job_id == job.job_id or other.created < job.created:
+            continue
+        if other.handler_key != DOWNLOAD or not isinstance(
+            (other.payload or {}).get(ORIGIN_KEY), Mapping
+        ):
+            continue
+        if other.is_open() or any(
+            item.state is jobs.ItemState.DONE for item in jobs.items(store, other.job_id)
+        ):
+            found.append(other)
+    return found
+
+
+def _origin_run(job: jobs.Job) -> str | None:
+    """The run whose go queued ``job``, off its origin, or None for another job."""
+    origin = (job.payload or {}).get(ORIGIN_KEY)
+    run = origin.get("run") if isinstance(origin, Mapping) else None
+    return run if isinstance(run, str) and run else None
+
+
+def continue_command(run_id: str) -> str:
+    """The command that takes a go's download on to its landing (U239)."""
+    return shlex.join(["crate", "--run", run_id, "label", "sync", "--go"])
+
+
+def _carried(error: CratekitError, store: jobs.JobStore, job: jobs.Job) -> CratekitError:
+    """A go's stopped download, refused with the way on that ends at its landing (U239).
+
+    THE CALL CEILING NAMES THE GO'S RUN, NOT THE JOB. The dispatcher's
+    continue command resumes a parked job by its id when the cause names one,
+    and ``job resume`` ends at a succeeded job with no next step: the attended
+    pass of 2026-11-10 took that path and the tail never ran. So the job id is
+    moved off ``job_id`` to ``job``, and the cause names the go's run with
+    ``fresh``, which the dispatcher reads as "drop the command line's own
+    ``--run``" before adding this one: the continue is then ``crate --run RUN
+    --calls N label sync --go`` under the run whose decision started the
+    download, whichever run was driving it.
+
+    ANY OTHER STOP A GO TAKES ON ADDS THAT COMMAND AS A STEP. A park, or a
+    failure a retry may clear, is continued by its own remedy, and the step
+    after it says how the download then reaches its landing. A failure no retry
+    can clear and a cancel are left as they were: the go's run does not take
+    either on.
+    """
+    run = _origin_run(job)
+    if run is None:
+        return error
+    cause = error.cause
+    if cause.reason == provider_gate.CEILING:
+        detail = {key: value for key, value in (cause.detail or {}).items() if key != "job_id"}
+        detail.update({"job": job.job_id, "run_id": run, "fresh": True})
+        return rebuilt(error, dataclasses.replace(cause, detail=detail))
+    left = sum(
+        1
+        for item in jobs.items(store, job.job_id)
+        if item.state not in (jobs.ItemState.DONE, jobs.ItemState.SKIPPED)
+    )
+    if job.state is jobs.JobState.BLOCKED or (
+        job.state is jobs.JobState.FAILED and resumable(job, left)
+    ):
+        steps = (
+            *cause.remediation.steps,
+            f"once the download can go on, take it to its landing with the decision "
+            f"already given: {continue_command(run)}",
+        )
+        return rebuilt(
+            error,
+            dataclasses.replace(
+                cause, remediation=dataclasses.replace(cause.remediation, steps=steps)
+            ),
+        )
+    return error
+
+
+
+def _carry_on(
+    ctx,
+    job_id: str,
+    summary: Summary,
+    staging: Path,
+    checks: list[dict[str, Any]],
+    report: dict[str, Any],
+) -> Envelope:
+    """Take this run's own download on to its landing, asking nothing (U239).
+
+    The attended label pass of 2026-11-10 stopped at the call ceiling with 68
+    of 106 tracks staged, finished the job with ``job resume``, and then ran
+    ``--go`` under the same run: the answers were settled and a succeeded job
+    is no longer one to resume, so the plan was empty, the gate refused it
+    stale, and the tail never ran. The decision recorded on this run started
+    THIS download, so a go under it resumes the download if it is unfinished,
+    reads it once it settled, and names its landing for the CLI layer to run
+    the tail on, with the job's own manifest and the pass its run gives.
+
+    NOTHING NEW IS QUEUED, for the reason :func:`_resume` gives: one job, one
+    manifest and one landing per go. Answers saved since wait for the next go.
+
+    NOT TWICE. A run whose tail already stopped at its landing names that
+    landing's run and runs nothing, since the folder may hold another batch by
+    then and the landing would file it under this go's pass.
+
+    NOT BESIDE ANOTHER GO. A go job queued after this one that holds tracks in
+    the same folder would land with it as one batch, so the go refuses with the
+    landing in the detail, which the CLI layer turns into the commands to type.
+    """
+    run_id = ctx.run.run_id
+    warnings: list[dict[str, str]] = []
+    refused: list[dict[str, Any]] = []
+    land: dict[str, str] | None = None
+    landed: list[str] = []
+    named = ctx.run.related_runs.get(LANDING_ROLE)
+    with jobs.open_store() as store:
+        job = jobs.get(store, job_id)
+        payload = dict(job.payload or {})
+        manifest = dict(payload.get(ORIGIN_KEY) or {}).get("manifest")
+        manifest = manifest if isinstance(manifest, str) and manifest else None
+        run_of = str(payload.get(RUN_KEY) or run_id)
+        if named:
+            checks.append(
+                _check(
+                    "landing",
+                    "info",
+                    f"this run's download {job_id} was taken through its tail to the "
+                    f"landing under run {named} already, so nothing was run again; "
+                    f"answer and apply that landing, or read it with: "
+                    + shlex.join(["crate", "run", "show", named]),
+                )
+            )
+            report["go"] = _carried_report(summary, job_id, manifest, refused, landed, land)
+            return ctx.envelope(data={"checks": checks, "summary": report}, outcome=Outcome.NO_OP)
+        listed = len(jobs.items(store, job_id))
+        left = sum(
+            1
+            for item in jobs.items(store, job_id)
+            if item.state not in (jobs.ItemState.DONE, jobs.ItemState.SKIPPED)
+        )
+        if not job.is_open() and resumable(job, left):
+            # STOPPED HALF FAILED WITH A CAUSE A RETRY MAY CLEAR: re-armed, with
+            # every downloaded track left done, as :func:`_resume` re-arms.
+            if not acquire_cli.read_download(store, job).settled:
+                jobs.retry(store, job_id)
+        job, drifted, read = _drive(ctx, store, job_id)
+        warnings.extend(drifted)
+        refused = list(read.refused)
+        nothing = read.settled and not read.done
+        checks.append(
+            _check(
+                "continued",
+                "fail" if nothing and read.refused else "ok",
+                f"took this run's download {job_id} on under the decision already "
+                f"given: {_downloaded(read, listed)}",
+            )
+        )
+        beside = _beside(store, job) if read.landed else []
+    if manifest is not None and not nothing:
+        landed = tail(staging, manifest, run_of)
+    if beside:
+        raise refuse(
+            "refused-by-policy",
+            f"this run's download {job_id} is downloaded, and "
+            + ", ".join(
+                f"job {other.job_id} of the go under run {_origin_run(other)}"
+                for other in beside
+            )
+            + " downloaded into the same staging folder after it; the landing lands "
+            "the whole folder, so the tail was not run, since it would land the "
+            "batches as one",
+            steps=(
+                "land each go's download on its own: the tail by hand once the folder "
+                "holds only this run's tracks, as the next step names it",
+            ),
+            origin=("label.go",),
+            detail={
+                LAND_KEY: landing(staging, manifest, run_of) if manifest else None,
+                "job": job_id,
+                "beside": [other.job_id for other in beside],
+                "next": landed,
+            },
+        )
+    if read.landed and manifest is not None:
+        land = landing(staging, manifest, run_of)
+    elif landed:
+        checks.append(_next_check(landed))
+    if summary.answers:
+        checks.append(
+            _check(
+                "waiting",
+                "info",
+                f"{len(summary.answers)} answer(s) wait for the next go, once this "
+                f"download is landed: crate label sync --go",
+            )
+        )
+    report["go"] = _carried_report(summary, job_id, manifest, refused, landed, land)
+    return ctx.envelope(
+        data={"checks": checks, "summary": report},
+        outcome=Outcome.OK,
+        warnings=tuple(warnings),
+    )
+
+
+def _carried_report(
+    summary: Summary,
+    job_id: str,
+    manifest: str | None,
+    refused: Sequence[dict[str, Any]],
+    landed: Sequence[str],
+    land: dict[str, str] | None,
+) -> dict[str, Any]:
+    """The go's report when it took this run's own download on (U239)."""
+    return {
+        **summary.to_json(),
+        "declined": False,
+        "job": job_id,
+        "continued": job_id,
+        "resumed": [],
+        "list": None,
+        "manifest": manifest,
+        "withdrawn": [],
+        "carried": [],
+        "refused": list(refused),
+        "next": list(landed),
+        LAND_KEY: land,
+    }
+
+
 __all__ = [
+    "APPLY",
     "DOWNLOAD",
     "GATE",
+    "LANDING_ROLE",
     "LAND_KEY",
     "LIST_PREFIX",
     "ORIGIN_KEY",
@@ -865,10 +1181,12 @@ __all__ = [
     "Held",
     "Summary",
     "Taken",
+    "continue_command",
     "duration_text",
     "go",
     "held_by_goes",
     "landing",
+    "own_job",
     "pace_of",
     "resumable",
     "summarise",

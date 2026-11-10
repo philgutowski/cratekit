@@ -28,6 +28,13 @@ tail did not finish. The download is kept either way, and the answers it took
 are settled, so a second go would not take them again: the tail is run on by
 hand from the step that stopped.
 
+THE LANDING IT REACHED IS RECORDED ON THE GO'S RUN (U239). When the tail
+stops at the landing's gate, the landing's run is kept on this run under
+:data:`cratekit.label.go.LANDING_ROLE`, so a later ``--go`` under the same run,
+which takes the run's own download on, names that landing rather than run the
+tail a second time. A go that refuses with a landing in its detail, because a
+later go's download shares the folder, has the tail named as commands to type.
+
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
 nothing, one that downloaded nothing, and every walk or question that never
 reached the go are the verb's own envelopes, untouched.
@@ -51,6 +58,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
 
 _ORIGIN = ("cli.label_sync",)
+#: The origin the go's own refusals carry, so only they are read for a landing.
+_GO_ORIGIN = "label.go"
 
 #: The key every check the chain adds to the go's report carries, before its step.
 NAMESPACE = "label.sync.go"
@@ -66,12 +75,39 @@ def _land_of(envelope: Envelope) -> Mapping[str, Any] | None:
     """The tail the go's report names, or None when it names none."""
     summary = envelope.data.get("summary")
     report = summary.get("go") if isinstance(summary, Mapping) else None
+    return _land_in(report)
+
+
+def _land_in(report: Any) -> Mapping[str, Any] | None:
+    """The landing a go's report or refusal names under its key, or None."""
     land = report.get(go.LAND_KEY) if isinstance(report, Mapping) else None
     if not isinstance(land, Mapping):
         return None
     if not all(isinstance(land.get(key), str) and land.get(key) for key in ("folder", "pass")):
         return None
     return land
+
+
+def _with_commands(error: CratekitError) -> CratekitError:
+    """A go's refusal that names a landing, with the tail as a person types it (U239).
+
+    Only the go's own refusal, by its origin, since only it puts a landing in
+    its detail; the tail as :func:`_commands` builds it, from its first step.
+    """
+    cause = error.cause
+    land = _land_in(cause.detail) if _GO_ORIGIN in cause.origin else None
+    if land is None:
+        return error
+    folder = Path(str(land["folder"])).expanduser().absolute()
+    steps = (
+        *cause.remediation.steps,
+        "the tail by hand, in this order: "
+        + "; then ".join(_commands(folder, _landing_args(land), tail.TAG)),
+    )
+    return rebuilt(
+        error,
+        dataclasses.replace(cause, remediation=dataclasses.replace(cause.remediation, steps=steps)),
+    )
 
 
 def _chain(ctx: Context) -> tail.Chain:
@@ -119,7 +155,13 @@ def _data(envelope: Envelope, chain: tail.Chain) -> dict[str, Any]:
 
 def label_sync(ctx: Context) -> Envelope:
     """Run the verb, then the tail its go names. See the module docstring."""
-    envelope = sync_cli.label_sync(ctx)
+    try:
+        envelope = sync_cli.label_sync(ctx)
+    except CratekitError as exc:
+        carried = _with_commands(exc)
+        if carried is exc:
+            raise
+        raise carried from None
     land = _land_of(envelope)
     if land is None:
         return envelope
@@ -133,6 +175,7 @@ def label_sync(ctx: Context) -> Envelope:
     except tail.Done as done:
         chain.summary["stopped_at"] = done.step
     except tail.Attend as stop:
+        _remember(ctx, stop)
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
         raise _ended(envelope, chain, stop, folder, landing) from None
@@ -141,6 +184,18 @@ def label_sync(ctx: Context) -> Envelope:
         outcome=envelope.outcome,
         warnings=[*warnings, *chain.warnings],
     )
+
+
+def _remember(ctx: Context, stop: tail.Attend) -> None:
+    """Keep the landing's run on the go's run once the tail stopped at its gate (U239).
+
+    Only a stop at the landing's own gate, which names the run that planned
+    it; a stop for the backup acknowledgment planned no landing, so a later go
+    under this run runs the tail again. Saved with the run as the verb returns.
+    """
+    landed = (stop.cause.detail or {}).get("run_id")
+    if stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed:
+        ctx.run.related_runs[go.LANDING_ROLE] = str(landed)
 
 
 def _attended(
