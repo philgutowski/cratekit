@@ -47446,3 +47446,63 @@ reviewer the cloud lane names.
 
 **Closes when:** Fable reviews the merged range of R-1453 at high effort and
 its findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1458. A copyright line with a bare P or C before its year is harvested with the letter and the year in the name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `_YEAR` in `src/cratekit/label/harvest.py` strips only `(P)`, `(C)`, `℗` or `©`, as the brief asks ("and nothing else"), so `P 2021 Cadenza` reads `P 2021 Cadenza` and `C 2021 Puls` reads `C 2021 Puls`, where the old pattern read `Cadenza` and `Puls`. A letter followed by a space and a four digit year is never a name's first letter, so `[PC]\s+(?=\d{4}\b)` would strip it without clipping a name. Pinned at its current reading by `test_a_letter_after_a_mark_is_not_a_second_mark`.
+
+**Measured cost.** Driven through `harvest.from_tracks`: the harvest offers a label under the longer name; verification is unaffected, since the needle still confirms both lines as whole words. Whether the provider ever serves a bare letter line is unmeasured.
+
+**Closes when:** a live harvest shows such a line, and the pattern is widened to a bare P or C followed by a year, or nothing ever shows one. Ledger only.
+
+---
+
+## R-1459. A live label needle that relied on a part word match now confirms nothing, and none of the live needles was measured
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `labels_match` (`src/cratekit/label/verify.py`) now needs one side to appear in the other as whole words of the folded strings. Credit shapes the substring rule confirmed and the word rule refuses: a clipped needle (`Some Label Rec` against `Some Label Records`), a run together credit (`RawaxRecords`), a year joined to the name (`©2021Rawax`), a catalogue number suffix (`RAWAX007`), an abbreviation against a full name (`Cadenza Records` against `Cadenza Rec.`), an accent at the needle's edge (`Cliché` against `Cliche Music`).
+
+**Measured cost.** Each shape driven by the reviewer, main confirming and the branch refusing. Loud when every release of a label fails (`label-sweep-incomplete`), silent when only some do. The live registry is not on a cloud container, so how many of its needles are affected is unknown.
+
+**Closes when:** the attended card for U237 has run a label sync over every registered label on a disposable state copy and repaired each needle that confirms fewer releases than before with `crate label registry set NAME --match`. Ledger only.
+
+---
+
+## R-1460. A letter outside a to z is a word break when a needle is matched, so a needle still confirms a longer accented name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `fold_label` (`src/cratekit/label/verify.py`) turns every character outside a to z and 0 to 9 into a space before `labels_match` compares whole words, so an accented letter splits a word: `Rawax` confirms `Rawaxé`, `Sue` confirms `Sueño`, `Lumi` confirms `Lumière Records`, and `Cliché` never confirms `Cliche Music`. `Sueño` is a live label (`docs/cutover.md`).
+
+**Measured cost.** Measured true on main and on the branch alike, so not a regression; it is the part of U237's goal that stays open for names with a letter outside a to z. Folding accents to their base letter in `fold_label` would close it, but `fold_label` also decides artist name equality in `tidal_catalogue`, so it is its own change.
+
+**Closes when:** `fold_label` folds an accented letter to its base letter (or keeps letters whole) and every caller is checked against it. Ledger only.
+
+---
+
+## R-1461. A copyright line with an ampersand between marks, a mark after the year, two years or leading space still harvests a junk name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `labels_from_copyright` (`src/cratekit/label/harvest.py`) strips a run of marks at the very start and then one four digit year. `℗ & © 2021 Cadenza` reads `& © 2021 Cadenza`, `2021 ℗ Cadenza` keeps its mark, `(P) 2019, 2021 Cadenza` keeps a year, and a line with leading whitespace keeps its mark, because the pattern runs before the strip.
+
+**Measured cost.** Six shapes driven by the reviewer; every one reads the same as or better than main, and none loses a confirmation, since the needle still matches the label's whole words inside the junk. The cost is a harvested name a person would reject. How often the provider serves these shapes is unmeasured.
+
+**Closes when:** a live harvest shows one of these shapes, and the reader strips it. Ledger only.
+
+---
+
+## R-1462. Offers, holds and kept rosters made under the substring needle are never verified again, and an old hold can make the sweep refuse falsely
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** Until U237 `labels_match` confirmed a credit holding the needle anywhere, so the Rawax needle confirmed releases credited `RAWAXXX`. Whatever a sweep offered or held under that rule stays: an offer open in review is never verified again (`src/cratekit/label/sweep.py`, the offer and hold paths), a hold is filed without verification once the genre gate lets it through, which `test_a_labels_kind_changed_after_a_hold_releases_what_now_fits` pins on purpose, and a kept roster (`src/cratekit/label/kept_listing.py`) built from a `RAWAXXX` compilation keeps that act for its kept life of seven days. Worse, when the newest held releases are another act's, the next sweep reads them as releases it could not confirm and refuses with `label-sweep-incomplete`, "could not confirm a single one", naming a needle repair the needle does not need.
+
+**Measured cost.** Driven by the reviewer on the suite's fakes: the false refusal with two old holds and one new other act release, exit 1, even with a confirmed release open in review; the kept roster reused with 84 answers and nothing offered. The live state was not read: the brief measured three `RAWAXXX` releases offered under Rawax, not held. Main alone reaches the same false refusal when a person narrows a needle between two sweeps, so this is the canary's existing assumption with a second way in.
+
+**Closes when:** the attended card for U237 has listed and rejected the old offers and holds credited to another act, and the false refusal either cannot be reached (a hold is verified again under the current rule before the canary counts it) or is accepted as the narrowed needle case. Ledger only until the attended pass shows a live hold of this shape.
