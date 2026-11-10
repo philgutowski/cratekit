@@ -407,7 +407,11 @@ crate label sync --go
   adopt` adds each accepted one not already held.
 
 `label sync` walks your labels one at a time and asks only about releases new
-since that label was last asked, with release and track counts and a size.
+since that label was last asked, with release and track counts and a size,
+and how many more of the label's own releases lie past the window, which
+`registry set --offer` raises. A release past the window with no copyright
+line to read is counted as "up to N more, not yet checked", never as the
+label's.
 Answers: `all`, `pick` (by number), `not-now`, `stop` (unfollow). Each answer is
 saved as given; `quit` and the next run resumes at the first unanswered label.
 A release answered once is never asked again. The genre gate runs first, so
