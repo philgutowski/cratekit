@@ -271,6 +271,28 @@ def test_a_worker_that_dies_is_a_broken_stream_and_not_an_item_failure():
     assert _wait_until(lambda: multiprocessing.active_children() == [], 20)
 
 
+def _dies_starting(tag: str) -> None:
+    """An initializer that takes its worker down before it serves anything."""
+    os._exit(71)
+
+
+def test_workers_that_die_starting_are_one_broken_stream_and_not_a_pool_per_item():
+    """The break is seen while the work is handed out, and it closes the stream once."""
+    stream = pool.stream_workers(
+        wide(6), _square, range(6), initializer=_dies_starting, initargs=("x",)
+    )
+    try:
+        with pytest.raises(pool.StreamBroken):
+            for position in range(6):
+                stream.result(position)
+        assert stream.closed
+        with pytest.raises(ValueError, match="closed"):
+            stream.result(5)
+    finally:
+        stream.close()
+    assert _wait_until(lambda: multiprocessing.active_children() == [], 20)
+
+
 def test_the_terminals_interrupt_does_not_kill_a_stream_worker():
     """Ctrl-C reaches every process in the group; the caller owns the stop."""
     with pool.stream_workers(wide(2), _interrupt_myself, range(2)) as stream:

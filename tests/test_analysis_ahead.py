@@ -417,6 +417,52 @@ def test_a_job_whose_record_is_gone_says_it_does_not_know(cfg, silence, tmp_path
     assert pool_check(again)["detail"].startswith("no pool was recorded for this job")
 
 
+def test_a_job_another_driver_holds_records_no_pool_and_adds_none_to_the_refusal(
+    cfg, silence, tmp_path, monkeypatch, bound
+):
+    """This call ran nothing, so it has no pool to describe."""
+    folder = fill(tmp_path / "held", silence, names=("a", "b"))
+    machine(monkeypatch)
+    code, queued = drive(["analyze", "run", "--queue-only", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job_id = job_of(queued)
+    with jobs.driver_lock(job_id):
+        code, refused = drive(resume_argv(job_id))
+    assert code != int(ExitCode.OK)
+    assert "pool" not in refused["cause"]["detail"]
+    assert not any(step.startswith("the pool:") for step in refused["cause"]["remediation"]["steps"])
+    assert artifacts.pool_record(cfg, job_id) is None
+    assert measured_by(bound) == {}
+    assert set(states(job_id).values()) == {"pending"}
+
+
+def test_the_restamp_shares_the_resume_and_opens_no_run_ahead(cfg, silence, tmp_path, monkeypatch):
+    """Only ``analyze run`` measures ahead; the restamp's answer carries no pool line."""
+    assert analysis_cli.RUN_HANDLER_KEY == "analyze.run"
+    folder = fill(tmp_path / "restamped", silence, names=("03A - 120 - x",))
+    machine(monkeypatch)
+    opened: list[str] = []
+    real = analysis_cli._heads_ahead
+
+    def watching(store, job):
+        opened.append(job.handler_key)
+        return real(store, job)
+
+    monkeypatch.setattr(analysis_cli, "_heads_ahead", watching)
+    energy.save_calibration(
+        cfg,
+        energy.calibrate(
+            [{name: float(seed) for name in energy.FEATURE_ORDER} for seed in range(12)]
+        ),
+    )
+    monkeypatch.setattr(energy, "_EXTRACTOR", lambda path: None)
+    code, restamped = drive(["analyze", "restamp", str(folder)])
+    assert opened == [], restamped
+    code, done = drive(["analyze", "run", str(folder)])
+    assert code == int(ExitCode.OK), done
+    assert opened == ["analyze.run"]
+
+
 def test_a_closure_bound_by_a_test_is_never_sent_to_a_worker(cfg, silence, tmp_path, monkeypatch):
     """The other analysis suites bind closures; their runs stay in this process and say so."""
     folder = fill(tmp_path / "closure", silence, names=("a", "b"))

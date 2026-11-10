@@ -1598,14 +1598,17 @@ class WorkStream(Generic[_Item, _Result]):
             return self._function(self._items[position])
         size = self.plan.tasks_per_generation or len(self._items) or 1
         generation = position // size
-        if generation != self._generation:
-            self._stop()
-            self._start(generation, size)
-        self._read.add(position)
-        future = self._futures.pop(position)
         try:
-            return future.result()
+            if generation != self._generation:
+                self._stop()
+                self._start(generation, size)
+            self._read.add(position)
+            return self._futures.pop(position).result()
         except _process_pool.BrokenProcessPool as broken:
+            # WHEREVER IT BROKE, handing out the work or waiting on it: a child
+            # that dies in its initializer breaks the pool before any item is
+            # taken, and the hand out is where that is first seen. One closed
+            # stream either way, never a pool rebuilt for the next position.
             self.close()
             raise StreamBroken(
                 f"the pool's workers ended before item {position} was measured ({broken})"

@@ -101,6 +101,10 @@ DEFAULT_CALIBRATION_SAMPLE = 500
 #: than the library wide walk because ``--accept-partial`` said to (U94).
 PARTIAL_SAMPLE = "calibration-partial-sample"
 
+#: The handler key of ``crate analyze run``, the one verb here whose drive
+#: measures ahead of itself (U241). ``analyze restamp`` shares the resume.
+RUN_HANDLER_KEY = "analyze.run"
+
 #: The warning every restamp resume carries, because the registry declares a
 #: database write this build does not perform. See ``handle_restamp``.
 DB_NOT_WRITTEN = {
@@ -438,14 +442,22 @@ def _heads_ahead(store, job) -> Iterator[None]:
     """
     cfg = jobs.frozen_config(job)
     session = _open_ahead(cfg, store, job)
+    drove = True
     try:
         yield
+    except jobs.DriverHeld:
+        # ANOTHER DRIVER HAS THE JOB, so this call ran nothing, and a record
+        # written now would describe a pool that never started beside a run
+        # that is still going. The driver that holds the job writes its own.
+        drove = False
+        raise
     finally:
         ahead.close_session(job.job_id)
-        try:
-            artifacts.record_pool(cfg, job.job_id, ahead.report(session))
-        except OSError:
-            pass
+        if drove:
+            try:
+                artifacts.record_pool(cfg, job.job_id, ahead.report(session))
+            except OSError:
+                pass
 
 
 def _pool_check(record: Mapping[str, Any] | None) -> dict[str, str | None]:
@@ -487,11 +499,14 @@ def _with_pool(error: CratekitError, record: Mapping[str, Any]) -> CratekitError
 def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
     with jobs.open_store() as store:
         queued = jobs.get(store, job_id)
-        if queued.handler_key == "analyze.restamp":
+        if queued.handler_key != RUN_HANDLER_KEY:
             job, warnings = _advance(ctx, store, queued)
         else:
             try:
                 job, warnings = _advance(ctx, store, queued, around=_heads_ahead)
+            except jobs.DriverHeld:
+                # This call drove nothing, so it has no pool of its own to add.
+                raise
             except CratekitError as failed:
                 # THE OTHER EXIT. A run that failed or was stopped leaves
                 # through its cause, and it ran with a pool as well.

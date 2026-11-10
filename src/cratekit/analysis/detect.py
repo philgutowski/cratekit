@@ -467,8 +467,8 @@ def camelot_of(profile: Any) -> str | None:
 
     The twenty four correlations against the major and minor templates, the
     first best kept, exactly as the detector has always chosen. None for a
-    profile with no energy in it, and for one whose every correlation is not a
-    number, which a silent or a constant chroma gives.
+    profile with no energy in it, and for one that is not a number, where no
+    correlation compares greater than any other.
     """
     import numpy as np
 
@@ -522,15 +522,15 @@ def analyse_file(
     librosa is imported inside the function so a slim install can still
     import the package.
     """
+    if key not in KEY_METHODS:
+        # A DEFECT IN THE CALLER, raised before anything is imported or opened
+        # rather than swallowed below as a track that could not be analysed.
+        raise ValueError(f"the key method is one of {KEY_METHODS}, not {key!r}")
     try:
         import librosa
         import numpy  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
-    if key not in KEY_METHODS:
-        # A DEFECT IN THE CALLER, raised before the file is opened rather than
-        # swallowed below as a track that could not be analysed.
-        raise ValueError(f"the key method is one of {KEY_METHODS}, not {key!r}")
     try:
         # AT THE ENERGY MEASURE RATE, one constant for both, because every
         # spectral feature is rate dependent and the calibration fitted on the

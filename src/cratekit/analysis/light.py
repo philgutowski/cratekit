@@ -134,18 +134,20 @@ def plan(
     *,
     cost: int | None = None,
     reserve_bytes: int = pool.DEFAULT_MEMORY_RESERVE_BYTES,
+    reserved_cores: int = LIGHT_RESERVED_CORES,
 ) -> pool.PoolPlan:
     """The light pool for these files: as wide as memory affords, up to the cores less two.
 
     ``cost`` None is the measured cost of the batch's longest track.
     ``reserve_bytes`` is the planner's own reserve unless the caller is about
     to hold more than that itself, which a job that scores vocals in the
-    driver is.
+    driver is. ``reserved_cores`` is the shipped two unless a measurement is
+    asking what another figure would do, ``scripts/analyze_stages.py``.
     """
     return pool.plan_pool(
         worker_bytes=worker_bytes(longest_seconds(paths)) if cost is None else cost,
         items=len(paths),
-        ceiling=cores.worker_ceiling(reserved=LIGHT_RESERVED_CORES),
+        ceiling=cores.worker_ceiling(reserved=reserved_cores),
         reserve_bytes=reserve_bytes,
     )
 

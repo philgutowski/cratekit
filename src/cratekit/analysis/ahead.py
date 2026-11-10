@@ -35,6 +35,13 @@ In every one of those the fallback is the one line the worker ran before
 this module existed, in this process. So the worst this module can do to a
 run is make it as slow as it was.
 
+WHAT THE FALLBACK COSTS IN MEMORY, SAID OUT LOUD. A head measured here while
+the workers are still running, a changed file or a file a worker raised on,
+holds one more light worker's memory than the plan counted, in the driver,
+for the length of that one track. The plan's headroom is what carries it. A
+pool that broke or was stopped has no workers left, so the rest of the run is
+the serial run's memory exactly.
+
 WHEN NO POOL RUNS AT ALL. A plan of one worker, which is what a machine under
 memory pressure and a machine that affords only one are both given; a
 detector bound by a test, a closure no child could receive; an analysis
@@ -187,13 +194,16 @@ def open_session(
     settings: Settings,
     *,
     reserve_bytes: int = pool.DEFAULT_MEMORY_RESERVE_BYTES,
+    reserved_cores: int = light.LIGHT_RESERVED_CORES,
 ) -> Session:
     """Plan the light pool over ``paths`` and stand ready to measure them ahead.
 
     Nothing is spawned here: the stream starts its workers when the first head
     is asked for. ``reserve_bytes`` is what the planner keeps back, raised by a
-    caller that will hold a vocal model in this process. A session already
-    open for the job is closed first.
+    caller that will hold a vocal model in this process, and
+    ``reserved_cores`` the cores kept from the pool, the shipped figure unless
+    a measurement asks otherwise. A session already open for the job is closed
+    first.
     """
     close_session(job_id)
     ordered = [str(path) for path in paths]
@@ -201,7 +211,7 @@ def open_session(
         session = Session(job_id, settings, None, 0, why=WHY_NOTHING_WAITING)
         _SESSIONS[job_id] = session
         return session
-    plan = light.plan(ordered, reserve_bytes=reserve_bytes)
+    plan = light.plan(ordered, reserve_bytes=reserve_bytes, reserved_cores=reserved_cores)
     session = Session(job_id, settings, plan, len(ordered))
     if not plan.in_process:
         initializer, initargs = _WORKER_BINDING or (
