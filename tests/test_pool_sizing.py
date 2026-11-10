@@ -4066,8 +4066,14 @@ def test_the_walk_credits_a_relative_import_only_to_the_package_that_owns_it(tmp
 # ---------------------------------------------------------------------------
 
 
+#: Every seam of the sizing module that runs work on a plan. ``map_workers`` was
+#: the only one until U241 added the stream, and a guard that named one runner
+#: would have let a hand built plan of nine through the other.
+PLAN_RUNNERS = ("map_workers", "stream_workers", "WorkStream")
+
+
 def unplanned_map_workers(source: str, *, package: str | None = None) -> list[str]:
-    """Every ``map_workers`` call run on a plan this source built for itself.
+    """Every runner call, :data:`PLAN_RUNNERS`, on a plan this source built for itself.
 
     The call-site half of the provenance question, and the one that reads at the
     place the damage happens. A plan that arrives as a parameter or off an
@@ -4086,7 +4092,10 @@ def unplanned_map_workers(source: str, *, package: str | None = None) -> list[st
     }
     found: list[str] = []
     for node in ast.walk(tree):
-        if not (isinstance(node, ast.Call) and imports.resolves(node.func, "map_workers")):
+        if not (
+            isinstance(node, ast.Call)
+            and any(imports.resolves(node.func, runner) for runner in PLAN_RUNNERS)
+        ):
             continue
         given = next(
             (keyword.value for keyword in node.keywords if keyword.arg == "plan"),
@@ -4119,10 +4128,13 @@ def analysis_sizing_violations(
 
     The claim being enforced, in full, because an earlier version of this
     countdown claimed all of it and checked two thirds of one part of it: the
-    package plans through :func:`plan_pool`, runs through :func:`map_workers`,
-    builds no pool of its own in any import shape, builds no plan of its own in
-    any import shape, hands ``map_workers`` no plan it fabricated, and reads no
-    core count in any of the four spellings.
+    package plans through :func:`plan_pool`, runs through :func:`map_workers`
+    or the stream beside it, builds no pool of its own in any import shape,
+    builds no plan of its own in any import shape, hands no runner a plan it
+    fabricated, and reads no core count in any of the four spellings. Since
+    U241 the light pass takes a CEILING from the cores, through
+    ``cratekit.core.cores``; ``tests/test_cores.py`` holds that reader to being
+    the only one and its answer to reaching the planner's ceiling alone.
     """
     if not modules:
         return ["the analysis package landed with no modules in it"]
@@ -4137,13 +4149,14 @@ def analysis_sizing_violations(
             "pool sized anywhere else is a second answer to R23"
         )
     if not any(
-        calls_attribute(source, POOL_MODULE, "map_workers", package=package)
+        calls_attribute(source, POOL_MODULE, runner, package=package)
         for _name, source in modules
+        for runner in ("map_workers", "stream_workers")
     ):
         problems.append(
             "the analysis package plans a pool and never runs work through "
-            "cratekit.core.pool.map_workers, so the branch that keeps a cap of one "
-            "in process is the caller's own copy"
+            "cratekit.core.pool.map_workers or stream_workers, so the branch that "
+            "keeps a cap of one in process is the caller's own copy"
         )
     for name, source in modules:
         for where in process_pool_constructions(source):
@@ -4239,6 +4252,20 @@ ANALYSIS_CORRECT = (
             "def analyse(item):\n    return item\n",
         ),
     ],
+    # U241's shape: the plan from the planner under a ceiling from the one core
+    # reader, the work run through the stream, results read by position.
+    [
+        (
+            "ahead.py",
+            "from cratekit.core import cores, pool\n"
+            "def run(items, cost):\n"
+            "    plan = pool.plan_pool(worker_bytes=cost, items=len(items),\n"
+            "                          ceiling=cores.worker_ceiling(reserved=2))\n"
+            "    with pool.stream_workers(plan, analyse, items) as stream:\n"
+            "        return [stream.result(at) for at in range(len(items))]\n"
+            "def analyse(item):\n    return item\n",
+        ),
+    ],
     # A SIBLING OF THE ANALYSIS PACKAGE'S OWN, spelled the same way the sizing
     # module would be. ``from .pool import PoolPlan`` inside cratekit.analysis
     # names cratekit.analysis.pool, which is not this module and not this class,
@@ -4321,6 +4348,21 @@ ANALYSIS_EVASIONS = (
             "def analyse(item):\n    return item\n",
         ),
     ],
+    # The hand built plan again, through the seam U241 added. A guard that named
+    # only map_workers let these nine children through the stream.
+    [
+        _ANALYSIS_LIGHT,
+        (
+            "ahead.py",
+            "from cratekit.core import pool\n"
+            "def run(items):\n"
+            "    plan = pool.PoolPlan(workers=9, items=len(items), bound=pool.Bound.CEILING,\n"
+            "                         worker_bytes=1024 ** 3, available_bytes=None,\n"
+            "                         max_tasks_per_child=100)\n"
+            "    return pool.stream_workers(plan, analyse, items)\n"
+            "def analyse(item):\n    return item\n",
+        ),
+    ],
     # Nothing sizes anything.
     [
         (
@@ -4343,6 +4385,7 @@ ANALYSIS_EVASIONS = (
         "ancestor-package",
         "relative-package-import",
         "relative-symbol-import",
+        "the-stream-under-a-core-ceiling",
         "a-sibling-of-its-own-named-pool",
     ],
 )
@@ -4359,12 +4402,13 @@ def test_the_analysis_countdown_stays_silent_on_correctly_sized_modules(modules)
         "core-count-in-a-hand-built-plan",
         "private-pool",
         "hand-built-plan-through-an-ancestor",
+        "hand-built-plan-through-the-stream",
         "no-sizing",
         "empty",
     ],
 )
 def test_the_analysis_countdown_bites_the_evasions_that_used_to_pass_it(modules):
-    """Two of these five passed the countdown as written, and both spawn nine children."""
+    """Two of these passed the countdown as first written, and both spawn nine children."""
     assert analysis_sizing_violations(modules) != []
 
 

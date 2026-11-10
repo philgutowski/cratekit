@@ -889,3 +889,29 @@ def read_voxgender_from_file(path: Path) -> str | None:
     is not a thing this product does.
     """
     return read_tag(path, "voxgender")
+
+
+def audio_seconds(path: Path) -> float | None:
+    """How long the audio in ``path`` runs, read off its header, or None.
+
+    The container's own statement of its length, never a decode: a pass that
+    is about to decode a folder asks this first, to know how much memory its
+    longest file will need (U241). None for a file whose header does not say,
+    cannot be read, or says something that is not a positive length, and the
+    caller decides what not knowing means. Reads nothing but the header and
+    writes nothing.
+    """
+    try:
+        import mutagen
+
+        handle = mutagen.File(path)
+        length = getattr(getattr(handle, "info", None), "length", None)
+    except Exception as exc:  # noqa: BLE001 - an unreadable header is an unknown length
+        log.debug("length read failed for %s: %s", path, exc)
+        return None
+    if isinstance(length, bool) or not isinstance(length, (int, float)):
+        return None
+    seconds = float(length)
+    if not seconds > 0.0 or seconds == float("inf"):
+        return None
+    return seconds
