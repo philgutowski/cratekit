@@ -49,7 +49,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cratekit.cli import tail
+from cratekit.cli import gates, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.core.cause import CratekitError, Outcome, rebuilt
 from cratekit.core.exit_codes import ExitCode
@@ -59,6 +59,8 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
 
 _ORIGIN = ("cli.label_sync",)
+#: The warning a landing the go's own run could not record is named under (U239).
+UNRECORDED_WARNING = "label-sync-landing-unrecorded"
 #: The origin the go's own refusals carry, so only they are read for a landing.
 _GO_ORIGIN = "label.go"
 
@@ -176,7 +178,7 @@ def label_sync(ctx: Context) -> Envelope:
     except tail.Done as done:
         chain.summary["stopped_at"] = done.step
     except tail.Attend as stop:
-        _remember(ctx, stop)
+        warnings.extend(_remember(ctx, stop, land))
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
         raise _ended(envelope, chain, stop, folder, landing) from None
@@ -187,16 +189,45 @@ def label_sync(ctx: Context) -> Envelope:
     )
 
 
-def _remember(ctx: Context, stop: tail.Attend) -> None:
+def _remember(
+    ctx: Context, stop: tail.Attend, land: Mapping[str, Any]
+) -> list[dict[str, str]]:
     """Keep the landing's run on the go's run once the tail stopped at its gate (U239).
 
     Only a stop at the landing's own gate, which names the run that planned
     it; a stop for the backup acknowledgment planned no landing, so a later go
-    under this run runs the tail again. Saved with the run as the verb returns.
+    under the run runs the tail again. Recorded UNDER THE JOB, on the run whose
+    go queued it: that is the run a later ``--go`` takes the job on under, and
+    a fresh go that resumed the job is not. This run's record is saved as the
+    verb returns; another run's is saved here, and one that cannot be is a
+    warning, since a later go under that run would run the tail a second time.
     """
     landed = (stop.cause.detail or {}).get("run_id")
-    if stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed:
-        ctx.run.related_runs[go.LANDING_ROLE] = str(landed)
+    job, owner = land.get("job"), land.get("run")
+    if not (stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed):
+        return []
+    if not (isinstance(job, str) and job and isinstance(owner, str) and owner):
+        return []
+    role = go.landing_role(job)
+    if owner == ctx.run.run_id:
+        ctx.run.related_runs[role] = str(landed)
+        return []
+    try:
+        state = gates.load(owner)
+        state.related_runs[role] = str(landed)
+        gates.save(state)
+    except (CratekitError, OSError) as exc:
+        return [
+            {
+                "code": UNRECORDED_WARNING,
+                "message": (
+                    f"the landing under run {landed} could not be recorded on run "
+                    f"{owner}, whose go queued job {job} ({exc}); a later go under "
+                    f"that run would run the tail again"
+                ),
+            }
+        ]
+    return []
 
 
 def _attended(
@@ -268,4 +299,4 @@ def _ended(
     )
 
 
-__all__ = ["NAMESPACE", "build_sync", "label_sync"]
+__all__ = ["NAMESPACE", "UNRECORDED_WARNING", "build_sync", "label_sync"]

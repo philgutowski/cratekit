@@ -432,9 +432,11 @@ the provider call ceiling or a park, is taken on by `crate --run RUN label
 sync --go` again under the same run, with no new decision: it finishes the
 download if it is unfinished, whatever finished it (`job resume` included),
 and runs the tail to the landing's gate. The ceiling's refusal names that
-command with `--calls` raised. Asked again after its tail reached the landing,
-the same run names that landing and runs nothing; a cancelled download is
-asked about again. A fresh `label sync --go` resumes an unfinished download
+command with `--calls` raised (a go reached at the end of the walk is named as
+the walk, `label sync` without `--go`, which asks any new label first). Asked
+again after its tail reached the landing, by this run or by a fresh go that
+resumed its download, the run names that landing and runs nothing; a
+cancelled download is asked about again. A fresh `label sync --go` resumes an unfinished download
 too, after asking. Every go stages into the same folder, so land each before
 the next: a run's own `--go` refuses its tail, naming the commands, when a
 later go downloaded into the folder beside it.

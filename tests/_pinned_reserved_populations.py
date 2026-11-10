@@ -570,6 +570,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'cli/handlers.py': ['config-drift', 'internal-error'],
     'cli/jobs.py': ['internal-error', 'job-unknown'],
+    # 2026-11-10, U239: the landing a go's own run could not record.
+    'cli/label_sync.py': ['label-sync-landing-unrecorded'],
     'cli/output.py': ['awaiting-human-action'],
     'cli/rebuild.py': [
         'config-unusable',

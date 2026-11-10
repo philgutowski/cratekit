@@ -132,10 +132,11 @@ from cratekit.label import gate as genre_gate
 GATE = "label.sync.confirm"
 #: The gate's answer that starts a download.
 APPLY = "apply"
-#: The role a go's run records the landing its tail stopped at under (U239), in
-#: :attr:`cratekit.cli.gates.RunState.related_runs`. Written by the CLI layer,
-#: which runs the tail, and read here, so a later go under the run names that
-#: landing rather than run the tail a second time.
+#: The prefix of the role a go's run records the landing its tail stopped at
+#: under (U239), in :attr:`cratekit.cli.gates.RunState.related_runs`, one role
+#: per job (:func:`landing_role`). Written by the CLI layer, which runs the tail,
+#: on the run whose go queued the job, and read here, so a later go under that
+#: run names that landing rather than run the tail a second time.
 LANDING_ROLE = "landing"
 #: The verb whose job the go queues. Its worker downloads; the go composes.
 DOWNLOAD = "acquire.download"
@@ -508,13 +509,30 @@ def tail(staging: Path, manifest: str, run_id: str) -> list[str]:
     ]
 
 
-def landing(staging: Path, manifest: str, run_id: str) -> dict[str, str]:
+def landing(staging: Path, manifest: str, run_id: str, job_id: str) -> dict[str, str]:
     """What the tail and the landing run over: the folder, the manifest and the pass.
 
     The same three the last command :func:`tail` names, as data, so the chain
-    that runs them reads no command line back.
+    that runs them reads no command line back. With them the go's run and its
+    job (U239), so the landing the tail reaches is recorded on the run whose
+    go queued that job, under that job, whichever run drove it.
     """
-    return {"folder": str(staging), "manifest": manifest, "pass": default_name(run_id)}
+    return {
+        "folder": str(staging),
+        "manifest": manifest,
+        "pass": default_name(run_id),
+        "run": run_id,
+        "job": job_id,
+    }
+
+
+def landing_role(job_id: str) -> str:
+    """The role a landing the tail reached for ``job_id`` is recorded under (U239).
+
+    One role per job, so a landing recorded for one download never answers for
+    another one under the same run.
+    """
+    return f"{LANDING_ROLE}.{job_id}"
 
 
 def _drive(
@@ -585,6 +603,9 @@ def go(
 ) -> Envelope:
     """Show the summary, ask the gate, and on apply download what was answered for.
 
+    Under the run of a go that already started a download, take that download
+    on instead, asking nothing (:func:`_carry_on`, U239).
+
     ``walk`` is what the interactive walk did before it reached the gate, one
     line per label, carried in front of the summary so a person deciding sees
     what they just answered. ``data`` is the walk's own report, which the
@@ -611,6 +632,7 @@ def go(
             staging,
             list(base.pop("checks", [])),
             dict(base.pop("summary", {}) or {}),
+            wrote=wrote,
         )
     facts: dict[str, Any] = {}
     if walk is not None:
@@ -776,7 +798,7 @@ def go(
             )
         )
         if read.landed:
-            land = landing(staging, str(listing.written.manifest_path), run_id)
+            land = landing(staging, str(listing.written.manifest_path), run_id, queued.job_id)
         if not nothing:
             landed = tail(staging, str(listing.written.manifest_path), run_id)
         if land is None and landed:
@@ -860,7 +882,7 @@ def _resume(
             if isinstance(manifest, str) and manifest and not nothing:
                 run_of = str(payload.get(RUN_KEY) or ctx.run.run_id)
                 landed.extend(tail(staging, manifest, run_of))
-                lands.append(landing(staging, manifest, run_of) if read.landed else None)
+                lands.append(landing(staging, manifest, run_of, job_id) if read.landed else None)
             else:
                 lands.append(None)
     # ONE EARLIER JOB, LANDED, IS RUN ON THROUGH THE TAIL. Several would need two
@@ -937,8 +959,9 @@ def _beside(store: jobs.JobStore, job: jobs.Job) -> list[jobs.Job]:
 
     Each downloads into the same staging folder, and ``intake land`` lands a
     whole folder, so a tail run now would land both batches as one. A job
-    queued in the same second is counted, since which came first cannot be
-    told, and counting it refuses rather than mixes.
+    stamped the same instant is counted, since which came first cannot be
+    told, and counting it refuses rather than mixes. Only later go jobs: an
+    earlier one, and a download no go queued, are not seen (a residual of U239).
     """
     found: list[jobs.Job] = []
     for other in jobs.list_jobs(store):
@@ -976,9 +999,9 @@ def _carried(error: CratekitError, store: jobs.JobStore, job: jobs.Job) -> Crate
     pass of 2026-11-10 took that path and the tail never ran. So the job id is
     moved off ``job_id`` to ``job``, and the cause names the go's run with
     ``fresh``, which the dispatcher reads as "drop the command line's own
-    ``--run``" before adding this one: the continue is then ``crate --run RUN
-    --calls N label sync --go`` under the run whose decision started the
-    download, whichever run was driving it.
+    ``--run``" before adding this one: the continue is then the command line
+    that stopped, ``crate --run RUN --calls N label sync --go`` for a go, under
+    the run whose decision started the download, whichever run was driving it.
 
     ANY OTHER STOP A GO TAKES ON ADDS THAT COMMAND AS A STEP. A park, or a
     failure a retry may clear, is continued by its own remedy, and the step
@@ -1024,6 +1047,8 @@ def _carry_on(
     staging: Path,
     checks: list[dict[str, Any]],
     report: dict[str, Any],
+    *,
+    wrote: bool = False,
 ) -> Envelope:
     """Take this run's own download on to its landing, asking nothing (U239).
 
@@ -1039,7 +1064,8 @@ def _carry_on(
     NOTHING NEW IS QUEUED, for the reason :func:`_resume` gives: one job, one
     manifest and one landing per go. Answers saved since wait for the next go.
 
-    NOT TWICE. A run whose tail already stopped at its landing names that
+    NOT TWICE. A run whose tail already stopped at its landing for this job,
+    recorded under :func:`landing_role` by whichever run drove it, names that
     landing's run and runs nothing, since the folder may hold another batch by
     then and the landing would file it under this go's pass.
 
@@ -1052,7 +1078,7 @@ def _carry_on(
     refused: list[dict[str, Any]] = []
     land: dict[str, str] | None = None
     landed: list[str] = []
-    named = ctx.run.related_runs.get(LANDING_ROLE)
+    named = ctx.run.related_runs.get(landing_role(job_id))
     with jobs.open_store() as store:
         job = jobs.get(store, job_id)
         payload = dict(job.payload or {})
@@ -1071,7 +1097,11 @@ def _carry_on(
                 )
             )
             report["go"] = _carried_report(summary, job_id, manifest, refused, landed, land)
-            return ctx.envelope(data={"checks": checks, "summary": report}, outcome=Outcome.NO_OP)
+            # A WALK THAT REACHED THIS GO WROTE ITS ANSWERS, so it is not a no-op.
+            return ctx.envelope(
+                data={"checks": checks, "summary": report},
+                outcome=Outcome.OK if wrote else Outcome.NO_OP,
+            )
         listed = len(jobs.items(store, job_id))
         left = sum(
             1
@@ -1115,14 +1145,14 @@ def _carry_on(
             ),
             origin=("label.go",),
             detail={
-                LAND_KEY: landing(staging, manifest, run_of) if manifest else None,
+                LAND_KEY: landing(staging, manifest, run_of, job_id) if manifest else None,
                 "job": job_id,
                 "beside": [other.job_id for other in beside],
                 "next": landed,
             },
         )
     if read.landed and manifest is not None:
-        land = landing(staging, manifest, run_of)
+        land = landing(staging, manifest, run_of, job_id)
     elif landed:
         checks.append(_next_check(landed))
     if summary.answers:
@@ -1186,6 +1216,7 @@ __all__ = [
     "go",
     "held_by_goes",
     "landing",
+    "landing_role",
     "own_job",
     "pace_of",
     "resumable",
