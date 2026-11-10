@@ -600,6 +600,43 @@ def test_a_question_saved_before_the_count_was_split_reads_as_a_bound():
     assert (again.beyond, again.beyond_unchecked) == (414, 414)
 
 
+@pytest.mark.parametrize("unreadable", [None, "9", -1, True])
+def test_a_saved_split_that_cannot_be_read_reads_as_a_bound(unreadable):
+    saved = {
+        "label_id": SLUG,
+        "label_name": LABEL,
+        "run": "r",
+        "listed_at": "",
+        "beyond": 17,
+        "beyond_unchecked": unreadable,
+    }
+    question = sync_cli.Question.from_json(saved)
+    assert question.beyond_unchecked == 17
+    assert "up to 17 more past this run's window, not yet checked" in sync_cli._counts(question)
+
+
+def test_a_saved_split_larger_than_its_figure_is_held_to_the_figure():
+    saved = {"label_id": SLUG, "label_name": LABEL, "beyond": 3, "beyond_unchecked": 5}
+    assert sync_cli.Question.from_json(saved).beyond_unchecked == 3
+    assert sync_cli._past_window(3, 5) == "up to 3 more past this run's window, not yet checked"
+
+
+def test_nothing_new_after_an_answer_says_the_count_past_the_window(installed, monkeypatch):
+    register(LABEL, "--offer", "3")
+    bind_mixed(monkeypatch)
+    next_question()
+    answer(SLUG, "not-now")
+
+    code, envelope = sync("--next")
+
+    assert code == int(ExitCode.OK), envelope
+    (label_line,) = checks(envelope, f"label.{SLUG}")
+    assert label_line["detail"] == (
+        f"{LABEL}: nothing new since it was last asked; 7 more of the label's "
+        f"release(s) past this run's window, and up to 2 more not yet checked"
+    )
+
+
 def test_nothing_new_says_the_count_past_the_window_the_same_way(installed):
     entry = labels.LabelEntry(label_id=SLUG, name=LABEL)
     listing = sweep.LabelListing(

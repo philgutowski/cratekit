@@ -466,6 +466,7 @@ class Question:
     def from_json(cls, raw: Mapping[str, Any]) -> Question:
         releases = raw.get("releases")
         beyond = _count(raw.get("beyond")) or 0
+        unchecked = _count(raw.get("beyond_unchecked"))
         return cls(
             label_id=str(raw.get("label_id") or ""),
             label_name=str(raw.get("label_name") or ""),
@@ -479,10 +480,9 @@ class Question:
             beyond=beyond,
             # A QUESTION SAVED BEFORE U238 HAS NO SPLIT, and its ``beyond``
             # counted every release of every artist on the roster. Read whole
-            # as unchecked, so it is said as a bound and never as the label's.
-            beyond_unchecked=min(beyond, _count(raw.get("beyond_unchecked")) or 0)
-            if "beyond_unchecked" in raw
-            else beyond,
+            # as unchecked, so it is said as a bound and never as the label's,
+            # and so is a split that is present and unreadable.
+            beyond_unchecked=beyond if unchecked is None else min(beyond, unchecked),
             unread=_count(raw.get("unread")) or 0,
             withheld=_count(raw.get("withheld")) or 0,
             unjudged=_count(raw.get("unjudged")) or 0,
