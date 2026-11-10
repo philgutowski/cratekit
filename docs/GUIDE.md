@@ -394,6 +394,10 @@ crate label sync
 crate label sync --go
 ```
 
+- `--match` is the string the catalogue credits, matched as whole words after
+  case and punctuation are folded: `Rawax` confirms `RAWAX` and `Rawax
+  Records`, never `RAWAXXX`. A copyright line is read with its `(P)`, `(C)`,
+  `℗` or `©` mark and its year stripped, and nothing else.
 - A label's id is made once, at `add`; what has been pulled hangs off it.
   Rename with `registry rename`; removing and re-adding makes the whole
   catalogue new again.
