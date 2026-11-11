@@ -47877,3 +47877,265 @@ exists, `crate --run RUN --calls N label sync --go`, which the guide names.
 **Measured cost.** Driven at round two: Alpha with a genre renamed Zed, Omega renamed `Alpha!` with another genre, a file tagged `Alpha` takes Omega's genre where main gave Alpha's; two renames are needed and which label is meant is undefined. A tag equal to an identifier that is not slug shaped, such as one carried in a hand edited registry file, answers nothing where main answered by exact identifier; `add` and `adopt` both make identifiers with `slug`, so no verb was found to produce one. `tag.tag_folder` has no caller in `src`.
 
 **Closes when:** the registry records a label's former names, so an old name is matched as itself, and `tag.tag_folder` takes `folder_genre` or is removed. Ledger only.
+
+---
+
+## R-1484. The vocal model is now about half of an analyze run, and it stays one model in the driver
+
+**Found:** while building #649, U241, 2026-11-10.
+
+**The mechanism.** U241 moved the light head, key, tempo, drift and energy,
+off the driver and made its separation about seven times cheaper. The vocal
+pass was out of the card's scope and is unchanged: one model, loaded once in
+the process that drives the job, scoring each track in eight second chunks
+(`analysis/vocals.py`, `analysis/vocal.py`). So the driver now spends nearly
+all of its time in the model, and however many light workers the machine
+affords, a run cannot finish sooner than the vocal pass alone.
+
+**Measured cost.** On the 23 track synthetic set, one process, the vocal
+decode and model were 22 percent of the run before U241 (179 of 787 seconds)
+and 51 percent after it (182 of 355). With two light workers on four cores
+the whole run took 270 seconds, where the vocal pass alone takes 182: the
+model's threads and the workers were sharing the cores. Timed on the shipped
+architecture with untrained weights, since the checkpoint is not in the
+container, so the seconds are a container's and the split is the finding.
+
+**Closes when:** a unit gives the vocal pass its own run ahead, the two
+workers its cap already allows at their measured cost, or shows a batched
+forward pass gives the same scores; either needs the real model, so the
+measurement is an attended one. Ledger only: nothing is wrong, it is what
+bounds the next speedup.
+
+---
+
+## R-1485. A machine that affords exactly one light worker runs the whole job in the driver, though one worker beside the driver would nearly halve it
+
+**Found:** while building #649, U241, 2026-11-10.
+
+**The mechanism.** `core/pool.py` runs a plan of one worker in the calling
+process, by rule: for `map_workers`, whose caller only waits, a pool of one
+is a second interpreter to run the work slower. `analysis/ahead.py` keeps
+that rule for the stream. But the stream's reader is not waiting: the driver
+is scoring vocals while the heads are measured, so a single worker child
+beside it is real parallelism. A machine whose memory affords one light
+worker and not two therefore runs serially where one child would let the
+head and the vocal pass overlap.
+
+**Measured cost.** Not driven as its own case. From the stage table, a track's
+head and its vocal pass take about the same time after U241 (173 and 182
+seconds over the set), so one child beside the driver would bring a run close
+to the two worker figure. The band it applies to is narrow: available memory
+that affords one worker of about 1.2 GB for a ten minute batch, after the
+reserve and the driver's model, and not two.
+
+**Closes when:** the stream is allowed one child when its plan is one worker
+bound by available memory or the ceiling and its caller declares that it
+works between reads, with the pressure, unreadable and insufficient bounds
+still in process. That changes the pool's most guarded rule, so it is its own
+unit. Ledger only.
+
+---
+
+## R-1486. The light worker's declared cost was measured on one Linux container, and three of librosa's own transients now set it
+
+**Found:** while building #649, U241, 2026-11-10.
+
+**The mechanism.** `analysis/light.py` declares a light worker at 320 MB plus
+1.5 MB for each second of the batch's longest track, from peaks measured in a
+fresh process per track on the container U241 was built in: 238 MB at two
+seconds, 345 at 45, 564 at 240, 860 at 445, 1092 at 600, 1175 at 660. After
+the separation's blocks the peak is no longer one stage's: for the eleven
+minute track the decode reached 567 MB, the tempogram 820, the separation
+1064 and the constant Q transform 1175, each a transient of about 650 to 780
+MB over a floor that rises as librosa's kernels compile. The decode, the
+tempogram and the transform are librosa's and are not blocked here.
+
+The review then measured the same eleven minute track stored at 192
+kilohertz at 2054 MB, and a second reading gave 2180, against the 1310 the
+length alone declared: the decode reads the file at its own rate. The cost
+now has a second line for the decode, in the file's rate and channels, and
+declares 2737 MB for that file; it rests on those two readings of one file.
+
+**Measured cost.** None observed: the declared figure is above every measured
+one. Unmeasured: the same peaks on macOS on Apple silicon, where the
+allocator, the BLAS and librosa's build differ, and any file of more than two
+channels. A cost that read low there
+would let the planner afford a worker the machine cannot carry, which the
+headroom, the reserve and the pressure gates stand behind.
+
+**Closes when:** `scripts/analyze_stages.py memory` is run on the Mac over
+library tracks of mixed length and the two constants are confirmed or
+replaced from its table, which U241's attended card asks for. Lowering the
+peak further means computing the tempogram and the transform in blocks, which
+touches tempo and is its own unit. Ledger only.
+
+---
+
+## R-1487. A clip of a few milliseconds is given a key and a tempo, and librosa's own separation does not repeat itself under a third of a second
+
+**Found:** while building #649, U241, 2026-11-10.
+
+**The mechanism.** `detect.analyse_file` returns `skipped-unanalysable` only
+when the tempo estimate is None or a step raises. A nine millisecond clip has
+an onset envelope of one frame, the tempogram still has a strongest bin in
+the window, and the chroma of a clip that short still has a largest
+correlation, so the detector answers a key and a tempo for it (driven: 400
+samples at 44100 read 6A at 152, on the base and on the branch alike).
+Separately, `librosa.effects.harmonic` over a clip of two or three frames
+returned numbers on one call and not a number on the next, because scipy's
+rank filter is unreliable on a line shorter than half its window; the base
+detector's answer for a clip of 23 to 46 milliseconds therefore changed from
+run to run. U241's separation takes those lines by the definition, so the
+branch's answer is one answer, but it is still a key for a click.
+
+**Measured cost.** A file that short in a DJ's folder is a broken download or
+a placeholder, and it would be renamed with a head. Seven clip lengths were
+driven; no real file was.
+
+**Closes when:** the detector refuses a decode shorter than a floor it can
+defend, a few seconds, as `skipped-unanalysable`. Ledger only until a real
+file produces it.
+
+---
+
+## R-1488. An analyze run stopped with Ctrl-C carries its pool in the refusal's detail and not in what the person reads
+
+**Found:** while building #649, U241, 2026-11-10.
+
+**The mechanism.** A run that fails leaves through its cause, and U241
+appends the pool's sentence to the cause's steps and its record to the
+detail. A run stopped in the foreground then passes through
+`modules/foreground._resumable`, which replaces the steps with its own two,
+the resume command and the count of settled items, so the pool's sentence is
+dropped there and only `detail.pool` survives. The resume that finishes the
+job prints the line as a check.
+
+**Measured cost.** A person who stops a run does not see how many workers it
+had until they resume it; `--output json` shows it at once. Driven by
+`test_an_interrupt_during_a_run_ahead_ends_the_workers_and_the_resume_finishes`,
+which reads the detail.
+
+**Closes when:** `_resumable` keeps the steps a cause already carried after
+its own two, for every queued verb, which is a change to the shared
+foreground and so not this unit's. Ledger only.
+
+---
+
+## R-1489. The vocal worker's declared gibibyte is under its measured peak on a long track
+
+**Found:** while building #649, U241, 2026-11-10.
+
+**The mechanism.** `VOCAL_WORKER_BYTES` is one gibibyte, the source system's
+budget. U241 uses it as what the driver's vocal model keeps back from the
+light pool's budget. Measured in a fresh process on the container, the model
+and its imports held 740 MB once loaded, and scoring peaked at 1064 MB for a
+four minute track and 1196 MB for an eleven minute one, the decode at the
+model's rate being most of the difference.
+
+**Measured cost.** The reserve is about 170 MB short for the longest track
+measured, which the planner's headroom covers several times over. Measured
+with untrained weights on Linux; the real checkpoint is the same size.
+
+**Closes when:** the vocal pass declares its cost the way the light pass now
+does, a base and a rate by the track's length, from a measurement with the
+real model on the Mac. Ledger only.
+
+---
+
+## R-1490. A head measured again in the driver while the workers run is one worker's memory the plan did not count
+
+**Found:** while building #649, U241, 2026-11-10.
+
+**The mechanism.** When a head measured ahead cannot be used, because its
+file changed or a worker raised on it, `analysis/ahead.py` measures it in the
+driver by the serial line. The workers are still running, so for the length
+of that one track the run holds one more light worker's memory than
+`light.plan` afforded.
+
+**Measured cost.** Not observed: both paths need a file swapped during a run
+or a file the detector raises on, and the plan keeps a quarter to a half of
+the budget as headroom. A pool that broke or was stopped has no workers, so
+the common fallback costs nothing extra.
+
+**Closes when:** the session pauses its workers, or reads one fewer result
+ahead, while the driver measures. Ledger only.
+
+---
+
+## R-1491. Restamp and calibrate reach librosa without the warm up and compile a kernel of their own, so two of them started together can still damage the cache
+
+**Found:** at the review of #649, U241, 2026-11-11.
+
+**The mechanism.** Two processes filling numba's kernel cache at once crash
+and leave the cache damaged (the review of U241 drove it through two light
+workers, five runs in seven). U241 makes every process warm alone under a
+lock before its first head, at `detect.analyse_file`. `analyze restamp` and
+`analyze calibrate` measure through `energy.features_from_path` instead,
+which never asks for the warm up, and that path compiles something the warm
+up does not: round two measured eleven cache files written by it on an empty
+cache, one of them a second specialisation of `utils._cabs2` that a warmed
+cache does not hold. So the two verbs write to the cache even after
+`analyze run` has filled it. `analyze vocals` also decodes without the
+detector and was measured to write no cache file, so it is not part of this.
+
+**Measured cost.** Not driven: each verb is one process, and no pair of them
+was started together. The crash and the damaged cache such a pair could
+produce were driven on the `analyze run` path, where the fix now stands.
+
+**Closes when:** the energy extractor asks `analysis.warm.kernels()` before
+its first librosa call and the warm up measures energy from a file as well
+as from samples, with the coverage test widened to that path. Ledger only.
+
+---
+
+## R-1492. A generation restarted by the stream measures again what it has not been asked for, and nothing tests that it skips what was read
+
+**Found:** at the review of #649, U241, 2026-11-11.
+
+**The mechanism.** `WorkStream._start` hands a generation only the positions
+not yet read (`if position not in self._read`). The review changed it to hand
+out every position and no test failed. The guard matters only when a reader
+goes back to an earlier generation, which `analyze run` never does: it reads
+in item order.
+
+**Measured cost.** None reachable from the shipped verb. With the guard gone,
+a reader that went back would have an item measured twice, time only, and the
+second result unread.
+
+**Closes when:** a stream test reads a later generation and returns to an
+earlier one, counting what each child measured. The author could not kill it:
+the row was the review's, measured at zero. Round two also noted that
+`light.longest_seconds` has no caller left under `src` since the cost became
+the costliest track's, and that the warm up's twelve seconds can fall to two
+with its coverage test still passing, which the comment now says. Ledger
+only.
+
+---
+
+## R-1493. A run waits without bound on the warm up lock behind a holder that is stopped rather than dead, and neither Ctrl-C nor a terminate ends the wait
+
+**Found:** at the review of #649, U241, 2026-11-11.
+
+**The mechanism.** `analysis/warm.py` takes an exclusive `flock` with no
+deadline. A holder that dies releases it. A holder that is STOPPED keeps it:
+round two sent a stop signal to a real `analyze run` while it was inside its
+warm up, started a second run, and the second run's driver blocked in the
+lock for 208 seconds, through a terminate at 45 seconds and an interrupt at
+190, because the job engine records both signals for the item boundary
+rather than raising and the lock call is restarted. It ended only when the
+first run was continued, and then answered cancelled. Before the warm up two
+runs never waited on each other.
+
+**Measured cost.** A person who suspends an analysis in its first seconds
+and starts another is blocked with no message, and Ctrl-C does not end it;
+continuing or killing the first run does, and nothing is lost. The producer
+driven was a stop signal sent by a script at a chosen moment. A person's
+producer is Ctrl-Z inside a window measured at about half a second to two
+seconds a process on a filled cache and about eight on an empty one; its
+likelihood is unmeasured, and the terminal's own stop signal was not driven.
+
+**Closes when:** the wait is a loop of non blocking attempts that reads the
+job's recorded signal and says who holds the lock. A deadline that then
+proceeds unlocked on an empty cache is the original crash again, so the
+bound has to refuse or keep waiting with a message, and the change wants a
+review of its own. Ledger only until a person meets it.
