@@ -25,8 +25,17 @@ session, and the rekordbox visit after. A tail step that does not succeed ends
 the verb there with the step's own refusal, the go's report in its detail and
 the rest of the tail named as the way on, so nothing is landed over files the
 tail did not finish. The download is kept either way, and the answers it took
-are settled, so a second go would not take them again: the tail is run on by
-hand from the step that stopped.
+are settled, so a fresh go would not take them again: the tail is run on by
+hand from the step that stopped, or whole again by ``--go`` under the same run,
+which takes the run's own download on since U239.
+
+THE LANDING IT REACHED IS RECORDED ON THE GO'S RUN (U239). When the tail
+stops at the landing's gate, the landing's run is kept under the download's
+job (:func:`cratekit.label.go.landing_role`) on the run whose go queued that
+job, which is another run when a fresh go resumed it, so a later ``--go``
+under that run, which takes the run's own download on, names that landing
+rather than run the tail a second time. A go that refuses with a landing in its detail, because a
+later go's download shares the folder, has the tail named as commands to type.
 
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
 nothing, one that downloaded nothing, and every walk or question that never
@@ -41,7 +50,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
-from cratekit.cli import tail
+from cratekit.cli import gates, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.core.cause import CratekitError, Outcome, rebuilt
 from cratekit.core.exit_codes import ExitCode
@@ -51,6 +60,10 @@ if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
 
 _ORIGIN = ("cli.label_sync",)
+#: The warning a landing the go's own run could not record is named under (U239).
+UNRECORDED_WARNING = "label-sync-landing-unrecorded"
+#: The origin the go's own refusals carry, so only they are read for a landing.
+_GO_ORIGIN = "label.go"
 
 #: The key every check the chain adds to the go's report carries, before its step.
 NAMESPACE = "label.sync.go"
@@ -66,12 +79,39 @@ def _land_of(envelope: Envelope) -> Mapping[str, Any] | None:
     """The tail the go's report names, or None when it names none."""
     summary = envelope.data.get("summary")
     report = summary.get("go") if isinstance(summary, Mapping) else None
+    return _land_in(report)
+
+
+def _land_in(report: Any) -> Mapping[str, Any] | None:
+    """The landing a go's report or refusal names under its key, or None."""
     land = report.get(go.LAND_KEY) if isinstance(report, Mapping) else None
     if not isinstance(land, Mapping):
         return None
     if not all(isinstance(land.get(key), str) and land.get(key) for key in ("folder", "pass")):
         return None
     return land
+
+
+def _with_commands(error: CratekitError) -> CratekitError:
+    """A go's refusal that names a landing, with the tail as a person types it (U239).
+
+    Only the go's own refusal, by its origin, since only it puts a landing in
+    its detail; the tail as :func:`_commands` builds it, from its first step.
+    """
+    cause = error.cause
+    land = _land_in(cause.detail) if _GO_ORIGIN in cause.origin else None
+    if land is None:
+        return error
+    folder = Path(str(land["folder"])).expanduser().absolute()
+    steps = (
+        *cause.remediation.steps,
+        "the tail by hand, in this order: "
+        + "; then ".join(_commands(folder, _landing_args(land), tail.TAG)),
+    )
+    return rebuilt(
+        error,
+        dataclasses.replace(cause, remediation=dataclasses.replace(cause.remediation, steps=steps)),
+    )
 
 
 def _chain(ctx: Context) -> tail.Chain:
@@ -119,7 +159,13 @@ def _data(envelope: Envelope, chain: tail.Chain) -> dict[str, Any]:
 
 def label_sync(ctx: Context) -> Envelope:
     """Run the verb, then the tail its go names. See the module docstring."""
-    envelope = sync_cli.label_sync(ctx)
+    try:
+        envelope = sync_cli.label_sync(ctx)
+    except CratekitError as exc:
+        carried = _with_commands(exc)
+        if carried is exc:
+            raise
+        raise carried from None
     land = _land_of(envelope)
     if land is None:
         return envelope
@@ -133,6 +179,7 @@ def label_sync(ctx: Context) -> Envelope:
     except tail.Done as done:
         chain.summary["stopped_at"] = done.step
     except tail.Attend as stop:
+        warnings.extend(_remember(ctx, stop, land))
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
         raise _ended(envelope, chain, stop, folder, landing) from None
@@ -141,6 +188,50 @@ def label_sync(ctx: Context) -> Envelope:
         outcome=envelope.outcome,
         warnings=[*warnings, *chain.warnings],
     )
+
+
+def _remember(
+    ctx: Context, stop: tail.Attend, land: Mapping[str, Any]
+) -> list[dict[str, str]]:
+    """Keep the landing's run on the go's run once the tail stopped at its gate (U239).
+
+    Only a stop at the landing's own gate, which names the run that planned
+    it; a stop for the backup acknowledgment planned no landing, so a later go
+    under the run runs the tail again. Recorded UNDER THE JOB, on the run whose
+    go queued it: that is the run a later ``--go`` takes the job on under, and
+    a fresh go that resumed the job is not. This run's record is saved as the
+    verb returns; another run's is saved here, and one that cannot be read or
+    saved is a warning naming the run, the job and why, never a refusal.
+    """
+    landed = (stop.cause.detail or {}).get("run_id")
+    job, owner = land.get("job"), land.get("run")
+    if not (stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed):
+        return []
+    if not (isinstance(job, str) and job and isinstance(owner, str) and owner):
+        return []
+    role = go.landing_role(job)
+    if owner == ctx.run.run_id:
+        ctx.run.related_runs[role] = str(landed)
+        return []
+    try:
+        state = gates.load(owner)
+        state.related_runs[role] = str(landed)
+        gates.save(state)
+    except Exception as exc:  # noqa: BLE001 - see below
+        # ANY FAILURE OF ANOTHER RUN'S RECORD IS A WARNING, as ``gates.siblings``
+        # reads one: the landing is planned by now, and a refusal raised here
+        # would replace the envelope that names it.
+        return [
+            {
+                "code": UNRECORDED_WARNING,
+                "message": (
+                    f"the landing under run {landed} could not be recorded on run "
+                    f"{owner}, whose go queued job {job} ({type(exc).__name__}: {exc}); "
+                    f"a later go under that run does not know this landing was planned"
+                ),
+            }
+        ]
+    return []
 
 
 def _attended(
@@ -187,8 +278,10 @@ def _ended(
     """The refusal a stopped tail ends the go with: the step's own, the way on added.
 
     THE WAY ON IS THE TAIL BY HAND, FROM THE STEP THAT STOPPED. The download is
-    kept and its answers are settled, so ``label sync --go`` again would take
-    nothing, and the go's report, in the detail, says what it downloaded.
+    kept and its answers are settled, so a fresh ``label sync --go`` would take
+    nothing, and the go's report, in the detail, says what it downloaded. A
+    ``--go`` under the same run runs the whole tail again (U239), since a stop
+    before the landing's gate records no landing on the run.
     """
     cause = stop.error.cause
     chain.summary["stopped_at"] = stop.step
@@ -210,4 +303,4 @@ def _ended(
     )
 
 
-__all__ = ["NAMESPACE", "build_sync", "label_sync"]
+__all__ = ["NAMESPACE", "UNRECORDED_WARNING", "build_sync", "label_sync"]

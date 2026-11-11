@@ -156,7 +156,9 @@ def build_sync(parser, entry) -> None:
         action="store_true",
         help=(
             "show one summary over every answer saved since the last go, ask the "
-            "one gate, and on apply download what was answered for"
+            "one gate, and on apply download what was answered for; under the run "
+            "of a go that started a download, take that download on to its landing "
+            "with no new question"
         ),
     )
     parser.set_defaults(_handler=label_sync)

@@ -1,0 +1,11 @@
+name = "u239-composites"
+pass_kind = "light"
+
+[[rows]]
+id = "M11b_land_only_landed_after_its_test"
+description = "M11 measured again after its test: name the landing whatever the download read"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if read.landed and manifest is not None:'''
+new = '''    if manifest is not None:'''
