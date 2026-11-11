@@ -130,8 +130,6 @@ refuses rather than reads as nothing beside.
 from __future__ import annotations
 
 import dataclasses
-import json
-import os
 import shlex
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -145,9 +143,9 @@ from cratekit.core import config, jobs, provider_gate, review
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.review import Verdict
-from cratekit.intake import land_cli
+from cratekit.intake import beside as staged
+from cratekit.intake.beside import Beside, Waiting, continue_command
 from cratekit.intake.land_cli import default_name
-from cratekit.intake.landing import listing as folder_listing
 from cratekit.intake.missing_cli import LISTS_DIR
 from cratekit.label import approved_cli, sync_cli
 from cratekit.label import gate as genre_gate
@@ -163,14 +161,15 @@ APPLY = "apply"
 #: run names that landing rather than run the tail a second time.
 LANDING_ROLE = "landing"
 #: The directory under the queue root where what each go's tail left in the
-#: staging folder is kept, one file per download job (R-1467, :func:`keep_tail`).
-TAILS_DIRNAME = "label-go-tails"
+#: staging folder is kept, one file per download job (R-1467, :func:`keep_tail`),
+#: spelled with the reading R-1499 lifted to :mod:`cratekit.intake.beside`.
+TAILS_DIRNAME = staged.TAILS_DIRNAME
 #: The verb whose job the go queues. Its worker downloads; the go composes.
-DOWNLOAD = "acquire.download"
+DOWNLOAD = staged.DOWNLOAD_KEY
 #: The payload key a go's download job carries, naming the run and the manifest.
-ORIGIN_KEY = "label_sync"
+ORIGIN_KEY = staged.ORIGIN_KEY
 #: The payload key ``sync all`` already uses for a job's intake run (R29).
-RUN_KEY = "run_id"
+RUN_KEY = staged.RUN_KEY
 #: The report's key naming the tail the CLI layer runs after a download (U190).
 LAND_KEY = "land"
 #: The warning a go names each track its download FAILED for good under (R-1115).
@@ -1031,24 +1030,7 @@ def _beside(store: jobs.JobStore, job: jobs.Job) -> list[jobs.Job]:
 
 def _origin_run(job: jobs.Job) -> str | None:
     """The run whose go queued ``job``, off its origin, or None for another job."""
-    origin = (job.payload or {}).get(ORIGIN_KEY)
-    run = origin.get("run") if isinstance(origin, Mapping) else None
-    return run if isinstance(run, str) and run else None
-
-
-def continue_command(run_id: str) -> str:
-    """The command that takes a go's download on to its landing (U239)."""
-    return shlex.join(["crate", "--run", run_id, "label", "sync", "--go"])
-
-
-def _tail_path(cfg: config.Config, job_id: str) -> Path:
-    return jobs.store_dir(cfg) / TAILS_DIRNAME / f"{job_id}.json"
-
-
-def _identity(path: Path) -> tuple[str, int, int]:
-    """A file in the folder as the landing's own digest names it: name, size, mtime."""
-    stat = path.stat()
-    return (path.name, stat.st_size, stat.st_mtime_ns)
+    return staged.origin_run(job)
 
 
 def keep_tail(cfg: config.Config, store: jobs.JobStore, job_id: str, staging: Path) -> int:
@@ -1056,155 +1038,28 @@ def keep_tail(cfg: config.Config, store: jobs.JobStore, job_id: str, staging: Pa
 
     The tail's ``name apply`` renames every track before the landing's gate,
     so a later ``--go`` under the go's run, taking its download on, finds its
-    own tracks under names no download recorded. THIS IS THE ONE RECORD OF
-    THEM: each file the folder holds when the tail stops, by its name, size
-    and modification time, the identity the landing's own digest reads, so a
-    file put there since, under any name, is never read as the go's own. The
-    folder held nothing but this download when its tail started (every tail
-    is refused beside anything else), and a file another download recorded at
-    its download name is left out, since it is that download's.
+    own tracks under names no download recorded. This is the one record of
+    them, kept under the job by :func:`cratekit.intake.beside.keep`, the
+    reading ``sync land`` keeps its own by since R-1499.
 
     Called by the CLI layer, which runs the tail, whichever way the tail ends;
     a record that cannot be written raises, for the caller to name.
     """
-    folder = _resolved(staging)
-    held = [_resolved(path) for path in folder_listing(folder)] if folder.is_dir() else []
-    theirs = {
-        _resolved(item.artifact)
-        for job in jobs.list_jobs(store)
-        if job.job_id != job_id
-        for item in jobs.items(store, job.job_id)
-        if item.state is jobs.ItemState.DONE and item.artifact
-    }
-    kept = sorted(_identity(path) for path in held if path not in theirs)
-    target = _tail_path(cfg, job_id)
-    target.parent.mkdir(parents=True, exist_ok=True)
-    written = target.with_name(f".{target.name}.tmp")
-    written.write_text(json.dumps({"job": job_id, "folder": str(folder), "files": kept}))
-    os.replace(written, target)
-    return len(kept)
+    return staged.keep(store, staged.go_record(cfg, job_id), staging, {job_id}, key=job_id)
 
 
 def kept_tail(cfg: config.Config, job_id: str) -> frozenset[tuple[str, int, int]]:
-    """What :func:`keep_tail` kept for ``job_id``, or nothing (R-1467).
+    """What :func:`keep_tail` kept for ``job_id``, or nothing when it cannot be read (R-1467).
 
-    NOTHING WHEN IT CANNOT BE READ, which is the safe reading here: a file the
-    record does not name is beside the go, so a lost record refuses the go's
-    own tail, with the tail by hand named, and never lands a file as its own.
+    A file the record does not name is beside the go, so a lost record
+    refuses the go's own tail, with the tail by hand named, and never lands a
+    file as its own.
     """
-    try:
-        document = json.loads(_tail_path(cfg, job_id).read_text())
-        return frozenset(
-            (str(name), int(size), int(mtime)) for name, size, mtime in document["files"]
-        )
-    except (OSError, ValueError, KeyError, TypeError):
-        return frozenset()
+    return staged.kept(staged.go_record(cfg, job_id))
 
 
 #: How many of the files no download names a refusal lists by name.
-UNNAMED_SHOWN = 8
-
-
-@dataclass(frozen=True, slots=True)
-class Waiting:
-    """A download the staging folder may hold that no landing has taken (R-1467).
-
-    ``run`` is the run whose go queued it, or None for a download no go
-    queued, ``verb`` the handler that downloaded it, and ``tracks`` how many
-    of its downloaded tracks the folder holds at the names they were
-    downloaded under. A go's download with none there is named only beside
-    files no download names, when its pass has no landing proof, since its
-    tail may have renamed them (:func:`beside`).
-    """
-
-    job_id: str
-    run: str | None
-    verb: str
-    tracks: int
-
-    def said(self) -> str:
-        if self.run is None:
-            return (
-                f"job {self.job_id} of {self.verb}, a download no go queued, with "
-                f"{self.tracks} track(s) no landing took"
-            )
-        if self.tracks:
-            return (
-                f"job {self.job_id} of the go under run {self.run}, with {self.tracks} "
-                f"track(s) no landing took"
-            )
-        return (
-            f"job {self.job_id} of the go under run {self.run}, whose pass no landing "
-            f"took, and whose tail may have renamed those tracks"
-        )
-
-    def step(self, folder: Path) -> str:
-        if self.run is None:
-            return (
-                f"land the tracks of job {self.job_id} as any intake lands, or move "
-                f"them out of {folder}"
-            )
-        if not self.tracks:
-            return (
-                f"if the tracks no download names are job {self.job_id}'s, renamed by "
-                f"its tail, take it on with: {continue_command(self.run)}, which runs "
-                f"its tail again, names the landing it reached, or refuses naming what "
-                f"else the folder holds"
-            )
-        return (
-            f"take job {self.job_id} to its landing, or read the landing its tail "
-            f"already reached and answer that, with: {continue_command(self.run)}; "
-            f"it refuses, naming the tail by hand, while the folder holds anything else"
-        )
-
-    def to_json(self) -> dict[str, Any]:
-        return {"job": self.job_id, "run": self.run, "verb": self.verb, "tracks": self.tracks}
-
-
-@dataclass(frozen=True, slots=True)
-class Beside:
-    """What the staging folder holds that a landing would take with a go's own (R-1467).
-
-    ``waiting`` names the downloads it can be put down to, and ``unnamed``
-    every file there that no download names. Empty when the folder holds
-    nothing but the go's own tracks.
-    """
-
-    folder: Path
-    waiting: tuple[Waiting, ...] = ()
-    unnamed: tuple[str, ...] = ()
-
-    def __bool__(self) -> bool:
-        return bool(self.waiting or self.unnamed)
-
-    def said(self) -> str:
-        parts = [one.said() for one in self.waiting]
-        if self.unnamed:
-            parts.append(
-                f"{len(self.unnamed)} track(s) no download names, "
-                + ", ".join(self.unnamed[:UNNAMED_SHOWN])
-                + (", and more" if len(self.unnamed) > UNNAMED_SHOWN else "")
-            )
-        return "; ".join(parts)
-
-    def steps(self) -> tuple[str, ...]:
-        steps = [one.step(self.folder) for one in self.waiting]
-        if self.unnamed:
-            steps.append(
-                f"land, or move out of {self.folder}, the track(s) no download names"
-            )
-        return tuple(steps)
-
-    def to_json(self) -> dict[str, Any]:
-        return {
-            "folder": str(self.folder),
-            "waiting": [one.to_json() for one in self.waiting],
-            "unnamed": list(self.unnamed),
-        }
-
-
-def _resolved(path: Path | str) -> Path:
-    return Path(path).expanduser().absolute().resolve()
+UNNAMED_SHOWN = staged.UNNAMED_SHOWN
 
 
 def beside(
@@ -1218,89 +1073,22 @@ def beside(
 ) -> Beside:
     """What a landing of ``staging`` would take beside ``own``'s downloads (R-1467).
 
-    WHAT A LANDING TAKES IS THE FOLDER, read as the landing reads it,
-    :func:`cratekit.intake.landing.listing`. A file there that is one of
-    ``own``'s downloaded tracks, at the name it was downloaded under, is the
-    go's own. EVERY OTHER FILE IS BESIDE IT, whoever put it there, since the
-    landing would file it under the go's manifest and pass: a track of another
-    download at its download name, a go's or a plain ``acquire download``'s
-    or a fallback fetch's (any job that recorded the file as its artifact), and
-    a file no download names, which a tail's ``name apply`` renamed or a person
-    put there.
-
-    ``kept`` is what ``own``'s tail left in the folder when it stopped
-    (:func:`keep_tail`): a file no download names is read as the go's own
-    only when it is one of those, by name, size and modification time, so a
-    file put there since is still beside it. NOT WHEN ``own_pass`` LANDED: a
-    pass with a landing proof has had its tracks taken out of the folder, so
-    nothing there is read as its own by that record.
-
-    NAMING, NOT DECIDING, IS WHAT THE LANDING PROOF IS FOR. A file no download
-    names is put down to every go's download with a track recorded in the
-    folder, none of them there, whose pass has no landing proof on either
-    medium (:func:`cratekit.intake.land_cli.pass_landed`), since its tail may
-    have renamed them; a pass that landed is not named. A library root or a
-    session log the proof cannot read refuses.
-
-    A folder that is not there holds nothing a landing could take; one that
-    cannot be listed refuses, never reads as empty.
+    The go's reading of the folder, :func:`cratekit.intake.beside.beside`,
+    lifted there by R-1499 so ``sync land`` reads it the same way: anything a
+    landing would take that is not one of the go's own tracks at its download
+    name, or a file its own tail left (``kept``) while its pass ``own_pass``
+    has no landing proof, is beside it. A folder or a library root that
+    cannot be read refuses.
     """
-    folder = _resolved(staging)
-    try:
-        held = {_resolved(path) for path in folder_listing(folder)} if folder.is_dir() else set()
-    except OSError as exc:
-        raise refuse(
-            "intake-list-unusable",
-            f"the staging folder {folder} could not be listed ({exc}), so whether it "
-            f"holds a download no landing took cannot be read; nothing was queued or run",
-            steps=(f"make {folder} readable, then run the go again",),
-            origin=("label.go",),
-            detail={"folder": str(folder)},
-        ) from exc
-    downloads: dict[str, tuple[jobs.Job, list[Path]]] = {}
-    for job in jobs.list_jobs(store):
-        inside = [
-            path
-            for path in (
-                _resolved(item.artifact)
-                for item in jobs.items(store, job.job_id)
-                if item.state is jobs.ItemState.DONE and item.artifact
-            )
-            if path.parent == folder
-        ]
-        if inside:
-            downloads[job.job_id] = (job, inside)
-    mine = [path for job_id in own for path in downloads.get(job_id, (None, []))[1]]
-    others = held - set(mine)
-    if not others:
-        return Beside(folder=folder)
-    found: list[Waiting] = []
-    named: set[Path] = set()
-    for job_id, (job, paths) in downloads.items():
-        if job_id in own:
-            continue
-        present = [path for path in paths if path in others]
-        if present:
-            named.update(present)
-            found.append(
-                Waiting(job_id=job_id, run=_origin_run(job), verb=job.handler_key, tracks=len(present))
-            )
-    unnamed = sorted(others - named)
-    if unnamed and kept and not (own_pass and land_cli.pass_landed(cfg, own_pass)):
-        unnamed = [path for path in unnamed if _identity(path) not in kept]
-    if unnamed:
-        proven: dict[str, bool] = {}
-        for job_id, (job, paths) in downloads.items():
-            run = _origin_run(job)
-            if job_id in own or run is None or any(path in others for path in paths):
-                continue
-            name = default_name(str((job.payload or {}).get(RUN_KEY) or run))
-            if name not in proven:
-                proven[name] = land_cli.pass_landed(cfg, name)
-            if not proven[name]:
-                found.append(Waiting(job_id=job_id, run=run, verb=job.handler_key, tracks=0))
-    return Beside(
-        folder=folder, waiting=tuple(found), unnamed=tuple(path.name for path in unnamed)
+    return staged.beside(
+        cfg,
+        store,
+        staging,
+        own,
+        kept=kept,
+        own_pass=own_pass,
+        origin=("label.go",),
+        again="then run the go again",
     )
 
 

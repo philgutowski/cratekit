@@ -320,7 +320,9 @@ def test_a_stale_queued_analyze_job_is_replaced_not_resumed(machine, monkeypatch
     _account(monkeypatch, script, "101", "102")
     staging = _staged(cfg)
     staging.mkdir(parents=True, exist_ok=True)
-    (staging / "old.wav").write_bytes(b"")
+    # NO FILE OF ITS OWN IN THE FOLDER (R-1499): a file no download names
+    # would refuse the pass before its download, and this scenario is the
+    # stale job, which names its item whether or not the file is there.
     with jobs.open_store() as store:
         stale = jobs.enqueue(
             store,

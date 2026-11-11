@@ -1,0 +1,278 @@
+name = "r1499"
+pass_kind = "light"
+
+[[rows]]
+id = "S01_download_reading"
+description = "sync land: the reading before the download never refuses, so a pass downloads beside a go's download at its gate"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if not found:
+        return settled
+'''
+new = '''    if not found or step == DOWNLOAD:
+        return settled
+'''
+
+[[rows]]
+id = "S02_tail_reading"
+description = "sync land: the reading before the tail never refuses, so a download finished during the pass's download is tailed and landed with it"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if not found:
+        return settled
+'''
+new = '''    if not found or step == TAG:
+        return settled
+'''
+
+[[rows]]
+id = "S03_arrival_after_tail"
+description = "sync land: no check after name apply, so a download finished during the tail is renamed and planned into the landing"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''            if changed is not None:
+                # NOT CONTINUED'''
+new = '''            if False:
+                # NOT CONTINUED'''
+
+[[rows]]
+id = "S04_arrival_after_plan"
+description = "sync land: a landing planned over an arrival is handed on at its gate"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''                changed = _arrived(cfg, staging, name, before)
+                if changed is None:
+                    raise
+'''
+new = '''                changed = None
+                if changed is None:
+                    raise
+'''
+
+[[rows]]
+id = "S05_keep_after_arrival"
+description = "_keep: keep the record although something arrived, so the arrival reads as the pass's own on its next run"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if why is not None:
+        report.warnings.append('''
+new = '''    if False:
+        report.warnings.append('''
+
+[[rows]]
+id = "S06_keep_called"
+description = "sync land: keep no record at the tail's stop, so the pass continued refuses beside its own renamed tracks"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''            _keep(report, cfg, staging, name, before)'''
+new = '''            pass'''
+
+[[rows]]
+id = "S07_kept_read"
+description = "_alone: read no kept record, so the pass's own renamed tracks are beside it"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''                kept=staged.kept(staged.pass_record(cfg, name)),'''
+new = '''                kept=frozenset(),'''
+
+[[rows]]
+id = "S08_own_pass_proof"
+description = "_alone: never read the pass's landing proof, so a landed pass's record still reads files as its own"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''                own_pass=name,
+                origin=_ORIGIN,'''
+new = '''                own_pass=None,
+                origin=_ORIGIN,'''
+
+[[rows]]
+id = "S09_own_library"
+description = "_own_downloads: a download of another library over the pass's list is its own"
+file = "src/cratekit/cli/sync_land.py"
+surface = "maintainer"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''        if staged.pass_of(job) == name and job.library_id == cfg.library.volume_id'''
+new = '''        if staged.pass_of(job) == name'''
+
+[[rows]]
+id = "S10_own_by_list"
+description = "_own_downloads: no download is the pass's own, so its own fresh tracks refuse it"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''        if staged.pass_of(job) == name and job.library_id == cfg.library.volume_id'''
+new = '''        if staged.pass_of(job) == name + '-' and job.library_id == cfg.library.volume_id'''
+
+[[rows]]
+id = "S11_unreadable_refuses"
+description = "_alone: a refusal of the reading (an unlistable folder, an unreadable root) reads as nothing beside"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    except CratekitError as exc:
+        raise _Stop(step, exc) from None
+    except OSError'''
+new = '''    except CratekitError:
+        return staged.Settled(frozenset(), 0)
+    except OSError'''
+
+[[rows]]
+id = "S12_warnings_in_refusal"
+description = "_with_warnings: a refusal drops the pass's warnings"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if report.warnings:
+        data["warnings"]'''
+new = '''    if False:
+        data["warnings"]'''
+
+[[rows]]
+id = "S13_own_unnamed_step"
+description = "_own_unnamed: never name the landing under the pass for files no download names"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if not (found.unnamed and own):
+        return ()'''
+new = '''    if True:
+        return ()'''
+
+[[rows]]
+id = "B01_pass_suffix"
+description = "pass_of: any download list's name is a sync pass"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if name == listed or not name.endswith(SYNCED_SUFFIX):'''
+new = '''    if name == listed:'''
+
+[[rows]]
+id = "B02_pass_handler"
+description = "pass_of: any handler's job over a list is a pass's download"
+file = "src/cratekit/intake/beside.py"
+surface = "maintainer"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if job.handler_key != DOWNLOAD_KEY:
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "B03_pass_step"
+description = "Waiting.step: a sync pass's download is named as a plain one, with no continue command"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''        if self.pass_name is not None and self.pass_run is not None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B04_pass_maybe_renamed"
+description = "beside: a sync pass whose tail may have renamed files no download names is never named"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''            name = pass_of(job) if run is None else None'''
+new = '''            name = None'''
+
+[[rows]]
+id = "B05_arrived_items"
+description = "arrived: a new finished item of another download is not read"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    new = sorted({job_id for job_id, _item in after.items - before.items})'''
+new = '''    new = []'''
+
+[[rows]]
+id = "B06_arrived_count"
+description = "arrived: a change in the count of files a landing takes is not read"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if not new and after.count == before.count:
+        return None'''
+new = '''    if not new:
+        return None'''
+
+[[rows]]
+id = "B07_settled_own"
+description = "settled: the batch's own items are counted, so its own late item reads as an arrival"
+file = "src/cratekit/intake/beside.py"
+surface = "maintainer"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''        if job.job_id not in own
+        for item in jobs.items(store, job.job_id)
+        if item.state is jobs.ItemState.DONE
+        and item.artifact
+        and resolved'''
+new = '''        for item in jobs.items(store, job.job_id)
+        if item.state is jobs.ItemState.DONE
+        and item.artifact
+        and resolved'''
+
+[[rows]]
+id = "B08_kept_identity"
+description = "beside (sample of the lifted guards): files no download names are all read as own when a record exists"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''        unnamed = [path for path in unnamed if identity(path) not in kept]'''
+new = '''        unnamed = []'''
+
+[[rows]]
+id = "B09_unlistable"
+description = "beside (sample of the lifted guards): an unlistable folder reads as empty"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    except OSError as exc:
+        raise refuse(
+            "intake-list-unusable",
+            f"the staging folder {folder} could not be listed ({exc}), so whether it "'''
+new = '''    except OSError:
+        held = set()
+    if False:
+        raise refuse(
+            "intake-list-unusable",
+            f"the staging folder {folder} could not be listed, so whether it "'''
+
+[[rows]]
+id = "B10_plain_step_moves_out"
+description = "Waiting.step: a plain download's step says to land it in place, which lands the batch with it"
+file = "src/cratekit/intake/beside.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''f"move the tracks of job {self.job_id} out of {folder}, and land them on "'''
+new = '''f"land the tracks of job {self.job_id} in {folder}, and land them on "'''
+
+[[rows]]
+id = "L01_go_arrival_after_tail"
+description = "label sync: no check after the go's name apply, so an arrival is planned into the go's landing"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''        if changed is not None:
+            raise tail.Stop(tail.LAND, changed, continues=False)'''
+new = '''        if False:
+            raise tail.Stop(tail.LAND, changed, continues=False)'''
+
+[[rows]]
+id = "L02_go_kept_after_arrival"
+description = "_kept: the go keeps its record although something arrived"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_sync_land_beside.py", "tests/test_sync_land.py", "tests/test_sync_land_staged.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land_mirror_downloads.py"]
+old = '''    if changed is not None:
+        return [_unkept(folder, job, _changed_said(changed))]'''
+new = '''    if False:
+        return [_unkept(folder, job, _changed_said(changed))]'''

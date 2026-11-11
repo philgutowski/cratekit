@@ -42,8 +42,9 @@ on names already taken. Each row still missing is asked of the files a landing
 would take from the staging folder, :func:`cratekit.intake.landing.listing`,
 by the ISRC the downloader writes on every file, read through the index reader
 the landing files a manifest by. A row a staged file carries is counted under
-``staged``, named with that file, and not listed; the landing over the folder
-lands it. A file whose ISRC is absent, malformed or unreadable matches nothing,
+``staged``, named with that file, and not listed; it lands with the download
+that staged it, since ``crate sync land`` lands only its own pass's tracks and
+refuses beside it (R-1499). A file whose ISRC is absent, malformed or unreadable matches nothing,
 and a row with no ISRC asks nothing, so the track stays listed. A row this
 list's own earlier copy already names is never subtracted, so a continued pass
 whose own downloads are now staged writes the same bytes again. A staging
@@ -1000,8 +1001,8 @@ def _listed(
     elif staged_rows:
         said = (
             f"nothing listed for download: the {len(staged_rows)} missing track(s) "
-            f"are staged already in {staged.folder if staged else ''}, and the landing "
-            f"over that folder lands them"
+            f"are staged already in {staged.folder if staged else ''}, and land with "
+            f"the download that staged them"
         )
     elif gained:
         said = (
@@ -1131,8 +1132,8 @@ def _staged_check(
             "info",
             f"{len(rows)} missing track(s) are staged already in "
             f"{staged.folder if staged else ''} by a download not landed yet, so they "
-            f"are not listed or downloaded again, and the landing over that folder "
-            f"lands them: "
+            f"are not listed or downloaded again, and land with the download that "
+            f"staged them: "
             + "; ".join(f"{one.artist} - {one.title} as {path.name}" for one, path in rows),
         )
     if staged is None:

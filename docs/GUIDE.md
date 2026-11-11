@@ -152,7 +152,24 @@ the two commands that answer and apply it and the rekordbox visit after.
 - A track the download refuses for good (lossy only, gone from the provider)
   is named and skipped. Anything a wait would mend ends the pass.
 - A missing track already staged by an earlier unlanded download is not
-  downloaded again.
+  downloaded again, and not landed with this pass either: every download
+  stages into the one folder and a landing takes the whole of it, so the pass
+  refuses, before its download and again before its tail, while the folder
+  holds anything that is not its own. It names each download and how it
+  lands: an earlier pass's with its `crate sync land --pass-run RUN`, a label
+  go's with `crate --run RUN label sync --go`, a plain `acquire download`'s or
+  a fallback fetch's by moving it out and landing it on its own, and files no
+  download names, which a tail's `name apply` renames or a person put there
+  (with the landing under the pass, if they are its own tracks and it no
+  longer knows them). The pass's
+  own tracks its tail renamed are its own when it is continued, by what its
+  tail left in the folder when it stopped (name, size and modification time),
+  until its landing is proven. A folder or a library root that cannot be read
+  refuses. A download that finishes, or a file put in the folder, while the
+  pass's tail runs refuses the landing before it is planned, and the tail's
+  record is not kept: move what arrived out, then land the pass with the
+  `crate intake land` the refusal names. `label sync --go`'s tail refuses the
+  same way.
 - When the vocal model cannot score here it stops first at
   `sync.land.without-vocals`; install the `vocals` extra, or answer
   `crate -d sync.land.without-vocals=go sync land` to land unscored.
@@ -467,10 +484,12 @@ the whole folder, so land each before the next. A fresh `--go` refuses before
 its gate while the folder holds anything that is not its own: another
 download's tracks, a go's (named with the `crate --run RUN label sync --go`
 that takes it to its landing, names the landing its tail reached, or refuses
-naming the tail by hand while the folder holds anything else), a plain
-`acquire download`'s or a fallback fetch's (land them, or move them out), or
-files no download names, which a tail's `name apply` renames or a person put
-there (named, to land or move out). A go whose pass's intake file, or on a
+naming the tail by hand while the folder holds anything else), a sync
+pass's (named with the `crate sync land --pass-run RUN` that takes it to its
+landing), a plain `acquire download`'s or a fallback fetch's (move them out and
+land them on their own), or files no download names, which a tail's `name
+apply` renames or a person put there (named, to move out and land on their
+own). A go or a sync pass whose pass's intake file, or on a
 database native intake tree its landing's record, exists is not named for
 those. A run's own `--go` refuses its tail, naming the commands, beside any of
 these or a later go's download. Files no download names are read as its own

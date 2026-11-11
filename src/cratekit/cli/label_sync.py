@@ -42,6 +42,13 @@ refuses with a landing in its detail, because the folder holds what is not its
 own (another download's tracks, or files no download names, R-1467), has the
 tail named as commands to type.
 
+NOTHING THAT ARRIVED WHILE THE TAIL RAN IS LANDED WITH IT (R-1499). The
+tail is run in two halves, through ``name apply`` and then the landing, and
+between them the folder is compared with what it held as the tail started
+(:func:`cratekit.intake.beside.arrived`): a download another process finished
+meanwhile, or a file a person put there, would have been renamed with the
+go's own, so the landing is not planned and the tail's record is not kept.
+
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
 nothing, one that downloaded nothing, and every walk or question that never
 reached the go are the verb's own envelopes, untouched.
@@ -58,8 +65,9 @@ from typing import TYPE_CHECKING, Any
 from cratekit.cli import gates, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
 from cratekit.core import jobs
-from cratekit.core.cause import CratekitError, Outcome, rebuilt
+from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode
+from cratekit.intake import beside as staged
 from cratekit.label import go, sync_cli
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
@@ -180,18 +188,38 @@ def label_sync(ctx: Context) -> Envelope:
     folder = Path(str(land["folder"])).expanduser().absolute()
     landing = _landing_args(land)
     warnings = [*envelope.warnings]
+    before = _settled(land, folder)
     try:
-        tail.run(chain, folder, cfg, landing)
+        if isinstance(before, CratekitError):
+            raise tail.Stop(tail.TAG, before)
+        tail.through_name(chain, folder, cfg)
+        # NOTHING ARRIVED WHILE THE TAIL RAN (R-1499, review round one): a
+        # download another process finished meanwhile was renamed with the
+        # go's own, and the landing would take it under the go's pass.
+        changed = _arrived(land, folder, landing, before)
+        if changed is not None:
+            raise tail.Stop(tail.LAND, changed, continues=False)
+        try:
+            tail.land(chain, folder, landing)
+        except tail.Attend as stop:
+            # READ ONCE MORE AFTER THE PLAN (review round two, finding 1): an
+            # arrival between the check above and the landing's own listing
+            # is in the plan, so the plan is refused, not recorded as reached.
+            changed = _arrived(land, folder, landing, before)
+            if changed is None:
+                raise
+            raise tail.Stop(tail.LAND, _planned_over(changed, stop), continues=False) from None
     except tail.Done as done:
         chain.summary["stopped_at"] = done.step
     except tail.Attend as stop:
-        warnings.extend(_kept(cfg, land, folder))
+        warnings.extend(_kept(cfg, land, folder, before))
         warnings.extend(_remember(ctx, stop, land))
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
-        _kept(cfg, land, folder)
+        # THE RECORD'S WARNING RIDES THE REFUSAL (review round two, finding 3).
+        chain.warnings.extend(_kept(cfg, land, folder, before))
         raise _ended(envelope, chain, stop, folder, landing) from None
-    warnings.extend(_kept(cfg, land, folder))
+    warnings.extend(_kept(cfg, land, folder, before))
     return ctx.envelope(
         data=_data(envelope, chain),
         outcome=envelope.outcome,
@@ -225,7 +253,109 @@ def _remember(
     )
 
 
-def _kept(cfg, land: Mapping[str, Any], folder: Path) -> list[dict[str, str]]:
+def _own(land: Mapping[str, Any]) -> set[str]:
+    job = land.get("job")
+    return {job} if isinstance(job, str) and job else set()
+
+
+def _settled(land: Mapping[str, Any], folder: Path) -> staged.Settled | CratekitError:
+    """What the folder holds of other downloads as the go's tail starts (R-1499).
+
+    A folder or a queue that cannot be read is the refusal, returned for the
+    caller to end the tail with before it runs.
+    """
+    try:
+        with jobs.open_store() as store:
+            return staged.settled(store, folder, _own(land))
+    except CratekitError as exc:
+        return exc
+    except OSError as exc:
+        return staged_refusal(folder, exc)
+
+
+def staged_refusal(folder: Path, exc: OSError) -> CratekitError:
+    """The refusal for a staging folder the go's tail cannot list (R-1499)."""
+    return refuse(
+        "intake-list-unusable",
+        f"the staging folder {folder} could not be listed ({exc}), so what arrives in "
+        f"it while the tail runs cannot be read; the tail was not run",
+        steps=(f"make {folder} readable, then run the go again",),
+        origin=(_GO_ORIGIN,),
+        detail={"folder": str(folder)},
+    )
+
+
+def _arrived(
+    land: Mapping[str, Any], folder: Path, landing: Sequence[str], before: staged.Settled
+) -> CratekitError | None:
+    """The refusal for what arrived while the go's tail ran, or None (R-1499).
+
+    :func:`cratekit.intake.beside.arrived`, read against what the folder held
+    as the tail started; a queue that cannot be read refuses too.
+    """
+    try:
+        with jobs.open_store() as store:
+            return staged.arrived(
+                store,
+                folder,
+                _own(land),
+                before,
+                origin=(_GO_ORIGIN,),
+                batch=f"the go's download {land.get('job')}",
+                land_command=_commands(folder, landing, tail.LAND)[0],
+            )
+    except CratekitError as exc:
+        return exc
+
+
+def _changed_said(changed: CratekitError) -> str:
+    """What made the folder unsafe to keep, said as a clause (review round two, D1)."""
+    detail = changed.cause.detail or {}
+    if "arrived" not in detail:
+        return f"whether anything arrived while the tail ran cannot be read: {changed.cause.message}"
+    parts = []
+    if detail.get("arrived"):
+        parts.append(f"download job(s) {', '.join(map(str, detail['arrived']))} finished track(s) into it")
+    if detail.get("before") != detail.get("after"):
+        parts.append(
+            f"it held {detail.get('before')} file(s) a landing would take as the tail started "
+            f"and {detail.get('after')} after"
+        )
+    return "the staging folder changed while the tail ran: " + "; ".join(parts)
+
+
+def _unkept(folder: Path, job: str, why: str) -> dict[str, str]:
+    return {
+        "code": UNRECORDED_WARNING,
+        "message": (
+            f"what the tail left in {folder} was not kept for job {job}, since {why}; a "
+            f"later go under its run reads its own tracks there as not its own, and names "
+            f"the tail by hand"
+        ),
+    }
+
+
+def _planned_over(changed: CratekitError, stop: tail.Attend) -> CratekitError:
+    """The arrival refusal for a landing already planned over what arrived (round two)."""
+    run = (stop.cause.detail or {}).get("run_id")
+    cause = changed.cause
+    steps = (
+        f"do not answer the landing planned under run {run}: it took what arrived",
+        *cause.remediation.steps,
+    )
+    return rebuilt(
+        changed,
+        dataclasses.replace(
+            cause,
+            remediation=dataclasses.replace(cause.remediation, steps=steps),
+            detail={**dict(cause.detail or {}), "planned_run": run},
+        ),
+    )
+
+
+def _kept(
+    cfg, land: Mapping[str, Any], folder: Path, before: staged.Settled | CratekitError
+) -> list[dict[str, str]]:
     """Keep what the folder holds as the tail stops, under the go's job (R-1467).
 
     The tail's ``name apply`` renames every track before the landing's gate,
@@ -234,10 +364,22 @@ def _kept(cfg, land: Mapping[str, Any], folder: Path) -> list[dict[str, str]]:
     size and modification time, which is what lets that go read them as its
     own and nothing else as its own. One that cannot be kept is a warning, and
     the later go then refuses its tail beside them, naming the tail by hand.
+
+    NOT WHEN ANYTHING ARRIVED WHILE THE TAIL RAN (R-1499, review round one):
+    what arrived may have been renamed with the go's own, so a record kept
+    then would read it as the go's own; the warning says it was not kept.
     """
     job = land.get("job")
     if not (isinstance(job, str) and job):
         return []
+    try:
+        changed = (
+            before if isinstance(before, CratekitError) else _arrived(land, folder, (), before)
+        )
+    except Exception as exc:  # noqa: BLE001 - a queue that fails here is the record lost
+        return [_unkept(folder, job, f"the queue could not be read ({type(exc).__name__}: {exc})")]
+    if changed is not None:
+        return [_unkept(folder, job, _changed_said(changed))]
     try:
         with jobs.open_store() as store:
             go.keep_tail(cfg, store, job, folder)
@@ -331,6 +473,14 @@ def _attended(
     )
 
 
+def _with_warnings(envelope: Envelope, chain: tail.Chain) -> dict[str, Any]:
+    """The go's report for a refusal, with the chain's warnings, which it has no other place for."""
+    data = _data(envelope, chain)
+    if chain.warnings:
+        data["warnings"] = list(chain.warnings)
+    return data
+
+
 def _ended(
     envelope: Envelope,
     chain: tail.Chain,
@@ -361,7 +511,7 @@ def _ended(
         dataclasses.replace(
             cause,
             remediation=dataclasses.replace(cause.remediation, steps=steps),
-            detail={**dict(cause.detail or {}), "label_sync": _data(envelope, chain)},
+            detail={**dict(cause.detail or {}), "label_sync": _with_warnings(envelope, chain)},
         ),
     )
 
