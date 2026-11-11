@@ -287,7 +287,14 @@ crate route pending
   labels is tagged in one call with every catalogue refusing, as long as each
   file's line names its label. Where one needle carries another, as a
   sublabel's carries its parent's, the longer wins; a line naming two labels
-  otherwise settles neither, and the file is asked of the catalogues. With
+  otherwise settles neither, and the file is asked of the catalogues. A
+  label tag is read as a label's name, and as an id only when no label is
+  called that; a name two registered labels share, after a `registry rename`
+  onto a taken name, settles neither too. `--label` takes an id or a name,
+  and a name two labels share takes the first registered, so pass the id
+  there; the label it names is then held by its id, so it is never given
+  another label's genre under the same name.
+  With
   `--output json` the summary lists each file by label, by catalogue or not
   at all, with the reason a failed one failed; a sweep that ends in a refusal
   carries the same list in the refusal's detail and counts it in its message.
