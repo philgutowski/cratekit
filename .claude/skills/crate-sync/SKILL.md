@@ -86,10 +86,15 @@ status:
   files no download names. An earlier pass named with tracks in the folder
   (`tracks` above 0) is landed first with the `crate sync land --pass-run`
   its step names, oldest first, through steps 2 to 4; this is a rule, not a
-  question. Then continue this pass with the `--pass-run` and the run in
-  `data.summary.pass_run` its last step names. A label go's download, files
+  question. Then continue this pass with the `--pass-run` its last step
+  names, the run in `cause.detail.sync_land.summary.pass_run`. A label go's download, files
   no download names, and a pass named only as one whose tail may have renamed
   them are not this skill's to land: stop, and report what the refusal named.
+- **The folder changed while the tail ran.** The refusal carries
+  `cause.detail.arrived`, `before` and `after`: a download finished, or a
+  file was put there, during the tail, and its `name apply` may have renamed
+  it with the pass's own. It is not this skill's to sort: answer no landing,
+  stop, and report what it named.
 - **It failed.** The refusal names the step and its remedy. Act on the remedy
   when a rule covers it, and continue the pass with the `--pass-run` command
   its steps name; otherwise stop, and report the step and its message.

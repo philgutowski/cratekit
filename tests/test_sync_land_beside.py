@@ -524,13 +524,15 @@ class ArrivingTail(RenamingTail):
     then renames what arrived with the batch's own.
     """
 
-    def __init__(self, arrive) -> None:
+    def __init__(self, arrive, at: tuple[str, ...] = ("analyze", "run")) -> None:
         super().__init__()
         self.arrive = arrive
+        self.at = at
         self.arrived = None
 
     def __call__(self, argv: list[str]) -> tuple[int, dict]:
-        if argv[:2] == ["analyze", "run"] and "--job" in argv and self.arrived is None:
+        driven = "--job" in argv or self.at == ("intake", "land")
+        if tuple(argv[: len(self.at)]) == self.at and driven and self.arrived is None:
             self.arrived = self.arrive()
         return super().__call__(argv)
 
@@ -563,6 +565,9 @@ def test_a_download_finished_while_the_passes_tail_runs_refuses_its_landing(
     )
     record = staged_reading.pass_record(cfg, name)
     assert not record.exists(), "the record kept what arrived as the pass's own"
+    # REVIEW ROUND TWO, D2: no continue command, which would refuse beside the
+    # pass's own renamed tracks with no record kept.
+    assert not any("crate sync land --pass-run" in one for one in cause["remediation"]["steps"])
     warnings = cause["detail"]["sync_land"]["warnings"]
     assert [one["code"] for one in warnings].count(sync_land.UNRECORDED_WARNING) == 1, warnings
 
@@ -660,3 +665,67 @@ def test_only_a_download_over_a_synced_list_is_a_passes():
     assert staged_reading.pass_of(job("/x/label-sync-ab12.list.json")) is None
     assert staged_reading.pass_of(job("/x/p_synced.json")) is None
     assert staged_reading.pass_of(job("/x/p_synced.list.json", "acquire.fallback-fetch")) is None
+
+
+def test_a_download_finished_as_the_landing_is_planned_refuses_the_planned_landing(
+    machine, monkeypatch, tmp_path
+):
+    """Review round two, finding 1: an arrival between the check after the
+    tail and the landing's own listing is in the plan; the plan is refused,
+    naming its run, rather than handed on at its gate."""
+    cfg, script = machine
+    _landable(script)
+    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"), ("intake", "land"))
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+
+    code, envelope = _pass(monkeypatch, "101")
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = _refused_beside(envelope, sync_land.LAND)
+    assert cause["detail"]["arrived"] == [stand_in.arrived]
+    assert cause["detail"]["planned_run"] == "land-run"
+    assert cause["remediation"]["steps"][0] == (
+        "do not answer the landing planned under run land-run: it took what arrived"
+    )
+    assert not staged_reading.pass_record(cfg, _summary(envelope)["land_name"]).exists()
+
+
+def test_a_download_finished_as_a_gos_landing_is_planned_refuses_it(full, monkeypatch, tmp_path):
+    cfg, script = full
+    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"), ("intake", "land"))
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+    one_release_answered(monkeypatch, script)
+
+    _go_run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = envelope["cause"]
+    assert cause["detail"]["planned_run"] == "land-run", cause
+    (go_job,) = our_jobs()
+    assert staged_reading.kept(staged_reading.go_record(cfg, go_job.job_id)) == frozenset()
+
+
+def test_a_gos_tail_that_fails_while_a_download_arrives_says_its_record_was_not_kept(
+    full, monkeypatch, tmp_path
+):
+    """Review round two, finding 3: the record's warning rides the refusal."""
+    cfg, script = full
+
+    def arrive_and_fail():
+        return downloaded_by_hand(script, tmp_path, "x1")
+
+    stand_in = ArrivingTail(arrive_and_fail)
+
+    def failing(_job, _item):
+        raise RuntimeError("the analysis failed")
+
+    stand_in.work[sync_land.ANALYZE] = failing
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+    one_release_answered(monkeypatch, script)
+
+    _go_run, code, envelope = approved_go()
+
+    assert code != int(ExitCode.OK), envelope
+    warnings = envelope["cause"]["detail"]["label_sync"]["warnings"]
+    (unkept,) = [one for one in warnings if one["code"] == "label-sync-landing-unrecorded"]
+    assert f"download job(s) {stand_in.arrived} finished track(s) into it" in unkept["message"]

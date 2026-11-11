@@ -103,7 +103,7 @@ from __future__ import annotations
 import argparse
 import dataclasses
 import shlex
-from collections.abc import Sequence
+from collections.abc import Collection, Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
 
@@ -1150,7 +1150,7 @@ def _alone(
             f"the staging folder {found.folder} holds {found.said()}; a landing lands "
             f"the whole folder, so this pass would land them with its own, under its "
             f"pass {name}, and it {before}",
-            steps=(*found.steps(), *_own_unnamed(found, staging, name)),
+            steps=(*found.steps(), *_own_unnamed(found, staging, name, own)),
             origin=_ORIGIN,
             detail={**found.to_json(), "pass": name, "own": sorted(own)},
         ),
@@ -1162,14 +1162,17 @@ def _land_command(staging: Path, name: str) -> str:
     return shlex.join(["crate", "intake", "land", str(staging), "--pass", name])
 
 
-def _own_unnamed(found: staged_reading.Beside, staging: Path, name: str) -> tuple[str, ...]:
+def _own_unnamed(
+    found: staged_reading.Beside, staging: Path, name: str, own: Collection[str]
+) -> tuple[str, ...]:
     """The way on when the files no download names may be the pass's own (review round one).
 
     A pass whose tail renamed its tracks and whose record of them was lost, or
     never kept by an older build, reads them as files no download names. Only
-    a person can tell, so the step says how to land them under the pass.
+    a person can tell, so the step says how to land them under the pass; only
+    for a pass with a download of its own (review round two, finding 8).
     """
-    if not found.unnamed:
+    if not (found.unnamed and own):
         return ()
     return (
         f"if the track(s) no download names are this pass's own, renamed by its tail "
@@ -1214,6 +1217,44 @@ def _arrived(
         return exc
 
 
+def _changed_said(changed: CratekitError) -> str:
+    """What made the folder unsafe to keep, said as a clause (review round two, D1)."""
+    detail = changed.cause.detail or {}
+    if "arrived" not in detail:
+        return f"whether anything arrived while the tail ran cannot be read: {changed.cause.message}"
+    parts = []
+    if detail.get("arrived"):
+        parts.append(f"download job(s) {', '.join(map(str, detail['arrived']))} finished track(s) into it")
+    if detail.get("before") != detail.get("after"):
+        parts.append(
+            f"it held {detail.get('before')} file(s) a landing would take as the tail started "
+            f"and {detail.get('after')} after"
+        )
+    return "the staging folder changed while the tail ran: " + "; ".join(parts)
+
+
+def _planned_over(changed: CratekitError, stop: _Attend) -> CratekitError:
+    """The arrival refusal for a landing already planned over what arrived (round two).
+
+    The landing waits at its gate on its own run; that plan took what
+    arrived, so the step says not to answer it.
+    """
+    run = (stop.cause.detail or {}).get("run_id")
+    cause = changed.cause
+    steps = (
+        f"do not answer the landing planned under run {run}: it took what arrived",
+        *cause.remediation.steps,
+    )
+    return rebuilt(
+        changed,
+        dataclasses.replace(
+            cause,
+            remediation=dataclasses.replace(cause.remediation, steps=steps),
+            detail={**dict(cause.detail or {}), "planned_run": run},
+        ),
+    )
+
+
 def _keep(
     report: _Pass, cfg: config.Config, staging: Path, name: str, before: staged_reading.Settled
 ) -> None:
@@ -1232,14 +1273,19 @@ def _keep(
     """
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
-    changed = _arrived(cfg, staging, name, before)
-    if changed is not None:
+    try:
+        changed = _arrived(cfg, staging, name, before)
+        why = _changed_said(changed) if changed is not None else None
+    except Exception as exc:  # noqa: BLE001 - a queue that fails here is the record lost
+        why = f"the queue could not be read ({type(exc).__name__}: {exc})"
+    if why is not None:
         report.warnings.append(
             {
                 "code": UNRECORDED_WARNING,
                 "message": (
-                    f"what the tail left in {staging} was not kept for the pass {name}: "
-                    f"{changed.cause.message}"
+                    f"what the tail left in {staging} was not kept for the pass {name}, "
+                    f"since {why}; the pass continued reads its own tracks there as not "
+                    f"its own, and refuses beside them"
                 ),
             }
         )
@@ -1356,8 +1402,20 @@ def sync_land(ctx: Context) -> Envelope:
             # own, and the landing would take it under the pass.
             changed = _arrived(cfg, staging, name, before)
             if changed is not None:
-                raise _Stop(LAND, changed)
-            tail.land(report, folder, ["--pass", name])
+                # NOT CONTINUED (review round two, D2): the pass continued
+                # refuses beside the tracks its tail renamed, since no record
+                # was kept; the way on is the landing by hand the steps name.
+                raise _Stop(LAND, changed, continues=False)
+            try:
+                tail.land(report, folder, ["--pass", name])
+            except _Attend as stop:
+                # READ ONCE MORE AFTER THE PLAN (review round two, finding 1):
+                # an arrival between the check above and the landing's own
+                # listing is in the plan, so the plan is refused, not handed on.
+                changed = _arrived(cfg, staging, name, before)
+                if changed is None:
+                    raise
+                raise _Stop(LAND, _planned_over(changed, stop), continues=False) from None
         finally:
             _keep(report, cfg, staging, name, before)
     except _Done as done:

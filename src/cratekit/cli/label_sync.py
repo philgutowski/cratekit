@@ -198,8 +198,17 @@ def label_sync(ctx: Context) -> Envelope:
         # go's own, and the landing would take it under the go's pass.
         changed = _arrived(land, folder, landing, before)
         if changed is not None:
-            raise tail.Stop(tail.LAND, changed)
-        tail.land(chain, folder, landing)
+            raise tail.Stop(tail.LAND, changed, continues=False)
+        try:
+            tail.land(chain, folder, landing)
+        except tail.Attend as stop:
+            # READ ONCE MORE AFTER THE PLAN (review round two, finding 1): an
+            # arrival between the check above and the landing's own listing
+            # is in the plan, so the plan is refused, not recorded as reached.
+            changed = _arrived(land, folder, landing, before)
+            if changed is None:
+                raise
+            raise tail.Stop(tail.LAND, _planned_over(changed, stop), continues=False) from None
     except tail.Done as done:
         chain.summary["stopped_at"] = done.step
     except tail.Attend as stop:
@@ -207,7 +216,8 @@ def label_sync(ctx: Context) -> Envelope:
         warnings.extend(_remember(ctx, stop, land))
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
-        _kept(cfg, land, folder, before)
+        # THE RECORD'S WARNING RIDES THE REFUSAL (review round two, finding 3).
+        chain.warnings.extend(_kept(cfg, land, folder, before))
         raise _ended(envelope, chain, stop, folder, landing) from None
     warnings.extend(_kept(cfg, land, folder, before))
     return ctx.envelope(
@@ -298,6 +308,51 @@ def _arrived(
         return exc
 
 
+def _changed_said(changed: CratekitError) -> str:
+    """What made the folder unsafe to keep, said as a clause (review round two, D1)."""
+    detail = changed.cause.detail or {}
+    if "arrived" not in detail:
+        return f"whether anything arrived while the tail ran cannot be read: {changed.cause.message}"
+    parts = []
+    if detail.get("arrived"):
+        parts.append(f"download job(s) {', '.join(map(str, detail['arrived']))} finished track(s) into it")
+    if detail.get("before") != detail.get("after"):
+        parts.append(
+            f"it held {detail.get('before')} file(s) a landing would take as the tail started "
+            f"and {detail.get('after')} after"
+        )
+    return "the staging folder changed while the tail ran: " + "; ".join(parts)
+
+
+def _unkept(folder: Path, job: str, why: str) -> dict[str, str]:
+    return {
+        "code": UNRECORDED_WARNING,
+        "message": (
+            f"what the tail left in {folder} was not kept for job {job}, since {why}; a "
+            f"later go under its run reads its own tracks there as not its own, and names "
+            f"the tail by hand"
+        ),
+    }
+
+
+def _planned_over(changed: CratekitError, stop: tail.Attend) -> CratekitError:
+    """The arrival refusal for a landing already planned over what arrived (round two)."""
+    run = (stop.cause.detail or {}).get("run_id")
+    cause = changed.cause
+    steps = (
+        f"do not answer the landing planned under run {run}: it took what arrived",
+        *cause.remediation.steps,
+    )
+    return rebuilt(
+        changed,
+        dataclasses.replace(
+            cause,
+            remediation=dataclasses.replace(cause.remediation, steps=steps),
+            detail={**dict(cause.detail or {}), "planned_run": run},
+        ),
+    )
+
+
 def _kept(
     cfg, land: Mapping[str, Any], folder: Path, before: staged.Settled | CratekitError
 ) -> list[dict[str, str]]:
@@ -317,17 +372,14 @@ def _kept(
     job = land.get("job")
     if not (isinstance(job, str) and job):
         return []
-    changed = before if isinstance(before, CratekitError) else _arrived(land, folder, (), before)
+    try:
+        changed = (
+            before if isinstance(before, CratekitError) else _arrived(land, folder, (), before)
+        )
+    except Exception as exc:  # noqa: BLE001 - a queue that fails here is the record lost
+        return [_unkept(folder, job, f"the queue could not be read ({type(exc).__name__}: {exc})")]
     if changed is not None:
-        return [
-            {
-                "code": UNRECORDED_WARNING,
-                "message": (
-                    f"what the tail left in {folder} was not kept for job {job}: "
-                    f"{changed.cause.message}"
-                ),
-            }
-        ]
+        return [_unkept(folder, job, _changed_said(changed))]
     try:
         with jobs.open_store() as store:
             go.keep_tail(cfg, store, job, folder)
@@ -421,6 +473,14 @@ def _attended(
     )
 
 
+def _with_warnings(envelope: Envelope, chain: tail.Chain) -> dict[str, Any]:
+    """The go's report for a refusal, with the chain's warnings, which it has no other place for."""
+    data = _data(envelope, chain)
+    if chain.warnings:
+        data["warnings"] = list(chain.warnings)
+    return data
+
+
 def _ended(
     envelope: Envelope,
     chain: tail.Chain,
@@ -451,7 +511,7 @@ def _ended(
         dataclasses.replace(
             cause,
             remediation=dataclasses.replace(cause.remediation, steps=steps),
-            detail={**dict(cause.detail or {}), "label_sync": _data(envelope, chain)},
+            detail={**dict(cause.detail or {}), "label_sync": _with_warnings(envelope, chain)},
         ),
     )
 

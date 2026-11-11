@@ -477,7 +477,9 @@ class Settled:
     whose recorded artifact is in the folder, by job and item, and ``count``
     how many files a landing of the folder would take. The tail's steps tag,
     analyse and rename in place and add no file, so neither moves while the
-    tail runs unless something else put a file there.
+    tail runs unless something else put a file there, or ``name apply`` gave a
+    file a name the landing does not take (a leading dot), which refuses too
+    and is a residual.
     """
 
     items: frozenset[tuple[str, str]]
@@ -552,7 +554,7 @@ def arrived(
         f"while {batch}'s tail ran, the staging folder {folder} changed: "
         + "; ".join(said)
         + "; the tail's name apply may have renamed what arrived with the batch's own, "
-        "so the landing was not planned and the tail's record was not kept",
+        "so nothing tells them apart by name and the landing is not taken on",
         steps=(
             f"move what arrived out of {folder}, reading each file's tags, since name "
             f"apply may have renamed it",
