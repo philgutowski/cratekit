@@ -32,12 +32,20 @@ That is held by a test and not by this paragraph:
 files of several lengths and shapes against it, and fails if the cache gained
 or changed a single file.
 
-WHAT IT DOES NOT COVER. A path to librosa that does not go through the
-detector: ``analyze restamp`` and ``analyze calibrate`` measure energy from
-the file themselves, one process at a time, and ``analyze vocals`` decodes
-for the model. Each is a single process, as it was before this unit, so two
-of those commands started together on a cold cache are not held apart. And a
-platform with no ``fcntl`` takes no lock at all, so its workers warm together.
+WHAT IT DOES NOT COVER. ``analyze restamp`` and ``analyze calibrate`` measure
+energy from the file themselves, without the detector, and that path
+compiles a kernel of its own the warm up does not make (measured by the
+review: eleven cache files written on an empty cache, one of them a second
+specialisation absent from a warmed one). Each is a single process, as it
+was before this unit, so only two of those commands started together are
+not held apart. ``analyze vocals`` decodes without the detector too and was
+measured to write no cache file at all. And a platform with no ``fcntl``
+takes no lock, so its workers warm together.
+
+A WAIT ON THE LOCK IS NOT BOUNDED. A process waits for as long as the holder
+is alive, and a holder that is stopped rather than dead, a run suspended
+with Ctrl-Z inside its warm up, holds every later run until it is continued
+or killed. The residual U241 filed says what bounding it needs.
 
 Reads nothing of anybody's, writes one small audio file in a temporary
 directory of its own and removes it, and writes no tag, no tempo and no grid.
@@ -56,9 +64,11 @@ from typing import Iterator
 
 from cratekit.core.config import DEFAULT_TEMPO_CEILING, DEFAULT_TEMPO_FLOOR
 
-#: How long the audio a warm up measures runs. Long enough for every stage to
-#: do its ordinary work, the tempogram's window and the transform's lowest
-#: octave included, and short enough to cost about a second on a filled cache.
+#: How long the audio a warm up measures runs. A length, not a tuned minimum:
+#: the coverage test passes at this value and the review of U241 found it
+#: passes at two seconds too, so what holds the warm up to reaching every
+#: kernel is that test over real files and not this number. Twelve seconds
+#: costs about half a second a process on a filled cache.
 WARM_SECONDS = 12.0
 #: The rate the warm up's file is written at, so the decode resamples as it
 #: does for a real file.

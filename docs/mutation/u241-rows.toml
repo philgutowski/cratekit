@@ -225,6 +225,17 @@ new = '''        pass
 '''
 
 [[rows]]
+id = "M27_no_warm_up_before_the_first_head"
+description = "analyse_file: no warm up, so two workers on a cold cache compile into it together, crash, and leave it damaged"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_warm.py"]
+old = '''    warm.kernels()
+'''
+new = '''    warm.kernels  # not called
+'''
+
+[[rows]]
 id = "M21_no_check_line_on_the_answer"
 description = "_resume: the answer no longer carries the analyze.pool check"
 file = "src/cratekit/analysis/cli.py"

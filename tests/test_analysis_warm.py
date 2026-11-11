@@ -156,9 +156,25 @@ def test_the_warm_up_runs_inside_the_lock(monkeypatch):
 
 
 def test_the_warm_ups_own_head_does_not_wait_on_the_lock_it_holds(monkeypatch):
-    """The warm up measures through the detector, which asks to be warmed like any caller."""
+    """The warm up measures through the detector, which asks to be warmed like any caller.
+
+    The lock here is one that refuses a second entry out loud. The real one
+    would wait on itself for ever, so a regression would hang the suite and
+    name no test (the review of U241 measured exactly that).
+    """
     inner: list[bool] = []
+    held: list[bool] = []
+
+    class _OnceOnly:
+        def __enter__(self):
+            assert not held, "the warm up asked for the lock it was already holding"
+            held.append(True)
+
+        def __exit__(self, *exc):
+            held.clear()
+
     monkeypatch.setattr(detect, "heavy_available", lambda: True)
+    monkeypatch.setattr(warm, "exclusive", lambda: _OnceOnly())
     monkeypatch.setattr(warm, "_measure_one_head", lambda: inner.append(warm.kernels()))
     assert warm.kernels() is True
     assert inner == [False]
@@ -187,15 +203,24 @@ def test_nothing_is_warmed_and_no_lock_is_taken_without_the_extra(monkeypatch):
 
 
 def test_the_detector_asks_for_the_warm_up_before_it_decodes(tmp_path, monkeypatch):
-    librosa = pytest.importorskip("librosa")
+    """The one call that keeps two processes out of the kernel cache together.
+
+    Against a stand in for librosa, so it runs where the analysis extra is
+    not installed, which is where the merge gate runs: the review of U241
+    removed the call and nothing failed without the extra.
+    """
+    import types
+
     order: list[str] = []
-    monkeypatch.setattr(warm, "kernels", lambda: order.append("warmed"))
+    stand_in = types.ModuleType("librosa")
 
     def load(*args, **kwargs):
         order.append("decoded")
         raise RuntimeError("no such file")
 
-    monkeypatch.setattr(librosa, "load", load)
+    stand_in.load = load
+    monkeypatch.setitem(sys.modules, "librosa", stand_in)
+    monkeypatch.setattr(warm, "kernels", lambda: order.append("warmed"))
     found = detect.analyse_file(tmp_path / "missing.flac")
     assert found == {"path": tmp_path / "missing.flac", "terminal": detect.TERMINAL_UNDECODABLE}
     assert order == ["warmed", "decoded"]

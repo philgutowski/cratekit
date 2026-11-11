@@ -16,4 +16,8 @@ second result unread.
 
 **Closes when:** a stream test reads a later generation and returns to an
 earlier one, counting what each child measured. The author could not kill it:
-the row was the review's, measured at zero. Ledger only.
+the row was the review's, measured at zero. Round two also noted that
+`light.longest_seconds` has no caller left under `src` since the cost became
+the costliest track's, and that the warm up's twelve seconds can fall to two
+with its coverage test still passing, which the comment now says. Ledger
+only.
