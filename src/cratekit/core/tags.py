@@ -195,6 +195,13 @@ FIELDS: dict[str, TagSpec] = {
     # shows in its Label column is U177's to measure on a copy, and the entry
     # moves here, for reader and writer at once, if the measurement differs.
     "label": TagSpec("label", "TPUB", "----:com.apple.iTunes:LABEL"),
+    # U240. The release's copyright line, read so ``tag folder`` can name the
+    # registered label of a file that carries no label tag. The keys are the
+    # ones the vendored downloader writes on every file it delivers
+    # (``_vendor/downloader/metadata.py``): the Vorbis ``COPYRIGHT`` comment,
+    # which Vorbis reads in any case, the ID3 ``TCOP`` frame and the MP4
+    # ``cprt`` atom. Nothing in Cratekit writes it.
+    "copyright": TagSpec("copyright", "TCOP", "cprt"),
     # U157. How far the track's tempo moves over its length and the verdict
     # that reading takes, written by ``analyze run`` beside ``voxlevel`` so a
     # landing can mark the rows rekordbox should analyse with Dynamic. The

@@ -34,6 +34,14 @@ genre is written into the job's payload when it is queued, with the verb's
 for, as KTD9 freezes the configuration. A job queued before labels carried a
 genre has none frozen and is tagged exactly as it always was.
 
+SO ARE THE NEEDLES, BESIDE THE GENRES (U240). Every registered label's
+``--match`` needle, or its name, is frozen with them, and a file with no label
+tag in a sweep given no ``--label`` is matched to the registry by its
+copyright line through :func:`copyright_matcher`. That is what lets one call
+tag a folder of several labels, the label go's tail among them, with every
+catalogue blocked. A job queued before U240 froze no needles, and its files
+are tagged as they always were.
+
 THE FOLDER IS FROZEN ABSOLUTE. A resume is a fresh process that
 ``cratekit.cli.jobs`` spawns, and a relative folder would resolve against
 whatever directory that process happens to start in, which is a sweep of some
@@ -51,7 +59,9 @@ from cratekit.cli.output import Envelope
 from cratekit.core import active_taxonomy, art, config, jobs, taxonomy, taxonomy_word
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.label import harvest as label_harvest
 from cratekit.label import registry as labels
+from cratekit.label import verify as label_verify
 from cratekit.modules import foreground
 from cratekit.tagging import artifacts, published, searchers, shell
 
@@ -121,6 +131,21 @@ LABEL_TAG_OUTRANKED = "tag-folder-label-tag-outranked"
 #: a sweep tags by is frozen when it is queued, so the one typed on a resume is
 #: not applied, and saying so is cheaper than letting a person believe it was.
 LABEL_ON_RESUME = "tag-folder-label-on-resume"
+
+#: The warning a sweep carries when some files' copyright line named more than
+#: one registered label (U240). Those files were asked of the catalogues rather
+#: than given either label's genre, and the warning names the labels so a
+#: person can tag the files' label by hand or narrow a needle.
+COPYRIGHT_AMBIGUOUS = "tag-folder-copyright-ambiguous"
+
+#: The three ways a file can leave a sweep, as the per file report says (U240):
+#: its genre written from its registered label, written from a catalogue, or
+#: not written at all, whether it already had one, nothing answered, or its
+#: item failed before a report was kept.
+WAY_LABEL = "label"
+WAY_CATALOGUE = "catalogue"
+WAY_NONE = "none"
+WAYS: tuple[str, ...] = (WAY_LABEL, WAY_CATALOGUE, WAY_NONE)
 
 
 def _load() -> config.Config:
@@ -237,6 +262,15 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     registry does not know is a line a person can act on. The labels are not zero filled, on the
     unresolved strings' rule: they are names a person registered, not a set
     this build declares.
+
+    ``ways`` COUNTS EVERY REPORTED FILE BY THE WAY IT LEFT THE SWEEP (U240),
+    zero filled over :data:`WAYS`, and ``files`` lists each one in item order
+    with its way, the label whose genre it took and how that label was named,
+    so a mixed folder says per file whether its label, a catalogue or nothing
+    tagged it. Derived from fields every report has carried since U178, so a
+    report committed before U240 is still placed, with no ``named_by``.
+    ``copyright_ambiguous`` counts the files whose copyright line named more
+    than one registered label, keyed by the labels it named.
     """
     skipped = dict.fromkeys(tag_engine.SKIP_REASONS, 0)
     answer_values = (*(answer.value for answer in searchers.Answer), searchers.NOT_ASKED)
@@ -246,6 +280,9 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
     tagged_by[tag_engine.LABEL_GENRE] = 0
     label_genres: dict[str, int] = {}
     label_tags: dict[str, int] = {}
+    ways = dict.fromkeys(WAYS, 0)
+    files: list[dict[str, str]] = []
+    ambiguous: dict[str, int] = {}
     art_repair = dict.fromkeys(art.REPAIR_STATUSES, 0)
     art_fetch = dict.fromkeys(tag_engine.ART_FETCH_STATUSES, 0)
     unresolved: dict[str, int] = {}
@@ -269,6 +306,21 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         own = str(report.get("label_tag") or "")
         if own:
             label_tags[own] = label_tags.get(own, 0) + 1
+        way = _way(report, reason)
+        ways[way] += 1
+        by_label = way == WAY_LABEL
+        files.append(
+            {
+                "item": str(report.get("item") or ""),
+                "way": way,
+                "label": str(report.get("label") or "") if by_label else "",
+                "named_by": str(report.get("label_from") or "") if by_label else "",
+            }
+        )
+        named = [str(name) for name in report.get("copyright_labels") or () if name]
+        if len(named) > 1:
+            key = ", ".join(sorted(named))
+            ambiguous[key] = ambiguous.get(key, 0) + 1
         if reason == tag_engine.UNMAPPED_GENRE and source_genre:
             unresolved[source_genre] = unresolved.get(source_genre, 0) + 1
         status = str(report.get("art_repair") or "")
@@ -289,6 +341,9 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         "tagged_by": tagged_by,
         "label_genres": label_genres,
         "label_tags": label_tags,
+        "ways": ways,
+        "files": sorted(files, key=lambda row: row["item"]),
+        "copyright_ambiguous": ambiguous,
         "skipped": skipped,
         "unresolved": unresolved,
         "off_taxonomy": off_taxonomy,
@@ -296,6 +351,40 @@ def _summary(cfg: config.Config, job_id: str) -> dict:
         "art_repair": art_repair,
         "art_fetch": art_fetch,
     }
+
+
+def _way(report: Mapping, reason: str) -> str:
+    """The way one reported file left the sweep, by label, by catalogue or not at all.
+
+    A file counts as tagged only where :func:`_summary` counts it so: written,
+    and not under a skip reason. Its source decides which of the two.
+    """
+    if reason in tag_engine.SKIP_REASONS or not report.get("genre_written"):
+        return WAY_NONE
+    if str(report.get("source") or "") == tag_engine.LABEL_GENRE:
+        return WAY_LABEL
+    return WAY_CATALOGUE
+
+
+def _ambiguous_warnings(summary: dict) -> tuple[dict[str, str], ...]:
+    """Name the files a copyright line could not settle because it named two labels (U240)."""
+    ambiguous = summary.get("copyright_ambiguous") or {}
+    if not ambiguous:
+        return ()
+    files = sum(ambiguous.values())
+    named = "; ".join(f"{labels_named} on {count}" for labels_named, count in sorted(ambiguous.items()))
+    return (
+        {
+            "code": COPYRIGHT_AMBIGUOUS,
+            "message": (
+                f"{_files(files)} not given a label's genre because the copyright "
+                f"line names more than one registered label ({named}), and each was "
+                f"asked of the catalogues instead. Give each file its label tag, or "
+                f"narrow a label's needle with crate label registry set NAME --match, "
+                f"and run the folder again"
+            ),
+        },
+    )
 
 
 def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
@@ -668,6 +757,14 @@ def _label_payload(label: str | None) -> tuple[dict, tuple[dict[str, str], ...]]
     }
     if genres:
         frozen["label_genres"] = genres
+        # EVERY LABEL'S NEEDLE, WITH A GENRE OR WITHOUT (U240), so a copyright
+        # line naming a label with a genre and one without is two names and
+        # settles neither. Frozen only beside genres: with none, the line could
+        # tag nothing, and the payload stays the one it always was.
+        frozen["label_needles"] = {
+            entry.label_id: {"name": entry.name, "needle": entry.match or entry.name}
+            for entry in held.labels.values()
+        }
     if label is not None:
         entry = held.resolve(label) if label.strip() else None
         if entry is None:
@@ -778,6 +875,55 @@ def _label_seam(payload: Mapping) -> tag_engine.LabelGenre | None:
     return answer
 
 
+def copyright_matcher(needles: Mapping[str, str]) -> tag_engine.CopyrightLabels:
+    """The engine's copyright seam over ``{label name: needle}`` (U240).
+
+    THE LINE IS READ AS THE LABEL VERBS READ ONE: :func:`labels_from_copyright`
+    strips its mark and year, and each needle is tried with
+    :func:`labels_match`, so U237's whole word rule decides here exactly what it
+    decides for a sweep. ``Rawax`` names ``Rawax Records`` and never
+    ``RAWAXXX``. Every label it names is answered, in the order given, so the
+    engine can tell one from two; a line that is only a mark and a year, or
+    blank, names none.
+    """
+    rows = tuple((str(name), str(needle)) for name, needle in needles.items() if name and needle)
+
+    def answer(line: str) -> tuple[str, ...]:
+        credits = label_harvest.labels_from_copyright(_Credit(line))
+        if not credits:
+            return ()
+        credit = credits[0]
+        return tuple(name for name, needle in rows if label_verify.labels_match(needle, credit))
+
+    return answer
+
+
+class _Credit:
+    """A copyright line in the shape :func:`labels_from_copyright` reads, a track's."""
+
+    __slots__ = ("copyright",)
+
+    def __init__(self, line: str) -> None:
+        self.copyright = line
+
+
+def _copyright_seam(payload: Mapping) -> tag_engine.CopyrightLabels | None:
+    """The engine's copyright seam over the needles frozen into the job, or None for none.
+
+    A job queued before U240 froze none, and its files are tagged as before.
+    """
+    frozen = payload.get("label_needles")
+    if not isinstance(frozen, Mapping) or not frozen:
+        return None
+    return copyright_matcher(
+        {
+            str(row.get("name") or label_id): str(row.get("needle") or row.get("name") or label_id)
+            for label_id, row in frozen.items()
+            if isinstance(row, Mapping)
+        }
+    )
+
+
 def _resume(
     ctx,
     cfg: config.Config,
@@ -816,6 +962,7 @@ def _resume(
             warnings=queued
             + tuple(warnings)
             + _label_warnings(typed_label, job.payload or {}, summary)
+            + _ambiguous_warnings(summary)
             + _off_taxonomy_warning(summary, _declared(cfg) if summary.get("off_taxonomy") else None)
             + _unread_warnings(summary)
             + _published_warnings(summary),
@@ -881,6 +1028,7 @@ def handle(job, item, cfg) -> jobs.Produced:
         published=published.for_taxonomy(declared),
         label_genre=_label_seam(payload),
         label=str(payload.get("label") or "") or None,
+        copyright_labels=_copyright_seam(payload),
     )
     return artifacts.produced(
         cfg,
@@ -918,5 +1066,9 @@ def handle(job, item, cfg) -> jobs.Produced:
             # other file (U178).
             "label": result.label,
             "label_tag": result.label_tag,
+            # HOW THAT LABEL WAS NAMED, and the labels a copyright line named
+            # when it could not settle the file (U240).
+            "label_from": result.label_from,
+            "copyright_labels": list(result.copyright_labels),
         },
     )

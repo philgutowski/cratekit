@@ -417,6 +417,9 @@ def test_a_label_batch_with_every_catalogue_blocked_lands_tagged_by_label(
         {"item": "c.flac", "way": "label", "label": CRONOS, "named_by": "copyright"},
     ]
     assert "label" not in job.payload, "no --label was frozen"
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert (reports["a.flac"]["label"], reports["a.flac"]["label_from"]) == (RAWAX, "copyright")
+    assert reports["a.flac"]["copyright_labels"] == []
 
 
 def test_an_unregistered_file_in_the_batch_is_left_untagged_and_its_item_fails(
@@ -475,9 +478,11 @@ def test_files_whose_line_named_two_labels_are_counted_and_warned(
     downloaded(folder, silence, "b", "2023 Cronos Barac under exclusive licence to Atipic")
     bound(monkeypatch, answering({}))
 
-    code, _job, resumed = sweep(str(folder))
+    code, job, resumed = sweep(str(folder))
 
     assert code == int(ExitCode.OK), resumed
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert sorted(reports["a.flac"]["copyright_labels"]) == [ATIPIC, CRONOS]
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["copyright_ambiguous"] == {f"{ATIPIC}, {CRONOS}": 2}
     warned = {w["code"]: w["message"] for w in resumed["warnings"]}
