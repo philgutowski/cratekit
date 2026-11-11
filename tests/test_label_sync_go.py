@@ -25,6 +25,7 @@ from cratekit.core import config, jobs, provider_gate, review, session
 from cratekit.core.cause import Cause, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.jobs import Parked
+from cratekit.intake import beside as staged_reading
 from cratekit.intake import land_cli, native
 from cratekit.intake.land_cli import default_name
 from cratekit.label import approved_cli, go, sync_cli
@@ -2267,7 +2268,14 @@ def test_a_plain_download_in_the_folder_refuses_a_fresh_go_before_the_gate(
     assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
     cause = refused_before_the_gate(envelope)
     assert cause["detail"]["waiting"] == [
-        {"job": plain, "run": None, "verb": go.DOWNLOAD, "tracks": 1}
+        {
+            "job": plain,
+            "run": None,
+            "verb": go.DOWNLOAD,
+            "tracks": 1,
+            "pass": None,
+            "pass_run": None,
+        }
     ]
     assert cause["detail"]["unnamed"] == []
     assert "move" in " ".join(cause["remediation"]["steps"])
@@ -2356,7 +2364,8 @@ def test_a_staging_folder_that_cannot_be_listed_refuses_rather_than_hold_nothing
     def unlistable(folder):
         raise PermissionError(13, "Permission denied", str(folder))
 
-    monkeypatch.setattr(go, "folder_listing", unlistable)
+    # THE READING IS :mod:`cratekit.intake.beside`'s since R-1499, which the go calls.
+    monkeypatch.setattr(staged_reading, "folder_listing", unlistable)
 
     code, envelope = drive(["label", "sync", "--go"])
 
@@ -2447,7 +2456,7 @@ def test_a_download_of_another_verb_with_its_track_in_the_folder_refuses_the_go(
     assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
     cause = refused_before_the_gate(envelope)
     assert cause["detail"]["waiting"] == [
-        {"job": fetch.job_id, "run": None, "verb": key, "tracks": 1}
+        {"job": fetch.job_id, "run": None, "verb": key, "tracks": 1, "pass": None, "pass_run": None}
     ]
     assert f"job {fetch.job_id} of {key}" in cause["message"]
 
