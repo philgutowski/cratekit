@@ -121,14 +121,17 @@ exists on either medium, :func:`cratekit.intake.land_cli.pass_landed`), so a
 go with nothing new to take names it too rather than ask over an empty plan;
 and every tail, a fresh go's after its drive, a resume's and a run's own,
 refuses beside it, with the landing in its detail. A run's own go reads files
-no download names as its own tracks only when its tail already ran
-(:func:`tail_role`), and never more of them than it renamed. A folder or a
-library root that cannot be read refuses rather than reads as nothing beside.
+no download names as its own tracks only when they are the files its own tail
+left there, by name, size and modification time (:func:`keep_tail`), and its
+pass has no landing proof. A folder or a library root that cannot be read
+refuses rather than reads as nothing beside.
 """
 
 from __future__ import annotations
 
 import dataclasses
+import json
+import os
 import shlex
 from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
@@ -159,9 +162,9 @@ APPLY = "apply"
 #: on the run whose go queued the job, and read here, so a later go under that
 #: run names that landing rather than run the tail a second time.
 LANDING_ROLE = "landing"
-#: The prefix of the role a go's run records that its tail started under
-#: (R-1467), one per job (:func:`tail_role`), written by the CLI layer.
-TAIL_ROLE = "tail"
+#: The directory under the queue root where what each go's tail left in the
+#: staging folder is kept, one file per download job (R-1467, :func:`keep_tail`).
+TAILS_DIRNAME = "label-go-tails"
 #: The verb whose job the go queues. Its worker downloads; the go composes.
 DOWNLOAD = "acquire.download"
 #: The payload key a go's download job carries, naming the run and the manifest.
@@ -1038,16 +1041,64 @@ def continue_command(run_id: str) -> str:
     return shlex.join(["crate", "--run", run_id, "label", "sync", "--go"])
 
 
-def tail_role(job_id: str) -> str:
-    """The role under which the run whose go queued ``job_id`` records that its tail started (R-1467).
+def _tail_path(cfg: config.Config, job_id: str) -> Path:
+    return jobs.store_dir(cfg) / TAILS_DIRNAME / f"{job_id}.json"
 
-    Written by the CLI layer just before it runs a go's tail, naming the run
-    that runs it, on the run whose go queued the job, as :func:`landing_role`
-    is. The tail's ``name apply`` renames every track before the landing's
-    gate, so a later go under that run reads files no download names as ITS
-    OWN tracks only when this is recorded (:func:`beside`).
+
+def _identity(path: Path) -> tuple[str, int, int]:
+    """A file in the folder as the landing's own digest names it: name, size, mtime."""
+    stat = path.stat()
+    return (path.name, stat.st_size, stat.st_mtime_ns)
+
+
+def keep_tail(cfg: config.Config, store: jobs.JobStore, job_id: str, staging: Path) -> int:
+    """Keep what the staging folder holds as a go's tail stops, and return how many (R-1467).
+
+    The tail's ``name apply`` renames every track before the landing's gate,
+    so a later ``--go`` under the go's run, taking its download on, finds its
+    own tracks under names no download recorded. THIS IS THE ONE RECORD OF
+    THEM: each file the folder holds when the tail stops, by its name, size
+    and modification time, the identity the landing's own digest reads, so a
+    file put there since, under any name, is never read as the go's own. The
+    folder held nothing but this download when its tail started (every tail
+    is refused beside anything else), and a file another download recorded at
+    its download name is left out, since it is that download's.
+
+    Called by the CLI layer, which runs the tail, whichever way the tail ends;
+    a record that cannot be written raises, for the caller to name.
     """
-    return f"{TAIL_ROLE}.{job_id}"
+    folder = _resolved(staging)
+    held = [_resolved(path) for path in folder_listing(folder)] if folder.is_dir() else []
+    theirs = {
+        _resolved(item.artifact)
+        for job in jobs.list_jobs(store)
+        if job.job_id != job_id
+        for item in jobs.items(store, job.job_id)
+        if item.state is jobs.ItemState.DONE and item.artifact
+    }
+    kept = sorted(_identity(path) for path in held if path not in theirs)
+    target = _tail_path(cfg, job_id)
+    target.parent.mkdir(parents=True, exist_ok=True)
+    written = target.with_name(f".{target.name}.tmp")
+    written.write_text(json.dumps({"job": job_id, "folder": str(folder), "files": kept}))
+    os.replace(written, target)
+    return len(kept)
+
+
+def kept_tail(cfg: config.Config, job_id: str) -> frozenset[tuple[str, int, int]]:
+    """What :func:`keep_tail` kept for ``job_id``, or nothing (R-1467).
+
+    NOTHING WHEN IT CANNOT BE READ, which is the safe reading here: a file the
+    record does not name is beside the go, so a lost record refuses the go's
+    own tail, with the tail by hand named, and never lands a file as its own.
+    """
+    try:
+        document = json.loads(_tail_path(cfg, job_id).read_text())
+        return frozenset(
+            (str(name), int(size), int(mtime)) for name, size, mtime in document["files"]
+        )
+    except (OSError, ValueError, KeyError, TypeError):
+        return frozenset()
 
 
 #: How many of the files no download names a refusal lists by name.
@@ -1093,9 +1144,17 @@ class Waiting:
                 f"land the tracks of job {self.job_id} as any intake lands, or move "
                 f"them out of {folder}"
             )
+        if not self.tracks:
+            return (
+                f"if the tracks no download names are job {self.job_id}'s, renamed by "
+                f"its tail, take it on with: {continue_command(self.run)}, which runs "
+                f"its tail again, names the landing it reached, or refuses naming what "
+                f"else the folder holds"
+            )
         return (
             f"take job {self.job_id} to its landing, or read the landing its tail "
-            f"already reached and answer that, with: {continue_command(self.run)}"
+            f"already reached and answer that, with: {continue_command(self.run)}; "
+            f"it refuses, naming the tail by hand, while the folder holds anything else"
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -1154,7 +1213,8 @@ def beside(
     staging: Path,
     own: Collection[str],
     *,
-    renamed: bool = False,
+    kept: frozenset[tuple[str, int, int]] = frozenset(),
+    own_pass: str | None = None,
 ) -> Beside:
     """What a landing of ``staging`` would take beside ``own``'s downloads (R-1467).
 
@@ -1168,11 +1228,12 @@ def beside(
     a file no download names, which a tail's ``name apply`` renamed or a person
     put there.
 
-    ``renamed`` says ``own``'s tail already ran (:func:`tail_role`), so files
-    no download names may be its own tracks under the names ``name apply``
-    gave them: they are read as its own, BUT NEVER MORE OF THEM than its
-    downloaded tracks no longer at their download names, so a download added
-    since is still beside it.
+    ``kept`` is what ``own``'s tail left in the folder when it stopped
+    (:func:`keep_tail`): a file no download names is read as the go's own
+    only when it is one of those, by name, size and modification time, so a
+    file put there since is still beside it. NOT WHEN ``own_pass`` LANDED: a
+    pass with a landing proof has had its tracks taken out of the folder, so
+    nothing there is read as its own by that record.
 
     NAMING, NOT DECIDING, IS WHAT THE LANDING PROOF IS FOR. A file no download
     names is put down to every go's download with a track recorded in the
@@ -1225,8 +1286,8 @@ def beside(
                 Waiting(job_id=job_id, run=_origin_run(job), verb=job.handler_key, tracks=len(present))
             )
     unnamed = sorted(others - named)
-    if renamed and len(unnamed) <= sum(1 for path in mine if path not in held):
-        unnamed = []
+    if unnamed and kept and not (own_pass and land_cli.pass_landed(cfg, own_pass)):
+        unnamed = [path for path in unnamed if _identity(path) not in kept]
     if unnamed:
         proven: dict[str, bool] = {}
         for job_id, (job, paths) in downloads.items():
@@ -1275,7 +1336,7 @@ def _refuse_beside(
     landed: Sequence[str],
     *,
     own: Collection[str],
-    renamed: bool = False,
+    kept: frozenset[tuple[str, int, int]] = frozenset(),
     refused: Sequence[dict[str, Any]] = (),
 ) -> None:
     """Refuse a go's tail while the folder holds what is not its own (U239, R-1467).
@@ -1289,7 +1350,9 @@ def _refuse_beside(
     """
     later = _beside(store, job)
     known = [other.job_id for other in later]
-    found = beside(cfg, store, staging, own, renamed=renamed)
+    found = beside(
+        cfg, store, staging, own, kept=kept, own_pass=default_name(run_of) if kept else None
+    )
     if not later and not found:
         return
     extra = Beside(
@@ -1412,7 +1475,8 @@ def _carry_on(
     it as one batch, so the go refuses with the landing in the detail, which the
     CLI layer turns into the commands to type (:func:`_refuse_beside`). Files no
     download names are read as this download's own tracks, renamed by its tail,
-    only when this run recorded that its tail started (:func:`tail_role`).
+    only when they are what its tail left in the folder (:func:`keep_tail`),
+    whichever run ran it, and its pass has no landing proof.
     """
     run_id = ctx.run.run_id
     warnings: list[dict[str, str]] = []
@@ -1471,7 +1535,7 @@ def _carry_on(
         if read.landed:
             _refuse_beside(
                 cfg, store, job, staging, manifest, run_of, landed,
-                own={job_id}, renamed=bool(ctx.run.related_runs.get(tail_role(job_id))),
+                own={job_id}, kept=kept_tail(cfg, job_id),
                 refused=refused,
             )
     if read.landed and manifest is not None:
@@ -1535,7 +1599,7 @@ __all__ = [
     "Summary",
     "Taken",
     "Beside",
-    "TAIL_ROLE",
+    "TAILS_DIRNAME",
     "Waiting",
     "continue_command",
     "duration_text",
@@ -1549,5 +1613,6 @@ __all__ = [
     "summarise",
     "beside",
     "tail",
-    "tail_role",
+    "keep_tail",
+    "kept_tail",
 ]

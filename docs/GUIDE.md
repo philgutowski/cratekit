@@ -449,15 +449,17 @@ too, after asking. Every go stages into the same folder, and a landing takes
 the whole folder, so land each before the next. A fresh `--go` refuses before
 its gate while the folder holds anything that is not its own: another
 download's tracks, a go's (named with the `crate --run RUN label sync --go`
-that takes it to its landing, or names the landing its tail reached), a plain
+that takes it to its landing, names the landing its tail reached, or refuses
+naming the tail by hand while the folder holds anything else), a plain
 `acquire download`'s or a fallback fetch's (land them, or move them out), or
 files no download names, which a tail's `name apply` renames or a person put
 there (named, to land or move out). A go whose pass's intake file, or on a
 database native intake tree its landing's record, exists is not named for
 those. A run's own `--go` refuses its tail, naming the commands, beside any of
-these or a later go's download; files no download names are read as its own
-only once its own tail has run, renaming them, and never more of them than it
-downloaded. A library root that cannot be read refuses.
+these or a later go's download. Files no download names are read as its own
+only when they are the files its own tail left in the folder when it stopped,
+by name, size and modification time, and its pass has no landing proof. A
+library root that cannot be read refuses.
 
 Other label verbs:
 

@@ -87,31 +87,31 @@ new = '''            if True
 '''
 
 [[rows]]
-id = "M09_renamed_needs_the_tail"
-description = "beside: read files no download names as the go's own whether or not its tail ran, so another tail's renamed tracks land under its pass"
+id = "M09_kept_by_identity"
+description = "beside: read every file no download names as the go's own once its tail kept a record, so files put there since land under its pass"
 file = "src/cratekit/label/go.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''    if renamed and len(unnamed) <= sum('''
-new = '''    if len(unnamed) <= sum('''
+old = '''        unnamed = [path for path in unnamed if _identity(path) not in kept]'''
+new = '''        unnamed = []'''
 
 [[rows]]
-id = "M10_renamed_bounded"
-description = "beside: read every file no download names as the go's own once its tail ran, however many there are"
+id = "M10_kept_not_once_landed"
+description = "beside: read the tail's record even once the go's pass landed"
 file = "src/cratekit/label/go.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''    if renamed and len(unnamed) <= sum(1 for path in mine if path not in held):'''
-new = '''    if renamed:'''
+old = '''    if unnamed and kept and not (own_pass and land_cli.pass_landed(cfg, own_pass)):'''
+new = '''    if unnamed and kept:'''
 
 [[rows]]
-id = "M11_renamed_bound_inclusive"
-description = "beside: the bound on renamed files off by one, so a go whose tail renamed every track is refused its own tail"
+id = "M11_identity_is_more_than_a_name"
+description = "_identity: name a file by its name alone, so another recording under a name the tail left is read as the go's"
 file = "src/cratekit/label/go.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''    if renamed and len(unnamed) <= sum('''
-new = '''    if renamed and len(unnamed) < sum('''
+old = '''    return (path.name, stat.st_size, stat.st_mtime_ns)'''
+new = '''    return (path.name, 0, 0)'''
 
 [[rows]]
 id = "M12_only_unproven_named"
@@ -132,13 +132,13 @@ old = '''            if job_id in own or run is None or any(path in others for p
 new = '''            if job_id in own or run is None:'''
 
 [[rows]]
-id = "M14_carry_on_reads_the_marker"
-description = "_carry_on: never read that the run's own tail ran, so its renamed tracks refuse its own go"
+id = "M14_carry_on_reads_the_record"
+description = "_carry_on: never read what the run's own tail left, so its renamed tracks refuse its own go"
 file = "src/cratekit/label/go.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''own={job_id}, renamed=bool(ctx.run.related_runs.get(tail_role(job_id))),'''
-new = '''own={job_id}, renamed=False,'''
+old = '''                own={job_id}, kept=kept_tail(cfg, job_id),'''
+new = '''                own={job_id},'''
 
 [[rows]]
 id = "M15_beside_keeps_later_jobs"
@@ -155,8 +155,8 @@ description = "Waiting.step: name a bare label sync --go rather than the go unde
 file = "src/cratekit/label/go.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''            f"already reached and answer that, with: {continue_command(self.run)}"'''
-new = '''            f"already reached and answer that, with: crate label sync --go"'''
+old = '''            f"already reached and answer that, with: {continue_command(self.run)}; "'''
+new = '''            f"already reached and answer that, with: crate label sync --go; "'''
 
 [[rows]]
 id = "M17_walk_answers_kept"
@@ -220,32 +220,29 @@ old = '''            if unretired_name(entry.name) == wanted and entry.is_file()
 new = '''            if unretired_name(entry.name) == wanted:'''
 
 [[rows]]
-id = "M23_tail_start_recorded"
-description = "label_sync: never record that the tail started, so a run's own renamed tracks refuse its own go"
+id = "M23_kept_when_the_tail_refuses"
+description = "label_sync: keep nothing when a tail step refuses, so a go whose landing refused is refused its own tracks after"
 file = "src/cratekit/cli/label_sync.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''    warnings = [*envelope.warnings, *_started(ctx, land)]'''
-new = '''    warnings = [*envelope.warnings]'''
+old = '''        _kept(cfg, land, folder)
+        raise _ended'''
+new = '''        raise _ended'''
 
 [[rows]]
-id = "M24_tail_start_saved"
-description = "_record: keep the tail's start on this run's state without saving it, so a step that refuses loses it"
-file = "src/cratekit/cli/label_sync.py"
+id = "M24_kept_leaves_out_other_downloads"
+description = "keep_tail: keep another download's track that landed during the tail as the go's own"
+file = "src/cratekit/label/go.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''            if save:
-                gates.save(ctx.run)'''
-new = '''            if False:
-                gates.save(ctx.run)'''
+old = '''    kept = sorted(_identity(path) for path in held if path not in theirs)'''
+new = '''    kept = sorted(_identity(path) for path in held)'''
 
 [[rows]]
-id = "M25_tail_start_on_the_owner"
-description = "_started: record the tail's start under the landing role rather than its own, so a later go reads its download as landed"
-file = "src/cratekit/cli/label_sync.py"
+id = "M25_own_pass_handed_to_beside"
+description = "_refuse_beside: never hand the go's own pass to beside, so a landed pass's record is still read"
+file = "src/cratekit/label/go.py"
 surface = "user"
 tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
-old = '''        go.tail_role,
-        ctx.run.run_id,'''
-new = '''        go.landing_role,
-        ctx.run.run_id,'''
+old = '''own_pass=default_name(run_of) if kept else None'''
+new = '''own_pass=None'''

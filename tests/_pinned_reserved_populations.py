@@ -1565,6 +1565,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'decision-stale',
         'held-by-a-go',
         'intake-list-unusable',  # 2026-11-11, R-1467: a staging folder it cannot list.
+        'label-go-tails',  # 2026-11-11, R-1467: what a go's tail left, kept by job.
         'label-sync',
         'label-sync-download-refused',  # 2026-11-01, R-1115: a track failed for good.
         'refused-by-policy',

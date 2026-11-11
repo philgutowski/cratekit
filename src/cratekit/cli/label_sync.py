@@ -34,10 +34,10 @@ stops at the landing's gate, the landing's run is kept under the download's
 job (:func:`cratekit.label.go.landing_role`) on the run whose go queued that
 job, which is another run when a fresh go resumed it, so a later ``--go``
 under that run, which takes the run's own download on, names that landing
-rather than run the tail a second time. Just before the tail runs, the run is
-recorded under the job as the one that started it (:func:`cratekit.label.go.tail_role`,
+rather than run the tail a second time. Whichever way the tail ends, what the
+folder then holds is kept under the job (:func:`cratekit.label.go.keep_tail`,
 R-1467), so a later ``--go`` under the go's run reads the tracks the tail's
-``name apply`` renamed as its own rather than as another download's. A go that
+``name apply`` renamed as its own, and nothing put there since. A go that
 refuses with a landing in its detail, because the folder holds what is not its
 own (another download's tracks, or files no download names, R-1467), has the
 tail named as commands to type.
@@ -57,6 +57,7 @@ from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import gates, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
+from cratekit.core import jobs
 from cratekit.core.cause import CratekitError, Outcome, rebuilt
 from cratekit.core.exit_codes import ExitCode
 from cratekit.label import go, sync_cli
@@ -178,16 +179,19 @@ def label_sync(ctx: Context) -> Envelope:
     chain = _chain(ctx)
     folder = Path(str(land["folder"])).expanduser().absolute()
     landing = _landing_args(land)
-    warnings = [*envelope.warnings, *_started(ctx, land)]
+    warnings = [*envelope.warnings]
     try:
         tail.run(chain, folder, cfg, landing)
     except tail.Done as done:
         chain.summary["stopped_at"] = done.step
     except tail.Attend as stop:
+        warnings.extend(_kept(cfg, land, folder))
         warnings.extend(_remember(ctx, stop, land))
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
+        _kept(cfg, land, folder)
         raise _ended(envelope, chain, stop, folder, landing) from None
+    warnings.extend(_kept(cfg, land, folder))
     return ctx.envelope(
         data=_data(envelope, chain),
         outcome=envelope.outcome,
@@ -218,30 +222,37 @@ def _remember(
         str(landed),
         what=f"the landing under run {landed}",
         lost="does not know this landing was planned",
-        save=False,
     )
 
 
-def _started(ctx: Context, land: Mapping[str, Any]) -> list[dict[str, str]]:
-    """Keep, on the go's run, that this run is about to run its tail (R-1467).
+def _kept(cfg, land: Mapping[str, Any], folder: Path) -> list[dict[str, str]]:
+    """Keep what the folder holds as the tail stops, under the go's job (R-1467).
 
     The tail's ``name apply`` renames every track before the landing's gate,
-    so a later ``--go`` under that run, taking its download on, finds files no
-    download names; this record is what lets it read them as its own rather
-    than as another download's (:func:`cratekit.label.go.beside`). Saved
-    BEFORE the tail runs, this run's record included, since a step that
-    refuses ends the verb without saving it. One that cannot be kept is a
-    warning, and the later go then refuses its tail beside those files.
+    so a later ``--go`` under the go's run finds its tracks under names no
+    download recorded; :func:`cratekit.label.go.keep_tail` keeps them by name,
+    size and modification time, which is what lets that go read them as its
+    own and nothing else as its own. One that cannot be kept is a warning, and
+    the later go then refuses its tail beside them, naming the tail by hand.
     """
-    return _record(
-        ctx,
-        land,
-        go.tail_role,
-        ctx.run.run_id,
-        what=f"that run {ctx.run.run_id} started the tail",
-        lost="reads the tracks its tail renamed as another download's",
-        save=True,
-    )
+    job = land.get("job")
+    if not (isinstance(job, str) and job):
+        return []
+    try:
+        with jobs.open_store() as store:
+            go.keep_tail(cfg, store, job, folder)
+    except Exception as exc:  # noqa: BLE001 - a record lost is a warning, see above
+        return [
+            {
+                "code": UNRECORDED_WARNING,
+                "message": (
+                    f"what the tail left in {folder} could not be kept for job {job} "
+                    f"({type(exc).__name__}: {exc}); a later go under its run reads "
+                    f"the tracks its tail renamed as not its own, and names the tail by hand"
+                ),
+            }
+        ]
+    return []
 
 
 def _record(
@@ -252,14 +263,12 @@ def _record(
     *,
     what: str,
     lost: str,
-    save: bool,
 ) -> list[dict[str, str]]:
     """Record ``value`` under the job's role on the run whose go queued the job (U239).
 
-    This run's record is saved as the verb returns, or here when ``save`` says
-    the verb may end without returning; another run's is saved here, and one
-    that cannot be read or saved is a warning naming the run, the job and why,
-    never a refusal.
+    This run's record is saved as the verb returns; another run's is saved
+    here, and one that cannot be read or saved is a warning naming the run,
+    the job and why, never a refusal.
     """
     job, owner = land.get("job"), land.get("run")
     if not (isinstance(job, str) and job and isinstance(owner, str) and owner):
@@ -268,8 +277,6 @@ def _record(
     try:
         if owner == ctx.run.run_id:
             ctx.run.related_runs[role] = value
-            if save:
-                gates.save(ctx.run)
             return []
         state = gates.load(owner)
         state.related_runs[role] = value
