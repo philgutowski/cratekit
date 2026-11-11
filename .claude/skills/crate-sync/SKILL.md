@@ -80,6 +80,13 @@ status:
   and the run it names, oldest first; this is a rule, not a question.
 - **It ended with nothing to land.** Nothing new on the account. Skip to step 5,
   since an earlier pass may still owe its marks.
+- **It refused beside another download.** The staging folder holds what is
+  not this pass's own, and a landing would take it (R-1499):
+  `cause.detail.waiting` names each download, `cause.detail.unnamed` the
+  files no download names. Land an earlier pass first with the `crate sync
+  land --pass-run` its step names, oldest first; this is a rule, not a
+  question. A label go's download, or files no download names, are not this
+  skill's to land: stop, and report what the refusal named.
 - **It failed.** The refusal names the step and its remedy. Act on the remedy
   when a rule covers it, and continue the pass with the `--pass-run` command
   its steps name; otherwise stop, and report the step and its message.

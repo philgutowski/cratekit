@@ -273,8 +273,9 @@ while the folder holds anything that is not its own, another download's
 tracks or files no download names, and says how each lands: an earlier go's
 through `crate --run RUN label sync --go`, which takes it to its landing,
 names the landing its tail reached, or refuses naming the tail by hand while
-the folder holds anything else; anything else by landing it or moving it out
-of the folder.
+the folder holds anything else; a sync pass's through `crate sync land
+--pass-run RUN`; anything else by landing it or moving it out of the folder.
+`crate sync land` refuses the same way beside a go's download.
 
 `crate sync all` does not touch labels. It makes no provider call for them and
 queues nothing for them, whatever the profile enables, and its report names
