@@ -39,6 +39,13 @@ the verb's ``--label`` for a file that carries none, and the registry lookup
 behind it is the shell's, so this module reads one more tag and knows nothing
 of where labels are stored.
 
+A FILE'S COPYRIGHT LINE NAMES ITS LABEL WHEN NOTHING ELSE DOES (U240). A file
+with no label tag, swept with no ``--label``, has its copyright line handed to
+:data:`CopyrightLabels`, which answers the registered labels the line names.
+Exactly one, carrying a genre, tags the file as that label's; none, two, or
+one with no genre leaves it to the catalogues as before. The matching is the
+shell's too, so this module reads the line and asks.
+
 THE FOLDER WALK AND THE PER FILE WORK ARE TWO FUNCTIONS, and the split is
 what makes this engine drivable as a job. :func:`audio_files` is what a
 verb queues one item per, and :func:`tag_one` is what its worker runs for
@@ -54,11 +61,11 @@ Layer: modules.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from cratekit.core import art, tags
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.cause import CratekitError, rebuilt, refuse
 from cratekit.core.naming import AUDIO_EXTS
 
 Searcher = Callable[[str, str], "SearchHit | None"]
@@ -89,6 +96,38 @@ class LabelAnswer:
 #: built by ``cratekit.tagging.cli`` over the genres frozen into the job. It
 #: answers and does not raise.
 LabelGenre = Callable[[str], "LabelAnswer | None"]
+
+@dataclass(frozen=True, slots=True)
+class CopyrightLabel:
+    """A registered label a copyright line names, as :data:`CopyrightLabels` answers.
+
+    ``genre`` is the label's registered genre, or None for a label with none.
+    It travels with the name rather than being looked up by it, so two labels
+    sharing a display name can never lend each other a genre (U240's review).
+    """
+
+    label: str
+    genre: str | None = None
+
+
+#: The copyright line's seam (U240). Given a file's copyright line, every
+#: registered label it names, with a genre or without, so a line naming two
+#: can be told from a line naming one. The shipped one is built by
+#: ``cratekit.tagging.cli`` over the needles and genres frozen into the job,
+#: joined by the label's identifier. It answers and does not raise.
+CopyrightLabels = Callable[[str], "tuple[CopyrightLabel, ...]"]
+
+#: The detail key a failed file's refusal carries the labels its copyright line
+#: named under, when the line could not settle it (U240), so the sweep's report
+#: still says why a file the catalogues could not answer was asked of them.
+COPYRIGHT_LABELS_DETAIL = "copyright_labels"
+
+#: How a file's label was named, on a file its label's genre was written to
+#: (U240): by its own label tag, by the verb's ``--label`` for the folder, or
+#: by its copyright line. The record carries it so a person can see which.
+NAMED_BY_TAG = "tag"
+NAMED_BY_FOLDER = "folder"
+NAMED_BY_COPYRIGHT = "copyright"
 
 #: The source a file's record names when its genre came from its label's
 #: registered genre rather than from a catalogue (U178). A DISPOSITION OF ITS
@@ -318,6 +357,13 @@ class TagResult:
     for every other file (U178). On that file ``source`` is :data:`LABEL_GENRE`
     and ``source_genre`` the label's word, whatever catalogue was asked about
     its picture, so a count of what each catalogue tagged never takes it in.
+
+    ``label_from`` says how that label was named, one of :data:`NAMED_BY_TAG`,
+    :data:`NAMED_BY_FOLDER` and :data:`NAMED_BY_COPYRIGHT`, and is empty
+    wherever ``label`` is (U240). ``copyright_labels`` is every registered
+    label the file's copyright line named when that was not one label with a
+    genre, so a file asked of the catalogues says why its line did not decide
+    it; empty when the line was not read, named nothing, or decided it.
     """
 
     path: Path
@@ -334,6 +380,8 @@ class TagResult:
     art_fetch_detail: str = ""
     label: str = ""
     label_tag: str = ""
+    label_from: str = ""
+    copyright_labels: tuple[str, ...] = ()
 
 
 def audio_files(root: Path) -> tuple[Path, ...]:
@@ -474,10 +522,23 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     return result(ART_EMBEDDED, f"{cdj.width} by {cdj.height} from {pictured_by or url}")
 
 
+@dataclass(frozen=True, slots=True)
+class _Labelled:
+    """What the label tier found for one file: its answer, and how it got there."""
+
+    answer: LabelAnswer | None
+    own: str = ""
+    named_by: str = ""
+    copyright_labels: tuple[str, ...] = ()
+
+
 def _by_label(
-    path: Path, label_genre: LabelGenre, label: str | None
-) -> tuple[LabelAnswer | None, str]:
-    """The registered genre for this file's label, and the file's own label tag.
+    path: Path,
+    label_genre: LabelGenre,
+    label: str | None,
+    copyright_labels: CopyrightLabels | None = None,
+) -> _Labelled:
+    """The registered genre for this file's label, the file's own label tag, and how it was named.
 
     Read only for a file needing a genre. The tag comes back beside the answer
     so a file whose tag named no label with a genre can say so in its record.
@@ -487,12 +548,32 @@ def _by_label(
     file whose tag says otherwise, and that file is the one most likely to be
     right about itself: if its own label has no genre it is searched as
     before, rather than given a genre the person meant for the rest.
+
+    THE COPYRIGHT LINE COMES LAST (U240), read only for a file with no tag and
+    no ``label``, so every sweep given ``--label`` tags exactly as it did. One
+    open reads both fields. The line decides the file only when it names
+    exactly one registered label: two is a line this tier cannot settle, and
+    the file is asked of the catalogues rather than given either genre.
     """
-    own = tags.read_tag(path, "label") or ""
-    named = own or (label or "").strip()
-    if not named:
-        return None, own
-    return label_genre(named), own
+    if copyright_labels is None:
+        own = tags.read_tag(path, "label") or ""
+        line = ""
+    else:
+        held = tags.read_tags(path, ("label", "copyright"))
+        own = held["label"] or ""
+        line = held["copyright"] or ""
+    if own:
+        return _Labelled(label_genre(own), own, NAMED_BY_TAG)
+    typed = (label or "").strip()
+    if typed:
+        return _Labelled(label_genre(typed), own, NAMED_BY_FOLDER)
+    if copyright_labels is None or not line.strip():
+        return _Labelled(None, own)
+    named = tuple(copyright_labels(line))
+    if len(named) != 1 or not named[0].genre:
+        return _Labelled(None, own, copyright_labels=tuple(found.label for found in named))
+    answer = LabelAnswer(label=named[0].label, genre=named[0].genre)
+    return _Labelled(answer, own, NAMED_BY_COPYRIGHT)
 
 
 def tag_one(
@@ -503,6 +584,7 @@ def tag_one(
     published: PublishedGenre | None = None,
     label_genre: LabelGenre | None = None,
     label: str | None = None,
+    copyright_labels: CopyrightLabels | None = None,
 ) -> TagResult:
     """Tag ONE file, or report why it was passed over. The per item work.
 
@@ -559,7 +641,9 @@ def tag_one(
     for its art only, exactly as a tagged file with no picture is, and a
     refusal there is an ``unavailable`` picture and never a failed item. The
     genre is saved first so that refusal cannot cost it. ``label`` is the
-    verb's ``--label``, the label of a file whose tag names none.
+    verb's ``--label``, the label of a file whose tag names none, and
+    ``copyright_labels`` reads the label of a file that has neither off its
+    copyright line (U240). Without it no line is read.
 
     THE ART REPAIR RUNS FIRST, before the genre check can return. A file that
     already carries a genre is exactly the file the source system repaired, so a
@@ -575,9 +659,12 @@ def tag_one(
         return TagResult(
             path=path, genre_written=None, skipped=HAS_GENRE, **repaired, **settled
         )
-    by_label, label_tag = (
-        (None, "") if existing or label_genre is None else _by_label(path, label_genre, label)
+    tier = (
+        _Labelled(None)
+        if existing or label_genre is None
+        else _by_label(path, label_genre, label, copyright_labels)
     )
+    by_label, label_tag = tier.answer, tier.own
     labelled: dict = {}
     if by_label is not None:
         label_tag = ""
@@ -587,6 +674,7 @@ def tag_one(
             "source": LABEL_GENRE,
             "source_genre": by_label.genre,
             "label": by_label.label,
+            "label_from": tier.named_by,
         }
         if settled is not None:
             return TagResult(path=path, **labelled, **repaired, **settled)
@@ -598,6 +686,23 @@ def tag_one(
     try:
         hit = searcher(artist, title)
     except CratekitError as exc:
+        if needs_genre and tier.copyright_labels and type(exc) is CratekitError:
+            # A PLAIN REFUSAL ONLY: ``rebuilt`` keeps the job's own carried
+            # types and no other, and a searcher's ``Parked`` must reach the
+            # job as itself (U240's review, round two).
+            # THE LINE'S LABELS RIDE ON THE REFUSAL (U240's review), because a
+            # file whose item fails keeps no record, and the sweep's report is
+            # where a person reads why its line did not settle it.
+            raise rebuilt(
+                exc,
+                replace(
+                    exc.cause,
+                    detail={
+                        **dict(exc.cause.detail or {}),
+                        COPYRIGHT_LABELS_DETAIL: list(tier.copyright_labels),
+                    },
+                ),
+            ) from exc
         if needs_genre:
             raise
         unread = {
@@ -664,13 +769,17 @@ def tag_one(
         # THE LABEL IS WHERE THE GENRE CAME FROM, whatever catalogue answered
         # about the picture, so the record's source is the label's and only the
         # answers say what the catalogues were asked.
-        found = {**found, **{key: labelled[key] for key in ("source", "source_genre", "label")}}
+        found = {
+            **found,
+            **{key: labelled[key] for key in ("source", "source_genre", "label", "label_from")},
+        }
     return TagResult(
         path=path,
         genre_written=written,
         skipped=skipped,
         off_taxonomy=off_taxonomy,
         label_tag=label_tag,
+        copyright_labels=tier.copyright_labels,
         **found,
         **repaired,
         **pictured,
@@ -685,6 +794,7 @@ def tag_folder(
     published: PublishedGenre | None = None,
     label_genre: LabelGenre | None = None,
     label: str | None = None,
+    copyright_labels: CopyrightLabels | None = None,
 ) -> list[TagResult]:
     """Tag every audio file under ``root``. ``searcher`` is required.
 
@@ -699,6 +809,7 @@ def tag_folder(
             published=published,
             label_genre=label_genre,
             label=label,
+            copyright_labels=copyright_labels,
         )
         for path in audio_files(root)
     ]
@@ -714,12 +825,18 @@ __all__ = [
     "ART_UNCHECKED",
     "HAS_GENRE",
     "LABEL_GENRE",
+    "NAMED_BY_COPYRIGHT",
+    "NAMED_BY_FOLDER",
+    "NAMED_BY_TAG",
     "SKIPPED_DIRNAMES",
     "SKIP_REASONS",
     "NO_HIT",
     "NO_ISRC",
     "SOURCES_UNREAD",
     "UNMAPPED_GENRE",
+    "COPYRIGHT_LABELS_DETAIL",
+    "CopyrightLabel",
+    "CopyrightLabels",
     "FetchImage",
     "LabelAnswer",
     "LabelGenre",

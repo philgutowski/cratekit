@@ -138,7 +138,9 @@ word, unread, or only unknown words), which is filed for review.
 The genre a followed label is registered with
 (`crate label registry set NAME --genre WORD`, cleared with `--genre default`),
 written by `crate tag folder` onto the label's files that have no genre,
-asking no catalogue. A file's label is its label tag, else `--label`. Source
+asking no catalogue. A file's label is its label tag, else `--label`, else
+the one registered label whose whole needle its copyright line carries
+(U240). Source
 `label-genre`, counted apart, never off taxonomy. The word must route to a
 bucket other than the fallback unless `--accept-fallback`. Fills an empty genre
 only; never replaces one. An unwritable file fails with `tag-folder-unwritten`.
