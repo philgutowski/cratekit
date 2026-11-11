@@ -159,3 +159,21 @@ def test_the_energy_pass_reads_its_percussive_share_from_the_same_pair():
     assert features["percussive_fraction"] == percussive_rms / (
         percussive_rms + harmonic_rms + energy._EPS
     )
+
+
+@pytest.mark.parametrize("scale", [1e-40, 1e-41])
+def test_a_signal_at_the_bottom_of_single_precision_is_split_as_librosa_splits_it(scale):
+    """Where both medians fall under the smallest normal number, the pair is halved, not dropped.
+
+    The one place the split of a silent bin reaches the output: digital
+    silence is zero times either mask, so it cannot tell a half from a zero,
+    and the mutation table measured that guard at zero until this signal.
+    """
+    rng = np.random.default_rng(7)
+    faint = (scale * rng.standard_normal(RATE * 2)).astype(np.float32)
+    assert np.count_nonzero(faint) > faint.size // 2
+    harmonic, percussive = _quietly(lambda: librosa.effects.hpss(faint))
+    found_h, found_p = _quietly(lambda: separation.harmonic_percussive(faint))
+    assert np.count_nonzero(found_h) and np.count_nonzero(found_p)
+    assert np.array_equal(found_h, harmonic, equal_nan=True)
+    assert np.array_equal(found_p, percussive, equal_nan=True)

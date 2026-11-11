@@ -14,7 +14,7 @@ new = '''            along_time, along_frequency, power=POWER, split_zeros=split
 
 [[rows]]
 id = "D2_silence_not_split"
-description = "separation: a bin both medians call silent is never split, so the energy pass's pair is not librosa's over silence"
+description = "separation: a bin both medians call silent is never split, so the energy pass's pair is not librosa's on a signal at the bottom of single precision"
 file = "src/cratekit/analysis/separation.py"
 surface = "user"
 tests = ["tests/test_analysis_separation.py"]
