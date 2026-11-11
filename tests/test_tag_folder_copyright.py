@@ -405,6 +405,66 @@ def test_each_named_label_carries_its_own_genre():
     assert matcher("℗ 2023 Gettraum") == (tag.CopyrightLabel("Gettraum", None),)
 
 
+@pytest.mark.parametrize(
+    ("needle", "line"),
+    [
+        ("2020 Vision", "\u2117 2020 Vision Quest"),
+        ("1985 Music", "(P) 1985 Music For Nations"),
+    ],
+)
+def test_a_lines_year_never_completes_a_needle(needle, line):
+    """Review round two: matched on the raw line, the year completed the needle."""
+    assert names(needles({needle: needle}), line) == ()
+
+
+@pytest.mark.parametrize(
+    ("needle", "line"),
+    [
+        ("\u00c2me", "\u2117 2021 Give Me Records"),
+        ("\u6771\u4eac Records", "\u2117 2023 Completely Unrelated Records"),
+    ],
+)
+def test_a_letter_outside_ascii_never_folds_away_from_a_needle(needle, line):
+    """Review round two: the ASCII fold shrank \u00c2me to me and \u6771\u4eac Records to records."""
+    assert names(needles({needle: needle}), line) == ()
+
+
+def test_a_needle_outside_ascii_still_names_its_own_line():
+    assert names(needles({"\u00c2me": "\u00c2me"}), "\u2117 2021 \u00c2me") == ("\u00c2me",)
+
+
+def test_a_sublabel_beside_a_third_label_settles_nothing():
+    """The longer needle wins only when it carries EVERY other one named."""
+    matcher = needles(
+        {RAWAX: RAWAX, "Rawax Motor City Edition": "Rawax Motor City Edition", ATIPIC: ATIPIC}
+    )
+    line = "\u2117 2023 Rawax Motor City Edition under exclusive licence to Atipic"
+    assert set(names(matcher, line)) == {RAWAX, "Rawax Motor City Edition", ATIPIC}
+
+
+def test_two_labels_sharing_a_display_name_are_two_in_the_ambiguous_count():
+    counted: dict[str, int] = {}
+    tag_cli._count_ambiguous(counted, ["Alpha", "Alpha"])
+    tag_cli._count_ambiguous(counted, ["Gettraum"])
+    assert counted == {"Alpha, Alpha": 1}
+
+
+def test_a_searchers_park_reaches_the_job_as_a_park_on_a_file_its_line_could_not_settle(
+    folder, silence
+):
+    path = downloaded(folder, silence, "a", "2023 Cronos Barac under exclusive licence to Atipic")
+
+    def parking(artist: str, title: str):
+        raise jobs.Parked(
+            refuse(searchers.UNREACHABLE_REASON, "the catalogue refused the client", origin=("tests",)).cause
+        )
+
+    with pytest.raises(jobs.Parked):
+        tag.tag_one(
+            path, searcher=parking, label_genre=genre_seam(GENRES), copyright_labels=needles(NEEDLES)
+        )
+
+
 # ═══════════════════════════════════════════════════════════════════════════
 # 4. The sweep, through the real dispatcher and a resume
 # ═══════════════════════════════════════════════════════════════════════════
@@ -585,6 +645,40 @@ def test_two_labels_sharing_a_display_name_never_lend_each_other_a_genre(
     assert tags.read_genre_from_file(folder / "f.flac") == "Techno", "the genre-less label's file"
     assert tags.read_genre_from_file(folder / "g.flac") == SPECIFIC
     assert searcher.asked == [("", "f")]
+
+
+def test_a_refusal_names_ten_failed_files_and_counts_the_rest(cfg, folder, silence, monkeypatch):
+    five_labels()
+    for index in range(12):
+        downloaded(folder, silence, f"x{index:02d}", "\u2117 2022 Some Other Label")
+    bound(monkeypatch, blocking())
+
+    code, _job, resumed = sweep(str(folder))
+
+    assert code != int(ExitCode.OK)
+    message = resumed["cause"]["message"]
+    shown = ", ".join(f"x{index:02d}.flac" for index in range(10))
+    assert f"the item failed for {shown} and 2 more." in message
+
+
+def test_a_cancelled_sweep_carries_its_report_too(cfg, folder, silence, monkeypatch):
+    five_labels()
+    downloaded(folder, silence, "a", "\u2117 2023 Rawax")
+    downloaded(folder, silence, "b", "\u2117 2023 Atipic")
+    bound(monkeypatch, never_searched)
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job = tag_job()
+    code, cancelled = drive(["job", "cancel", job.job_id])
+    assert code == int(ExitCode.OK), cancelled
+
+    code, resumed = drive(resume_argv(job.job_id))
+
+    assert code != int(ExitCode.OK), resumed
+    assert resumed["outcome"] == "cancelled", resumed
+    tagging = resumed["cause"]["detail"]["tagging"]
+    assert tagging["ways"] == {"label": 0, "catalogue": 0, "none": 2}
+    assert "Of 2 file(s), 0 took their registered label's genre" in resumed["cause"]["message"]
 
 
 def test_the_needles_are_frozen_with_the_genres_when_the_sweep_is_queued(

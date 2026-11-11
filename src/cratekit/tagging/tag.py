@@ -686,7 +686,10 @@ def tag_one(
     try:
         hit = searcher(artist, title)
     except CratekitError as exc:
-        if needs_genre and tier.copyright_labels:
+        if needs_genre and tier.copyright_labels and type(exc) is CratekitError:
+            # A PLAIN REFUSAL ONLY: ``rebuilt`` keeps the job's own carried
+            # types and no other, and a searcher's ``Parked`` must reach the
+            # job as itself (U240's review, round two).
             # THE LINE'S LABELS RIDE ON THE REFUSAL (U240's review), because a
             # file whose item fails keeps no record, and the sweep's report is
             # where a person reads why its line did not settle it.

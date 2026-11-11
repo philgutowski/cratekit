@@ -60,6 +60,7 @@ from cratekit.cli.output import Envelope
 from cratekit.core import active_taxonomy, art, config, jobs, taxonomy, taxonomy_word
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
+from cratekit.label import harvest as label_harvest
 from cratekit.label import registry as labels
 from cratekit.label import verify as label_verify
 from cratekit.modules import foreground
@@ -135,7 +136,7 @@ LABEL_ON_RESUME = "tag-folder-label-on-resume"
 #: The warning a sweep carries when some files' copyright line named more than
 #: one registered label (U240). Those files were asked of the catalogues rather
 #: than given either label's genre, and the warning names the labels so a
-#: person can tag the files' label by hand or narrow a needle.
+#: person can give a file still without a genre its label tag by hand.
 COPYRIGHT_AMBIGUOUS = "tag-folder-copyright-ambiguous"
 
 #: The three ways a file can leave a sweep, as the per file report says (U240):
@@ -377,7 +378,9 @@ def _count_ambiguous(ambiguous: dict[str, int], named: object) -> None:
     """Count one file under the labels its copyright line named, when it named two or more."""
     if not isinstance(named, (list, tuple)):
         return
-    names = sorted({str(name) for name in named if name})
+    # NOT DEDUPLICATED: two labels may share a display name after a rename, and
+    # a line naming both is still two labels (U240's review, round two).
+    names = sorted(str(name) for name in named if name)
     if len(names) > 1:
         key = ", ".join(names)
         ambiguous[key] = ambiguous.get(key, 0) + 1
@@ -910,8 +913,10 @@ def copyright_matcher(
 ) -> tag_engine.CopyrightLabels:
     """The engine's copyright seam over ``(name, needle, genre)`` rows, one per label (U240).
 
-    THE LINE MUST CARRY THE WHOLE NEEDLE, as whole words after folding, which
-    is U237's rule taken one way: ``Rawax`` names ``Rawax Records`` and never
+    THE LINE IS READ AS THE LABEL VERBS READ ONE, its mark and year stripped by
+    :func:`labels_from_copyright`, and it MUST CARRY THE WHOLE NEEDLE, as whole
+    words after :func:`credit_names` folds both, which is U237's rule taken one
+    way: ``Rawax`` names ``Rawax Records`` and never
     ``RAWAXXX``, and a line reading only ``Music`` never names ``Aus Music``.
     The other way, a short line inside a long needle, is a heuristic the label
     sweep may confirm a release on and never one to write a genre on.
@@ -928,13 +933,18 @@ def copyright_matcher(
     rows = tuple(
         (str(name), str(needle), str(genre) if genre else None)
         for name, needle, genre in labels
-        if name and needle and label_verify.fold_label(str(needle))
+        if name and needle
     )
 
     def answer(line: str) -> tuple[tag_engine.CopyrightLabel, ...]:
-        if not line or not line.strip():
+        # THE MARK AND THE YEAR GO FIRST, as every label verb reads a line, so a
+        # label named ``2020 Vision`` is never named by ``℗ 2020 Vision Quest``
+        # (U240's review, round two).
+        credits = label_harvest.labels_from_copyright(_Credit(line or ""))
+        if not credits:
             return ()
-        named = [row for row in rows if label_verify.credit_names(row[1], line)]
+        credit = credits[0]
+        named = [row for row in rows if label_verify.credit_names(row[1], credit)]
         widest = [
             row
             for row in named
@@ -945,6 +955,15 @@ def copyright_matcher(
         return tuple(tag_engine.CopyrightLabel(label=name, genre=genre) for name, _needle, genre in named)
 
     return answer
+
+
+class _Credit:
+    """A copyright line in the shape :func:`labels_from_copyright` reads, a track's."""
+
+    __slots__ = ("copyright",)
+
+    def __init__(self, line: str) -> None:
+        self.copyright = line
 
 
 def _copyright_seam(payload: Mapping) -> tag_engine.CopyrightLabels | None:
