@@ -446,6 +446,7 @@ def test_a_go_killed_between_its_queue_and_its_record_never_asks_for_a_track_twi
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert sorted(fetched(script)) == ["t-r1-1", "t-r1-2"]
     assert "1 answer(s) wait for the next go" in check(envelope, "waiting")["detail"]
+    landed_by_hand(installed, job.payload[go.ORIGIN_KEY]["run"])
 
     _run, code, envelope = approved_go()
 
@@ -479,6 +480,7 @@ def test_a_go_with_an_earlier_download_to_resume_resumes_it_and_queues_nothing_n
     assert "t-b1-1" not in fetched(script)
     (landing,) = [one for one in envelope["data"]["summary"]["go"]["next"] if "intake land" in one]
     assert first.payload[go.ORIGIN_KEY]["manifest"] in landing
+    landed_by_hand(installed, first.payload[go.ORIGIN_KEY]["run"])
 
     _run, code, envelope = approved_go()
 
@@ -590,12 +592,13 @@ def test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for
 
     monkeypatch.setattr(fake, "release_tracks", flaky)
 
-    _run, code, envelope = approved_go()
+    first_run, code, envelope = approved_go()
 
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r2-1"]
     assert check(envelope, "carried")["status"] == "fail"
     assert all(sync_cli.SETTLED not in one for one in record(installed)["answers"])
+    landed_by_hand(installed, first_run)
 
     monkeypatch.setattr(fake, "release_tracks", reader)
     script.fetched.clear()
@@ -612,7 +615,8 @@ def test_a_settled_answer_is_not_summarised_again(installed, monkeypatch, script
     next_question()
     answer("tide-works", "all")
     land_every(script, ("r1", 1))
-    approved_go()
+    run_id, _code, _envelope = approved_go()
+    landed_by_hand(installed, run_id)
 
     shown = asked()["cause"]["detail"]["shown"]
 
@@ -708,7 +712,8 @@ def test_a_go_job_whose_track_was_refused_for_good_is_not_resumed(
     land_every(script, ("r1", 2))
     script.landings["t-r1-2"] = Landing(offer_raises=LookupError("404 not found"))
 
-    approved_go()
+    run_id, _code, _envelope = approved_go()
+    landed_by_hand(installed, run_id)
 
     (job,) = our_jobs()
     assert job.state is jobs.JobState.SUCCEEDED, job
@@ -1566,6 +1571,7 @@ def test_answers_saved_beside_a_finished_go_wait_and_are_not_landed_with_it(
     assert [one.job_id for one in our_jobs()] == [job.job_id]
     assert tail.calls[-1] == landing_argv(installed, job, run_id)
     assert check(envelope, "waiting")["detail"].startswith("1 answer(s) wait for the next go")
+    landed_by_hand(installed, run_id)
 
     _run, code, envelope = approved_go()
 
@@ -1587,7 +1593,7 @@ def test_a_later_gos_download_in_the_same_folder_refuses_the_tail_and_names_its_
     finished_by_hand(first.job_id)
     next_question()
     answer("beta-works", "all")
-    _later, code, _envelope = approved_go()
+    _later, code, _envelope = before_r1467(monkeypatch, approved_go)
     assert code == int(ExitCode.PENDING_HUMAN)
     (second,) = [one for one in our_jobs() if one.job_id != first.job_id]
     tail.calls.clear()
@@ -1690,6 +1696,7 @@ def test_a_landing_recorded_for_one_download_never_answers_for_the_runs_next_one
     decided(resuming, "apply")
     code, _envelope = gone(resuming)
     assert code == int(ExitCode.PENDING_HUMAN)
+    landed_by_hand(installed, first.payload[go.ORIGIN_KEY]["run"])
     next_question()
     answer("beta-works", "all")
     script.landings["t-b1-2"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
@@ -1791,7 +1798,7 @@ def test_a_later_go_parked_before_it_downloaded_anything_still_refuses_the_tail(
     next_question()
     answer("beta-works", "all")
     script.landings["t-b1-1"] = Landing(fetch_raises=cooldown())
-    approved_go()
+    before_r1467(monkeypatch, approved_go)
     second = other_than(first)
     assert second.state is jobs.JobState.BLOCKED
     tail.calls.clear()
@@ -1803,12 +1810,13 @@ def test_a_later_go_parked_before_it_downloaded_anything_still_refuses_the_tail(
     assert tail.calls == []
 
 
-def test_an_earlier_gos_download_does_not_refuse_a_later_runs_tail(
+def test_an_earlier_gos_landed_download_does_not_refuse_a_later_runs_tail(
     installed, monkeypatch, script, tail
 ):
     two_labels(monkeypatch, script)
-    _earlier, code, _envelope = approved_go()
+    earlier, code, _envelope = approved_go()
     assert code == int(ExitCode.PENDING_HUMAN)
+    landed_by_hand(installed, earlier)
     next_question()
     answer("beta-works", "all")
     script.landings["t-b1-2"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
@@ -1988,6 +1996,18 @@ def landed_by_hand(cfg: config.Config, run_id: str, *, medium: str = "bridge") -
     """The landing a go's tail stopped at, applied: its tracks moved out, its proof kept."""
     moved_out(cfg)
     proven(cfg, run_id, medium=medium)
+
+
+def before_r1467(monkeypatch, act):
+    """``act`` run as a build before R-1467 ran it, reading nothing as waiting.
+
+    The state a go of such a build left, a later go's download queued into the
+    folder beside an earlier one no landing took, is what a run's own go still
+    refuses its tail beside, and no go of this build queues it.
+    """
+    with monkeypatch.context() as earlier:
+        earlier.setattr(go, "waiting", lambda *_args, **_kwargs: [])
+        return act()
 
 
 def stray(cfg: config.Config, name: str = "Someone - Kept By Hand.wav") -> Path:
@@ -2178,7 +2198,9 @@ def test_an_unreadable_library_root_refuses_rather_than_read_the_pass_as_landed(
     code, envelope = drive(["label", "sync", "--go"])
 
     assert code != int(ExitCode.OK), envelope
-    assert envelope["cause"]["reason"] == "library-root-unreachable", envelope["cause"]
+    cause = envelope["cause"]
+    assert cause["detail"].get("declared_reason", cause["reason"]) == "library-root-unreachable"
+    assert "whether the pass" in cause["message"], cause
     assert "gate" not in (envelope["cause"].get("detail") or {})
     assert len(our_jobs()) == 1
 
@@ -2290,3 +2312,23 @@ def test_a_staging_folder_not_there_holds_nothing_waiting(installed, monkeypatch
     assert not Path(staged(installed)).exists() or not any(Path(staged(installed)).iterdir())
 
     assert asked()["cause"]["detail"]["gate"] == GATE
+
+
+def test_a_staging_folder_that_cannot_be_listed_refuses_rather_than_hold_nothing(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    Path(staged(installed)).mkdir(parents=True, exist_ok=True)
+
+    def unlistable(folder):
+        raise PermissionError(13, "Permission denied", str(folder))
+
+    monkeypatch.setattr(go, "folder_listing", unlistable)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code != int(ExitCode.OK), envelope
+    cause = envelope["cause"]
+    assert cause["detail"].get("declared_reason", cause["reason"]) == "intake-list-unusable"
+    assert "could not be listed" in cause["message"]
+    assert "gate" not in cause["detail"] and our_jobs() == []

@@ -34,8 +34,10 @@ stops at the landing's gate, the landing's run is kept under the download's
 job (:func:`cratekit.label.go.landing_role`) on the run whose go queued that
 job, which is another run when a fresh go resumed it, so a later ``--go``
 under that run, which takes the run's own download on, names that landing
-rather than run the tail a second time. A go that refuses with a landing in its detail, because a
-later go's download shares the folder, has the tail named as commands to type.
+rather than run the tail a second time. A go that refuses with a landing in its
+detail, because another download shares the folder (a later go's, an earlier
+go's no landing took, or one no go queued, R-1467), has the tail named as
+commands to type.
 
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
 nothing, one that downloaded nothing, and every walk or question that never

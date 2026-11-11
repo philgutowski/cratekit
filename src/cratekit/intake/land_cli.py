@@ -213,6 +213,46 @@ def intake_file(cfg: config.Config, stem: str) -> Path:
     return Path(cfg.library.root) / f"{stem}{INTAKE_SUFFIX}"
 
 
+def pass_landed(cfg: config.Config, name: str) -> bool:
+    """Whether a landing of the pass ``name`` is proven, on either medium (R-1467).
+
+    THE TWO PROOFS ``label mark`` AND ``sync mark`` ALREADY TAKE. On the bridge
+    a landing writes its intake file at the library root, named for its pass
+    (:func:`intake_file`), and keeps it there, pending or retired once its
+    import is proven (:func:`unretired_name`). On a database native intake tree
+    a closed landing that committed records the pass
+    (:func:`cratekit.intake.native.landings_of_pass`). Either is read whatever
+    the intake tree's medium is now, so a pass landed before a cutover still
+    reads as landed after it.
+
+    A ROOT THAT CANNOT BE READ REFUSES, NEVER READS AS NOT LANDED OR LANDED.
+    Both proofs live under the library root, so an unmounted volume would
+    answer "no proof" for every pass, and the caller deciding whether a batch
+    is still waiting in staging must be told it could not read rather than
+    guess. A session log that cannot be listed refuses through
+    :func:`cratekit.core.session.records`, as every reader of it does.
+    """
+    root = Path(cfg.library.root)
+    wanted = f"{name}{INTAKE_SUFFIX}"
+    try:
+        if not root.is_dir():
+            raise OSError(f"{root} is not a directory")
+        for entry in root.iterdir():
+            if unretired_name(entry.name) == wanted and entry.is_file():
+                return True
+    except OSError as exc:
+        raise refuse(
+            "library-root-unreachable",
+            f"the library root {root} could not be read ({exc}), so whether the pass "
+            f"{name!r} landed cannot be told from its intake file or its native "
+            f"landing's record; refusing rather than reading it either way",
+            steps=("mount the library volume, then run the command again",),
+            origin=_ORIGIN,
+            detail={"root": str(root), "pass": name},
+        ) from exc
+    return bool(native.landings_of_pass(cfg, name))
+
+
 def _still_free(cfg: config.Config, batch: str) -> None:
     """Refuse a default name another landing took since this one chose it.
 
@@ -2620,5 +2660,6 @@ __all__ = [
     "intake_stem",
     "playlist_item",
     "set_playlist_item",
+    "pass_landed",
     "unretired_name",
 ]

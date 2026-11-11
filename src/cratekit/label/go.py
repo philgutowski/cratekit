@@ -105,13 +105,27 @@ take both batches as one; and a run whose tail already reached its landing
 names that landing and runs nothing (:data:`LANDING_ROLE`). The ceiling's own
 continue command names that ``--go`` rather than the job, and every other stop
 a go can take on adds it as a step (:func:`_carried`).
+
+A GO NEVER LANDS ANOTHER DOWNLOAD AS ITS OWN (R-1467). Every download stages
+into the one folder, and ``intake land`` lands the whole of it, so a fresh go
+queued beside an earlier go's download that was never landed, or beside a
+plain ``acquire download``, landed both as one batch under its own manifest and
+pass, filing the other's tracks under no label. :func:`waiting` reads what a
+landing of the folder would take against every download job, and against a
+go's landing proof by pass on both media where its tail renamed its tracks
+(:func:`cratekit.intake.land_cli.pass_landed`). A fresh go with any waiting
+refuses before its gate, naming each and the ``--go`` under its run that lands
+a go's, so a go with nothing new to take names it too rather than ask over an
+empty plan; and every tail, a fresh go's after its drive, a resume's and a
+run's own, refuses beside one, with the landing in its detail. A folder or a
+library root that cannot be read refuses rather than reads as nothing waiting.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import shlex
-from collections.abc import Mapping, Sequence
+from collections.abc import Collection, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -123,7 +137,9 @@ from cratekit.core import config, jobs, provider_gate, review
 from cratekit.core.cause import CratekitError, Outcome, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.review import Verdict
+from cratekit.intake import land_cli
 from cratekit.intake.land_cli import default_name
+from cratekit.intake.landing import listing as folder_listing
 from cratekit.intake.missing_cli import LISTS_DIR
 from cratekit.label import approved_cli, sync_cli
 from cratekit.label import gate as genre_gate
@@ -627,6 +643,7 @@ def go(
         base = dict(data or {})
         return _carry_on(
             ctx,
+            cfg,
             own,
             summary,
             staging,
@@ -634,6 +651,13 @@ def go(
             dict(base.pop("summary", {}) or {}),
             wrote=wrote,
         )
+    # NOT BESIDE A DOWNLOAD NO LANDING TOOK (R-1467), asked before the gate so
+    # nobody decides a go that would land another download as its own. The jobs
+    # this go would resume are its own batch, and are left out.
+    with jobs.open_store() as store:
+        found = waiting(cfg, store, staging, {job_id for job_id, _left in summary.open_jobs})
+    if found:
+        raise _waiting_refusal(found, staging)
     facts: dict[str, Any] = {}
     if walk is not None:
         facts["answered_this_run"] = list(walk)
@@ -661,7 +685,7 @@ def go(
         )
 
     if summary.open_jobs:
-        return _resume(ctx, summary, staging, checks, report, wrote=wrote)
+        return _resume(ctx, cfg, summary, staging, checks, report, wrote=wrote)
 
     warnings: list[dict[str, str]] = []
     withdrawn: list[Taken] = []
@@ -797,10 +821,16 @@ def go(
                 f"job {queued.job_id}: {_downloaded(read, listing.listed)}",
             )
         )
-        if read.landed:
-            land = landing(staging, str(listing.written.manifest_path), run_id, queued.job_id)
         if not nothing:
             landed = tail(staging, str(listing.written.manifest_path), run_id)
+        if read.landed:
+            # A DOWNLOAD THAT FINISHED IN THE FOLDER WHILE THIS ONE DROVE (R-1467).
+            with jobs.open_store() as store:
+                _refuse_beside(
+                    cfg, store, queued, staging, str(listing.written.manifest_path),
+                    run_id, landed, {queued.job_id},
+                )
+            land = landing(staging, str(listing.written.manifest_path), run_id, queued.job_id)
         if land is None and landed:
             checks.append(_next_check(landed))
     report["go"] = {
@@ -837,6 +867,7 @@ def _next_check(landed: Sequence[str]) -> dict[str, Any]:
 
 def _resume(
     ctx,
+    cfg: config.Config,
     summary: Summary,
     staging: Path,
     checks: list[dict[str, Any]],
@@ -888,6 +919,14 @@ def _resume(
     # ONE EARLIER JOB, LANDED, IS RUN ON THROUGH THE TAIL. Several would need two
     # manifests on one landing of one folder, so their commands are printed.
     land = lands[0] if len(lands) == 1 else None
+    if land is not None:
+        # NOT BESIDE ANOTHER DOWNLOAD (R-1467), checked before the gate and
+        # again here, once the resume has driven.
+        with jobs.open_store() as store:
+            _refuse_beside(
+                cfg, store, jobs.get(store, land["job"]), staging, land["manifest"],
+                land["run"], landed, set(resumed),
+            )
     if summary.answers:
         checks.append(
             _check(
@@ -960,8 +999,9 @@ def _beside(store: jobs.JobStore, job: jobs.Job) -> list[jobs.Job]:
     Each downloads into the same staging folder, and ``intake land`` lands a
     whole folder, so a tail run now would land both batches as one. A job
     stamped the same instant is counted, since which came first cannot be
-    told, and counting it refuses rather than mixes. Only later go jobs: an
-    earlier one, and a download no go queued, are not seen (a residual of U239).
+    told, and counting it refuses rather than mixes. Only later go jobs; an
+    earlier one and a download no go queued are read by :func:`waiting` beside
+    it (R-1467).
     """
     found: list[jobs.Job] = []
     for other in jobs.list_jobs(store):
@@ -988,6 +1028,201 @@ def _origin_run(job: jobs.Job) -> str | None:
 def continue_command(run_id: str) -> str:
     """The command that takes a go's download on to its landing (U239)."""
     return shlex.join(["crate", "--run", run_id, "label", "sync", "--go"])
+
+
+@dataclass(frozen=True, slots=True)
+class Waiting:
+    """A download the staging folder holds that no landing has taken (R-1467).
+
+    ``run`` is the run whose go queued it, or None for a download no go
+    queued, and ``tracks`` how many of its downloaded tracks the folder holds
+    at the names they were downloaded under: none for a go's download whose
+    tracks its tail renamed before the landing's gate, which is read off its
+    pass instead (:func:`waiting`).
+    """
+
+    job_id: str
+    run: str | None
+    tracks: int
+
+    def said(self) -> str:
+        if self.run is None:
+            return (
+                f"job {self.job_id}, a download no go queued, with {self.tracks} "
+                f"track(s) no landing took"
+            )
+        if self.tracks:
+            return (
+                f"job {self.job_id} of the go under run {self.run}, with {self.tracks} "
+                f"track(s) no landing took"
+            )
+        return (
+            f"job {self.job_id} of the go under run {self.run}, whose pass no landing "
+            f"took while the folder holds tracks no download names"
+        )
+
+    def step(self, folder: Path) -> str:
+        if self.run is None:
+            return (
+                f"land the tracks of job {self.job_id} as any intake lands, or move "
+                f"them out of {folder}"
+            )
+        return (
+            f"land job {self.job_id} with the decision its go already has: "
+            f"{continue_command(self.run)}"
+        )
+
+    def to_json(self) -> dict[str, Any]:
+        return {"job": self.job_id, "run": self.run, "tracks": self.tracks}
+
+
+def _resolved(path: Path | str) -> Path:
+    return Path(path).expanduser().absolute().resolve()
+
+
+def waiting(
+    cfg: config.Config, store: jobs.JobStore, staging: Path, own: Collection[str]
+) -> list[Waiting]:
+    """Every download but ``own`` whose tracks a landing of ``staging`` would take (R-1467).
+
+    WHAT A LANDING TAKES IS THE FOLDER, read as the landing reads it,
+    :func:`cratekit.intake.landing.listing`. A file there that is one of
+    ``own``'s downloaded tracks is the go's own. Every other file is read
+    against every download job, a go's or one no go queued, with a track
+    downloaded into the folder:
+
+    * A JOB WITH A TRACK THERE AT THE NAME IT WAS DOWNLOADED UNDER IS WAITING,
+      whatever else is recorded, since a landing moves every file it takes out
+      of the folder: a pass landed part way and then finished has its proof
+      and still has tracks here.
+    * A GO'S JOB WITH NONE THERE IS WAITING when the folder also holds a file
+      no download names and its pass has NO LANDING PROOF on either medium
+      (:func:`cratekit.intake.land_cli.pass_landed`). The tail's ``name apply``
+      renames every file before the landing's gate, so a go whose tail stopped
+      there holds the folder under names no job recorded, and only its
+      landing's proof tells it from a batch landed long ago. A download no go
+      queued has no pass, and is read by its files alone.
+
+    A folder that is not there holds nothing a landing could take. One that
+    cannot be listed refuses, and so does a library root or a session log the
+    proof cannot read; neither is read as nothing waiting.
+    """
+    folder = _resolved(staging)
+    try:
+        held = {_resolved(path) for path in folder_listing(folder)} if folder.is_dir() else set()
+    except OSError as exc:
+        raise refuse(
+            "intake-list-unusable",
+            f"the staging folder {folder} could not be listed ({exc}), so whether it "
+            f"holds a download no landing took cannot be read; nothing was queued or run",
+            steps=(f"make {folder} readable, then run the go again",),
+            origin=("label.go",),
+            detail={"folder": str(folder)},
+        ) from exc
+    downloads: dict[str, tuple[jobs.Job, list[Path]]] = {}
+    for job in jobs.list_jobs(store):
+        if job.handler_key != DOWNLOAD:
+            continue
+        inside = [
+            path
+            for path in (
+                _resolved(item.artifact)
+                for item in jobs.items(store, job.job_id)
+                if item.state is jobs.ItemState.DONE and item.artifact
+            )
+            if path.parent == folder
+        ]
+        if inside:
+            downloads[job.job_id] = (job, inside)
+    ours = {path for job_id in own for path in downloads.get(job_id, (None, ()))[1]}
+    others = held - ours
+    if not others:
+        return []
+    unnamed = others - {path for _job, paths in downloads.values() for path in paths}
+    found: list[Waiting] = []
+    proven: dict[str, bool] = {}
+    for job_id, (job, paths) in downloads.items():
+        if job_id in own:
+            continue
+        run = _origin_run(job)
+        present = sum(1 for path in paths if path in others)
+        if present:
+            found.append(Waiting(job_id=job_id, run=run, tracks=present))
+            continue
+        if run is None or not unnamed:
+            continue
+        name = default_name(str((job.payload or {}).get(RUN_KEY) or run))
+        if name not in proven:
+            proven[name] = land_cli.pass_landed(cfg, name)
+        if not proven[name]:
+            found.append(Waiting(job_id=job_id, run=run, tracks=0))
+    return found
+
+
+def _waiting_refusal(found: Sequence[Waiting], staging: Path) -> CratekitError:
+    """A fresh go refused before its gate, naming how each waiting download lands (R-1467)."""
+    return refuse(
+        "refused-by-policy",
+        f"the staging folder {staging} holds "
+        + "; ".join(one.said() for one in found)
+        + "; a landing lands the whole folder, so this go would land them with its "
+        "own, under its manifest and pass, and nothing was asked or queued",
+        steps=(
+            *(one.step(staging) for one in found),
+            "then ask again with: crate label sync --go",
+        ),
+        origin=("label.go",),
+        detail={"folder": str(staging), "waiting": [one.to_json() for one in found]},
+    )
+
+
+def _refuse_beside(
+    cfg: config.Config,
+    store: jobs.JobStore,
+    job: jobs.Job,
+    staging: Path,
+    manifest: str | None,
+    run_of: str,
+    landed: Sequence[str],
+    own: Collection[str],
+) -> None:
+    """Refuse a go's tail while the folder holds another download's tracks (U239, R-1467).
+
+    A go job queued after ``job`` (:func:`_beside`), and any download
+    :func:`waiting` reads in the folder, earlier or later, a go's or not, would
+    land with it as one batch, so the tail is not run, and the refusal carries
+    the landing in its detail, which the CLI layer turns into the commands to
+    type once the folder holds only this download.
+    """
+    later = _beside(store, job)
+    known = {other.job_id for other in later}
+    found = [one for one in waiting(cfg, store, staging, own) if one.job_id not in known]
+    if not later and not found:
+        return
+    said = [
+        f"job {other.job_id} of the go under run {_origin_run(other)} downloaded into "
+        f"the same staging folder after it"
+        for other in later
+    ] + [one.said() for one in found]
+    raise refuse(
+        "refused-by-policy",
+        f"this run's download {job.job_id} is downloaded, and the staging folder "
+        f"{staging} also holds " + "; ".join(said) + "; the landing lands the whole "
+        "folder, so the tail was not run, since it would land the batches as one",
+        steps=(
+            *(one.step(staging) for one in found),
+            "land each download on its own: the tail by hand once the folder holds "
+            "only this run's tracks, as the next step names it",
+        ),
+        origin=("label.go",),
+        detail={
+            LAND_KEY: landing(staging, manifest, run_of, job.job_id) if manifest else None,
+            "job": job.job_id,
+            "beside": [*known, *(one.job_id for one in found)],
+            "waiting": [one.to_json() for one in found],
+            "next": list(landed),
+        },
+    )
 
 
 def _carried(error: CratekitError, store: jobs.JobStore, job: jobs.Job) -> CratekitError:
@@ -1042,6 +1277,7 @@ def _carried(error: CratekitError, store: jobs.JobStore, job: jobs.Job) -> Crate
 
 def _carry_on(
     ctx,
+    cfg: config.Config,
     job_id: str,
     summary: Summary,
     staging: Path,
@@ -1125,32 +1361,10 @@ def _carry_on(
                 f"given: {_downloaded(read, listed)}",
             )
         )
-        beside = _beside(store, job) if read.landed else []
-    if manifest is not None and not nothing:
-        landed = tail(staging, manifest, run_of)
-    if beside:
-        raise refuse(
-            "refused-by-policy",
-            f"this run's download {job_id} is downloaded, and "
-            + ", ".join(
-                f"job {other.job_id} of the go under run {_origin_run(other)}"
-                for other in beside
-            )
-            + " downloaded into the same staging folder after it; the landing lands "
-            "the whole folder, so the tail was not run, since it would land the "
-            "batches as one",
-            steps=(
-                "land each go's download on its own: the tail by hand once the folder "
-                "holds only this run's tracks, as the next step names it",
-            ),
-            origin=("label.go",),
-            detail={
-                LAND_KEY: landing(staging, manifest, run_of, job_id) if manifest else None,
-                "job": job_id,
-                "beside": [other.job_id for other in beside],
-                "next": landed,
-            },
-        )
+        if manifest is not None and not nothing:
+            landed = tail(staging, manifest, run_of)
+        if read.landed:
+            _refuse_beside(cfg, store, job, staging, manifest, run_of, landed, {job_id})
     if read.landed and manifest is not None:
         land = landing(staging, manifest, run_of, job_id)
     elif landed:
@@ -1211,6 +1425,7 @@ __all__ = [
     "Held",
     "Summary",
     "Taken",
+    "Waiting",
     "continue_command",
     "duration_text",
     "go",
@@ -1222,4 +1437,5 @@ __all__ = [
     "resumable",
     "summarise",
     "tail",
+    "waiting",
 ]
