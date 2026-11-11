@@ -48,18 +48,20 @@ declare. A worker binds it inside the function that needs it.
 
 from __future__ import annotations
 
+import contextlib
+import dataclasses
 import functools
 import json
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Mapping, Sequence, TypeVar
+from typing import Any, Iterator, Mapping, Sequence, TypeVar
 
-from cratekit.analysis import artifacts, detect, energy, light, vocals
+from cratekit.analysis import ahead, artifacts, detect, energy, light, vocals
 from cratekit.cli.output import Envelope
-from cratekit.core import config, discovery, jobs, naming, tags
+from cratekit.core import config, discovery, jobs, naming, pool, tags
 from cratekit.core import drift as drift_words
-from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, refuse
+from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.naming import MarkerRule, NameBudget, NameSpec, NameTemplate
 from cratekit.modules import extras, foreground
@@ -98,6 +100,10 @@ DEFAULT_CALIBRATION_SAMPLE = 500
 #: The warning a calibration carries when it was fitted over something other
 #: than the library wide walk because ``--accept-partial`` said to (U94).
 PARTIAL_SAMPLE = "calibration-partial-sample"
+
+#: The handler key of ``crate analyze run``, the one verb here whose drive
+#: measures ahead of itself (U241). ``analyze restamp`` shares the resume.
+RUN_HANDLER_KEY = "analyze.run"
 
 #: The warning every restamp resume carries, because the registry declares a
 #: database write this build does not perform. See ``handle_restamp``.
@@ -328,12 +334,16 @@ def restamp_argv(job) -> list[str]:
 # ---------------------------------------------------------------------------
 
 
-def _advance(ctx, store, job):
+def _advance(ctx, store, job, *, around=None):
     """Reconcile, refuse an empty job, run it, and raise if it did not finish.
 
     The tail every queued verb carries (R-248, this is another copy). Not
     named ``drive``, because ``tests/test_handlers.py`` counts every call to
     a callee of that name as a call to the job driver.
+
+    ``around`` is a context manager factory over the store and the job, held
+    open for exactly the drive and for no call that drives nothing: the run
+    ahead of ``analyze run`` (U241), whose workers must end on every way out.
     """
     job = jobs.reconcile(store, job.job_id)
     warnings: tuple[dict[str, str], ...] = ()
@@ -348,15 +358,178 @@ def _advance(ctx, store, job):
                 origin=_ORIGIN,
                 detail={"job_id": job.job_id},
             )
-        _result, warnings = ctx.run_job(store, job)
+        with around(store, job) if around is not None else contextlib.nullcontext():
+            _result, warnings = ctx.run_job(store, job)
         job = jobs.get(store, job.job_id)
     jobs.raise_for_state(job)
     return job, warnings
 
 
+def _may_measure_ahead() -> str | None:
+    """Why this process cannot hand heads to a worker, or None when it can.
+
+    A detector a test bound is a closure no spawned child could receive,
+    unless the test also bound an importable one for the workers. And a
+    process without the analysis extra has nothing to measure with, which each
+    item refuses for itself.
+    """
+    if ahead.worker_bound():
+        return None
+    if _fake_detect_bound():
+        return ahead.WHY_TEST_DETECTOR
+    if not detect.heavy_available():
+        return ahead.WHY_NO_EXTRA
+    return None
+
+
+def _waiting(cfg: config.Config, store, job) -> list[str]:
+    """The files this drive will measure: unsettled items, present, with no head yet.
+
+    The driver's own three tests, asked ahead of it. An item already settled is
+    not claimed again, a file that is gone is refused or resumed by its item
+    without a read, and a name carrying the head is skipped without a read, so
+    none of those is worth a worker.
+    """
+    unsettled = (jobs.ItemState.PENDING, jobs.ItemState.CLAIMED)
+    found: list[str] = []
+    for item in jobs.items(store, job.job_id):
+        if item.state not in unsettled:
+            continue
+        try:
+            _folder, path = _folder_and_path(job, item)
+        except CratekitError:
+            # An identifier the folder rule refuses is refused by its own item.
+            continue
+        if path.is_file() and not carries_head(path, cfg):
+            found.append(str(path))
+    return found
+
+
+def _open_ahead(cfg: config.Config, store, job) -> ahead.Session:
+    """Plan the light pool for this drive, or note why everything is measured here."""
+    why = _may_measure_ahead()
+    if why is not None:
+        return ahead.note_unopened(job.job_id, why)
+    waiting = _waiting(cfg, store, job)
+    try:
+        settings = _settings(cfg)
+    except CratekitError:
+        # AN UNREADABLE CALIBRATION IS EACH ITEM'S TO REFUSE, as it was: the
+        # run opens no pool and every item meets the same refusal by name.
+        return ahead.note_unopened(job.job_id, "the energy calibration could not be read")
+    reserve = pool.DEFAULT_MEMORY_RESERVE_BYTES
+    if waiting and (vocals.loader_bound() or vocals.missing_requirement() is None):
+        # THE DRIVER HOLDS A VOCAL MODEL WHILE THE WORKERS RUN, and at the
+        # moment of planning it has not loaded it yet, so the available
+        # reading does not show it. Kept back here, at the vocal pass's own
+        # declared cost, or the two would be afforded out of the same bytes.
+        reserve += vocals.VOCAL_WORKER_BYTES
+    return ahead.open_session(job.job_id, waiting, settings, reserve_bytes=reserve)
+
+
+@contextlib.contextmanager
+def _heads_ahead(store, job) -> Iterator[None]:
+    """Hold the job's run ahead open for one drive, then record the pool it was.
+
+    THE FROZEN CONFIGURATION, read off the job as the worker's is (KTD9), so
+    the files this plans over and the settings it starts workers under are the
+    ones each item will bind.
+
+    THE WORKERS END ON EVERY WAY OUT, and the record is written on every way
+    out, because a run that failed or was interrupted ran with a pool too. A
+    record that cannot be written is a line missing from the answer and never
+    a failed job.
+    """
+    cfg = jobs.frozen_config(job)
+    session = _open_ahead(cfg, store, job)
+    drove = True
+    try:
+        yield
+    except jobs.DriverHeld:
+        # ANOTHER DRIVER HAS THE JOB, so this call ran nothing, and a record
+        # written now would describe a pool that never started beside a run
+        # that is still going. The driver that holds the job writes its own.
+        drove = False
+        raise
+    finally:
+        ahead.close_session(job.job_id)
+        if drove and _worth_recording(cfg, job.job_id, session):
+            try:
+                artifacts.record_pool(cfg, job.job_id, ahead.report(session))
+            except OSError:
+                pass
+
+
+def _worth_recording(cfg: config.Config, job_id: str, session: ahead.Session) -> bool:
+    """Whether this drive's pool replaces the one the job already records.
+
+    A DRIVE THAT MEASURED NOTHING DOES NOT OVERWRITE ONE THAT DID. A resume
+    after an interrupt often has no file left to measure, only a rename to
+    adopt or a row to settle, and its "no file was waiting" written over the
+    first drive's record made a job two workers measured all of answer "one
+    worker" when it finally succeeded (the review of U241 drove it). The line
+    is about the pool that measured the job's files, so the last drive that
+    measured any keeps it.
+    """
+    if session.plan is not None:
+        return True
+    return artifacts.pool_record(cfg, job_id) is None
+
+
+def _pool_check(record: Mapping[str, Any] | None) -> dict[str, str | None]:
+    """The ``analyze.pool`` check line: how many workers the run used, and why (U241)."""
+    if record is None or not isinstance(record.get("detail"), str):
+        return _check(
+            "analyze.pool",
+            "analysis pool",
+            "info",
+            "no pool was recorded for this job, so how many workers ran is not known",
+            None,
+        )
+    status = str(record.get("status") or "info")
+    return _check("analyze.pool", "analysis pool", status, str(record["detail"]), None)
+
+
+def _with_pool(error: CratekitError, record: Mapping[str, Any]) -> CratekitError:
+    """The same refusal, also saying what pool the run that did not finish ran with.
+
+    A queued verb has two exits and the check line rides only the envelope, so
+    a run that failed or was stopped would never say how many workers it used.
+    The sentence is appended as a step and the record placed in the detail;
+    the cause is otherwise carried through, never rebuilt, and so is its type.
+    """
+    cause = error.cause
+    line = f"the pool: {_pool_check(record)['detail']}"
+    return rebuilt(
+        error,
+        dataclasses.replace(
+            cause,
+            remediation=dataclasses.replace(
+                cause.remediation, steps=(*cause.remediation.steps, line)
+            ),
+            detail={**cause.detail, "pool": dict(record)},
+        ),
+    )
+
+
 def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
     with jobs.open_store() as store:
-        job, warnings = _advance(ctx, store, jobs.get(store, job_id))
+        queued = jobs.get(store, job_id)
+        if queued.handler_key != RUN_HANDLER_KEY:
+            job, warnings = _advance(ctx, store, queued)
+        else:
+            try:
+                job, warnings = _advance(ctx, store, queued, around=_heads_ahead)
+            except jobs.DriverHeld:
+                # This call drove nothing, so it has no pool of its own to add.
+                raise
+            except CratekitError as failed:
+                # THE OTHER EXIT. A run that failed or was stopped leaves
+                # through its cause, and it ran with a pool as well.
+                pooled = artifacts.pool_record(cfg, job_id)
+                if pooled is None:
+                    raise
+                raise _with_pool(failed, pooled) from failed
         summary = _summary(cfg, job.job_id)
         # THE RESUME IS THE REPORT THAT SAYS THE PASS FINISHED, so what the walk
         # left out rides it too, read back off the frozen payload rather than
@@ -373,6 +546,9 @@ def _resume(ctx, cfg: config.Config, job_id: str) -> Envelope:
             summary["head_agreement"] = detect.head_agreement(
                 window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling)
             )
+            # HOW MANY WORKERS THE RUN USED, AND WHY (U241), read back off the
+            # record the drive left, so a resume of a finished job says it too.
+            summary["checks"] = [_pool_check(artifacts.pool_record(cfg, job.job_id))]
             unscored = _unscored_vocals_warning(summary)
             if unscored is not None:
                 warnings = (*warnings, unscored)
@@ -562,19 +738,38 @@ def _fake_detect_bound() -> bool:
     return light.bound() and light._DETECT is not _BOUND_DETECT
 
 
-def _bind_defaults(cfg: config.Config) -> None:
+def _settings(cfg: config.Config) -> ahead.Settings | None:
+    """What a head is measured under right now, or None under a test's detector.
+
+    The calibration is read here, per call, as the binding below reads it per
+    item. None when a test bound its own detector, which is measured under
+    whatever the test chose and is compared only with itself.
+    """
+    if _fake_detect_bound():
+        return None
+    return ahead.Settings.of(energy.load_calibration(cfg), cfg)
+
+
+def _bind_defaults(cfg: config.Config) -> ahead.Settings | None:
     """Bind the shipped seams where nothing else is bound, PER ITEM.
 
     The detector is rebound on every call rather than once per process,
     because the partial carries the calibration, and a calibration written
     between two jobs driven by one process would otherwise stay invisible to
     the second. A test's binding is left alone.
+
+    Answers the settings the detector was just bound under (U241), the ones a
+    head measured ahead of this item is held to, read from the one calibration
+    the binding itself read.
     """
     global _BOUND_DETECT
+    settings: ahead.Settings | None = None
     if not _fake_detect_bound():
+        calibration = energy.load_calibration(cfg)
+        settings = ahead.Settings.of(calibration, cfg)
         _BOUND_DETECT = functools.partial(
             detect.analyse_file,
-            calibration=energy.load_calibration(cfg),
+            calibration=calibration,
             tempo_window=(cfg.analysis.tempo_floor, cfg.analysis.tempo_ceiling),
             drift_cut=cfg.analysis.drift_cut,
         )
@@ -583,6 +778,7 @@ def _bind_defaults(cfg: config.Config) -> None:
         from cratekit.analysis import vocal
 
         vocals.bind_loader(vocal.default_loader)
+    return settings
 
 
 def _write_or_refuse(path: Path, fields: dict[str, Any], *, untouched: str) -> None:
@@ -741,8 +937,10 @@ def handle_run(job, item, cfg) -> jobs.Produced:
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": "skipped-prefixed"}
         )
     _require_heavy(_fake_detect_bound(), "analysing a track")
-    _bind_defaults(cfg)
-    partial = light.analyse(str(path))
+    settings = _bind_defaults(cfg)
+    # THE HEAD, measured ahead of this item when the run has a pool and the
+    # head still stands, and by ``light.analyse`` here otherwise (U241).
+    partial = ahead.head(job.job_id, str(path), settings)
     if partial.get("terminal") is not None:
         return artifacts.produced(
             cfg, job, item, {"item": item.item_id, "path": str(path), "status": partial["terminal"]}

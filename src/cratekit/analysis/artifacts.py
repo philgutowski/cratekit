@@ -200,6 +200,44 @@ def produced(cfg: config.Config, job, item, report: dict[str, Any]) -> jobs.Prod
     )
 
 
+#: The run's pool, recorded beside the item reports (U241). Not an ordinal, so
+#: :func:`committed` never reads it as a report.
+POOL_FILENAME = "pool.json"
+
+
+def record_pool(cfg: config.Config, job_id: str, record: dict[str, Any]) -> Path:
+    """Write what pool the job's last drive ran with, replacing the drive before it.
+
+    A file because a worker's facts reach the verb's envelope only through
+    one, and because a resume that finds the job already finished must still
+    be able to say what it ran with. Written whole to a sibling and moved into
+    place, so a reader never meets half of it.
+    """
+    directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
+    config._mkdir_private(directory)
+    target = directory / POOL_FILENAME
+    staged = directory / f".{POOL_FILENAME}.writing"
+    write(staged, record)
+    staged.replace(target)
+    return target
+
+
+def pool_record(cfg: config.Config, job_id: str) -> dict[str, Any] | None:
+    """The pool the job's last drive ran with, or None when none was recorded.
+
+    A link is no record, and neither is a file that does not parse to a
+    mapping: an absent line on the answer, never an invented one.
+    """
+    path = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id) / POOL_FILENAME
+    if path.is_symlink() or not path.is_file():
+        return None
+    try:
+        loaded = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return None
+    return loaded if isinstance(loaded, dict) else None
+
+
 def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
     """Every committed report for this job, in item order, read back off disk."""
     directory = _job_dir(ARTIFACTS_DIRNAME, cfg, job_id)
@@ -222,13 +260,16 @@ def committed(cfg: config.Config, job_id: str) -> tuple[dict[str, Any], ...]:
 
 __all__ = [
     "ARTIFACTS_DIRNAME",
+    "POOL_FILENAME",
     "RENAME_INTENT_FILENAME",
     "STAGING_DIRNAME",
     "committed",
     "discard_rename_evidence",
     "final_path",
     "intent_path",
+    "pool_record",
     "produced",
+    "record_pool",
     "record_rename_intent",
     "rename_intent",
     "staged_path",

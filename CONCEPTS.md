@@ -635,6 +635,18 @@ A record a worker writes before renaming its item's file, naming the target
 (`analysis/artifacts.py`). On resume a missing source with an existing target is
 the finished item; otherwise the source is missing. Never recovered by scanning.
 
+### Run ahead
+How `analyze run` uses a pool without changing the job's order
+(`analysis/ahead.py`, U241). Worker processes measure the waiting files' heads
+(key, tempo, drift, energy) through the pool's **work stream**
+(`core/pool.py`, results read one position at a time), and the driver reads
+each head when it reaches that item, then scores vocals and writes. A head
+measured ahead is used only if the file's identity and the settings it was
+measured under still stand; otherwise the item is measured in the driver.
+
+*Avoid:* reading "ahead" as writing ahead: no worker writes a tag, a name, a
+report or a row. The pool a run had is its **`analyze.pool`** check line.
+
 ### Handler key
 The string a job stores instead of a function, the verb's dotted name
 (`profile.show`). A declared key is not a runnable one: `cli/handlers.py`

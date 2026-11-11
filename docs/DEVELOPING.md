@@ -50,6 +50,14 @@ Nothing merges until all three are clean:
   for personal literals (home directories, volumes, accounts, machine names)
   and credential-shaped content.
 - ruff skips `src/cratekit/_vendor`; see [`vendoring.md`](vendoring.md).
+- `scripts/analyze_stages.py` measures where an `analyze run` spends its
+  time: `stages` for wall time per stage, `memory` for one light worker's
+  peak per track, `batch` for one worker against the pool, each over a folder
+  it only reads, or over the fixed synthetic set `synthesize` writes.
+  `scripts/head_agreement.py --analyse N --key windows|plain` reads a cheaper
+  key method's agreement with rekordbox. After a change to
+  `analysis/detect.py`, `separation.py` or `light.py`, re-run them and replace
+  the numbers those modules quote.
 
 ## CI
 
