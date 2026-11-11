@@ -48139,3 +48139,187 @@ job's recorded signal and says who holds the lock. A deadline that then
 proceeds unlocked on an empty cache is the original crash again, so the
 bound has to refuse or keep waiting with a message, and the change wants a
 review of its own. Ledger only until a person meets it.
+
+---
+
+## R-1494. A file that reaches the staging folder while a label go's tail runs lands with the go
+
+**Found:** at the review of #655, R-1467, 2026-11-11.
+
+**The mechanism.** A go reads the folder before its tail and refuses beside
+anything that is not its own; the tail itself does not read it again
+between `name apply` and `intake land`. A download that commits into the
+folder while the tail analyses is landed with the go under its manifest and
+pass. Its record (`keep_tail`) leaves out a track another download recorded
+at its download name, but a file no job records, such as a Bandcamp sync's,
+which records no artifact, or a file a person drops in, is kept as the go's
+own and read so on the next go under its run.
+
+**Measured cost.** Driven at the review's round two (`test_cr.py::test_cr3`)
+by committing a plain download inside the analyze step: the landing argv was
+the go's, over the go's tracks and the plain one. The producer, a second
+process downloading into staging during a tail, was not driven.
+
+**Closes when:** the landing's own plan is checked against the go's tracks
+before its gate, or the tail reads the folder again before the landing.
+Ledger only: the producer is a concurrent second verb, unmeasured.
+
+---
+
+## R-1495. A label go whose tail left no record refuses its own go over its own renamed tracks
+
+**Found:** at the review of #655, R-1467, 2026-11-11.
+
+**The mechanism.** A run's own `--go` reads a file no download names as its
+own only when its tail's record (`label.go.keep_tail`, kept by the CLI layer
+whichever way the tail ends) names it by name, size and modification time.
+No record is kept when the process dies mid tail, when the record cannot be
+written (a warning), for a go whose tail ran under a build before R-1467, or
+when a person edits a renamed track's tags before the go is run again. The
+go then refuses its own tail beside its own renamed tracks.
+
+**Measured cost.** Driven at the review's round two (`test_misc.py::test_u1`,
+the record stripped as an earlier build leaves it): exit 42, the two renamed
+tracks named as tracks no download names, no tail run. The refusal names the
+tail by hand, which lands them; nothing is lost. A go in flight across the
+upgrade is the reachable producer; its count on the live store is unmeasured.
+
+**Closes when:** a go that finds files no download names and no record of
+its own tail can tell its renamed tracks by something that survives (the tags
+the tail wrote), or the refusal says plainly that they may be its own.
+Ledger only: the way on is named and works.
+
+---
+
+## R-1496. A label go whose track is refused output-exists now refuses its tail until the file kept at that name is moved
+
+**Found:** at the build of #655, R-1467, 2026-11-11.
+
+**The mechanism.** R-1115 landed the rest of a go's download when one track
+failed for good with `output-exists`, a file already at the name it lands
+under. That file is not the go's download, so since R-1467 the go refuses
+before its gate while it is in the folder, and refuses its tail if it
+appears during the download, naming it as a track no download names. The
+four R-1115 tests that produced the failure with such a file now keep it in
+the folder only while the drive runs, so they pin how such a download
+settles, not a state a person reaches.
+
+**Measured cost.** Driven at the review's round two (`test_oe.py`) with the
+file left in place: exit 42, the tail not run, the refused track and the
+kept file named. A person moves or lands the kept file, then runs the go
+under its run again. Nothing lands under the wrong pass.
+
+**Closes when:** a test reaches a download failed only for good by a
+producer that leaves nothing in the folder, or the R-1115 reading is
+restated over the refusal. Ledger only.
+
+---
+
+## R-1497. The go a refusal names for an earlier download is refused beside a later go's download that already landed
+
+**Found:** at the review of #655, R-1467, 2026-11-11.
+
+**The mechanism.** U239's `_beside` refuses a run's own tail beside any go
+job queued after it that is open or holds a downloaded track, whether or not
+that later download has since landed. R-1467's refusal of a fresh go names
+`crate --run RUN label sync --go` for an earlier go it can put files down to;
+when a later go's download exists, that command refuses saying the folder
+holds the later download, which may have landed long ago. Downloads from
+before R-1467 that share the folder name each other this way, and only moving
+files out lands them (landing two batches from one folder separately was out
+of R-1467's scope).
+
+**Measured cost.** Driven at the review's round two (`test_f2.py`): go A
+finished by hand, its tracks moved out, go B landed with its proof, one stray
+file. The fresh go named A's command; that command exited 42 with the false
+sentence and no tail. The refusal's other step, land or move the stray file
+out, works.
+
+**Closes when:** `_beside` counts a later go's job only while it is open or
+holds a track in the folder, or the step for a go named with no tracks of its
+own present says it may refuse. Ledger only.
+
+---
+
+## R-1498. A label go matches its own downloaded tracks to the staging folder by byte exact path
+
+**Found:** at the review of #655, R-1467, 2026-11-11.
+
+**The mechanism.** `label.go.beside` compares each job's recorded artifact
+path with the folder's listing as resolved paths, byte for byte. A volume
+that hands a name back decomposed (NFD) where the artifact was recorded
+composed (NFC) makes the go's own accented track read as a file no download
+names, so the go refuses its own tail. `core.locations.norm_for_compare` is
+the repository's rule for such comparisons and is not used here.
+
+**Measured cost.** Driven at the review's round two (`test_cr.py::test_cr5`)
+with the artifact recorded NFC and the file NFD: the track was read as not
+the go's. A refusal with the tail by hand named; nothing lands wrongly. A
+volume that decomposes names cannot be made on the Linux container, so the
+producer is unmeasured.
+
+**Closes when:** the comparison normalizes as `norm_for_compare` does, with a
+test over a decomposed name. Ledger only.
+
+---
+
+## R-1499. crate sync land lands whatever the staging folder holds, a label go's download included, under the sync pass
+
+**Found:** at the review of #655, R-1467, 2026-11-11.
+
+**The mechanism.** R-1467 made `label sync --go` refuse while the staging
+folder holds anything that is not its own download. `crate sync land` has no
+such read: its tail runs `name apply` over the whole folder and its landing
+takes every file there, so a label go's download waiting at its landing's
+gate (renamed, unlanded) is landed under the sync pass's manifest and pass,
+and the label go's own landing is left with nothing.
+
+**Measured cost.** Driven at the review's round one
+(`test_rv9.py::test_s8c`): go A to its landing's gate, then `crate sync
+land`, its landing decided and applied: "4 file(s) are named in
+..._synced_inboxed.xml", A's two tracks filed in the account playlists'
+batch folder. The label's tracks are filed under the sync pass and no label.
+
+**Closes when:** `sync land` reads the folder the way `label.go.beside`
+does and refuses beside another download's tracks or files no download
+names, naming how each lands. Earns an issue: the product files a DJ's
+tracks under the wrong pass, the mirror of R-1467.
+
+---
+
+## R-1500. A label go reads every item of every job in the queue before its gate and before every tail
+
+**Found:** at the review of #655, R-1467, 2026-11-11.
+
+**The mechanism.** `label.go.beside`, and `keep_tail` after the tail, read
+every job's item rows, any handler, to find the downloads with a track in the
+staging folder; the handler filter was dropped so a fallback fetch's track is
+read. A queue with many large jobs (tag and analysis jobs carry one item a
+file) is read in full each time.
+
+**Measured cost.** Measured at the review's round two (`test_misc.py::test_p1`):
+40 jobs of 5,000 items, 0.81 to 0.90 seconds over 3 repeats, against 0.001
+seconds with none. The live queue's size was not measured.
+
+**Closes when:** the read asks the store for done items whose artifact sits
+under the staging folder in one query. Ledger only.
+
+---
+
+## R-1501. The fix of R-1467's second review round, the tail's kept record, was not reviewed by Fable
+
+**Found:** at the review of #655, R-1467, 2026-11-11.
+
+**The mechanism.** Review round two found one BLOCKING finding, driven end to
+end: a go whose tail started read as many foreign files as its own once its
+tracks left the folder. The second and last fix round replaced that count
+with `label.go.keep_tail`, kept by the CLI layer whichever way the tail ends,
+and the go's own pass's landing proof. METHOD allows two fix rounds, so no
+third review read that fix; its tests and its mutation rows are the author's.
+
+**Measured cost.** None measured. The round's own drive of the finding,
+rebuilt in the suite (`test_a_go_whose_tracks_left_reads_no_file_put_there_since_as_its_own`),
+refuses as it should.
+
+**Closes when:** a Fable pass over the merged range of R-1467 from the second
+fix round on finds nothing BLOCKING, or its findings are filed. Ledger only.
