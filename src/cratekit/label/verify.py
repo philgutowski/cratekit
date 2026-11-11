@@ -1,4 +1,4 @@
-"""Catalogue verification. A substring match is a heuristic, never an identity.
+"""Catalogue verification. A name match is a heuristic, never an identity.
 
 The crawl finds candidates by copyright text and artist credits. That is
 discovery. This module asks an external catalogue whether the claimed label
@@ -26,10 +26,43 @@ def fold_label(value: str) -> str:
     return _NORM.sub(" ", (value or "").lower()).strip()
 
 
+def _words_within(needle: str, credit: str) -> bool:
+    """Whether the folded ``needle`` is a run of whole words inside ``credit``."""
+    return f" {needle} " in f" {credit} "
+
+
+_WORD_BREAK = re.compile(r"[\W_]+")
+
+
+def _fold_words(value: str) -> str:
+    """Case folded, every run of non word characters one space, letters of any script kept."""
+    return _WORD_BREAK.sub(" ", (value or "").casefold()).strip()
+
+
+def credit_names(needle: str, credit: str) -> bool:
+    """Whether ``credit`` carries the whole of ``needle``, as whole words. One way only.
+
+    For a reader that WRITES on the answer (U240): ``tag folder`` gives a file
+    its label's genre on it. So it is stricter than :func:`labels_match` twice
+    over. The other half, a credit inside a longer needle, is left out, so a
+    line reading ``Music`` never names ``Aus Music``. And a letter of any script
+    stays a letter, where :func:`fold_label` drops every one outside ASCII, so
+    ``Âme`` never shrinks to ``me`` inside ``Give Me Records`` and ``東京
+    Records`` never to ``records`` (U240's review, round two).
+    """
+    left, right = _fold_words(needle), _fold_words(credit)
+    return bool(left) and bool(right) and _words_within(left, right)
+
+
 def labels_match(claimed: str, resolved: str) -> bool:
-    """Substring either way. Discovery heuristic, used only after a web hit."""
+    """Whole words either way. Discovery heuristic, used only after a web hit.
+
+    Both sides are folded first, so case and punctuation never decide it. Then
+    one side must appear in the other as whole words (U237): ``Rawax`` matches
+    ``RAWAX`` and ``Rawax Records``, and never ``RAWAXXX``, another act.
+    """
     left, right = fold_label(claimed), fold_label(resolved)
-    return bool(left) and bool(right) and (left in right or right in left)
+    return bool(left) and bool(right) and (_words_within(left, right) or _words_within(right, left))
 
 
 def cache_path(label_id: str) -> Path:

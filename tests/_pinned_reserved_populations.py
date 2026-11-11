@@ -572,6 +572,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     ],
     'cli/handlers.py': ['config-drift', 'internal-error'],
     'cli/jobs.py': ['internal-error', 'job-unknown'],
+    # 2026-11-10, U239: the landing a go's own run could not record.
+    'cli/label_sync.py': ['label-sync-landing-unrecorded'],
     'cli/output.py': ['awaiting-human-action'],
     'cli/rebuild.py': [
         'config-unusable',
@@ -1976,12 +1978,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'sync/watermarks.py': ['sync-watermark-unusable', 'utf-8'],
     'tagging/artifacts.py': ['tag-artifacts', 'tag-staging', 'utf-8'],
     # 2026-10-31, U178: the --label refusal and the two label genre warnings joined.
+    # 2026-11-11, U240: the copyright line's two label warning joined.
     'tagging/cli.py': [
         'config-unusable',
         'label-unknown',
         'no-op',
         'source-missing',
         'tag-folder-absent',
+        'tag-folder-copyright-ambiguous',
         'tag-folder-label-no-genre',
         'tag-folder-label-on-resume',
         'tag-folder-label-registry-unread',
@@ -3310,6 +3314,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',
     'modules/tools/mastering.py',
+    'tagging/cli.py',  # 2026-11-11, U240: how many failed files a refusal names.
     'tagging/searchers.py',
     'write/collection_export.py',
     'write/metadata.py',

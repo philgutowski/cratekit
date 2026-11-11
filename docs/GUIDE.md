@@ -281,7 +281,23 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file no catalogue knows keeps no genre.
+  other file no catalogue knows keeps no genre. A file's label is its label
+  tag, else `--label`, else the one registered label whose whole `--match`
+  needle its copyright line carries, as whole words, so a folder of several
+  labels is tagged in one call with every catalogue refusing, as long as each
+  file's line names its label. Where one needle carries another, as a
+  sublabel's carries its parent's, the longer wins; a line naming two labels
+  otherwise settles neither, and the file is asked of the catalogues. A
+  label tag is read as a label's name, and as an id only when no label is
+  called that; a name two registered labels share, after a `registry rename`
+  onto a taken name, settles neither too. `--label` takes an id or a name,
+  and a name two labels share takes the first registered, so pass the id
+  there; the label it names is then held by its id, so it is never given
+  another label's genre under the same name.
+  With
+  `--output json` the summary lists each file by label, by catalogue or not
+  at all, with the reason a failed one failed; a sweep that ends in a refusal
+  carries the same list in the refusal's detail and counts it in its message.
 - `tag guess` gives each file with no genre one from its artist's other
   tracks and, with `--pass`, the account playlist that asked for it. A file
   that has a genre is never changed. `--report` writes nothing. Each genre
@@ -385,7 +401,7 @@ does not make the next `sync all` offer the playlist again. `crate organize
 
 ```bash
 crate label registry                                 # list who you follow
-crate label registry add "Some Label" --match "Some Label Rec"
+crate label registry add "Some Label" --match "Some Label Records"
 crate label registry set "Some Label" --genre Rominimal --bandcamp somelabel
 crate label registry rename "Some Label" --to "New Name"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
@@ -394,20 +410,29 @@ crate label sync
 crate label sync --go
 ```
 
+- `--match` is the string the catalogue credits, matched as whole words after
+  case and punctuation are folded: `Rawax` confirms `RAWAX` and `Rawax
+  Records`, never `RAWAXXX`. A copyright line is read with its `(P)`, `(C)`,
+  `℗` or `©` mark and its year stripped, and nothing else.
 - A label's id is made once, at `add`; what has been pulled hangs off it.
   Rename with `registry rename`; removing and re-adding makes the whole
   catalogue new again.
 - `registry set` fields: `--match`, `--seed`, `--track-limit`, `--offer`
   (releases kept in review per sweep, `labels.offer_per_sweep` by default),
-  `--kind` (for the genre gate), `--genre` (given to the label's files with
-  no genre, so no catalogue is asked; one routing only to the fallback folder
+  `--kind` (for the genre gate), `--genre` (given by `tag folder` to the
+  label's files with no genre, found by label tag, `--label` or copyright
+  line, so no catalogue is asked; one routing only to the fallback folder
   needs `--accept-fallback`) and `--bandcamp` (the seller account). `default`
   clears `--kind`, `--genre` or `--bandcamp`.
 - `harvest` offers the labels behind a playlist as review items; `registry
   adopt` adds each accepted one not already held.
 
 `label sync` walks your labels one at a time and asks only about releases new
-since that label was last asked, with release and track counts and a size.
+since that label was last asked, with release and track counts and a size,
+and how many more of the label's own releases lie past the window, which
+`registry set --offer` raises. A release past the window with no copyright
+line to read is counted as "up to N more, not yet checked", never as the
+label's.
 Answers: `all`, `pick` (by number), `not-now`, `stop` (unfollow). Each answer is
 saved as given; `quit` and the next run resumes at the first unanswered label.
 A release answered once is never asked again. The genre gate runs first, so
@@ -427,9 +452,19 @@ the file its `listing` line names lists it afresh.
 explicit gate `label.sync.confirm`. Answer it with `crate run decide RUN
 label.sync.confirm apply`, then `crate --run RUN label sync --go` downloads,
 paced, and runs the same tail as `sync land`, then plans `intake land
---manifest ... --pass ...` and stops at its gate. A go stopped part way is
-resumed by the next `--go`. Every go stages into the same folder, so land
-each before the next.
+--manifest ... --pass ...` and stops at its gate. A go stopped part way, at
+the provider call ceiling or a park, is taken on by `crate --run RUN label
+sync --go` again under the same run, with no new decision: it finishes the
+download if it is unfinished, whatever finished it (`job resume` included),
+and runs the tail to the landing's gate. The ceiling's refusal names that
+command with `--calls` raised (a go reached at the end of the walk is named as
+the walk, `label sync` without `--go`, which asks any new label first). Asked
+again after its tail reached the landing, by this run or by a fresh go that
+resumed its download, the run names that landing and runs nothing; a
+cancelled download is asked about again. A fresh `label sync --go` resumes an unfinished download
+too, after asking. Every go stages into the same folder, so land each before
+the next: a run's own `--go` refuses its tail, naming the commands, when a
+later go downloaded into the folder beside it.
 
 Other label verbs:
 

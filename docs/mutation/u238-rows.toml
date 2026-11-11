@@ -1,0 +1,109 @@
+name = "u238"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_no_line_counted_as_own"
+description = "sweep._past_window: count a release with no copyright line as the label's own, so a bound is said as a count"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_workers.py", "tests/modules/test_labels.py", "tests/test_label_judge.py"]
+old = '''        if not names:
+            unchecked += 1'''
+new = '''        if not names:
+            own += 1'''
+
+[[rows]]
+id = "M2_other_label_counted"
+description = "sweep._past_window: count a release whose line names another label, the defect the card fixes"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_workers.py", "tests/modules/test_labels.py", "tests/test_label_judge.py"]
+old = '''        elif any(label_verify.labels_match(claimed, name) for name in names):
+            own += 1'''
+new = '''        else:
+            own += 1'''
+
+[[rows]]
+id = "M3_no_line_dropped"
+description = "sweep._past_window: drop a release with no line from the figure, absence read as another label"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_workers.py", "tests/modules/test_labels.py", "tests/test_label_judge.py"]
+old = '''        if not names:
+            unchecked += 1'''
+new = '''        if not names:
+            pass'''
+
+[[rows]]
+id = "M4_beyond_leaves_out_unchecked"
+description = "list_for_label: beyond is the label's own only, so the recorded round drops every unchecked release"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_workers.py", "tests/modules/test_labels.py", "tests/test_label_judge.py"]
+old = '''        beyond=own_past + unchecked_past,'''
+new = '''        beyond=own_past,'''
+
+[[rows]]
+id = "M5_window_edge_off_by_one"
+description = "list_for_label: start the count one release past the window's edge"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_workers.py", "tests/modules/test_labels.py", "tests/test_label_judge.py"]
+old = '''    own_past, unchecked_past = _past_window(listed[examined:], claimed)'''
+new = '''    own_past, unchecked_past = _past_window(listed[examined + 1:], claimed)'''
+
+[[rows]]
+id = "M6_needle_ignored"
+description = "list_for_label: judge the lines past the window by the label's name, not its --match needle"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_workers.py", "tests/modules/test_labels.py", "tests/test_label_judge.py"]
+old = '''    own_past, unchecked_past = _past_window(listed[examined:], claimed)'''
+new = '''    own_past, unchecked_past = _past_window(listed[examined:], entry.name)'''
+
+[[rows]]
+id = "M7_old_question_read_as_count"
+description = "Question.from_json: a question saved before the split reads none as unchecked, so 414 is said as the label's"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''            beyond_unchecked=beyond if unchecked is None else min(beyond, unchecked),'''
+new = '''            beyond_unchecked=0 if unchecked is None else min(beyond, unchecked),'''
+
+[[rows]]
+id = "M8_bound_said_as_the_labels"
+description = "sync_cli._past_window: say the unchecked alone as the label's releases rather than as a bound"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''        said = f"up to {unchecked} more past this run's window, not yet checked"'''
+new = '''        said = f"{unchecked} more of the label's release(s) past this run's window"'''
+
+[[rows]]
+id = "M9_nothing_line_loses_the_split"
+description = "sync_cli._nothing_check: pass no unchecked count, so the nothing new line says every release as the label's"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''        past = _past_window(listed.listing.beyond, listed.listing.beyond_unchecked)'''
+new = '''        past = _past_window(listed.listing.beyond, 0)'''
+
+[[rows]]
+id = "M10_question_drops_the_split"
+description = "_question_for: build the question without the listing's unchecked count"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''            beyond_unchecked=listing.beyond_unchecked,
+'''
+new = ''
+
+[[rows]]
+id = "M11_saved_question_drops_the_split"
+description = "Question.to_json: save no unchecked count, so a saved question reread says its own as a bound"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync.py", "tests/test_label_sync_go.py", "tests/test_sync_all.py"]
+old = '''            "beyond_unchecked": self.beyond_unchecked,
+'''
+new = ''

@@ -138,7 +138,11 @@ word, unread, or only unknown words), which is filed for review.
 The genre a followed label is registered with
 (`crate label registry set NAME --genre WORD`, cleared with `--genre default`),
 written by `crate tag folder` onto the label's files that have no genre,
-asking no catalogue. A file's label is its label tag, else `--label`. Source
+asking no catalogue. A file's label is its label tag, else `--label`, else
+the one registered label whose whole needle its copyright line carries
+(U240). A tag is read as a name, as an id only when no label is called it,
+and a name two labels share names neither; `--label` is held by its id
+(R-1476). Source
 `label-genre`, counted apart, never off taxonomy. The word must route to a
 bucket other than the fallback unless `--accept-fallback`. Fills an empty genre
 only; never replaces one. An unwritable file fails with `tag-folder-unwritten`.
@@ -745,7 +749,9 @@ The sync scope rule: take the newest N items, drop identities the library holds.
 How many of a label's newest releases a sweep keeps in review,
 `labels.offer_per_sweep` (10) or the label's `--offer`. Queued, filed and held
 releases take places; owned or tombstoned ones do not. What it never reached is
-counted as `beyond`. Each item carries `sweep_run`.
+counted as `beyond`, less each release whose copyright line names another label,
+and the part with no line is `beyond_unchecked`, said as "up to" (U238). Each
+item carries `sweep_run`.
 
 ### Last asked marker
 What `crate label sync` keeps per label in `label_sync.json`: the release ids a

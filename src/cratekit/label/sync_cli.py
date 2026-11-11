@@ -156,7 +156,9 @@ def build_sync(parser, entry) -> None:
         action="store_true",
         help=(
             "show one summary over every answer saved since the last go, ask the "
-            "one gate, and on apply download what was answered for"
+            "one gate, and on apply download what was answered for; under the run "
+            "of a go that started a download, take that download on to its landing "
+            "with no new question"
         ),
     )
     parser.set_defaults(_handler=label_sync)
@@ -404,8 +406,11 @@ class Question:
     run: str
     listed_at: str
     releases: tuple[Offered, ...]
-    #: Releases the listing read and the window did not reach (R-790).
+    #: Releases the listing read and the window did not reach that may still
+    #: be the label's (R-790, U238): see :attr:`sweep.LabelListing.beyond`.
     beyond: int = 0
+    #: The part of ``beyond`` with no copyright line, so not yet checked (U238).
+    beyond_unchecked: int = 0
     #: Listings of the label the crawl could not read (R-261).
     unread: int = 0
     #: Open review items the gate took back before this question was made.
@@ -452,6 +457,7 @@ class Question:
             "unknown": self.unknown,
             "provider_withheld": self.provider_withheld,
             "beyond": self.beyond,
+            "beyond_unchecked": self.beyond_unchecked,
             "unread": self.unread,
             "withheld": self.withheld,
             "unjudged": self.unjudged,
@@ -461,6 +467,8 @@ class Question:
     @classmethod
     def from_json(cls, raw: Mapping[str, Any]) -> Question:
         releases = raw.get("releases")
+        beyond = _count(raw.get("beyond")) or 0
+        unchecked = _count(raw.get("beyond_unchecked"))
         return cls(
             label_id=str(raw.get("label_id") or ""),
             label_name=str(raw.get("label_name") or ""),
@@ -471,7 +479,12 @@ class Question:
                 for one in (releases if isinstance(releases, list) else ())
                 if isinstance(one, Mapping)
             ),
-            beyond=_count(raw.get("beyond")) or 0,
+            beyond=beyond,
+            # A QUESTION SAVED BEFORE U238 HAS NO SPLIT, and its ``beyond``
+            # counted every release of every artist on the roster. Read whole
+            # as unchecked, so it is said as a bound and never as the label's,
+            # and so is a split that is present and unreadable.
+            beyond_unchecked=beyond if unchecked is None else min(beyond, unchecked),
             unread=_count(raw.get("unread")) or 0,
             withheld=_count(raw.get("withheld")) or 0,
             unjudged=_count(raw.get("unjudged")) or 0,
@@ -724,6 +737,7 @@ def _question_for(
             listed_at=timestamp(),
             releases=tuple(releases),
             beyond=listing.beyond,
+            beyond_unchecked=listing.beyond_unchecked,
             unread=len(listing.unread),
             withheld=withheld,
             unjudged=unjudged,
@@ -993,6 +1007,25 @@ def _tracks_said(one: Offered) -> str:
     return said
 
 
+def _past_window(beyond: int, unchecked: int) -> str:
+    """What lies past the window, as a count of the label's and a bound on the rest (U238).
+
+    ``beyond`` is every release past the window that may be the label's and
+    ``unchecked`` the part of it with no copyright line. The label's own are
+    a count; the unchecked are only a bound, since confirming them is a
+    provider read the sweep never made, so they are never called the
+    label's. Nothing past the window says nothing, never "0 more".
+    """
+    unchecked = max(0, min(unchecked, beyond))
+    own = beyond - unchecked
+    said = f"{own} more of the label's release(s) past this run's window" if own else ""
+    if unchecked and own:
+        said += f", and up to {unchecked} more not yet checked"
+    elif unchecked:
+        said = f"up to {unchecked} more past this run's window, not yet checked"
+    return said
+
+
 def _counts(question: Question) -> str:
     said = (
         f"{len(question.releases)} new release(s), {question.tracks} track(s), "
@@ -1005,8 +1038,9 @@ def _counts(question: Question) -> str:
             f"; {question.provider_withheld} track(s) withheld by the provider "
             f"on {question.short_releases} release(s), counted but not listed"
         )
-    if question.beyond:
-        said += f"; {question.beyond} more past this run's window"
+    past = _past_window(question.beyond, question.beyond_unchecked)
+    if past:
+        said += f"; {past}"
     if question.unread:
         said += f"; {question.unread} listing(s) of the label could not be read"
     if question.withheld:
@@ -1061,8 +1095,10 @@ def _answer_check(answered: Answered) -> dict[str, Any]:
 
 def _nothing_check(entry: labels.LabelEntry, listed: _Listed) -> dict[str, Any]:
     detail = f"{entry.name}: nothing new since it was last asked"
-    if listed.listing is not None and listed.listing.beyond:
-        detail += f"; {listed.listing.beyond} release(s) past this run's window"
+    if listed.listing is not None:
+        past = _past_window(listed.listing.beyond, listed.listing.beyond_unchecked)
+        if past:
+            detail += f"; {past}"
     if listed.withheld:
         detail += f"; {listed.withheld} open item(s) taken back by the genre gate"
     return _check(f"label.{entry.label_id}", "ok", detail)

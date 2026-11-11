@@ -47446,3 +47446,434 @@ reviewer the cloud lane names.
 
 **Closes when:** Fable reviews the merged range of R-1453 at high effort and
 its findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1458. A copyright line with a bare P or C before its year is harvested with the letter and the year in the name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `_YEAR` in `src/cratekit/label/harvest.py` strips only `(P)`, `(C)`, `℗` or `©`, as the brief asks ("and nothing else"), so `P 2021 Cadenza` reads `P 2021 Cadenza` and `C 2021 Puls` reads `C 2021 Puls`, where the old pattern read `Cadenza` and `Puls`. A letter followed by a space and a four digit year is never a name's first letter, so `[PC]\s+(?=\d{4}\b)` would strip it without clipping a name. Pinned at its current reading by `test_a_letter_after_a_mark_is_not_a_second_mark`.
+
+**Measured cost.** Driven through `harvest.from_tracks`: the harvest offers a label under the longer name; verification is unaffected, since the needle still confirms both lines as whole words. Whether the provider ever serves a bare letter line is unmeasured.
+
+**Closes when:** a live harvest shows such a line, and the pattern is widened to a bare P or C followed by a year, or nothing ever shows one. Ledger only.
+
+---
+
+## R-1459. A live label needle that relied on a part word match now confirms nothing, and none of the live needles was measured
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `labels_match` (`src/cratekit/label/verify.py`) now needs one side to appear in the other as whole words of the folded strings. Credit shapes the substring rule confirmed and the word rule refuses: a clipped needle (`Some Label Rec` against `Some Label Records`), a run together credit (`RawaxRecords`), a year joined to the name (`©2021Rawax`), a catalogue number suffix (`RAWAX007`), an abbreviation against a full name (`Cadenza Records` against `Cadenza Rec.`), an accent at the needle's edge (`Cliché` against `Cliche Music`).
+
+**Measured cost.** Each shape driven by the reviewer, main confirming and the branch refusing. Loud when every release of a label fails (`label-sweep-incomplete`), silent when only some do. The live registry is not on a cloud container, so how many of its needles are affected is unknown.
+
+**Closes when:** the attended card for U237 has run a label sync over every registered label on a disposable state copy and repaired each needle that confirms fewer releases than before with `crate label registry set NAME --match`. Ledger only.
+
+---
+
+## R-1460. A letter outside a to z is a word break when a needle is matched, so a needle still confirms a longer accented name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `fold_label` (`src/cratekit/label/verify.py`) turns every character outside a to z and 0 to 9 into a space before `labels_match` compares whole words, so an accented letter splits a word: `Rawax` confirms `Rawaxé`, `Sue` confirms `Sueño`, `Lumi` confirms `Lumière Records`, and `Cliché` never confirms `Cliche Music`. `Sueño` is a live label (`docs/cutover.md`).
+
+**Measured cost.** Measured true on main and on the branch alike, so not a regression; it is the part of U237's goal that stays open for names with a letter outside a to z. Folding accents to their base letter in `fold_label` would close it, but `fold_label` also decides artist name equality in `tidal_catalogue`, so it is its own change.
+
+**Closes when:** `fold_label` folds an accented letter to its base letter (or keeps letters whole) and every caller is checked against it. Ledger only.
+
+---
+
+## R-1461. A copyright line with an ampersand between marks, a mark after the year, two years or leading space still harvests a junk name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `labels_from_copyright` (`src/cratekit/label/harvest.py`) strips a run of marks at the very start and then one four digit year. `℗ & © 2021 Cadenza` reads `& © 2021 Cadenza`, `2021 ℗ Cadenza` keeps its mark, `(P) 2019, 2021 Cadenza` keeps a year, and a line with leading whitespace keeps its mark, because the pattern runs before the strip.
+
+**Measured cost.** Six shapes driven by the reviewer; every one reads the same as or better than main, and none loses a confirmation, since the needle still matches the label's whole words inside the junk. The cost is a harvested name a person would reject. How often the provider serves these shapes is unmeasured.
+
+**Closes when:** a live harvest shows one of these shapes, and the reader strips it. Ledger only.
+
+---
+
+## R-1462. Offers, holds and kept rosters made under the substring needle are never verified again, and an old hold can make the sweep refuse falsely
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** Until U237 `labels_match` confirmed a credit holding the needle anywhere, so the Rawax needle confirmed releases credited `RAWAXXX`. Whatever a sweep offered or held under that rule stays: an offer open in review is never verified again (`src/cratekit/label/sweep.py`, the offer and hold paths), a hold is filed without verification once the genre gate lets it through, which `test_a_labels_kind_changed_after_a_hold_releases_what_now_fits` pins on purpose, and a kept roster (`src/cratekit/label/kept_listing.py`) built from a `RAWAXXX` compilation keeps that act for its kept life of seven days. Worse, when the newest held releases are another act's, the next sweep reads them as releases it could not confirm and refuses with `label-sweep-incomplete`, "could not confirm a single one", naming a needle repair the needle does not need.
+
+**Measured cost.** Driven by the reviewer on the suite's fakes: the false refusal with two old holds and one new other act release, exit 1, even with a confirmed release open in review; the kept roster reused with 84 answers and nothing offered. The live state was not read: the brief measured three `RAWAXXX` releases offered under Rawax, not held. Main alone reaches the same false refusal when a person narrows a needle between two sweeps, so this is the canary's existing assumption with a second way in.
+
+**Closes when:** the attended card for U237 has listed and rejected the old offers and holds credited to another act, and the false refusal either cannot be reached (a hold is verified again under the current rule before the canary counts it) or is accepted as the narrowed needle case. Ledger only until the attended pass shows a live hold of this shape.
+
+---
+
+## R-1463. A release past a label's offer window that is tombstoned, already queued or already answered is still counted as the label's past the window
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `sweep._past_window` judges each release past the window
+by its copyright line alone. A release a person deleted on purpose
+(tombstoned), one already in the review queue, or one a `label sync`
+answer already covered is counted as one of the label's releases past the
+window, though raising `--offer` would offer none of them: inside the
+window a tombstoned one takes no place and an answered or queued one takes
+a place without being offered again.
+
+**Measured cost.** Driven by round one's review through `label sync --next`
+on a roster whose seven releases past a window of three were tombstoned
+in the store directly: the question said "7 more of the label's
+release(s) past this run's window", and with the offer raised to ten the
+next run said nothing new. An answered release pushed past the window by
+a newer one is counted the same way (8 said where 7 were never asked).
+The tombstones were written to the store, not by the delete verb, so the
+reach through a person's own deletions is unmeasured. The statement is
+true (they are the label's releases); it is not the number the person
+raises the window against.
+
+**Closes when:** the count past the window leaves out a release the
+tombstone reader suppresses and one in the offered set, both answered
+locally with no provider call, and `LabelListing.beyond`'s docstring, the
+offer window entry in `CONCEPTS.md` and the guide say so. Ledger only: the
+card scoped the figure to the label's needle, and the figure says nothing
+false.
+
+---
+
+## R-1464. A saved label sync question's figure past the window has edges no test pins, and an unreadable figure says nothing past the window
+
+**Found:** at the second review round of #646, U238, 2026-11-10.
+
+**The mechanism.** `sync_cli.Question.from_json` reads `beyond` with
+`_count(...) or 0`, so a saved figure that cannot be read (null, a string, a
+float) reads as zero and takes a readable split down with it, and the
+question then says nothing about releases past the window. The line
+predates U238. Beside it, three guards kill nothing alone: the lower clamp
+in `sync_cli._past_window`, `_count` refusing a float, and the walk's
+`_nothing_check` call carrying the listing (the `--next` path's twin is
+pinned).
+
+**Measured cost.** None reachable: round two drove three producers of a
+saved question (the branch's `Question.to_json`, `origin/main`'s, and the
+record's write and read back) and none writes an unreadable figure. The
+walk's nothing new line was driven and says the right count.
+
+**Closes when:** an unreadable saved `beyond` is refused or said as
+unread rather than read as zero, and tests pin the lower clamp, a float
+split and the walk's nothing new line. Ledger only.
+
+---
+
+## R-1465. Whether a release's copyright line names a label is decided by three copies of one rule
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `sweep._past_window`, `tidal_catalogue._credits_label`
+and the provider's `search_release` judged by `verify.verify_release` each
+pair `harvest.labels_from_copyright` with `verify.labels_match`. The sweep
+does not import `_credits_label` because it lives in the provider adapter,
+which the generic sweep must not import, and it needs a third answer, no
+line, that `_credits_label` folds into no. A repair to one copy (U237's
+extractor fix lands in the shared extractor, so it reaches all three) that
+changed the match itself in only one would let the count past the window
+drift from what the window confirms.
+
+**Measured cost.** None today: round one's review classified 20 line
+shapes by the count and by the window's verifier and they agreed on 20 of
+20. Argued from reading only.
+
+**Closes when:** one public function in `cratekit.label.verify` or
+`harvest` answers yes, no or no line for a release and a needle, and all
+three callers use it. Ledger only.
+
+---
+
+## R-1466. The review list grouped by label shows a label's own releases past the window and the unchecked ones as one beyond figure
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `review.record_round` stores one `beyond` per label and
+run, which since U238 is the label's own releases past the window plus
+those with no copyright line. `crate review list --queue label-release
+--group-by label` and `--group-by run` print it whole, so the part that is
+only a bound is not told from the part that is a count, while `label
+sync` says "7 more of the label's release(s) past this run's window, and
+up to 2 more not yet checked" for the same listing. A round recorded by an
+earlier build also stays as it was until the label next has a question,
+since `_question_for` records a round only when it builds one.
+
+**Measured cost.** Driven by round one's review: after a question of
+(9, 2) the grouped row read `beyond: 9`; a hand recorded round of 17 stayed
+17 beside a nothing new line saying 7 and up to 2. The figure is defined
+as the sum in `CONCEPTS.md` and is not called the label's releases, so
+nothing false is said.
+
+**Closes when:** the `offer_rounds` table gains an unchecked column
+(additive, as the table itself was) and the grouped list says the two
+parts as `label sync` does, and a nothing new listing records its round
+too. Ledger only.
+
+---
+
+## R-1467. A label go's tail lands whatever else the staging folder holds, an earlier go's unlanded download or a plain download, as one batch under its own manifest and pass
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** Every label go stages into the one download staging
+folder, and `intake land` lands a whole folder. A fresh `label sync --go`
+whose earlier go's download settled and was never landed (finished by `job
+resume` or `acquire download --job`, and no `--go` under its run since)
+queues its own job beside it, and its tail lands both batches as one under
+the new go's manifest and pass, so the earlier go's tracks are filed under no
+label. U239 makes a go under its own run refuse its tail when a LATER go job
+holds tracks in the folder (`_beside` in `src/cratekit/label/go.py`), but no
+check sees an earlier go job, or a download no go queued (a plain `acquire
+download` into the same folder). The same fresh go, when it has nothing new to
+take, asks the gate over an empty plan and ends `no_op` naming nothing about
+the unlanded download (the review's row 9).
+
+**Measured cost.** Driven at the review against the suite's stand in landing
+(`test_F3`, `test_K5`, `test_G`): the tail ran over four files where the go
+downloaded three and planned the landing under the go's manifest and pass; a
+fresh go after a job finished by hand ended `no_op` with three tracks
+unlanded. What a real landing files is unmeasured. Present since U108 and
+U190; U239 did not add it.
+
+**Closes when:** a go refuses to queue, or to run its tail, while the folder
+holds tracks a landing of this go would take that are not this go's, with a
+landing proof by pass on both media (the bridge's intake file, the native
+landing's session record) so a landed batch is not mistaken for a waiting
+one; and a fresh go with nothing to take names an unlanded go download and
+the `--go` under its run that lands it. Earns an issue: the product files a
+DJ's tracks under the wrong pass and label.
+
+---
+
+## R-1468. The per job key a label go's landing is recorded under kills no test alone
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** U239 records the landing a go's tail reached under
+`landing_role(job)` on the run whose go queued the job. Writing it on the
+queuing run is what closes the review's blocking finding; keying it by the job
+as well guards a run holding a second job after its first landed, which no
+shipped verb was found to produce.
+
+**Measured cost.** At round two, `landing_role` returning the bare prefix
+killed 0 of 71 tests and the record written on whichever run ran the tail
+killed 1; both together killed 2. Two candidate producers of a second job
+under one run were driven (`job cancel` on a landed job, `job resume` on it)
+and neither produces it. No user facing cost measured.
+
+**Closes when:** a test drives a run that holds a second go job after its
+first landed, or the key is removed as unreachable. Ledger only.
+
+---
+
+## R-1469. A label go's run names the landing its tail reached for ever, after that landing was applied, aborted or went stale
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** U239 records the landing run a go's tail stopped at on the
+run whose go queued the job (`landing_role` in `src/cratekit/label/go.py`),
+and a later `--go` under that run names it and runs nothing. The record is
+never cleared, so after that landing is applied, aborted or refused stale the
+go still names it, and the way to run the tail again is by hand.
+
+**Measured cost.** Not driven: the suite's stand in landing has no real run.
+Nothing is written over; the person is pointed at a spent run.
+
+**Closes when:** the continuation reads the named run's state and, when its
+gate was aborted or its plan went stale, runs the tail again. Ledger only.
+
+---
+
+## R-1470. A second --go under a label go's run while the first is still in its tail starts a second tail over the same folder
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** Since U239 a `--go` under the run of a go that started a
+download takes that download on and runs its tail, asking nothing. A second
+such `--go` started while the first is still in its tail queues `tag folder`
+again, and its later steps meet the first's jobs. Before U239 the second
+refused `decision-stale` before touching anything.
+
+**Measured cost.** Driven re entrantly in one process at the review
+(`test_T`): the second tail stopped at `analyze run` on `job-driver-held`.
+Two processes were not driven, so what a real second tail does is unmeasured.
+
+The same window from the other side, driven at round two in one process
+(nested, not two processes): a fresh go landed the download while the
+origin run's walk sat at a prompt, and the origin run's go, reading the
+record it loaded at its start, ran the tail again, so two landing plans were
+made over one folder, manifest and pass, and its save at exit overwrote the
+fresh go's record of the landing.
+
+**Closes when:** the continuation holds a lock per run, or reads a tail job
+over the folder still open and refuses naming it. Ledger only, unmeasured.
+
+---
+
+## R-1471. A label go reached at the end of the walk and stopped at the call ceiling names the walk, without --go, as its continue
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** The ceiling's continue command is the stopped command
+line with `--run` and `--calls` (`continue_command` in
+`src/cratekit/cli/__init__.py`). A go reached at the end of the interactive
+walk (`crate label sync`, then `run decide --continue`) stopped there, so its
+continue is `crate --run RUN --calls N label sync`, which walks first. With
+nothing new it reaches the go and lands; with a new release on another label
+and no terminal it refuses `label-sync-unanswerable` and the download stays
+parked.
+
+**Measured cost.** Driven at the review (`test_C`, `test_C3`). A way through
+exists, `crate --run RUN --calls N label sync --go`, which the guide names.
+
+**Closes when:** the go's ceiling cause names its own command line with
+`--go`, whatever command reached it. Ledger only: a wording of the way on.
+
+---
+
+## R-1472. Tag folder reads a track's copyright line, while the label sweep confirmed the release's, so a track credited to its artist is left to the blocked catalogues
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** The vendored downloader writes `track.copyright` onto each file (`src/cratekit/_vendor/downloader/download.py`), and `tag folder` names a file's label from that line. The label sweep (`label/tidal_catalogue.py`) confirmed the release on the release's own credit. Where a track's line names its artist or a distributor rather than the label, the file's line names no registered label and the file is asked of the catalogues, which on 2026-11-10 refused everything.
+
+**Measured cost.** Driven by the round one review on a tail step: a staging folder of a file reading `℗ 2023 Rawax` and one reading `℗ 2023 Some Artist`, every catalogue blocked. The first is tagged by its label; the second fails its item and the label go stops at the tag step. How often a real download's track line differs from its release's credit is unmeasured: no live download was read.
+
+**Closes when:** the label go stages each file with the label it was confirmed for (its label tag, as the Bandcamp fetch does), or the rate of differing lines is measured live and found negligible. Ledger only until a live pass shows it.
+
+---
+
+## R-1473. A copyright line naming one registered label that carries no genre sends its file to the catalogues and no warning says why
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `tag folder` records the label a copyright line named on the file's item report (`copyright_labels`) when that label has no genre, and asks the catalogues. The summary counts only lines naming two labels (`copyright_ambiguous`), so nothing in the envelope says a registered label without a genre was found; `--label` on such a label warns `tag-folder-label-no-genre`, the copyright path does not.
+
+**Measured cost.** Driven by the round one review: a `℗ 2021 Gettraum` file, Gettraum registered with no genre; the item report names it, the summary and warnings do not. A person reads a file asked of the catalogues with no hint that one `crate label registry set Gettraum --genre WORD` would have tagged it.
+
+**Closes when:** the summary counts files whose line named one label with no genre, by label, and a warning names the `registry set` command. Ledger only.
+
+---
+
+## R-1474. Tag folder's human screen shows the job and its item count and none of the tagging summary, so the per file report is read only with --output json
+
+**Found:** at the build of #648, U240, 2026-11-11.
+
+**The mechanism.** `crate tag folder` renders a succeeded sweep as its job line and `items: N of N settled`, plus warnings; the `tagging` summary under `progress` (counts by source, by label, and since U240 each file by label, by catalogue or not at all) is in the JSON envelope only. True before U240; U240 added the per file list there, and a refusal's message now counts the files by way.
+
+**Measured cost.** Driven at the build through the human renderer: a mixed folder's success shows no line saying which files a label tagged. A person reads the per file report with `--output json`, as the cutover record already did for U178's counts.
+
+**Closes when:** the human screen renders the tagging summary's counts, by way and by label, under the job line. Ledger only.
+
+---
+
+## R-1475. A label whose needle is longer than its tracks' copyright line is never named by the line, so its files are asked of the catalogues
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** U240 names a file's label only when the line carries the label's whole `--match` needle, one way (`label.verify.credit_names`), decided at the round one review so that a line reading `Music` never writes `Aus Music`'s genre. The label sweep's `labels_match` matches either way, so a needle such as `Rawax Records` confirms a release credited `Rawax`, and the same label's file reading `℗ 2023 Rawax` is not named by its line.
+
+**Measured cost.** Driven in the suite on the matcher; the live registry's needles were not read from this container, so how many labels carry a needle longer than their tracks' line is unmeasured. The cost is the old one: those files are asked of the catalogues.
+
+**Closes when:** the attended check lists each registered needle against a recent landing's lines and shortens any needle longer than the line, or the matcher learns a safe longer form. Ledger only.
+
+---
+
+## R-1476. Tag folder's --label naming a label that shares its display name with a label carrying a genre gives the folder the other label's genre
+
+**Found:** at the review of #648, U240, 2026-11-11, on main as it stood before the unit.
+
+**The mechanism.** `crate label registry rename` accepts a name another label already carries, so two labels can share a display name. `_label_payload` in `src/cratekit/tagging/cli.py` resolves `--label` by identifier and freezes the label's display name; `_label_seam` then resolves that name again among the labels carrying a genre, by name, and finds the other one. U240 fixed the same shape on its own copyright path by carrying each label's genre by identifier; the `--label` path is outside its card.
+
+**Measured cost.** Driven at round two of the review on `main` and on the branch: label Alpha with genre Deep House, label omega renamed to Alpha with no genre; `crate tag folder FOLDER --label omega` warns `tag-folder-label-no-genre`, then writes Deep House on every file with no label tag and asks no catalogue. A wrong genre on audio, reported as the label's, never corrected under fill if empty. Whether the live registry holds two labels sharing a name is unmeasured.
+
+**Closes when:** `--label` freezes the label's identifier and its genre, and the seam answers the folder's label by identifier, with a test of the rename above; or `registry rename` refuses a taken name. Meets the board bar, (a) and (b): a wrong genre is written and reported as the label's.
+
+---
+
+## R-1477. A label go stopped at its tag step carries the tag job's bare cause, so the per file report tag folder now gives is read only by running the step again
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `tail.settle` and `tail.job_error` in `src/cratekit/cli/tail.py` drop the tag job's envelope and raise the job's own cause. U240 put the per file report (each file by label, by catalogue or not at all, the failed files named, the two label sentence) on `tag folder`'s refusal, which the tail never relays.
+
+**Measured cost.** Driven at round two of the review through `label sync` with a go, four files, catalogues blocked: the go exits with "finished 2 items and failed 2" and no counts, no failed file named beyond the inner cause, no two label sentence. Nothing false is said; the stop's first step, `crate tag folder STAGING`, prints the report.
+
+**Closes when:** the tail relays a step's refusal message and detail when a job ends failed, or names the command that prints the report. Ledger only.
+
+---
+
+## R-1478. Tag folder's per file report lists a never attempted file, and a finished file whose report cannot be read, as tagged not at all with no reason
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `_summary` in `src/cratekit/tagging/cli.py` lists every item of the job without a committed report as way `none`, with `failed` empty when the item carries no cause. A cancelled or parked sweep's never attempted files, and a finished file whose committed report is unreadable, read alike as files nothing tagged.
+
+**Measured cost.** Driven at round two: a sweep cancelled before it ran reads "Of 3 file(s) ... 3 none", true of each file but unable to tell never run from nothing found; a report overwritten by hand made a file carrying its label's genre read as none, a producer nothing in `src` was found to make (only the staging directory is ever removed).
+
+**Closes when:** a row carries the item's state, so a pending or cancelled item reads as not run, and a done item with no readable report as unread. Ledger only.
+
+---
+
+## R-1479. A label whose needle begins with a four digit year is never named by its own copyright line, since the line's year is stripped before the needle is looked for
+
+**Found:** at the fix round of the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `copyright_matcher` in `src/cratekit/tagging/cli.py` reads the line through `labels_from_copyright`, which strips a leading mark and year, then looks for the whole needle. A label named `2020 Vision` is therefore never named by `℗ 2020 Vision`, chosen at round two so that the year can never complete a needle (`℗ 2020 Vision Quest` named it before).
+
+**Measured cost.** Driven in the suite on the matcher. No followed label's name is known to begin with a year; the card's five do not. Its files are asked of the catalogues, the behaviour before U240.
+
+**Closes when:** a needle that begins with a year is matched against the line with only its mark stripped, keeping the round two test. Ledger only.
+
+---
+
+## R-1480. Tag folder's --label given a display name two labels share takes the first registered in silence, and registry rename accepts a taken name or another label's identifier
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_label_payload` in `src/cratekit/tagging/cli.py` resolves `--label` with `Registry.resolve`, identifier first, then the first label holding the display name, as every label verb resolves a typed name. A file's own tag is now read as a name first (R-1476), so with omega renamed `alpha` while the label whose identifier is `alpha` is called Alpha Recordings, `--label alpha` gives every untagged file Alpha Recordings' genre while a file tagged `alpha` in the same sweep reads as omega. `crate label registry rename` in `src/cratekit/label/registry.py` accepts a name another label already carries, or another label's identifier, which is what makes every one of these shapes.
+
+**Measured cost.** Driven at both review rounds: `--label Alpha` with two labels called Alpha writes the first registered label's genre with no warning, and with the order reversed writes nothing and warns `tag-folder-label-no-genre`. The genre written is the genre of the label the typed text resolves to, so nothing false is said; the person is not told the text named two labels. Whether the live registry holds a shared name is unmeasured.
+
+**Closes when:** `registry rename` refuses a name another label carries or another label's identifier, or `tag folder` warns when its `--label` text is a name more than one label holds. Ledger only.
+
+---
+
+## R-1481. A file whose label tag names a display name two labels share is asked of the catalogues with no warning, and the resume's warning names the shared name alone
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_label_seam` in `src/cratekit/tagging/cli.py` answers nothing for a tag naming a display name two frozen labels hold, in any case or slug spelling, by R-1476's rule. The genre label's own files carrying that name then go to the catalogues. `tag-folder-label-tag-outranked` fires only on a sweep given `--label`, so a sweep given none says it only in the JSON summary's `label_tags`. `tag-folder-label-on-resume` names the frozen label by display name alone, where the queue's warning names `Alpha (omega)`.
+
+**Measured cost.** Driven at both review rounds: two labels called Alpha, the genre label's three fetched files tagged `Alpha`, no `--label`: no genre written, `label_tags {'Alpha': 3}`, warnings empty. On main the first holder's genre was written, the right one for these files and the wrong one for the other label's. Nothing false is said.
+
+**Closes when:** a sweep warns when a file's tag names a display name more than one label holds, and the resume warning names the identifier beside a shared name. Ledger only.
+
+---
+
+## R-1482. A tag folder sweep queued before R-1476 reads its --label as a name, and one queued before U240 still finds another label's genre under a shared name
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_folder_seam` in `src/cratekit/tagging/cli.py` answers the frozen `label_id`, which no job queued before R-1476 carries, so such a job reads its `--label` through the tag seam as a name: a name two labels share answers nothing. A job queued before U240 froze no needles, so `_frozen_labels` holds only the labels with a genre and the card's defect stands for it.
+
+**Measured cost.** Simulated, not driven, by stripping the payload keys at queue: (a) a job frozen with the name and the needles and no identifier, `--label alpha` under two Alphas, asks the catalogues with no warning where main wrote the genre; (b) a job frozen before U240, `--label omega`, writes the other Alpha's genre. The producer is a job queued on an older build and resumed after upgrade.
+
+**Closes when:** such jobs are gone from every queue, or the resume warns that a job froze no identifier. Ledger only.
+
+---
+
+## R-1483. A file's label tag reaches a label by identifier only when no label's name or name slug is the tag, so an old name another label's name slug carries goes to that label, and an identifier that is no slug is never reached
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_label_seam` in `src/cratekit/tagging/cli.py` reads a tag as a display name, then as a display name's slug, then as the identifier its own slug is, the last for a renamed label's old name. The engine helper `tag.tag_folder` in `src/cratekit/tagging/tag.py` takes `label` and not the new `folder_genre`, so a caller of it would answer `--label` as a name.
+
+**Measured cost.** Driven at round two: Alpha with a genre renamed Zed, Omega renamed `Alpha!` with another genre, a file tagged `Alpha` takes Omega's genre where main gave Alpha's; two renames are needed and which label is meant is undefined. A tag equal to an identifier that is not slug shaped, such as one carried in a hand edited registry file, answers nothing where main answered by exact identifier; `add` and `adopt` both make identifiers with `slug`, so no verb was found to produce one. `tag.tag_folder` has no caller in `src`.
+
+**Closes when:** the registry records a label's former names, so an old name is matched as itself, and `tag.tag_folder` takes `folder_genre` or is removed. Ledger only.
