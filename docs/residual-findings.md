@@ -47733,3 +47733,99 @@ exists, `crate --run RUN --calls N label sync --go`, which the guide names.
 
 **Closes when:** the go's ceiling cause names its own command line with
 `--go`, whatever command reached it. Ledger only: a wording of the way on.
+
+---
+
+## R-1472. Tag folder reads a track's copyright line, while the label sweep confirmed the release's, so a track credited to its artist is left to the blocked catalogues
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** The vendored downloader writes `track.copyright` onto each file (`src/cratekit/_vendor/downloader/download.py`), and `tag folder` names a file's label from that line. The label sweep (`label/tidal_catalogue.py`) confirmed the release on the release's own credit. Where a track's line names its artist or a distributor rather than the label, the file's line names no registered label and the file is asked of the catalogues, which on 2026-11-10 refused everything.
+
+**Measured cost.** Driven by the round one review on a tail step: a staging folder of a file reading `℗ 2023 Rawax` and one reading `℗ 2023 Some Artist`, every catalogue blocked. The first is tagged by its label; the second fails its item and the label go stops at the tag step. How often a real download's track line differs from its release's credit is unmeasured: no live download was read.
+
+**Closes when:** the label go stages each file with the label it was confirmed for (its label tag, as the Bandcamp fetch does), or the rate of differing lines is measured live and found negligible. Ledger only until a live pass shows it.
+
+---
+
+## R-1473. A copyright line naming one registered label that carries no genre sends its file to the catalogues and no warning says why
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `tag folder` records the label a copyright line named on the file's item report (`copyright_labels`) when that label has no genre, and asks the catalogues. The summary counts only lines naming two labels (`copyright_ambiguous`), so nothing in the envelope says a registered label without a genre was found; `--label` on such a label warns `tag-folder-label-no-genre`, the copyright path does not.
+
+**Measured cost.** Driven by the round one review: a `℗ 2021 Gettraum` file, Gettraum registered with no genre; the item report names it, the summary and warnings do not. A person reads a file asked of the catalogues with no hint that one `crate label registry set Gettraum --genre WORD` would have tagged it.
+
+**Closes when:** the summary counts files whose line named one label with no genre, by label, and a warning names the `registry set` command. Ledger only.
+
+---
+
+## R-1474. Tag folder's human screen shows the job and its item count and none of the tagging summary, so the per file report is read only with --output json
+
+**Found:** at the build of #648, U240, 2026-11-11.
+
+**The mechanism.** `crate tag folder` renders a succeeded sweep as its job line and `items: N of N settled`, plus warnings; the `tagging` summary under `progress` (counts by source, by label, and since U240 each file by label, by catalogue or not at all) is in the JSON envelope only. True before U240; U240 added the per file list there, and a refusal's message now counts the files by way.
+
+**Measured cost.** Driven at the build through the human renderer: a mixed folder's success shows no line saying which files a label tagged. A person reads the per file report with `--output json`, as the cutover record already did for U178's counts.
+
+**Closes when:** the human screen renders the tagging summary's counts, by way and by label, under the job line. Ledger only.
+
+---
+
+## R-1475. A label whose needle is longer than its tracks' copyright line is never named by the line, so its files are asked of the catalogues
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** U240 names a file's label only when the line carries the label's whole `--match` needle, one way (`label.verify.credit_names`), decided at the round one review so that a line reading `Music` never writes `Aus Music`'s genre. The label sweep's `labels_match` matches either way, so a needle such as `Rawax Records` confirms a release credited `Rawax`, and the same label's file reading `℗ 2023 Rawax` is not named by its line.
+
+**Measured cost.** Driven in the suite on the matcher; the live registry's needles were not read from this container, so how many labels carry a needle longer than their tracks' line is unmeasured. The cost is the old one: those files are asked of the catalogues.
+
+**Closes when:** the attended check lists each registered needle against a recent landing's lines and shortens any needle longer than the line, or the matcher learns a safe longer form. Ledger only.
+
+---
+
+## R-1476. Tag folder's --label naming a label that shares its display name with a label carrying a genre gives the folder the other label's genre
+
+**Found:** at the review of #648, U240, 2026-11-11, on main as it stood before the unit.
+
+**The mechanism.** `crate label registry rename` accepts a name another label already carries, so two labels can share a display name. `_label_payload` in `src/cratekit/tagging/cli.py` resolves `--label` by identifier and freezes the label's display name; `_label_seam` then resolves that name again among the labels carrying a genre, by name, and finds the other one. U240 fixed the same shape on its own copyright path by carrying each label's genre by identifier; the `--label` path is outside its card.
+
+**Measured cost.** Driven at round two of the review on `main` and on the branch: label Alpha with genre Deep House, label omega renamed to Alpha with no genre; `crate tag folder FOLDER --label omega` warns `tag-folder-label-no-genre`, then writes Deep House on every file with no label tag and asks no catalogue. A wrong genre on audio, reported as the label's, never corrected under fill if empty. Whether the live registry holds two labels sharing a name is unmeasured.
+
+**Closes when:** `--label` freezes the label's identifier and its genre, and the seam answers the folder's label by identifier, with a test of the rename above; or `registry rename` refuses a taken name. Meets the board bar, (a) and (b): a wrong genre is written and reported as the label's.
+
+---
+
+## R-1477. A label go stopped at its tag step carries the tag job's bare cause, so the per file report tag folder now gives is read only by running the step again
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `tail.settle` and `tail.job_error` in `src/cratekit/cli/tail.py` drop the tag job's envelope and raise the job's own cause. U240 put the per file report (each file by label, by catalogue or not at all, the failed files named, the two label sentence) on `tag folder`'s refusal, which the tail never relays.
+
+**Measured cost.** Driven at round two of the review through `label sync` with a go, four files, catalogues blocked: the go exits with "finished 2 items and failed 2" and no counts, no failed file named beyond the inner cause, no two label sentence. Nothing false is said; the stop's first step, `crate tag folder STAGING`, prints the report.
+
+**Closes when:** the tail relays a step's refusal message and detail when a job ends failed, or names the command that prints the report. Ledger only.
+
+---
+
+## R-1478. Tag folder's per file report lists a never attempted file, and a finished file whose report cannot be read, as tagged not at all with no reason
+
+**Found:** at the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `_summary` in `src/cratekit/tagging/cli.py` lists every item of the job without a committed report as way `none`, with `failed` empty when the item carries no cause. A cancelled or parked sweep's never attempted files, and a finished file whose committed report is unreadable, read alike as files nothing tagged.
+
+**Measured cost.** Driven at round two: a sweep cancelled before it ran reads "Of 3 file(s) ... 3 none", true of each file but unable to tell never run from nothing found; a report overwritten by hand made a file carrying its label's genre read as none, a producer nothing in `src` was found to make (only the staging directory is ever removed).
+
+**Closes when:** a row carries the item's state, so a pending or cancelled item reads as not run, and a done item with no readable report as unread. Ledger only.
+
+---
+
+## R-1479. A label whose needle begins with a four digit year is never named by its own copyright line, since the line's year is stripped before the needle is looked for
+
+**Found:** at the fix round of the review of #648, U240, 2026-11-11.
+
+**The mechanism.** `copyright_matcher` in `src/cratekit/tagging/cli.py` reads the line through `labels_from_copyright`, which strips a leading mark and year, then looks for the whole needle. A label named `2020 Vision` is therefore never named by `℗ 2020 Vision`, chosen at round two so that the year can never complete a needle (`℗ 2020 Vision Quest` named it before).
+
+**Measured cost.** Driven in the suite on the matcher. No followed label's name is known to begin with a year; the card's five do not. Its files are asked of the catalogues, the behaviour before U240.
+
+**Closes when:** a needle that begins with a year is matched against the line with only its mark stripped, keeping the round two test. Ledger only.
