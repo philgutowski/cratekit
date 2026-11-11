@@ -140,7 +140,8 @@ The genre a followed label is registered with
 written by `crate tag folder` onto the label's files that have no genre,
 asking no catalogue. A file's label is its label tag, else `--label`, else
 the one registered label whose whole needle its copyright line carries
-(U240). Source
+(U240). A tag naming a display name two labels share names neither, and
+`--label` is held by its id (R-1476). Source
 `label-genre`, counted apart, never off taxonomy. The word must route to a
 bucket other than the fallback unless `--accept-fallback`. Fills an empty genre
 only; never replaces one. An unwritable file fails with `tag-folder-unwritten`.
