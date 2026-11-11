@@ -671,3 +671,161 @@ def test_a_file_its_own_label_answered_for_is_never_named_as_outranked(
     assert tagging["label_genres"] == {"Sudbeat": 1}
     assert tagging["label_tags"] == {}
     assert tag_cli.LABEL_TAG_OUTRANKED not in [warning["code"] for warning in resumed["warnings"]]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. A display name two labels share, R-1476
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def two_alphas() -> None:
+    """Alpha with a genre, and omega renamed onto Alpha's display name with none.
+
+    ``registry rename`` accepts a name another label carries, so this is a
+    registry a person can make with the shipped verbs.
+    """
+    registered("--genre", GENRE, name="Alpha")
+    registered(name="Omega")
+    code, envelope = drive(["label", "registry", "rename", "omega", "--to", "Alpha"])
+    assert code == int(ExitCode.OK), envelope
+
+
+def test_a_label_sharing_its_name_with_one_carrying_a_genre_is_never_given_that_genre(
+    cfg, folder, silence, monkeypatch
+):
+    """The defect: omega's sweep froze only the name Alpha, and the seam found
+    the other Alpha among the labels carrying a genre."""
+    two_alphas()
+    track(folder, silence, "a")
+    searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder), "--label", "omega"])
+
+    assert code == int(ExitCode.OK), queued
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC, "never the other Alpha's genre"
+    assert searcher.asked == [("", "a")], "the file was asked of the catalogues"
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["label_genres"] == {}
+    assert tagging["tagged_by"][tag.LABEL_GENRE] == 0
+    warnings = {warning["code"]: warning["message"] for warning in queued["warnings"]}
+    assert "Alpha (omega) is registered with no genre" in warnings[tag_cli.LABEL_NO_GENRE]
+    assert "crate label registry set 'omega' --genre WORD" in warnings[tag_cli.LABEL_NO_GENRE]
+    assert (job.payload["label"], job.payload["label_id"]) == ("Alpha", "omega")
+
+
+def test_the_label_carrying_the_genre_still_gives_it_under_the_shared_name(
+    cfg, folder, silence, monkeypatch
+):
+    two_alphas()
+    track(folder, silence, "a")
+    bound(monkeypatch, never_searched)
+
+    job, resumed = sweep(str(folder), "--label", "alpha")
+
+    assert tags.read_genre_from_file(folder / "a.flac") == GENRE
+    assert resumed["data"]["progress"]["tagging"]["label_genres"] == {"Alpha": 1}
+    assert tag_cli.LABEL_NO_GENRE not in [warning["code"] for warning in resumed["warnings"]]
+    assert (job.payload["label"], job.payload["label_id"]) == ("Alpha", "alpha")
+
+
+def test_a_files_own_tag_naming_a_shared_name_is_given_neither_labels_genre(
+    cfg, folder, silence, monkeypatch
+):
+    """The same rule for a file's own tag: the name names two labels, so it
+    settles neither, as U240 counts two labels sharing a name on a copyright line."""
+    two_alphas()
+    track(folder, silence, "a", label="Alpha")
+    track(folder, silence, "b", label="alpha")
+    searcher = bound(monkeypatch, answering({"a": SearchHit(genre=SPECIFIC, source=searchers.BEATPORT)}))
+
+    _job, resumed = sweep(str(folder))
+
+    assert searcher.asked == [("", "a")]
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert tags.read_genre_from_file(folder / "b.flac") == GENRE, "an identifier is exact"
+    assert resumed["data"]["progress"]["tagging"]["label_tags"] == {"Alpha": 1}
+
+
+def test_a_shared_name_outranking_the_folders_label_is_named_truly(cfg, folder, silence, monkeypatch):
+    two_alphas()
+    track(folder, silence, "a", label="Alpha")
+    track(folder, silence, "b")
+    bound(monkeypatch, answering({}))
+
+    _job, resumed = sweep(str(folder), "--label", "alpha")
+
+    assert tags.read_genre_from_file(folder / "b.flac") == GENRE
+    assert tags.read_genre_from_file(folder / "a.flac") is None
+    warnings = {warning["code"]: warning["message"] for warning in resumed["warnings"]}
+    outranked = warnings[tag_cli.LABEL_TAG_OUTRANKED]
+    assert "1 file was not given Alpha's genre" in outranked
+    assert "names two labels or more" in outranked
+    assert "Alpha on 1" in outranked
+
+
+def test_the_remedy_names_the_label_by_its_name_when_no_other_shares_it(cfg, folder, silence):
+    registered()
+    track(folder, silence, "a")
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder), "--label", LABEL])
+    assert code == int(ExitCode.OK), queued
+    message = queued["warnings"][0]["message"]
+    assert message.startswith(f"{LABEL} is registered with no genre")
+    assert f"crate label registry set {LABEL!r} --genre WORD" in message
+
+
+ALPHAS = {
+    "label_genres": {"alpha": {"name": "Alpha", "genre": GENRE}},
+    "label_needles": {
+        "alpha": {"name": "Alpha", "needle": "Alpha"},
+        "omega": {"name": "Alpha", "needle": "Alpha"},
+    },
+}
+
+
+def test_the_seam_answers_an_identifier_exactly():
+    answer = tag_cli._label_seam(ALPHAS)
+    assert answer("alpha") == LabelAnswer(label="Alpha", genre=GENRE)
+    assert answer("omega") is None
+
+
+@pytest.mark.parametrize("name", ["Alpha", "ALPHA", " alpha ".upper()])
+def test_the_seam_answers_no_display_name_two_labels_share(name):
+    assert tag_cli._label_seam(ALPHAS)(name) is None
+
+
+def test_the_seam_never_falls_through_from_a_label_with_no_genre_to_another():
+    """An identifier held by a label with no genre is that label, even when it
+    is another label's display name, the class of the defect one step over."""
+    payload = {
+        "label_genres": {"x": {"name": "omega", "genre": GENRE}},
+        "label_needles": {
+            "x": {"name": "omega", "needle": "omega"},
+            "omega": {"name": "Alpha", "needle": "Alpha"},
+        },
+    }
+    answer = tag_cli._label_seam(payload)
+    assert answer("omega") is None
+    assert answer("x") == LabelAnswer(label="omega", genre=GENRE)
+
+
+def test_the_seam_answers_a_name_one_label_holds_and_a_slug():
+    payload = {
+        "label_genres": {"some-label": {"name": "Some Label", "genre": GENRE}},
+        "label_needles": {
+            "some-label": {"name": "Some Label", "needle": "Some Label"},
+            "other": {"name": "Other", "needle": "Other"},
+        },
+    }
+    answer = tag_cli._label_seam(payload)
+    assert answer("some label") == LabelAnswer(label="Some Label", genre=GENRE)
+    assert answer("Some-Label") == LabelAnswer(label="Some Label", genre=GENRE)
+    assert answer("Other") is None
+    assert answer("---") is None
+
+
+def test_a_job_queued_before_the_needles_resolves_among_its_genres_as_before():
+    answer = tag_cli._label_seam({"label_genres": {"alpha": {"name": "Alpha", "genre": GENRE}}})
+    assert answer("Alpha") == LabelAnswer(label="Alpha", genre=GENRE)
