@@ -281,7 +281,13 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file no catalogue knows keeps no genre.
+  other file no catalogue knows keeps no genre. A file's label is its label
+  tag, else `--label`, else the one registered label its copyright line names
+  (by each label's `--match` needle, as whole words), so a folder of several
+  labels is tagged in one call even when every catalogue refuses. A line
+  naming two registered labels settles neither, and the file is asked of the
+  catalogues. With `--output json`, the summary lists each file by label, by
+  catalogue or not at all.
 - `tag guess` gives each file with no genre one from its artist's other
   tracks and, with `--pass`, the account playlist that asked for it. A file
   that has a genre is never changed. `--report` writes nothing. Each genre
@@ -403,8 +409,9 @@ crate label sync --go
   catalogue new again.
 - `registry set` fields: `--match`, `--seed`, `--track-limit`, `--offer`
   (releases kept in review per sweep, `labels.offer_per_sweep` by default),
-  `--kind` (for the genre gate), `--genre` (given to the label's files with
-  no genre, so no catalogue is asked; one routing only to the fallback folder
+  `--kind` (for the genre gate), `--genre` (given by `tag folder` to the
+  label's files with no genre, found by label tag, `--label` or copyright
+  line, so no catalogue is asked; one routing only to the fallback folder
   needs `--accept-fallback`) and `--bandcamp` (the seller account). `default`
   clears `--kind`, `--genre` or `--bandcamp`.
 - `harvest` offers the labels behind a playlist as review items; `registry

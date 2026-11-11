@@ -184,7 +184,8 @@ def build(parser, entry) -> None:
         help=(
             "the registered label of every file here that carries no label tag; a "
             "label registered with a genre gives it to each such file with no "
-            "genre, and no catalogue is asked about it"
+            "genre, and no catalogue is asked about it; without it, a file's "
+            "copyright line naming one registered label names its label"
         ),
     )
     parser.set_defaults(_handler=tag_folder)
