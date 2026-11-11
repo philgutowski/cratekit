@@ -61,11 +61,11 @@ Layer: modules.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 from cratekit.core import art, tags
-from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.cause import CratekitError, rebuilt, refuse
 from cratekit.core.naming import AUDIO_EXTS
 
 Searcher = Callable[[str, str], "SearchHit | None"]
@@ -97,12 +97,30 @@ class LabelAnswer:
 #: answers and does not raise.
 LabelGenre = Callable[[str], "LabelAnswer | None"]
 
-#: The copyright line's seam (U240). Given a file's copyright line, the display
-#: names of every registered label it names, with a genre or without, so a line
-#: naming two can be told from a line naming one. The shipped one is built by
-#: ``cratekit.tagging.cli`` over the needles frozen into the job. It answers and
-#: does not raise.
-CopyrightLabels = Callable[[str], "tuple[str, ...]"]
+@dataclass(frozen=True, slots=True)
+class CopyrightLabel:
+    """A registered label a copyright line names, as :data:`CopyrightLabels` answers.
+
+    ``genre`` is the label's registered genre, or None for a label with none.
+    It travels with the name rather than being looked up by it, so two labels
+    sharing a display name can never lend each other a genre (U240's review).
+    """
+
+    label: str
+    genre: str | None = None
+
+
+#: The copyright line's seam (U240). Given a file's copyright line, every
+#: registered label it names, with a genre or without, so a line naming two
+#: can be told from a line naming one. The shipped one is built by
+#: ``cratekit.tagging.cli`` over the needles and genres frozen into the job,
+#: joined by the label's identifier. It answers and does not raise.
+CopyrightLabels = Callable[[str], "tuple[CopyrightLabel, ...]"]
+
+#: The detail key a failed file's refusal carries the labels its copyright line
+#: named under, when the line could not settle it (U240), so the sweep's report
+#: still says why a file the catalogues could not answer was asked of them.
+COPYRIGHT_LABELS_DETAIL = "copyright_labels"
 
 #: How a file's label was named, on a file its label's genre was written to
 #: (U240): by its own label tag, by the verb's ``--label`` for the folder, or
@@ -552,11 +570,9 @@ def _by_label(
     if copyright_labels is None or not line.strip():
         return _Labelled(None, own)
     named = tuple(copyright_labels(line))
-    if len(named) != 1:
-        return _Labelled(None, own, copyright_labels=named)
-    answer = label_genre(named[0])
-    if answer is None:
-        return _Labelled(None, own, copyright_labels=named)
+    if len(named) != 1 or not named[0].genre:
+        return _Labelled(None, own, copyright_labels=tuple(found.label for found in named))
+    answer = LabelAnswer(label=named[0].label, genre=named[0].genre)
     return _Labelled(answer, own, NAMED_BY_COPYRIGHT)
 
 
@@ -670,6 +686,20 @@ def tag_one(
     try:
         hit = searcher(artist, title)
     except CratekitError as exc:
+        if needs_genre and tier.copyright_labels:
+            # THE LINE'S LABELS RIDE ON THE REFUSAL (U240's review), because a
+            # file whose item fails keeps no record, and the sweep's report is
+            # where a person reads why its line did not settle it.
+            raise rebuilt(
+                exc,
+                replace(
+                    exc.cause,
+                    detail={
+                        **dict(exc.cause.detail or {}),
+                        COPYRIGHT_LABELS_DETAIL: list(tier.copyright_labels),
+                    },
+                ),
+            ) from exc
         if needs_genre:
             raise
         unread = {
@@ -801,6 +831,8 @@ __all__ = [
     "NO_ISRC",
     "SOURCES_UNREAD",
     "UNMAPPED_GENRE",
+    "COPYRIGHT_LABELS_DETAIL",
+    "CopyrightLabel",
     "CopyrightLabels",
     "FetchImage",
     "LabelAnswer",

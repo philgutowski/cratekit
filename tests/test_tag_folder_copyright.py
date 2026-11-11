@@ -149,9 +149,15 @@ def genre_seam(table: dict[str, str]):
     return answer
 
 
-def needles(table: dict[str, str]):
-    """A copyright seam over ``{name: needle}``, the shell's own matcher over them."""
-    return tag_cli.copyright_matcher(table)
+def needles(table: dict[str, str], genres: dict[str, str] | None = None):
+    """A copyright seam over ``{name: needle}``, the shell's own matcher over them,
+    each label carrying its genre from ``genres`` (the module's GENRES by default)."""
+    held = GENRES if genres is None else genres
+    return tag_cli.copyright_matcher((name, needle, held.get(name)) for name, needle in table.items())
+
+
+def names(matcher, line: str) -> tuple[str, ...]:
+    return tuple(found.label for found in matcher(line))
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -308,9 +314,9 @@ def test_a_file_already_carrying_a_genre_keeps_it_and_its_line_is_never_matched(
     path = downloaded(folder, silence, "a", "℗ 2023 Rawax", genre="Techno")
     asked: list[str] = []
 
-    def matcher(line: str) -> tuple[str, ...]:
+    def matcher(line: str) -> tuple[tag.CopyrightLabel, ...]:
         asked.append(line)
-        return (RAWAX,)
+        return (tag.CopyrightLabel(RAWAX, MINIMAL),)
 
     result = tag.tag_one(
         path, searcher=never_searched, label_genre=genre_seam(GENRES), copyright_labels=matcher
@@ -359,13 +365,44 @@ def test_no_copyright_seam_reads_no_line_and_tags_exactly_as_before(folder, sile
     ],
 )
 def test_the_matcher_names_a_label_by_its_needle_in_whole_words(line, named):
-    assert tag_cli.copyright_matcher({RAWAX: RAWAX, ATIPIC: ATIPIC})(line) == named
+    assert names(needles({RAWAX: RAWAX, ATIPIC: ATIPIC}), line) == named
 
 
 def test_the_matcher_reads_a_labels_match_needle_and_not_its_name():
-    """A label registered as ``Some Label`` with ``--match "Some Label Records"``."""
-    matcher = tag_cli.copyright_matcher({"Some Label": "Some Label Records"})
-    assert matcher("℗ 2024 Some Label Records") == ("Some Label",)
+    """A label registered as ``Some Label`` with ``--match "SL Recordings"``: a
+    line carrying the needle and not the name names it, and the name alone does not."""
+    matcher = needles({"Some Label": "SL Recordings"})
+    assert names(matcher, "℗ 2024 SL Recordings") == ("Some Label",)
+    assert names(matcher, "℗ 2024 Some Label") == ()
+
+
+@pytest.mark.parametrize(
+    "line",
+    ["℗ 2023 Barac", "(P) 2024 Cronos", "℗ 2024 Music", "℗ 2023 Records"],
+)
+def test_a_line_carrying_only_part_of_a_needle_names_no_label(line):
+    """One way only: a short line inside a long needle writes no genre (review round one)."""
+    matcher = needles({CRONOS: CRONOS, "Aus Music": "Aus Music", "Some Label": "Some Label Records"})
+    assert names(matcher, line) == ()
+
+
+def test_a_sublabels_own_line_names_the_sublabel_and_the_parents_names_the_parent():
+    """The needle carrying every other needle named wins; review round one found
+    the parent's own line answered both and settled neither."""
+    matcher = needles({RAWAX: RAWAX, "Rawax Motor City Edition": "Rawax Motor City Edition"})
+    assert names(matcher, "℗ 2023 Rawax") == (RAWAX,)
+    assert names(matcher, "℗ 2023 Rawax Motor City Edition") == ("Rawax Motor City Edition",)
+
+
+def test_two_labels_registered_with_one_needle_settle_neither():
+    matcher = needles({RAWAX: RAWAX, "Rawax Again": RAWAX})
+    assert set(names(matcher, "℗ 2023 Rawax")) == {RAWAX, "Rawax Again"}
+
+
+def test_each_named_label_carries_its_own_genre():
+    matcher = needles({RAWAX: RAWAX, "Gettraum": "Gettraum"})
+    assert matcher("℗ 2023 Rawax") == (tag.CopyrightLabel(RAWAX, MINIMAL),)
+    assert matcher("℗ 2023 Gettraum") == (tag.CopyrightLabel("Gettraum", None),)
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -412,9 +449,9 @@ def test_a_label_batch_with_every_catalogue_blocked_lands_tagged_by_label(
     assert tagging["label_genres"] == {RAWAX: 1, ATIPIC: 1, CRONOS: 1}
     assert tagging["ways"] == {"label": 3, "catalogue": 0, "none": 0}
     assert tagging["files"] == [
-        {"item": "a.flac", "way": "label", "label": RAWAX, "named_by": "copyright"},
-        {"item": "b.flac", "way": "label", "label": ATIPIC, "named_by": "copyright"},
-        {"item": "c.flac", "way": "label", "label": CRONOS, "named_by": "copyright"},
+        {"item": "a.flac", "way": "label", "label": RAWAX, "named_by": "copyright", "failed": ""},
+        {"item": "b.flac", "way": "label", "label": ATIPIC, "named_by": "copyright", "failed": ""},
+        {"item": "c.flac", "way": "label", "label": CRONOS, "named_by": "copyright", "failed": ""},
     ]
     assert "label" not in job.payload, "no --label was frozen"
     reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
@@ -463,10 +500,10 @@ def test_the_report_names_each_file_by_label_by_catalogue_or_not_at_all(
     tagging = resumed["data"]["progress"]["tagging"]
     assert tagging["ways"] == {"label": 1, "catalogue": 1, "none": 2}
     assert tagging["files"] == [
-        {"item": "a.flac", "way": "label", "label": RAWAX, "named_by": "copyright"},
-        {"item": "b.flac", "way": "catalogue", "label": "", "named_by": ""},
-        {"item": "c.flac", "way": "none", "label": "", "named_by": ""},
-        {"item": "d.flac", "way": "none", "label": "", "named_by": ""},
+        {"item": "a.flac", "way": "label", "label": RAWAX, "named_by": "copyright", "failed": ""},
+        {"item": "b.flac", "way": "catalogue", "label": "", "named_by": "", "failed": ""},
+        {"item": "c.flac", "way": "none", "label": "", "named_by": "", "failed": ""},
+        {"item": "d.flac", "way": "none", "label": "", "named_by": "", "failed": ""},
     ]
 
 
@@ -476,6 +513,7 @@ def test_files_whose_line_named_two_labels_are_counted_and_warned(
     five_labels()
     downloaded(folder, silence, "a", "2023 Cronos Barac under exclusive licence to Atipic")
     downloaded(folder, silence, "b", "2023 Cronos Barac under exclusive licence to Atipic")
+    downloaded(folder, silence, "c", "\u2117 2021 Gettraum")
     bound(monkeypatch, answering({}))
 
     code, job, resumed = sweep(str(folder))
@@ -488,6 +526,65 @@ def test_files_whose_line_named_two_labels_are_counted_and_warned(
     warned = {w["code"]: w["message"] for w in resumed["warnings"]}
     assert tag_cli.COPYRIGHT_AMBIGUOUS == "tag-folder-copyright-ambiguous"
     assert f"{ATIPIC}, {CRONOS} on 2" in warned[tag_cli.COPYRIGHT_AMBIGUOUS]
+
+
+def test_a_sweep_one_file_of_which_fails_still_reports_every_file(
+    cfg, folder, silence, monkeypatch
+):
+    """Review round one: with the catalogues blocked, one unsettled file made the
+    sweep a refusal that said nothing of the files the labels had tagged."""
+    five_labels()
+    downloaded(folder, silence, "a", "\u2117 2023 Rawax")
+    downloaded(folder, silence, "b", "\u2117 2024 Atipic")
+    downloaded(folder, silence, "d", "\u2117 2022 Some Other Label")
+    downloaded(folder, silence, "e", "2023 Cronos Barac under exclusive licence to Atipic")
+    bound(monkeypatch, blocking())
+
+    code, job, resumed = sweep(str(folder))
+
+    assert code != int(ExitCode.OK), resumed
+    assert item_causes(job.job_id) == {
+        "d.flac": searchers.UNREACHABLE_REASON,
+        "e.flac": searchers.UNREACHABLE_REASON,
+    }
+    cause = resumed["cause"]
+    tagging = cause["detail"]["tagging"]
+    assert tagging["ways"] == {"label": 2, "catalogue": 0, "none": 2}
+    assert [(row["item"], row["way"], row["label"], row["failed"]) for row in tagging["files"]] == [
+        ("a.flac", "label", RAWAX, ""),
+        ("b.flac", "label", ATIPIC, ""),
+        ("d.flac", "none", "", searchers.UNREACHABLE_REASON),
+        ("e.flac", "none", "", searchers.UNREACHABLE_REASON),
+    ]
+    assert tagging["copyright_ambiguous"] == {f"{ATIPIC}, {CRONOS}": 1}
+    assert (
+        "Of 4 file(s), 2 took their registered label's genre, 0 a catalogue's and 2 none; "
+        "the item failed for d.flac, e.flac." in cause["message"]
+    )
+    assert f"({ATIPIC}, {CRONOS} on 1)" in cause["message"]
+
+
+def test_two_labels_sharing_a_display_name_never_lend_each_other_a_genre(
+    cfg, folder, silence, monkeypatch
+):
+    """Review round one: the seam keyed the needles by display name, so a rename
+    onto a taken name gave one label's files the other's genre."""
+    registered("Alpha", "--genre", SPECIFIC)
+    registered("Omega")
+    code, envelope = drive(["label", "registry", "rename", "omega", "--to", "Alpha"])
+    assert code == int(ExitCode.OK), envelope
+    code, envelope = drive(["label", "registry", "set", "omega", "--match", "Omega Trax"])
+    assert code == int(ExitCode.OK), envelope
+    downloaded(folder, silence, "f", "\u2117 2024 Omega Trax")
+    downloaded(folder, silence, "g", "\u2117 2024 Alpha")
+    searcher = bound(monkeypatch, answering({"f": SearchHit(genre="Techno", source=searchers.BEATPORT)}))
+
+    code, _job, resumed = sweep(str(folder))
+
+    assert code == int(ExitCode.OK), resumed
+    assert tags.read_genre_from_file(folder / "f.flac") == "Techno", "the genre-less label's file"
+    assert tags.read_genre_from_file(folder / "g.flac") == SPECIFIC
+    assert searcher.asked == [("", "f")]
 
 
 def test_the_needles_are_frozen_with_the_genres_when_the_sweep_is_queued(

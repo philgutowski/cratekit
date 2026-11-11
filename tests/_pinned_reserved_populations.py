@@ -3308,6 +3308,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',
     'modules/tools/mastering.py',
+    'tagging/cli.py',  # 2026-11-11, U240: how many failed files a refusal names.
     'tagging/searchers.py',
     'write/collection_export.py',
     'write/metadata.py',

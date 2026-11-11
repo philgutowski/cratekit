@@ -31,6 +31,18 @@ def _words_within(needle: str, credit: str) -> bool:
     return f" {needle} " in f" {credit} "
 
 
+def credit_names(needle: str, credit: str) -> bool:
+    """Whether ``credit`` carries the whole of ``needle``, as whole words. One way only.
+
+    :func:`labels_match`'s first half, for a reader that WRITES on the answer
+    (U240): ``tag folder`` gives a file its label's genre on it, and the other
+    half, a credit inside a longer needle, would let a line reading ``Music``
+    name ``Aus Music``. Folded as :func:`labels_match` folds.
+    """
+    left, right = fold_label(needle), fold_label(credit)
+    return bool(left) and bool(right) and _words_within(left, right)
+
+
 def labels_match(claimed: str, resolved: str) -> bool:
     """Whole words either way. Discovery heuristic, used only after a web hit.
 

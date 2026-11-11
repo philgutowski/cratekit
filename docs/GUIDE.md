@@ -282,12 +282,15 @@ crate route pending
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
   other file no catalogue knows keeps no genre. A file's label is its label
-  tag, else `--label`, else the one registered label its copyright line names
-  (by each label's `--match` needle, as whole words), so a folder of several
-  labels is tagged in one call even when every catalogue refuses. A line
-  naming two registered labels settles neither, and the file is asked of the
-  catalogues. With `--output json`, the summary lists each file by label, by
-  catalogue or not at all.
+  tag, else `--label`, else the one registered label whose whole `--match`
+  needle its copyright line carries, as whole words, so a folder of several
+  labels is tagged in one call with every catalogue refusing, as long as each
+  file's line names its label. Where one needle carries another, as a
+  sublabel's carries its parent's, the longer wins; a line naming two labels
+  otherwise settles neither, and the file is asked of the catalogues. With
+  `--output json` the summary lists each file by label, by catalogue or not
+  at all, with the reason a failed one failed; a sweep that ends in a refusal
+  carries the same list in the refusal's detail and counts it in its message.
 - `tag guess` gives each file with no genre one from its artist's other
   tracks and, with `--pass`, the account playlist that asked for it. A file
   that has a genre is never changed. `--report` writes nothing. Each genre
