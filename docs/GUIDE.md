@@ -421,7 +421,11 @@ crate label sync --go
   adopt` adds each accepted one not already held.
 
 `label sync` walks your labels one at a time and asks only about releases new
-since that label was last asked, with release and track counts and a size.
+since that label was last asked, with release and track counts and a size,
+and how many more of the label's own releases lie past the window, which
+`registry set --offer` raises. A release past the window with no copyright
+line to read is counted as "up to N more, not yet checked", never as the
+label's.
 Answers: `all`, `pick` (by number), `not-now`, `stop` (unfollow). Each answer is
 saved as given; `quit` and the next run resumes at the first unanswered label.
 A release answered once is never asked again. The genre gate runs first, so
@@ -441,9 +445,19 @@ the file its `listing` line names lists it afresh.
 explicit gate `label.sync.confirm`. Answer it with `crate run decide RUN
 label.sync.confirm apply`, then `crate --run RUN label sync --go` downloads,
 paced, and runs the same tail as `sync land`, then plans `intake land
---manifest ... --pass ...` and stops at its gate. A go stopped part way is
-resumed by the next `--go`. Every go stages into the same folder, so land
-each before the next.
+--manifest ... --pass ...` and stops at its gate. A go stopped part way, at
+the provider call ceiling or a park, is taken on by `crate --run RUN label
+sync --go` again under the same run, with no new decision: it finishes the
+download if it is unfinished, whatever finished it (`job resume` included),
+and runs the tail to the landing's gate. The ceiling's refusal names that
+command with `--calls` raised (a go reached at the end of the walk is named as
+the walk, `label sync` without `--go`, which asks any new label first). Asked
+again after its tail reached the landing, by this run or by a fresh go that
+resumed its download, the run names that landing and runs nothing; a
+cancelled download is asked about again. A fresh `label sync --go` resumes an unfinished download
+too, after asking. Every go stages into the same folder, so land each before
+the next: a run's own `--go` refuses its tail, naming the commands, when a
+later go downloaded into the folder beside it.
 
 Other label verbs:
 

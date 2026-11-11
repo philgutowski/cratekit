@@ -1,0 +1,204 @@
+name = "u239"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_own_needs_apply"
+description = "_own: take the run's job on whatever answer is recorded, so an abort recorded after the stop downloads and lands"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if recorded is None or recorded.option != APPLY:'''
+new = '''    if recorded is None:'''
+
+[[rows]]
+id = "M02_own_skips_cancelled"
+description = "_own: take a cancelled job on too, so a person's cancel is resumed and landed with no question"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if job is None or job.state is jobs.JobState.CANCELLED:'''
+new = '''    if job is None:'''
+
+[[rows]]
+id = "M03_own_job_by_run"
+description = "own_job: take any go job on, not only the one this run's go queued"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            and origin.get("run") == run_id'''
+new = '''            and True'''
+
+[[rows]]
+id = "M04_go_takes_own_on"
+description = "go: never take the run's own download on, so the go asks the gate again as before U239"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if own is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M05_beside_later_only"
+description = "_beside: count earlier go jobs too, so a later run's tail is refused over an earlier landed go"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        if other.job_id == job.job_id or other.created < job.created:'''
+new = '''        if other.job_id == job.job_id:'''
+
+[[rows]]
+id = "M06_beside_open"
+description = "_beside: count only a later go job that downloaded, so one parked before any track is ignored"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        if other.is_open() or any('''
+new = '''        if any('''
+
+[[rows]]
+id = "M07_beside_done"
+description = "_beside: count only an open later go job, so one that downloaded and settled is ignored"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        if other.is_open() or any('''
+new = '''        if other.is_open() or False and any('''
+
+[[rows]]
+id = "M08_retry_half_failed"
+description = "_carry_on: never re-arm a half failed own job, so a transient failure ends every go under the run"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        if not job.is_open() and resumable(job, left):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M09_named_landing"
+description = "_carry_on: ignore the recorded landing, so the tail runs a second time"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        if named:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M10_beside_refuses"
+description = "_carry_on: ignore a later go's job in the folder, so the tail lands two batches as one"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if beside:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M11_land_only_landed"
+description = "_carry_on: name the landing whatever the download read, so a download with nothing landed runs the tail"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if read.landed and manifest is not None:'''
+new = '''    if manifest is not None:'''
+
+[[rows]]
+id = "M12_role_per_job"
+description = "landing_role: one role for every job of a run (expected zero alone: L02 holds the same input; the pair was measured at round two)"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    return f"{LANDING_ROLE}.{job_id}"'''
+new = '''    return LANDING_ROLE'''
+
+[[rows]]
+id = "M14_ceiling_fresh"
+description = "_carried: drop fresh, so the continue keeps the command line's own --run"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        detail.update({"job": job.job_id, "run_id": run, "fresh": True})'''
+new = '''        detail.update({"job": job.job_id, "run_id": run})'''
+
+[[rows]]
+id = "M15_ceiling_job_id"
+description = "_carried: keep job_id on the ceiling cause, so the continue is job resume again"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        detail = {key: value for key, value in (cause.detail or {}).items() if key != "job_id"}'''
+new = '''        detail = dict(cause.detail or {})'''
+
+[[rows]]
+id = "M16_other_stop_step"
+description = "_carried: add no step to a park or a retryable failure, so it names no way to the landing"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if job.state is jobs.JobState.BLOCKED or ('''
+new = '''    if False and ('''
+
+[[rows]]
+id = "M17_wrote"
+description = "_carry_on: a walk that wrote answers under a landed run reports no_op"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''                outcome=Outcome.OK if wrote else Outcome.NO_OP,
+            )
+        listed'''
+new = '''                outcome=Outcome.NO_OP,
+            )
+        listed'''
+
+[[rows]]
+id = "L01_remember_land_only"
+description = "_remember: record a gate stop at any step as the landing, so a restamp gate is taken for it"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if not (stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed):'''
+new = '''    if not (stop.cause.reason == tail.GATE_STOP and landed):'''
+
+[[rows]]
+id = "L02_remember_owner"
+description = "_remember: record on whichever run ran the tail, the round one blocking shape"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if owner == ctx.run.run_id:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "L03_remember_called"
+description = "label_sync: never record the landing, so a later go runs the tail again"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        warnings.extend(_remember(ctx, stop, land))'''
+new = '''        pass'''
+
+[[rows]]
+id = "L04_commands_origin"
+description = "_with_commands: read a landing off any refusal, not only the go's own"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    land = _land_in(cause.detail) if _GO_ORIGIN in cause.origin else None'''
+new = '''    land = _land_in(cause.detail)'''
+
+[[rows]]
+id = "L05_commands_added"
+description = "_with_commands: never name the tail commands on the go's refusal"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    land = _land_in(cause.detail) if _GO_ORIGIN in cause.origin else None'''
+new = '''    land = None'''
+
+[[rows]]
+id = "L06_unrecorded_warning"
+description = "_remember: drop the warning when another run's record cannot keep the landing"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    except Exception as exc:  # noqa: BLE001 - see below'''
+new = '''    except ZeroDivisionError as exc:  # noqa: BLE001 - see below'''

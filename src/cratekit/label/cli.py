@@ -1591,7 +1591,8 @@ def handle(job, item, cfg) -> jobs.Produced | None:
             run_id=run_id,
         )
         _refuse_unfinished(entry, result, source)
-        # WHAT THE WINDOW DID NOT REACH IS RECORDED, NEVER DROPPED (R-790).
+        # WHAT THE WINDOW DID NOT REACH IS RECORDED, NEVER DROPPED (R-790),
+        # less each release whose copyright line names another label (U238).
         # The job's envelope is ``job_state/1`` and carries no per label count,
         # and this worker runs in a detached child, so the count goes where the
         # person deciding the label's releases reads: ``crate review list

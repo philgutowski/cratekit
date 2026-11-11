@@ -1479,8 +1479,10 @@ def grouped(
     rounds, so a label whose window is full of decided items still shows how
     much of its catalogue it never offered.
 
-    ``beyond`` is the recorded count of releases a round never examined: for a
-    label, its latest round's; for a run, the sum over the labels it swept.
+    ``beyond`` is the recorded count of releases a round never examined, less
+    each a label sweep read as plainly another label's by its copyright line
+    (U238): for a label, its latest round's; for a run, the sum over the labels
+    it swept.
     None where nothing was recorded, which is not the same answer as zero.
 
     ``held`` is how many candidates of the group a producer is withholding from

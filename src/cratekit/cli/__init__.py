@@ -682,7 +682,10 @@ def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
     cause (U210), and the command carries ``--run`` for it when the command
     line did not already, so the continue is that run and not a new one. A
     verb that says its run cannot be continued (``fresh``) is named without
-    ``--run``, so the command starts a new run rather than one that refuses.
+    the command line's own ``--run``, so the command starts a new run rather
+    than one that refuses, or, when the cause names a run as well, continues
+    THAT run in its place: ``label sync --go`` names the run whose go queued
+    the download it stopped in, whichever run was driving it (U239).
     """
     detail = cause.detail or {}
     higher = str(detail.get("higher") or 2 * int(detail.get("ceiling") or 1))

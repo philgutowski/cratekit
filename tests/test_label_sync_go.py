@@ -19,9 +19,9 @@ import pytest
 from cratekit import acquire
 from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import listdoc, match_cli
-from cratekit.cli import registry
+from cratekit.cli import gates, registry
 from cratekit.cli import tail as tail_chain
-from cratekit.core import config, jobs, review
+from cratekit.core import config, jobs, provider_gate, review
 from cratekit.core.cause import Cause, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.jobs import Parked
@@ -38,6 +38,7 @@ from tests.acquire_fakes import (
 from tests.cli_drive import drive
 from tests.test_config import valid_data
 from tests.test_label_sync import Track, answer, bind, next_question, offered, record, register
+from tests.test_label_sync import script as scripted_terminal
 from tests.test_sync_land import Tail, _ok, _refused
 
 GATE = "label.sync.confirm"
@@ -1416,3 +1417,513 @@ def test_no_state_but_succeeded_or_failed_settles_a_download(installed, monkeypa
         read = acquire_cli.read_download(store, dataclasses.replace(job, state=state))
 
     assert read.settled is False and read.landed is False
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. U239: a go stopped at the call ceiling finishes its tail on the next go
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def ceiling() -> Parked:
+    """The provider gate's own park at the call ceiling, met by a fetch part way."""
+    return Parked(
+        Cause(
+            reason=provider_gate.CEILING,
+            message="this command made 500 calls to the streaming provider, so it stopped",
+            remediation=Remediation(
+                remedy=Remedy.FIX_COMMAND_LINE,
+                steps=(
+                    "continue with a higher ceiling for one run",
+                    "or raise [provider] calls_per_command in the configuration for every run",
+                ),
+            ),
+            retryable=False,
+            origin=("provider_gate",),
+            detail={"calls": 500, "ceiling": 500, "raised": False, "higher": 1000},
+        )
+    )
+
+
+def stopped_at_the_ceiling(monkeypatch, script, *, label: str = "tide-works") -> tuple[str, dict]:
+    """One release of three tracks answered, its go stopped by the ceiling at the second."""
+    if label == "tide-works":
+        one_release_answered(monkeypatch, script, tracks=3)
+        key = "t-r1-2"
+    else:
+        key = "t-a1-2"
+    script.landings[key] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
+    run_id, code, envelope = approved_go()
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["reason"] == provider_gate.CEILING
+    return run_id, envelope
+
+
+def finished_by_hand(job_id: str) -> None:
+    """The job driven to the end the way ``job resume``'s detached worker drives it."""
+    code, envelope = drive(["acquire", "download", "--job", job_id])
+    assert code == int(ExitCode.OK), envelope
+    with jobs.open_store() as store:
+        assert jobs.get(store, job_id).state is jobs.JobState.SUCCEEDED
+
+
+def landing_argv(cfg: config.Config, job: jobs.Job, run_id: str) -> list[str]:
+    return [
+        "intake", "land", staged(cfg),
+        "--manifest", job.payload[go.ORIGIN_KEY]["manifest"],
+        "--pass", default_name(run_id),
+    ]
+
+
+def test_a_go_stopped_at_the_ceiling_names_its_own_go_to_continue_not_the_job(
+    installed, monkeypatch, script, tail
+):
+    run_id, envelope = stopped_at_the_ceiling(monkeypatch, script)
+
+    # The test driver's own global option is kept, as the dispatcher keeps it.
+    command = f"crate --output json --run {run_id} --calls 1000 label sync --go"
+    cause = envelope["cause"]
+    assert cause["detail"]["continue"] == command
+    assert cause["remediation"]["steps"][0] == f"continue with a higher ceiling for one run: {command}"
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.BLOCKED and cause["detail"]["job"] == job.job_id
+    assert "job resume" not in " ".join(cause["remediation"]["steps"])
+    assert tail.calls == []
+
+
+def test_a_go_stopped_at_the_ceiling_finishes_and_lands_on_the_next_go_under_its_run(
+    installed, monkeypatch, script, tail
+):
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    script.fetched.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert fetched(script) == ["t-r1-2", "t-r1-3"]
+    assert [one.job_id for one in our_jobs()] == [job.job_id]
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert check(envelope, "continued")["status"] == "ok"
+    assert "3 of 3 track(s) downloaded" in check(envelope, "continued")["detail"]
+    assert tail.calls[-1] == landing_argv(installed, job, run_id)
+
+
+def test_a_go_whose_job_was_finished_by_hand_lands_on_the_next_go_with_no_new_decision(
+    installed, monkeypatch, script, tail
+):
+    """The sequence the attended pass of 2026-11-10 measured: refused stale before U239."""
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    finished_by_hand(job.job_id)
+    script.fetched.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert fetched(script) == [], "a finished download was fetched again"
+    assert tail.calls[-1] == landing_argv(installed, job, run_id)
+    assert envelope["data"]["summary"]["go"]["continued"] == job.job_id
+    pending = envelope["pending_human_action"]
+    assert pending["verify_verb"] == tail_chain.LAND_VERB
+
+
+def test_a_go_whose_job_was_cancelled_still_refuses_and_lands_nothing(
+    installed, monkeypatch, script, tail
+):
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    with jobs.open_store() as store:
+        jobs.cancel(store, job.job_id)
+    script.fetched.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.DECISION_STALE), envelope
+    assert fetched(script) == [] and tail.calls == []
+    assert item_states(job.job_id)["t-r1-3"] is not jobs.ItemState.DONE
+
+
+def test_answers_saved_beside_a_finished_go_wait_and_are_not_landed_with_it(
+    installed, monkeypatch, script, tail
+):
+    register("Alpha Works")
+    register("Beta Works")
+    bind(monkeypatch, {"alpha-works": [("a1", "2026", 3)], "beta-works": [("b1", "2026", 1)]})
+    next_question()
+    answer("alpha-works", "all")
+    land_every(script, ("a1", 3), ("b1", 1))
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script, label="alpha-works")
+    (job,) = our_jobs()
+    next_question()
+    answer("beta-works", "all")
+    finished_by_hand(job.job_id)
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert "t-b1-1" not in fetched(script)
+    assert [one.job_id for one in our_jobs()] == [job.job_id]
+    assert tail.calls[-1] == landing_argv(installed, job, run_id)
+    assert check(envelope, "waiting")["detail"].startswith("1 answer(s) wait for the next go")
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert fetched(script)[-1] == "t-b1-1" and len(our_jobs()) == 2
+
+
+def test_a_later_gos_download_in_the_same_folder_refuses_the_tail_and_names_its_commands(
+    installed, monkeypatch, script, tail
+):
+    register("Alpha Works")
+    register("Beta Works")
+    bind(monkeypatch, {"alpha-works": [("a1", "2026", 3)], "beta-works": [("b1", "2026", 1)]})
+    next_question()
+    answer("alpha-works", "all")
+    land_every(script, ("a1", 3), ("b1", 1))
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script, label="alpha-works")
+    (first,) = our_jobs()
+    finished_by_hand(first.job_id)
+    next_question()
+    answer("beta-works", "all")
+    _later, code, _envelope = approved_go()
+    assert code == int(ExitCode.PENDING_HUMAN)
+    (second,) = [one for one in our_jobs() if one.job_id != first.job_id]
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == [], "the tail ran over two batches"
+    cause = envelope["cause"]
+    assert cause["reason"] == "refused-by-policy"
+    assert cause["detail"]["beside"] == [second.job_id]
+    folder = staged(installed)
+    manifest = first.payload[go.ORIGIN_KEY]["manifest"]
+    typed = cause["remediation"]["steps"][-1]
+    assert typed.startswith("the tail by hand, in this order: crate tag folder ")
+    assert f"crate tag guess {folder}" in typed
+    assert typed.endswith(
+        f"crate intake land {folder} --manifest {manifest} --pass {default_name(run_id)}"
+    )
+
+
+def test_a_go_whose_tail_reached_its_landing_names_that_landing_and_runs_nothing_again(
+    installed, monkeypatch, script, tail
+):
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    code, _landed = gone(run_id)
+    assert code == int(ExitCode.PENDING_HUMAN)
+    tail.calls.clear()
+    script.fetched.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    assert tail.calls == [] and fetched(script) == []
+    assert "under run land-run already" in check(envelope, "landing")["detail"]
+    assert "crate run show land-run" in check(envelope, "landing")["detail"]
+
+
+def test_a_go_that_ran_its_tail_once_names_its_landing_when_run_again(
+    installed, monkeypatch, script, tail
+):
+    """Before U239 the same run asked again refused stale over an empty plan."""
+    one_release_answered(monkeypatch, script)
+    run_id, code, _envelope = approved_go()
+    assert code == int(ExitCode.PENDING_HUMAN)
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == []
+    assert "land-run" in check(envelope, "landing")["detail"]
+
+
+def test_a_go_parked_by_a_rate_limit_names_its_own_go_for_after_the_park(
+    installed, monkeypatch, script
+):
+    one_release_answered(monkeypatch, script, tracks=3)
+    script.landings["t-r1-2"] = Landing(fetch_raises=cooldown())
+
+    run_id, code, envelope = approved_go()
+
+    assert envelope["outcome"] == "blocked", envelope
+    assert envelope["cause"]["remediation"]["steps"][-1].endswith(
+        f"crate --run {run_id} label sync --go"
+    )
+
+
+# ── U239's review, round one: each guard the suite left unpinned ────────────
+
+
+def two_labels(monkeypatch, script, tracks: int = 3) -> None:
+    """Alpha and Beta, ``tracks`` tracks each, only Alpha answered so far."""
+    register("Alpha Works")
+    register("Beta Works")
+    bind(
+        monkeypatch,
+        {"alpha-works": [("a1", "2026", tracks)], "beta-works": [("b1", "2026", tracks)]},
+    )
+    next_question()
+    answer("alpha-works", "all")
+    land_every(script, ("a1", tracks), ("b1", tracks))
+
+
+def other_than(job: jobs.Job) -> jobs.Job:
+    (found,) = [one for one in our_jobs() if one.job_id != job.job_id]
+    return found
+
+
+def test_a_landing_recorded_for_one_download_never_answers_for_the_runs_next_one(
+    installed, monkeypatch, script, tail
+):
+    """The review's BLOCKING finding: a run that resumed another go's download to
+    its landing, then queued and stopped its own, was told its own had landed."""
+    two_labels(monkeypatch, script)
+    stopped_at_the_ceiling(monkeypatch, script, label="alpha-works")
+    (first,) = our_jobs()
+    resuming = asked()["run_id"]
+    decided(resuming, "apply")
+    code, _envelope = gone(resuming)
+    assert code == int(ExitCode.PENDING_HUMAN)
+    next_question()
+    answer("beta-works", "all")
+    script.landings["t-b1-2"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
+    code, _envelope = gone(resuming)
+    assert code == int(ExitCode.DECISION_STALE)
+    decided(resuming, "apply")
+    code, envelope = gone(resuming)
+    assert envelope["cause"]["reason"] == provider_gate.CEILING
+    second = other_than(first)
+    script.fetched.clear()
+    tail.calls.clear()
+
+    code, envelope = gone(resuming)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert fetched(script) == ["t-b1-2", "t-b1-3"]
+    assert tail.calls[-1] == landing_argv(installed, second, resuming)
+
+
+def test_a_fresh_go_that_landed_another_runs_download_records_it_on_that_run(
+    installed, monkeypatch, script, tail
+):
+    first_run, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    resuming = asked()["run_id"]
+    decided(resuming, "apply")
+    code, _envelope = gone(resuming)
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert gates.load(first_run).related_runs == {go.landing_role(job.job_id): "land-run"}
+    tail.calls.clear()
+
+    code, envelope = gone(first_run)
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == [], "the tail ran a second time for a download already at its landing"
+    assert "land-run" in check(envelope, "landing")["detail"]
+
+
+def test_a_go_resumed_under_another_run_names_the_run_that_queued_it_to_continue(
+    installed, monkeypatch, script, tail
+):
+    first_run, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    script.landings["t-r1-3"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
+    resuming = asked()["run_id"]
+    decided(resuming, "apply")
+
+    code, envelope = gone(resuming)
+
+    command = envelope["cause"]["detail"]["continue"]
+    assert command == f"crate --output json --run {first_run} --calls 1000 label sync --go"
+    assert resuming not in command
+
+
+def test_an_abort_recorded_after_the_stop_is_not_taken_on(installed, monkeypatch, script, tail):
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    code, envelope = drive(["run", "decide", run_id, GATE, "abort", "--actor", "a-person"])
+    assert code == int(ExitCode.OK), envelope
+    script.fetched.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.DECISION_STALE), envelope
+    assert fetched(script) == [] and tail.calls == []
+    assert item_states(job.job_id)["t-r1-3"] is jobs.ItemState.PENDING
+
+
+def test_a_download_half_failed_by_a_track_a_retry_may_clear_is_retried_under_its_run(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script, tracks=3)
+    script.landings["t-r1-2"] = Landing(
+        fetch_raises=refuse("unavailable-transient", "later", retryable=True),
+        fetch_raises_times=1,
+    )
+    run_id, code, envelope = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+    assert job.state is jobs.JobState.FAILED
+    assert envelope["cause"]["remediation"]["steps"][-1].endswith(
+        f"crate --run {run_id} label sync --go"
+    )
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert tail.calls[-1] == landing_argv(installed, job, run_id)
+
+
+def test_a_later_go_parked_before_it_downloaded_anything_still_refuses_the_tail(
+    installed, monkeypatch, script, tail
+):
+    two_labels(monkeypatch, script, tracks=1)
+    script.landings["t-a1-1"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
+    run_id, code, _envelope = approved_go()
+    (first,) = our_jobs()
+    finished_by_hand(first.job_id)
+    next_question()
+    answer("beta-works", "all")
+    script.landings["t-b1-1"] = Landing(fetch_raises=cooldown())
+    approved_go()
+    second = other_than(first)
+    assert second.state is jobs.JobState.BLOCKED
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["detail"]["beside"] == [second.job_id]
+    assert tail.calls == []
+
+
+def test_an_earlier_gos_download_does_not_refuse_a_later_runs_tail(
+    installed, monkeypatch, script, tail
+):
+    two_labels(monkeypatch, script)
+    _earlier, code, _envelope = approved_go()
+    assert code == int(ExitCode.PENDING_HUMAN)
+    next_question()
+    answer("beta-works", "all")
+    script.landings["t-b1-2"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
+    later, _code, _envelope = approved_go()
+    (job,) = [one for one in our_jobs() if one.payload[go.ORIGIN_KEY]["run"] == later]
+    tail.calls.clear()
+
+    code, envelope = gone(later)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert tail.calls[-1] == landing_argv(installed, job, later)
+
+
+def test_a_stop_at_a_gate_before_the_landing_records_no_landing_and_the_next_go_runs_the_tail(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    real = tail._job
+    gated = {"on": True}
+
+    def restamp_gated(step, verb, argv):
+        if gated["on"] and step == tail_chain.RESTAMP and "--job" not in argv:
+            return _refused(
+                Cause(
+                    reason="decision-required",
+                    message="analyze.restamp.confirm needs a recorded decision",
+                    remediation=Remediation(remedy=Remedy.ANSWER_DECISION),
+                    retryable=True,
+                    origin=("test",),
+                    detail={"gate": "analyze.restamp.confirm", "options": ["apply"],
+                            "run_id": "restamp-run"},
+                ),
+                outcome="blocked",
+            )
+        return real(step, verb, argv)
+
+    monkeypatch.setattr(tail, "_job", restamp_gated)
+    run_id, code, _envelope = approved_go()
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert gates.load(run_id).related_runs == {}
+    gated["on"] = False
+    (job,) = our_jobs()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert tail.calls[-1] == landing_argv(installed, job, run_id)
+    assert gates.load(run_id).related_runs == {go.landing_role(job.job_id): "land-run"}
+
+
+def test_a_walk_under_a_landed_run_that_records_an_answer_is_not_a_no_op(
+    installed, monkeypatch, script, tail
+):
+    register("Alpha Works")
+    register("Beta Works")
+    bind(monkeypatch, {"alpha-works": [("a1", "2026", 2)]})
+    land_every(script, ("a1", 2), ("b1", 1))
+    scripted_terminal(monkeypatch, "all")
+    _code, envelope = drive(["label", "sync"])
+    run_id = envelope["run_id"]
+    code, envelope = drive(
+        ["run", "decide", "--actor", "a-person", "--continue", run_id, GATE, "apply"]
+    )
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    bind(monkeypatch, {"alpha-works": [("a1", "2026", 2)], "beta-works": [("b1", "2026", 1)]})
+    scripted_terminal(monkeypatch, "all")
+
+    code, envelope = drive(["--run", run_id, "label", "sync"])
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "ok"
+    assert "land-run" in check(envelope, "landing")["detail"]
+
+
+def test_a_landing_another_runs_record_cannot_keep_is_a_warning_and_the_go_still_ends_at_it(
+    installed, monkeypatch, script, tail
+):
+    first_run, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    saved = gates.save
+
+    def refusing(state):
+        if state.run_id == first_run:
+            raise PermissionError("the run record is not writable")
+        return saved(state)
+
+    monkeypatch.setattr(gates, "save", refusing)
+    resuming = asked()["run_id"]
+    decided(resuming, "apply")
+
+    code, envelope = gone(resuming)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert tail.calls[-1] == landing_argv(installed, job, first_run)
+    (warned,) = [one for one in envelope["warnings"] if one["code"] == "label-sync-landing-unrecorded"]
+    assert first_run in warned["message"] and job.job_id in warned["message"]
+    assert "PermissionError" in warned["message"]
+    assert gates.load(first_run).related_runs == {}
+
+
+def test_a_go_under_its_run_over_a_download_that_refused_every_track_runs_no_tail(
+    installed, monkeypatch, script, tail
+):
+    """M11 of U239's table: the run's own download read again lands nothing."""
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-1"] = Landing(kind="lossy")
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+    run_id, code, _envelope = approved_go()
+    assert code == int(ExitCode.OK)
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == [], "the tail ran over a download that landed nothing"
+    continued = check(envelope, "continued")
+    assert continued["status"] == "fail"
+    assert "every track was refused for good, so no tail was run" in continued["detail"]
+    go_report = envelope["data"]["summary"]["go"]
+    assert go_report[go.LAND_KEY] is None and go_report["next"] == []
