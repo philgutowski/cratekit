@@ -48323,3 +48323,159 @@ refuses as it should.
 
 **Closes when:** a Fable pass over the merged range of R-1467 from the second
 fix round on finds nothing BLOCKING, or its findings are filed. Ledger only.
+
+---
+
+## R-1502. A download over a list of the pass's name in another folder is read as the pass's own
+
+**Found:** at the review of #665, R-1499, round one, 2026-11-11.
+
+**The mechanism.** `_own_downloads` in `cli/sync_land.py` takes every download of the library whose list is named `<pass>.list.json`, the reading `cli.tail` names a pass's download by, wherever the list sits.
+
+**Measured cost.** Driven at round one (d8) with a list copied by hand under the pass's exact name: the foreign download's track ran on with the pass. The producer is contrived; nothing writes such a list.
+
+**Closes when:** a pass's own downloads are matched by the list's whole path under the staging folder's lists directory. Ledger only.
+
+---
+
+## R-1503. A file a landing leaves in staging would refuse every later pass and go
+
+**Found:** at the review of #665, R-1499, round one, 2026-11-11.
+
+**The mechanism.** `intake/landing.py` and `intake/native.py` leave a file in staging on three rules (no declared sub, an occupied target, an unsupported suffix). Such a file is one no download names, its pass proven, so every later pass and go refuses beside it until a person moves it.
+
+**Measured cost.** Reachability unmeasured: one candidate was driven (round one, d15, an occupied target) and it does not produce the file, the landing took the next free batch name.
+
+**Closes when:** a landing that leaves a file says so, or the readings name a file a proven landing left. Ledger only.
+
+---
+
+## R-1504. A foreign file at a path the pass's own download once recorded reads as the pass's own
+
+**Found:** at the review of #665, R-1499, round one, 2026-11-11.
+
+**The mechanism.** `intake.beside.beside` reads a file as the batch's own when its path is one of the batch's downloads' recorded artifacts. After the pass's tail renamed its `101.wav`, a plain download of the same track id staged a new `101.wav` at that path, and the continued pass read it as its own and named no download.
+
+**Measured cost.** Driven at round one (d11) with the suite's renaming stand in, which overwrote the pass's renamed file; the real `name apply` is expected to stop on the taken name with U212's second copy step, which was not driven. Whether the real tail lands the foreign file is unmeasured.
+
+**Closes when:** an own artifact path counts as own only when it is not also another download's later artifact, or carries the identity the own download recorded. Ledger only.
+
+---
+
+## R-1505. A fresh sync pass refused beside another download is not taken up by the next fresh pass
+
+**Found:** at the review of #665, R-1499, round one, 2026-11-11.
+
+**The mechanism.** `crate sync land` reads the staging folder before its download, which is after `sync all` queued the pass's intake jobs and wrote its list. A pass refused there leaves those jobs settled, and a later plain `crate sync land` finds "sync all queued nothing new" and names no earlier pass, so the refused pass is continued only by the `--pass-run` command its refusal printed.
+
+**Measured cost.** Driven at round one (d14): with the other download moved out, a fresh `crate sync land` exited 0, fetched nothing and said nothing of the earlier pass. Nothing is lost and the refusal's own last step is the way on; a session that loses that step does not get the account's new tracks until someone continues the pass.
+
+**Closes when:** a fresh pass reads the folder before `sync all` (it can own nothing there yet), or a fresh pass that queued nothing names an earlier pass refused beside another download. Ledger only.
+
+---
+
+## R-1506. A go whose tail fails while a download arrives names the tail by hand over the folder holding it
+
+**Found:** at the review of #665, R-1499, round two, 2026-11-11.
+
+**The mechanism.** When a step of the go's tail fails and a download arrives during it, the refusal's steps end with the rest of the tail by hand, `intake land` included, over a folder holding the arrival. Since fix round two the record's warning, which names the arriving job, rides the refusal's detail, but the steps do not say to move it out first.
+
+**Measured cost.** Driven at round two with a hook placed arrival and a failing `analyze run`; a person following the steps literally was not driven. The default human output prints the detail's warnings nowhere.
+
+**Closes when:** a failed stop whose arrival check reads a change adds the step to move what arrived out before the tail by hand. Ledger only.
+
+---
+
+## R-1507. A track name apply renames to a name the landing does not take reads as an arrival
+
+**Found:** at the review of #665, R-1499, round two, 2026-11-11.
+
+**The mechanism.** `name apply` renames a track whose artist starts with a dot, `.38 Special`, to a dot leading name, which `intake.landing.listing` does not take, so the count of files a landing would take falls and the arrival check refuses, telling the person to move out what arrived when nothing did. Before this unit the same track was left out of the landing silently.
+
+**Measured cost.** Driven at round two with the tags written directly; a downloader or `tag folder` producing such an artist was not driven.
+
+**Closes when:** `name apply` never gives a staged file a name the landing does not take, or the check says which own file left the listing. Ledger only.
+
+---
+
+## R-1508. A pass whose tail record is lost, or was never kept by an older build, refuses beside its own renamed tracks
+
+**Found:** at the review of #665, R-1499, round one, 2026-11-11.
+
+**The mechanism.** The pass's own renamed tracks are its own only by the record its tail kept. A record that could not be written (a warning since this unit), a process killed after `name apply`, or a pass whose tail reached its gate before this build, reads them as files no download names, and the continued pass refuses.
+
+**Measured cost.** Driven with the record removed (round one, d7): the pass refuses at its download step. Since round one the step names the landing under the pass, `crate intake land STAGING --pass NAME`, for a pass with a download of its own. A pass staged before this build meets this once at the first sitting.
+
+**Closes when:** the attended card's look at the live staging folder before the first pass after this build finds nothing a landing would take, or the pass reads its own renamed tracks by the ISRC its download froze. Ledger only.
+
+---
+
+## R-1509. A pass whose tracks left the folder with no landing proof is named in every later refusal over files no download names
+
+**Found:** at the review of #665, R-1499, round one, 2026-11-11.
+
+**The mechanism.** A download of a go or a sync pass with none of its tracks at their download names, whose pass has no landing proof, is named beside any file no download names as one whose tail may have renamed them. A pass whose tracks were moved out by hand, the refusal's own "move them out" step, keeps no proof and is named for good.
+
+**Measured cost.** Driven at round one (d3): the refusal named such a pass with its `--pass-run`. Naming only; nothing lands. The crate-sync skill was narrowed in this unit so that a pass named only as maybe renamed is reported, not continued.
+
+**Closes when:** the kept tail records attribute files no download names exactly, by identity, and the proof heuristic names only what no record covers. Ledger only.
+
+---
+
+## R-1510. A swap of one file out and one in while the tail runs passes the arrival check
+
+**Found:** at the review of #665, R-1499, round two, 2026-11-11.
+
+**The mechanism.** `intake.beside.arrived` reads a new finished item of another download, or a change in how many files a landing would take. A person moving one file out and putting another in during the tail changes neither, and the arrival is renamed, planned and kept as the batch's own.
+
+**Measured cost.** Driven at round two by moving files by hand during `analyze run`. The producer is a person swapping files mid tail.
+
+**Closes when:** the check compares identities the tail cannot change (an ISRC each own download froze) rather than a count. Ledger only.
+
+---
+
+## R-1511. The tail's run, through the name step and then the landing, has no caller left
+
+**Found:** at the review of #665, R-1499, round two, 2026-11-11.
+
+**The mechanism.** `crate sync land` and `label sync --go` now call `tail.through_name`, compare the folder, then `tail.land`; `tail.run` is still exported and one test exercises it.
+
+**Measured cost.** None; a maintainer facing function no verb calls.
+
+**Closes when:** `tail.run` is removed or reads the folder between its two halves itself. Ledger only.
+
+---
+
+## R-1512. The go's tail snapshot is taken after its own reading of the folder, so an arrival between the two is its own
+
+**Found:** at the review of #665, R-1499, round two, 2026-11-11.
+
+**The mechanism.** `label sync --go` reads the folder in `label/go.py` before it returns its landing, and `cli/label_sync.py` takes the snapshot the arrival check compares against afterwards. A download another process finishes between the two is in the snapshot, renamed by the tail, planned into the go's landing and kept as the go's own. `crate sync land` takes its snapshot inside the same reading and has no such gap.
+
+**Measured cost.** Driven at round two with a hook placing a second process's download in the window: the go's landing took it with no warning. The window measured 0.5 to 0.8 ms over ten runs on the fixture library.
+
+**Closes when:** the go takes its snapshot before its own reading, or `cli/label_sync.py` reads the folder once more after taking it. Ledger only, since the producer needs a concurrent second driver in a sub millisecond window.
+
+---
+
+## R-1513. R-1499's second fix round was not reviewed
+
+**Found:** at the landing of #665, R-1499, 2026-11-11.
+
+**The mechanism.** METHOD allows two fix rounds. Round two's review found nothing blocking; its fix round (`97b78171`) read the folder once more when the landing stops at its gate, refused a plan taken over an arrival, carried the record's warning on a go's failed stop, and narrowed the own unnamed way on, and no third review read it.
+
+**Measured cost.** Its own tests and the mutation table read it; no adversarial review did.
+
+**Closes when:** a later review of `cli/sync_land.py`, `cli/label_sync.py` and `intake/beside.py` reads the commit. Ledger only.
+
+---
+
+## R-1514. U212's branches for a pass landing what is staged are reached by nothing
+
+**Found:** at the review of #665, R-1499, round one, 2026-11-11.
+
+**The mechanism.** Since R-1499 a pass whose missing tracks are staged by another download refuses before its download, so `_download`'s `listed.path is None` branch, `_staged_on` and the "downloaded nothing ... over what is staged" sentence in `_attended` in `cli/sync_land.py` are reached only when the staged tracks are the pass's own, which the listing excludes.
+
+**Measured cost.** Replacing each with a raise killed nothing over ten test files (round one, mutation rows N1 to N3); one candidate for reaching them was driven (d9) and does not. No user facing cost; text nobody sees.
+
+**Closes when:** the branches are removed, or a test reaches them. Ledger only.
