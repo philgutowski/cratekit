@@ -14,6 +14,7 @@ and the sweep end to end through the real dispatcher and a resume.
 
 from __future__ import annotations
 
+import dataclasses
 import json
 import shutil
 from pathlib import Path
@@ -902,3 +903,37 @@ def test_a_tag_names_one_label_by_its_name_its_slug_or_the_name_it_was_registere
 def test_a_job_queued_before_the_needles_resolves_among_its_genres_as_before():
     answer = tag_cli._label_seam({"label_genres": {"alpha": {"name": "Alpha", "genre": GENRE}}})
     assert answer("Alpha") == LabelAnswer(label="Alpha", genre=GENRE)
+
+
+def test_a_name_one_label_holds_exactly_is_never_lost_to_a_slug_it_shares():
+    """Review round two: the slug step runs only when no label is called the tag."""
+    payload = {
+        "label_genres": {"alpha": {"name": "Alpha", "genre": GENRE}},
+        "label_needles": {
+            "alpha": {"name": "Alpha", "needle": "Alpha"},
+            "loud": {"name": "ALPHA!", "needle": "ALPHA!"},
+        },
+    }
+    answer = tag_cli._label_seam(payload)
+    assert answer("Alpha") == LabelAnswer(label="Alpha", genre=GENRE)
+    assert answer("Alpha?") is None, "a slug both names have settles neither"
+
+
+def test_a_sweep_queued_before_the_identifier_was_frozen_still_tags_by_its_labels_name(
+    cfg, folder, silence, monkeypatch
+):
+    """Review round two: a job queued by main before this unit froze the name
+    alone, and the worker hands that name to the engine as the folder's label."""
+    registered("--genre", GENRE)
+    track(folder, silence, "a")
+    bound(monkeypatch, never_searched)
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder), "--label", LABEL])
+    assert code == int(ExitCode.OK), queued
+    job = tag_job()
+    before = dataclasses.replace(
+        job, payload={key: value for key, value in job.payload.items() if key != "label_id"}
+    )
+    with jobs.open_store() as store:
+        (item,) = jobs.items(store, job.job_id)
+    tag_cli.handle(before, item, cfg)
+    assert tags.read_genre_from_file(folder / "a.flac") == GENRE
