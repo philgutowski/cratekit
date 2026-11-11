@@ -1,0 +1,92 @@
+name = "u237"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_bare_letter_is_a_mark_again"
+description = "_YEAR: make the parentheses optional again, so a bare leading P or C is stripped as a mark (Cadenza reads adenza)"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py"]
+old = '''_YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)+", re.IGNORECASE)'''
+new = '''_YEAR = re.compile(r"^(?:(?:\(?[PC]\)?|[\u2117\u00a9])\s*)+", re.IGNORECASE)'''
+
+[[rows]]
+id = "M2_symbol_marks_dropped"
+description = "_YEAR: forget the sound recording and copyright symbols, so a line starting with one keeps its mark and year"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py"]
+old = '''_YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)+", re.IGNORECASE)'''
+new = '''_YEAR = re.compile(r"^(?:(?:\([PC]\))\s*)+", re.IGNORECASE)'''
+
+[[rows]]
+id = "M3_one_mark_only"
+description = "_YEAR: strip one mark only, so (P)(C) 2021 Cadenza keeps the second mark and the year"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py"]
+old = '''_YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)+", re.IGNORECASE)'''
+new = '''_YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)", re.IGNORECASE)'''
+
+[[rows]]
+id = "M4_case_sensitive_mark"
+description = "_YEAR: drop the case fold, so a lower case (p) mark is kept as part of the name"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py"]
+old = '''_YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)+", re.IGNORECASE)'''
+new = '''_YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)+")'''
+
+[[rows]]
+id = "M5_bare_year_is_a_label"
+description = "_YEAR_NUM: strip a year only when a name follows, so a line of a mark and a year offers the year as a label"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py"]
+old = '''_YEAR_NUM = re.compile(r"^\d{4}(?:\s+|\.?$)")'''
+new = '''_YEAR_NUM = re.compile(r"^\d{4}\s+")'''
+
+[[rows]]
+id = "M6_substring_again"
+description = "_words_within: back to a raw substring, so the Rawax needle confirms RAWAXXX"
+file = "src/cratekit/label/verify.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_kept_listing.py"]
+old = '''    return f" {needle} " in f" {credit} "'''
+new = '''    return needle in credit'''
+
+[[rows]]
+id = "M7_left_word_boundary_only"
+description = "_words_within: pad only the front, so a needle that is a word's prefix still confirms"
+file = "src/cratekit/label/verify.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_kept_listing.py"]
+old = '''    return f" {needle} " in f" {credit} "'''
+new = '''    return f" {needle}" in f" {credit} "'''
+
+[[rows]]
+id = "M8_one_direction_only"
+description = "labels_match: drop the credit inside the needle direction, so a needle Rawax Records no longer confirms a credit Rawax"
+file = "src/cratekit/label/verify.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_kept_listing.py"]
+old = '''(_words_within(left, right) or _words_within(right, left))'''
+new = '''_words_within(left, right)'''
+
+[[rows]]
+id = "M9_year_eats_the_next_digit"
+description = "_YEAR_NUM: drop the boundary after the year, so 20211 Label reads 1 Label"
+file = "src/cratekit/label/harvest.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py"]
+old = '''_YEAR_NUM = re.compile(r"^\d{4}(?:\s+|\.?$)")'''
+new = '''_YEAR_NUM = re.compile(r"^\d{4}\s*")'''
+
+[[rows]]
+id = "M10_empty_sides_match"
+description = "labels_match: drop the guard on empty folds, so two names that both fold to nothing confirm each other"
+file = "src/cratekit/label/verify.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_kept_listing.py"]
+old = '''    return bool(left) and bool(right) and (_words_within(left, right) or _words_within(right, left))'''
+new = '''    return _words_within(left, right) or _words_within(right, left)'''

@@ -18,8 +18,11 @@ from cratekit.core.review import Queue
 KIND = "harvested-label"
 HANDLER_KEY = "label.harvest"
 
-_YEAR = re.compile(r"^\(?[PC]\)?\s*", re.IGNORECASE)
-_YEAR_NUM = re.compile(r"^\d{4}\s+")
+# THE MARK IS PARENTHESISED OR A SYMBOL, and nothing else (U237). A bare leading
+# P or C is the label's own first letter: ``Cadenza``, ``Pressure Traxx``.
+_YEAR = re.compile(r"^(?:(?:\([PC]\)|[\u2117\u00a9])\s*)+", re.IGNORECASE)
+# A year alone, with no name after it, names no label.
+_YEAR_NUM = re.compile(r"^\d{4}(?:\s+|\.?$)")
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,7 +99,11 @@ def decided(store: review.ReviewStore) -> Decided:
 
 
 def labels_from_copyright(track: Any) -> tuple[str, ...]:
-    """Pull a label name off a copyright or label credit, if one is there."""
+    """Pull a label name off a copyright or label credit, if one is there.
+
+    Strips a leading ``(P)``, ``(C)``, ``℗`` or ``©`` and then a four digit
+    year, and keeps every letter of the name after them.
+    """
     text = getattr(track, "copyright", None) or getattr(track, "label", None) or ""
     cleaned = _YEAR.sub("", str(text)).strip()
     cleaned = _YEAR_NUM.sub("", cleaned).strip(" .")
