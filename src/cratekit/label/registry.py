@@ -357,9 +357,9 @@ class Registry:
         """Every label whose display name is ``name``, in registry order.
 
         MORE THAN ONE IS REACHABLE: ``rename`` accepts a name another label
-        carries. :meth:`by_name` answers the first of them, so a caller that
-        writes on the answer asks this instead and reads two as no one label
-        (R-1476).
+        carries. :meth:`by_name` answers the first of them; a caller that must
+        not guess between them asks this instead, as ``tag folder`` reads a
+        file's label tag naming two as no one label (R-1476).
         """
         wanted = _name_key(name)
         return tuple(entry for entry in self.labels.values() if _name_key(entry.name) == wanted)
