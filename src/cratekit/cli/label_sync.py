@@ -34,8 +34,13 @@ stops at the landing's gate, the landing's run is kept under the download's
 job (:func:`cratekit.label.go.landing_role`) on the run whose go queued that
 job, which is another run when a fresh go resumed it, so a later ``--go``
 under that run, which takes the run's own download on, names that landing
-rather than run the tail a second time. A go that refuses with a landing in its detail, because a
-later go's download shares the folder, has the tail named as commands to type.
+rather than run the tail a second time. Whichever way the tail ends, what the
+folder then holds is kept under the job (:func:`cratekit.label.go.keep_tail`,
+R-1467), so a later ``--go`` under the go's run reads the tracks the tail's
+``name apply`` renamed as its own, and nothing put there since. A go that
+refuses with a landing in its detail, because the folder holds what is not its
+own (another download's tracks, or files no download names, R-1467), has the
+tail named as commands to type.
 
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
 nothing, one that downloaded nothing, and every walk or question that never
@@ -52,6 +57,7 @@ from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import gates, tail
 from cratekit.cli.output import Envelope, PendingHumanAction
+from cratekit.core import jobs
 from cratekit.core.cause import CratekitError, Outcome, rebuilt
 from cratekit.core.exit_codes import ExitCode
 from cratekit.label import go, sync_cli
@@ -179,10 +185,13 @@ def label_sync(ctx: Context) -> Envelope:
     except tail.Done as done:
         chain.summary["stopped_at"] = done.step
     except tail.Attend as stop:
+        warnings.extend(_kept(cfg, land, folder))
         warnings.extend(_remember(ctx, stop, land))
         return _attended(ctx, envelope, chain, stop, folder, landing, warnings)
     except tail.Stop as stop:
+        _kept(cfg, land, folder)
         raise _ended(envelope, chain, stop, folder, landing) from None
+    warnings.extend(_kept(cfg, land, folder))
     return ctx.envelope(
         data=_data(envelope, chain),
         outcome=envelope.outcome,
@@ -204,30 +213,84 @@ def _remember(
     saved is a warning naming the run, the job and why, never a refusal.
     """
     landed = (stop.cause.detail or {}).get("run_id")
-    job, owner = land.get("job"), land.get("run")
     if not (stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed):
         return []
-    if not (isinstance(job, str) and job and isinstance(owner, str) and owner):
-        return []
-    role = go.landing_role(job)
-    if owner == ctx.run.run_id:
-        ctx.run.related_runs[role] = str(landed)
+    return _record(
+        ctx,
+        land,
+        go.landing_role,
+        str(landed),
+        what=f"the landing under run {landed}",
+        lost="does not know this landing was planned",
+    )
+
+
+def _kept(cfg, land: Mapping[str, Any], folder: Path) -> list[dict[str, str]]:
+    """Keep what the folder holds as the tail stops, under the go's job (R-1467).
+
+    The tail's ``name apply`` renames every track before the landing's gate,
+    so a later ``--go`` under the go's run finds its tracks under names no
+    download recorded; :func:`cratekit.label.go.keep_tail` keeps them by name,
+    size and modification time, which is what lets that go read them as its
+    own and nothing else as its own. One that cannot be kept is a warning, and
+    the later go then refuses its tail beside them, naming the tail by hand.
+    """
+    job = land.get("job")
+    if not (isinstance(job, str) and job):
         return []
     try:
-        state = gates.load(owner)
-        state.related_runs[role] = str(landed)
-        gates.save(state)
-    except Exception as exc:  # noqa: BLE001 - see below
-        # ANY FAILURE OF ANOTHER RUN'S RECORD IS A WARNING, as ``gates.siblings``
-        # reads one: the landing is planned by now, and a refusal raised here
-        # would replace the envelope that names it.
+        with jobs.open_store() as store:
+            go.keep_tail(cfg, store, job, folder)
+    except Exception as exc:  # noqa: BLE001 - a record lost is a warning, see above
         return [
             {
                 "code": UNRECORDED_WARNING,
                 "message": (
-                    f"the landing under run {landed} could not be recorded on run "
-                    f"{owner}, whose go queued job {job} ({type(exc).__name__}: {exc}); "
-                    f"a later go under that run does not know this landing was planned"
+                    f"what the tail left in {folder} could not be kept for job {job} "
+                    f"({type(exc).__name__}: {exc}); a later go under its run reads "
+                    f"the tracks its tail renamed as not its own, and names the tail by hand"
+                ),
+            }
+        ]
+    return []
+
+
+def _record(
+    ctx: Context,
+    land: Mapping[str, Any],
+    role_of,
+    value: str,
+    *,
+    what: str,
+    lost: str,
+) -> list[dict[str, str]]:
+    """Record ``value`` under the job's role on the run whose go queued the job (U239).
+
+    This run's record is saved as the verb returns; another run's is saved
+    here, and one that cannot be read or saved is a warning naming the run,
+    the job and why, never a refusal.
+    """
+    job, owner = land.get("job"), land.get("run")
+    if not (isinstance(job, str) and job and isinstance(owner, str) and owner):
+        return []
+    role = role_of(job)
+    try:
+        if owner == ctx.run.run_id:
+            ctx.run.related_runs[role] = value
+            return []
+        state = gates.load(owner)
+        state.related_runs[role] = value
+        gates.save(state)
+    except Exception as exc:  # noqa: BLE001 - see below
+        # ANY FAILURE OF A RUN'S RECORD IS A WARNING, as ``gates.siblings`` reads
+        # one: a refusal raised here would replace the envelope the go ends on.
+        return [
+            {
+                "code": UNRECORDED_WARNING,
+                "message": (
+                    f"{what} could not be recorded on run {owner}, whose go queued "
+                    f"job {job} ({type(exc).__name__}: {exc}); a later go under that "
+                    f"run {lost}"
                 ),
             }
         ]

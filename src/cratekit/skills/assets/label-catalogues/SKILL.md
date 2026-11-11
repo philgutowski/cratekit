@@ -267,6 +267,15 @@ crate label sync --next --label "Some Label"
 crate label sync --go
 ```
 
+Every go downloads into the one staging folder and its landing takes the
+whole folder, so land each go before the next. A go refuses before its gate
+while the folder holds anything that is not its own, another download's
+tracks or files no download names, and says how each lands: an earlier go's
+through `crate --run RUN label sync --go`, which takes it to its landing,
+names the landing its tail reached, or refuses naming the tail by hand while
+the folder holds anything else; anything else by landing it or moving it out
+of the folder.
+
 `crate sync all` does not touch labels. It makes no provider call for them and
 queues nothing for them, whatever the profile enables, and its report names
 `crate label sync` instead, so a routine sync can never start a label download.

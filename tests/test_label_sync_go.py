@@ -21,10 +21,11 @@ from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import listdoc, match_cli
 from cratekit.cli import gates, registry
 from cratekit.cli import tail as tail_chain
-from cratekit.core import config, jobs, provider_gate, review
+from cratekit.core import config, jobs, provider_gate, review, session
 from cratekit.core.cause import Cause, Remediation, Scope, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.core.jobs import Parked
+from cratekit.intake import land_cli, native
 from cratekit.intake.land_cli import default_name
 from cratekit.label import approved_cli, go, sync_cli
 from tests.acquire_fakes import (
@@ -445,6 +446,7 @@ def test_a_go_killed_between_its_queue_and_its_record_never_asks_for_a_track_twi
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert sorted(fetched(script)) == ["t-r1-1", "t-r1-2"]
     assert "1 answer(s) wait for the next go" in check(envelope, "waiting")["detail"]
+    landed_by_hand(installed, job.payload[go.ORIGIN_KEY]["run"])
 
     _run, code, envelope = approved_go()
 
@@ -478,6 +480,7 @@ def test_a_go_with_an_earlier_download_to_resume_resumes_it_and_queues_nothing_n
     assert "t-b1-1" not in fetched(script)
     (landing,) = [one for one in envelope["data"]["summary"]["go"]["next"] if "intake land" in one]
     assert first.payload[go.ORIGIN_KEY]["manifest"] in landing
+    landed_by_hand(installed, first.payload[go.ORIGIN_KEY]["run"])
 
     _run, code, envelope = approved_go()
 
@@ -589,12 +592,13 @@ def test_an_answer_holding_a_release_the_provider_did_not_answer_for_is_kept_for
 
     monkeypatch.setattr(fake, "release_tracks", flaky)
 
-    _run, code, envelope = approved_go()
+    first_run, code, envelope = approved_go()
 
     assert code == int(ExitCode.PENDING_HUMAN), envelope
     assert fetched(script) == ["t-r2-1"]
     assert check(envelope, "carried")["status"] == "fail"
     assert all(sync_cli.SETTLED not in one for one in record(installed)["answers"])
+    landed_by_hand(installed, first_run)
 
     monkeypatch.setattr(fake, "release_tracks", reader)
     script.fetched.clear()
@@ -611,7 +615,8 @@ def test_a_settled_answer_is_not_summarised_again(installed, monkeypatch, script
     next_question()
     answer("tide-works", "all")
     land_every(script, ("r1", 1))
-    approved_go()
+    run_id, _code, _envelope = approved_go()
+    landed_by_hand(installed, run_id)
 
     shown = asked()["cause"]["detail"]["shown"]
 
@@ -707,7 +712,8 @@ def test_a_go_job_whose_track_was_refused_for_good_is_not_resumed(
     land_every(script, ("r1", 2))
     script.landings["t-r1-2"] = Landing(offer_raises=LookupError("404 not found"))
 
-    approved_go()
+    run_id, _code, _envelope = approved_go()
+    landed_by_hand(installed, run_id)
 
     (job,) = our_jobs()
     assert job.state is jobs.JobState.SUCCEEDED, job
@@ -1044,7 +1050,6 @@ def test_a_stale_tag_job_over_the_staging_folder_is_replaced_not_resumed(
     two_releases_answered(monkeypatch, script)
     folder = Path(staged(installed))
     folder.mkdir(parents=True, exist_ok=True)
-    (folder / "old.wav").write_bytes(b"")
     key = registry.entry("tag.folder").handler_key
     with jobs.open_store() as store:
         stale = jobs.enqueue(
@@ -1144,12 +1149,30 @@ def one_release_answered(monkeypatch, script, tracks: int = 2) -> None:
     land_every(script, ("r1", tracks))
 
 
-def already_staged(cfg: config.Config, *track_ids: str) -> None:
-    """A file at each track's staging name, so its download is refused ``output-exists``."""
+def already_staged(monkeypatch, cfg: config.Config, *track_ids: str) -> None:
+    """A file at each track's staging name while the go downloads, refused ``output-exists``.
+
+    THE FILE IS MOVED OUT AGAIN ONCE THE DRIVE RETURNS. R-1115 left it in the
+    folder for good; since R-1467 a file there that no download of the go's
+    put there refuses the go, before its gate and before its tail, since the
+    landing would take it with the go's own. What these tests read is how a
+    download failed only by such a refusal settles, so the file is there for
+    the drive and gone when the go reads the folder.
+    """
     folder = Path(staged(cfg))
-    folder.mkdir(parents=True, exist_ok=True)
-    for track_id in track_ids:
-        (folder / f"{track_id}.wav").write_bytes(b"kept on purpose")
+    real = go._drive
+
+    def kept(ctx, store, job_id):
+        folder.mkdir(parents=True, exist_ok=True)
+        for track_id in track_ids:
+            (folder / f"{track_id}.wav").write_bytes(b"kept on purpose")
+        try:
+            return real(ctx, store, job_id)
+        finally:
+            for track_id in track_ids:
+                (folder / f"{track_id}.wav").unlink(missing_ok=True)
+
+    monkeypatch.setattr(go, "_drive", kept)
 
 
 def refused_ids(envelope: dict) -> list[str]:
@@ -1216,7 +1239,7 @@ def test_a_download_failed_only_by_a_track_refused_for_good_runs_the_tail_on_the
     the policy's class, so the item fails rather than being declined, and the
     job ends FAILED with one track done."""
     one_release_answered(monkeypatch, script)
-    already_staged(installed, "t-r1-2")
+    already_staged(monkeypatch, installed, "t-r1-2")
 
     _run, code, envelope = approved_go()
 
@@ -1239,7 +1262,7 @@ def test_a_download_whose_every_track_failed_for_good_runs_no_tail_and_says_so(
     """The engine raises inside the drive when every attempted item failed, so
     the go reads the job back off the queue rather than the refusal."""
     one_release_answered(monkeypatch, script, tracks=1)
-    already_staged(installed, "t-r1-1")
+    already_staged(monkeypatch, installed, "t-r1-1")
 
     _run, code, envelope = approved_go()
 
@@ -1277,7 +1300,7 @@ def test_a_resumed_download_failed_only_by_a_refusal_lands_under_the_first_gos_m
     first_run, code, _parked = approved_go()
     assert code != int(ExitCode.PENDING_HUMAN) and tail.calls == []
     (first,) = our_jobs()
-    already_staged(installed, "t-r1-2")
+    already_staged(monkeypatch, installed, "t-r1-2")
 
     _run, code, envelope = approved_go()
 
@@ -1382,7 +1405,7 @@ def test_a_resumed_download_whose_every_track_was_refused_runs_no_tail_and_says_
     _first, code, _parked = approved_go()
     assert code != int(ExitCode.PENDING_HUMAN) and tail.calls == []
     (first,) = our_jobs()
-    already_staged(installed, "t-r1-1")
+    already_staged(monkeypatch, installed, "t-r1-1")
 
     _run, code, envelope = approved_go()
 
@@ -1565,6 +1588,7 @@ def test_answers_saved_beside_a_finished_go_wait_and_are_not_landed_with_it(
     assert [one.job_id for one in our_jobs()] == [job.job_id]
     assert tail.calls[-1] == landing_argv(installed, job, run_id)
     assert check(envelope, "waiting")["detail"].startswith("1 answer(s) wait for the next go")
+    landed_by_hand(installed, run_id)
 
     _run, code, envelope = approved_go()
 
@@ -1586,7 +1610,7 @@ def test_a_later_gos_download_in_the_same_folder_refuses_the_tail_and_names_its_
     finished_by_hand(first.job_id)
     next_question()
     answer("beta-works", "all")
-    _later, code, _envelope = approved_go()
+    _later, code, _envelope = before_r1467(monkeypatch, approved_go)
     assert code == int(ExitCode.PENDING_HUMAN)
     (second,) = [one for one in our_jobs() if one.job_id != first.job_id]
     tail.calls.clear()
@@ -1689,6 +1713,7 @@ def test_a_landing_recorded_for_one_download_never_answers_for_the_runs_next_one
     decided(resuming, "apply")
     code, _envelope = gone(resuming)
     assert code == int(ExitCode.PENDING_HUMAN)
+    landed_by_hand(installed, first.payload[go.ORIGIN_KEY]["run"])
     next_question()
     answer("beta-works", "all")
     script.landings["t-b1-2"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
@@ -1790,7 +1815,7 @@ def test_a_later_go_parked_before_it_downloaded_anything_still_refuses_the_tail(
     next_question()
     answer("beta-works", "all")
     script.landings["t-b1-1"] = Landing(fetch_raises=cooldown())
-    approved_go()
+    before_r1467(monkeypatch, approved_go)
     second = other_than(first)
     assert second.state is jobs.JobState.BLOCKED
     tail.calls.clear()
@@ -1802,12 +1827,13 @@ def test_a_later_go_parked_before_it_downloaded_anything_still_refuses_the_tail(
     assert tail.calls == []
 
 
-def test_an_earlier_gos_download_does_not_refuse_a_later_runs_tail(
+def test_an_earlier_gos_landed_download_does_not_refuse_a_later_runs_tail(
     installed, monkeypatch, script, tail
 ):
     two_labels(monkeypatch, script)
-    _earlier, code, _envelope = approved_go()
+    earlier, code, _envelope = approved_go()
     assert code == int(ExitCode.PENDING_HUMAN)
+    landed_by_hand(installed, earlier)
     next_question()
     answer("beta-works", "all")
     script.landings["t-b1-2"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
@@ -1927,3 +1953,804 @@ def test_a_go_under_its_run_over_a_download_that_refused_every_track_runs_no_tai
     assert "every track was refused for good, so no tail was run" in continued["detail"]
     go_report = envelope["data"]["summary"]["go"]
     assert go_report[go.LAND_KEY] is None and go_report["next"] == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. R-1467: a go never lands, as its own batch, a download that is not its own
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def renamed_by_its_tail(cfg: config.Config) -> None:
+    """Every track in the folder renamed, as the tail's ``name apply`` renames them.
+
+    The stand in tail answers ``name apply`` with nothing renamed, so a download
+    whose tail stopped at the landing's gate would still sit at its download
+    names; the real one renames each file before that gate, which is the state
+    a go must not read as gone.
+    """
+    folder = Path(staged(cfg))
+    for path in sorted(folder.iterdir()):
+        if path.is_file() and path.suffix == ".wav":
+            path.rename(folder / f"Artist - {path.stem}.wav")
+
+
+def moved_out(cfg: config.Config) -> None:
+    """Every track in the folder moved into the library, as a landing moves them."""
+    folder = Path(staged(cfg))
+    target = Path(cfg.library.root) / "Music" / "landed"
+    target.mkdir(parents=True, exist_ok=True)
+    for path in sorted(folder.iterdir()):
+        if path.is_file() and path.suffix == ".wav":
+            path.rename(target / path.name)
+
+
+def proven(cfg: config.Config, run_id: str, *, medium: str = "bridge") -> None:
+    """The landing proof of a go's pass, on one medium.
+
+    ``bridge`` writes the intake file the landing writes at the library root;
+    ``native`` records the closed landing that committed the pass on a database
+    native intake tree, as ``native.landings_of_pass`` reads it.
+    """
+    name = default_name(run_id)
+    if medium == "bridge":
+        (Path(cfg.library.root) / f"{name}{land_cli.INTAKE_SUFFIX}").write_text("<xml/>")
+        return
+    session.write_record(
+        session.SessionRecord(
+            session_id=f"landing-{name}",
+            workflow=native.WORKFLOW,
+            started="2026-11-11T12:00:00+00:00",
+            state=session.SessionState.CLOSED,
+            sources={"intake": str(session.SourceState.COMMITTED)},
+            ended="2026-11-11T12:05:00+00:00",
+            detail={native.PASS_KEY: name},
+        ),
+        cfg,
+    )
+
+
+def landed_by_hand(cfg: config.Config, run_id: str, *, medium: str = "bridge") -> None:
+    """The landing a go's tail stopped at, applied: its tracks moved out, its proof kept."""
+    moved_out(cfg)
+    proven(cfg, run_id, medium=medium)
+
+
+def before_r1467(monkeypatch, act):
+    """``act`` run as a build before R-1467 ran it, reading nothing as waiting.
+
+    The state a go of such a build left, a later go's download queued into the
+    folder beside an earlier one no landing took, is what a run's own go still
+    refuses its tail beside, and no go of this build queues it.
+    """
+    with monkeypatch.context() as earlier:
+        earlier.setattr(go, "beside", lambda _cfg, _store, staging, *_a, **_k: go.Beside(staging))
+        return act()
+
+
+def stray(cfg: config.Config, name: str = "Someone - Kept By Hand.wav") -> Path:
+    """A track in the folder that no download put there."""
+    folder = Path(staged(cfg))
+    folder.mkdir(parents=True, exist_ok=True)
+    path = folder / name
+    path.write_bytes(b"put here by hand")
+    return path
+
+
+def downloaded_by_hand(script: Script, tmp_path: Path, ref: str = "x1") -> str:
+    """A plain ``acquire download`` into the same folder, driven to the end."""
+    listed = tmp_path / f"by-hand-{ref}.json"
+    listed.write_text(tidal_list([(ref, "Other Act", f"Elsewhere {ref}")]))
+    script.landings[ref] = Landing()
+    code, queued = drive(["acquire", "download", str(listed)])
+    assert code == int(ExitCode.OK), queued
+    job_id = queued["data"]["job_id"]
+    code, envelope = drive(["acquire", "download", "--job", job_id])
+    assert code == int(ExitCode.OK), envelope
+    return job_id
+
+
+def landed_first(monkeypatch, script) -> str:
+    """Alpha's go run to its landing's gate, Beta answered after it. Returns Alpha's run."""
+    two_labels(monkeypatch, script, tracks=2)
+    run_id, code, envelope = approved_go()
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    next_question()
+    answer("beta-works", "all")
+    return run_id
+
+
+def refused_before_the_gate(envelope: dict) -> dict:
+    cause = envelope["cause"]
+    assert cause["reason"] == "refused-by-policy", cause
+    assert "gate" not in (cause.get("detail") or {}), "the gate was asked over a folder it cannot land"
+    return cause
+
+
+def test_an_earlier_gos_download_finished_by_hand_refuses_a_fresh_go_before_it_queues(
+    installed, monkeypatch, script, tail
+):
+    """The brief's first scenario: before R-1467 the fresh go queued, and its tail
+    landed both downloads as one batch under its own manifest and pass."""
+    two_labels(monkeypatch, script)
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script, label="alpha-works")
+    (first,) = our_jobs()
+    finished_by_hand(first.job_id)
+    next_question()
+    answer("beta-works", "all")
+    script.fetched.clear()
+    tail.calls.clear()
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert [one["job"] for one in cause["detail"]["waiting"]] == [first.job_id]
+    assert cause["detail"]["waiting"][0]["run"] == run_id
+    assert first.job_id in cause["message"]
+    assert f"crate --run {run_id} label sync --go" in " ".join(cause["remediation"]["steps"])
+    assert [one.job_id for one in our_jobs()] == [first.job_id], "a second download was queued"
+    assert fetched(script) == [] and tail.calls == []
+
+
+def test_an_earlier_go_whose_tail_renamed_its_tracks_at_the_landings_gate_still_refuses(
+    installed, monkeypatch, script, tail
+):
+    """The usual state after a go: its tail stopped at the landing's gate, its
+    tracks renamed by ``name apply`` and no landing applied yet."""
+    run_id = landed_first(monkeypatch, script)
+    renamed_by_its_tail(installed)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    (waiting,) = cause["detail"]["waiting"]
+    assert waiting["run"] == run_id and waiting["tracks"] == 0
+    assert len(our_jobs()) == 1
+
+
+def test_a_fresh_go_with_nothing_new_names_an_unlanded_download_rather_than_end_quietly(
+    installed, monkeypatch, script, tail
+):
+    """Row 9 of U239's review: the fresh go ended ``no_op`` naming nothing."""
+    one_release_answered(monkeypatch, script)
+    run_id, code, _envelope = approved_go()
+    assert code == int(ExitCode.PENDING_HUMAN)
+    renamed_by_its_tail(installed)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert [one["run"] for one in cause["detail"]["waiting"]] == [run_id]
+
+
+@pytest.mark.parametrize("medium", ["bridge", "native"])
+def test_an_earlier_gos_download_once_landed_lets_the_fresh_go_ask_and_download(
+    installed, monkeypatch, script, tail, medium
+):
+    run_id = landed_first(monkeypatch, script)
+    landed_by_hand(installed, run_id, medium=medium)
+
+    new = asked()["run_id"]
+    decided(new, "apply")
+    code, envelope = gone(new)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert len(our_jobs()) == 2
+    assert fetched(script)[-2:] == ["t-b1-1", "t-b1-2"]
+
+
+@pytest.mark.parametrize("medium", ["bridge", "native"])
+def test_a_track_no_download_names_refuses_the_fresh_go_and_only_an_unproven_go_is_named(
+    installed, monkeypatch, script, tail, medium
+):
+    """A file no download names is beside the go whoever put it there; the
+    landing proof says only which go's tail may have renamed it."""
+    run_id = landed_first(monkeypatch, script)
+    moved_out(installed)
+    kept = stray(installed)
+    code, envelope = drive(["label", "sync", "--go"])
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert [one["run"] for one in cause["detail"]["waiting"]] == [run_id]
+    assert cause["detail"]["unnamed"] == [kept.name]
+
+    proven(installed, run_id, medium=medium)
+
+    code, envelope = drive(["label", "sync", "--go"])
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert cause["detail"]["waiting"] == [] and cause["detail"]["unnamed"] == [kept.name]
+    assert kept.name in cause["message"]
+    kept.unlink()
+
+    assert asked()["cause"]["detail"]["gate"] == GATE
+
+
+def test_a_retired_intake_file_proves_the_pass(installed, monkeypatch, script, tail):
+    run_id = landed_first(monkeypatch, script)
+    moved_out(installed)
+    stray(installed)
+    name = f"{default_name(run_id)}{land_cli.INTAKE_SUFFIX}{land_cli.RETIRED_SUFFIX}-2"
+    (Path(installed.library.root) / name).write_text("<xml/>")
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert envelope["cause"]["detail"]["waiting"] == [], envelope
+
+
+def test_a_landing_proof_of_another_pass_proves_nothing(installed, monkeypatch, script, tail):
+    run_id = landed_first(monkeypatch, script)
+    moved_out(installed)
+    stray(installed)
+    proven(installed, "another-run")
+    (Path(installed.library.root) / f"{default_name(run_id)}_other.xml").write_text("<xml/>")
+    (Path(installed.library.root) / f"{default_name(run_id)}{land_cli.INTAKE_SUFFIX}").mkdir()
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert [one["run"] for one in envelope["cause"]["detail"]["waiting"]] == [run_id]
+
+
+def test_a_proven_pass_whose_tracks_are_still_at_their_download_names_is_still_waiting(
+    installed, monkeypatch, script, tail
+):
+    """A pass landed part way, then finished: its proof is there, and so are its
+    later tracks, at the names they were downloaded under."""
+    run_id = landed_first(monkeypatch, script)
+    proven(installed, run_id)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    (waiting,) = envelope["cause"]["detail"]["waiting"]
+    assert waiting["run"] == run_id and waiting["tracks"] == 2
+
+
+def test_an_unreadable_library_root_refuses_rather_than_read_the_pass_as_landed(
+    installed, monkeypatch, script, tail
+):
+    run_id = landed_first(monkeypatch, script)
+    landed_by_hand(installed, run_id)
+    stray(installed)
+    real = Path.iterdir
+    root = Path(installed.library.root)
+
+    def unreadable(self):
+        if self == root:
+            raise PermissionError(13, "Permission denied", str(self))
+        return real(self)
+
+    monkeypatch.setattr(Path, "iterdir", unreadable)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code != int(ExitCode.OK), envelope
+    cause = envelope["cause"]
+    assert cause["detail"].get("declared_reason", cause["reason"]) == "library-root-unreachable"
+    assert "whether the pass" in cause["message"], cause
+    assert "gate" not in (envelope["cause"].get("detail") or {})
+    assert len(our_jobs()) == 1
+
+
+def test_a_plain_download_into_the_folder_refuses_the_runs_own_tail(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """The brief's third scenario: ``_beside`` saw later go jobs only."""
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    plain = downloaded_by_hand(script, tmp_path)
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == [], "the tail ran over a download no go queued"
+    cause = envelope["cause"]
+    assert cause["detail"]["beside"] == [plain]
+    assert [one["job"] for one in cause["detail"]["waiting"]] == [plain]
+    assert cause["detail"]["waiting"][0]["run"] is None
+    assert cause["remediation"]["steps"][-1].startswith("the tail by hand, in this order: ")
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+
+
+def test_a_plain_download_in_the_folder_refuses_a_fresh_go_before_the_gate(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    plain = downloaded_by_hand(script, tmp_path)
+    one_release_answered(monkeypatch, script)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert cause["detail"]["waiting"] == [
+        {"job": plain, "run": None, "verb": go.DOWNLOAD, "tracks": 1}
+    ]
+    assert cause["detail"]["unnamed"] == []
+    assert "move" in " ".join(cause["remediation"]["steps"])
+
+
+def test_a_plain_download_already_landed_refuses_nothing(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    downloaded_by_hand(script, tmp_path)
+    moved_out(installed)
+    one_release_answered(monkeypatch, script)
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+    assert tail.calls[-1] == landing_argv(installed, job, run_id)
+
+
+def test_an_earlier_download_the_fresh_go_resumes_is_its_own_and_a_plain_one_is_not(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """A fresh go with an earlier go's job to resume lands that job's batch: a
+    plain download beside it would land under that go's pass."""
+    stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    plain = downloaded_by_hand(script, tmp_path)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert [one["job"] for one in cause["detail"]["waiting"]] == [plain]
+    assert job.job_id not in [one["job"] for one in cause["detail"]["waiting"]]
+
+
+def test_an_earlier_download_the_fresh_go_resumes_alone_is_asked_about(
+    installed, monkeypatch, script, tail
+):
+    stopped_at_the_ceiling(monkeypatch, script)
+
+    shown = asked()["cause"]["detail"]["shown"]
+
+    assert shown["earlier_downloads_to_resume"] == 1
+
+
+def test_a_download_landed_while_the_fresh_go_downloaded_refuses_its_tail(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """A plain download that finished while the go's own drove, after the gate."""
+    one_release_answered(monkeypatch, script)
+    real = go._drive
+    beside: list[str] = []
+
+    def and_another(ctx, store, job_id):
+        driven = real(ctx, store, job_id)
+        beside.append(downloaded_by_hand(script, tmp_path))
+        return driven
+
+    monkeypatch.setattr(go, "_drive", and_another)
+
+    run_id, code, envelope = approved_go()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+    assert envelope["cause"]["detail"]["beside"] == beside
+    (job,) = our_jobs()
+    assert envelope["cause"]["remediation"]["steps"][-1].endswith(
+        f"--manifest {job.payload[go.ORIGIN_KEY]['manifest']} --pass {default_name(run_id)}"
+    )
+
+
+def test_a_staging_folder_not_there_holds_nothing_waiting(installed, monkeypatch, script, tail):
+    one_release_answered(monkeypatch, script)
+    assert not Path(staged(installed)).exists() or not any(Path(staged(installed)).iterdir())
+
+    assert asked()["cause"]["detail"]["gate"] == GATE
+
+
+def test_a_staging_folder_that_cannot_be_listed_refuses_rather_than_hold_nothing(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    Path(staged(installed)).mkdir(parents=True, exist_ok=True)
+
+    def unlistable(folder):
+        raise PermissionError(13, "Permission denied", str(folder))
+
+    monkeypatch.setattr(go, "folder_listing", unlistable)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code != int(ExitCode.OK), envelope
+    cause = envelope["cause"]
+    assert cause["detail"].get("declared_reason", cause["reason"]) == "intake-list-unusable"
+    assert "could not be listed" in cause["message"]
+    assert "gate" not in cause["detail"] and our_jobs() == []
+
+
+# ── Review round one of R-1467: tracks a tail renamed, and other handlers ──
+
+
+def landing_refused(tail, cfg: config.Config | None = None) -> None:
+    """The landing refuses, as a bridge tree the export cannot be read for does.
+
+    With ``cfg``, the folder's tracks are renamed first, as the real ``name
+    apply`` renames them before the landing; the stand in renames nothing.
+    """
+
+    def refused(_argv):
+        if cfg is not None:
+            renamed_by_its_tail(cfg)
+        return _refused(
+            Cause(
+                reason="library-export-unusable",
+                message="the rekordbox export could not be read",
+                remediation=Remediation(remedy=Remedy.PREPARE_LIBRARY_IN_REKORDBOX),
+                origin=("test",),
+            )
+        )
+
+    tail.landing = refused
+
+
+def test_a_plain_download_a_tail_renamed_refuses_a_fresh_go_before_its_gate(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round one's B1: a sync pass's tracks, renamed at its landing's gate, were
+    read as landed and planned into the label go's landing."""
+    downloaded_by_hand(script, tmp_path, "x1")
+    downloaded_by_hand(script, tmp_path, "x2")
+    renamed_by_its_tail(installed)
+    one_release_answered(monkeypatch, script)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert cause["detail"]["unnamed"] == ["Artist - x1.wav", "Artist - x2.wav"]
+    assert cause["detail"]["waiting"] == []
+    assert our_jobs() == []
+
+
+def test_a_plain_download_a_tail_renamed_refuses_the_runs_own_tail(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    downloaded_by_hand(script, tmp_path)
+    folder = Path(staged(installed))
+    (folder / "x1.wav").rename(folder / "Other Act - Elsewhere x1.wav")
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+    assert envelope["cause"]["detail"]["unnamed"] == ["Other Act - Elsewhere x1.wav"]
+
+
+def test_a_download_of_another_verb_with_its_track_in_the_folder_refuses_the_go(
+    installed, monkeypatch, script, tail
+):
+    """Round one's B2: a fallback fetch commits into the same folder under its
+    own handler, and only ``acquire.download`` jobs were read."""
+    folder = Path(staged(installed))
+    folder.mkdir(parents=True, exist_ok=True)
+    fetched_file = folder / "Aurora Bloom - Sun Path [LOSSY].mp3"
+    fetched_file.write_bytes(b"a second source")
+    key = registry.entry("acquire.fallback-fetch").handler_key
+    with jobs.open_store() as store:
+        fetch = jobs.enqueue(store, handler_key=key, payload={}, cfg=installed, item_ids=("f1",))
+        jobs.complete_item(store, fetch.job_id, "f1", artifact=fetched_file)
+    one_release_answered(monkeypatch, script)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert cause["detail"]["waiting"] == [
+        {"job": fetch.job_id, "run": None, "verb": key, "tracks": 1}
+    ]
+    assert f"job {fetch.job_id} of {key}" in cause["message"]
+
+
+def test_a_go_whose_tail_renamed_its_tracks_and_stopped_runs_its_tail_again_under_its_run(
+    installed, monkeypatch, script, tail
+):
+    """Round one's B3: a run's own tracks, renamed by its own tail, were read
+    as another go's and its own ``--go`` was refused."""
+    one_release_answered(monkeypatch, script)
+    landing_refused(tail, installed)
+    run_id, code, envelope = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+    tail.landing = Tail().landing
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    assert tail.calls[-1] == landing_argv(installed, job, run_id)
+
+
+def test_a_go_whose_tail_ran_still_refuses_a_file_more_than_its_own_renamed(
+    installed, monkeypatch, script, tail
+):
+    one_release_answered(monkeypatch, script)
+    landing_refused(tail, installed)
+    run_id, _code, _envelope = approved_go()
+    kept = stray(installed)
+    tail.landing = Tail().landing
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+    assert kept.name in envelope["cause"]["detail"]["unnamed"]
+
+
+def test_a_go_whose_tracks_another_tail_renamed_does_not_read_them_as_its_own(
+    installed, monkeypatch, script, tail
+):
+    """No tail of this run ran, so files no download names are not its tracks."""
+    run_id, _envelope = stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    finished_by_hand(job.job_id)
+    renamed_by_its_tail(installed)
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+    assert len(envelope["cause"]["detail"]["unnamed"]) == 3
+
+
+def test_a_download_that_finished_while_a_go_resumed_another_refuses_the_resumes_tail(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round one's R2: the beside check after a resume's drive killed no test."""
+    stopped_at_the_ceiling(monkeypatch, script)
+    (job,) = our_jobs()
+    real = go._drive
+    beside: list[str] = []
+
+    def and_another(ctx, store, job_id):
+        driven = real(ctx, store, job_id)
+        beside.append(downloaded_by_hand(script, tmp_path))
+        return driven
+
+    monkeypatch.setattr(go, "_drive", and_another)
+    resuming = asked()["run_id"]
+    decided(resuming, "apply")
+    tail.calls.clear()
+
+    code, envelope = gone(resuming)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+    assert envelope["cause"]["detail"]["beside"] == beside
+    assert envelope["cause"]["detail"]["job"] == job.job_id
+
+
+def test_the_walk_refused_beside_a_download_keeps_what_it_answered(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round one's R5: the walk's answers are saved and named in the refusal."""
+    downloaded_by_hand(script, tmp_path)
+    register()
+    bind(monkeypatch, {"tide-works": [("r1", "2026", 1)]})
+    scripted_terminal(monkeypatch, "all")
+
+    code, envelope = drive(["label", "sync"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = envelope["cause"]
+    assert cause["detail"]["answered_this_run"][0].startswith("Tide Works: all")
+    assert len(record(installed)["answers"]) == 1
+    assert cause["remediation"]["steps"][-1].endswith("the answers given are saved")
+    assert "it did not ask its gate or queue a download" in cause["message"]
+
+
+def test_a_tail_refused_beside_a_download_still_names_the_tracks_refused_for_good(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round one's R4: the go's report, which names them, is not returned."""
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+    real = go._drive
+
+    def and_another(ctx, store, job_id):
+        driven = real(ctx, store, job_id)
+        downloaded_by_hand(script, tmp_path)
+        return driven
+
+    monkeypatch.setattr(go, "_drive", and_another)
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert [row["item_id"] for row in envelope["cause"]["detail"]["refused"]] == ["t-r1-2"]
+
+
+# ── Review round two of R-1467: what the tail left, kept by identity ──
+
+
+def stopped_short_of_its_landing(monkeypatch, script, tail, installed) -> tuple[str, jobs.Job]:
+    """A go whose tail renamed its tracks and stopped before the landing's gate."""
+    one_release_answered(monkeypatch, script)
+    landing_refused(tail, installed)
+    run_id, code, envelope = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+    tail.landing = Tail().landing
+    tail.calls.clear()
+    return run_id, job
+
+
+def test_a_go_whose_tracks_left_reads_no_file_put_there_since_as_its_own(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round two's BLOCKING finding: once its tracks left the folder, a go whose
+    tail had started read as many foreign files as its own and landed them."""
+    run_id, _job = stopped_short_of_its_landing(monkeypatch, script, tail, installed)
+    moved_out(installed)
+    downloaded_by_hand(script, tmp_path, "x1")
+    downloaded_by_hand(script, tmp_path, "x2")
+    renamed_by_its_tail(installed)
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == [], "the go landed another download's tracks as its own"
+    assert envelope["cause"]["detail"]["unnamed"] == ["Artist - x1.wav", "Artist - x2.wav"]
+
+
+def test_a_file_under_a_name_the_tail_left_but_not_the_same_file_is_not_the_gos(
+    installed, monkeypatch, script, tail
+):
+    run_id, _job = stopped_short_of_its_landing(monkeypatch, script, tail, installed)
+    folder = Path(staged(installed))
+    (taken,) = [path for path in folder.iterdir() if path.name == "Artist - t-r1-1.wav"]
+    taken.write_bytes(b"another recording under the same name")
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["detail"]["unnamed"] == ["Artist - t-r1-1.wav"]
+
+
+def test_a_go_whose_pass_landed_reads_nothing_by_its_tails_record(
+    installed, monkeypatch, script, tail
+):
+    run_id, _job = stopped_short_of_its_landing(monkeypatch, script, tail, installed)
+    proven(installed, run_id)
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+    assert len(envelope["cause"]["detail"]["unnamed"]) == 2
+
+
+def test_a_tails_record_that_cannot_be_read_reads_nothing_as_the_gos_own(
+    installed, monkeypatch, script, tail
+):
+    run_id, job = stopped_short_of_its_landing(monkeypatch, script, tail, installed)
+    (jobs.store_dir(installed) / go.TAILS_DIRNAME / f"{job.job_id}.json").write_text("{")
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+
+
+def test_the_tail_keeps_what_it_left_whichever_way_it_ends(installed, monkeypatch, script, tail):
+    one_release_answered(monkeypatch, script)
+    landing_refused(tail)
+    _run, code, envelope = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+
+    kept = go.kept_tail(installed, job.job_id)
+
+    assert sorted(name for name, _size, _mtime in kept) == ["t-r1-1.wav", "t-r1-2.wav"]
+    folder = Path(staged(installed))
+    assert kept == {
+        (path.name, path.stat().st_size, path.stat().st_mtime_ns)
+        for path in folder.iterdir()
+        if path.is_file()
+    }
+
+
+def test_a_download_that_finished_during_the_tail_is_not_kept_as_the_gos(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round two's R5: a download committed while the tail ran is that download's."""
+    one_release_answered(monkeypatch, script)
+    plain: list[str] = []
+
+    def downloaded_then_refused(_argv):
+        plain.append(downloaded_by_hand(script, tmp_path))
+        return _refused(
+            Cause(
+                reason="library-export-unusable",
+                message="the rekordbox export could not be read",
+                remediation=Remediation(remedy=Remedy.PREPARE_LIBRARY_IN_REKORDBOX),
+                origin=("test",),
+            )
+        )
+
+    tail.landing = downloaded_then_refused
+    run_id, code, envelope = approved_go()
+    assert code != int(ExitCode.PENDING_HUMAN), envelope
+    (job,) = our_jobs()
+    assert "x1.wav" not in {name for name, _s, _m in go.kept_tail(installed, job.job_id)}
+    tail.landing = Tail().landing
+    tail.calls.clear()
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert tail.calls == []
+    assert envelope["cause"]["detail"]["beside"] == plain
+
+
+def test_a_runs_own_tail_refused_beside_a_download_names_its_tracks_refused_for_good(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round two's zero row: the refused tracks were carried on this tail untested."""
+    one_release_answered(monkeypatch, script, tracks=3)
+    script.landings["t-r1-1"] = Landing(kind="lossy")
+    script.landings["t-r1-2"] = Landing(fetch_raises=ceiling(), fetch_raises_times=1)
+    run_id, code, envelope = approved_go()
+    assert envelope["cause"]["reason"] == provider_gate.CEILING, envelope
+    downloaded_by_hand(script, tmp_path)
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert [row["item_id"] for row in envelope["cause"]["detail"]["refused"]] == ["t-r1-1"]
+
+
+def test_a_go_with_tracks_in_the_folder_is_named_once_beside_files_no_download_names(
+    installed, monkeypatch, script, tail
+):
+    """Mutation row M13: a go already named by its tracks is not named again
+    as one whose tail may have renamed the files no download names."""
+    run_id = landed_first(monkeypatch, script)
+    stray(installed)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    (waiting,) = envelope["cause"]["detail"]["waiting"]
+    assert (waiting["run"], waiting["tracks"]) == (run_id, 2)
+
+
+def test_a_go_whose_tracks_were_recorded_in_another_folder_is_not_named_for_this_one(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Mutation row M08: a download into another staging folder, say before the
+    configured one moved, has nothing in this one to be put down to."""
+    elsewhere = tmp_path / "old-staging"
+    elsewhere.mkdir()
+    (elsewhere / "t-old-1.wav").write_bytes(b"downloaded elsewhere")
+    with jobs.open_store() as store:
+        old = jobs.enqueue(
+            store,
+            handler_key=go.DOWNLOAD,
+            payload={go.ORIGIN_KEY: {"run": "an-old-run", "manifest": "m"}, go.RUN_KEY: "an-old-run"},
+            cfg=installed,
+            item_ids=("t-old-1",),
+        )
+        jobs.complete_item(store, old.job_id, "t-old-1", artifact=elsewhere / "t-old-1.wav")
+        jobs.transition(store, old.job_id, jobs.JobState.RUNNING)
+        jobs.transition(store, old.job_id, jobs.JobState.SUCCEEDED)
+    one_release_answered(monkeypatch, script)
+    kept = stray(installed)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert cause["detail"]["waiting"] == [] and cause["detail"]["unnamed"] == [kept.name]

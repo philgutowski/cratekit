@@ -1,0 +1,248 @@
+name = "r1467"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_fresh_go_checks_before_gate"
+description = "go: never refuse before the gate, so a fresh go queues beside a download no landing took and its tail lands both"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if found:
+        raise _waiting_refusal(found, staging, walk)'''
+new = '''    if False:
+        raise _waiting_refusal(found, staging, walk)'''
+
+[[rows]]
+id = "M02_resumed_jobs_are_own"
+description = "go: read the jobs a fresh go resumes as beside it, so a go that resumes an earlier download refuses over that download's own tracks"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''found = beside(cfg, store, staging, {job_id for job_id, _left in summary.open_jobs})'''
+new = '''found = beside(cfg, store, staging, set())'''
+
+[[rows]]
+id = "M03_fresh_tail_checks_after_drive"
+description = "go: run the fresh go's tail without reading the folder after its drive, so a download that finished meanwhile lands with it"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''                _refuse_beside(
+                    cfg, store, queued, staging,'''
+new = '''                (lambda *_a, **_k: None)(
+                    cfg, store, queued, staging,'''
+
+[[rows]]
+id = "M04_resume_tail_checks"
+description = "_resume: run a single resume's tail without reading the folder, so a download beside it lands under the resumed go's pass"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if land is not None:
+        # NOT BESIDE ANOTHER DOWNLOAD'''
+new = '''    if False:
+        # NOT BESIDE ANOTHER DOWNLOAD'''
+
+[[rows]]
+id = "M05_carry_on_checks"
+description = "_carry_on: run the run's own tail without reading the folder, so a plain download beside it lands under its pass"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        if read.landed:
+            _refuse_beside('''
+new = '''        if False:
+            _refuse_beside('''
+
+[[rows]]
+id = "M06_unlistable_folder_refuses"
+description = "beside: read a staging folder that cannot be listed as holding nothing"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        raise refuse(
+            "intake-list-unusable",'''
+new = '''        return Beside(folder=folder)
+        raise refuse(
+            "intake-list-unusable",'''
+
+[[rows]]
+id = "M07_own_tracks_are_not_beside"
+description = "beside: count the go's own tracks as beside it, so every go refuses over its own download"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    others = held - set(mine)'''
+new = '''    others = held'''
+
+[[rows]]
+id = "M08_folder_only"
+description = "beside: read every artifact a job recorded, not only those directly in the staging folder"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            if path.parent == folder
+'''
+new = '''            if True
+'''
+
+[[rows]]
+id = "M09_kept_by_identity"
+description = "beside: read every file no download names as the go's own once its tail kept a record, so files put there since land under its pass"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        unnamed = [path for path in unnamed if _identity(path) not in kept]'''
+new = '''        unnamed = []'''
+
+[[rows]]
+id = "M10_kept_not_once_landed"
+description = "beside: read the tail's record even once the go's pass landed"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if unnamed and kept and not (own_pass and land_cli.pass_landed(cfg, own_pass)):'''
+new = '''    if unnamed and kept:'''
+
+[[rows]]
+id = "M11_identity_is_more_than_a_name"
+description = "_identity: name a file by its name alone, so another recording under a name the tail left is read as the go's"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    return (path.name, stat.st_size, stat.st_mtime_ns)'''
+new = '''    return (path.name, 0, 0)'''
+
+[[rows]]
+id = "M12_only_unproven_named"
+description = "beside: name every go's download beside files no download names, its pass landed or not"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            if not proven[name]:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "M13_candidate_not_present"
+description = "beside: name a go with tracks already named again as a candidate for files no download names"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            if job_id in own or run is None or any(path in others for path in paths):'''
+new = '''            if job_id in own or run is None:'''
+
+[[rows]]
+id = "M14_carry_on_reads_the_record"
+description = "_carry_on: never read what the run's own tail left, so its renamed tracks refuse its own go"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''                own={job_id}, kept=kept_tail(cfg, job_id),'''
+new = '''                own={job_id},'''
+
+[[rows]]
+id = "M15_beside_keeps_later_jobs"
+description = "_refuse_beside: leave the later go jobs out of the detail's beside list"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            "beside": [*known, *(one.job_id for one in extra.waiting)],'''
+new = '''            "beside": [one.job_id for one in extra.waiting],'''
+
+[[rows]]
+id = "M16_step_names_the_go"
+description = "Waiting.step: name a bare label sync --go rather than the go under the download's run"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            f"already reached and answer that, with: {continue_command(self.run)}; "'''
+new = '''            f"already reached and answer that, with: crate label sync --go; "'''
+
+[[rows]]
+id = "M17_walk_answers_kept"
+description = "_waiting_refusal: drop what the walk answered from the refusal"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    if walk is not None:
+        detail["answered_this_run"] = list(walk)'''
+new = '''    if False:
+        detail["answered_this_run"] = list(walk)'''
+
+[[rows]]
+id = "M18_refused_tracks_carried"
+description = "_refuse_beside: drop the tracks refused for good from the tail's refusal"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            "refused": list(refused),'''
+new = '''            "refused": [],'''
+
+[[rows]]
+id = "M19_root_unreadable_refuses"
+description = "pass_landed: read a library root that cannot be read as a pass that never landed"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    except OSError as exc:
+        raise refuse(
+            "library-root-unreachable",'''
+new = '''    except OSError as exc:
+        return False
+        raise refuse(
+            "library-root-unreachable",'''
+
+[[rows]]
+id = "M20_retired_file_proves"
+description = "pass_landed: read only a pending intake file, so a retired one proves nothing"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            if unretired_name(entry.name) == wanted and entry.is_file():'''
+new = '''            if entry.name == wanted and entry.is_file():'''
+
+[[rows]]
+id = "M21_native_record_proves"
+description = "pass_landed: never read the native landing's record"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    return bool(native.landings_of_pass(cfg, name))'''
+new = '''    return False'''
+
+[[rows]]
+id = "M22_proof_is_a_file"
+description = "pass_landed: a directory named as the intake file proves the pass"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            if unretired_name(entry.name) == wanted and entry.is_file():'''
+new = '''            if unretired_name(entry.name) == wanted:'''
+
+[[rows]]
+id = "M23_kept_when_the_tail_refuses"
+description = "label_sync: keep nothing when a tail step refuses, so a go whose landing refused is refused its own tracks after"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''        _kept(cfg, land, folder)
+        raise _ended'''
+new = '''        raise _ended'''
+
+[[rows]]
+id = "M24_kept_leaves_out_other_downloads"
+description = "keep_tail: keep another download's track that landed during the tail as the go's own"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''    kept = sorted(_identity(path) for path in held if path not in theirs)'''
+new = '''    kept = sorted(_identity(path) for path in held)'''
+
+[[rows]]
+id = "M25_own_pass_handed_to_beside"
+description = "_refuse_beside: never hand the go's own pass to beside, so a landed pass's record is still read"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''own_pass=default_name(run_of) if kept else None'''
+new = '''own_pass=None'''
