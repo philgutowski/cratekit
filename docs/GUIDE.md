@@ -445,9 +445,15 @@ the walk, `label sync` without `--go`, which asks any new label first). Asked
 again after its tail reached the landing, by this run or by a fresh go that
 resumed its download, the run names that landing and runs nothing; a
 cancelled download is asked about again. A fresh `label sync --go` resumes an unfinished download
-too, after asking. Every go stages into the same folder, so land each before
-the next: a run's own `--go` refuses its tail, naming the commands, when a
-later go downloaded into the folder beside it.
+too, after asking. Every go stages into the same folder, and a landing takes
+the whole folder, so land each before the next. A fresh `--go` refuses before
+its gate while the folder holds a download no landing took, an earlier go's
+(named with the `crate --run RUN label sync --go` that lands it) or a plain
+`acquire download`'s (land it, or move its tracks out); a go whose tail renamed
+its tracks counts as landed once its pass's intake file, or on a database
+native intake tree its landing's record, exists. A run's own `--go` refuses
+its tail, naming the commands, beside any such download or a later go's. A
+library root that cannot be read refuses rather than reads as landed.
 
 Other label verbs:
 
