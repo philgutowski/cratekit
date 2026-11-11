@@ -1,5 +1,10 @@
 """U212: a sync pass does not download again a track an unlanded pass staged.
 
+SINCE R-1499 IT DOES NOT LAND IT EITHER. The second pass here used to land
+the first pass's staged tracks under its own pass; they are another
+download's, so it refuses before its download, naming the first pass and the
+command that lands it (:mod:`tests.test_sync_land_beside`).
+
 Sitting 55 (A70) ran ``crate sync land`` while two Yours tracks a pass of
 2026-10-31 had downloaded, tagged and named still sat in the staging folder,
 that pass's landing gate never answered. The pass listed and downloaded them
@@ -71,16 +76,36 @@ def _second_pass(monkeypatch, *ids: str) -> tuple[int, dict]:
     return drive(["sync", "land"])
 
 
-def test_a_second_pass_downloads_only_what_the_unlanded_first_did_not_stage(
+def _refused_beside_the_first(first: dict, second: dict) -> dict:
+    """The second pass's refusal before its download, naming the first (R-1499)."""
+    cause = second["cause"]
+    assert cause["reason"] == "refused-by-policy", cause
+    assert _summary(second)["stopped_at"] == sync_land.DOWNLOAD
+    (waiting,) = cause["detail"]["waiting"]
+    assert waiting["pass"] == _summary(first)["land_name"]
+    assert waiting["pass_run"] == _summary(first)["pass_run"]
+    assert (
+        f"crate sync land --pass-run {_summary(first)['pass_run']}"
+        in " ".join(cause["remediation"]["steps"])
+    )
+    return cause
+
+
+def test_a_second_pass_beside_the_unlanded_first_lists_only_what_it_did_not_stage_and_refuses(
     machine, monkeypatch, tail
 ):
+    """U212's listing still leaves out what the first pass staged, and R-1499
+    no longer lands it under the second pass: the first pass's download is
+    another download's, so the second refuses before it downloads anything,
+    naming the first and the command that lands it."""
     cfg, script = machine
-    _first_pass(monkeypatch, script, cfg)
+    first = _first_pass(monkeypatch, script, cfg)
+    landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
     code, second = _second_pass(monkeypatch, "101", "103")
 
-    assert code == int(ExitCode.PENDING_HUMAN), second
-    assert [request.key for request in script.fetched] == ["103"]
+    assert code == int(ExitCode.REFUSED_BY_POLICY), second
+    assert script.fetched == []
     summary = _summary(second)
     assert summary["staged"] == 1
     body = json.loads(Path(summary["list"]).read_text())
@@ -88,26 +113,24 @@ def test_a_second_pass_downloads_only_what_the_unlanded_first_did_not_stage(
     said = _check(second, "missing")["detail"]
     assert said.startswith("1 missing track(s) listed as one at ")
     assert "; 1 more staged already by a download not landed yet" in said
-    # THE LANDING STILL TAKES THE STAGED FILE: the tail and the landing ran
-    # over the folder that holds it.
+    cause = _refused_beside_the_first(first, second)
+    assert cause["detail"]["waiting"][0]["tracks"] == 2
     staged = sorted(p.name for p in _staged(cfg).iterdir() if p.is_file())
-    assert staged == ["101.wav", "102.wav", "103.wav"]
-    land = tail.calls[-1]
-    assert land[:3] == ["intake", "land", str(_staged(cfg))]
-    assert summary["stopped_at"] == sync_land.LAND_GATE
+    assert staged == ["101.wav", "102.wav"]
+    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings
 
 
-def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_still_lands(
+def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_refuses(
     machine, monkeypatch, tail
 ):
     cfg, script = machine
-    _first_pass(monkeypatch, script, cfg)
+    first = _first_pass(monkeypatch, script, cfg)
     downloads = len(_by_key("acquire.download"))
     landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
     code, second = _second_pass(monkeypatch, "102")
 
-    assert code == int(ExitCode.PENDING_HUMAN), second
+    assert code == int(ExitCode.REFUSED_BY_POLICY), second
     assert script.fetched == []
     assert len(_by_key("acquire.download")) == downloads, "a download was queued"
     summary = _summary(second)
@@ -117,13 +140,8 @@ def test_a_pass_whose_every_missing_track_is_staged_downloads_nothing_and_still_
         "nothing to download: 1 missing track(s) are staged already by a download "
         "not landed yet"
     )
-    assert _check(second, "download")["detail"] == (
-        "nothing downloaded: every missing track is staged already"
-    )
-    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings + 1
-    land = tail.calls[-1]
-    assert land[land.index("--pass") + 1] == summary["land_name"]
-    assert summary["land_name"].endswith("_synced")
+    _refused_beside_the_first(first, second)
+    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings
 
 
 def test_a_continued_pass_whose_own_downloads_are_staged_lists_them_again(
@@ -220,34 +238,28 @@ def _refusing_name(tail, cause: Cause):
     return refusing
 
 
-def test_a_download_that_lands_nothing_still_lands_what_is_staged(machine, monkeypatch, tail):
-    """Review round one, F1. Every listed track refused for good, a lossy
-    only offer, while another missing track is staged: the download lands
-    nothing and the pass still goes on to land what is staged, as its missing
-    row says."""
+def test_a_second_pass_beside_an_unlanded_first_refuses_before_any_download_is_refused(
+    machine, monkeypatch, tail
+):
+    """Review round one of U212, F1, read again under R-1499: the second
+    pass's listed track is a lossy only offer and the rest is staged by the
+    first. It refuses before its download, so nothing is downloaded or
+    refused for good, and the first pass's tracks wait for their own landing."""
     cfg, script = machine
-    _first_pass(monkeypatch, script, cfg)
+    first = _first_pass(monkeypatch, script, cfg)
     script.landings["103"] = Landing(kind="lossy")
     landings = sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
 
     code, second = _second_pass(monkeypatch, "101", "103")
 
-    assert code == int(ExitCode.PENDING_HUMAN), second
+    assert code == int(ExitCode.REFUSED_BY_POLICY), second
     summary = _summary(second)
     assert summary["staged"] == 1
-    assert [row["item_id"] for row in summary["download_refused"]] == ["103"]
-    said = _check(second, "download")
-    assert said["status"] == "fail"
-    assert said["detail"].endswith(
-        "landed no track; 1 refused; the 1 staged track(s) are landed without it"
-    )
-    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings + 1
-    assert summary["stopped_at"] == sync_land.LAND_GATE
-    # REVIEW ROUND TWO, finding 5: the sentence read first says nothing landed.
-    said_first = second["pending_human_action"]["summary"]
-    assert said_first.startswith(
-        "the pass downloaded nothing and is tagged, analysed and named over what is staged; "
-    ), said_first
+    assert not summary.get("download_refused")
+    assert not summary.get("download_job")
+    assert script.fetched == []
+    _refused_beside_the_first(first, second)
+    assert sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"]) == landings
 
 
 def _download_job(cfg, list_name: str, isrc: str, *, finish: bool) -> str:

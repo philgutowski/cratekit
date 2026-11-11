@@ -640,8 +640,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'job-driver-held',
         'job-unknown',  # 2026-11-01, U183: a --pass-run that names no pass.
         'outbound-export-required',
+        'refused-by-policy',  # 2026-11-11, R-1499: a pass beside another download.
         'sync-land-download-refused',
         'sync-land-intake-left-open',
+        'sync-land-tail-unrecorded',  # 2026-11-11, R-1499: a tail record not kept.
         'sync-land-without-vocals',  # 2026-11-01, U181
         'vocal-model',  # 2026-11-01, U181
         'vocal-scoring-unavailable',  # 2026-11-01, U181
@@ -1363,6 +1365,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'intake/fetch.py': ['utf-8'],
     # 2026-10-26, U154: the shelved name rule fails closed on an unreadable record.
     'intake/batch_name.py': ['internal-error'],
+    # 2026-11-11, R-1499: the staging folder's reading, lifted out of
+    # ``label/go.py`` with its two literals, and the sync pass's record joined.
+    'intake/beside.py': ['intake-list-unusable', 'label-go-tails', 'sync-pass-tails'],
     # 2026-10-31, U165: the landing's filing after its commit joined.
     'intake/filing.py': [
         'adopt-entries-failed',
@@ -1568,8 +1573,6 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'label/go.py': [
         'decision-stale',
         'held-by-a-go',
-        'intake-list-unusable',  # 2026-11-11, R-1467: a staging folder it cannot list.
-        'label-go-tails',  # 2026-11-11, R-1467: what a go's tail left, kept by job.
         'label-sync',
         'label-sync-download-refused',  # 2026-11-01, R-1115: a track failed for good.
         'refused-by-policy',
@@ -2601,6 +2604,7 @@ PINNED_LITERAL_HOLDERS = {
         'job-driver-held',
         'job-unknown',  # 2026-11-01, U183: a --pass-run that names no pass.
         'outbound-export-required',
+        'refused-by-policy',  # 2026-11-11, R-1499: a pass beside another download.
         'vocal-scoring-unavailable',  # 2026-11-01, U181
     ],
     # 2026-11-01, U190: the tail and the landing, lifted out of the sync pass driver.
@@ -2925,6 +2929,7 @@ PINNED_LITERAL_HOLDERS = {
     'intake/collection_xml.py': ['intake-export-is-stub', 'library-export-unusable'],
     # 2026-10-26, U154: the shelved name rule fails closed on an unreadable record.
     'intake/batch_name.py': ['internal-error'],
+    'intake/beside.py': ['intake-list-unusable'],  # 2026-11-11, R-1499: lifted from the go.
     # 2026-10-31, U165: the landing's filing after its commit joined.
     'intake/filing.py': ['adopt-entries-failed'],
     'intake/file_cli.py': ['intake-list-unusable', 'internal-error'],
@@ -3039,7 +3044,7 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'label/dated.py': ['internal-error', 'label-new-playlists-no-folder'],
     # 2026-11-11, R-1467: a staging folder the go cannot list refuses.
-    'label/go.py': ['decision-stale', 'intake-list-unusable', 'refused-by-policy'],
+    'label/go.py': ['decision-stale', 'refused-by-policy'],  # 2026-11-11, R-1499: one lifted out.
     'label/heard.py': [
         'internal-error',
         'label-heard-ambiguous',

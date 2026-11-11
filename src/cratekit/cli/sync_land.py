@@ -34,11 +34,23 @@ vocals extra, and found out from one clause of the landing plan.
 
 A TRACK AN UNLANDED PASS STAGED IS NOT DOWNLOADED AGAIN (U212). The listing
 counts a missing track a staged file already carries as staged, and the pass
-says how many on its missing step. A pass with nothing to download and
-something staged skips the download and runs the tail and the landing over
-the staging folder, which takes the staged files, rather than ending with
-nothing landed. Sitting 55 downloaded two such tracks again, and the copies
-stopped the name step on names already taken.
+says how many on its missing step. Sitting 55 downloaded two such tracks
+again, and the copies stopped the name step on names already taken. Since
+R-1499 the pass does not land them either: they are another download's, so
+it refuses beside them, below, and names that download's own landing.
+
+A PASS LANDS ONLY ITS OWN (R-1499). Every download stages into the one folder
+and the landing lands the whole of it, so a label go's download waiting at
+its landing's gate, a plain download or an earlier pass's would land under
+this pass. The folder is read as ``label sync --go`` reads it since R-1467,
+:func:`cratekit.intake.beside.beside`, before the download and again before
+the tail: the pass's own is a track of a download over its own list at its
+download name, or a file its own tail left there, kept by name, size and
+modification time whichever way the tail stopped (:func:`_keep`), while its
+pass has no landing proof. Anything else refuses, naming each download and
+how it lands, a label go's by ``crate --run RUN label sync --go`` and an
+earlier pass's by its ``--pass-run``; a folder or a library root that cannot
+be read refuses too.
 
 A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
 a lossy only track above all, leaves the job failed with every other item
@@ -133,6 +145,9 @@ DOWNLOAD = "download"
 STEPS: tuple[str, ...] = (
     PREFLIGHT, SYNC, INTAKE, MISSING, DOWNLOAD, TAG, GUESS, ANALYZE, RESTAMP, NAME, LAND,
 )
+
+#: The warning a tail record the pass could not keep is named under (R-1499).
+UNRECORDED_WARNING = "sync-land-tail-unrecorded"
 
 #: The verbs the pass runs that are not the tail's.
 SYNC_VERB = "sync.all"
@@ -855,8 +870,8 @@ def _missing(report: _Pass, run_id: str, *, without_cancelled: bool = False) -> 
     # SAID ON THE STEP THAT DECIDED IT (U212), so a person reading the pass
     # sees why fewer tracks were downloaded than the playlists asked for.
     held = (
-        "staged already by a download not landed yet, not downloaded again, and "
-        "the landing over the staging folder lands them"
+        "staged already by a download not landed yet, not downloaded again; that "
+        "download is landed on its own first, since this pass lands only its own (R-1499)"
     )
     if not listed:
         report.check(
@@ -1063,6 +1078,106 @@ def _choose(ctx: Context, report: _Pass, choose: _Choose) -> Envelope:
 
 
 # ---------------------------------------------------------------------------
+# What the staging folder holds beside the pass (R-1499)
+# ---------------------------------------------------------------------------
+
+
+def _own_downloads(store: jobs.JobStore, name: str, cfg: config.Config) -> set[str]:
+    """Every download job of this library over the pass's own list, by its name.
+
+    The name a pass's list and its landing share, the reading ``cli.tail``
+    names a pass's download by, so a cancelled job over the list, whose
+    finished tracks are in the folder, is the pass's own as well.
+    """
+    from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
+
+    return {
+        job.job_id
+        for job in jobs.list_jobs(store)
+        if staged.pass_of(job) == name and job.library_id == cfg.library.volume_id
+    }
+
+
+def _alone(report: _Pass, cfg: config.Config, staging: Path, name: str, step: str) -> None:
+    """Refuse the pass while the staging folder holds what is not its own (R-1499).
+
+    Read as R-1467 reads it for a label go, :func:`cratekit.intake.beside.beside`:
+    the pass's own is a track of its own download at its download name, or a
+    file its own tail left there (:func:`_keep`) while its pass has no landing
+    proof. Anything else would be landed with it under its pass, so the pass
+    stops at ``step``, before its download or before its tail, naming each
+    download and how it lands. A folder or a library root that cannot be read
+    stops it too.
+    """
+    from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
+
+    try:
+        with jobs.open_store() as store:
+            own = _own_downloads(store, name, cfg)
+            found = staged.beside(
+                cfg,
+                store,
+                staging,
+                own,
+                kept=staged.kept(staged.pass_record(cfg, name)),
+                own_pass=name,
+                origin=_ORIGIN,
+                again="then continue the pass",
+            )
+    except CratekitError as exc:
+        raise _Stop(step, exc) from None
+    if not found:
+        return
+    before = "queued no download" if step == DOWNLOAD else "ran no step of its tail"
+    raise _Stop(
+        step,
+        refuse(
+            "refused-by-policy",
+            f"the staging folder {found.folder} holds {found.said()}; a landing lands "
+            f"the whole folder, so this pass would land them with its own, under its "
+            f"pass {name}, and it {before}",
+            steps=found.steps(),
+            origin=_ORIGIN,
+            detail={**found.to_json(), "pass": name, "own": sorted(own)},
+        ),
+    )
+
+
+def _keep(report: _Pass, cfg: config.Config, staging: Path, name: str) -> None:
+    """Keep what the folder holds as the pass's tail stops, under its pass (R-1499).
+
+    The tail's ``name apply`` renames every track before the landing's gate,
+    so the pass continued finds its tracks under names no download recorded;
+    :func:`cratekit.intake.beside.keep` keeps them by name, size and
+    modification time, which is what lets it read them as its own and nothing
+    put there since. One that cannot be kept is a warning, and the pass
+    continued then refuses beside its own renamed tracks.
+    """
+    from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
+
+    try:
+        with jobs.open_store() as store:
+            staged.keep(
+                store,
+                staged.pass_record(cfg, name),
+                staging,
+                _own_downloads(store, name, cfg),
+                key=name,
+            )
+    except Exception as exc:  # noqa: BLE001 - a record lost is a warning, see above
+        report.warnings.append(
+            {
+                "code": UNRECORDED_WARNING,
+                "message": (
+                    f"what the tail left in {staging} could not be kept for the pass "
+                    f"{name} ({type(exc).__name__}: {exc}); the pass continued reads the "
+                    f"tracks its tail renamed as not its own, and refuses beside them"
+                ),
+            }
+        )
+
+
+# ---------------------------------------------------------------------------
 # The verb
 # ---------------------------------------------------------------------------
 
@@ -1124,9 +1239,17 @@ def sync_land(ctx: Context) -> Envelope:
             raise _Done(SYNC)
         without = _intake(report, run_id, cfg)
         listed = _missing(report, run_id, without_cancelled=without)
-        report.summary["downloaded"] = _download(report, listed, cfg)
         staging = cfg.paths.download_staging.expanduser().absolute()
-        tail.run(report, staging, cfg, ["--pass", listed.land_name], listed.land_name)
+        # THE FOLDER HOLDS ONLY THE PASS'S OWN (R-1499), read before the
+        # download, so nothing is downloaded into a folder the pass cannot
+        # land, and again before the tail, over what arrived meanwhile.
+        _alone(report, cfg, staging, listed.land_name, DOWNLOAD)
+        report.summary["downloaded"] = _download(report, listed, cfg)
+        _alone(report, cfg, staging, listed.land_name, TAG)
+        try:
+            tail.run(report, staging, cfg, ["--pass", listed.land_name], listed.land_name)
+        finally:
+            _keep(report, cfg, staging, listed.land_name)
     except _Done as done:
         report.summary["stopped_at"] = done.step
     except _Attend as stop:
@@ -1157,6 +1280,7 @@ __all__ = [
     "STEPS",
     "TAG",
     "TAIL",
+    "UNRECORDED_WARNING",
     "VOCAL_MODEL",
     "VOCALS_UNAVAILABLE",
     "WITHOUT_VOCALS",
