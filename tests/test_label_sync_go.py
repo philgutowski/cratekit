@@ -2744,6 +2744,8 @@ def test_a_go_whose_tracks_were_recorded_in_another_folder_is_not_named_for_this
             item_ids=("t-old-1",),
         )
         jobs.complete_item(store, old.job_id, "t-old-1", artifact=elsewhere / "t-old-1.wav")
+        jobs.transition(store, old.job_id, jobs.JobState.RUNNING)
+        jobs.transition(store, old.job_id, jobs.JobState.SUCCEEDED)
     one_release_answered(monkeypatch, script)
     kept = stray(installed)
 
