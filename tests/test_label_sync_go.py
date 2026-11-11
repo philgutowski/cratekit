@@ -2554,3 +2554,24 @@ def test_the_walk_refused_beside_a_download_keeps_what_it_answered(
     assert len(record(installed)["answers"]) == 1
     assert cause["remediation"]["steps"][-1].endswith("the answers given are saved")
     assert "it did not ask its gate or queue a download" in cause["message"]
+
+
+def test_a_tail_refused_beside_a_download_still_names_the_tracks_refused_for_good(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Round one's R4: the go's report, which names them, is not returned."""
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+    real = go._drive
+
+    def and_another(ctx, store, job_id):
+        driven = real(ctx, store, job_id)
+        downloaded_by_hand(script, tmp_path)
+        return driven
+
+    monkeypatch.setattr(go, "_drive", and_another)
+
+    _run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert [row["item_id"] for row in envelope["cause"]["detail"]["refused"]] == ["t-r1-2"]
