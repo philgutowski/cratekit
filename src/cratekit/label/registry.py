@@ -353,6 +353,17 @@ class Registry:
                 return entry
         return None
 
+    def named(self, name: str) -> tuple[LabelEntry, ...]:
+        """Every label whose display name is ``name``, in registry order.
+
+        MORE THAN ONE IS REACHABLE: ``rename`` accepts a name another label
+        carries. :meth:`by_name` answers the first of them, so a caller that
+        writes on the answer asks this instead and reads two as no one label
+        (R-1476).
+        """
+        wanted = _name_key(name)
+        return tuple(entry for entry in self.labels.values() if _name_key(entry.name) == wanted)
+
     def claimants(self, account: str) -> tuple[LabelEntry, ...]:
         """Every label naming ``account`` as its Bandcamp seller, in registry order.
 

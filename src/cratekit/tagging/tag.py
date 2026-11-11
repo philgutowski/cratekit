@@ -34,10 +34,11 @@ A REGISTERED LABEL'S GENRE IS A TIER BEFORE THE SEARCH (U178). A label Phillip
 follows for one style carries that style in the label registry, and a file of
 it with no genre is given it through :data:`LabelGenre` without any catalogue
 being asked, so a label whose records the shops refuse or do not carry costs
-no blocked searches. The seam is handed a label NAME, the file's label tag or
-the verb's ``--label`` for a file that carries none, and the registry lookup
-behind it is the shell's, so this module reads one more tag and knows nothing
-of where labels are stored.
+no blocked searches. The seam is handed a label NAME, the file's label tag, or
+the verb's ``--label`` for a file that carries none, which the shell hands
+over as the label's identifier so two labels sharing a display name are never
+confused (R-1476). The registry lookup behind it is the shell's, so this
+module reads one more tag and knows nothing of where labels are stored.
 
 A FILE'S COPYRIGHT LINE NAMES ITS LABEL WHEN NOTHING ELSE DOES (U240). A file
 with no label tag, swept with no ``--label``, has its copyright line handed to
@@ -641,7 +642,8 @@ def tag_one(
     for its art only, exactly as a tagged file with no picture is, and a
     refusal there is an ``unavailable`` picture and never a failed item. The
     genre is saved first so that refusal cannot cost it. ``label`` is the
-    verb's ``--label``, the label of a file whose tag names none, and
+    verb's ``--label``, the label of a file whose tag names none, as the
+    name or identifier the seam resolves, and
     ``copyright_labels`` reads the label of a file that has neither off its
     copyright line (U240). Without it no line is read.
 

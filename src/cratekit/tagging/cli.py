@@ -813,14 +813,23 @@ def _label_payload(label: str | None) -> tuple[dict, tuple[dict[str, str], ...]]
                 detail={"label": label},
             )
         frozen["label"] = entry.name
+        # THE IDENTIFIER IS WHAT THE SWEEP ANSWERS BY (R-1476). Two labels can
+        # share a display name after a rename, and a name looked up again among
+        # the labels carrying a genre found the other one and wrote its genre.
+        frozen["label_id"] = entry.label_id
         if not entry.genre:
+            # A SHARED NAME IS NAMED BY ITS IDENTIFIER in the remedy, since
+            # ``registry set`` given the name would set the first label holding it.
+            shared = len(held.named(entry.name)) > 1
+            called = f"{entry.name} ({entry.label_id})" if shared else entry.name
+            handle = entry.label_id if shared else entry.name
             warnings = (
                 {
                     "code": LABEL_NO_GENRE,
                     "message": (
-                        f"{entry.name} is registered with no genre, so its files are "
+                        f"{called} is registered with no genre, so its files are "
                         f"asked of the catalogues as before; give it one with crate "
-                        f"label registry set {entry.name!r} --genre WORD"
+                        f"label registry set {handle!r} --genre WORD"
                     ),
                 },
             )
@@ -863,8 +872,9 @@ def _label_warnings(
                 "code": LABEL_TAG_OUTRANKED,
                 "message": (
                     f"{_files(files)} not given {payload['label']}'s genre because "
-                    f"the file's own label tag names another label, one the registry "
-                    f"holds with no genre or does not hold at all ({named}), and a "
+                    f"the file's own label tag names no one label with a genre: the "
+                    f"registry holds its label with no genre, names two labels or "
+                    f"more by it, or does not hold it at all ({named}), and a "
                     f"file's own tag outranks --label; they were asked of the "
                     f"catalogues instead. Correct the tag, or give its label a genre "
                     f"in the registry, and run the folder again"
@@ -875,32 +885,56 @@ def _label_warnings(
 
 
 def _label_seam(payload: Mapping) -> tag_engine.LabelGenre | None:
-    """The engine's label seam over the genres frozen into the job, or None for none.
+    """The engine's label seam over the labels frozen into the job, or None for none.
 
-    A REGISTRY OF THE FROZEN ROWS, resolved the way the registry resolves a
-    name, by identifier, by display name in any case, then by the slug the name
-    would have. A name that could never be a label, punctuation only, is an
-    unknown label here and not a failed item, because it came off a file's tag
-    and the file is then searched as before.
+    A REGISTRY OF EVERY FROZEN LABEL, those with a genre and, from the needles
+    U240 freezes beside them, those without, joined by identifier (R-1476). A
+    name is resolved by identifier, by display name in any case, then by the
+    slug the name would have, and the label found answers with its own genre or
+    with nothing. Holding the labels with no genre is what keeps a lookup from
+    falling through to another label: an identifier, or a name, of a label with
+    none is that label, and never the label with a genre that shares its text.
+
+    A DISPLAY NAME TWO LABELS SHARE NAMES NEITHER, and the file is asked of the
+    catalogues, as U240 counts two labels sharing a name on a copyright line.
+    The sweep's ``--label`` is handed here by its frozen identifier, so it is
+    exact. A job queued before U240 froze only the labels with a genre, and is
+    resolved among them as before.
+
+    A name that could never be a label, punctuation only, is an unknown label
+    here and not a failed item, because it came off a file's tag and the file
+    is then searched as before.
     """
     frozen = payload.get("label_genres")
     if not isinstance(frozen, Mapping) or not frozen:
         return None
-    held = labels.Registry(
-        labels={
-            str(label_id): labels.LabelEntry(
-                label_id=str(label_id), name=str(row.get("name") or label_id), genre=str(row["genre"])
-            )
-            for label_id, row in frozen.items()
-            if isinstance(row, Mapping) and isinstance(row.get("genre"), str) and row["genre"]
-        }
-    )
+    genres = {
+        str(label_id): str(row["genre"])
+        for label_id, row in frozen.items()
+        if isinstance(row, Mapping) and isinstance(row.get("genre"), str) and row["genre"]
+    }
+    entries: dict[str, labels.LabelEntry] = {}
+    needles = payload.get("label_needles")
+    for rows in (needles if isinstance(needles, Mapping) else {}, frozen):
+        for label_id, row in rows.items():
+            if isinstance(row, Mapping) and str(label_id) not in entries:
+                entries[str(label_id)] = labels.LabelEntry(
+                    label_id=str(label_id),
+                    name=str(row.get("name") or label_id),
+                    genre=genres.get(str(label_id)),
+                )
+    held = labels.Registry(labels=entries)
 
     def answer(name: str) -> tag_engine.LabelAnswer | None:
-        try:
-            entry = held.resolve(name)
-        except CratekitError:
-            return None
+        entry = held.labels.get(name)
+        if entry is None:
+            named = held.named(name)
+            if len(named) > 1:
+                return None
+            try:
+                entry = named[0] if named else held.resolve(name)
+            except CratekitError:
+                return None
         if entry is None or not entry.genre:
             return None
         return tag_engine.LabelAnswer(label=entry.name, genre=entry.genre)
@@ -1151,7 +1185,9 @@ def handle(job, item, cfg) -> jobs.Produced:
         fetch_image=searchers.for_images(),
         published=published.for_taxonomy(declared),
         label_genre=_label_seam(payload),
-        label=str(payload.get("label") or "") or None,
+        # THE FOLDER'S LABEL BY ITS IDENTIFIER (R-1476), so the seam answers it
+        # exactly; by its name for a sweep queued before the identifier was.
+        label=str(payload.get("label_id") or payload.get("label") or "") or None,
         copyright_labels=_copyright_seam(payload),
     )
     return artifacts.produced(
