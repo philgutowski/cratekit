@@ -95,7 +95,10 @@ A sweep keeps an offer window of each label's newest releases in review, ten
 by default (`labels.offer_per_sweep` in the configuration). Releases already in
 the queue hold their places, so a first sweep files ten and a later one files
 only what is new. What the window did not reach is counted rather than dropped,
-and `--offer` raises the window for one label:
+less each release whose copyright line names another label. `crate label
+sync` says the label's own as a count and those with no line as "up to",
+not yet checked; the grouped review list shows both as one `beyond` figure.
+`--offer` raises the window for one label:
 
 ```bash
 crate review list --queue label-release --group-by label
