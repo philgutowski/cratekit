@@ -418,6 +418,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-op',
     ],
     'adopt/shell.py': ['internal-error'],
+    # 2026-11-11, U241: why a head measured ahead was measured again.
+    'analysis/ahead.py': ['file-changed', 'raised-in-a-worker'],
     'analysis/artifacts.py': ['analysis-artifacts', 'analysis-staging', 'utf-8'],
     # 2026-10-31, U167: analyze check, its engine and its verb.
     'analysis/check_cli.py': [
@@ -1049,6 +1051,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'utf-8',
     ],
     'core/naming.py': ['utf-8'],
+    # 2026-11-11, U241: the name of the thread a stream worker watches its parent with.
+    'core/pool.py': ['cratekit-pool-parent-watch'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
