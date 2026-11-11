@@ -47446,3 +47446,170 @@ reviewer the cloud lane names.
 
 **Closes when:** Fable reviews the merged range of R-1453 at high effort and
 its findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1458. A copyright line with a bare P or C before its year is harvested with the letter and the year in the name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `_YEAR` in `src/cratekit/label/harvest.py` strips only `(P)`, `(C)`, `℗` or `©`, as the brief asks ("and nothing else"), so `P 2021 Cadenza` reads `P 2021 Cadenza` and `C 2021 Puls` reads `C 2021 Puls`, where the old pattern read `Cadenza` and `Puls`. A letter followed by a space and a four digit year is never a name's first letter, so `[PC]\s+(?=\d{4}\b)` would strip it without clipping a name. Pinned at its current reading by `test_a_letter_after_a_mark_is_not_a_second_mark`.
+
+**Measured cost.** Driven through `harvest.from_tracks`: the harvest offers a label under the longer name; verification is unaffected, since the needle still confirms both lines as whole words. Whether the provider ever serves a bare letter line is unmeasured.
+
+**Closes when:** a live harvest shows such a line, and the pattern is widened to a bare P or C followed by a year, or nothing ever shows one. Ledger only.
+
+---
+
+## R-1459. A live label needle that relied on a part word match now confirms nothing, and none of the live needles was measured
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `labels_match` (`src/cratekit/label/verify.py`) now needs one side to appear in the other as whole words of the folded strings. Credit shapes the substring rule confirmed and the word rule refuses: a clipped needle (`Some Label Rec` against `Some Label Records`), a run together credit (`RawaxRecords`), a year joined to the name (`©2021Rawax`), a catalogue number suffix (`RAWAX007`), an abbreviation against a full name (`Cadenza Records` against `Cadenza Rec.`), an accent at the needle's edge (`Cliché` against `Cliche Music`).
+
+**Measured cost.** Each shape driven by the reviewer, main confirming and the branch refusing. Loud when every release of a label fails (`label-sweep-incomplete`), silent when only some do. The live registry is not on a cloud container, so how many of its needles are affected is unknown.
+
+**Closes when:** the attended card for U237 has run a label sync over every registered label on a disposable state copy and repaired each needle that confirms fewer releases than before with `crate label registry set NAME --match`. Ledger only.
+
+---
+
+## R-1460. A letter outside a to z is a word break when a needle is matched, so a needle still confirms a longer accented name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `fold_label` (`src/cratekit/label/verify.py`) turns every character outside a to z and 0 to 9 into a space before `labels_match` compares whole words, so an accented letter splits a word: `Rawax` confirms `Rawaxé`, `Sue` confirms `Sueño`, `Lumi` confirms `Lumière Records`, and `Cliché` never confirms `Cliche Music`. `Sueño` is a live label (`docs/cutover.md`).
+
+**Measured cost.** Measured true on main and on the branch alike, so not a regression; it is the part of U237's goal that stays open for names with a letter outside a to z. Folding accents to their base letter in `fold_label` would close it, but `fold_label` also decides artist name equality in `tidal_catalogue`, so it is its own change.
+
+**Closes when:** `fold_label` folds an accented letter to its base letter (or keeps letters whole) and every caller is checked against it. Ledger only.
+
+---
+
+## R-1461. A copyright line with an ampersand between marks, a mark after the year, two years or leading space still harvests a junk name
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** `labels_from_copyright` (`src/cratekit/label/harvest.py`) strips a run of marks at the very start and then one four digit year. `℗ & © 2021 Cadenza` reads `& © 2021 Cadenza`, `2021 ℗ Cadenza` keeps its mark, `(P) 2019, 2021 Cadenza` keeps a year, and a line with leading whitespace keeps its mark, because the pattern runs before the strip.
+
+**Measured cost.** Six shapes driven by the reviewer; every one reads the same as or better than main, and none loses a confirmation, since the needle still matches the label's whole words inside the junk. The cost is a harvested name a person would reject. How often the provider serves these shapes is unmeasured.
+
+**Closes when:** a live harvest shows one of these shapes, and the reader strips it. Ledger only.
+
+---
+
+## R-1462. Offers, holds and kept rosters made under the substring needle are never verified again, and an old hold can make the sweep refuse falsely
+
+**Found:** at the review of #645, U237, 2026-11-10.
+
+**The mechanism.** Until U237 `labels_match` confirmed a credit holding the needle anywhere, so the Rawax needle confirmed releases credited `RAWAXXX`. Whatever a sweep offered or held under that rule stays: an offer open in review is never verified again (`src/cratekit/label/sweep.py`, the offer and hold paths), a hold is filed without verification once the genre gate lets it through, which `test_a_labels_kind_changed_after_a_hold_releases_what_now_fits` pins on purpose, and a kept roster (`src/cratekit/label/kept_listing.py`) built from a `RAWAXXX` compilation keeps that act for its kept life of seven days. Worse, when the newest held releases are another act's, the next sweep reads them as releases it could not confirm and refuses with `label-sweep-incomplete`, "could not confirm a single one", naming a needle repair the needle does not need.
+
+**Measured cost.** Driven by the reviewer on the suite's fakes: the false refusal with two old holds and one new other act release, exit 1, even with a confirmed release open in review; the kept roster reused with 84 answers and nothing offered. The live state was not read: the brief measured three `RAWAXXX` releases offered under Rawax, not held. Main alone reaches the same false refusal when a person narrows a needle between two sweeps, so this is the canary's existing assumption with a second way in.
+
+**Closes when:** the attended card for U237 has listed and rejected the old offers and holds credited to another act, and the false refusal either cannot be reached (a hold is verified again under the current rule before the canary counts it) or is accepted as the narrowed needle case. Ledger only until the attended pass shows a live hold of this shape.
+
+---
+
+## R-1463. A release past a label's offer window that is tombstoned, already queued or already answered is still counted as the label's past the window
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `sweep._past_window` judges each release past the window
+by its copyright line alone. A release a person deleted on purpose
+(tombstoned), one already in the review queue, or one a `label sync`
+answer already covered is counted as one of the label's releases past the
+window, though raising `--offer` would offer none of them: inside the
+window a tombstoned one takes no place and an answered or queued one takes
+a place without being offered again.
+
+**Measured cost.** Driven by round one's review through `label sync --next`
+on a roster whose seven releases past a window of three were tombstoned
+in the store directly: the question said "7 more of the label's
+release(s) past this run's window", and with the offer raised to ten the
+next run said nothing new. An answered release pushed past the window by
+a newer one is counted the same way (8 said where 7 were never asked).
+The tombstones were written to the store, not by the delete verb, so the
+reach through a person's own deletions is unmeasured. The statement is
+true (they are the label's releases); it is not the number the person
+raises the window against.
+
+**Closes when:** the count past the window leaves out a release the
+tombstone reader suppresses and one in the offered set, both answered
+locally with no provider call, and `LabelListing.beyond`'s docstring, the
+offer window entry in `CONCEPTS.md` and the guide say so. Ledger only: the
+card scoped the figure to the label's needle, and the figure says nothing
+false.
+
+---
+
+## R-1464. A saved label sync question's figure past the window has edges no test pins, and an unreadable figure says nothing past the window
+
+**Found:** at the second review round of #646, U238, 2026-11-10.
+
+**The mechanism.** `sync_cli.Question.from_json` reads `beyond` with
+`_count(...) or 0`, so a saved figure that cannot be read (null, a string, a
+float) reads as zero and takes a readable split down with it, and the
+question then says nothing about releases past the window. The line
+predates U238. Beside it, three guards kill nothing alone: the lower clamp
+in `sync_cli._past_window`, `_count` refusing a float, and the walk's
+`_nothing_check` call carrying the listing (the `--next` path's twin is
+pinned).
+
+**Measured cost.** None reachable: round two drove three producers of a
+saved question (the branch's `Question.to_json`, `origin/main`'s, and the
+record's write and read back) and none writes an unreadable figure. The
+walk's nothing new line was driven and says the right count.
+
+**Closes when:** an unreadable saved `beyond` is refused or said as
+unread rather than read as zero, and tests pin the lower clamp, a float
+split and the walk's nothing new line. Ledger only.
+
+---
+
+## R-1465. Whether a release's copyright line names a label is decided by three copies of one rule
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `sweep._past_window`, `tidal_catalogue._credits_label`
+and the provider's `search_release` judged by `verify.verify_release` each
+pair `harvest.labels_from_copyright` with `verify.labels_match`. The sweep
+does not import `_credits_label` because it lives in the provider adapter,
+which the generic sweep must not import, and it needs a third answer, no
+line, that `_credits_label` folds into no. A repair to one copy (U237's
+extractor fix lands in the shared extractor, so it reaches all three) that
+changed the match itself in only one would let the count past the window
+drift from what the window confirms.
+
+**Measured cost.** None today: round one's review classified 20 line
+shapes by the count and by the window's verifier and they agreed on 20 of
+20. Argued from reading only.
+
+**Closes when:** one public function in `cratekit.label.verify` or
+`harvest` answers yes, no or no line for a release and a needle, and all
+three callers use it. Ledger only.
+
+---
+
+## R-1466. The review list grouped by label shows a label's own releases past the window and the unchecked ones as one beyond figure
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `review.record_round` stores one `beyond` per label and
+run, which since U238 is the label's own releases past the window plus
+those with no copyright line. `crate review list --queue label-release
+--group-by label` and `--group-by run` print it whole, so the part that is
+only a bound is not told from the part that is a count, while `label
+sync` says "7 more of the label's release(s) past this run's window, and
+up to 2 more not yet checked" for the same listing. A round recorded by an
+earlier build also stays as it was until the label next has a question,
+since `_question_for` records a round only when it builds one.
+
+**Measured cost.** Driven by round one's review: after a question of
+(9, 2) the grouped row read `beyond: 9`; a hand recorded round of 17 stayed
+17 beside a nothing new line saying 7 and up to 2. The figure is defined
+as the sum in `CONCEPTS.md` and is not called the label's releases, so
+nothing false is said.
+
+**Closes when:** the `offer_rounds` table gains an unchecked column
+(additive, as the table itself was) and the grouped list says the two
+parts as `label sync` does, and a nothing new listing records its round
+too. Ledger only.

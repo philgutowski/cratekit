@@ -385,7 +385,7 @@ does not make the next `sync all` offer the playlist again. `crate organize
 
 ```bash
 crate label registry                                 # list who you follow
-crate label registry add "Some Label" --match "Some Label Rec"
+crate label registry add "Some Label" --match "Some Label Records"
 crate label registry set "Some Label" --genre Rominimal --bandcamp somelabel
 crate label registry rename "Some Label" --to "New Name"
 crate label harvest https://tidal.com/playlist/PLAYLIST_UUID
@@ -394,6 +394,10 @@ crate label sync
 crate label sync --go
 ```
 
+- `--match` is the string the catalogue credits, matched as whole words after
+  case and punctuation are folded: `Rawax` confirms `RAWAX` and `Rawax
+  Records`, never `RAWAXXX`. A copyright line is read with its `(P)`, `(C)`,
+  `℗` or `©` mark and its year stripped, and nothing else.
 - A label's id is made once, at `add`; what has been pulled hangs off it.
   Rename with `registry rename`; removing and re-adding makes the whole
   catalogue new again.
@@ -407,7 +411,11 @@ crate label sync --go
   adopt` adds each accepted one not already held.
 
 `label sync` walks your labels one at a time and asks only about releases new
-since that label was last asked, with release and track counts and a size.
+since that label was last asked, with release and track counts and a size,
+and how many more of the label's own releases lie past the window, which
+`registry set --offer` raises. A release past the window with no copyright
+line to read is counted as "up to N more, not yet checked", never as the
+label's.
 Answers: `all`, `pick` (by number), `not-now`, `stop` (unfollow). Each answer is
 saved as given; `quit` and the next run resumes at the first unanswered label.
 A release answered once is never asked again. The genre gate runs first, so

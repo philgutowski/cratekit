@@ -66,13 +66,16 @@ neighbouring imprint with a similar name gets pulled in and has to be unpicked
 by hand later.
 
 ```bash
-crate label registry add "Some Label" --match "Some Label Rec"
+crate label registry add "Some Label" --match "Some Label Records"
 ```
 
 Supply `--match` when the string the catalogue actually credits is not the name
 you want to see in the library. The needle is used for verification, the name is
 used for display, and keeping them apart is what lets you call a label whatever
-you like without breaking the check.
+you like without breaking the check. The needle matches whole words, so a
+clipped needle confirms nothing: `Rawax` confirms `Rawax Records` and never
+`RAWAXXX`, and `Some Label Rec` would confirm `Some Label Rec` but not `Some
+Label Records`.
 
 ## Seed artists and the track limit
 
@@ -92,7 +95,10 @@ A sweep keeps an offer window of each label's newest releases in review, ten
 by default (`labels.offer_per_sweep` in the configuration). Releases already in
 the queue hold their places, so a first sweep files ten and a later one files
 only what is new. What the window did not reach is counted rather than dropped,
-and `--offer` raises the window for one label:
+less each release whose copyright line names another label. `crate label
+sync` says the label's own as a count and those with no line as "up to",
+not yet checked; the grouped review list shows both as one `beyond` figure.
+`--offer` raises the window for one label:
 
 ```bash
 crate review list --queue label-release --group-by label

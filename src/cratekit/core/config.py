@@ -3139,7 +3139,8 @@ class LabelsConfig:
     sweep files this many and a later one files only what has appeared above
     them. The walk still reads the whole catalogue, which is what lets a
     release owned without ever being offered be skipped without taking a place
-    (R-137), and what the window did not reach is counted rather than dropped. A label's own registry entry may
+    (R-137), and what the window did not reach is counted rather than dropped,
+    less each release whose copyright line names another label (U238). A label's own registry entry may
     raise or lower it for that label alone.
 
     No value switches it off. A person who wants a label's back catalogue

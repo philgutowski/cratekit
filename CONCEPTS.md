@@ -733,7 +733,9 @@ The sync scope rule: take the newest N items, drop identities the library holds.
 How many of a label's newest releases a sweep keeps in review,
 `labels.offer_per_sweep` (10) or the label's `--offer`. Queued, filed and held
 releases take places; owned or tombstoned ones do not. What it never reached is
-counted as `beyond`. Each item carries `sweep_run`.
+counted as `beyond`, less each release whose copyright line names another label,
+and the part with no line is `beyond_unchecked`, said as "up to" (U238). Each
+item carries `sweep_run`.
 
 ### Last asked marker
 What `crate label sync` keeps per label in `label_sync.json`: the release ids a

@@ -24,7 +24,7 @@ from cratekit.acquire.vendored import is_rate_limit
 from cratekit.core import config, review, tombstone
 from cratekit.core.cause import CratekitError
 from cratekit.core.review import DecisionStore, Queue
-from cratekit.label import crawl, kept_listing, registry
+from cratekit.label import crawl, harvest, kept_listing, registry
 from cratekit.label import gate as genre_gate
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
@@ -92,12 +92,23 @@ class LabelListing:
     #: Releases ALREADY IN THE REVIEW QUEUE that took a place in the offer
     #: window and were not filed again (R-790).
     held: int = 0
-    #: Releases the crawl listed and the sweep never examined because the
-    #: window was full. NOT a count of unowned releases: nothing past the window
-    #: was verified, tombstone checked or asked about ownership, because each of
-    #: those questions costs a provider call. It is the most the label could
-    #: still offer, and the number a person raises the window against.
+    #: Releases the crawl listed past the full window that may still be the
+    #: label's: each whose copyright line names the label by its needle, and
+    #: each with no line at all (U238). A release whose line plainly names
+    #: another label is left out, since verification would call it a mismatch
+    #: and it is only another artist of the roster's release elsewhere. NOT a
+    #: count of unowned releases: nothing past the window was verified with a
+    #: provider read, tombstone checked or asked about ownership, because each
+    #: of those questions costs a call or a judgement the window never made. It
+    #: is the most the label could still offer, and the number a person raises
+    #: the window against.
     beyond: int = 0
+    #: The part of ``beyond`` with NO COPYRIGHT LINE, so whether each is the
+    #: label's is unknown until the provider is read again, the read a sweep
+    #: makes only inside its window (U238). Counted in ``beyond`` rather than
+    #: dropped from it, because a field the listing omitted is not evidence of
+    #: another label, and said as a bound rather than as the label's releases.
+    beyond_unchecked: int = 0
     #: ``held`` when the sweep confirmed nothing new and the one held release
     #: it then re-verified did not confirm either, else zero. The worker's
     #: "confirmed none of what it read" refusal counts these with ``dropped``,
@@ -506,6 +517,28 @@ class QueuedReleases:
         return review.find(self.store, genre_gate.release_item_id(identity)) is not None
 
 
+def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
+    """How many releases past the window may be the label's, and how many of those are unchecked.
+
+    JUDGED BY EACH RELEASE'S OWN COPYRIGHT LINE, WITH NO PROVIDER CALL (U238).
+    The line is already on every listed release, and it is what the provider's
+    verifier judges a release by inside the window: harvest's one extractor,
+    then ``labels_match`` against the same needle. A line naming the label
+    counts; a line naming another label does not; no line counts as
+    unchecked, because confirming it is the read the window exists to bound.
+    Before this every release of every artist on the roster was counted, and
+    a label with about 27 of its own left said 414.
+    """
+    own = unchecked = 0
+    for release in beyond:
+        names = harvest.labels_from_copyright(release)
+        if not names:
+            unchecked += 1
+        elif any(label_verify.labels_match(claimed, name) for name in names):
+            own += 1
+    return own, unchecked
+
+
 def list_for_label(
     cfg: config.Config,
     entry: registry.LabelEntry,
@@ -535,7 +568,8 @@ def list_for_label(
     without ever being offered, or tombstoned, takes none. So a first sweep
     files the window, and a later one files only what has appeared above the
     releases it already holds, whatever any watermark says. What the window
-    never reached is counted in ``beyond`` rather than dropped.
+    never reached is counted in ``beyond`` rather than dropped, less each
+    release whose copyright line names another label (U238).
 
     THE GENRE GATE IS ASKED LAST, ABOUT A RELEASE THAT WOULD OTHERWISE BE FILED
     (R-798). ``gate`` judges it by what a general catalogue publishes for its
@@ -695,6 +729,7 @@ def list_for_label(
         canary = label_verify.verify_release(claimed, first_held, search=verify)
         if str(canary.get("verdict") or "unconfirmed") != "confirmed":
             held_unconfirmed = held + sum(1 for one in gated if one.standing)
+    own_past, unchecked_past = _past_window(listed[examined:], claimed)
     if gate is not None:
         for standing in gate.in_force(entry.label_id):
             beyond_id = str(standing.identity.get("release_id") or "")
@@ -711,7 +746,8 @@ def list_for_label(
         listed=len(listed),
         unread=unread,
         held=held,
-        beyond=len(listed) - examined,
+        beyond=own_past + unchecked_past,
+        beyond_unchecked=unchecked_past,
         held_unconfirmed=held_unconfirmed,
         gated=tuple(gated),
         released=tuple(released),
