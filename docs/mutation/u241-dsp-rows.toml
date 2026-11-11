@@ -1,0 +1,48 @@
+name = "u241-dsp"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_margin_not_applied"
+description = "separation: the mask ignores the margin, so the key's harmonic part is not the one librosa returns"
+file = "src/cratekit/analysis/separation.py"
+surface = "user"
+tests = ["tests/test_analysis_separation.py"]
+old = '''            along_time, along_frequency * margin, power=POWER, split_zeros=split_zeros
+'''
+new = '''            along_time, along_frequency, power=POWER, split_zeros=split_zeros
+'''
+
+[[rows]]
+id = "D2_silence_not_split"
+description = "separation: a bin both medians call silent is never split, so the energy pass's pair is not librosa's over silence"
+file = "src/cratekit/analysis/separation.py"
+surface = "user"
+tests = ["tests/test_analysis_separation.py"]
+old = '''    split_zeros = margin == 1
+'''
+new = '''    split_zeros = False
+'''
+
+[[rows]]
+id = "D3_windows_method_reads_the_whole_track"
+description = "key_profile: the windowed method reads the whole track, so it saves nothing"
+file = "src/cratekit/analysis/detect.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_methods.py", "tests/test_analysis_key_windows.py"]
+old = '''    if method == KEY_WINDOWS:
+        ranges = key_windows(int(samples.shape[-1]), rate)
+'''
+new = '''    if False:
+        ranges = key_windows(int(samples.shape[-1]), rate)
+'''
+
+[[rows]]
+id = "D4_settings_not_handed_to_the_head"
+description = "handle_run: the item's settings are not compared with the workers', so a real run stops its pool at the first head"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead_real.py"]
+old = '''    partial = ahead.head(job.job_id, str(path), settings)
+'''
+new = '''    partial = ahead.head(job.job_id, str(path), None)
+'''

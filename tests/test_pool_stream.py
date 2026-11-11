@@ -296,7 +296,12 @@ def test_workers_that_die_starting_are_one_broken_stream_and_not_a_pool_per_item
 def test_the_terminals_interrupt_does_not_kill_a_stream_worker():
     """Ctrl-C reaches every process in the group; the caller owns the stop."""
     with pool.stream_workers(wide(2), _interrupt_myself, range(2)) as stream:
-        results = [stream.result(position) for position in range(2)]
+        try:
+            results = [stream.result(position) for position in range(2)]
+        except KeyboardInterrupt:
+            # A worker that took the interrupt hands it back as its item's
+            # result, which would stop this suite rather than fail this test.
+            pytest.fail("the interrupt killed a worker and came back as the reader's own")
     assert [index for index, _pid in results] == [0, 1]
     assert os.getpid() not in {pid for _index, pid in results}
 

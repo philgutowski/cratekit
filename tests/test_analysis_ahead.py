@@ -463,6 +463,29 @@ def test_the_restamp_shares_the_resume_and_opens_no_run_ahead(cfg, silence, tmp_
     assert opened == ["analyze.run"]
 
 
+def test_a_linked_or_malformed_pool_record_is_no_record(cfg, tmp_path):
+    """An absent line on the answer, never one read through a link or out of a list."""
+    directory = artifacts._job_dir(artifacts.ARTIFACTS_DIRNAME, cfg, "job-z")
+    assert artifacts.pool_record(cfg, "job-z") is None
+    written = artifacts.record_pool(cfg, "job-z", {"workers": 3, "detail": "three"})
+    assert written == directory / artifacts.POOL_FILENAME
+    assert artifacts.pool_record(cfg, "job-z") == {"workers": 3, "detail": "three"}
+    assert [entry.name for entry in directory.iterdir()] == ["pool.json"], "a staging file was left"
+    assert artifacts.committed(cfg, "job-z") == (), "the pool record was read as an item report"
+
+    written.write_text("[1, 2, 3]")
+    assert artifacts.pool_record(cfg, "job-z") is None
+    written.write_text("{not json")
+    assert artifacts.pool_record(cfg, "job-z") is None
+    elsewhere = tmp_path / "elsewhere.json"
+    elsewhere.write_text('{"workers": 9, "detail": "another job entirely"}')
+    written.unlink()
+    written.symlink_to(elsewhere)
+    assert artifacts.pool_record(cfg, "job-z") is None
+    assert analysis_cli._pool_check(None)["detail"].startswith("no pool was recorded")
+    assert analysis_cli._pool_check({"workers": 2})["detail"].startswith("no pool was recorded")
+
+
 def test_a_closure_bound_by_a_test_is_never_sent_to_a_worker(cfg, silence, tmp_path, monkeypatch):
     """The other analysis suites bind closures; their runs stay in this process and say so."""
     folder = fill(tmp_path / "closure", silence, names=("a", "b"))

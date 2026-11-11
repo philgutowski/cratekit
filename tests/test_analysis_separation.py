@@ -145,3 +145,17 @@ def test_the_separation_writes_nothing_back_onto_its_input():
     _quietly(lambda: separation.harmonic(signal, margin=4))
     _quietly(lambda: separation.harmonic_percussive(signal))
     assert np.array_equal(signal, kept)
+
+
+def test_the_energy_pass_reads_its_percussive_share_from_the_same_pair():
+    """``energy.features_from_samples`` now separates here: the feature is librosa's number."""
+    from cratekit.analysis import energy
+
+    signal = _signal(RATE * 20, seed=9)
+    features = _quietly(lambda: energy.features_from_samples(signal, RATE))
+    harmonic, percussive = _quietly(lambda: librosa.effects.hpss(signal))
+    percussive_rms = float(np.sqrt(np.mean(percussive**2)))
+    harmonic_rms = float(np.sqrt(np.mean(harmonic**2)))
+    assert features["percussive_fraction"] == percussive_rms / (
+        percussive_rms + harmonic_rms + energy._EPS
+    )

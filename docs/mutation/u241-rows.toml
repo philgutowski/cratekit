@@ -1,0 +1,252 @@
+name = "u241"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_worker_takes_the_interrupt"
+description = "stream worker: no longer ignore the terminal's interrupt, so Ctrl-C kills a worker mid item"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py"]
+old = '''    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _leave_when_the_parent_does()
+'''
+new = '''    _leave_when_the_parent_does()
+'''
+
+[[rows]]
+id = "M02_worker_outlives_its_parent"
+description = "stream worker: do not watch the parent, so a killed driver leaves its workers holding their memory"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py"]
+old = '''    signal.signal(signal.SIGINT, signal.SIG_IGN)
+    _leave_when_the_parent_does()
+'''
+new = '''    signal.signal(signal.SIGINT, signal.SIG_IGN)
+'''
+
+[[rows]]
+id = "M03_close_waits_for_unread_work"
+description = "WorkStream._stop: do not end the workers, so a close waits for every item nobody will read"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py"]
+old = '''        _end_workers(executor)
+        executor.shutdown(wait=True, cancel_futures=True)
+'''
+new = '''        executor.shutdown(wait=True, cancel_futures=True)
+'''
+
+[[rows]]
+id = "M04_a_plan_of_one_spawns"
+description = "WorkStream.result: drop the in process branch, so a plan of one worker tries to build a pool"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py", "tests/test_analysis_ahead.py"]
+old = '''        if self.plan.in_process:
+            self._read.add(position)
+'''
+new = '''        if False:
+            self._read.add(position)
+'''
+
+[[rows]]
+id = "M05_a_position_read_twice"
+description = "WorkStream.result: drop the read once refusal"
+file = "src/cratekit/core/pool.py"
+surface = "maintainer"
+tests = ["tests/test_pool_stream.py"]
+old = '''        if position in self._read:
+            raise ValueError(f"position {position} was already read, and each is read once")
+'''
+new = ''''''
+
+[[rows]]
+id = "M06_no_generation_boundary"
+description = "WorkStream.result: one generation whatever the plan's recycle budget, so no child is ever retired"
+file = "src/cratekit/core/pool.py"
+surface = "maintainer"
+tests = ["tests/test_pool_stream.py"]
+old = '''        size = self.plan.tasks_per_generation or len(self._items) or 1
+        generation = position // size
+        try:
+'''
+new = '''        size = len(self._items) or 1
+        generation = position // size
+        try:
+'''
+
+[[rows]]
+id = "M07_used_percent_gate_is_strict"
+description = "_gates_refusing: the used percent gate refuses only above its limit, not at it"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py", "tests/test_pool_sizing.py"]
+old = '''    if pressure.used_percent >= used_percent_ceiling:
+        refused.append(
+'''
+new = '''    if pressure.used_percent > used_percent_ceiling:
+        refused.append(
+'''
+
+[[rows]]
+id = "M08_plan_forgets_which_gate"
+description = "plan_pool: a plan refused by pressure no longer carries which gate refused it"
+file = "src/cratekit/core/pool.py"
+surface = "user"
+tests = ["tests/test_pool_stream.py", "tests/test_analysis_ahead.py"]
+old = '''            ceiling=ceiling,
+            refused_by=refused,
+'''
+new = '''            ceiling=ceiling,
+'''
+
+[[rows]]
+id = "M09_ceiling_ignores_the_reserve"
+description = "worker_ceiling: every core, nothing kept back for the driver"
+file = "src/cratekit/core/cores.py"
+surface = "user"
+tests = ["tests/test_cores.py", "tests/test_analysis_ahead.py"]
+old = '''    return max(1, cores - reserved)
+'''
+new = '''    return max(1, cores)
+'''
+
+[[rows]]
+id = "M10_worker_cost_halved"
+description = "light: half the measured bytes a second, so a ten minute track's worker is declared at 770 MB where 1.1 GB was measured"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024 // 2
+'''
+new = '''LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024 // 4
+'''
+
+[[rows]]
+id = "M11_cost_from_the_shortest_track"
+description = "light.longest_seconds: the shortest track sets the worker's cost"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''    return max((seconds_of(path) for path in paths), default=0.0)
+'''
+new = '''    return min((seconds_of(path) for path in paths), default=0.0)
+'''
+
+[[rows]]
+id = "M12_plan_drops_the_callers_reserve"
+description = "light.plan: the caller's reserve is not handed to the planner, so the driver's vocal model is afforded twice"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''        ceiling=cores.worker_ceiling(reserved=reserved_cores),
+        reserve_bytes=reserve_bytes,
+'''
+new = '''        ceiling=cores.worker_ceiling(reserved=reserved_cores),
+'''
+
+[[rows]]
+id = "M13_vocal_model_not_kept_back"
+description = "_open_ahead: the driver's vocal model is not kept back from the light pool's budget"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''        reserve += vocals.VOCAL_WORKER_BYTES
+    return ahead.open_session('''
+new = '''        pass
+    return ahead.open_session('''
+
+[[rows]]
+id = "M14_a_changed_file_keeps_its_old_head"
+description = "ahead: a head measured ahead is used whatever file now sits at the path"
+file = "src/cratekit/analysis/ahead.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''    if measured_identity is None or measured_identity != identity_of(path):
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M15_identity_is_the_inode_alone"
+description = "ahead.identity_of: device and inode only, so a file rewritten in place keeps its old head"
+file = "src/cratekit/analysis/ahead.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)
+'''
+new = '''    return (found.st_dev, found.st_ino, 0, 0)
+'''
+
+[[rows]]
+id = "M16_changed_settings_keep_old_heads"
+description = "ahead: heads measured under the old calibration are used after it changes"
+file = "src/cratekit/analysis/ahead.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''    if settings != session.settings:
+        session.stop(STOPPED_SETTINGS)
+        return None
+'''
+new = ''''''
+
+[[rows]]
+id = "M17_a_broken_pool_is_not_stopped"
+description = "ahead: a broken stream is treated as one item's failure, so the session keeps a dead stream"
+file = "src/cratekit/analysis/ahead.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''    except pool.StreamBroken as broken:
+        session.stop(str(broken))
+        return None
+'''
+new = ''''''
+
+[[rows]]
+id = "M18_headed_files_sent_to_workers"
+description = "_waiting: a file already carrying its head is measured ahead although its item skips it without a read"
+file = "src/cratekit/analysis/cli.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''        if path.is_file() and not carries_head(path, cfg):
+            found.append(str(path))
+'''
+new = '''        if path.is_file():
+            found.append(str(path))
+'''
+
+[[rows]]
+id = "M19_failed_run_does_not_say_its_pool"
+description = "_resume: a run that failed or was stopped leaves without its pool line"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''                if pooled is None:
+                    raise
+                raise _with_pool(failed, pooled) from failed
+'''
+new = '''                raise
+'''
+
+[[rows]]
+id = "M20_held_job_records_a_pool"
+description = "_heads_ahead: a call that drove nothing, because another driver holds the job, records a pool anyway"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''        drove = False
+        raise
+'''
+new = '''        raise
+'''
+
+[[rows]]
+id = "M21_no_check_line_on_the_answer"
+description = "_resume: the answer no longer carries the analyze.pool check"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''            summary["checks"] = [_pool_check(artifacts.pool_record(cfg, job.job_id))]
+'''
+new = ''''''
