@@ -158,8 +158,8 @@ def build_sync(parser, entry) -> None:
             "show one summary over every answer saved since the last go, ask the "
             "one gate, and on apply download what was answered for; under the run "
             "of a go that started a download, take that download on to its landing "
-            "with no new question; refuses while the staging folder holds a download "
-            "no landing took, naming how to land it"
+            "with no new question; refuses while the staging folder holds anything "
+            "that is not the go's own, naming how to land it"
         ),
     )
     parser.set_defaults(_handler=label_sync)

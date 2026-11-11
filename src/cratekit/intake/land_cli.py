@@ -227,8 +227,8 @@ def pass_landed(cfg: config.Config, name: str) -> bool:
 
     A ROOT THAT CANNOT BE READ REFUSES, NEVER READS AS NOT LANDED OR LANDED.
     Both proofs live under the library root, so an unmounted volume would
-    answer "no proof" for every pass, and the caller deciding whether a batch
-    is still waiting in staging must be told it could not read rather than
+    answer "no proof" for every pass, and a caller naming which batch is
+    still waiting in staging must be told it could not read rather than
     guess. A session log that cannot be listed refuses through
     :func:`cratekit.core.session.records`, as every reader of it does.
     """

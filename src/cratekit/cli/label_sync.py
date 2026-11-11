@@ -34,10 +34,13 @@ stops at the landing's gate, the landing's run is kept under the download's
 job (:func:`cratekit.label.go.landing_role`) on the run whose go queued that
 job, which is another run when a fresh go resumed it, so a later ``--go``
 under that run, which takes the run's own download on, names that landing
-rather than run the tail a second time. A go that refuses with a landing in its
-detail, because another download shares the folder (a later go's, an earlier
-go's no landing took, or one no go queued, R-1467), has the tail named as
-commands to type.
+rather than run the tail a second time. Just before the tail runs, the run is
+recorded under the job as the one that started it (:func:`cratekit.label.go.tail_role`,
+R-1467), so a later ``--go`` under the go's run reads the tracks the tail's
+``name apply`` renamed as its own rather than as another download's. A go that
+refuses with a landing in its detail, because the folder holds what is not its
+own (another download's tracks, or files no download names, R-1467), has the
+tail named as commands to type.
 
 A GO THAT NAMES NO TAIL IS RETURNED AS IT WAS. An abort, a go that listed
 nothing, one that downloaded nothing, and every walk or question that never
@@ -175,7 +178,7 @@ def label_sync(ctx: Context) -> Envelope:
     chain = _chain(ctx)
     folder = Path(str(land["folder"])).expanduser().absolute()
     landing = _landing_args(land)
-    warnings = [*envelope.warnings]
+    warnings = [*envelope.warnings, *_started(ctx, land)]
     try:
         tail.run(chain, folder, cfg, landing)
     except tail.Done as done:
@@ -206,30 +209,81 @@ def _remember(
     saved is a warning naming the run, the job and why, never a refusal.
     """
     landed = (stop.cause.detail or {}).get("run_id")
-    job, owner = land.get("job"), land.get("run")
     if not (stop.step == tail.LAND and stop.cause.reason == tail.GATE_STOP and landed):
         return []
+    return _record(
+        ctx,
+        land,
+        go.landing_role,
+        str(landed),
+        what=f"the landing under run {landed}",
+        lost="does not know this landing was planned",
+        save=False,
+    )
+
+
+def _started(ctx: Context, land: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Keep, on the go's run, that this run is about to run its tail (R-1467).
+
+    The tail's ``name apply`` renames every track before the landing's gate,
+    so a later ``--go`` under that run, taking its download on, finds files no
+    download names; this record is what lets it read them as its own rather
+    than as another download's (:func:`cratekit.label.go.beside`). Saved
+    BEFORE the tail runs, this run's record included, since a step that
+    refuses ends the verb without saving it. One that cannot be kept is a
+    warning, and the later go then refuses its tail beside those files.
+    """
+    return _record(
+        ctx,
+        land,
+        go.tail_role,
+        ctx.run.run_id,
+        what=f"that run {ctx.run.run_id} started the tail",
+        lost="reads the tracks its tail renamed as another download's",
+        save=True,
+    )
+
+
+def _record(
+    ctx: Context,
+    land: Mapping[str, Any],
+    role_of,
+    value: str,
+    *,
+    what: str,
+    lost: str,
+    save: bool,
+) -> list[dict[str, str]]:
+    """Record ``value`` under the job's role on the run whose go queued the job (U239).
+
+    This run's record is saved as the verb returns, or here when ``save`` says
+    the verb may end without returning; another run's is saved here, and one
+    that cannot be read or saved is a warning naming the run, the job and why,
+    never a refusal.
+    """
+    job, owner = land.get("job"), land.get("run")
     if not (isinstance(job, str) and job and isinstance(owner, str) and owner):
         return []
-    role = go.landing_role(job)
-    if owner == ctx.run.run_id:
-        ctx.run.related_runs[role] = str(landed)
-        return []
+    role = role_of(job)
     try:
+        if owner == ctx.run.run_id:
+            ctx.run.related_runs[role] = value
+            if save:
+                gates.save(ctx.run)
+            return []
         state = gates.load(owner)
-        state.related_runs[role] = str(landed)
+        state.related_runs[role] = value
         gates.save(state)
     except Exception as exc:  # noqa: BLE001 - see below
-        # ANY FAILURE OF ANOTHER RUN'S RECORD IS A WARNING, as ``gates.siblings``
-        # reads one: the landing is planned by now, and a refusal raised here
-        # would replace the envelope that names it.
+        # ANY FAILURE OF A RUN'S RECORD IS A WARNING, as ``gates.siblings`` reads
+        # one: a refusal raised here would replace the envelope the go ends on.
         return [
             {
                 "code": UNRECORDED_WARNING,
                 "message": (
-                    f"the landing under run {landed} could not be recorded on run "
-                    f"{owner}, whose go queued job {job} ({type(exc).__name__}: {exc}); "
-                    f"a later go under that run does not know this landing was planned"
+                    f"{what} could not be recorded on run {owner}, whose go queued "
+                    f"job {job} ({type(exc).__name__}: {exc}); a later go under that "
+                    f"run {lost}"
                 ),
             }
         ]
