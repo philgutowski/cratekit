@@ -28,6 +28,12 @@ is one of those, and none once the batch's pass has a landing proof. A label
 go's record is kept under its job (:func:`go_record`), a sync pass's under its
 pass (:func:`pass_record`).
 
+WHAT ARRIVES WHILE THE TAIL RUNS IS CAUGHT AFTER IT. A download another
+process finishes during the tail is renamed by its ``name apply`` with the
+batch's own, and nothing tells them apart after that. :func:`settled` is
+taken as the tail starts and :func:`arrived` compares the folder with it
+before the landing is planned; anything new refuses, and no record is kept.
+
 A FOLDER OR A LIBRARY ROOT THAT CANNOT BE READ REFUSES, never reads as nothing
 beside.
 
@@ -49,7 +55,7 @@ from typing import Any
 from cratekit.acquire import cli as acquire_cli
 from cratekit.acquire import listdoc
 from cratekit.core import config, jobs
-from cratekit.core.cause import refuse
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli
 from cratekit.intake.land_cli import default_name
@@ -280,9 +286,11 @@ class Waiting:
                 f"take the sync pass {self.pass_name} to its landing with: {command}; "
                 f"it refuses while the folder holds anything else"
             )
+        # MOVED OUT FIRST (review round one): ``intake land`` over the folder
+        # takes the whole of it, the batch's own tracks with these.
         return (
-            f"land the tracks of job {self.job_id} as any intake lands, or move "
-            f"them out of {folder}"
+            f"move the tracks of job {self.job_id} out of {folder}, and land them on "
+            f"their own as any intake lands"
         )
 
     def to_json(self) -> dict[str, Any]:
@@ -326,7 +334,8 @@ class Beside:
         steps = [one.step(self.folder) for one in self.waiting]
         if self.unnamed:
             steps.append(
-                f"land, or move out of {self.folder}, the track(s) no download names"
+                f"move the track(s) no download names out of {self.folder}, and land "
+                f"them on their own"
             )
         return tuple(steps)
 
@@ -460,14 +469,116 @@ def beside(
     )
 
 
+@dataclass(frozen=True, slots=True)
+class Settled:
+    """What the folder holds as a batch's tail starts, to tell what arrives during it.
+
+    ``items`` is every finished item of every download but the batch's own
+    whose recorded artifact is in the folder, by job and item, and ``count``
+    how many files a landing of the folder would take. The tail's steps tag,
+    analyse and rename in place and add no file, so neither moves while the
+    tail runs unless something else put a file there.
+    """
+
+    items: frozenset[tuple[str, str]]
+    count: int
+
+
+def settled(store: jobs.JobStore, staging: Path, own: Collection[str]) -> Settled:
+    """What :class:`Settled` says of ``staging`` now, ``own``'s downloads left out (R-1499)."""
+    folder = resolved(staging)
+    items = frozenset(
+        (job.job_id, item.item_id)
+        for job in jobs.list_jobs(store)
+        if job.job_id not in own
+        for item in jobs.items(store, job.job_id)
+        if item.state is jobs.ItemState.DONE
+        and item.artifact
+        and resolved(item.artifact).parent == folder
+    )
+    count = len(folder_listing(folder)) if folder.is_dir() else 0
+    return Settled(items=items, count=count)
+
+
+def arrived(
+    store: jobs.JobStore,
+    staging: Path,
+    own: Collection[str],
+    before: Settled,
+    *,
+    origin: tuple[str, ...],
+    batch: str,
+    land_command: str,
+) -> CratekitError | None:
+    """The refusal for what arrived in the folder while a batch's tail ran, or None (R-1499).
+
+    THE READING BEFORE THE TAIL CANNOT SEE WHAT ARRIVES DURING IT. A download
+    another process drives settles into the folder while the tail runs, the
+    tail's ``name apply`` renames it with the batch's own, and from then on
+    nothing tells the two apart by name: the landing would take it under the
+    batch's pass and the tail's record would keep it as the batch's own. So a
+    finished item of another download in the folder that was not there as
+    the tail started, or a change in how many files a landing would take,
+    refuses before the landing is planned, and the caller keeps no record.
+    The way on is to move what arrived out and land the batch's own by hand,
+    since its tail ran over them. A folder that cannot be read refuses too.
+    """
+    folder = resolved(staging)
+    try:
+        after = settled(store, staging, own)
+    except OSError as exc:
+        return refuse(
+            "intake-list-unusable",
+            f"the staging folder {folder} could not be listed again after {batch}'s "
+            f"tail ({exc}), so whether anything arrived during it cannot be read; the "
+            f"landing was not planned",
+            steps=(f"make {folder} readable, then land {batch} with: {land_command}",),
+            origin=origin,
+            detail={"folder": str(folder)},
+        )
+    new = sorted({job_id for job_id, _item in after.items - before.items})
+    if not new and after.count == before.count:
+        return None
+    said = []
+    if new:
+        said.append(f"download job(s) {', '.join(new)} finished track(s) into it")
+    if after.count != before.count:
+        said.append(
+            f"it held {before.count} file(s) a landing would take as the tail started "
+            f"and holds {after.count} now"
+        )
+    return refuse(
+        "refused-by-policy",
+        f"while {batch}'s tail ran, the staging folder {folder} changed: "
+        + "; ".join(said)
+        + "; the tail's name apply may have renamed what arrived with the batch's own, "
+        "so the landing was not planned and the tail's record was not kept",
+        steps=(
+            f"move what arrived out of {folder}, reading each file's tags, since name "
+            f"apply may have renamed it",
+            f"then land {batch}'s own tracks, which its tail tagged and named, with: "
+            f"{land_command}",
+        ),
+        origin=origin,
+        detail={
+            "folder": str(folder),
+            "arrived": new,
+            "before": before.count,
+            "after": after.count,
+        },
+    )
+
+
 __all__ = [
     "DOWNLOAD_KEY",
     "ORIGIN_KEY",
     "PASS_TAILS_DIRNAME",
     "RUN_KEY",
+    "Settled",
     "TAILS_DIRNAME",
     "UNNAMED_SHOWN",
     "Beside",
+    "arrived",
     "Identity",
     "Waiting",
     "beside",
@@ -482,4 +593,5 @@ __all__ = [
     "pass_of",
     "pass_record",
     "resolved",
+    "settled",
 ]

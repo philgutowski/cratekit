@@ -274,7 +274,8 @@ tracks or files no download names, and says how each lands: an earlier go's
 through `crate --run RUN label sync --go`, which takes it to its landing,
 names the landing its tail reached, or refuses naming the tail by hand while
 the folder holds anything else; a sync pass's through `crate sync land
---pass-run RUN`; anything else by landing it or moving it out of the folder.
+--pass-run RUN`; anything else by moving it out of the folder and landing it
+on its own.
 `crate sync land` refuses the same way beside a go's download.
 
 `crate sync all` does not touch labels. It makes no provider call for them and

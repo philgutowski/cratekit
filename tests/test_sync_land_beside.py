@@ -203,7 +203,7 @@ def test_a_plain_download_beside_the_pass_refuses_naming_it(machine, monkeypatch
             "pass_run": None,
         }
     ]
-    assert f"land the tracks of job {plain} as any intake lands" in " ".join(
+    assert f"move the tracks of job {plain} out of {_staged(cfg)}" in " ".join(
         cause["remediation"]["steps"]
     )
     assert script.fetched == []
@@ -422,7 +422,15 @@ def test_a_record_that_cannot_be_kept_is_a_warning_and_the_next_run_refuses(
     code, again = drive(["sync", "land", "--pass-run", _summary(first)["pass_run"]])
 
     assert code == int(ExitCode.REFUSED_BY_POLICY), again
-    assert _refused_beside(again, sync_land.DOWNLOAD)["detail"]["unnamed"] == ["Artist - 101.wav"]
+    cause = _refused_beside(again, sync_land.DOWNLOAD)
+    assert cause["detail"]["unnamed"] == ["Artist - 101.wav"]
+    # REVIEW ROUND ONE, finding 5: the way on names the landing under the pass.
+    name = _summary(first)["land_name"]
+    assert (
+        f"if the track(s) no download names are this pass's own, renamed by its tail "
+        f"and no longer known to it, land them under the pass with: crate intake land "
+        f"{_staged(cfg)} --pass {name}"
+    ) in cause["remediation"]["steps"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -501,3 +509,154 @@ def test_a_fresh_go_beside_a_sync_passes_download_names_its_continue_command(
     assert waiting["pass_run"] == first_run and waiting["run"] is None
     assert f"crate sync land --pass-run {first_run}" in " ".join(cause["remediation"]["steps"])
     assert our_jobs() == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. What arrives while the tail runs (review round one)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class ArrivingTail(RenamingTail):
+    """The renaming tail, with something arriving in the folder while ``analyze run`` runs.
+
+    ``arrive`` runs once, inside the first driven ``analyze run``, as a second
+    terminal finishing a download meanwhile would; the tail's ``name apply``
+    then renames what arrived with the batch's own.
+    """
+
+    def __init__(self, arrive) -> None:
+        super().__init__()
+        self.arrive = arrive
+        self.arrived = None
+
+    def __call__(self, argv: list[str]) -> tuple[int, dict]:
+        if argv[:2] == ["analyze", "run"] and "--job" in argv and self.arrived is None:
+            self.arrived = self.arrive()
+        return super().__call__(argv)
+
+
+def _landings(tail: Tail) -> int:
+    return sum(1 for argv in tail.calls if argv[:2] == ["intake", "land"])
+
+
+def test_a_download_finished_while_the_passes_tail_runs_refuses_its_landing(
+    machine, monkeypatch, tmp_path
+):
+    """Review round one, finding 1: a download another process finished while
+    the tail ran was renamed with the pass's own, planned into its landing and
+    kept as its own. Now the landing is not planned and nothing is kept."""
+    cfg, script = machine
+    _landable(script)
+    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"))
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+
+    code, envelope = _pass(monkeypatch, "101")
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = _refused_beside(envelope, sync_land.LAND)
+    assert cause["detail"]["arrived"] == [stand_in.arrived]
+    assert (cause["detail"]["before"], cause["detail"]["after"]) == (1, 2)
+    assert _landings(stand_in) == 0, "the landing was planned over what arrived"
+    name = _summary(envelope)["land_name"]
+    assert (
+        f"crate intake land {_staged(cfg)} --pass {name}" in " ".join(cause["remediation"]["steps"])
+    )
+    record = staged_reading.pass_record(cfg, name)
+    assert not record.exists(), "the record kept what arrived as the pass's own"
+    warnings = cause["detail"]["sync_land"]["warnings"]
+    assert [one["code"] for one in warnings].count(sync_land.UNRECORDED_WARNING) == 1, warnings
+
+
+def test_a_file_a_person_put_there_while_the_tail_ran_refuses_its_landing(
+    machine, monkeypatch
+):
+    cfg, script = machine
+    _landable(script)
+
+    def put_there():
+        (_staged(cfg) / "dropped.wav").write_bytes(b"RIFF")
+        return "a person"
+
+    stand_in = ArrivingTail(put_there)
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+
+    code, envelope = _pass(monkeypatch, "101")
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = _refused_beside(envelope, sync_land.LAND)
+    assert cause["detail"]["arrived"] == []
+    assert (cause["detail"]["before"], cause["detail"]["after"]) == (1, 2)
+    assert _landings(stand_in) == 0
+
+
+def test_a_download_finished_while_a_gos_tail_runs_refuses_its_landing(
+    full, monkeypatch, tmp_path
+):
+    """The class one file over: the go's tail, in ``cli.label_sync``."""
+    cfg, script = full
+    stand_in = ArrivingTail(lambda: downloaded_by_hand(script, tmp_path, "x1"))
+    monkeypatch.setattr(tail_chain, "dispatch", stand_in)
+    one_release_answered(monkeypatch, script)
+
+    _go_run, code, envelope = approved_go()
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = envelope["cause"]
+    assert cause["reason"] == "refused-by-policy", cause
+    assert cause["detail"]["arrived"] == [stand_in.arrived]
+    assert _landings(stand_in) == 0
+    (go_job,) = our_jobs()
+    assert staged_reading.kept(staged_reading.go_record(cfg, go_job.job_id)) == frozenset()
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. Whose a download is, by its list (review round one's zero rows)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _download_over(cfg, listed: str, *, key: str = "acquire.download") -> str:
+    from cratekit.acquire import cli as acquire_cli
+    from cratekit.core import jobs
+
+    with jobs.open_store() as store:
+        job = jobs.enqueue(
+            store, handler_key=key, payload={acquire_cli.LIST: listed}, cfg=cfg, item_ids=("1",)
+        )
+    return job.job_id
+
+
+def test_a_passes_own_downloads_are_this_librarys_over_its_own_list_by_name(machine):
+    from cratekit.core import jobs
+    from tests.test_sync_land import dataclasses_replace_library
+
+    cfg, _script = machine
+    name = "2026-11-11T000000Z-abcd_synced"
+    own = _download_over(cfg, f"/lists/{name}.list.json")
+    _download_over(dataclasses_replace_library(cfg), f"/lists/{name}.list.json")
+    _download_over(cfg, "/lists/2026-11-12T000000Z-abcd_synced.list.json")
+    _download_over(cfg, f"/lists/{name}.list.json", key="acquire.fallback-fetch")
+
+    with jobs.open_store() as store:
+        assert sync_land._own_downloads(store, name, cfg) == {own}
+
+
+def test_only_a_download_over_a_synced_list_is_a_passes():
+    from cratekit.core import jobs
+
+    def job(listed: str, key: str = "acquire.download") -> jobs.Job:
+        return jobs.Job(
+            job_id="j",
+            handler_key=key,
+            payload={"list": listed},
+            config_fingerprint="",
+            config_toml="",
+            library_id="",
+            state=jobs.JobState.SUCCEEDED,
+            created="",
+            updated="",
+        )
+
+    assert staged_reading.pass_of(job("/x/p_synced.list.json")) == "p_synced"
+    assert staged_reading.pass_of(job("/x/label-sync-ab12.list.json")) is None
+    assert staged_reading.pass_of(job("/x/p_synced.json")) is None
+    assert staged_reading.pass_of(job("/x/p_synced.list.json", "acquire.fallback-fetch")) is None

@@ -50,7 +50,11 @@ modification time whichever way the tail stopped (:func:`_keep`), while its
 pass has no landing proof. Anything else refuses, naming each download and
 how it lands, a label go's by ``crate --run RUN label sync --go`` and an
 earlier pass's by its ``--pass-run``; a folder or a library root that cannot
-be read refuses too.
+be read refuses too. What arrives while the tail runs, a download another
+process finished or a file a person put there, is renamed by ``name apply``
+with the pass's own, so the folder is compared once more after the tail with
+what it held as the tail started (:func:`cratekit.intake.beside.arrived`), and
+anything new refuses before the landing is planned, with no record kept.
 
 A DOWNLOAD REFUSAL IS RECORDED AND SKIPPED. An item the worker refused for good,
 a lossy only track above all, leaves the job failed with every other item
@@ -98,6 +102,7 @@ from __future__ import annotations
 
 import argparse
 import dataclasses
+import shlex
 from collections.abc import Sequence
 from pathlib import Path
 from typing import TYPE_CHECKING, Any, Callable
@@ -131,6 +136,7 @@ from cratekit.core.exit_codes import ExitCode, Remedy
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
+    from cratekit.intake import beside as staged_reading
 
 _ORIGIN = ("cli.sync_land",)
 
@@ -924,8 +930,10 @@ def _download_job(store: jobs.JobStore, listed: Path, cfg: config.Config) -> job
 def _download(report: _Pass, listed: _Listed, cfg: config.Config) -> int:
     """Download the list, skip what was refused for good, and return how many landed.
 
-    A pass whose every missing track is staged has no list, and the tail and
-    the landing go on over what is staged (U212).
+    A pass whose every missing track is staged has no list (U212). Since
+    R-1499 the reading before this step refuses while the folder holds what
+    is not the pass's own, so the pass gets here with nothing to download
+    only when what is staged is its own.
     """
     from cratekit.acquire import cli as acquire_cli  # noqa: PLC0415 - one module's reading
 
@@ -1098,7 +1106,9 @@ def _own_downloads(store: jobs.JobStore, name: str, cfg: config.Config) -> set[s
     }
 
 
-def _alone(report: _Pass, cfg: config.Config, staging: Path, name: str, step: str) -> None:
+def _alone(
+    report: _Pass, cfg: config.Config, staging: Path, name: str, step: str
+) -> staged_reading.Settled:
     """Refuse the pass while the staging folder holds what is not its own (R-1499).
 
     Read as R-1467 reads it for a label go, :func:`cratekit.intake.beside.beside`:
@@ -1107,13 +1117,15 @@ def _alone(report: _Pass, cfg: config.Config, staging: Path, name: str, step: st
     proof. Anything else would be landed with it under its pass, so the pass
     stops at ``step``, before its download or before its tail, naming each
     download and how it lands. A folder or a library root that cannot be read
-    stops it too.
+    stops it too. Returns what the folder then holds of other downloads, which
+    :func:`_arrived` compares the folder with once the tail has run.
     """
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
     try:
         with jobs.open_store() as store:
             own = _own_downloads(store, name, cfg)
+            settled = staged.settled(store, staging, own)
             found = staged.beside(
                 cfg,
                 store,
@@ -1126,9 +1138,11 @@ def _alone(report: _Pass, cfg: config.Config, staging: Path, name: str, step: st
             )
     except CratekitError as exc:
         raise _Stop(step, exc) from None
+    except OSError as exc:
+        raise _Stop(step, _unlistable(staging, exc)) from None
     if not found:
-        return
-    before = "queued no download" if step == DOWNLOAD else "ran no step of its tail"
+        return settled
+    before = "stopped before its download" if step == DOWNLOAD else "ran no step of its tail"
     raise _Stop(
         step,
         refuse(
@@ -1136,14 +1150,73 @@ def _alone(report: _Pass, cfg: config.Config, staging: Path, name: str, step: st
             f"the staging folder {found.folder} holds {found.said()}; a landing lands "
             f"the whole folder, so this pass would land them with its own, under its "
             f"pass {name}, and it {before}",
-            steps=found.steps(),
+            steps=(*found.steps(), *_own_unnamed(found, staging, name)),
             origin=_ORIGIN,
             detail={**found.to_json(), "pass": name, "own": sorted(own)},
         ),
     )
 
 
-def _keep(report: _Pass, cfg: config.Config, staging: Path, name: str) -> None:
+def _land_command(staging: Path, name: str) -> str:
+    """The landing of the pass as a person types it, the tail's own last step."""
+    return shlex.join(["crate", "intake", "land", str(staging), "--pass", name])
+
+
+def _own_unnamed(found: staged_reading.Beside, staging: Path, name: str) -> tuple[str, ...]:
+    """The way on when the files no download names may be the pass's own (review round one).
+
+    A pass whose tail renamed its tracks and whose record of them was lost, or
+    never kept by an older build, reads them as files no download names. Only
+    a person can tell, so the step says how to land them under the pass.
+    """
+    if not found.unnamed:
+        return ()
+    return (
+        f"if the track(s) no download names are this pass's own, renamed by its tail "
+        f"and no longer known to it, land them under the pass with: "
+        f"{_land_command(staging, name)}",
+    )
+
+
+def _unlistable(staging: Path, exc: OSError) -> CratekitError:
+    return refuse(
+        "intake-list-unusable",
+        f"the staging folder {staging} could not be listed ({exc}), so whether it holds "
+        f"a download no landing took cannot be read",
+        steps=(f"make {staging} readable, then continue the pass",),
+        origin=_ORIGIN,
+        detail={"folder": str(staging)},
+    )
+
+
+def _arrived(
+    cfg: config.Config, staging: Path, name: str, before: staged_reading.Settled
+) -> CratekitError | None:
+    """The refusal for what arrived while the tail ran, or None (review round one).
+
+    :func:`cratekit.intake.beside.arrived`, read against what :func:`_alone`
+    saw as the tail started; a queue that cannot be read refuses too.
+    """
+    from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
+
+    try:
+        with jobs.open_store() as store:
+            return staged.arrived(
+                store,
+                staging,
+                _own_downloads(store, name, cfg),
+                before,
+                origin=_ORIGIN,
+                batch=f"the pass {name}",
+                land_command=_land_command(staging, name),
+            )
+    except CratekitError as exc:
+        return exc
+
+
+def _keep(
+    report: _Pass, cfg: config.Config, staging: Path, name: str, before: staged_reading.Settled
+) -> None:
     """Keep what the folder holds as the pass's tail stops, under its pass (R-1499).
 
     The tail's ``name apply`` renames every track before the landing's gate,
@@ -1152,9 +1225,25 @@ def _keep(report: _Pass, cfg: config.Config, staging: Path, name: str) -> None:
     modification time, which is what lets it read them as its own and nothing
     put there since. One that cannot be kept is a warning, and the pass
     continued then refuses beside its own renamed tracks.
+
+    NOT WHEN ANYTHING ARRIVED WHILE THE TAIL RAN (review round one): what
+    arrived may have been renamed with the pass's own, so a record kept then
+    would read it as the pass's own; the warning says the record was not kept.
     """
     from cratekit.intake import beside as staged  # noqa: PLC0415 - one module's reading
 
+    changed = _arrived(cfg, staging, name, before)
+    if changed is not None:
+        report.warnings.append(
+            {
+                "code": UNRECORDED_WARNING,
+                "message": (
+                    f"what the tail left in {staging} was not kept for the pass {name}: "
+                    f"{changed.cause.message}"
+                ),
+            }
+        )
+        return
     try:
         with jobs.open_store() as store:
             staged.keep(
@@ -1201,9 +1290,22 @@ def _ended(report: _Pass, stop: _Stop) -> CratekitError:
         dataclasses.replace(
             cause,
             remediation=dataclasses.replace(cause.remediation, steps=steps),
-            detail={**dict(cause.detail or {}), "sync_land": report.data()},
+            detail={**dict(cause.detail or {}), "sync_land": _with_warnings(report)},
         ),
     )
+
+
+def _with_warnings(report: _Pass) -> dict[str, Any]:
+    """The pass's record with its warnings, which a refusal has no other place for.
+
+    A refusal carries no warnings of its own, so a tail record the pass could
+    not keep (R-1499) would otherwise be said nowhere when the tail stopped on
+    a failed step (review round one).
+    """
+    data = report.data()
+    if report.warnings:
+        data["warnings"] = list(report.warnings)
+    return data
 
 
 def sync_land(ctx: Context) -> Envelope:
@@ -1243,13 +1345,21 @@ def sync_land(ctx: Context) -> Envelope:
         # THE FOLDER HOLDS ONLY THE PASS'S OWN (R-1499), read before the
         # download, so nothing is downloaded into a folder the pass cannot
         # land, and again before the tail, over what arrived meanwhile.
-        _alone(report, cfg, staging, listed.land_name, DOWNLOAD)
+        name = listed.land_name
+        _alone(report, cfg, staging, name, DOWNLOAD)
         report.summary["downloaded"] = _download(report, listed, cfg)
-        _alone(report, cfg, staging, listed.land_name, TAG)
+        before = _alone(report, cfg, staging, name, TAG)
         try:
-            tail.run(report, staging, cfg, ["--pass", listed.land_name], listed.land_name)
+            folder = tail.through_name(report, staging, cfg, name)
+            # NOTHING ARRIVED WHILE THE TAIL RAN (review round one): a download
+            # another process finished meanwhile was renamed with the pass's
+            # own, and the landing would take it under the pass.
+            changed = _arrived(cfg, staging, name, before)
+            if changed is not None:
+                raise _Stop(LAND, changed)
+            tail.land(report, folder, ["--pass", name])
         finally:
-            _keep(report, cfg, staging, listed.land_name)
+            _keep(report, cfg, staging, name, before)
     except _Done as done:
         report.summary["stopped_at"] = done.step
     except _Attend as stop:
