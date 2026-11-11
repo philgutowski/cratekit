@@ -2,7 +2,7 @@
 title: "A staged file's download name identifies it only until the tail renames it, and missing is not renamed"
 date: 2026-11-11
 category: workflow-issues
-module: "src/cratekit/label/go.py, src/cratekit/cli/label_sync.py, src/cratekit/intake/land_cli.py"
+module: "src/cratekit/intake/beside.py, src/cratekit/cli/sync_land.py, src/cratekit/label/go.py, src/cratekit/cli/label_sync.py, src/cratekit/intake/land_cli.py"
 problem_type: workflow_issue
 component: label_sync
 root_cause: wrong_identity
@@ -24,6 +24,7 @@ tags:
   - name-apply
   - identity
   - r-1467
+  - r-1499
 ---
 
 # A staged file's download name identifies it only until the tail renames it, and missing is not renamed
@@ -70,3 +71,14 @@ pass landed them), that count let the same number of foreign files through
 - A test stand in that renames nothing hides all of this: the suite's `Tail`
   answers `name apply` with nothing renamed, so a test must rename the files
   itself, and at the moment the real step would, before the stop.
+- **A reading before the tail cannot see what arrives during it** (R-1499,
+  review round one, driven with a second process finishing a download while
+  the pass's `analyze run` ran). The tail's `name apply` renames the arrival
+  with the batch's own, so after the tail nothing tells them apart, the
+  landing takes it under the batch's pass and the tail's record keeps it as
+  the batch's own. `intake.beside.settled` is taken as the tail starts and
+  `intake.beside.arrived` compared after `name apply`: a new finished item of
+  another download in the folder, or a change in how many files a landing
+  would take, refuses before the landing is planned, and no record is kept.
+- The reading lives in `src/cratekit/intake/beside.py` since R-1499, called
+  by `label sync --go` and `crate sync land` alike; grep there first.

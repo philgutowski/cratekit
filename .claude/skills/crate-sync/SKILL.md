@@ -83,10 +83,13 @@ status:
 - **It refused beside another download.** The staging folder holds what is
   not this pass's own, and a landing would take it (R-1499):
   `cause.detail.waiting` names each download, `cause.detail.unnamed` the
-  files no download names. Land an earlier pass first with the `crate sync
-  land --pass-run` its step names, oldest first; this is a rule, not a
-  question. A label go's download, or files no download names, are not this
-  skill's to land: stop, and report what the refusal named.
+  files no download names. An earlier pass named with tracks in the folder
+  (`tracks` above 0) is landed first with the `crate sync land --pass-run`
+  its step names, oldest first, through steps 2 to 4; this is a rule, not a
+  question. Then continue this pass with the `--pass-run` and the run in
+  `data.summary.pass_run` its last step names. A label go's download, files
+  no download names, and a pass named only as one whose tail may have renamed
+  them are not this skill's to land: stop, and report what the refusal named.
 - **It failed.** The refusal names the step and its remedy. Act on the remedy
   when a rule covers it, and continue the pass with the `--pass-run` command
   its steps name; otherwise stop, and report the step and its message.
