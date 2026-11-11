@@ -2710,3 +2710,45 @@ def test_a_runs_own_tail_refused_beside_a_download_names_its_tracks_refused_for_
 
     assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
     assert [row["item_id"] for row in envelope["cause"]["detail"]["refused"]] == ["t-r1-1"]
+
+
+def test_a_go_with_tracks_in_the_folder_is_named_once_beside_files_no_download_names(
+    installed, monkeypatch, script, tail
+):
+    """Mutation row M13: a go already named by its tracks is not named again
+    as one whose tail may have renamed the files no download names."""
+    run_id = landed_first(monkeypatch, script)
+    stray(installed)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    (waiting,) = envelope["cause"]["detail"]["waiting"]
+    assert (waiting["run"], waiting["tracks"]) == (run_id, 2)
+
+
+def test_a_go_whose_tracks_were_recorded_in_another_folder_is_not_named_for_this_one(
+    installed, monkeypatch, script, tail, tmp_path
+):
+    """Mutation row M08: a download into another staging folder, say before the
+    configured one moved, has nothing in this one to be put down to."""
+    elsewhere = tmp_path / "old-staging"
+    elsewhere.mkdir()
+    (elsewhere / "t-old-1.wav").write_bytes(b"downloaded elsewhere")
+    with jobs.open_store() as store:
+        old = jobs.enqueue(
+            store,
+            handler_key=go.DOWNLOAD,
+            payload={go.ORIGIN_KEY: {"run": "an-old-run", "manifest": "m"}, go.RUN_KEY: "an-old-run"},
+            cfg=installed,
+            item_ids=("t-old-1",),
+        )
+        jobs.complete_item(store, old.job_id, "t-old-1", artifact=elsewhere / "t-old-1.wav")
+    one_release_answered(monkeypatch, script)
+    kept = stray(installed)
+
+    code, envelope = drive(["label", "sync", "--go"])
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    cause = refused_before_the_gate(envelope)
+    assert cause["detail"]["waiting"] == [] and cause["detail"]["unnamed"] == [kept.name]

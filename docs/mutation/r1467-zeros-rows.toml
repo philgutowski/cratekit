@@ -1,0 +1,22 @@
+name = "r1467-zeros"
+pass_kind = "light"
+
+[[rows]]
+id = "M08_folder_only"
+description = "beside: read every artifact a job recorded, not only those directly in the staging folder, measured again with the test written for it"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            if path.parent == folder
+'''
+new = '''            if True
+'''
+
+[[rows]]
+id = "M13_candidate_not_present"
+description = "beside: name a go with tracks already named again as a candidate for files no download names, measured again with the test written for it"
+file = "src/cratekit/label/go.py"
+surface = "user"
+tests = ["tests/test_label_sync_go.py", "tests/test_label_sync.py", "tests/test_sync_land.py"]
+old = '''            if job_id in own or run is None or any(path in others for path in paths):'''
+new = '''            if job_id in own or run is None:'''
