@@ -47613,3 +47613,123 @@ nothing false is said.
 (additive, as the table itself was) and the grouped list says the two
 parts as `label sync` does, and a nothing new listing records its round
 too. Ledger only.
+
+---
+
+## R-1467. A label go's tail lands whatever else the staging folder holds, an earlier go's unlanded download or a plain download, as one batch under its own manifest and pass
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** Every label go stages into the one download staging
+folder, and `intake land` lands a whole folder. A fresh `label sync --go`
+whose earlier go's download settled and was never landed (finished by `job
+resume` or `acquire download --job`, and no `--go` under its run since)
+queues its own job beside it, and its tail lands both batches as one under
+the new go's manifest and pass, so the earlier go's tracks are filed under no
+label. U239 makes a go under its own run refuse its tail when a LATER go job
+holds tracks in the folder (`_beside` in `src/cratekit/label/go.py`), but no
+check sees an earlier go job, or a download no go queued (a plain `acquire
+download` into the same folder). The same fresh go, when it has nothing new to
+take, asks the gate over an empty plan and ends `no_op` naming nothing about
+the unlanded download (the review's row 9).
+
+**Measured cost.** Driven at the review against the suite's stand in landing
+(`test_F3`, `test_K5`, `test_G`): the tail ran over four files where the go
+downloaded three and planned the landing under the go's manifest and pass; a
+fresh go after a job finished by hand ended `no_op` with three tracks
+unlanded. What a real landing files is unmeasured. Present since U108 and
+U190; U239 did not add it.
+
+**Closes when:** a go refuses to queue, or to run its tail, while the folder
+holds tracks a landing of this go would take that are not this go's, with a
+landing proof by pass on both media (the bridge's intake file, the native
+landing's session record) so a landed batch is not mistaken for a waiting
+one; and a fresh go with nothing to take names an unlanded go download and
+the `--go` under its run that lands it. Earns an issue: the product files a
+DJ's tracks under the wrong pass and label.
+
+---
+
+## R-1468. The per job key a label go's landing is recorded under kills no test alone
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** U239 records the landing a go's tail reached under
+`landing_role(job)` on the run whose go queued the job. Writing it on the
+queuing run is what closes the review's blocking finding; keying it by the job
+as well guards a run holding a second job after its first landed, which no
+shipped verb was found to produce.
+
+**Measured cost.** At round two, `landing_role` returning the bare prefix
+killed 0 of 71 tests and the record written on whichever run ran the tail
+killed 1; both together killed 2. Two candidate producers of a second job
+under one run were driven (`job cancel` on a landed job, `job resume` on it)
+and neither produces it. No user facing cost measured.
+
+**Closes when:** a test drives a run that holds a second go job after its
+first landed, or the key is removed as unreachable. Ledger only.
+
+---
+
+## R-1469. A label go's run names the landing its tail reached for ever, after that landing was applied, aborted or went stale
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** U239 records the landing run a go's tail stopped at on the
+run whose go queued the job (`landing_role` in `src/cratekit/label/go.py`),
+and a later `--go` under that run names it and runs nothing. The record is
+never cleared, so after that landing is applied, aborted or refused stale the
+go still names it, and the way to run the tail again is by hand.
+
+**Measured cost.** Not driven: the suite's stand in landing has no real run.
+Nothing is written over; the person is pointed at a spent run.
+
+**Closes when:** the continuation reads the named run's state and, when its
+gate was aborted or its plan went stale, runs the tail again. Ledger only.
+
+---
+
+## R-1470. A second --go under a label go's run while the first is still in its tail starts a second tail over the same folder
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** Since U239 a `--go` under the run of a go that started a
+download takes that download on and runs its tail, asking nothing. A second
+such `--go` started while the first is still in its tail queues `tag folder`
+again, and its later steps meet the first's jobs. Before U239 the second
+refused `decision-stale` before touching anything.
+
+**Measured cost.** Driven re entrantly in one process at the review
+(`test_T`): the second tail stopped at `analyze run` on `job-driver-held`.
+Two processes were not driven, so what a real second tail does is unmeasured.
+
+The same window from the other side, driven at round two in one process
+(nested, not two processes): a fresh go landed the download while the
+origin run's walk sat at a prompt, and the origin run's go, reading the
+record it loaded at its start, ran the tail again, so two landing plans were
+made over one folder, manifest and pass, and its save at exit overwrote the
+fresh go's record of the landing.
+
+**Closes when:** the continuation holds a lock per run, or reads a tail job
+over the folder still open and refuses naming it. Ledger only, unmeasured.
+
+---
+
+## R-1471. A label go reached at the end of the walk and stopped at the call ceiling names the walk, without --go, as its continue
+
+**Found:** at the review of #647, U239, 2026-11-10.
+
+**The mechanism.** The ceiling's continue command is the stopped command
+line with `--run` and `--calls` (`continue_command` in
+`src/cratekit/cli/__init__.py`). A go reached at the end of the interactive
+walk (`crate label sync`, then `run decide --continue`) stopped there, so its
+continue is `crate --run RUN --calls N label sync`, which walks first. With
+nothing new it reaches the go and lands; with a new release on another label
+and no terminal it refuses `label-sync-unanswerable` and the download stays
+parked.
+
+**Measured cost.** Driven at the review (`test_C`, `test_C3`). A way through
+exists, `crate --run RUN --calls N label sync --go`, which the guide names.
+
+**Closes when:** the go's ceiling cause names its own command line with
+`--go`, whatever command reached it. Ledger only: a wording of the way on.
