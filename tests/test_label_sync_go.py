@@ -1906,3 +1906,24 @@ def test_a_landing_another_runs_record_cannot_keep_is_a_warning_and_the_go_still
     assert first_run in warned["message"] and job.job_id in warned["message"]
     assert "PermissionError" in warned["message"]
     assert gates.load(first_run).related_runs == {}
+
+
+def test_a_go_under_its_run_over_a_download_that_refused_every_track_runs_no_tail(
+    installed, monkeypatch, script, tail
+):
+    """M11 of U239's table: the run's own download read again lands nothing."""
+    one_release_answered(monkeypatch, script)
+    script.landings["t-r1-1"] = Landing(kind="lossy")
+    script.landings["t-r1-2"] = Landing(kind="lossy")
+    run_id, code, _envelope = approved_go()
+    assert code == int(ExitCode.OK)
+
+    code, envelope = gone(run_id)
+
+    assert code == int(ExitCode.OK), envelope
+    assert tail.calls == [], "the tail ran over a download that landed nothing"
+    continued = check(envelope, "continued")
+    assert continued["status"] == "fail"
+    assert "every track was refused for good, so no tail was run" in continued["detail"]
+    go_report = envelope["data"]["summary"]["go"]
+    assert go_report[go.LAND_KEY] is None and go_report["next"] == []
