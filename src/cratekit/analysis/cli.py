@@ -453,11 +453,27 @@ def _heads_ahead(store, job) -> Iterator[None]:
         raise
     finally:
         ahead.close_session(job.job_id)
-        if drove:
+        if drove and _worth_recording(cfg, job.job_id, session):
             try:
                 artifacts.record_pool(cfg, job.job_id, ahead.report(session))
             except OSError:
                 pass
+
+
+def _worth_recording(cfg: config.Config, job_id: str, session: ahead.Session) -> bool:
+    """Whether this drive's pool replaces the one the job already records.
+
+    A DRIVE THAT MEASURED NOTHING DOES NOT OVERWRITE ONE THAT DID. A resume
+    after an interrupt often has no file left to measure, only a rename to
+    adopt or a row to settle, and its "no file was waiting" written over the
+    first drive's record made a job two workers measured all of answer "one
+    worker" when it finally succeeded (the review of U241 drove it). The line
+    is about the pool that measured the job's files, so the last drive that
+    measured any keeps it.
+    """
+    if session.plan is not None:
+        return True
+    return artifacts.pool_record(cfg, job_id) is None
 
 
 def _pool_check(record: Mapping[str, Any] | None) -> dict[str, str | None]:

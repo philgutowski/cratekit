@@ -38,45 +38,6 @@ new = '''        executor.shutdown(wait=True, cancel_futures=True)
 '''
 
 [[rows]]
-id = "M04_a_plan_of_one_spawns"
-description = "WorkStream.result: drop the in process branch, so a plan of one worker tries to build a pool"
-file = "src/cratekit/core/pool.py"
-surface = "user"
-tests = ["tests/test_pool_stream.py", "tests/test_analysis_ahead.py"]
-old = '''        if self.plan.in_process:
-            self._read.add(position)
-'''
-new = '''        if False:
-            self._read.add(position)
-'''
-
-[[rows]]
-id = "M05_a_position_read_twice"
-description = "WorkStream.result: drop the read once refusal"
-file = "src/cratekit/core/pool.py"
-surface = "maintainer"
-tests = ["tests/test_pool_stream.py"]
-old = '''        if position in self._read:
-            raise ValueError(f"position {position} was already read, and each is read once")
-'''
-new = ''''''
-
-[[rows]]
-id = "M06_no_generation_boundary"
-description = "WorkStream.result: one generation whatever the plan's recycle budget, so no child is ever retired"
-file = "src/cratekit/core/pool.py"
-surface = "maintainer"
-tests = ["tests/test_pool_stream.py"]
-old = '''        size = self.plan.tasks_per_generation or len(self._items) or 1
-        generation = position // size
-        try:
-'''
-new = '''        size = len(self._items) or 1
-        generation = position // size
-        try:
-'''
-
-[[rows]]
 id = "M07_used_percent_gate_is_strict"
 description = "_gates_refusing: the used percent gate refuses only above its limit, not at it"
 file = "src/cratekit/core/pool.py"
@@ -124,26 +85,25 @@ new = '''LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024 // 4
 '''
 
 [[rows]]
-id = "M11_cost_from_the_shortest_track"
-description = "light.longest_seconds: the shortest track sets the worker's cost"
+id = "M11_cost_from_the_cheapest_track"
+description = "light.costliest: the cheapest track sets the worker's cost"
 file = "src/cratekit/analysis/light.py"
 surface = "user"
 tests = ["tests/test_analysis_ahead.py"]
-old = '''    return max((seconds_of(path) for path in paths), default=0.0)
+old = '''    return max((cost_of(path) for path in paths), default=LIGHT_BASE_BYTES)
 '''
-new = '''    return min((seconds_of(path) for path in paths), default=0.0)
+new = '''    return min((cost_of(path) for path in paths), default=LIGHT_BASE_BYTES)
 '''
 
 [[rows]]
-id = "M12_plan_drops_the_callers_reserve"
-description = "light.plan: the caller's reserve is not handed to the planner, so the driver's vocal model is afforded twice"
+id = "M22_decode_not_costed"
+description = "light.worker_bytes: the decode's line is dropped, so a 192 kilohertz file is declared at its length alone, 1310 MB where 2180 was measured"
 file = "src/cratekit/analysis/light.py"
 surface = "user"
 tests = ["tests/test_analysis_ahead.py"]
-old = '''        ceiling=cores.worker_ceiling(reserved=reserved_cores),
-        reserve_bytes=reserve_bytes,
+old = '''    return LIGHT_BASE_BYTES + max(analysis, decode)
 '''
-new = '''        ceiling=cores.worker_ceiling(reserved=reserved_cores),
+new = '''    return LIGHT_BASE_BYTES + analysis
 '''
 
 [[rows]]
@@ -169,14 +129,38 @@ new = '''    if False:
 '''
 
 [[rows]]
-id = "M15_identity_is_the_inode_alone"
-description = "ahead.identity_of: device and inode only, so a file rewritten in place keeps its old head"
+id = "M15_identity_without_the_time"
+description = "ahead.identity_of: no modification time, so a file rewritten at the same length keeps its old head"
 file = "src/cratekit/analysis/ahead.py"
 surface = "user"
 tests = ["tests/test_analysis_ahead.py"]
 old = '''    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)
 '''
-new = '''    return (found.st_dev, found.st_ino, 0, 0)
+new = '''    return (found.st_dev, found.st_ino, found.st_size, 0)
+'''
+
+[[rows]]
+id = "M23_identity_without_the_size"
+description = "ahead.identity_of: no size, so a file rewritten with its time put back keeps its old head"
+file = "src/cratekit/analysis/ahead.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)
+'''
+new = '''    return (found.st_dev, found.st_ino, 0, found.st_mtime_ns)
+'''
+
+[[rows]]
+id = "M24_identity_after_the_read"
+description = "ahead.measure: the identity is taken after the read, so a file written while it was read carries the written file's identity"
+file = "src/cratekit/analysis/ahead.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''    found = identity_of(path)
+    return found, light.analyse(path)
+'''
+new = '''    head = light.analyse(path)
+    return identity_of(path), head
 '''
 
 [[rows]]
@@ -190,31 +174,6 @@ old = '''    if settings != session.settings:
         return None
 '''
 new = ''''''
-
-[[rows]]
-id = "M17_a_broken_pool_is_not_stopped"
-description = "ahead: a broken stream is treated as one item's failure, so the session keeps a dead stream"
-file = "src/cratekit/analysis/ahead.py"
-surface = "user"
-tests = ["tests/test_analysis_ahead.py"]
-old = '''    except pool.StreamBroken as broken:
-        session.stop(str(broken))
-        return None
-'''
-new = ''''''
-
-[[rows]]
-id = "M18_headed_files_sent_to_workers"
-description = "_waiting: a file already carrying its head is measured ahead although its item skips it without a read"
-file = "src/cratekit/analysis/cli.py"
-surface = "maintainer"
-tests = ["tests/test_analysis_ahead.py"]
-old = '''        if path.is_file() and not carries_head(path, cfg):
-            found.append(str(path))
-'''
-new = '''        if path.is_file():
-            found.append(str(path))
-'''
 
 [[rows]]
 id = "M19_failed_run_does_not_say_its_pool"
@@ -242,6 +201,30 @@ new = '''        raise
 '''
 
 [[rows]]
+id = "M25_an_idle_resume_overwrites_the_pool"
+description = "_worth_recording: a drive that measured nothing overwrites the record of the drive that did"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py"]
+old = '''        return True
+    return artifacts.pool_record(cfg, job_id) is None
+'''
+new = '''        return True
+    return True
+'''
+
+[[rows]]
+id = "M26_warm_up_takes_no_lock"
+description = "warm.exclusive: the lock is opened and never taken, so two processes fill the kernel cache together"
+file = "src/cratekit/analysis/warm.py"
+surface = "user"
+tests = ["tests/test_analysis_warm.py"]
+old = '''        fcntl.flock(handle, fcntl.LOCK_EX)
+'''
+new = '''        pass
+'''
+
+[[rows]]
 id = "M21_no_check_line_on_the_answer"
 description = "_resume: the answer no longer carries the analyze.pool check"
 file = "src/cratekit/analysis/cli.py"
@@ -250,3 +233,108 @@ tests = ["tests/test_analysis_ahead.py"]
 old = '''            summary["checks"] = [_pool_check(artifacts.pool_record(cfg, job.job_id))]
 '''
 new = ''''''
+
+[[dropped]]
+id = "X21_plan_drops_the_callers_reserve"
+description = "light.plan: the caller's reserve is not handed to the planner"
+reason = "ranked below the cap: same family as M13, the reserve one layer up, and the same test holds both"
+
+[[dropped]]
+id = "X14_a_plan_of_one_spawns"
+description = "WorkStream.result: drop the in process branch"
+reason = "ranked below the cap: it raises on every in process plan, so every serial test in two suites dies; the least likely row to be a zero"
+
+[[dropped]]
+id = "X15_a_position_read_twice"
+description = "WorkStream.result: drop the read once refusal"
+reason = "ranked below the cap: maintainer facing contract of the seam"
+
+[[dropped]]
+id = "X16_no_generation_boundary"
+description = "WorkStream.result: one generation whatever the plan's recycle budget"
+reason = "ranked below the cap: maintainer facing, and a job of under two hundred files is one generation"
+
+[[dropped]]
+id = "X17_a_broken_pool_is_not_stopped"
+description = "ahead: a broken stream is counted as one item's failure and the session keeps it"
+reason = "ranked below the cap: the stream closes itself on a break, which the review's row found pinned by two tests"
+
+[[dropped]]
+id = "X18_headed_files_sent_to_workers"
+description = "_waiting: a file already carrying its head is measured ahead"
+reason = "ranked below the cap: wasted measuring only, nothing is written from it"
+
+[[dropped]]
+id = "X19_a_restarted_generation_measures_again"
+description = "WorkStream._start: hand out positions already read"
+reason = "measured at zero by the review, filed as a residual: unreachable from the shipped verb, which reads in order"
+
+[[dropped]]
+id = "X20_unwritable_record_fails_the_job"
+description = "_heads_ahead: let an OSError from the pool record out"
+reason = "ranked below the cap: measured at zero by the review, pinned in the fix round by a test of its own"
+
+[[dropped]]
+id = "X01_render_line"
+description = "render: drop the analysis check lines from the human answer"
+reason = "ranked below the cap: display only, and the check's presence on the envelope is M21"
+
+[[dropped]]
+id = "X02_header_length_positive"
+description = "tags.audio_seconds: accept a zero, negative or infinite header length"
+reason = "ranked below the cap: a wrong length narrows or widens one plan, and the cost line it feeds is M10 and M11"
+
+[[dropped]]
+id = "X03_worker_exception_fallback"
+description = "ahead: let what a worker raised propagate instead of measuring here"
+reason = "ranked below the cap: the item fails either way, since the serial line raises the same; only the count differs"
+
+[[dropped]]
+id = "X04_broken_stream_stays_open"
+description = "WorkStream: do not close on a broken pool"
+reason = "ranked below the cap: same family as M17, which is measured at the caller"
+
+[[dropped]]
+id = "X05_plan_forgets_its_ceiling"
+description = "plan_pool: the final plan does not carry its ceiling"
+reason = "ranked below the cap: same family as M08, the refused plan's facts"
+
+[[dropped]]
+id = "X06_unknown_cores_is_two"
+description = "worker_ceiling: an unreadable core count is a ceiling of two"
+reason = "ranked below the cap: memory still bounds the plan, and M09 is the ceiling's coefficient"
+
+[[dropped]]
+id = "X07_unknown_length_is_zero"
+description = "light.seconds_of: a header with no length is a track of no length"
+reason = "ranked below the cap: same family as M11"
+
+[[dropped]]
+id = "X08_restamp_opens_a_run_ahead"
+description = "_resume: the restamp opens the run ahead too"
+reason = "ranked below the cap: a session nothing reads from, closed in the same call"
+
+[[dropped]]
+id = "X09_linked_record_is_read"
+description = "artifacts.pool_record: read through a link"
+reason = "ranked below the cap: a display line, under the job's own private directory"
+
+[[dropped]]
+id = "X10_window_geometry"
+description = "detect.key_windows: bunch the windows at the start of the track"
+reason = "ranked below the cap: a method that is not the default anywhere"
+
+[[dropped]]
+id = "X11_plain_runs_the_separation"
+description = "detect.key_profile: the plain method separates anyway"
+reason = "ranked below the cap: a method that is not the default anywhere"
+
+[[dropped]]
+id = "X12_tiny_lines_by_scipy"
+description = "separation: hand a line shorter than half the window to scipy"
+reason = "ranked below the cap: scipy's answer there changes from call to call, so the row would be measured by chance"
+
+[[dropped]]
+id = "X13_key_margin"
+description = "detect: the key's harmonic margin is one, not four"
+reason = "ranked below the cap: same family as D1, the margin reaching the mask"

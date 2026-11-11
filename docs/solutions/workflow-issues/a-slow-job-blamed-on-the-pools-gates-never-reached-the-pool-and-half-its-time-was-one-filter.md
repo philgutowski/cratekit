@@ -2,7 +2,7 @@
 title: "A slow job blamed on the pool's gates never reached the pool, its declared worker cost was thirty times low, and half its time was one filter"
 date: 2026-11-10
 category: workflow-issues
-module: "src/cratekit/analysis/cli.py, src/cratekit/analysis/light.py, src/cratekit/analysis/separation.py, src/cratekit/core/pool.py"
+module: "src/cratekit/analysis/cli.py, src/cratekit/analysis/light.py, src/cratekit/analysis/separation.py, src/cratekit/analysis/warm.py, src/cratekit/core/pool.py"
 problem_type: workflow_issue
 component: analysis
 severity: high
@@ -21,6 +21,7 @@ symptoms:
   - "librosa.effects.harmonic returns numbers on one call and not a number on the next, for a clip under a third of a second"
   - "Ctrl-C on a pooled run fails the item in hand as an internal error"
   - "Worker processes stay alive after their parent is killed"
+  - "Segmentation fault in a numba kernel on a fresh install, and on every run after it until the cache is deleted"
 related_components:
   - job_engine
   - pool
@@ -31,6 +32,8 @@ tags:
   - process-pool
   - spawn
   - median-filter
+  - numba
+  - cold-cache
   - librosa
   - scipy
   - memory
@@ -101,6 +104,28 @@ loaded. Workers ignore the interrupt, since the driver owns where a stop
 lands, and watch the parent's sentinel and leave with it. Both were driven
 with the rule removed first: the orphan lingered and the interrupt escaped.
 
+**And the first code to start two librosa processes together owns numba's
+cache.** The author's suite was green and every pooled run on the author's
+machine was clean, because numba's on disk cache had been filled by the first
+serial measurement. The review emptied it and ran the real verb: five runs
+in seven ended in a segmentation fault inside a compiled kernel
+(`librosa/core/pitch.py`, `_parabolic_interpolation`), first in a worker and
+then in the driver, which had fallen back to the same call; and the cache
+was left damaged, so every later analysis on that world crashed until its
+cache files were deleted by hand. One process at a time on the same cold
+cache: six clean in six. Two processes compiling into one numba cache is not
+safe, whatever its index file suggests, and a fresh install, a new virtual
+environment and any upgrade of librosa or numba all start cold. The fix is
+`analysis/warm.py`: every process runs one whole head over audio it makes
+itself, alone under a lock, before its first real one, so the cache is only
+ever filled by one. It is held by two tests that need the extra: the warm up
+on an empty cache followed by real heads must leave the cache unchanged, so
+no kernel is left for two workers to compile later, and two workers on an
+empty cache must finish, three attempts, because a race is not proven by one.
+The lesson past numba: a test with real workers on a warm machine says
+nothing about a cold one. Ask what state every dependency keeps on disk, and
+run the first use twice at once.
+
 ## What to do
 
 1. Before explaining a slow run by a planner's inputs, prove the run reaches
@@ -116,7 +141,9 @@ with the rule removed first: the orphan lingered and the interrupt escaped.
    the engine's one item at a time order is what makes a kill resumable. Read
    results by position through `pool.stream_workers`, and hold a result
    measured ahead to the file and the settings it was measured under.
-5. Say what the pool was on both of the verb's exits. A run that failed or was
+5. Before two processes share a library for the first time, empty every
+   cache that library keeps and start them together, several times.
+6. Say what the pool was on both of the verb's exits. A run that failed or was
    stopped leaves through its cause, not its envelope.
 
 ## What it bought

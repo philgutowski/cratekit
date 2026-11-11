@@ -531,6 +531,14 @@ def analyse_file(
         import numpy  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
+    # THIS PROCESS'S FIRST HEAD IS PRECEDED BY A WARM UP, ALONE (U241). librosa's
+    # compiled kernels are cached on disk, and two processes filling that cache
+    # together crash and leave it damaged; ``analysis.warm`` says how that was
+    # found. Here, rather than in a worker's initializer, so the driver, a
+    # worker, a script and a second command all take the same turn.
+    from cratekit.analysis import warm
+
+    warm.kernels()
     try:
         # AT THE ENERGY MEASURE RATE, one constant for both, because every
         # spectral feature is rate dependent and the calibration fitted on the

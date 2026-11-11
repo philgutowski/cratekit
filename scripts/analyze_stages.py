@@ -425,7 +425,7 @@ def memory(args: argparse.Namespace) -> int:
                 "name": path.name,
                 "seconds": seconds,
                 "peak_megabytes": float(done.stdout.strip().splitlines()[-1]),
-                "declared_megabytes": light.worker_bytes(seconds) / (1024 * 1024),
+                "declared_megabytes": light.cost_of(path) / (1024 * 1024),
             }
         )
     if args.json:

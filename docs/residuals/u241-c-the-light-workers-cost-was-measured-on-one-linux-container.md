@@ -14,9 +14,16 @@ minute track the decode reached 567 MB, the tempogram 820, the separation
 MB over a floor that rises as librosa's kernels compile. The decode, the
 tempogram and the transform are librosa's and are not blocked here.
 
+The review then measured the same eleven minute track stored at 192
+kilohertz at 2054 MB, and a second reading gave 2180, against the 1310 the
+length alone declared: the decode reads the file at its own rate. The cost
+now has a second line for the decode, in the file's rate and channels, and
+declares 2737 MB for that file; it rests on those two readings of one file.
+
 **Measured cost.** None observed: the declared figure is above every measured
 one. Unmeasured: the same peaks on macOS on Apple silicon, where the
-allocator, the BLAS and librosa's build differ. A cost that read low there
+allocator, the BLAS and librosa's build differ, and any file of more than two
+channels. A cost that read low there
 would let the planner afford a worker the machine cannot carry, which the
 headroom, the reserve and the pressure gates stand behind.
 

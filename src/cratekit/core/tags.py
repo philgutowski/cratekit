@@ -891,27 +891,45 @@ def read_voxgender_from_file(path: Path) -> str | None:
     return read_tag(path, "voxgender")
 
 
-def audio_seconds(path: Path) -> float | None:
-    """How long the audio in ``path`` runs, read off its header, or None.
+def audio_shape(path: Path) -> tuple[float | None, int | None, int | None]:
+    """What the header says of the audio in ``path``: seconds, sample rate, channels.
 
-    The container's own statement of its length, never a decode: a pass that
-    is about to decode a folder asks this first, to know how much memory its
-    longest file will need (U241). None for a file whose header does not say,
-    cannot be read, or says something that is not a positive length, and the
+    The container's own statement, never a decode: a pass that is about to
+    decode a folder asks this first, to know how much memory each file will
+    need (U241). Each of the three is None when the header does not say it,
+    cannot be read, or says something that is not a positive number, and the
     caller decides what not knowing means. Reads nothing but the header and
     writes nothing.
     """
     try:
         import mutagen
 
-        handle = mutagen.File(path)
-        length = getattr(getattr(handle, "info", None), "length", None)
-    except Exception as exc:  # noqa: BLE001 - an unreadable header is an unknown length
-        log.debug("length read failed for %s: %s", path, exc)
+        info = getattr(mutagen.File(path), "info", None)
+    except Exception as exc:  # noqa: BLE001 - an unreadable header is an unknown shape
+        log.debug("header read failed for %s: %s", path, exc)
+        return None, None, None
+    return (
+        _positive(getattr(info, "length", None)),
+        _positive_count(getattr(info, "sample_rate", None)),
+        _positive_count(getattr(info, "channels", None)),
+    )
+
+
+def _positive(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
         return None
-    if isinstance(length, bool) or not isinstance(length, (int, float)):
+    number = float(value)
+    if not number > 0.0 or number == float("inf"):
         return None
-    seconds = float(length)
-    if not seconds > 0.0 or seconds == float("inf"):
+    return number
+
+
+def _positive_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
         return None
-    return seconds
+    return value
+
+
+def audio_seconds(path: Path) -> float | None:
+    """How long the audio in ``path`` runs, read off its header, or None."""
+    return audio_shape(path)[0]

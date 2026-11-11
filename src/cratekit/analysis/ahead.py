@@ -32,8 +32,10 @@ NOW, and three things can make it not so, each checked when the head is read:
   whatever the file itself raises is raised here as it always was.
 
 In every one of those the fallback is the one line the worker ran before
-this module existed, in this process. So the worst this module can do to a
-run is make it as slow as it was.
+this module existed, in this process, so a run that loses its pool is the
+serial run. That holds because two workers starting together no longer fill
+librosa's kernel cache together: before ``analysis.warm`` they could damage
+it, and then the fallback died in the driver exactly where the worker had.
 
 WHAT THE FALLBACK COSTS IN MEMORY, SAID OUT LOUD. A head measured here while
 the workers are still running, a changed file or a file a worker raised on,

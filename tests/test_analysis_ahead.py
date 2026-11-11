@@ -341,7 +341,7 @@ def test_a_machine_using_most_of_its_memory_names_the_used_percent_gate(
 def test_memory_overrules_a_wide_core_count(cfg, silence, tmp_path, monkeypatch):
     """Sixty four cores and room for two workers is two workers, and the line says memory."""
     folder = fill(tmp_path / "tight", silence)
-    cost = light.worker_bytes(light.longest_seconds(list(folder.iterdir())))
+    cost = light.costliest(list(folder.iterdir()))
     reserve = pool.DEFAULT_MEMORY_RESERVE_BYTES + vocals.VOCAL_WORKER_BYTES
     # Enough, after the reserve and the headroom, for two workers and not three.
     available = reserve + (2 * cost * 100) // pool.DEFAULT_HEADROOM_PERCENT + cost // 2
@@ -415,6 +415,60 @@ def test_a_job_whose_record_is_gone_says_it_does_not_know(cfg, silence, tmp_path
     code, again = drive(resume_argv(job_of(done)))
     assert code == int(ExitCode.OK), again
     assert pool_check(again)["detail"].startswith("no pool was recorded for this job")
+
+
+def test_a_resume_with_nothing_left_to_measure_keeps_the_pool_that_measured_the_job(
+    cfg, silence, tmp_path, monkeypatch
+):
+    """Two workers measured all of it; the resume that only settles a row must not say one."""
+    names = ("a", "slow b", "slow c")
+    folder = fill(tmp_path / "kept", silence, names=names)
+    machine(monkeypatch)
+    real = artifacts.produced
+    held: list[str] = []
+
+    def produced(cfg_, job, item, report):
+        staged = real(cfg_, job, item, report)
+        if len(held) < 2:
+            held.append(item.item_id)
+            if len(held) == 2:
+                os.kill(os.getpid(), signal.SIGINT)
+        return staged
+
+    monkeypatch.setattr(artifacts, "produced", produced)
+    code, stopped = drive(["analyze", "run", str(folder)])
+    assert code == int(ExitCode.INTERRUPTED), stopped
+    job_id = job_of(stopped)
+    first = artifacts.pool_record(cfg, job_id)
+    assert first["workers"] == 3
+
+    # Finish the two files left by hand, as a second run would, so the resume
+    # finds every name carrying its head and has nothing to measure.
+    monkeypatch.setattr(artifacts, "produced", real)
+    for path in sorted(folder.iterdir()):
+        if not analysis_cli.carries_head(path, cfg):
+            path.rename(path.with_name(f"03A - 120 - {path.name}"))
+    code, resumed = drive(list(stopped["cause"]["detail"]["resume"]))
+
+    assert artifacts.pool_record(cfg, job_id) == first, "a drive that measured nothing overwrote it"
+    if code == int(ExitCode.OK):
+        assert pool_check(resumed)["detail"].startswith("3 workers")
+
+
+def test_a_pool_record_that_cannot_be_written_is_a_missing_line_and_never_a_failed_job(
+    cfg, silence, tmp_path, monkeypatch
+):
+    folder = fill(tmp_path / "unwritable", silence, names=("a", "b"))
+    machine(monkeypatch)
+
+    def refuses(cfg_, job_id, record):
+        raise OSError("the state directory is read only")
+
+    monkeypatch.setattr(artifacts, "record_pool", refuses)
+    code, done = drive(["analyze", "run", str(folder)])
+    assert code == int(ExitCode.OK), done
+    assert set(states(job_of(done)).values()) == {"done"}
+    assert pool_check(done)["detail"].startswith("no pool was recorded for this job")
 
 
 def test_a_job_another_driver_holds_records_no_pool_and_adds_none_to_the_refusal(
@@ -658,6 +712,67 @@ def test_a_file_rewritten_in_place_after_its_head_was_measured_is_measured_again
     assert session.remeasured == {"file-changed": 1}
 
 
+def test_a_file_rewritten_at_the_same_length_is_measured_again_by_its_time_alone(
+    silence, tmp_path, monkeypatch, bound
+):
+    """Same inode, same size: only the modification time says it was written."""
+    session, (first, second) = _session(tmp_path, silence, monkeypatch, ("a", "b"))
+    ahead.head("job-under-test", first, None)
+    _wait_for_mark(bound, "b.flac")
+    before = os.stat(second)
+    os.utime(second, ns=(before.st_atime_ns, before.st_mtime_ns + 5_000_000_000))
+    after = os.stat(second)
+    assert (after.st_ino, after.st_size) == (before.st_ino, before.st_size)
+
+    ahead.head("job-under-test", second, None)
+
+    assert session.remeasured == {"file-changed": 1}
+
+
+def test_a_file_rewritten_with_its_time_put_back_is_measured_again_by_its_size_alone(
+    silence, tmp_path, monkeypatch, bound
+):
+    """Same inode, same modification time: only the size says it was written."""
+    session, (first, second) = _session(tmp_path, silence, monkeypatch, ("a", "b"))
+    ahead.head("job-under-test", first, None)
+    _wait_for_mark(bound, "b.flac")
+    before = os.stat(second)
+    with open(second, "r+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        handle.write(b"\0" * 64)
+    os.utime(second, ns=(before.st_atime_ns, before.st_mtime_ns))
+    after = os.stat(second)
+    assert (after.st_ino, after.st_mtime_ns) == (before.st_ino, before.st_mtime_ns)
+    assert after.st_size != before.st_size
+
+    ahead.head("job-under-test", second, None)
+
+    assert session.remeasured == {"file-changed": 1}
+
+
+def rewrites_as_it_reads(path: Path) -> dict | None:
+    """A detector under which the file is written WHILE it is being read."""
+    with open(path, "r+b") as handle:
+        handle.seek(0, os.SEEK_END)
+        handle.write(b"\0" * 64)
+    return fake_head(path)
+
+
+def test_the_identity_a_worker_returns_is_the_files_before_the_read(silence, tmp_path, monkeypatch):
+    """A file written during its own read must not carry the written file's identity."""
+    target = tmp_path / "moving.flac"
+    shutil.copy2(silence, target)
+    before = ahead.identity_of(str(target))
+    monkeypatch.setattr(light, "_DETECT", rewrites_as_it_reads)
+
+    measured, found = ahead.measure(str(target))
+
+    assert found["camelot"]
+    assert measured == before
+    assert measured != ahead.identity_of(str(target)), "the fixture did not change the file"
+    assert ahead.identity_of(str(tmp_path / "not there.flac")) is None
+
+
 def test_settings_that_changed_mid_run_stop_the_pool_and_the_rest_is_measured_here(
     silence, tmp_path, monkeypatch, bound
 ):
@@ -782,13 +897,58 @@ def test_a_light_workers_cost_is_the_measured_line_in_the_tracks_length():
         light.worker_bytes(float("nan"))
 
 
-def test_the_cost_is_set_by_the_longest_track_in_the_batch(tmp_path, silence, monkeypatch):
-    lengths = {"a.flac": 200.0, "b.flac": 610.0, "c.flac": 45.0}
-    monkeypatch.setattr(tags, "audio_seconds", lambda path: lengths[Path(path).name])
+def shapes(monkeypatch, known: dict[str, tuple]) -> None:
+    """Stand in for the headers: each name's seconds, sample rate and channels."""
+    monkeypatch.setattr(tags, "audio_shape", lambda path: known[Path(path).name])
+
+
+def test_the_cost_is_set_by_the_costliest_track_in_the_batch(monkeypatch):
+    shapes(
+        monkeypatch,
+        {"a.flac": (200.0, 44100, 2), "b.flac": (610.0, 44100, 2), "c.flac": (45.0, 44100, 2)},
+    )
     machine(monkeypatch, core_count=8)
-    plan = light.plan(list(lengths))
-    assert plan.worker_bytes == light.worker_bytes(610.0)
+    plan = light.plan(["a.flac", "b.flac", "c.flac"])
+    assert plan.worker_bytes == light.worker_bytes(610.0) == light.costliest(["b.flac"])
     assert plan.ceiling == 6 and plan.workers == 3
+
+
+def test_a_file_stored_at_a_high_rate_costs_its_decode_and_not_only_its_length():
+    """The decode reads the file at its own rate; everything after it works at 22050."""
+    cd_quality = light.worker_bytes(660.0, rate=44100, channels=2)
+    assert cd_quality == 320 * MIB + 990 * MIB, "CD audio is the analysis line, unchanged"
+    # At 96 kilohertz the decode has just passed the analysis: 1213 megabytes
+    # were measured, and the declared figure is above that.
+    middle = light.worker_bytes(660.0, rate=96000, channels=2)
+    assert middle == 320 * MIB + 660 * 96000 * 4 * (2 + 3) > 1213 * MIB
+    high = light.worker_bytes(660.0, rate=192000, channels=2)
+    assert high == 320 * MIB + 660 * 192000 * 4 * (2 + 3)
+    # Above both peaks measured for exactly this file, 2054 and 2180 megabytes.
+    assert high > 2180 * MIB
+    assert light.worker_bytes(660.0, rate=44100, channels=1) == cd_quality
+    assert (light.DECODE_BYTES_PER_CHANNEL, light.DECODE_EXTRA_CHANNELS) == (4, 3)
+    with pytest.raises(ValueError):
+        light.worker_bytes(10.0, rate=0)
+    with pytest.raises(ValueError):
+        light.worker_bytes(10.0, channels=0)
+
+
+def test_one_high_rate_file_sets_the_batchs_cost_though_it_is_not_the_longest(monkeypatch):
+    shapes(
+        monkeypatch,
+        {"long.flac": (700.0, 44100, 2), "hires.flac": (600.0, 192000, 2)},
+    )
+    machine(monkeypatch, core_count=8)
+    plan = light.plan(["long.flac", "hires.flac"])
+    assert plan.worker_bytes == light.worker_bytes(600.0, rate=192000, channels=2)
+    assert plan.worker_bytes > light.worker_bytes(700.0)
+    assert light.longest_seconds(["long.flac", "hires.flac"]) == 700.0
+
+
+def test_a_header_that_gives_a_length_and_no_rate_is_costed_at_the_highest_plausible(monkeypatch):
+    shapes(monkeypatch, {"vague.flac": (300.0, None, None)})
+    assert (light.ASSUMED_RATE, light.ASSUMED_CHANNELS) == (192000, 2)
+    assert light.cost_of("vague.flac") == light.worker_bytes(300.0, rate=192000, channels=2)
 
 
 def test_a_length_the_header_will_not_give_is_bounded_by_the_files_size(tmp_path, monkeypatch):
@@ -798,11 +958,35 @@ def test_a_length_the_header_will_not_give_is_bounded_by_the_files_size(tmp_path
     assert light.seconds_of(unreadable) == 400_000 / light.SLOWEST_BYTES_PER_SECOND == 100.0
     assert light.seconds_of(tmp_path / "not there.flac") == 0.0
     assert light.longest_seconds([]) == 0.0
+    # The size's bound is the whole of it: no assumed rate is laid on top.
+    assert light.cost_of(unreadable) == light.worker_bytes(100.0, rate=1, channels=1)
+    assert light.cost_of(unreadable) == 320 * MIB + 150 * MIB
+    assert light.costliest([]) == light.LIGHT_BASE_BYTES
 
 
-def test_a_real_files_length_is_read_off_its_header(silence):
-    assert tags.audio_seconds(silence) == pytest.approx(1.0, abs=0.05)
-    assert light.seconds_of(silence) == tags.audio_seconds(silence)
+def test_a_real_files_length_rate_and_channels_are_read_off_its_header(silence):
+    seconds, rate, channels = tags.audio_shape(silence)
+    assert seconds == pytest.approx(1.0, abs=0.05)
+    assert (rate, channels) == (44100, 2)
+    assert tags.audio_seconds(silence) == seconds
+    assert light.seconds_of(silence) == seconds
+    assert light.cost_of(silence) == light.worker_bytes(seconds, rate=44100, channels=2)
+
+
+@pytest.mark.parametrize("value", [0, -2, True, 44100.0, "2", None])
+def test_a_header_rate_or_channel_count_that_is_not_a_count_is_unknown(tmp_path, monkeypatch, value):
+    import mutagen
+
+    class _Info:
+        length = 10.0
+
+    class _Handle:
+        info = _Info()
+
+    _Handle.info.sample_rate = value
+    _Handle.info.channels = value
+    monkeypatch.setattr(mutagen, "File", lambda path: _Handle())
+    assert tags.audio_shape(tmp_path / "x.flac") == (10.0, None, None)
 
 
 @pytest.mark.parametrize("length", [0.0, -3.0, float("inf"), float("nan"), True, "12"])
@@ -821,7 +1005,7 @@ def test_a_header_length_that_is_not_a_positive_number_is_unknown(tmp_path, monk
 
 
 def test_the_light_pool_is_refused_by_the_gates_whatever_the_cores_say(monkeypatch):
-    monkeypatch.setattr(tags, "audio_seconds", lambda path: 300.0)
+    monkeypatch.setattr(tags, "audio_shape", lambda path: (300.0, 44100, 2))
     machine(monkeypatch, core_count=32, swap=2 * GIB)
     plan = light.plan(["a.flac", "b.flac", "c.flac"])
     assert plan.in_process and plan.bound is pool.Bound.MEMORY_PRESSURE
@@ -829,7 +1013,7 @@ def test_the_light_pool_is_refused_by_the_gates_whatever_the_cores_say(monkeypat
 
 
 def test_the_batch_runner_plans_the_same_pool_the_job_does(monkeypatch):
-    monkeypatch.setattr(tags, "audio_seconds", lambda path: 120.0)
+    monkeypatch.setattr(tags, "audio_shape", lambda path: (120.0, 44100, 2))
     machine(monkeypatch, core_count=4, swap=2 * GIB)
     monkeypatch.setattr(light, "_DETECT", fake_head)
     results = light.run(["a.flac", "keyless b.flac"])

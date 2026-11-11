@@ -779,10 +779,12 @@ crate metadata mytags-vocals [--apply]
 - `analyze run` measures key, tempo, drift and energy in worker processes
   ahead of the one process that scores vocals and writes, as many as the
   machine's memory affords up to its cores less two. The answer's
-  `analyze.pool` line says how many ran and what held the count there: swap
+  `analyze.pool` line says how many ran, in the job's last drive that
+  measured any file, and what held the count there: swap
   already in use (1 GB or more refuses a pool, and macOS keeps counting swap
   until a restart), memory 85 percent or more in use, the memory available
-  for the batch's longest track, or the ceiling. One worker means the run was
+  for the batch's costliest track (a long one, or one stored at a high
+  sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
 - `--recursive` queues every folder under the one named as one resumable
   job; linked folders are not walked. `analyze run` has no such flag.
