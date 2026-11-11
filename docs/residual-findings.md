@@ -47829,3 +47829,51 @@ exists, `crate --run RUN --calls N label sync --go`, which the guide names.
 **Measured cost.** Driven in the suite on the matcher. No followed label's name is known to begin with a year; the card's five do not. Its files are asked of the catalogues, the behaviour before U240.
 
 **Closes when:** a needle that begins with a year is matched against the line with only its mark stripped, keeping the round two test. Ledger only.
+
+---
+
+## R-1480. Tag folder's --label given a display name two labels share takes the first registered in silence, and registry rename accepts a taken name or another label's identifier
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_label_payload` in `src/cratekit/tagging/cli.py` resolves `--label` with `Registry.resolve`, identifier first, then the first label holding the display name, as every label verb resolves a typed name. A file's own tag is now read as a name first (R-1476), so with omega renamed `alpha` while the label whose identifier is `alpha` is called Alpha Recordings, `--label alpha` gives every untagged file Alpha Recordings' genre while a file tagged `alpha` in the same sweep reads as omega. `crate label registry rename` in `src/cratekit/label/registry.py` accepts a name another label already carries, or another label's identifier, which is what makes every one of these shapes.
+
+**Measured cost.** Driven at both review rounds: `--label Alpha` with two labels called Alpha writes the first registered label's genre with no warning, and with the order reversed writes nothing and warns `tag-folder-label-no-genre`. The genre written is the genre of the label the typed text resolves to, so nothing false is said; the person is not told the text named two labels. Whether the live registry holds a shared name is unmeasured.
+
+**Closes when:** `registry rename` refuses a name another label carries or another label's identifier, or `tag folder` warns when its `--label` text is a name more than one label holds. Ledger only.
+
+---
+
+## R-1481. A file whose label tag names a display name two labels share is asked of the catalogues with no warning, and the resume's warning names the shared name alone
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_label_seam` in `src/cratekit/tagging/cli.py` answers nothing for a tag naming a display name two frozen labels hold, in any case or slug spelling, by R-1476's rule. The genre label's own files carrying that name then go to the catalogues. `tag-folder-label-tag-outranked` fires only on a sweep given `--label`, so a sweep given none says it only in the JSON summary's `label_tags`. `tag-folder-label-on-resume` names the frozen label by display name alone, where the queue's warning names `Alpha (omega)`.
+
+**Measured cost.** Driven at both review rounds: two labels called Alpha, the genre label's three fetched files tagged `Alpha`, no `--label`: no genre written, `label_tags {'Alpha': 3}`, warnings empty. On main the first holder's genre was written, the right one for these files and the wrong one for the other label's. Nothing false is said.
+
+**Closes when:** a sweep warns when a file's tag names a display name more than one label holds, and the resume warning names the identifier beside a shared name. Ledger only.
+
+---
+
+## R-1482. A tag folder sweep queued before R-1476 reads its --label as a name, and one queued before U240 still finds another label's genre under a shared name
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_folder_seam` in `src/cratekit/tagging/cli.py` answers the frozen `label_id`, which no job queued before R-1476 carries, so such a job reads its `--label` through the tag seam as a name: a name two labels share answers nothing. A job queued before U240 froze no needles, so `_frozen_labels` holds only the labels with a genre and the card's defect stands for it.
+
+**Measured cost.** Simulated, not driven, by stripping the payload keys at queue: (a) a job frozen with the name and the needles and no identifier, `--label alpha` under two Alphas, asks the catalogues with no warning where main wrote the genre; (b) a job frozen before U240, `--label omega`, writes the other Alpha's genre. The producer is a job queued on an older build and resumed after upgrade.
+
+**Closes when:** such jobs are gone from every queue, or the resume warns that a job froze no identifier. Ledger only.
+
+---
+
+## R-1483. A file's label tag reaches a label by identifier only when no label's name or name slug is the tag, so an old name another label's name slug carries goes to that label, and an identifier that is no slug is never reached
+
+**Found:** at the review of #658, R-1476, 2026-11-11.
+
+**The mechanism.** `_label_seam` in `src/cratekit/tagging/cli.py` reads a tag as a display name, then as a display name's slug, then as the identifier its own slug is, the last for a renamed label's old name. The engine helper `tag.tag_folder` in `src/cratekit/tagging/tag.py` takes `label` and not the new `folder_genre`, so a caller of it would answer `--label` as a name.
+
+**Measured cost.** Driven at round two: Alpha with a genre renamed Zed, Omega renamed `Alpha!` with another genre, a file tagged `Alpha` takes Omega's genre where main gave Alpha's; two renames are needed and which label is meant is undefined. A tag equal to an identifier that is not slug shaped, such as one carried in a hand edited registry file, answers nothing where main answered by exact identifier; `add` and `adopt` both make identifiers with `slug`, so no verb was found to produce one. `tag.tag_folder` has no caller in `src`.
+
+**Closes when:** the registry records a label's former names, so an old name is matched as itself, and `tag.tag_folder` takes `folder_genre` or is removed. Ledger only.
