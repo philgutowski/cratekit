@@ -47506,3 +47506,110 @@ its findings are driven or filed. Ledger only: a maintainer facing gap.
 **Measured cost.** Driven by the reviewer on the suite's fakes: the false refusal with two old holds and one new other act release, exit 1, even with a confirmed release open in review; the kept roster reused with 84 answers and nothing offered. The live state was not read: the brief measured three `RAWAXXX` releases offered under Rawax, not held. Main alone reaches the same false refusal when a person narrows a needle between two sweeps, so this is the canary's existing assumption with a second way in.
 
 **Closes when:** the attended card for U237 has listed and rejected the old offers and holds credited to another act, and the false refusal either cannot be reached (a hold is verified again under the current rule before the canary counts it) or is accepted as the narrowed needle case. Ledger only until the attended pass shows a live hold of this shape.
+
+---
+
+## R-1463. A release past a label's offer window that is tombstoned, already queued or already answered is still counted as the label's past the window
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `sweep._past_window` judges each release past the window
+by its copyright line alone. A release a person deleted on purpose
+(tombstoned), one already in the review queue, or one a `label sync`
+answer already covered is counted as one of the label's releases past the
+window, though raising `--offer` would offer none of them: inside the
+window a tombstoned one takes no place and an answered or queued one takes
+a place without being offered again.
+
+**Measured cost.** Driven by round one's review through `label sync --next`
+on a roster whose seven releases past a window of three were tombstoned
+in the store directly: the question said "7 more of the label's
+release(s) past this run's window", and with the offer raised to ten the
+next run said nothing new. An answered release pushed past the window by
+a newer one is counted the same way (8 said where 7 were never asked).
+The tombstones were written to the store, not by the delete verb, so the
+reach through a person's own deletions is unmeasured. The statement is
+true (they are the label's releases); it is not the number the person
+raises the window against.
+
+**Closes when:** the count past the window leaves out a release the
+tombstone reader suppresses and one in the offered set, both answered
+locally with no provider call, and `LabelListing.beyond`'s docstring, the
+offer window entry in `CONCEPTS.md` and the guide say so. Ledger only: the
+card scoped the figure to the label's needle, and the figure says nothing
+false.
+
+---
+
+## R-1464. A saved label sync question's figure past the window has edges no test pins, and an unreadable figure says nothing past the window
+
+**Found:** at the second review round of #646, U238, 2026-11-10.
+
+**The mechanism.** `sync_cli.Question.from_json` reads `beyond` with
+`_count(...) or 0`, so a saved figure that cannot be read (null, a string, a
+float) reads as zero and takes a readable split down with it, and the
+question then says nothing about releases past the window. The line
+predates U238. Beside it, three guards kill nothing alone: the lower clamp
+in `sync_cli._past_window`, `_count` refusing a float, and the walk's
+`_nothing_check` call carrying the listing (the `--next` path's twin is
+pinned).
+
+**Measured cost.** None reachable: round two drove three producers of a
+saved question (the branch's `Question.to_json`, `origin/main`'s, and the
+record's write and read back) and none writes an unreadable figure. The
+walk's nothing new line was driven and says the right count.
+
+**Closes when:** an unreadable saved `beyond` is refused or said as
+unread rather than read as zero, and tests pin the lower clamp, a float
+split and the walk's nothing new line. Ledger only.
+
+---
+
+## R-1465. Whether a release's copyright line names a label is decided by three copies of one rule
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `sweep._past_window`, `tidal_catalogue._credits_label`
+and the provider's `search_release` judged by `verify.verify_release` each
+pair `harvest.labels_from_copyright` with `verify.labels_match`. The sweep
+does not import `_credits_label` because it lives in the provider adapter,
+which the generic sweep must not import, and it needs a third answer, no
+line, that `_credits_label` folds into no. A repair to one copy (U237's
+extractor fix lands in the shared extractor, so it reaches all three) that
+changed the match itself in only one would let the count past the window
+drift from what the window confirms.
+
+**Measured cost.** None today: round one's review classified 20 line
+shapes by the count and by the window's verifier and they agreed on 20 of
+20. Argued from reading only.
+
+**Closes when:** one public function in `cratekit.label.verify` or
+`harvest` answers yes, no or no line for a release and a needle, and all
+three callers use it. Ledger only.
+
+---
+
+## R-1466. The review list grouped by label shows a label's own releases past the window and the unchecked ones as one beyond figure
+
+**Found:** at the review of #646, U238, 2026-11-10.
+
+**The mechanism.** `review.record_round` stores one `beyond` per label and
+run, which since U238 is the label's own releases past the window plus
+those with no copyright line. `crate review list --queue label-release
+--group-by label` and `--group-by run` print it whole, so the part that is
+only a bound is not told from the part that is a count, while `label
+sync` says "7 more of the label's release(s) past this run's window, and
+up to 2 more not yet checked" for the same listing. A round recorded by an
+earlier build also stays as it was until the label next has a question,
+since `_question_for` records a round only when it builds one.
+
+**Measured cost.** Driven by round one's review: after a question of
+(9, 2) the grouped row read `beyond: 9`; a hand recorded round of 17 stayed
+17 beside a nothing new line saying 7 and up to 2. The figure is defined
+as the sum in `CONCEPTS.md` and is not called the label's releases, so
+nothing false is said.
+
+**Closes when:** the `offer_rounds` table gains an unchecked column
+(additive, as the table itself was) and the grouped list says the two
+parts as `label sync` does, and a nothing new listing records its round
+too. Ledger only.
