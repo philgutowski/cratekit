@@ -427,6 +427,7 @@ def render_job_state(envelope: Envelope, *, drive: Sequence[str] | None = None) 
     if state != "queued":
         lines += _outbound_lines(progress)
     lines += _track_lines(progress)
+    lines += _analysis_check_lines(progress)
     return lines
 
 
@@ -591,6 +592,33 @@ def _playlist_lines(progress: Mapping[str, Any]) -> list[str]:
 #: here, for the reason :data:`_RESOLVING_VERBS` gives; a test pins it to
 #: ``cli.jobs.TRACKS_FIELD``.
 _INTAKE_TRACKS = "intake_tracks"
+
+
+def _analysis_check_lines(progress: Mapping[str, Any]) -> list[str]:
+    """The checks an analysis job reports about its own run, or nothing at all (U241).
+
+    ``analyze run`` says how many workers it used and what held the count
+    there, and a person running it should not have to ask for json to read
+    it. Gated on the payload carrying the list under ``analysis``, never on the
+    verb's name, and printed in the check table's own form so a status reads
+    the same here as under ``crate doctor``.
+    """
+    analysis = progress.get("analysis")
+    if not isinstance(analysis, Mapping):
+        return []
+    checks = analysis.get("checks")
+    if not isinstance(checks, Sequence) or isinstance(checks, str):
+        return []
+    lines: list[str] = []
+    for check in checks:
+        if not isinstance(check, Mapping):
+            continue
+        status = str(check.get("status", "?"))
+        lines.append(
+            f"  [{_CHECK_MARK.get(status, status)}] {_one_line(check.get('key', '?'))}: "
+            f"{_one_line(check.get('detail', ''))}"
+        )
+    return lines
 
 
 def _track_lines(progress: Mapping[str, Any]) -> list[str]:

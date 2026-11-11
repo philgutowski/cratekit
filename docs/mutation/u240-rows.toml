@@ -1,0 +1,233 @@
+name = "u240"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_two_names_take_the_first"
+description = "_by_label: a line naming two registered labels gives the file the first one's genre"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''    if len(named) != 1 or not named[0].genre:'''
+new = '''    if not named or not named[0].genre:'''
+
+[[rows]]
+id = "M2_no_genre_label_named"
+description = "_by_label: a line naming one label with no genre is not recorded on the file"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        return _Labelled(None, own, copyright_labels=tuple(found.label for found in named))'''
+new = '''        return _Labelled(None, own, copyright_labels=())'''
+
+[[rows]]
+id = "M3_tag_no_longer_outranks_the_line"
+description = "_by_label: a file's own label tag no longer comes first, so the line or --label decides a tagged file"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''    if own:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M4_folder_label_no_longer_outranks_the_line"
+description = "_by_label: --label no longer comes before the copyright line"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''    if typed:
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M5_wrong_field_read"
+description = "_by_label: the label tag read where the copyright line should be"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        line = held["copyright"] or ""'''
+new = '''        line = held["label"] or ""'''
+
+[[rows]]
+id = "M6_named_by_lost"
+description = "tag_one: the record says nothing of how the label was named"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''            "label_from": tier.named_by,'''
+new = '''            "label_from": "",'''
+
+[[rows]]
+id = "M7_line_labels_dropped_from_result"
+description = "tag_one: the labels an unsettled line named never reach the result"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        copyright_labels=tier.copyright_labels,'''
+new = '''        copyright_labels=(),'''
+
+[[rows]]
+id = "M8_failed_files_line_dropped"
+description = "tag_one: a failed file's refusal no longer carries its line's labels"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        if needs_genre and tier.copyright_labels and type(exc) is CratekitError:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M9_park_flattened"
+description = "tag_one: a searcher's park on an unsettled line is rebuilt as a plain refusal"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        if needs_genre and tier.copyright_labels and type(exc) is CratekitError:'''
+new = '''        if needs_genre and tier.copyright_labels:'''
+
+[[rows]]
+id = "M10_engine_never_reads_the_line"
+description = "tag_one: the copyright seam is never handed to the tier"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        else _by_label(path, label_genre, label, copyright_labels)'''
+new = '''        else _by_label(path, label_genre, label, None)'''
+
+[[rows]]
+id = "M11_needle_is_the_name"
+description = "_label_payload: freeze the label's name as its needle, ignoring --match"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''            entry.label_id: {"name": entry.name, "needle": entry.match or entry.name}'''
+new = '''            entry.label_id: {"name": entry.name, "needle": entry.name}'''
+
+[[rows]]
+id = "M12_raw_line_matched"
+description = "copyright_matcher: match the needle against the raw line, mark and year included (round two's first blocker)"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        credit = credits[0]'''
+new = '''        credit = line'''
+
+[[rows]]
+id = "M13_two_way_match"
+description = "copyright_matcher: match either way, so a short line inside a long needle names it"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        named = [row for row in rows if label_verify.credit_names(row[1], credit)]'''
+new = '''        named = [row for row in rows if label_verify.labels_match(row[1], credit)]'''
+
+[[rows]]
+id = "M14_widest_any"
+description = "copyright_matcher: the longer needle wins when it carries any other named, not every other"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''            if all(label_verify.credit_names(other[1], row[1]) for other in named)'''
+new = '''            if any(label_verify.credit_names(other[1], row[1]) for other in named if other is not row)'''
+
+[[rows]]
+id = "M15_no_widest_rule"
+description = "copyright_matcher: no specificity rule, so a sublabel's line settles neither label"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        if len(widest) == 1:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M16_genres_joined_by_name"
+description = "_copyright_seam: join a label's genre by its display name, round one's second blocker"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        held = genres.get(label_id)'''
+new = '''        held = next((row for row in genres.values() if isinstance(row, Mapping) and row.get("name") == name), None)'''
+
+[[rows]]
+id = "M17_worker_hands_no_seam"
+description = "handle: the worker never builds the copyright seam"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        copyright_labels=_copyright_seam(payload),'''
+new = '''        copyright_labels=None,'''
+
+[[rows]]
+id = "M18_way_inverted"
+description = "_way: a label's genre reported as a catalogue's"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''    if str(report.get("source") or "") == tag_engine.LABEL_GENRE:'''
+new = '''    if str(report.get("source") or "") != tag_engine.LABEL_GENRE:'''
+
+[[rows]]
+id = "M19_one_name_ambiguous"
+description = "_count_ambiguous: count a line naming one label as ambiguous"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''    if len(names) > 1:'''
+new = '''    if len(names) > 0:'''
+
+[[rows]]
+id = "M20_warning_dropped"
+description = "_resume: the two label warning never reaches the envelope"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''            + _ambiguous_warnings(summary)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "M21_failed_sweep_unreported"
+description = "_with_report: no ending carries the report, so a failed sweep says nothing of its files"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''    if job.state not in _REPORTED_ENDINGS:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "M22_failed_items_left_out"
+description = "_summary: items with no report are not listed"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''        if item_id in reported:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "M23_cap_lowered"
+description = "_with_report: name three failed files rather than ten"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''_FAILED_NAMED = 10'''
+new = '''_FAILED_NAMED = 3'''
+
+[[rows]]
+id = "M24_ascii_fold"
+description = "credit_names: fold as fold_label does, dropping letters outside ASCII (round two's second blocker)"
+file = "src/cratekit/label/verify.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/modules/test_labels.py", "tests/test_label_tidal_catalogue.py"]
+old = '''_WORD_BREAK = re.compile(r"[\W_]+")'''
+new = '''_WORD_BREAK = re.compile(r"[^a-z0-9]+")'''
+
+[[rows]]
+id = "M25_copyright_key_wrong"
+description = "FIELDS: read the MP4 copyright line from a key the downloader never writes"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_tag_folder_copyright.py", "tests/test_label_genre.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_tags.py"]
+old = '''    "copyright": TagSpec("copyright", "TCOP", "cprt"),'''
+new = '''    "copyright": TagSpec("copyright", "TCOP", "\xa9cpy"),'''

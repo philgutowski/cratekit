@@ -11,6 +11,12 @@ rate. Writes nothing. Refuses while rekordbox or its agent is running.
     .venv/bin/python scripts/head_agreement.py
     .venv/bin/python scripts/head_agreement.py --database /path/to/copy.db
     .venv/bin/python scripts/head_agreement.py --analyse 300 --step 4
+    .venv/bin/python scripts/head_agreement.py --analyse 300 --step 4 --key windows
+
+``--key`` chooses how the detector takes the key's chroma for ``--analyse``:
+``whole``, which is what ships, ``windows`` or ``plain`` (U241). The two
+cheaper methods become the default only if their key agreement over the same
+sample is within one percentage point of the whole track's.
 
 The recorded numbers in ``cratekit.analysis.detect`` were taken with
 ``--analyse 300 --step 4`` on 2026-09-30, and are replaced by hand from this
@@ -51,6 +57,17 @@ def main(argv: list[str] | None = None) -> int:
         help="take every STEP-th eligible file for --analyse, spreading the sample",
     )
     parser.add_argument(
+        "--key",
+        default="whole",
+        choices=("whole", "windows", "plain"),
+        help=(
+            "how --analyse takes the key's chroma: the whole track, which is what "
+            "ships, evenly spread windows, or the whole track without the harmonic "
+            "separation (U241); run each over the same sample to compare their key "
+            "agreement"
+        ),
+    )
+    parser.add_argument(
         "--json", action="store_true", help="print the distributions as JSON instead"
     )
     args = parser.parse_args(argv)
@@ -80,7 +97,9 @@ def main(argv: list[str] | None = None) -> int:
         reports["detector_against_rekordbox_own_analysis"] = agreement.reanalyse(
             rows,
             cfg,
-            detector=lambda path: detect.analyse_file(path, tempo_window=window),
+            detector=lambda path: detect.analyse_file(
+                path, tempo_window=window, key=args.key
+            ),
             limit=args.analyse,
             step=args.step,
         )

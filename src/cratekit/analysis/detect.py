@@ -10,9 +10,11 @@ writes XML.
 from __future__ import annotations
 
 import copy
+import time
+from contextlib import contextmanager
 from datetime import date
 from pathlib import Path
-from typing import Any
+from typing import Any, Iterator, MutableMapping
 
 from cratekit.analysis.energy import MEASURE_RATE
 from cratekit.core import drift as drift_words
@@ -350,14 +352,158 @@ def drift_from_tempogram(
     return float(100.0 * (high - low) / middle)
 
 
+#: How the chroma the key is read from is taken (U241). ``KEY_WHOLE`` is the
+#: shipped method and the default everywhere: the harmonic part of the whole
+#: track, then its chroma. The other two are cheaper and are NOT the default,
+#: because their bar is agreement with rekordbox's own keys on the library,
+#: within one percentage point of the whole track's rate, and that is read at
+#: an attended sitting (``scripts/head_agreement.py --analyse N --key ...``),
+#: never on a fixture. ``KEY_WINDOWS`` reads the same chroma from windows
+#: spread evenly over the track. ``KEY_PLAIN`` reads the whole track's chroma
+#: without the harmonic separation, which is the half of the time the
+#: separation costs.
+KEY_WHOLE = "whole"
+KEY_WINDOWS = "windows"
+KEY_PLAIN = "plain"
+KEY_METHODS = (KEY_WHOLE, KEY_WINDOWS, KEY_PLAIN)
+#: The harmonic margin the key's separation has always used.
+KEY_HARMONIC_MARGIN = 4
+#: The windowed method's windows: how many, and how long each is. Six of
+#: thirty seconds is three minutes of a track however long it runs. They are
+#: spread, one centred in each sixth, so a key that changes late is heard in
+#: proportion to how much of the track it holds, where the opening minutes
+#: alone would never hear it.
+KEY_WINDOW_COUNT = 6
+KEY_WINDOW_SECONDS = 30.0
+
+#: The stages a run's time is reported under (U241), in the order they run.
+#: ``scripts/analyze_stages.py`` prints them; the vocal pass adds its own two.
+STAGES = ("decode", "tempo_drift", "harmonic", "chroma_key", "energy")
+
+
+@contextmanager
+def timed(timings: MutableMapping[str, float] | None, stage: str) -> Iterator[None]:
+    """Add the wall time of the block to ``timings[stage]``, or do nothing for None.
+
+    The measurement U241's record is built from is the shipped functions timed
+    in place, through this, never a copy of them timed beside them.
+    """
+    if timings is None:
+        yield
+        return
+    started = time.perf_counter()
+    try:
+        yield
+    finally:
+        timings[stage] = timings.get(stage, 0.0) + time.perf_counter() - started
+
+
+def key_windows(
+    length: int,
+    rate: int,
+    *,
+    count: int = KEY_WINDOW_COUNT,
+    seconds: float = KEY_WINDOW_SECONDS,
+) -> list[tuple[int, int]] | None:
+    """Where the windowed key reads, as sample ranges, or None for the whole track.
+
+    The track is cut into ``count`` equal parts and one window sits in the
+    middle of each. None when the windows together would cover the track
+    anyway: a track no longer than ``count`` windows, a stinger shorter than
+    one above all, is read whole, so the windowed method and the whole track
+    method are one method on short material.
+    """
+    width = int(seconds * rate)
+    if count < 1 or width < 1 or length <= count * width:
+        return None
+    part = length / count
+    ranges: list[tuple[int, int]] = []
+    for index in range(count):
+        start = int(part * (index + 0.5) - width / 2)
+        ranges.append((start, start + width))
+    return ranges
+
+
+def key_profile(
+    samples: Any,
+    rate: int,
+    *,
+    method: str = KEY_WHOLE,
+    timings: MutableMapping[str, float] | None = None,
+) -> Any:
+    """The twelve bin chroma profile the key is read from, by ``method``.
+
+    One profile whatever the method: the mean chroma over every frame read.
+    For the windowed method the frames are the windows' own, each window
+    separated and transformed by itself, so its cost is the windows' length
+    and not the track's.
+    """
+    import librosa
+    import numpy as np
+
+    from cratekit.analysis import separation
+
+    if method not in KEY_METHODS:
+        raise ValueError(f"the key method is one of {KEY_METHODS}, not {method!r}")
+    pieces = [samples]
+    if method == KEY_WINDOWS:
+        ranges = key_windows(int(samples.shape[-1]), rate)
+        if ranges is not None:
+            pieces = [samples[start:stop] for start, stop in ranges]
+    frames = []
+    for piece in pieces:
+        if method != KEY_PLAIN:
+            with timed(timings, "harmonic"):
+                piece = separation.harmonic(piece, margin=KEY_HARMONIC_MARGIN)
+        with timed(timings, "chroma_key"):
+            frames.append(librosa.feature.chroma_cqt(y=piece, sr=rate))
+    if len(frames) == 1:
+        return frames[0].mean(axis=1)
+    return np.concatenate(frames, axis=1).mean(axis=1)
+
+
+def camelot_of(profile: Any) -> str | None:
+    """The Camelot key whose profile the chroma correlates with best, or None.
+
+    The twenty four correlations against the major and minor templates, the
+    first best kept, exactly as the detector has always chosen. None for a
+    profile with no energy in it, and for one that is not a number, where no
+    correlation compares greater than any other.
+    """
+    import numpy as np
+
+    profile = np.asarray(profile)
+    if not np.any(profile):
+        return None
+    best_corr = -2.0
+    best_key = None
+    maj = np.asarray(_MAJOR)
+    minr = np.asarray(_MINOR)
+    for tonic in range(12):
+        rotated = np.roll(profile, -tonic)
+        for mode, tmpl in (("major", maj), ("minor", minr)):
+            corr = float(np.corrcoef(rotated, tmpl)[0, 1])
+            if corr > best_corr:
+                best_corr = corr
+                best_key = f"{_PITCHES[tonic]} {mode}"
+    return _KEY_TO_CAMELOT.get(best_key or "")
+
+
 def analyse_file(
     path: Path,
     *,
     calibration: Any = None,
     tempo_window: tuple[int, int] = (DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING),
     drift_cut: float = DEFAULT_DRIFT_CUT,
+    key: str = KEY_WHOLE,
+    timings: MutableMapping[str, float] | None = None,
 ) -> dict[str, Any] | None:
     """Return camelot, tempo, drift and energy, or None when detection cannot run.
+
+    ``key`` is how the key's chroma is taken, :data:`KEY_METHODS`, the whole
+    track unless a measurement asks otherwise (U241). ``timings`` collects the
+    wall time of each of :data:`STAGES` when a mapping is passed, and costs
+    nothing when it is not.
 
     ``tempo_window`` is the configured floor and ceiling; the run binds it from
     ``analysis.tempo_floor`` and ``analysis.tempo_ceiling`` beside the
@@ -376,16 +522,29 @@ def analyse_file(
     librosa is imported inside the function so a slim install can still
     import the package.
     """
+    if key not in KEY_METHODS:
+        # A DEFECT IN THE CALLER, raised before anything is imported or opened
+        # rather than swallowed below as a track that could not be analysed.
+        raise ValueError(f"the key method is one of {KEY_METHODS}, not {key!r}")
     try:
         import librosa
-        import numpy as np
+        import numpy  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
+    # THIS PROCESS'S FIRST HEAD IS PRECEDED BY A WARM UP, ALONE (U241). librosa's
+    # compiled kernels are cached on disk, and two processes filling that cache
+    # together crash and leave it damaged; ``analysis.warm`` says how that was
+    # found. Here, rather than in a worker's initializer, so the driver, a
+    # worker, a script and a second command all take the same turn.
+    from cratekit.analysis import warm
+
+    warm.kernels()
     try:
         # AT THE ENERGY MEASURE RATE, one constant for both, because every
         # spectral feature is rate dependent and the calibration fitted on the
         # restamp path scores the samples decoded here.
-        y, sr = librosa.load(str(path), sr=MEASURE_RATE, mono=True)
+        with timed(timings, "decode"):
+            y, sr = librosa.load(str(path), sr=MEASURE_RATE, mono=True)
         if y.size == 0:
             return {"path": path, "terminal": TERMINAL_UNDECODABLE}
     except Exception:
@@ -396,36 +555,26 @@ def analyse_file(
         return {"path": path, "terminal": TERMINAL_UNDECODABLE}
     try:
         floor, ceiling = tempo_window
-        tempo, drift = measure_tempo_and_drift(y, sr, floor=floor, ceiling=ceiling)
+        # THE DRIFT IS READ OVER THE WHOLE TRACK, always (U241): it exists to
+        # find a tempo that moves somewhere in it, and it is two percent of
+        # the run.
+        with timed(timings, "tempo_drift"):
+            tempo, drift = measure_tempo_and_drift(y, sr, floor=floor, ceiling=ceiling)
         if tempo is None:
             return {"path": path, "terminal": TERMINAL_UNANALYSABLE}
         rate = int(tempo + 0.5)
-        y_harm = librosa.effects.harmonic(y, margin=4)
-        chroma = librosa.feature.chroma_cqt(y=y_harm, sr=sr)
-        profile = chroma.mean(axis=1)
+        profile = key_profile(y, sr, method=key, timings=timings)
     except Exception:
         # DECODED AND NOT ANALYSABLE IS NOT KEYLESS EITHER. A stinger too short
         # for a tempo estimate, or a signal the separation raised on, was
         # reported as atonal by the first version, the same shape as the
         # undecodable case above one step later.
         return {"path": path, "terminal": TERMINAL_UNANALYSABLE}
-    if not np.any(profile):
-        return None
-    best_corr = -2.0
-    best_key = None
-    maj = np.asarray(_MAJOR)
-    minr = np.asarray(_MINOR)
-    for tonic in range(12):
-        rotated = np.roll(profile, -tonic)
-        for mode, tmpl in (("major", maj), ("minor", minr)):
-            corr = float(np.corrcoef(rotated, tmpl)[0, 1])
-            if corr > best_corr:
-                best_corr = corr
-                best_key = f"{_PITCHES[tonic]} {mode}"
-    camelot = _KEY_TO_CAMELOT.get(best_key or "")
+    camelot = camelot_of(profile)
     if camelot is None:
         return None
-    level, status = energy_from_samples(y, sr, calibration=calibration)
+    with timed(timings, "energy"):
+        level, status = energy_from_samples(y, sr, calibration=calibration)
     return {
         "path": path,
         "camelot": camelot,

@@ -1,0 +1,805 @@
+{
+  "name": "u241",
+  "pass_kind": "light",
+  "branch": "cloud/649-analyze-run-parallel",
+  "head": "4240a8c3",
+  "when": "2026-11-11 03:27 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 17768,
+  "baseline_exit": 1,
+  "pytest_runs": 29,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 161,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/core/pool.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/core/pool.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "2dbf272a2ae863bb",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 17768,
+    "baseline_collected": 17768,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M01_worker_takes_the_interrupt",
+      "description": "stream worker: no longer ignore the terminal's interrupt, so Ctrl-C kills a worker mid item",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b7ad0310c706d3e7",
+      "subset": [
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_the_terminals_interrupt_does_not_kill_a_stream_worker"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n    _leave_when_the_parent_does()\n",
+      "new": "    _leave_when_the_parent_does()\n"
+    },
+    {
+      "id": "M02_worker_outlives_its_parent",
+      "description": "stream worker: do not watch the parent, so a killed driver leaves its workers holding their memory",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "da9868c61a5a7302",
+      "subset": [
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_workers_leave_when_their_parent_is_killed_outright"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n    _leave_when_the_parent_does()\n",
+      "new": "    signal.signal(signal.SIGINT, signal.SIG_IGN)\n"
+    },
+    {
+      "id": "M03_close_waits_for_unread_work",
+      "description": "WorkStream._stop: do not end the workers, so a close waits for every item nobody will read",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "de56d8b219519e07",
+      "subset": [
+        "tests/test_pool_stream.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 26,
+      "baseline_collected": 26,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_stream.py::test_a_close_ends_the_workers_without_waiting_for_work_nobody_will_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        _end_workers(executor)\n        executor.shutdown(wait=True, cancel_futures=True)\n",
+      "new": "        executor.shutdown(wait=True, cancel_futures=True)\n"
+    },
+    {
+      "id": "M07_used_percent_gate_is_strict",
+      "description": "_gates_refusing: the used percent gate refuses only above its limit, not at it",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "9b99e32ea7d8f9ec",
+      "subset": [
+        "tests/test_pool_stream.py",
+        "tests/test_pool_sizing.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 295,
+      "baseline_collected": 295,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_pool_sizing.py::test_the_pressure_gate_bites_at_its_two_lines_and_nowhere_else[percent-at-the-line]",
+        "tests/test_pool_sizing.py::test_the_used_percent_ceiling_is_eighty_five_and_the_number_is_load_bearing[at-the-line]",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_both_gates_names_both_swap_first"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if pressure.used_percent >= used_percent_ceiling:\n        refused.append(\n",
+      "new": "    if pressure.used_percent > used_percent_ceiling:\n        refused.append(\n"
+    },
+    {
+      "id": "M08_plan_forgets_which_gate",
+      "description": "plan_pool: a plan refused by pressure no longer carries which gate refused it",
+      "file": "src/cratekit/core/pool.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "697601010a58dbf1",
+      "subset": [
+        "tests/test_pool_stream.py",
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 6,
+      "collected": 80,
+      "baseline_collected": 80,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_machine_deep_in_swap_runs_one_worker_and_names_the_swap_gate",
+        "tests/test_analysis_ahead.py::test_a_machine_using_most_of_its_memory_names_the_used_percent_gate",
+        "tests/test_analysis_ahead.py::test_a_run_that_fails_part_way_says_its_pool_on_the_refusal_and_matches_the_serial_run",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_both_gates_names_both_swap_first",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_swap_names_the_gate_the_reading_and_the_limit",
+        "tests/test_pool_stream.py::test_a_plan_refused_by_the_used_percent_names_that_gate"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            ceiling=ceiling,\n            refused_by=refused,\n",
+      "new": "            ceiling=ceiling,\n"
+    },
+    {
+      "id": "M09_ceiling_ignores_the_reserve",
+      "description": "worker_ceiling: every core, nothing kept back for the driver",
+      "file": "src/cratekit/core/cores.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "613279266587d32e",
+      "subset": [
+        "tests/test_cores.py",
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 14,
+      "collected": 96,
+      "baseline_collected": 96,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_healthy_machine_says_how_many_workers_and_that_the_ceiling_held_it",
+        "tests/test_analysis_ahead.py::test_a_machine_deep_in_swap_runs_one_worker_and_names_the_swap_gate",
+        "tests/test_analysis_ahead.py::test_a_machine_using_most_of_its_memory_names_the_used_percent_gate",
+        "tests/test_analysis_ahead.py::test_memory_overrules_a_wide_core_count",
+        "tests/test_analysis_ahead.py::test_the_cost_is_set_by_the_costliest_track_in_the_batch",
+        "tests/test_analysis_ahead.py::test_the_light_pool_is_refused_by_the_gates_whatever_the_cores_say",
+        "tests/test_analysis_ahead.py::test_two_cores_leave_no_ceiling_for_a_pool",
+        "tests/test_cores.py::test_a_ceiling_from_many_cores_never_widens_what_memory_affords",
+        "tests/test_cores.py::test_the_ceiling_is_the_cores_less_what_is_kept_back_and_never_under_one[11-2-9]",
+        "tests/test_cores.py::test_the_ceiling_is_the_cores_less_what_is_kept_back_and_never_under_one[2-2-1]",
+        "tests/test_cores.py::test_the_ceiling_is_the_cores_less_what_is_kept_back_and_never_under_one[3-2-1]",
+        "tests/test_cores.py::test_the_ceiling_is_the_cores_less_what_is_kept_back_and_never_under_one[4-2-2]",
+        "tests/test_cores.py::test_the_ceiling_is_the_cores_less_what_is_kept_back_and_never_under_one[8-1-7]",
+        "tests/test_cores.py::test_the_reader_is_looked_up_when_called_so_a_test_can_stand_in"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return max(1, cores - reserved)\n",
+      "new": "    return max(1, cores)\n"
+    },
+    {
+      "id": "M10_worker_cost_halved",
+      "description": "light: half the measured bytes a second, so a ten minute track's worker is declared at 770 MB where 1.1 GB was measured",
+      "file": "src/cratekit/analysis/light.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c27a185ccf3de16a",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_file_stored_at_a_high_rate_costs_its_decode_and_not_only_its_length",
+        "tests/test_analysis_ahead.py::test_a_length_the_header_will_not_give_is_bounded_by_the_files_size",
+        "tests/test_analysis_ahead.py::test_a_light_workers_cost_is_the_measured_line_in_the_tracks_length"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024 // 2\n",
+      "new": "LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024 // 4\n"
+    },
+    {
+      "id": "M11_cost_from_the_cheapest_track",
+      "description": "light.costliest: the cheapest track sets the worker's cost",
+      "file": "src/cratekit/analysis/light.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "d84233830d3a622f",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_one_high_rate_file_sets_the_batchs_cost_though_it_is_not_the_longest",
+        "tests/test_analysis_ahead.py::test_the_cost_is_set_by_the_costliest_track_in_the_batch"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return max((cost_of(path) for path in paths), default=LIGHT_BASE_BYTES)\n",
+      "new": "    return min((cost_of(path) for path in paths), default=LIGHT_BASE_BYTES)\n"
+    },
+    {
+      "id": "M22_decode_not_costed",
+      "description": "light.worker_bytes: the decode's line is dropped, so a 192 kilohertz file is declared at its length alone, 1310 MB where 2180 was measured",
+      "file": "src/cratekit/analysis/light.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "34ad7c91d58018ef",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_file_stored_at_a_high_rate_costs_its_decode_and_not_only_its_length",
+        "tests/test_analysis_ahead.py::test_one_high_rate_file_sets_the_batchs_cost_though_it_is_not_the_longest"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return LIGHT_BASE_BYTES + max(analysis, decode)\n",
+      "new": "    return LIGHT_BASE_BYTES + analysis\n"
+    },
+    {
+      "id": "M13_vocal_model_not_kept_back",
+      "description": "_open_ahead: the driver's vocal model is not kept back from the light pool's budget",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "cce3a9f5eecd7fc4",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_memory_overrules_a_wide_core_count"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        reserve += vocals.VOCAL_WORKER_BYTES\n    return ahead.open_session(",
+      "new": "        pass\n    return ahead.open_session("
+    },
+    {
+      "id": "M14_a_changed_file_keeps_its_old_head",
+      "description": "ahead: a head measured ahead is used whatever file now sits at the path",
+      "file": "src/cratekit/analysis/ahead.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "ba4d5970e2502cc3",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_file_replaced_after_its_head_was_measured_is_measured_again",
+        "tests/test_analysis_ahead.py::test_a_file_rewritten_at_the_same_length_is_measured_again_by_its_time_alone",
+        "tests/test_analysis_ahead.py::test_a_file_rewritten_in_place_after_its_head_was_measured_is_measured_again",
+        "tests/test_analysis_ahead.py::test_a_file_rewritten_with_its_time_put_back_is_measured_again_by_its_size_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if measured_identity is None or measured_identity != identity_of(path):\n",
+      "new": "    if False:\n"
+    },
+    {
+      "id": "M15_identity_without_the_time",
+      "description": "ahead.identity_of: no modification time, so a file rewritten at the same length keeps its old head",
+      "file": "src/cratekit/analysis/ahead.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "48889e3a4c0a5e56",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_file_rewritten_at_the_same_length_is_measured_again_by_its_time_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)\n",
+      "new": "    return (found.st_dev, found.st_ino, found.st_size, 0)\n"
+    },
+    {
+      "id": "M23_identity_without_the_size",
+      "description": "ahead.identity_of: no size, so a file rewritten with its time put back keeps its old head",
+      "file": "src/cratekit/analysis/ahead.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "480a5e0330ad6e47",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_file_rewritten_with_its_time_put_back_is_measured_again_by_its_size_alone"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)\n",
+      "new": "    return (found.st_dev, found.st_ino, 0, found.st_mtime_ns)\n"
+    },
+    {
+      "id": "M24_identity_after_the_read",
+      "description": "ahead.measure: the identity is taken after the read, so a file written while it was read carries the written file's identity",
+      "file": "src/cratekit/analysis/ahead.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "8c2915688077b839",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_the_identity_a_worker_returns_is_the_files_before_the_read"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    found = identity_of(path)\n    return found, light.analyse(path)\n",
+      "new": "    head = light.analyse(path)\n    return identity_of(path), head\n"
+    },
+    {
+      "id": "M16_changed_settings_keep_old_heads",
+      "description": "ahead: heads measured under the old calibration are used after it changes",
+      "file": "src/cratekit/analysis/ahead.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "02071ffeda7c6e3f",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 3,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_each_setting_a_head_is_measured_under_is_compared[drift-cut]",
+        "tests/test_analysis_ahead.py::test_each_setting_a_head_is_measured_under_is_compared[tempo-window]",
+        "tests/test_analysis_ahead.py::test_settings_that_changed_mid_run_stop_the_pool_and_the_rest_is_measured_here"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    if settings != session.settings:\n        session.stop(STOPPED_SETTINGS)\n        return None\n",
+      "new": ""
+    },
+    {
+      "id": "M19_failed_run_does_not_say_its_pool",
+      "description": "_resume: a run that failed or was stopped leaves without its pool line",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "08df190bea8f691b",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 4,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_file_carrying_its_head_and_a_file_that_is_gone_are_never_sent_to_a_worker",
+        "tests/test_analysis_ahead.py::test_a_run_that_fails_part_way_says_its_pool_on_the_refusal_and_matches_the_serial_run",
+        "tests/test_analysis_ahead.py::test_an_interrupt_during_a_run_ahead_ends_the_workers_and_the_resume_finishes",
+        "tests/test_analysis_ahead.py::test_an_unreadable_calibration_is_each_items_refusal_and_opens_no_pool"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "                if pooled is None:\n                    raise\n                raise _with_pool(failed, pooled) from failed\n",
+      "new": "                raise\n"
+    },
+    {
+      "id": "M20_held_job_records_a_pool",
+      "description": "_heads_ahead: a call that drove nothing, because another driver holds the job, records a pool anyway",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "539667dbd3938c0a",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_job_another_driver_holds_records_no_pool_and_adds_none_to_the_refusal"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        drove = False\n        raise\n",
+      "new": "        raise\n"
+    },
+    {
+      "id": "M25_an_idle_resume_overwrites_the_pool",
+      "description": "_worth_recording: a drive that measured nothing overwrites the record of the drive that did",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "b39c893c6813453b",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_resume_with_nothing_left_to_measure_keeps_the_pool_that_measured_the_job"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        return True\n    return artifacts.pool_record(cfg, job_id) is None\n",
+      "new": "        return True\n    return True\n"
+    },
+    {
+      "id": "M26_warm_up_takes_no_lock",
+      "description": "warm.exclusive: the lock is opened and never taken, so two processes fill the kernel cache together",
+      "file": "src/cratekit/analysis/warm.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "85a8ac2269e01b50",
+      "subset": [
+        "tests/test_analysis_warm.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 14,
+      "baseline_collected": 14,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_warm.py::test_two_processes_are_never_inside_the_lock_together"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        fcntl.flock(handle, fcntl.LOCK_EX)\n",
+      "new": "        pass\n"
+    },
+    {
+      "id": "M27_no_warm_up_before_the_first_head",
+      "description": "analyse_file: no warm up, so two workers on a cold cache compile into it together, crash, and leave it damaged",
+      "file": "src/cratekit/analysis/detect.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c607bca0d656d855",
+      "subset": [
+        "tests/test_analysis_warm.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 14,
+      "baseline_collected": 14,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_warm.py::test_the_detector_asks_for_the_warm_up_before_it_decodes"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    warm.kernels()\n",
+      "new": "    warm.kernels  # not called\n"
+    },
+    {
+      "id": "M21_no_check_line_on_the_answer",
+      "description": "_resume: the answer no longer carries the analyze.pool check",
+      "file": "src/cratekit/analysis/cli.py",
+      "kind": "mutation",
+      "surface": "user",
+      "pairs_with": null,
+      "fingerprint": "c073943c0f21247b",
+      "subset": [
+        "tests/test_analysis_ahead.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 12,
+      "collected": 54,
+      "baseline_collected": 54,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_analysis_ahead.py::test_a_closure_bound_by_a_test_is_never_sent_to_a_worker",
+        "tests/test_analysis_ahead.py::test_a_healthy_machine_says_how_many_workers_and_that_the_ceiling_held_it",
+        "tests/test_analysis_ahead.py::test_a_job_whose_record_is_gone_says_it_does_not_know",
+        "tests/test_analysis_ahead.py::test_a_job_with_nothing_waiting_says_so_and_starts_nothing",
+        "tests/test_analysis_ahead.py::test_a_machine_deep_in_swap_runs_one_worker_and_names_the_swap_gate",
+        "tests/test_analysis_ahead.py::test_a_machine_using_most_of_its_memory_names_the_used_percent_gate",
+        "tests/test_analysis_ahead.py::test_a_pool_record_that_cannot_be_written_is_a_missing_line_and_never_a_failed_job",
+        "tests/test_analysis_ahead.py::test_a_resume_of_a_finished_job_still_says_what_pool_it_ran_with",
+        "tests/test_analysis_ahead.py::test_a_worker_that_dies_costs_the_run_nothing_but_its_pool",
+        "tests/test_analysis_ahead.py::test_memory_overrules_a_wide_core_count",
+        "tests/test_analysis_ahead.py::test_the_person_reads_the_check_line_without_asking_for_json",
+        "tests/test_analysis_ahead.py::test_two_cores_leave_no_ceiling_for_a_pool"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "            summary[\"checks\"] = [_pool_check(artifacts.pool_record(cfg, job.job_id))]\n",
+      "new": ""
+    }
+  ],
+  "dropped": [
+    {
+      "id": "X21_plan_drops_the_callers_reserve",
+      "description": "light.plan: the caller's reserve is not handed to the planner",
+      "reason": "ranked below the cap: same family as M13, the reserve one layer up, and the same test holds both"
+    },
+    {
+      "id": "X14_a_plan_of_one_spawns",
+      "description": "WorkStream.result: drop the in process branch",
+      "reason": "ranked below the cap: it raises on every in process plan, so every serial test in two suites dies; the least likely row to be a zero"
+    },
+    {
+      "id": "X15_a_position_read_twice",
+      "description": "WorkStream.result: drop the read once refusal",
+      "reason": "ranked below the cap: maintainer facing contract of the seam"
+    },
+    {
+      "id": "X16_no_generation_boundary",
+      "description": "WorkStream.result: one generation whatever the plan's recycle budget",
+      "reason": "ranked below the cap: maintainer facing, and a job of under two hundred files is one generation"
+    },
+    {
+      "id": "X17_a_broken_pool_is_not_stopped",
+      "description": "ahead: a broken stream is counted as one item's failure and the session keeps it",
+      "reason": "ranked below the cap: the stream closes itself on a break, which the review's row found pinned by two tests"
+    },
+    {
+      "id": "X18_headed_files_sent_to_workers",
+      "description": "_waiting: a file already carrying its head is measured ahead",
+      "reason": "ranked below the cap: wasted measuring only, nothing is written from it"
+    },
+    {
+      "id": "X19_a_restarted_generation_measures_again",
+      "description": "WorkStream._start: hand out positions already read",
+      "reason": "measured at zero by the review, filed as a residual: unreachable from the shipped verb, which reads in order"
+    },
+    {
+      "id": "X20_unwritable_record_fails_the_job",
+      "description": "_heads_ahead: let an OSError from the pool record out",
+      "reason": "ranked below the cap: measured at zero by the review, pinned in the fix round by a test of its own"
+    },
+    {
+      "id": "X01_render_line",
+      "description": "render: drop the analysis check lines from the human answer",
+      "reason": "ranked below the cap: display only, and the check's presence on the envelope is M21"
+    },
+    {
+      "id": "X02_header_length_positive",
+      "description": "tags.audio_seconds: accept a zero, negative or infinite header length",
+      "reason": "ranked below the cap: a wrong length narrows or widens one plan, and the cost line it feeds is M10 and M11"
+    },
+    {
+      "id": "X03_worker_exception_fallback",
+      "description": "ahead: let what a worker raised propagate instead of measuring here",
+      "reason": "ranked below the cap: the item fails either way, since the serial line raises the same; only the count differs"
+    },
+    {
+      "id": "X04_broken_stream_stays_open",
+      "description": "WorkStream: do not close on a broken pool",
+      "reason": "ranked below the cap: same family as M17, which is measured at the caller"
+    },
+    {
+      "id": "X05_plan_forgets_its_ceiling",
+      "description": "plan_pool: the final plan does not carry its ceiling",
+      "reason": "ranked below the cap: same family as M08, the refused plan's facts"
+    },
+    {
+      "id": "X06_unknown_cores_is_two",
+      "description": "worker_ceiling: an unreadable core count is a ceiling of two",
+      "reason": "ranked below the cap: memory still bounds the plan, and M09 is the ceiling's coefficient"
+    },
+    {
+      "id": "X07_unknown_length_is_zero",
+      "description": "light.seconds_of: a header with no length is a track of no length",
+      "reason": "ranked below the cap: same family as M11"
+    },
+    {
+      "id": "X08_restamp_opens_a_run_ahead",
+      "description": "_resume: the restamp opens the run ahead too",
+      "reason": "ranked below the cap: a session nothing reads from, closed in the same call"
+    },
+    {
+      "id": "X09_linked_record_is_read",
+      "description": "artifacts.pool_record: read through a link",
+      "reason": "ranked below the cap: a display line, under the job's own private directory"
+    },
+    {
+      "id": "X10_window_geometry",
+      "description": "detect.key_windows: bunch the windows at the start of the track",
+      "reason": "ranked below the cap: a method that is not the default anywhere"
+    },
+    {
+      "id": "X11_plain_runs_the_separation",
+      "description": "detect.key_profile: the plain method separates anyway",
+      "reason": "ranked below the cap: a method that is not the default anywhere"
+    },
+    {
+      "id": "X12_tiny_lines_by_scipy",
+      "description": "separation: hand a line shorter than half the window to scipy",
+      "reason": "ranked below the cap: scipy's answer there changes from call to call, so the row would be measured by chance"
+    },
+    {
+      "id": "X13_key_margin",
+      "description": "detect: the key's harmonic margin is one, not four",
+      "reason": "ranked below the cap: same family as D1, the margin reaching the mask"
+    }
+  ]
+}

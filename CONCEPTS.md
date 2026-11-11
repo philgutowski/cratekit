@@ -138,7 +138,11 @@ word, unread, or only unknown words), which is filed for review.
 The genre a followed label is registered with
 (`crate label registry set NAME --genre WORD`, cleared with `--genre default`),
 written by `crate tag folder` onto the label's files that have no genre,
-asking no catalogue. A file's label is its label tag, else `--label`. Source
+asking no catalogue. A file's label is its label tag, else `--label`, else
+the one registered label whose whole needle its copyright line carries
+(U240). A tag is read as a name, as an id only when no label is called it,
+and a name two labels share names neither; `--label` is held by its id
+(R-1476). Source
 `label-genre`, counted apart, never off taxonomy. The word must route to a
 bucket other than the fallback unless `--accept-fallback`. Fills an empty genre
 only; never replaces one. An unwritable file fails with `tag-folder-unwritten`.
@@ -630,6 +634,18 @@ stride sample (500 by default) is drawn from, not that every track was measured.
 A record a worker writes before renaming its item's file, naming the target
 (`analysis/artifacts.py`). On resume a missing source with an existing target is
 the finished item; otherwise the source is missing. Never recovered by scanning.
+
+### Run ahead
+How `analyze run` uses a pool without changing the job's order
+(`analysis/ahead.py`, U241). Worker processes measure the waiting files' heads
+(key, tempo, drift, energy) through the pool's **work stream**
+(`core/pool.py`, results read one position at a time), and the driver reads
+each head when it reaches that item, then scores vocals and writes. A head
+measured ahead is used only if the file's identity and the settings it was
+measured under still stand; otherwise the item is measured in the driver.
+
+*Avoid:* reading "ahead" as writing ahead: no worker writes a tag, a name, a
+report or a row. The pool a run had is its **`analyze.pool`** check line.
 
 ### Handler key
 The string a job stores instead of a function, the verb's dotted name

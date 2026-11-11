@@ -39,7 +39,7 @@ from __future__ import annotations
 
 import sys
 from pathlib import Path
-from typing import Any, Callable, Mapping
+from typing import Any, Callable, Mapping, MutableMapping
 
 from cratekit.core import pool
 from cratekit.modules import extras
@@ -325,7 +325,9 @@ def _inactive(result: dict[str, Any], reason: str) -> dict[str, Any]:
     return result
 
 
-def analyse(partial: dict[str, Any]) -> dict[str, Any]:
+def analyse(
+    partial: dict[str, Any], *, timings: MutableMapping[str, float] | None = None
+) -> dict[str, Any]:
     """Attach a vocal score when the model loaded and the track decoded.
 
     The samples come from ``partial["path"]`` through the bound decoder. THE
@@ -333,7 +335,14 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
     this function scores a partial carrying nothing but a path, and that no
     line here reads a ``wav`` key, because that key is the one the first
     version waited on for ever.
+
+    ``timings`` collects the wall time of this pass's two stages,
+    ``vocal_decode`` and ``vocal_model``, when a mapping is passed (U241), the
+    way ``detect.analyse_file`` collects the head's, and costs nothing when it
+    is not.
     """
+    from cratekit.analysis.detect import timed
+
     result = dict(partial)
     if result.get("terminal") is not None:
         return _inactive(result, REASON_HEAD_TERMINAL)
@@ -354,7 +363,8 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
     model = _load()
     if model is None:
         return _inactive(result, REASON_MODEL_UNAVAILABLE)
-    samples = _decode(result.get("path"))
+    with timed(timings, "vocal_decode"):
+        samples = _decode(result.get("path"))
     if samples is None:
         return _inactive(result, REASON_AUDIO_UNDECODABLE)
     from cratekit.analysis.vocal import class_indices, infer_frames, reduce_frames
@@ -368,7 +378,8 @@ def analyse(partial: dict[str, Any]) -> dict[str, Any]:
     # going through the loader, resolves them here.
     try:
         columns = _VOCAL_COLUMNS if _VOCAL_COLUMNS is not None else class_indices(model)
-        score = reduce_frames(*infer_frames(model, samples, class_idx=columns))
+        with timed(timings, "vocal_model"):
+            score = reduce_frames(*infer_frames(model, samples, class_idx=columns))
     except Exception:
         return _inactive(result, REASON_INFERENCE_FAILED)
     result["vocal_active"] = True

@@ -183,6 +183,8 @@ def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
     try:
         import librosa
         import numpy as np
+
+        from cratekit.analysis import separation
     except ImportError:
         return None
     try:
@@ -227,7 +229,7 @@ def features_from_samples(samples: Any, rate: int) -> dict[str, float] | None:
         )
 
         try:
-            harmonic, percussive = librosa.effects.hpss(y)
+            harmonic, percussive = separation.harmonic_percussive(y)
             rp = float(np.sqrt(np.mean(percussive ** 2)))
             rh = float(np.sqrt(np.mean(harmonic ** 2)))
             f["percussive_fraction"] = rp / (rp + rh + _EPS)

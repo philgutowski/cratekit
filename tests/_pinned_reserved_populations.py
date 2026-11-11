@@ -418,6 +418,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'no-op',
     ],
     'adopt/shell.py': ['internal-error'],
+    # 2026-11-11, U241: why a head measured ahead was measured again.
+    'analysis/ahead.py': ['file-changed', 'raised-in-a-worker'],
     'analysis/artifacts.py': ['analysis-artifacts', 'analysis-staging', 'utf-8'],
     # 2026-10-31, U167: analyze check, its engine and its verb.
     'analysis/check_cli.py': [
@@ -1051,6 +1053,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'utf-8',
     ],
     'core/naming.py': ['utf-8'],
+    # 2026-11-11, U241: the name of the thread a stream worker watches its parent with.
+    'core/pool.py': ['cratekit-pool-parent-watch'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
@@ -1976,12 +1980,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'sync/watermarks.py': ['sync-watermark-unusable', 'utf-8'],
     'tagging/artifacts.py': ['tag-artifacts', 'tag-staging', 'utf-8'],
     # 2026-10-31, U178: the --label refusal and the two label genre warnings joined.
+    # 2026-11-11, U240: the copyright line's two label warning joined.
     'tagging/cli.py': [
         'config-unusable',
         'label-unknown',
         'no-op',
         'source-missing',
         'tag-folder-absent',
+        'tag-folder-copyright-ambiguous',
         'tag-folder-label-no-genre',
         'tag-folder-label-on-resume',
         'tag-folder-label-registry-unread',
@@ -3311,6 +3317,7 @@ PINNED_LITERAL_HOLDERS_WITH_INTEGER = frozenset({
     'modules/outbound/prune.py',
     'modules/outbound/tidal_account.py',
     'modules/tools/mastering.py',
+    'tagging/cli.py',  # 2026-11-11, U240: how many failed files a refusal names.
     'tagging/searchers.py',
     'write/collection_export.py',
     'write/metadata.py',

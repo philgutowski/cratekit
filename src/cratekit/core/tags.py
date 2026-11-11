@@ -195,6 +195,13 @@ FIELDS: dict[str, TagSpec] = {
     # shows in its Label column is U177's to measure on a copy, and the entry
     # moves here, for reader and writer at once, if the measurement differs.
     "label": TagSpec("label", "TPUB", "----:com.apple.iTunes:LABEL"),
+    # U240. The release's copyright line, read so ``tag folder`` can name the
+    # registered label of a file that carries no label tag. The keys are the
+    # ones the vendored downloader writes on every file it delivers
+    # (``_vendor/downloader/metadata.py``): the Vorbis ``COPYRIGHT`` comment,
+    # which Vorbis reads in any case, the ID3 ``TCOP`` frame and the MP4
+    # ``cprt`` atom. Nothing in Cratekit writes it.
+    "copyright": TagSpec("copyright", "TCOP", "cprt"),
     # U157. How far the track's tempo moves over its length and the verdict
     # that reading takes, written by ``analyze run`` beside ``voxlevel`` so a
     # landing can mark the rows rekordbox should analyse with Dynamic. The
@@ -889,3 +896,47 @@ def read_voxgender_from_file(path: Path) -> str | None:
     is not a thing this product does.
     """
     return read_tag(path, "voxgender")
+
+
+def audio_shape(path: Path) -> tuple[float | None, int | None, int | None]:
+    """What the header says of the audio in ``path``: seconds, sample rate, channels.
+
+    The container's own statement, never a decode: a pass that is about to
+    decode a folder asks this first, to know how much memory each file will
+    need (U241). Each of the three is None when the header does not say it,
+    cannot be read, or says something that is not a positive number, and the
+    caller decides what not knowing means. Reads nothing but the header and
+    writes nothing.
+    """
+    try:
+        import mutagen
+
+        info = getattr(mutagen.File(path), "info", None)
+    except Exception as exc:  # noqa: BLE001 - an unreadable header is an unknown shape
+        log.debug("header read failed for %s: %s", path, exc)
+        return None, None, None
+    return (
+        _positive(getattr(info, "length", None)),
+        _positive_count(getattr(info, "sample_rate", None)),
+        _positive_count(getattr(info, "channels", None)),
+    )
+
+
+def _positive(value: object) -> float | None:
+    if isinstance(value, bool) or not isinstance(value, (int, float)):
+        return None
+    number = float(value)
+    if not number > 0.0 or number == float("inf"):
+        return None
+    return number
+
+
+def _positive_count(value: object) -> int | None:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return None
+    return value
+
+
+def audio_seconds(path: Path) -> float | None:
+    """How long the audio in ``path`` runs, read off its header, or None."""
+    return audio_shape(path)[0]

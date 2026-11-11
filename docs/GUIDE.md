@@ -281,7 +281,23 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file no catalogue knows keeps no genre.
+  other file no catalogue knows keeps no genre. A file's label is its label
+  tag, else `--label`, else the one registered label whose whole `--match`
+  needle its copyright line carries, as whole words, so a folder of several
+  labels is tagged in one call with every catalogue refusing, as long as each
+  file's line names its label. Where one needle carries another, as a
+  sublabel's carries its parent's, the longer wins; a line naming two labels
+  otherwise settles neither, and the file is asked of the catalogues. A
+  label tag is read as a label's name, and as an id only when no label is
+  called that; a name two registered labels share, after a `registry rename`
+  onto a taken name, settles neither too. `--label` takes an id or a name,
+  and a name two labels share takes the first registered, so pass the id
+  there; the label it names is then held by its id, so it is never given
+  another label's genre under the same name.
+  With
+  `--output json` the summary lists each file by label, by catalogue or not
+  at all, with the reason a failed one failed; a sweep that ends in a refusal
+  carries the same list in the refusal's detail and counts it in its message.
 - `tag guess` gives each file with no genre one from its artist's other
   tracks and, with `--pass`, the account playlist that asked for it. A file
   that has a genre is never changed. `--report` writes nothing. Each genre
@@ -403,8 +419,9 @@ crate label sync --go
   catalogue new again.
 - `registry set` fields: `--match`, `--seed`, `--track-limit`, `--offer`
   (releases kept in review per sweep, `labels.offer_per_sweep` by default),
-  `--kind` (for the genre gate), `--genre` (given to the label's files with
-  no genre, so no catalogue is asked; one routing only to the fallback folder
+  `--kind` (for the genre gate), `--genre` (given by `tag folder` to the
+  label's files with no genre, found by label tag, `--label` or copyright
+  line, so no catalogue is asked; one routing only to the fallback folder
   needs `--accept-fallback`) and `--bandcamp` (the seller account). `default`
   clears `--kind`, `--genre` or `--bandcamp`.
 - `harvest` offers the labels behind a playlist as review items; `registry
@@ -806,6 +823,16 @@ crate metadata mytags-vocals [--apply]
   skips a file already carrying the head, so `analyze vocals --unscored`
   scores the ones it finished with no `voxlevel`. Doctor's `install.extras`
   row says when vocals cannot score.
+- `analyze run` measures key, tempo, drift and energy in worker processes
+  ahead of the one process that scores vocals and writes, as many as the
+  machine's memory affords up to its cores less two. The answer's
+  `analyze.pool` line says how many ran, in the job's last drive that
+  measured any file, and what held the count there: swap
+  already in use (1 GB or more refuses a pool, and macOS keeps counting swap
+  until a restart), memory 85 percent or more in use, the memory available
+  for the batch's costliest track (a long one, or one stored at a high
+  sample rate), or the ceiling. One worker means the run was
+  serial, and the results are the same at any width.
 - `--recursive` queues every folder under the one named as one resumable
   job; linked folders are not walked. `analyze run` has no such flag.
 - `analyze calibrate` fits only over the whole library walked recursively;
