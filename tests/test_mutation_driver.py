@@ -1465,11 +1465,13 @@ def stealing_repo(tmp_path, monkeypatch) -> tuple[Path, Path]:
 
 
 def test_the_count_and_the_failure_survive_a_steal(stealing_repo):
-    """Only the controller writes, and it hears from both workers.
+    """The count is the collection's, and the stolen failure reaches the report.
 
-    A report written by every worker would hold one worker's share; a count
-    taken off one worker's queue rather than its collection would shrink by
-    the tests stolen from it.
+    A count taken off one worker's queue rather than its collection would
+    shrink by the tests stolen from it, and a failure the controller never
+    heard would leave the report green. This does not pin that only the
+    controller writes: every write a worker makes is followed by one of the
+    controller's, so a report written by every process reads the same here.
     """
     repo, log = stealing_repo
     result = mutate.run_pytest(repo, None)

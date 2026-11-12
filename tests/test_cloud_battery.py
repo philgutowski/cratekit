@@ -239,10 +239,11 @@ def test_the_suite_command_leaves_the_distribution_to_addopts(monkeypatch):
     monkeypatch.setattr(battery, "run", recording_run)
     battery.failing_ids()
     (command,) = seen
-    overrides = {"-o", "--override-ini", "-n", "--numprocesses", "--dist", "-c"}
-    assert not [token for token in command if token.split("=")[0] in overrides], command
-    assert not [token for token in command if token.startswith("-n")], command
-    assert "no:xdist" not in command
+    # The whole command, each token read for what it changes. A list of the
+    # flags forbidden would let the next spelling past (`--maxprocesses=1`,
+    # `--tx popen`, `-d`); an exact command lets nothing past unread.
+    assert command[0] == str(battery.PYTHON)
+    assert command[1:] == ["-m", "pytest", "--tb=no", "-rfE", "-p", "no:cacheprovider"]
 
 
 def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkeypatch):

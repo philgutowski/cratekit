@@ -19,6 +19,10 @@ must report is a test that ran on a worker it was not first given to.
 The suite's ``addopts`` are the repository's own with the worker count set to
 two, so it runs under whatever distribution ``pyproject.toml`` names. Every
 test records the worker it ran on in the directory ``LOG_VARIABLE`` names.
+
+Under xdist's default distribution a queued test usually moves too, but not
+every time, so a run of this suite does not tell the two distributions apart;
+the two pins in ``tests/test_suite_distribution.py`` are what hold the option.
 """
 
 from __future__ import annotations
@@ -137,14 +141,14 @@ def two_worker_addopts() -> list[str]:
     """
     tokens = repository_addopts()
     for index, token in enumerate(tokens):
-        if token == "-n" and index + 1 < len(tokens):
+        if token in ("-n", "--numprocesses") and index + 1 < len(tokens):
             tokens[index + 1] = "2"
             return tokens
-        if token.startswith("-n") and token != "-n":
-            tokens[index] = "-n2"
-            return tokens
-        if token.startswith("--numprocesses"):
+        if token.startswith("--numprocesses="):
             tokens[index] = "--numprocesses=2"
+            return tokens
+        if token.startswith("-n"):
+            tokens[index] = "-n2"
             return tokens
     return [*tokens, "-n", "2"]
 
