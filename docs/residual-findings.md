@@ -50835,3 +50835,86 @@ present and correct at the merge; only its guard is unpinned.
 
 **Closes when:** a test walks every label to the go with the account's hour
 at its read line and the download still runs. Ledger only, maintainer facing.
+
+---
+
+## R-1620. A librosa release U264 did not measure mixes to mono at the old speed, silently
+
+**Found:** at the build of #693, U264, 2026-11-12.
+
+**The mechanism.** `decode.mono` takes the one add only on a release named
+in `decode._MEASURED_MIX` (0.10.2, 0.10.2.post1, 0.11.0, 1.0.0), the
+conservative call, since a later release may change `to_mono` as 1.0 did.
+Any other release, a 1.0.1 included, mixes through `librosa.to_mono`, the
+same samples at the old cost, and nothing says so: no doctor row, no line in
+the run's timings.
+
+**Measured cost.** About a quarter of a second a decode on a 345 second
+stereo track (812 against 501 ms at 22,050 Hz on 1.0.0, measured here), so
+about half a second a track scored for vocals, once the installed librosa
+moves past the table. No sample changes.
+
+**Closes when:** a release is measured and named in the table when the
+lock or an install moves to it (the librosa half of the decode tests checks
+the installed release against its own `to_mono`), or the timings name the
+mix that ran. Ledger only.
+
+---
+
+## R-1621. U264's two review rounds ran on Opus 5.5 with Fable out of usage, and owe a Fable pass
+
+**Found:** at the review of #693, U264, 2026-11-12.
+
+**The mechanism.** Both of U264's review rounds were refused by Fable on its
+usage limit and ran the `fable-reviewer` definition on Opus 5.5 at high
+effort instead, as the cloud-unit skill's Models section allows when Fable
+is out of usage.
+
+**Measured cost.** None measured; a review by a different model may miss
+what Fable would have found.
+
+**Closes when:** Fable reviews the merged range of U264 (the merge commit's
+first parent to the merge) against the merge bar. Ledger only.
+
+---
+
+## R-1622. U264's fallback test says anything but two float32 channels and lists seven cases by hand
+
+**Found:** at the review of #693, U264, 2026-11-12.
+
+**The mechanism.** `test_anything_but_two_float32_channels_is_to_monos` in
+`tests/test_analysis_decode_librosa.py` names a whole class and drives seven
+members of it: mono, three channels, float64, one row, float16, big endian
+and three dimensional. A value that is not an ndarray is not among them.
+
+**Measured cost.** None. The two producers, `librosa.load` and
+`decode._ffmpeg_samples`, were driven and hand `decode.mono` only native
+float32 ndarrays; the review drove a big endian buffer through the mix and
+found it equal to `to_mono`.
+
+**Closes when:** the test's name says what it drives, or a property test
+draws the shapes and dtypes. Ledger only.
+
+---
+
+## R-1623. The mono mix's zero rule rests on numpy's add reduction starting from plus zero, unmeasured on arm64 macOS
+
+**Found:** at the review of #693, U264, 2026-11-12.
+
+**The mechanism.** `decode._MEASURED_MIX` holds, per librosa release, the
+sign a zero takes in `librosa.to_mono`. Part of that rule is numpy's: its
+add reduction starts from its identity, plus zero, so two minus zero
+channels mean to plus zero, and the one add reproduces that with `+= 0`. The
+table is keyed on the librosa release alone. The review measured the rule
+the same on numpy 1.26.0, 1.26.4, 2.0.2, 2.1.3, 2.2.6, 2.3.5, 2.4.1 and
+2.5.4, on Linux x86_64 only.
+
+**Measured cost.** None measured. A numpy that started a float reduction
+from its first element, or a build on arm64 that did, would differ from
+librosa only in the sign of a zero sample of a frame whose two channels are
+both minus zero, and `test_the_mix_is_the_installed_librosas_to_mono_bit_for_bit`
+fails wherever the suite runs with the analysis extra, so the Mac battery
+reads it.
+
+**Closes when:** the macOS battery with the analysis extra passes the
+librosa half of the decode tests on the Mac's numpy. Ledger only.
