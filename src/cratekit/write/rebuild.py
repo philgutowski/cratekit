@@ -181,7 +181,7 @@ def library_truth(
     root: Path | str,
     *,
     suffixes: Sequence[str] = tags.SUPPORTED_SUFFIXES,
-    reader: Callable[[Path], Truth] | None = None,
+    reader: Callable[[Path], Truth] = read_truth,
 ) -> Iterator[Truth]:
     """Every taggable file under ``root``, in a stable order, with its readings.
 
@@ -207,11 +207,6 @@ def library_truth(
     destinations, which it read as zero differences, which it read as CONVERGED.
     An empty read is not evidence that a tree is right; it is evidence that
     nothing could be read.
-
-    THE DEFAULT READER IS :func:`read_truth` AS IT STANDS WHEN THE WALK RUNS,
-    looked up then rather than bound when this function was defined, so a test
-    that serves a derivation fake readings by replacing ``read_truth`` reaches
-    this walk as well as every caller that names it (U250).
     """
     wanted = {suffix.lower() for suffix in suffixes}
     base = Path(root)
@@ -231,10 +226,9 @@ def library_truth(
             origin=("tree_rebuild",),
             detail={"music_dir": str(base)},
         )
-    read = read_truth if reader is None else reader
     for path in sorted(base.rglob("*")):
         if path.is_file() and path.suffix.lower() in wanted:
-            yield read(path)
+            yield reader(path)
 
 
 def derive_from_taxonomy(
