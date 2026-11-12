@@ -1,0 +1,114 @@
+name = "u248"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_lazy_off"
+description = "build_parser: build every verb eagerly whatever eager says, so every command imports every verb module again"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''        if not eager:
+            sub = target.add_parser(path[-1], help=entry.summary)'''
+new = '''        if False:
+            sub = target.add_parser(path[-1], help=entry.summary)'''
+
+[[rows]]
+id = "L2_chosen_never_built"
+description = "_LazyChoices.__call__: never build the chosen verb, so it parses as an empty subparser with no handler"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''        if waiting is not None:
+            waiting.build()'''
+new = '''        if waiting is not None:
+            pass'''
+
+[[rows]]
+id = "L3_listing_asks_everyone"
+description = "ask_for_listing: ask every verb, not only those declaring extras, so a group help imports all its verbs"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''        if self.built or self.asked or not self.entry.extras_modules:'''
+new = '''        if self.built or self.asked:'''
+
+[[rows]]
+id = "L4_listing_drops_the_stub_line"
+description = "ask_for_listing: a missing extra no longer makes the stub, so the listing omits (requires the extra)"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py", "tests/test_analysis.py", "tests/test_vocals_cli.py"]
+old = '''            if _is_missing_extra(exc, self.entry):
+                self._stub(exc)'''
+new = '''            if _is_missing_extra(exc, self.entry):
+                pass'''
+
+[[rows]]
+id = "L5_listing_asked_twice"
+description = "ask_for_listing: forget it was asked, so one help screen imports the module twice"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_cli_lazy.py"]
+old = '''        self.asked = True'''
+new = '''        self.asked = False'''
+
+[[rows]]
+id = "L6_built_twice"
+description = "build: drop the built check, so a parser asked twice runs the builder twice and argparse refuses a duplicate option"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''        if self.built:
+            return
+        try:
+            try:
+                module = self.importer(self.entry.module)'''
+new = '''        try:
+            try:
+                module = self.importer(self.entry.module)'''
+
+[[rows]]
+id = "L7_defect_as_stub"
+description = "build: treat every import error as a missing extra, so a defect of our own reads as install the extra"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''                if not _is_missing_extra(exc, self.entry):
+                    raise
+                self._stub(exc)
+                return'''
+new = '''                self._stub(exc)
+                return'''
+
+[[rows]]
+id = "L8_listing_raises_a_defect"
+description = "ask_for_listing: let a non extra failure escape, so a broken module takes its whole group's help down"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''        except Exception:  # noqa: BLE001 - see the docstring, the verb itself raises
+            pass'''
+new = '''        except Exception:  # noqa: BLE001 - see the docstring, the verb itself raises
+            raise'''
+
+[[rows]]
+id = "L9_argument_error_unwrapped"
+description = "build: let an ArgumentError from the import or the builder reach argparse, so a defect of ours exits 2 as the user's usage error"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''        except argparse.ArgumentError as exc:
+            raise RuntimeError('''
+new = '''        except ZeroDivisionError as exc:
+            raise RuntimeError('''
+
+[[rows]]
+id = "L10_built_before_the_builder"
+description = "build: count the verb built before its builder returns, so a builder that failed part way hands on a half built verb"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_cli_lazy.py"]
+old = '''            ) from exc
+        self.built = True'''
+new = '''            ) from exc
+        self.built = self.built'''

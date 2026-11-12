@@ -67,7 +67,7 @@ Nothing merges until all three are clean:
 |---|---|
 | `scan` | `scan_repo.py`, then `board.py closing` over the pushed range or pull request |
 | `portable` | slim install on 3.12 and 3.13, a check that no heavy extra came with it, ruff |
-| `cold-install` | a clean `pip install .` on 3.12 and 3.13, `crate --help`, and an import of the vendored downloader from the installed package |
+| `cold-install` | a clean `pip install .` on 3.12 and 3.13, `crate --help`, the eager parser on the full preset (since U248 it, and not `crate --help`, proves every verb's module imports), and an import of the vendored downloader from the installed package |
 
 ## Deferred guards
 
