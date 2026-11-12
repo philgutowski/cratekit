@@ -1065,7 +1065,7 @@ def export_archive(ctx) -> Envelope:
 
 @contextmanager
 def _inspiration_folder(
-    cfg, *, read_only: bool = False, declared=None
+    cfg, *, read_only: bool = False, declared=None, one_read=None
 ) -> Iterator[tuple[Any, str]]:
     """The live database, opened to read, and the INSPIRATION folder's id.
 
@@ -1074,33 +1074,51 @@ def _inspiration_folder(
     rekordbox closed. ``read_only`` opens a read handle instead, the one
     ``crate organize`` reads its own listing through (U142). ``declared`` is
     the taxonomy when the caller has already loaded it.
+
+    ``one_read`` is ``crate organize --report``'s one read handle (U267), read
+    through and released. ONLY A READ TAKES IT: an opener asked for a handle
+    to write with and handed the shared read is refused as a defect, never
+    given a handle opened without the closed check.
     """
     from cratekit.core import active_taxonomy, rb_writer
     from cratekit.intake import set_playlist
 
+    if one_read is not None and not read_only:
+        raise refuse(
+            "internal-error",
+            "the INSPIRATION folder was asked for to write through a shared read handle",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("export", "set_cli"),
+        )
     if declared is None:
         declared = active_taxonomy.load(cfg)
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg),
-        require_closed=not read_only,
-        check_app_version=not read_only,
-        cfg=cfg,
+    db = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db(
+            rb_writer.live_db_path(cfg),
+            require_closed=not read_only,
+            check_app_version=not read_only,
+            cfg=cfg,
+        )
     )
     try:
         folder_id, _node = set_playlist.folder_for(db, declared)
         yield db, folder_id
     finally:
-        rb_writer.close_db(db)
+        rb_writer.done_reading(db, one_read)
 
 
 def _inspiration_playlists(
-    cfg, *, read_only: bool = False, declared=None
+    cfg, *, read_only: bool = False, declared=None, one_read=None
 ) -> list[tuple[str, str]]:
     """Live playlists under the declared INSPIRATION folder: (name, playlist_id).
 
-    ``read_only`` and ``declared`` are :func:`_inspiration_folder`'s.
+    ``read_only``, ``declared`` and ``one_read`` are :func:`_inspiration_folder`'s.
     """
-    with _inspiration_folder(cfg, read_only=read_only, declared=declared) as (db, folder_id):
+    with _inspiration_folder(
+        cfg, read_only=read_only, declared=declared, one_read=one_read
+    ) as (db, folder_id):
         return inspiration_playlists_on(db, folder_id)
 
 
@@ -1129,7 +1147,7 @@ def inspiration_playlists_on(db, folder_id: str) -> list[tuple[str, str]]:
     return sorted(found, key=lambda one: one[0].lower())
 
 
-def inspiration_names(cfg) -> frozenset[str] | None:
+def inspiration_names(cfg, *, one_read=None) -> frozenset[str] | None:
     """Every set name an INSPIRATION playlist carries, or None when none is declared.
 
     PUBLIC FOR ``crate organize`` (U142), whose set step takes an INSPIRATION
@@ -1138,6 +1156,7 @@ def inspiration_names(cfg) -> frozenset[str] | None:
     by. A taxonomy that declares no INSPIRATION folder has no playlist that
     could prove a set, and says so as None rather than as an empty set; a
     database that cannot be read, or a root holding the folder twice, refuses.
+    ``one_read`` is the report's one read handle (U267), read through when given.
     """
     from cratekit.core import active_taxonomy
 
@@ -1145,7 +1164,10 @@ def inspiration_names(cfg) -> frozenset[str] | None:
     if declared.inspiration is None:
         return None
     return frozenset(
-        name for name, _pid in _inspiration_playlists(cfg, read_only=True, declared=declared)
+        name
+        for name, _pid in _inspiration_playlists(
+            cfg, read_only=True, declared=declared, one_read=one_read
+        )
     )
 
 

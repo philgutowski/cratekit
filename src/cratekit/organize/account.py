@@ -312,7 +312,7 @@ def _waiting(name: str, inspired: frozenset[str] | None) -> str:
     )
 
 
-def _set_steps(cfg, area: Area) -> None:
+def _set_steps(cfg, area: Area, one_read: Any = None) -> None:
     from cratekit.modules.outbound import ledger, sets
 
     try:
@@ -342,7 +342,7 @@ def _set_steps(cfg, area: Area) -> None:
     # THE DATABASE IS READ ONCE, and only when a set has no intake file and
     # no standing mark, so an area every set of which is proven by a file
     # never opens it.
-    inspired = _Lazy(lambda: set_cli.inspiration_names(cfg))
+    inspired = _Lazy(lambda: set_cli.inspiration_names(cfg, one_read=one_read))
     for name in names:
         key = f"archive:{name}"
         title = f"archive the set {name}"
@@ -634,9 +634,9 @@ def _labels(cfg, area: Area, available, followed, unfollowed, catalogue_of: _Laz
         )
 
 
-def _sets(cfg, area: Area, available) -> None:
+def _sets(cfg, area: Area, available, one_read: Any = None) -> None:
     if EXPORT_MODULE in available:
-        _set_steps(cfg, area)
+        _set_steps(cfg, area, one_read)
     else:
         area.steps.append(
             Step(
@@ -657,6 +657,7 @@ def plan_area(
     only: frozenset[str] | None = None,
     run: account_mirror.Run | None = None,
     shared: account_mirror.Shared | None = None,
+    one_read: Any = None,
 ) -> Area:
     """Plan every account step; a step that refuses is shown and hides no other.
 
@@ -673,7 +674,9 @@ def plan_area(
     plan on (R-1031), or ``None`` for a mirror that does none of them.
     ``shared`` is the run's one account and mirror reading (U201), which the
     rekordbox area may have read already; every step here resolves the
-    account through it when given.
+    account through it when given. ``one_read`` is ``--report``'s one read
+    handle on the database (U267), which the sets step reads INSPIRATION
+    through; the mirror reads the library through ``shared``, which holds it.
     """
     from cratekit.label import catalogue
     from cratekit.modules.outbound import account
@@ -685,7 +688,7 @@ def plan_area(
     if area.wants(LABELS):
         _labels(cfg, area, available, followed, unfollowed, catalogue_of, remote_of)
     if area.wants(SETS):
-        _sets(cfg, area, available)
+        _sets(cfg, area, available, one_read)
     if area.wants(MARKS):
         _mark_steps(cfg, area)
     # ONE FILING PLAN, read by the filing step and the root step (U143).

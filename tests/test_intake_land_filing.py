@@ -365,7 +365,7 @@ def test_the_census_a_landing_files_walks_only_the_rows_it_made(monkeypatch):
 
     rows = (SimpleNamespace(content_id="1"), SimpleNamespace(content_id="2"))
     scanned: list[tuple] = []
-    monkeypatch.setattr(apply_cli.collection, "read_collection", lambda _cfg: rows)
+    monkeypatch.setattr(apply_cli.collection, "read_collection", lambda _cfg, **_: rows)
     monkeypatch.setattr(apply_cli.collection, "prefix_rules", lambda _cfg: ())
     monkeypatch.setattr(
         apply_cli.scan, "scan_rows", lambda got, *_a, **_k: scanned.append(tuple(got)) or ()

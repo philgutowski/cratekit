@@ -152,7 +152,9 @@ def collection_rows(rows: Any) -> Iterator[CollectionRow]:
         )
 
 
-def read_collection(cfg: config.Config) -> tuple[CollectionRow, ...]:
+def read_collection(
+    cfg: config.Config, *, one_read: rb_writer.SharedRead | None = None
+) -> tuple[CollectionRow, ...]:
     """The configured library's whole collection, read once and cached.
 
     THE OPEN IS A READ AND SAYS SO. ``require_closed`` is
@@ -177,6 +179,10 @@ def read_collection(cfg: config.Config) -> tuple[CollectionRow, ...]:
     records why: the binding leaves its pooled connection open, the process keeps
     holding the file and its write-ahead log, and everything works until a
     restore replaces those files underneath the live connection.
+
+    ``one_read`` IS A READ ONLY REPORT'S ONE HANDLE (U267), read through and
+    released rather than opened and closed here; it was opened with the same
+    read intent, so the paragraphs above hold of it too.
     """
     target = rb_writer.live_db_path(cfg)
     key = str(Path(target).resolve())
@@ -184,16 +190,20 @@ def read_collection(cfg: config.Config) -> tuple[CollectionRow, ...]:
     if cached is not None:
         return cached
 
-    handle = rb_writer.open_db(
-        target,
-        require_closed=False,
-        check_app_version=False,
-        cfg=cfg,
+    handle = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db(
+            target,
+            require_closed=False,
+            check_app_version=False,
+            cfg=cfg,
+        )
     )
     try:
         found = tuple(collection_rows(handle.get_content()))
     finally:
-        rb_writer.close_db(handle)
+        rb_writer.done_reading(handle, one_read)
     _CACHE[key] = found
     _INDEX[key] = {row.content_id: row for row in found}
     return found

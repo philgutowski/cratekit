@@ -1285,6 +1285,94 @@ def open_db(
     return db
 
 
+class SharedRead:
+    """ONE READ HANDLE FOR A READ ONLY REPORT, opened at its first read (U267).
+
+    ``crate organize --report`` reads the library in up to ten places, and each
+    used to open the database itself, paying the whole open path every time:
+    the key derivation of an encrypted file, the binding's configuration read,
+    the process walk, the canary, the schema pin and the foreign tree read. The
+    report makes one of these and hands it to every reader, so the open, and
+    every check it runs, happens once.
+
+    LAZY, AND A FAILED OPEN IS NOT KEPT. :meth:`handle` opens where the first
+    reader would have opened its own, through :func:`open_db` with read intent
+    exactly as each reader did, so a report that reads no database opens none,
+    and an open that refuses refuses that reader with today's reason. The next
+    reader asks again, as its own open would have, and refuses or opens on its
+    own merits.
+
+    EACH READER RELEASES IT, AND A RELEASE FORGETS EVERY ROW THE READ LOADED.
+    :meth:`release` empties the session's identity map, so the next reader
+    reads the database afresh, as it did on a handle of its own, and never
+    takes a row an earlier reader loaded as the row the database holds now.
+    It holds no transaction either: the binding begins none for a read, so a
+    released handle locks nothing while the report waits on a provider.
+
+    NEVER A WRITE HANDLE. It is opened with read intent and is made only by a
+    caller that writes nothing; every gated write opens its own handle with
+    ``require_closed`` as before, and is never handed this one. Not a process
+    wide cache either: each report makes its own and closes it.
+
+    :meth:`close` closes it through :func:`close_db` once, from the report's
+    ``finally``, so every way out of the report disposes the engine. A handle
+    asked for after the close is refused as a defect rather than reopened.
+    """
+
+    def __init__(self, cfg: config.Config | None = None) -> None:
+        self._cfg = cfg
+        self._db: Any = None
+        self._closed = False
+
+    def handle(self) -> Any:
+        """The one read handle, opened at the first call and answered after."""
+        if self._closed:
+            raise _defect("a read handle was asked of a shared read that was already closed")
+        if self._db is None:
+            self._db = open_db(
+                live_db_path(self._cfg),
+                require_closed=False,
+                check_app_version=False,
+                cfg=self._cfg,
+            )
+        return self._db
+
+    def release(self, db: Any) -> None:
+        """End one reader's read: the handle stays open and forgets every row it loaded."""
+        if db is not self._db:
+            raise _defect("a handle that is not the shared read's own was released through it")
+        db.session.expunge_all()
+
+    def close(self) -> None:
+        """Close the handle once; a second close, or one with nothing opened, does nothing."""
+        self._closed = True
+        db, self._db = self._db, None
+        if db is not None:
+            close_db(db)
+
+
+def _defect(message: str) -> CratekitError:
+    return refuse(
+        "internal-error",
+        message,
+        remedy=Remedy.REPORT_DEFECT,
+        origin=("rb_writer", "shared_read"),
+    )
+
+
+def done_reading(db: Any, shared: SharedRead | None) -> None:
+    """End a reader's use of ``db``: close it when it was the reader's own, release it when shared.
+
+    THE ONE PLACE A READER DECIDES WHICH, so a reader handed the report's
+    shared handle never closes it under the readers after it, and a reader
+    that opened its own never leaves it open.
+    """
+    if shared is None:
+        close_db(db)
+    else:
+        shared.release(db)
+
+
 # ---------------------------------------------------------------------------
 # Snapshot, integrity, restore, prune
 # ---------------------------------------------------------------------------
@@ -3858,6 +3946,7 @@ __all__ = [
     "RekordboxUnavailable",
     "RunStateVocabulary",
     "SQLITE_HEADER",
+    "SharedRead",
     "add_membership",
     "add_memberships",
     "add_my_tag",
@@ -3873,6 +3962,7 @@ __all__ = [
     "cloud_sync_active",
     "cloud_sync_state",
     "close_db",
+    "done_reading",
     "clear_registry_buffer",
     "commit_guarded",
     "commit_witness",
