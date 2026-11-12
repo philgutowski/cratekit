@@ -148,7 +148,9 @@ below. The REVIEW ITEM identity is a different thing and stays here: see
 from __future__ import annotations
 
 import hashlib
+import os
 import re
+import time
 import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -1908,8 +1910,109 @@ class LibraryIndex:
         return sum(len(held) for held in self.by_recording.values())
 
 
+@dataclass(frozen=True, slots=True)
+class _Remembered:
+    """What one clean read of a file said, and the file's stamp when it said it."""
+
+    stamp: tuple[int, int, int, int, int]
+    made_ns: int
+    owned: Owned
+
+
+#: THE INDEX READER'S MEMORY, one entry per file read cleanly in this process
+#: (U249). A sync pass builds one index of the whole music folder per intake
+#: job and one more for ``intake missing``, and each used to open every file
+#: again although nothing landed between them: (P + 1) x N opens for P
+#: playlists over N files, on a volume where one walk of the live library was
+#: measured at nine to twelve seconds. Every index is still a FRESH WALK of the
+#: folder as it is now, so a file that is gone is absent and a new one is read;
+#: only what an unchanged file's tags say is remembered.
+#:
+#: THE KEY IS NEVER THE PATH ALONE. An entry answers only while the path, the
+#: name template it was parsed under and the file's whole stamp agree: size,
+#: modification time, change time, inode and device. Size and modification
+#: time are what the set builder's cache keys on; the change time is added
+#: because ``rsync -a``, ``cp -p`` and ``os.utime`` put the old modification
+#: time back over new bytes and none of them can set it, and the inode pair
+#: because a rename can put another file of the same size and times under the
+#: same name. A field too many costs a read, never a stale answer.
+#:
+#: THE WINDOW. A file whose modification time is not at least
+#: :data:`REMEMBER_WINDOW_NS` older than the moment its entry was made is never
+#: answered from memory, because a FAT volume stamps in two second steps and a
+#: rewrite inside one step keeps every field above on a volume with no change
+#: time of its own. The moment is taken BEFORE the stat and the read, so a
+#: write that lands during or after the read either changes the stamp or falls
+#: inside the window.
+#:
+#: ONLY A CLEAN READ IS REMEMBERED. A read the checked reader refuses is
+#: answered by the lenient reader exactly as before and remembered never,
+#: because a failed read on an external volume can be a moment's I/O error and
+#: the next job must be free to read the file properly. A file that cannot be
+#: stat'ed is read as before and remembered never.
+#:
+#: Nothing is kept across processes, so a resume in a new process walks and
+#: reads as before. :func:`reset_cache` forgets every entry, and the suite
+#: calls it around every test.
+_REMEMBERED: dict[tuple[Path, naming.NameTemplate], _Remembered] = {}
+
+#: Two seconds, a FAT volume's modification time step.
+REMEMBER_WINDOW_NS = 2_000_000_000
+
+#: The four fields the index reads from every file, through one open.
+_INDEX_FIELDS = ("artist", "title", "initialkey", "isrc")
+
+
+def reset_cache() -> None:
+    """Forget every file the index reader remembers. A module level memory no
+    test can clear is a memory that leaks one test's library into the next."""
+    _REMEMBERED.clear()
+
+
+def remembered() -> int:
+    """How many files the index reader remembers, for a test to read."""
+    return len(_REMEMBERED)
+
+
+def _stamp_of(path: Path) -> tuple[int, int, int, int, int] | None:
+    """The file's size, modification time, change time, inode and device, or
+    None when it cannot be stat'ed, which is a file with no identity to keep."""
+    try:
+        seen = os.stat(path)
+    except OSError:
+        return None
+    return (seen.st_size, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev)
+
+
 def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
-    """What this file is, from its tags first and its filename second.
+    """What this file is, read once per process while it stays unchanged (U249).
+
+    The index's one reader, so every caller of :func:`index_library` and
+    :func:`index_paths` gains and none changes. The rules are the note above
+    :data:`_REMEMBERED`; :func:`_read_fresh` is what a miss reads.
+    """
+    made_ns = time.time_ns()
+    stamp = _stamp_of(path)
+    key = (path, template)
+    if stamp is not None:
+        entry = _REMEMBERED.get(key)
+        if (
+            entry is not None
+            and entry.stamp == stamp
+            and stamp[1] <= entry.made_ns - REMEMBER_WINDOW_NS
+        ):
+            return entry.owned
+    owned, clean = _read_fresh(path, template)
+    if stamp is not None and clean and stamp[1] <= made_ns - REMEMBER_WINDOW_NS:
+        _REMEMBERED[key] = _Remembered(stamp=stamp, made_ns=made_ns, owned=owned)
+    else:
+        _REMEMBERED.pop(key, None)
+    return owned
+
+
+def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]:
+    """What this file is, from its tags first and its filename second, and
+    whether the read was clean enough to remember.
 
     Tags first because a tag is what the file itself says; the filename second
     because the library's own naming convention carries the Camelot head and,
@@ -1961,7 +2064,13 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     # ONE CONTAINER OPEN FOR THE FOUR FIELDS. Three opens per file was the shape
     # the residual titled "The index reader opens every container three times,
     # and the walk is the library" recorded, and the ISRC is not a fourth.
-    read = tags.read_tags(path, ("artist", "title", "initialkey", "isrc"))
+    #
+    # THE CHECKED READER FIRST, so a failed read is known and never remembered;
+    # on a refusal the lenient reader answers exactly as it always has.
+    try:
+        read, clean = tags.read_tags_checked(path, _INDEX_FIELDS), True
+    except tags.TagReadFailed:
+        read, clean = tags.read_tags(path, _INDEX_FIELDS), False
     tagged_artist = str(read["artist"] or "").strip()
     spelled_tag = read["title"] or ""
     tagged_title = naming.strip_heads(spelled_tag, template=template)
@@ -1984,7 +2093,7 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
         version=version,
         key=str(key).strip() if key else None,
         isrc=isrc_token(read["isrc"]),
-    )
+    ), clean
 
 
 def index_library(
@@ -2916,6 +3025,8 @@ __all__ = [
     "read_text_lines",
     "read_text_rows",
     "read_tidal_tracks",
+    "remembered",
+    "reset_cache",
     "row_isrc",
     "recording_token",
     "resolve_all",
