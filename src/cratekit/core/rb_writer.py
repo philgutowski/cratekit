@@ -1288,11 +1288,12 @@ def open_db(
 class SharedRead:
     """ONE READ HANDLE FOR A READ ONLY REPORT, opened at its first read (U267).
 
-    ``crate organize --report`` reads the library in up to ten places, and each
-    used to open the database itself, paying the whole open path every time:
-    the key derivation of an encrypted file, the binding's configuration read,
-    the process walk, the canary, the schema pin and the foreign tree read. The
-    report makes one of these and hands it to every reader, so the open, and
+    The organize verb's read only report reads the library in up to ten
+    places, and each used to open the database itself, paying the whole open
+    path every time: the key derivation of an encrypted file, the binding's
+    configuration read, the process walk, the canary, the schema pin and the
+    foreign tree read. The report makes one of these and hands it to every
+    reader, so the open, and
     every check it runs, happens once.
 
     LAZY, AND A FAILED OPEN IS NOT KEPT. :meth:`handle` opens where the first
