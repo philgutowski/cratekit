@@ -48,6 +48,7 @@ import socket
 import subprocess
 import sys
 from pathlib import Path
+from typing import NamedTuple
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
@@ -413,16 +414,210 @@ CREDENTIAL_FILENAMES: tuple[re.Pattern[str], ...] = (
 _TEMPLATE_NAME = re.compile(r"(?:\.example$|\.sample$|\.template$|^example[._-]|^sample[._-])")
 
 
-def secret_violations(text: str) -> list[str]:
-    """Return one message per credential-shaped literal in ``text``."""
+# ---------------------------------------------------------------------------
+# Where each secret pattern is run (U257). Every pattern used to be run over
+# every character of every tracked file, which was most of the scan's time:
+# 16.8 of 20.3 seconds on the tree of 2026-11-12. The patterns are not changed
+# and every match is still made by the pattern itself; what follows only leaves
+# out positions and texts where a match is impossible, and each shortcut says
+# beside it why that is a necessary condition. ``tests/test_scan_secret_equality.py``
+# holds the plain loop as the reference and pins equality with it.
+# ---------------------------------------------------------------------------
+
+
+class _LiteralLead(NamedTuple):
+    """A pattern every match of which starts with ``literal``, case sensitively."""
+
+    literal: str
+
+
+class _KeywordGate(NamedTuple):
+    """A keyword alternation, which may match only behind a separator its ``value`` matches at."""
+
+    keyword_end: re.Pattern[str]
+    width: int
+    value: re.Pattern[str]
+
+
+# The two case insensitive alternations, declared in the three pieces their
+# sources are written in. A pattern whose source is not exactly
+# ``opening + keywords + _KEY_CLOSE + separator and value`` gets no gate, so an
+# edit to either pattern above costs time and never a finding, and
+# ``test_every_pattern_takes_a_shortcut_on_the_shipped_table`` names it.
+_KEY_CLOSE = r"""["']?\s*"""
+_SEPARATOR_AND_VALUE = r"""[:=]\s*["'][^"'\s]{%d,}["']"""
+_KEYWORD_PATTERNS: dict[str, tuple[str, str, int]] = {
+    "OAuth token field": (
+        r"""["']?""",
+        r"""(?:access[_-]?token|refresh[_-]?token|id[_-]?token"""
+        r"""|client[_-]?secret|client[_-]?id|session[_-]?id"""
+        r"""|consumer[_-]?(?:key|secret))""",
+        16,
+    ),
+    "credential assignment": (
+        "",
+        r"""(?:api[_-]?key|apikey|secret|password|passwd|passphrase"""
+        r"""|auth[_-]?token|access[_-]?secret|access[_-]?key)""",
+        12,
+    ),
+}
+
+# Every candidate separator for either alternation: a colon or an equals sign,
+# then whitespace, then a quote. A match of either holds exactly this run, and
+# ``finditer`` over it reports every colon or equals sign that opens one,
+# because a run holds one separator and none of its later characters can be
+# one, so no run hides the start of another.
+# Python's own pattern parser and its opcodes, the ones ``re.compile`` uses, so
+# a shortcut is read off the pattern rather than written beside it. Private
+# modules, so their absence costs the shortcuts and never a finding.
+try:
+    from re import _constants as _re_constants
+    from re import _parser as _re_parser
+except ImportError:  # pragma: no cover - every supported Python has them
+    _re_constants = _re_parser = None
+
+_SEPARATOR_RUN = re.compile(r"""[:=]\s*["']""")
+_SPACE = re.compile(r"\s")
+_QUOTES = "\"'"
+
+
+def _parsed(pattern: re.Pattern[str]):
+    """Python's own parse of ``pattern``, or None where this Python has no parser to read."""
+    if _re_parser is None:  # pragma: no cover - every supported Python has it
+        return None
+    try:
+        return _re_parser.parse(pattern.pattern, pattern.flags)
+    except Exception:  # pragma: no cover - the pattern compiled, so it parses
+        return None
+
+
+def _literal_lead(pattern: re.Pattern[str]) -> _LiteralLead | None:
+    """The literal every match of ``pattern`` starts with, read by Python's own parser.
+
+    A case sensitive pattern whose parse opens with an optional word boundary
+    and then one or more literal characters can match only where those
+    characters start, since the boundary is zero width. The literal is read off
+    the parse rather than written beside it, so it cannot drift from the
+    pattern. Anything else, a case insensitive pattern, an opening alternation
+    or class, gets None and is scanned plainly.
+    """
+    parsed = _parsed(pattern)
+    if parsed is None or (pattern.flags | parsed.state.flags) & re.IGNORECASE:
+        return None
+    items = list(parsed)
+    if items and items[0] == (_re_constants.AT, _re_constants.AT_BOUNDARY):
+        items = items[1:]
+    literal = ""
+    for op, value in items:
+        if op is not _re_constants.LITERAL:
+            break
+        literal += chr(value)
+    return _LiteralLead(literal) if literal else None
+
+
+def _keyword_gate(label: str, pattern: re.Pattern[str]) -> _KeywordGate | None:
+    """The gate for one of the two alternations, or None when its source is not the declared one."""
+    declared = _KEYWORD_PATTERNS.get(label)
+    if declared is None:
+        return None
+    opening, keywords, shortest = declared
+    value = _SEPARATOR_AND_VALUE % shortest
+    if pattern.pattern != opening + keywords + _KEY_CLOSE + value:
+        return None
+    keyword_end = re.compile(keywords + r"\Z", pattern.flags)
+    parsed = _parsed(keyword_end)
+    if parsed is None:
+        return None
+    _, high = parsed.getwidth()
+    if high > 256:  # an unbounded keyword has no window to look back over
+        return None
+    return _KeywordGate(keyword_end, high, re.compile(value, pattern.flags))
+
+
+def _shortcut_for(label: str, pattern: re.Pattern[str]) -> _LiteralLead | _KeywordGate | None:
+    return _keyword_gate(label, pattern) or _literal_lead(pattern)
+
+
+def _keyword_gate_passes(gate: _KeywordGate, text: str) -> bool:
+    """False only when the gated pattern has no match anywhere in ``text``.
+
+    A match is: an optional quote, a keyword, an optional quote, whitespace,
+    then the separator and value. So its separator opens a ``_SEPARATOR_RUN``,
+    the value part matches there, and walking back from it over whitespace and
+    at most one quote lands where a keyword ends. The walk cannot pass into the
+    keyword, since no whitespace character is a keyword letter or a quote under
+    the engine's folding (pinned by a test over every code point). Whether a
+    keyword ends there is asked of the engine with the keyword alternation
+    itself, anchored at the window's end, so the folding that lets a dotless i,
+    a dotted capital I, a long s or a Kelvin sign spell a keyword is the
+    engine's own. Both landing points are tried when a quote sits there, which
+    can only pass more texts. A text that passes is scanned whole by the
+    pattern, so the gate decides only whether the pattern runs, never what it
+    finds.
+    """
+    for run in _SEPARATOR_RUN.finditer(text):
+        separator = run.start()
+        if gate.value.match(text, separator) is None:
+            continue
+        end = separator
+        while end > 0 and _SPACE.match(text, end - 1):
+            end -= 1
+        ends = (end, end - 1) if end > 0 and text[end - 1] in _QUOTES else (end,)
+        for keyword_end in ends:
+            if gate.keyword_end.search(text, max(0, keyword_end - gate.width), keyword_end):
+                return True
+    return False
+
+
+def _matches(pattern: re.Pattern[str], shortcut, text: str):
+    """The matches ``pattern.finditer(text)`` yields, in its order, found with ``shortcut``."""
+    if isinstance(shortcut, _KeywordGate):
+        return pattern.finditer(text) if _keyword_gate_passes(shortcut, text) else ()
+    if isinstance(shortcut, _LiteralLead):
+        return _matches_at_literal(pattern, shortcut.literal, text)
+    return pattern.finditer(text)
+
+
+def _matches_at_literal(pattern: re.Pattern[str], literal: str, text: str):
+    """``finditer`` with only the start positions it would have rejected left out.
+
+    ``finditer`` tries each position from the end of its last match onward and
+    keeps the first that matches. A match here starts with ``literal``, so
+    every position where it does not start is a rejection, and the positions
+    ``str.find`` reports are the only ones to try, in the same order and with
+    the same skip past each match. ``match(text, pos)`` reads the character
+    before ``pos`` for a word boundary exactly as ``finditer`` does there.
+    """
+    end = 0
+    position = text.find(literal)
+    while position != -1:
+        if position >= end:
+            match = pattern.match(text, position)
+            if match is not None:
+                yield match
+                end = match.end()
+        position = text.find(literal, max(position + 1, end))
+
+
+_SECRET_SHORTCUTS: dict[str, _LiteralLead | _KeywordGate | None] = {
+    label: _shortcut_for(label, pattern) for label, pattern in SECRET_PATTERNS
+}
+
+
+def _secret_violations_over(text: str, patterns, shortcuts) -> list[str]:
     problems: list[str] = []
-    for label, pattern in SECRET_PATTERNS:
-        for match in pattern.finditer(text):
+    for label, pattern in patterns:
+        for match in _matches(pattern, shortcuts.get(label), text):
             span = match.group(0)
             if _PLACEHOLDER_VALUE.search(span):
                 continue
             problems.append(f"{label}: {_elide(span)}")
     return problems
+
+
+def secret_violations(text: str) -> list[str]:
+    """Return one message per credential-shaped literal in ``text``."""
+    return _secret_violations_over(text, SECRET_PATTERNS, _SECRET_SHORTCUTS)
 
 
 def credential_filename_violations(relative_path: str) -> list[str]:
