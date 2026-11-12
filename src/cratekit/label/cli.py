@@ -1445,14 +1445,24 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
     # they were what made a dead endpoint drop every release read; the sweep
     # re-verifies one of them on exactly this path, and its answer stands for
     # all of them.
+    #
+    # THE RELEASE RE-VERIFIED IS NAMED, with its answer (U277): ``unconfirmed``
+    # is no label credit found for it, and ``mismatch`` a credit the needle
+    # does not match, with the name it was credited as.
     unconfirmed = len(source.dropped) + source.held_unconfirmed
     if result.shortfall == "empty" and source.dropped and unconfirmed == source.read:
+        canaries = [listing.canary for _, listing in source.listings if listing.canary]
+        asked_again = "".join(
+            f" A release already asked about or in review was verified again: {one.said()}."
+            for one in canaries
+        )
         raise refuse(
             "label-sweep-incomplete",
             f"the sweep of {entry.name!r} read {unconfirmed} releases "
             f"from the catalogue and could not confirm a single one of them, so "
             f"it offered nothing and this is not a label with nothing new. The "
-            f"provider answered: what failed is verification rather than reach",
+            f"provider answered: what failed is verification rather than reach."
+            f"{asked_again}",
             steps=(
                 f"check what the catalogue credits these releases to, then set "
                 f"the needle with: crate label registry add {entry.name} --match "
@@ -1465,6 +1475,7 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
                 "read": unconfirmed,
                 "confirmed": 0,
                 "reasons": sorted({drop.reason for drop in source.dropped}),
+                **({"reverified": canaries[0].to_json()} if canaries else {}),
             },
         )
 

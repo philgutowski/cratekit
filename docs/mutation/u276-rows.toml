@@ -1,0 +1,174 @@
+name = "u276"
+pass_kind = "light"
+
+[[rows]]
+id = "K1_default_is_whole"
+description = "KEY_DEFAULT: the whole track again, so every caller naming no method separates and the key reverts to the old reading"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py", "tests/test_analysis_key_methods.py", "tests/test_analysis_key_windows.py", "tests/test_head_agreement.py"]
+old = '''KEY_DEFAULT = KEY_PLAIN'''
+new = '''KEY_DEFAULT = KEY_WHOLE'''
+
+[[rows]]
+id = "K2_profile_default_whole"
+description = "key_profile: default its method to whole by name, past KEY_DEFAULT, so a caller of the profile alone separates"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py", "tests/test_analysis_key_methods.py", "tests/test_analysis_key_windows.py"]
+old = '''    method: str = KEY_DEFAULT,
+    timings: MutableMapping[str, float] | None = None,
+) -> Any:'''
+new = '''    method: str = KEY_WHOLE,
+    timings: MutableMapping[str, float] | None = None,
+) -> Any:'''
+
+[[rows]]
+id = "K3_analyse_file_default_whole"
+description = "analyse_file: default its key to whole by name, so analyze run and its workers, which name none, separate"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py", "tests/test_analysis_key_methods.py", "tests/test_analysis_key_windows.py"]
+old = '''    key: str = KEY_DEFAULT,
+    timings'''
+new = '''    key: str = KEY_WHOLE,
+    timings'''
+
+[[rows]]
+id = "K4_plain_separates"
+description = "key_profile: separate under every method, plain included, so the default pays the separation and reads whole's key"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py", "tests/test_analysis_key_methods.py", "tests/test_analysis_key_windows.py"]
+old = '''        if method != KEY_PLAIN:
+            with timed(timings, "harmonic"):'''
+new = '''        if True:
+            with timed(timings, "harmonic"):'''
+
+[[rows]]
+id = "K5_stages_of_plain_keeps_harmonic"
+description = "stages_of: answer every stage for plain too, so the stage report counts a separation the plain chroma never ran"
+file = "src/cratekit/analysis/detect.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py", "tests/test_analysis_key_methods.py"]
+old = '''    if method == KEY_PLAIN:
+        return tuple(stage for stage in STAGES if stage != "harmonic")
+    return STAGES'''
+new = '''    return STAGES'''
+
+[[rows]]
+id = "K6_stages_of_refuses_nothing"
+description = "stages_of: drop the refusal of a method nobody built, so a misspelt method reads as one that separates"
+file = "src/cratekit/analysis/detect.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py", "tests/test_analysis_key_methods.py"]
+old = '''    if method not in KEY_METHODS:
+        raise ValueError(f"the key method is one of {KEY_METHODS}, not {method!r}")
+    if method == KEY_PLAIN:'''
+new = '''    if method == KEY_PLAIN:'''
+
+[[rows]]
+id = "K7_stage_table_keeps_every_row"
+description = "stage_table: print every stage whatever the method, so a plain run's table shows a harmonic separation row of naught seconds"
+file = "scripts/analyze_stages.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''        if key in detect.STAGES and key not in met:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "K8_stage_table_drops_too_much"
+description = "stage_table: leave out every detector stage the method meets instead of the ones it does not, so a whole run's table loses its separation row"
+file = "scripts/analyze_stages.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''        if key in detect.STAGES and key not in met:'''
+new = '''        if key in detect.STAGES and key in met and key == "harmonic":'''
+
+[[rows]]
+id = "K9_agreement_script_default_whole"
+description = "head_agreement.py: default --key to whole, so the attended sitting's run with no --key reads the old method, not the shipped one"
+file = "scripts/head_agreement.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py", "tests/test_head_agreement.py"]
+old = '''        default=detect.KEY_DEFAULT,'''
+new = '''        default=detect.KEY_WHOLE,'''
+
+[[rows]]
+id = "K10_stage_script_default_whole"
+description = "analyze_stages.py stages: default --key to whole, so the stage report times a method the run does not ship"
+file = "scripts/analyze_stages.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''    timed.add_argument("--key", default=detect.KEY_DEFAULT, choices=detect.KEY_METHODS)'''
+new = '''    timed.add_argument("--key", default=detect.KEY_WHOLE, choices=detect.KEY_METHODS)'''
+
+[[rows]]
+id = "K11_run_binding_names_whole"
+description = "analysis/cli.py: the driver's detector binding names the whole method, so analyze run separates whatever the default says"
+file = "src/cratekit/analysis/cli.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''            drift_cut=cfg.analysis.drift_cut,
+        )
+        light.bind_detect(_BOUND_DETECT)'''
+new = '''            drift_cut=cfg.analysis.drift_cut,
+            key=detect.KEY_WHOLE,
+        )
+        light.bind_detect(_BOUND_DETECT)'''
+
+[[rows]]
+id = "K12_stream_worker_binding_names_whole"
+description = "analysis/ahead.py: a stream worker's detector binding names the whole method, so a head measured ahead reads another key than the driver's"
+file = "src/cratekit/analysis/ahead.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''            drift_cut=float(drift_cut),
+        )
+    )'''
+new = '''            drift_cut=float(drift_cut),
+            key="whole",
+        )
+    )'''
+
+[[rows]]
+id = "K13_record_key_method_dropped"
+description = "head_agreement: leave out key_method, so the run's answer no longer says which method its key was read with"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py", "tests/test_head_agreement.py"]
+old = '''    record["key_method"] = KEY_DEFAULT
+    return record'''
+new = '''    return record'''
+
+[[rows]]
+id = "K14_record_read_with_plain"
+description = "_HEAD_AGREEMENT: say its key buckets were read with plain, which they were not"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_key_default.py", "tests/test_head_agreement.py"]
+old = '''    "key_read_with": "whole",'''
+new = '''    "key_read_with": "plain",'''
+
+[[rows]]
+id = "K15_warm_up_names_whole"
+description = "analysis/warm.py: the warm up's detector call names the whole method, so every process runs a separation no real head runs"
+file = "src/cratekit/analysis/warm.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''            path, tempo_window=(DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING)
+        )'''
+new = '''            path, tempo_window=(DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING), key="whole"
+        )'''
+
+[[rows]]
+id = "K16_json_totals_keep_harmonic"
+description = "stage_totals: total every stage whatever the method, so the JSON of a plain run carries a harmonic separation of naught seconds"
+file = "scripts/analyze_stages.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''        if key not in detect.STAGES or key in met
+    }'''
+new = '''    }'''

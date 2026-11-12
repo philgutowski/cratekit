@@ -9,6 +9,9 @@ running order over the window, and a median taken over the same window is the
 same number however it is found, so this module asks for the same medians one
 row at a time. On the container the unit was built on that is ten times
 faster along time and six along frequency, with every output element equal.
+Since U276 the key reads the plain chroma by default and meets the harmonic
+part only when a caller names the ``whole`` or ``windows`` method; the energy
+pass reads the pair on every track.
 
 EQUAL MEANS EQUAL, AND IT IS PINNED. ``tests/test_analysis_separation.py``
 holds :func:`harmonic` to ``librosa.effects.harmonic`` and

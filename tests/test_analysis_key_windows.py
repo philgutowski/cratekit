@@ -25,7 +25,7 @@ RATE = detect.MEASURE_RATE
 def test_the_shipped_windows_are_six_of_thirty_seconds():
     assert (detect.KEY_WINDOW_COUNT, detect.KEY_WINDOW_SECONDS) == (6, 30.0)
     assert detect.KEY_METHODS == ("whole", "windows", "plain")
-    assert detect.KEY_WHOLE == "whole", "the whole track is the method every caller defaults to"
+    assert detect.KEY_WHOLE == "whole", "the whole track method stays selectable by its name"
 
 
 @pytest.mark.parametrize("seconds", [181, 265, 420, 600, 3600])
