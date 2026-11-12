@@ -498,8 +498,10 @@ def default_image_fetch(
 
 
 #: How many addresses' pictures the worker's fetch keeps, the least recently
-#: used dropped first. An album's files sit together in a sweep, so a few is
-#: every album a folder interleaves, and a few source pictures is little memory.
+#: used dropped first. A sweep takes files in sorted path order, so an album's
+#: files usually sit together and a few covers hold every album of a landed
+#: folder; a folder interleaving more albums than this asks once per file, as
+#: it did before. A few source pictures is little memory.
 IMAGE_MEMORY = 4
 
 

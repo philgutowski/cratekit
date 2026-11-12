@@ -262,8 +262,9 @@ def to_cdj_jpeg(
 # ---------------------------------------------------------------------------
 
 #: How many encoded covers one process keeps, the least recently used dropped
-#: first. An album's files sit together in a sweep, so a few is every album a
-#: folder interleaves, and each entry is under :data:`ART_MAX_BYTES`.
+#: first. An album's files usually sit together in a sweep, so a few covers
+#: hold every album of a landed folder, and each entry is under
+#: :data:`ART_MAX_BYTES`. More albums interleaved than this encode per file.
 COVER_MEMORY = 4
 
 _remembered: OrderedDict[tuple[bytes, int, int | None, int], CdjJpeg] = OrderedDict()

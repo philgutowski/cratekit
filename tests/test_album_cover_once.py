@@ -401,6 +401,35 @@ def test_two_pictures_of_one_length_are_encoded_apart(encodes):
     assert first.data != second.data
 
 
+def test_two_covers_sharing_a_long_header_are_encoded_apart(encodes):
+    """The digest is over every byte, not a prefix. Two covers carrying one
+    embedded colour profile agree for thousands of bytes before their pixels
+    differ, and are padded to one length too, so only the whole digest tells
+    them apart. Round one of the review found a 2 KB prefix digest killed by
+    nothing."""
+    import io
+
+    from tests.test_tagging_engine import _gradient
+
+    profile = bytes(range(256)) * 12
+
+    def saved(turn: int) -> bytes:
+        buffer = io.BytesIO()
+        _gradient(300, 300).rotate(turn).save(buffer, "JPEG", quality=85, icc_profile=profile)
+        return buffer.getvalue()
+
+    one, two = saved(0), saved(90)
+    longer = max(len(one), len(two))
+    one, two = (picture + b"\0" * (longer - len(picture)) for picture in (one, two))
+    shared = next(index for index, (a, b) in enumerate(zip(one, two, strict=True)) if a != b)
+    assert shared > len(profile), "the fixture must share more than its profile"
+
+    first = art.to_cdj_jpeg_remembered(one)
+    second = art.to_cdj_jpeg_remembered(two)
+
+    assert encodes == [one, two]
+    assert first.data != second.data
+
 def test_the_encode_memory_drops_the_least_recently_used(monkeypatch, encodes):
     monkeypatch.setattr(art, "COVER_MEMORY", 2)
     third = _jpeg(600, 500)
