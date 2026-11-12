@@ -814,17 +814,18 @@ def _gate_settings() -> provider_gate.GateSettings | None:
 
 
 def _without_calls(tokens: Sequence[str]) -> list[str]:
-    """The global options with any ``--calls`` taken out, so it is given once."""
+    """The global options with any ``--calls`` and ``--calls-per-hour`` taken
+    out, so each is given once (U278: the continue names the hour it needs)."""
     kept: list[str] = []
     skip = False
     for token in tokens:
         if skip:
             skip = False
             continue
-        if token == "--calls":
+        if token in ("--calls", "--calls-per-hour"):
             skip = True
             continue
-        if token.startswith("--calls="):
+        if token.startswith(("--calls=", "--calls-per-hour=")):
             continue
         kept.append(token)
     return kept
@@ -867,18 +868,23 @@ def continue_command(argv: Sequence[str], entry: Entry, cause: Cause) -> str:
     """
     detail = cause.detail or {}
     higher = str(detail.get("higher") or 2 * int(detail.get("ceiling") or 1))
+    # THE HOUR IT NEEDS, NAMED BESIDE THE CEILING (U278): a ``--calls`` above
+    # the configured hour is refused as printed without it, and a run whose
+    # hour was raised continues with that hour.
+    hour = detail.get("calls_per_hour")
+    raised = ["--calls", higher, *(["--calls-per-hour", str(hour)] if hour else [])]
     job_id = detail.get("job_id")
     if job_id:
-        return shlex.join(["crate", "--calls", higher, "job", "resume", str(job_id)])
+        return shlex.join(["crate", *raised, "job", "resume", str(job_id)])
     tokens = _without_run(argv) if detail.get("fresh") else list(argv)
     run_id = detail.get("run_id")
     named = any(token == "--run" or token.startswith("--run=") for token in tokens)
     run = ["--run", str(run_id)] if run_id and not named else []
     verb = _verb_argv(tokens, entry)
     if verb is None:
-        return shlex.join(["crate", *run, "--calls", higher, *_without_calls(tokens)])
+        return shlex.join(["crate", *run, *raised, *_without_calls(tokens)])
     lead = _without_calls(tokens[: len(tokens) - len(verb)])
-    return shlex.join(["crate", *lead, *run, "--calls", higher, *verb])
+    return shlex.join(["crate", *lead, *run, *raised, *verb])
 
 
 def _with_continue(cause: Cause, argv: Sequence[str], entry: Entry) -> Cause:

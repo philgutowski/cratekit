@@ -161,8 +161,8 @@ CEILING = "provider-call-ceiling"
 CALLS_ENV = "CRATEKIT_PROVIDER_CALLS"
 
 #: The reason a call past its identity's line for the hour stops with, and the
-#: reason a ``--calls`` past that line is refused with (U278), declared in
-#: ``cause.REASONS``.
+#: reason a ``--calls`` above the hour's whole budget is refused with (U278),
+#: declared in ``cause.REASONS``.
 BUDGET = "provider-budget"
 
 #: How an hour's budget raised for one run reaches a job's detached child, on
@@ -691,6 +691,27 @@ def _class_words(reserve: bool, budget: int, line: int) -> str:
     )
 
 
+def hour_to_name(calls: int, settings: GateSettings | None = None) -> int | None:
+    """The ``--calls-per-hour`` a printed command naming ``--calls calls`` must
+    carry, or None when the configured hour already holds it (U278).
+
+    A continue or a forecast that names a ``--calls`` above the configured
+    budget is refused as printed unless it raises the hour with it, and a run
+    whose hour was raised continues with that hour: so the larger of the two,
+    named whenever it passes ``[provider] calls_per_hour``. Round two's
+    review found both shapes printed without it.
+    """
+    settings = settings or GateSettings()
+    wanted = max(int(calls), hourly(settings))
+    return wanted if wanted > settings.calls_per_hour else None
+
+
+def hour_args(calls: int, settings: GateSettings | None = None) -> list[str]:
+    """:func:`hour_to_name` as command line words, empty when none is needed."""
+    hour = hour_to_name(calls, settings)
+    return ["--calls-per-hour", str(hour)] if hour is not None else []
+
+
 def over_the_line(settings: GateSettings | None = None) -> Cause | None:
     """The refusal for a ``--calls`` raised past the hour's budget, or None.
 
@@ -1011,6 +1032,8 @@ class Gate:
         # it meets names --calls-per-hour.
         reach = hourly(self.settings)
         higher = min(line * 2, reach) if reach > line else line * 2
+        hour = hour_to_name(higher, self.settings)
+        raise_hour = f" --calls-per-hour {hour}" if hour is not None else ""
         # NEVER "WHAT IT DID IS KEPT" (U217). Said by every command, it was
         # false for each that read and did not keep, and a label listing paid
         # its whole cost again on every continue under those words. What a
@@ -1032,8 +1055,9 @@ class Gate:
                     # continued by its id and never by queueing it again. The
                     # dispatcher replaces it with the one exact command.
                     f"continue with a higher ceiling for one run: a parked job with "
-                    f"crate --calls {higher} job resume JOB_ID, any other command by "
-                    f"running it again with --calls {higher} before it",
+                    f"crate --calls {higher}{raise_hour} job resume JOB_ID, any other "
+                    f"command by running it again with --calls {higher}{raise_hour} "
+                    f"before it",
                     "or raise [provider] calls_per_command in the configuration for every run",
                 ),
             ),
@@ -1045,6 +1069,7 @@ class Gate:
                 "ceiling": line,
                 "raised": scope.raised is not None,
                 "higher": higher,
+                "calls_per_hour": hour,
             },
         )
 
@@ -1158,13 +1183,21 @@ class Gate:
             with self._held():
                 state = self._read()
                 now = self._clock()
-                if state.settle(now):
-                    self._write(state)
                 if state.cooling(now):
                     raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+                # AFTER THE COOLDOWN, AND NEVER IN ITS PLACE (round two): the
+                # window is settled here, and a write the filesystem refuses
+                # leaves it to the next one rather than turning a refusal
+                # into an OSError; the count written before the send below
+                # still reaches the file or raises as it always has.
+                if state.settle(now):
+                    try:
+                        self._write(state)
+                    except OSError:
+                        pass
                 scope = _COMMAND
                 # THE HOUR, BEFORE THE CEILING (U278), and both before the send.
-                # A ``--calls`` past what this command may reach is refused
+                # A ``--calls`` above the hour's whole budget is refused
                 # outright, and a window at its line stops the call whoever
                 # spent it, so no number of commands or copies steps around it.
                 over = over_the_line(self.settings)
@@ -1416,6 +1449,8 @@ __all__ = [
     "command",
     "command_spent",
     "header_value",
+    "hour_args",
+    "hour_to_name",
     "hourly",
     "iso",
     "line_for",

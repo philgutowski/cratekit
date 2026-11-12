@@ -422,7 +422,7 @@ def test_the_hour_raised_for_one_run_lasts_that_run_and_reaches_a_child(paths, c
     assert back.cause.detail["budget"] == 8
 
 
-def test_a_ceilings_continue_never_names_a_ceiling_past_the_line(paths, clock):
+def test_a_ceilings_continue_never_names_a_ceiling_past_the_hours_budget(paths, clock):
     gate = Gate(
         GateSettings(min_interval_s=1.0, calls_per_command=4, calls_per_hour=8, reserve_share=0.25),
         path=paths[0],
@@ -722,7 +722,7 @@ def _entry_named(name: str):
         ("doctor", False, False),
     ],
 )
-def test_a_command_spends_the_reserve_only_when_its_verb_writes_and_runs_no_report(
+def test_these_commands_are_classed_by_their_verbs_writes_and_a_report(
     verb, report, spends
 ):
     from cratekit import cli  # noqa: PLC0415
@@ -768,3 +768,112 @@ def test_calls_past_the_budget_is_refused_before_a_verb_that_makes_no_call_runs(
     code, envelope = drive(["--calls", "1600", "doctor"])
     assert envelope["cause"]["reason"] == BUDGET
     assert envelope["outcome"] == "failed", "a command line to fix is not a park"
+
+
+def test_a_parked_jobs_continue_carries_the_hour_its_ceiling_needs(paths, clock):
+    """Round two's second blocker: a run with its hour raised stops at its
+    ceiling, and the continue it names carries that hour beside the ceiling."""
+    from cratekit import cli  # noqa: PLC0415
+
+    gate = Gate(
+        GateSettings(min_interval_s=1.0, calls_per_command=4, calls_per_hour=8, reserve_share=0.25),
+        path=paths[0],
+        lock_path=paths[1],
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    with provider_gate.command(calls=6, calls_per_hour=20, reserve=True):
+        spend_calls(gate, 6)
+        error, _ = refused(gate)
+    cause = error.cause
+    assert cause.reason == provider_gate.CEILING
+    assert cause.detail["higher"] == 12
+    assert cause.detail["calls_per_hour"] == 20
+    assert "--calls 12 --calls-per-hour 20 job resume JOB_ID" in cause.remediation.steps[0]
+    import dataclasses  # noqa: PLC0415
+
+    named = dataclasses.replace(cause, detail={**dict(cause.detail), "job_id": "J-1"})
+    entry = _entry_named("acquire.download")
+    assert cli.continue_command(["acquire", "download"], entry, named) == (
+        "crate --calls 12 --calls-per-hour 20 job resume J-1"
+    )
+
+
+def test_a_continue_within_the_configured_hour_names_no_hour(paths, clock):
+    from cratekit import cli  # noqa: PLC0415
+
+    gate = Gate(
+        GateSettings(min_interval_s=1.0, calls_per_command=2, calls_per_hour=8, reserve_share=0.25),
+        path=paths[0],
+        lock_path=paths[1],
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    with provider_gate.command(reserve=True):
+        spend_calls(gate, 2)
+        error, _ = refused(gate)
+    assert error.cause.detail["calls_per_hour"] is None
+    entry = _entry_named("label.harvest")
+    command = cli.continue_command(
+        ["--calls-per-hour", "9", "label", "harvest", "X"], entry, error.cause
+    )
+    assert command == "crate --calls 4 label harvest X", "a stale hour was carried"
+
+
+def test_a_minute_from_the_future_on_the_app_credentials_is_settled_too(paths, clock):
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    ahead = clock.now
+    clock.now += 30 * 86_400
+    with provider_gate.command():
+        spend_calls(gate, 6, identity=APP)
+    clock.now = ahead
+    with provider_gate.command():
+        refused(gate, identity=APP)
+    clock.now = provider_gate._bucket(ahead) + provider_gate.BUCKET_S + provider_gate.WINDOW_S
+    with provider_gate.command():
+        assert len(spend_calls(gate, 1, identity=APP)) == 1
+
+
+def test_a_settle_the_filesystem_refuses_leaves_a_cooldown_a_cooldown(paths, clock, monkeypatch):
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    with provider_gate.command():
+        spend_calls(gate, 1)
+    data = json.loads(paths[0].read_text())
+    data["lifts_at"] = clock.now + 4 * provider_gate.WINDOW_S
+    data["tripped_at"] = clock.now
+    paths[0].write_text(json.dumps(data))
+    clock.now += 2 * provider_gate.WINDOW_S
+
+    def refuse_writes(*args, **kwargs):
+        raise OSError(28, "No space left on device")
+
+    # A minute past the hour wants settling, the write is refused, and the
+    # refusal is still the cooldown's park and never an OSError.
+    monkeypatch.setattr(config, "atomic_write_bytes", refuse_writes)
+    with provider_gate.command():
+        cooling, sent = refused(gate)
+    assert cooling.cause.reason == provider_gate.COOLDOWN and sent == []
+    monkeypatch.undo()
+
+    data["lifts_at"] = None
+    data["window"] = {ACCOUNT: {str(provider_gate._bucket(clock.now - 2 * provider_gate.WINDOW_S)): 1}}
+    paths[0].write_text(json.dumps(data))
+    monkeypatch.setattr(config, "atomic_write_bytes", refuse_writes)
+    with provider_gate.command(), pytest.raises(OSError):
+        gate.call(lambda: Ok())  # the count before the send still raises, as before U278
+
+
+def test_a_crawl_forecast_above_the_hour_names_the_hour():
+    from cratekit.label import playlists_cli  # noqa: PLC0415
+
+    est = playlists_cli.Estimate(
+        label_id="x", name="X", releases=720, pace_s=1.0, kept=0, kept_age="",
+        ceiling=500, spent=40, budget=1500,
+    )
+    said = est.shown()["call ceiling"]
+    assert f"--calls {est.one_run} --calls-per-hour {est.one_run} before" in said
+    small = playlists_cli.Estimate(
+        label_id="x", name="X", releases=100, pace_s=1.0, kept=0, kept_age="",
+        ceiling=50, spent=0, budget=1500,
+    )
+    assert "--calls-per-hour" not in small.shown()["call ceiling"]

@@ -634,8 +634,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
 - It plans once; the rekordbox gate `sync.pair.rekordbox` then the account
   gate `sync.pair.account` (each `apply` or `skip`) reuse the plan. A playlist
   changed before the write refuses as stale. A write stopped by the call
-  ceiling names the `crate --calls N --run RUN sync pair` that finishes it; at
-  the hour's budget already, add `--calls-per-hour` as the refusal says.
+  ceiling names the `crate --calls N --run RUN sync pair` that finishes it, with
+  `--calls-per-hour` beside it when N is above the hour's budget.
 - After a removal on Tidal it cannot read back, it names the playlist: look
   at it in the Tidal app before running anything again.
 - Tidal's order is kept in rekordbox's order only for pairs under GIG READY;
@@ -1164,8 +1164,8 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A job that never moves | `crate job show JOB_ID`; queued work needs `crate job resume`. |
 | A blocked job | `job show` gives the cause, usually a review item or a credential. |
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
-| `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, up to the hour's budget, 1,500. |
-| `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` past the line is refused the same way: lower it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
+| `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, with `--calls-per-hour` beside it when N is above the hour's budget, 1,500. |
+| `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` above the whole hour is refused the same way: lower it, or raise the hour with it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |

@@ -373,3 +373,58 @@ def test_a_pair_the_stopped_command_finished_is_not_read_again_by_the_continue(m
     assert code == int(ExitCode.OK), done
     assert world.account.playlists[first] == ["t1", "t9"], "the finished pair was written again"
     assert len(world.account.created) == 5
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U278: a continue or a forecast above the hour's budget carries the hour
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def small_hour(made_world, cfg, monkeypatch):
+    """The made world with an hour of fifty calls, so the ``--calls`` sync pair
+    names for the rest of its write is above the hour (round two's review).
+    The world's config is the one ``config.load`` answers, so it is replaced
+    there as ``cfg`` set it."""
+    import dataclasses  # noqa: PLC0415
+
+    from cratekit.core import config  # noqa: PLC0415
+
+    small = dataclasses.replace(cfg, provider=dataclasses.replace(cfg.provider, calls_per_hour=50))
+    monkeypatch.setattr(config, "load", lambda *args, **kwargs: small)
+    return made_world
+
+
+def test_a_ceiling_continue_above_the_hour_names_the_hour_and_finishes_the_run(small_hour):
+    world, _playlists = small_hour
+    run_id, _first = to_the_write(VERB)
+    code, stopped = write(run_id, VERB, 10)
+    assert code == CEILING, stopped
+    words = shlex.split(stopped["cause"]["detail"]["continue"])
+    higher = int(words[words.index("--calls") + 1])
+    assert higher > 50, ("the world no longer names a --calls above the hour", words)
+    assert "--calls-per-hour" in words, words
+    assert int(words[words.index("--calls-per-hour") + 1]) >= higher
+
+    code, done = drive(words[1:])
+    assert code == int(ExitCode.OK), done
+    assert len(world.account.created) == 5
+
+
+def test_a_gate_forecast_above_the_hour_names_the_hour_and_its_command_runs(small_hour):
+    code, first = drive(["--calls", "10", *VERB])
+    assert code == int(ExitCode.DECISION_REQUIRED), first
+    said = first["cause"]["detail"]["shown"]["call ceiling"]
+    run_id = first["run_id"]
+    words = shlex.split(said.split("for example ", 1)[1].split(" once ", 1)[0])
+    higher = int(words[words.index("--calls") + 1])
+    assert higher > 50
+    assert int(words[words.index("--calls-per-hour") + 1]) >= higher
+    assert "--calls-per-hour" in said.split("for example ", 1)[0]
+
+    assert drive(["run", "decide", run_id, _gate(first), *APPLY])[0] == int(ExitCode.OK)
+    code, second = drive(["--run", run_id, *VERB])
+    assert drive(["run", "decide", run_id, _gate(second), *APPLY])[0] == int(ExitCode.OK)
+    code, done = drive(words[1:])
+    assert code == int(ExitCode.OK), done
+    assert len(small_hour[0].account.created) == 5
