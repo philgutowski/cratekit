@@ -608,8 +608,8 @@ def excluded_folders(cfg: config.Config) -> tuple[Path, Path]:
     folder that happens to share either name is still the library's. A folder
     that does not sit under the root excludes nothing, which the walk decides.
     """
-    # ``~`` EXPANDED, as every other reader of the staging path does: an
-    # unexpanded one names no folder, so it would exclude nothing and the
+    # ``~`` EXPANDED, as the landing and sync readers of the staging path do:
+    # an unexpanded one names no folder, so it would exclude nothing and the
     # staging copies would take the library files' places again.
     return (config.library_state_dir(cfg), Path(cfg.paths.download_staging).expanduser())
 
