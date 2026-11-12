@@ -1,0 +1,80 @@
+name = "u262"
+pass_kind = "light"
+
+# U262 changes one predicate on the read path, acquire/match.py _is_a_credit,
+# and the marker set it asks. Small card, no path that writes or deletes, so
+# about eight rows, each a way the first word rule could be wrong.
+
+[[rows]]
+id = "C1_letters_rule_back"
+description = "_is_a_credit: answer by the folded group's first letters again, the defect, so (Without You Remix) is a credit"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''    return bool(words) and words[0] in _CREDIT_MARKERS'''
+new = '''    return any(" ".join(words).startswith(marker) for marker in _CREDIT_MARKERS)'''
+
+[[rows]]
+id = "C2_any_word"
+description = "_is_a_credit: a marker anywhere in the group makes a credit, so (Live with Strings) loses its version"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''    return bool(words) and words[0] in _CREDIT_MARKERS'''
+new = '''    return any(word in _CREDIT_MARKERS for word in words)'''
+
+[[rows]]
+id = "C3_last_word"
+description = "_is_a_credit: ask the group's last word rather than its first"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''    return bool(words) and words[0] in _CREDIT_MARKERS'''
+new = '''    return bool(words) and words[-1] in _CREDIT_MARKERS'''
+
+[[rows]]
+id = "C4_unfolded_words"
+description = "_is_a_credit: split the raw group on spaces without folding, so feat. and Featuring are not markers"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''    words = fold(inside).split()
+    return bool(words) and words[0] in _CREDIT_MARKERS'''
+new = '''    words = str(inside).split()
+    return bool(words) and words[0] in _CREDIT_MARKERS'''
+
+[[rows]]
+id = "C5_no_with"
+description = "_CREDIT_MARKERS: drop with, so (with Anna) becomes a version"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'''
+new = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring"})'''
+
+[[rows]]
+id = "C6_no_ft"
+description = "_CREDIT_MARKERS: drop ft, so (ft Anna) becomes a version"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'''
+new = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "featuring", "with"})'''
+
+[[rows]]
+id = "C7_no_featuring"
+description = "_CREDIT_MARKERS: drop featuring, so (Featuring Anna) becomes a version"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'''
+new = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "with"})'''
+
+[[rows]]
+id = "C8_no_feat"
+description = "_CREDIT_MARKERS: drop feat, so (feat. Anna) becomes a version"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/test_uncredited_tombstone.py", "tests/test_tombstones.py"]
+old = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})'''
+new = '''_CREDIT_MARKERS: frozenset[str] = frozenset({"ft", "featuring", "with"})'''
