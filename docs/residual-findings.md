@@ -50692,3 +50692,146 @@ helpers and the six suites use it. Ledger only.
 **Measured cost.** Unmeasured: no other version was installed and none was downloaded. U265's whitespace and whole matrix tests would fail on such an install, so a difference would be loud in the suite rather than silent in a run.
 
 **Closes when:** the floor is raised to the measured release, or the split is measured on the floor release too. Ledger only.
+
+---
+
+## R-1613. U278 was reviewed by Opus 5.5 in Fable's place, so a Fable pass over its merged range is owed
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** Both review rounds of U278 were refused on Fable's usage
+limit, so the `fable-reviewer` definition was run on Opus 5.5 at high effort
+in its place, as the cloud-unit skill's Models section allows. The merge bar
+and the round cap were the same; the model was not.
+
+**Measured cost.** None measured. The rule exists because a second model
+reads differently, and this range has had one model's two reads.
+
+**Closes when:** Fable reviews the merged range of U278 (the provider gate's
+own directory, the hour's budget and reserve, the dispatcher's classes, doctor's
+`provider.budget` and `label sync`'s estimate) and its findings are filed.
+Ledger only: a review owed is maintainer facing.
+
+---
+
+## R-1614. A copy run that redirects XDG_STATE_HOME or HOME still gets a provider gate of its own
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** `config.provider_gate_dir` reads
+`platformdirs.user_state_dir`, which honours `XDG_STATE_HOME`, and on macOS
+too (platformdirs 4.14.5's `MacOS` takes XDG variables over its defaults),
+and resolves under `HOME`. A copy run that redirects either, rather than
+`CRATEKIT_STATE_DIR`, resolves a fresh gate and a fresh hour. The suite relies
+on exactly this, through its own pointer as well.
+
+**Measured cost.** Driven by the round one review: with `XDG_STATE_HOME` set
+to a scratch folder the gate resolved under it. No documented procedure, skill
+or solutions entry sets either variable for a copy run; reachability is
+unmeasured. 1 candidate was driven (the mutation driver, which also sets the
+gate's pointer) and it does not produce it.
+
+**Closes when:** the gate resolves by the account's own identity rather than a
+directory a process environment can move, or doctor names a gate outside the
+platform default that no pointer explains. Ledger only, since no producer is
+known.
+
+---
+
+## R-1615. A build from before U278 that writes the provider gate file drops the hour's count
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** The hour's count is a new `window` key in
+`provider_gate.json`. A build before U278 reads the file into its own state,
+which has no such field, and writes it back without it, so every minute the
+window held is lost and the next U278 build starts an empty hour.
+
+**Measured cost.** Driven by the round one review: seven calls through the
+branch's gate, one through `origin/main`'s on the same file, and the window
+read 0. The producer is an installed copy older than U278 beside a newer one,
+which lasts until the Mac's installed copy is updated; the attended check of
+this unit is owed on an installed copy at U278 or later.
+
+**Closes when:** every installed copy on the machine carries U278. Ledger only.
+
+---
+
+## R-1616. The hour's window is one per account but its line is read from each process's own configuration
+
+**Found:** at the build of #741, U278, 2026-11-12.
+
+**The mechanism.** Every process counts into the one gate's window, and each
+compares it with `[provider] calls_per_hour` and `reserve_share` off the
+configuration it loaded. A copy run that redirects `CRATEKIT_CONFIG_DIR` to a
+config with a higher budget spends further into the shared hour than the
+live config allows, and the live run then meets a window past its own line.
+
+**Measured cost.** Not driven. A copy's config is copied from the live one, so
+the two agree unless someone edits the copy's provider section.
+
+**Closes when:** the line a call is held to is written into the gate file by
+the live configuration, or doctor names a difference between the two. Ledger
+only.
+
+---
+
+## R-1617. The label sweep's estimate counts kept answers rather than pages and only label sync says one
+
+**Found:** at the build of #741, U278, 2026-11-12.
+
+**The mechanism.** `label sync`'s estimate before a walk over every followed
+label counts one call per aged kept answer, but a listed answer of many pages
+costs a call a page, and a label with no kept listing is estimated at the
+mean of the kept ones (or 100). Only `label sync --next` without `--label`
+and its interactive walk say an estimate; the retired `sync labels` resume,
+`label import` and any other verb that lists a label's whole catalogue say
+none. The hour's line still stops each of them call by call.
+
+**Measured cost.** Not measured on a real catalogue. A low estimate lets a
+sweep start that the hour then stops part way, which keeps what it read; it
+cannot spend the reserve.
+
+**Closes when:** a kept listing records the calls its pages cost and the
+estimate reads that, and every verb that walks every label shares the one
+estimate. Ledger only.
+
+---
+
+## R-1618. The hour's budget of 1,500 per identity and its quarter reserve are a conservative call awaiting Phillip's answer
+
+**Found:** at the build of #741, U278, 2026-11-12.
+
+**The mechanism.** The brief asked for a budget "well under" the 7,800 calls in
+twenty minutes of 2026-11-12 and a reserve of "for example a quarter". The
+build set `[provider] calls_per_hour` to 1,500 and `reserve_share` to 0.25 and
+asked Phillip on the card, as a Question for Phillip, between 1,500, 3,000 and
+900 an hour. A first `sync pair` plan of 2,500 to 4,200 calls now needs
+`--calls-per-hour` as well as `--calls`.
+
+**Measured cost.** None to the account: a lower line only stops reads sooner.
+A long sweep takes more hours than it did.
+
+**Closes when:** Phillip answers the card's question and the two defaults in
+`core/config.py`, the GUIDE's settings table and CONCEPTS agree with it.
+Ledger only.
+
+---
+
+## R-1619. The go a label sync walk ends at spends the reserve, and no test kills its removal
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** `label sync`'s walk is held to the read line by
+`provider_gate.reading`, and the go its last gate leads to widens back to the
+verb's declared class through `provider_gate.spending` in `sync_cli._go`.
+Removing that `with` leaves the suite green: no test drives a walk whose go
+meets an hour already past the read line.
+
+**Measured cost.** Driven by the round one review as a mutation, zero kills.
+With it removed, a walk's go would stop at 1,125 rather than 1,500 in an hour
+the reads had used, which is the case the reserve exists for. The code is
+present and correct at the merge; only its guard is unpinned.
+
+**Closes when:** a test walks every label to the go with the account's hour
+at its read line and the download still runs. Ledger only, maintainer facing.
