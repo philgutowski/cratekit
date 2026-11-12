@@ -1447,8 +1447,8 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
     # all of them.
     #
     # THE RELEASE RE-VERIFIED IS NAMED, with its answer (U277): ``unconfirmed``
-    # over a release whose line names the label is a verifier that answers
-    # nothing, and ``mismatch`` is a needle that release no longer matches.
+    # is no label credit found for it, and ``mismatch`` a credit the needle
+    # does not match, with the name it was credited as.
     unconfirmed = len(source.dropped) + source.held_unconfirmed
     if result.shortfall == "empty" and source.dropped and unconfirmed == source.read:
         canaries = [listing.canary for _, listing in source.listings if listing.canary]
@@ -1475,7 +1475,7 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
                 "read": unconfirmed,
                 "confirmed": 0,
                 "reasons": sorted({drop.reason for drop in source.dropped}),
-                **({"canary": canaries[0].to_json()} if canaries else {}),
+                **({"reverified": canaries[0].to_json()} if canaries else {}),
             },
         )
 

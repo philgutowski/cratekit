@@ -1122,9 +1122,8 @@ def _listing_checks(entry: labels.LabelEntry, listed: _Listed) -> list[dict[str,
     where it came from.
 
     THE RE-VERIFIED RELEASE IS SAID WHENEVER ONE WAS ASKED, on a nothing new
-    and a refused line alike, so a person reading either can tell a verifier
-    that answers nothing (``unconfirmed`` over a release that names the label)
-    from a needle that release no longer matches (``mismatch``).
+    and a refused line alike, with what the verifier answered: ``unconfirmed``,
+    no label credit found for it, or ``mismatch``, credited to another name.
     """
     listing = listed.listing
     if listing is None:
@@ -1137,11 +1136,10 @@ def _listing_checks(entry: labels.LabelEntry, listed: _Listed) -> list[dict[str,
     if listing.canary is not None:
         said.append(
             _check(
-                f"canary.{entry.label_id}",
+                f"reverified.{entry.label_id}",
                 "info",
-                f"{entry.name}: the listing confirmed nothing new, so one release already "
-                f"asked about or in review was verified again to tell a verifier that "
-                f"answers nothing from a label with nothing new: "
+                f"{entry.name}: every release the listing asked about was turned down, "
+                f"so one already asked about or in review was verified again: "
                 f"{listing.canary.said()}",
             )
         )

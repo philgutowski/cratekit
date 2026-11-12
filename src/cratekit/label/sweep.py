@@ -71,12 +71,12 @@ class Gated:
 class Canary:
     """The one held release a sweep verified again, and what the verifier answered (U277).
 
-    Asked only when the sweep confirmed nothing it asked about, to tell a
-    verifier that answers nothing from a label with nothing new. Carried on the
-    listing so the run can say which release it was and what it answered: a
-    person reading a refusal can then tell a dead endpoint (``unconfirmed``
-    over a release whose line names the label) from a needle the release no
-    longer matches (``mismatch``, credited as another name).
+    Asked only when the sweep turned down every release it asked about and
+    holds one, chosen as :func:`_canary_of` says. Carried on the listing so the
+    run can say which release it was and what it answered: ``unconfirmed`` is
+    a release the verifier found no label credit for, the answer a provider
+    that is not answering gives, and ``mismatch`` one credited to a name the
+    needle does not match, with the name in ``notes``.
     """
 
     identity: str
@@ -159,9 +159,8 @@ class LabelListing:
     #: is not verified again either (R-798).
     held_unconfirmed: int = 0
     #: The held release re-verified for ``held_unconfirmed`` and its answer, or
-    #: ``None`` when none was asked (U277). The run says it, so a person can
-    #: tell a verifier that answers nothing from a needle the release no
-    #: longer matches.
+    #: ``None`` when none was asked (U277). The run says it, so a person
+    #: reading a refusal knows what was asked and what the verifier answered.
     canary: Canary | None = None
     #: Releases THE GENRE GATE IS HOLDING BACK, each of which took a place in
     #: the offer window and was not filed (R-798). Not ``held`` above, which is
@@ -581,23 +580,41 @@ def line_reading(release: Any, claimed: str) -> int:
     return LINE_NAMES_OTHER
 
 
-def _canary_of(held: Sequence[Any], claimed: str) -> Any:
-    """The held release to verify again: the newest whose own line names the label.
+#: The verdict ``verify_release`` gives a release whose credit names another
+#: label: the verifier answered, with a name the needle does not match.
+MISMATCH = "mismatch"
+
+
+def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) -> Any:
+    """The held release to verify again, chosen by what the sweep's drops say.
 
     THE NEWEST HELD RELEASE WAS THE CANARY BEFORE U277, and a held release can
     be another act's: a sync that asked about releases a looser needle once
     confirmed holds them still. Sitting 94 read Rawax's listing with three
     ``RAWAXXX`` releases held newest and four ``Rawax`` ones below them, the
     newest answered mismatch, and the label refused as one whose catalogue
-    nothing could confirm. A release whose line names the label is the one
-    whose answer is known, so it is asked first, then one with no line (its
-    answer is the provider's to give), and one whose line names another label
-    only when nothing else is held, when the label refuses as before.
+    nothing could confirm.
 
-    STILL ASKED OF THE VERIFIER, never answered from the line, so a verifier
-    that answers nothing for any release still refuses.
+    EVERY DROP A MISMATCH: the verifier answered each release it was asked
+    about with another label's name, so it is answering, and what is left to
+    know is whether the needle still names any of the label's releases. A held
+    release whose own line names the label shows it does, so it is asked
+    first, then one with no line, then one whose line names another label.
+
+    ANY DROP THE VERIFIER GAVE NO ANSWER FOR: the question is whether it is
+    answering at all, and a release carrying a line answers nothing about
+    that, because the catalogue judges such a release from its line with no
+    provider call (round one of U277's review drove a degraded provider to
+    "nothing new" over a held Rawax line). So a held release with no line is
+    asked first, the one the provider is read for, and otherwise the newest,
+    as before U277. Never looser than before: it differs only by preferring
+    the read the drops failed on.
+
+    ALWAYS ASKED OF THE VERIFIER, never answered here from the line.
     """
-    return min(held, key=lambda release: line_reading(release, claimed))
+    if all(one.reason == MISMATCH for one in dropped):
+        return min(held, key=lambda release: line_reading(release, claimed))
+    return min(held, key=lambda release: line_reading(release, claimed) != LINE_ABSENT)
 
 
 def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
@@ -807,11 +824,12 @@ def list_for_label(
     # and what failed really is unconfirmed, and unconfirmed means nothing this
     # sweep asked could have been confirmed. One provider call, on the path
     # where the worker is deciding whether to refuse. Which held release is
-    # chosen by its own line (U277), :func:`_canary_of`.
+    # chosen by what the drops say and by each held release's own line
+    # (U277), :func:`_canary_of`.
     held_unconfirmed = 0
     canary: Canary | None = None
     if held_releases and dropped and not candidates:
-        chosen = _canary_of(held_releases, claimed)
+        chosen = _canary_of(held_releases, claimed, dropped)
         answered = label_verify.verify_release(claimed, chosen, search=verify)
         canary = Canary(
             identity=str(getattr(chosen, "id", "") or ""),

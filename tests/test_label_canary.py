@@ -10,10 +10,15 @@ verifier from a label with nothing new, and it took the newest, a
 mismatch; every held release then counted as unconfirmed and 112 dropped
 plus 7 held was the 119 read.
 
-The canary is now the held release whose own copyright line the needle
-confirms, and it is still ASKED, so a verifier that answers nothing still
-refuses. These tests verify as the real catalogue does, by the release's own
-line, and drive both the guided ``--next`` and the sweep worker.
+When every release the sweep turned down is a mismatch, the verifier
+answered each with another label's name, so the only question left is
+whether the needle still names anything of the label's, and a held release
+whose own line it names answers that. When the verifier gave no answer for
+some release, the held release re-verified is one the provider is READ for,
+one with no line first, since the real catalogue judges a release carrying a
+line from that line alone (round one of U277's review). These tests verify
+through the shipped catalogue's own read over a fake session, and drive both
+the guided ``--next`` and the sweep worker.
 
 NOTHING HERE REACHES A NETWORK OR ACCEPTS A RELEASE.
 """
@@ -54,31 +59,41 @@ def installed(tmp_path, monkeypatch):
     return resolved
 
 
-class LineCatalogue(FakeCatalogue):
-    """Verifies a release as the real catalogue does: by its own copyright line.
+class Session:
+    """The provider's album read, which the real catalogue makes only for a release with no line.
 
-    ``dead`` is a verification endpoint that answers nothing for any release,
-    the case the refusal exists for. ``verified`` records each release asked.
+    ``lines`` is what each album read credits when the provider answers.
+    ``degraded`` is a provider that answers the read with no copyright line
+    at all, which the verifier then reads as no label credit: the endpoint the
+    refusal exists for. ``reads`` records every album read made.
     """
 
-    def __init__(self, *args: Any, dead: bool = False, **kwargs: Any) -> None:
+    def __init__(self, lines: dict[str, str] | None = None, *, degraded: bool = False) -> None:
+        self.lines = dict(lines or {})
+        self.degraded = degraded
+        self.reads: list[str] = []
+
+    def album(self, identity: str) -> FakeRelease:
+        self.reads.append(identity)
+        line = "" if self.degraded else self.lines.get(identity, "")
+        return FakeRelease(identity, copyright=line)
+
+
+class LineCatalogue(FakeCatalogue):
+    """Verifies a release through the shipped catalogue's own read, over a fake session.
+
+    So a release carrying a line is judged from that line with no provider
+    call, and one with none is read again from ``_session``, exactly as a live
+    sweep verifies. ``verified`` records each release asked.
+    """
+
+    def __init__(self, *args: Any, session: Session | None = None, **kwargs: Any) -> None:
         super().__init__(*args, **kwargs)
-        self.dead = dead
+        self._session = session or Session()
         self.verified: list[str] = []
 
     def search_release(self, claimed: str, release: Any) -> dict:
         self.verified.append(str(release.id))
-        if self.dead:
-            return {
-                "verdict": "unconfirmed",
-                "resolved_label": "",
-                "source": "fake-catalogue",
-                "notes": "the verification endpoint answered nothing",
-            }
-        # The shipped catalogue's own read, so a fixture line is judged by
-        # exactly the extractor and needle a live sweep uses. It reads the
-        # provider again only for a release with no line, and every release
-        # here carries one.
         return dict(tidal_catalogue.TidalCatalogue.search_release(self, claimed, release))
 
 
@@ -180,7 +195,7 @@ def test_the_record_names_the_release_re_verified_and_what_it_answered(
 
     _code, envelope = next_rawax()
 
-    canary = check(envelope, f"canary.{SLUG}")
+    canary = check(envelope, f"reverified.{SLUG}")
     assert canary["status"] == "info"
     assert "a1" in canary["detail"] and "Release a1" in canary["detail"]
     assert "answered confirmed" in canary["detail"]
@@ -213,7 +228,7 @@ def test_held_releases_whose_lines_name_another_act_still_refuse(installed, monk
     assert line["status"] == "fail"
     assert "read 119 release(s)" in line["detail"]
     assert "could not confirm a single one" in line["detail"]
-    canary = check(envelope, f"canary.{SLUG}")
+    canary = check(envelope, f"reverified.{SLUG}")
     assert "release x0, answered mismatch (credited as 'RAWAXXX')" in canary["detail"]
     assert len([one for one in fake.verified if one.startswith(("a", "x"))]) == 1
     assert sync_cli.load_record(installed)["labels"][SLUG] == {
@@ -221,19 +236,77 @@ def test_held_releases_whose_lines_name_another_act_still_refuse(installed, monk
     }
 
 
-def test_a_dead_verifier_still_refuses_though_a_held_line_names_the_label(
+def lineless(identity: str, year: str = "2026") -> FakeRelease:
+    return release(identity, year, "")
+
+
+def unanswered_shape(cfg: config.Config, monkeypatch, session: Session) -> LineCatalogue:
+    """Round one's shape: three new releases with no line, one held with none, four Rawax.
+
+    The held ``n0`` was taken when the provider answered its read with
+    ``2025 Rawax``. Whatever the provider now answers for the new ones, the
+    four held Rawax lines say only that the needle is right, never that the
+    provider is answering.
+    """
+    held = [lineless("n0"), *rawax()]
+    new = [lineless(f"m{n}") for n in range(3)]
+    fake = bind(monkeypatch, [*new, *held, *others(112)], session=session)
+    asked(cfg, *(one.id for one in held))
+    return fake
+
+
+def test_a_degraded_provider_still_refuses_though_a_held_line_names_the_label(
     installed, monkeypatch
 ):
-    live_shape(installed, monkeypatch, dead=True)
+    session = Session({"n0": "2025 Rawax"}, degraded=True)
+    unanswered_shape(installed, monkeypatch, session)
 
     code, envelope = next_rawax()
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unlisted"
-    canary = check(envelope, f"canary.{SLUG}")
-    assert "a1" in canary["detail"]
-    assert "answered unconfirmed" in canary["detail"]
-    assert "the verification endpoint answered nothing" in canary["detail"]
+    reverified = check(envelope, f"reverified.{SLUG}")
+    assert "release n0, answered unconfirmed (no label credit)" in reverified["detail"]
+    # THE PROVIDER WAS READ FOR THE RELEASE RE-VERIFIED, not only for the new ones.
+    assert "n0" in session.reads
+
+
+def test_a_provider_that_answers_turns_the_same_shape_into_nothing_new(installed, monkeypatch):
+    """The new releases' reads credit another label, and the held one's credits Rawax."""
+    lines = {"n0": "2025 Rawax", **{f"m{n}": "2026 Moon Harbour" for n in range(3)}}
+    session = Session(lines)
+    unanswered_shape(installed, monkeypatch, session)
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    # Every drop named another label, so the verifier is answering and a held
+    # Rawax line is what shows the needle right; the held n0 is never read.
+    assert check(envelope, f"reverified.{SLUG}")["detail"].endswith(
+        "release a1, answered confirmed"
+    )
+    assert session.reads == ["m0", "m1", "m2"]
+
+
+def test_an_unanswered_release_with_no_held_release_to_read_refuses_as_before(
+    installed, monkeypatch
+):
+    """Sitting 94's shape with three new releases the provider answers with no line.
+
+    No held release lacks a line, so nothing held can show the provider
+    answering: the newest held is asked, as on main, and it is a RAWAXXX one.
+    """
+    held = [*rawaxxx(), *rawax()]
+    session = Session(degraded=True)
+    bind(monkeypatch, [*(lineless(f"m{n}") for n in range(3)), *held, *others(112)], session=session)
+    asked(installed, *(one.id for one in held))
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unlisted"
+    assert "release x0, answered mismatch" in check(envelope, f"reverified.{SLUG}")["detail"]
 
 
 def test_a_listing_with_no_release_held_asks_no_canary_and_says_none(installed, monkeypatch):
@@ -243,7 +316,7 @@ def test_a_listing_with_no_release_held_asks_no_canary_and_says_none(installed, 
 
     assert envelope["cause"]["reason"] == "label-sync-unlisted", envelope
     assert code == int(ExitCode.PRECONDITION)
-    assert [one for one in envelope["data"]["checks"] if "canary" in one["key"]] == []
+    assert [one for one in envelope["data"]["checks"] if "reverified" in one["key"]] == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -273,24 +346,26 @@ def test_the_worker_refuses_held_lines_naming_another_act_and_names_the_canary(
     assert cause.reason == "label-sweep-incomplete"
     assert cause.detail["read"] == 119
     # Every held line names another act, so the newest is asked, as before.
-    assert cause.detail["canary"]["identity"] == "x0"
-    assert cause.detail["canary"]["verdict"] == "mismatch"
+    assert cause.detail["reverified"]["identity"] == "x0"
+    assert cause.detail["reverified"]["verdict"] == "mismatch"
     assert "Release x0" in cause.message
     assert "credited as 'RAWAXXX'" in cause.message
     assert filed(installed) == []
 
 
-def test_the_worker_refuses_a_dead_verifier_over_held_lines_that_name_the_label(
+def test_the_worker_refuses_a_degraded_provider_over_held_lines_that_name_the_label(
     installed, monkeypatch
 ):
-    live_shape(installed, monkeypatch, dead=True)
+    session = Session({"n0": "2025 Rawax"}, degraded=True)
+    unanswered_shape(installed, monkeypatch, session)
 
     code, job_id = sweep_job()
 
     assert code != int(ExitCode.OK)
     cause = item_cause(job_id)
     assert cause.reason == "label-sweep-incomplete"
-    assert cause.detail["canary"]["verdict"] == "unconfirmed"
+    assert cause.detail["reverified"]["identity"] == "n0"
+    assert cause.detail["reverified"]["verdict"] == "unconfirmed"
     assert filed(installed) == []
 
 
@@ -364,3 +439,47 @@ def test_no_canary_is_asked_when_the_sweep_confirmed_something(installed, entry)
     assert found.canary is None
     assert "a1" not in verified
     assert [one.identity for one in found.candidates] == ["a2", "a3", "a4"]
+
+
+def test_with_every_drop_a_mismatch_a_held_labels_line_is_asked_before_one_with_none(
+    installed, entry
+):
+    """Every drop carried another label's name, so the verifier is answering.
+
+    The held release with no line is newest, and its read credits nothing; the
+    held Rawax line below it is the one that shows the needle still names the
+    label's releases.
+    """
+    releases = [lineless("n1"), *rawax(), *others(3)]
+    fake = LineCatalogue()
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(releases),
+        verify=fake.search_release,
+        offered=frozenset({"n1", "a1", "a2", "a3", "a4"}),
+    )
+
+    assert {one.reason for one in found.dropped} == {"mismatch"}
+    assert (found.canary.identity, found.canary.verdict) == ("a1", "confirmed")
+    assert found.held_unconfirmed == 0
+
+
+def test_with_a_drop_the_verifier_gave_no_answer_for_a_held_release_with_no_line_is_asked(
+    installed, entry
+):
+    """A held Rawax line is judged from the line alone and says nothing of the provider."""
+    releases = [lineless("m1"), lineless("n1"), *rawax(), *others(3)]
+    fake = LineCatalogue(session=Session(degraded=True))
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(releases),
+        verify=fake.search_release,
+        offered=frozenset({"n1", "a1", "a2", "a3", "a4"}),
+    )
+
+    assert "unconfirmed" in {one.reason for one in found.dropped}
+    assert (found.canary.identity, found.canary.verdict) == ("n1", "unconfirmed")
+    assert found.held_unconfirmed == 5
+    assert fake._session.reads == ["m1", "n1"]

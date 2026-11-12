@@ -512,12 +512,14 @@ crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 
 A label whose listing fails is a `[FAIL]` line, never "nothing new"; a run
 where no label could be read ends refused, `label-sync-unlisted`. When a
-listing confirms nothing new, one release already asked about is verified
-again, one whose copyright line names the label if any does: confirmed, the
-label has nothing new; not confirmed, its line fails as a listing that
-confirmed nothing. Either way a `canary` line names that release and what the
-verifier answered, `unconfirmed` for a verifier answering nothing and
-`mismatch` for a needle the release no longer matches. A label's
+listing turns down every release it asked about, one release already asked
+about is verified again, and a `reverified` line names it and the answer. If
+every release turned down was credited to another label, it is one whose
+copyright line names the label, which shows the needle still matches. If any
+came back with no label credit, it is one with no line, which makes the
+provider read it again. Confirmed, the label has nothing new; `unconfirmed`
+(no label credit) or `mismatch` (credited to another name), its line fails
+as a listing that confirmed nothing. A label's
 listing is kept seven days, so a second ask makes no listing calls; deleting
 the file its `listing` line names lists it afresh.
 
