@@ -1,0 +1,238 @@
+name = "u263"
+pass_kind = "light"
+
+[[rows]]
+id = "D1_librosa_first"
+description = "decode.load: skip librosa.load and decode every file through ffmpeg"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        return librosa.load(str(path), sr=rate, mono=True, **window)'''
+new = '''        raise RuntimeError("librosa skipped")'''
+
+[[rows]]
+id = "D2_libsndfile_guard_load"
+description = "decode.load: hand a file libsndfile opens to ffmpeg when librosa raises on it"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        return librosa.load(str(path), sr=rate, mono=True, **window)
+    except Exception:
+        if libsndfile_opens(path):
+            raise'''
+new = '''        return librosa.load(str(path), sr=rate, mono=True, **window)
+    except Exception:
+        pass'''
+
+[[rows]]
+id = "D3_libsndfile_opens_always"
+description = "libsndfile_opens: answer yes for every file, so an M4A never reaches ffmpeg"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        soundfile.info(str(path))
+    except Exception:
+        return False
+    return True'''
+new = '''        soundfile.info(str(path))
+    except Exception:
+        return True
+    return True'''
+
+[[rows]]
+id = "D4_resampler"
+description = "decode.load: resample the ffmpeg samples with soxr_mq rather than librosa's soxr_hq"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''res_type="soxr_hq")'''
+new = '''res_type="soxr_mq")'''
+
+[[rows]]
+id = "D5_window_offset"
+description = "_window: ignore the offset, so the slice starts at the top of the track"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    start = int(offset * native_rate) if offset > 0 else 0'''
+new = '''    start = 0'''
+
+[[rows]]
+id = "D6_window_round"
+description = "_window: round the frame count rather than truncate it as libsndfile does"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    return native[..., start : start + int(duration * native_rate)]'''
+new = '''    return native[..., start : start + round(duration * native_rate)]'''
+
+[[rows]]
+id = "D7_stderr_fails"
+description = "_ffmpeg_samples: trust the exit code alone, so a mid file error yields the first half"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    if proc.returncode != 0 or said:'''
+new = '''    if proc.returncode != 0:'''
+
+[[rows]]
+id = "D8_returncode_fails"
+description = "_ffmpeg_samples: trust stderr alone, so a non zero exit with nothing said is read"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    if proc.returncode != 0 or said:'''
+new = '''    if said:'''
+
+[[rows]]
+id = "D9_file_protocol"
+description = "_ffmpeg_samples: pass the path bare, so a name with a colon is read as a protocol"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        "-i", f"file:{path}",'''
+new = '''        "-i", f"{path}",'''
+
+[[rows]]
+id = "D10_first_stream"
+description = "_ffmpeg_samples: drop the map to the first audio stream"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        "-map", "0:a:0",
+'''
+new = ""
+
+[[rows]]
+id = "D11_mono_shape"
+description = "_ffmpeg_samples: keep a mono file two dimensional"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    if channels == 1:
+        native = native[0]'''
+new = ""
+
+[[rows]]
+id = "D12_channels_first"
+description = "_ffmpeg_samples: leave the samples frames first, not librosa's channels first"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    native = frames.reshape(-1, channels).T'''
+new = '''    native = frames.reshape(channels, -1)'''
+
+[[rows]]
+id = "D13_extensible"
+description = "_parse_float_wav: read the extensible tag without its sub format"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''            if fmt_tag == _WAVE_FORMAT_EXTENSIBLE:
+                (fmt_tag,) = struct.unpack("<H", blob[body + 24 : body + 26])'''
+new = ""
+
+[[rows]]
+id = "D14_whole_frames"
+description = "_parse_float_wav: keep a stray sample past the last whole frame"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''            whole = available - available % (4 * channels)'''
+new = '''            whole = available - available % 4'''
+
+[[rows]]
+id = "D15_chunk_padding"
+description = "_parse_float_wav: skip an odd sized chunk without its pad byte"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        position = body + size + (size & 1)'''
+new = '''        position = body + size'''
+
+[[rows]]
+id = "D16_head_no_decoder"
+description = "detect.analyse_file: report a missing decoder as undecodable, blaming the file"
+file = "src/cratekit/analysis/detect.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''    except decode.DecoderMissing:
+        return {"path": path, "terminal": TERMINAL_NO_DECODER}
+'''
+new = ""
+
+[[rows]]
+id = "D17_vocal_reraise"
+description = "vocal.decode: swallow a missing decoder as an undecodable file"
+file = "src/cratekit/analysis/vocal.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''    except decoder.DecoderMissing:
+        raise
+'''
+new = ""
+
+[[rows]]
+id = "D18_vocal_reason"
+description = "vocals.analyse: let a missing decoder fail the item rather than name it"
+file = "src/cratekit/analysis/vocals.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''    except DecoderMissing:
+        return _inactive(result, REASON_NO_DECODER)'''
+new = '''    except DecoderMissing:
+        raise'''
+
+[[rows]]
+id = "D19_energy_duration"
+description = "energy.features_from_path: read the length through librosa again, so an M4A is measured from its top"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''            duration = decode.duration(path)'''
+new = '''            duration = float(__import__("librosa").get_duration(path=str(path)))'''
+
+[[rows]]
+id = "D20_energy_load"
+description = "energy.features_from_path: decode through librosa.load again, so an M4A is unmeasured"
+file = "src/cratekit/analysis/energy.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py", "tests/test_analysis_workers.py"]
+old = '''        samples, decoded_rate = decode.load(
+            path, MEASURE_RATE, offset=offset, duration=SEGMENT_SECONDS
+        )'''
+new = '''        samples, decoded_rate = __import__("librosa").load(
+            str(path), sr=MEASURE_RATE, mono=True, offset=offset, duration=SEGMENT_SECONDS
+        )'''
+
+[[rows]]
+id = "D21_doctor_names_verbs"
+description = "doctor: drop the verbs from a failing binary row"
+file = "src/cratekit/cli/doctor.py"
+surface = "user"
+tests = ["tests/test_doctor.py"]
+old = '''            f"{', '.join(inputs.requiring(key))} ({source}; override with {override})"'''
+new = '''            f"({source}; override with {override})"'''
+
+[[rows]]
+id = "D22_restamp_declares"
+description = "registry: analyze restamp no longer declares binary.ffmpeg"
+file = "src/cratekit/cli/registry.py"
+surface = "user"
+tests = ["tests/test_doctor.py", "tests/test_cli_contract.py"]
+old = '''        doctor_checks=("library.mounted", "rekordbox.pins", "binary.ffmpeg"),'''
+new = '''        doctor_checks=("library.mounted", "rekordbox.pins"),'''
+
+[[rows]]
+id = "D23_cover_lines"
+description = "_audio_faults: keep the cover decoders' lines, so a cover ffmpeg cannot read fails a whole track"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        if line.strip() and not line.startswith(tuple(f"[{name} @ " for name in _COVER_DECODERS))'''
+new = '''        if line.strip()'''
+
+[[dropped]]
+id = "D24_librosa_floor"
+description = "pyproject: the librosa floor back to 0.10"
+reason = "a packaging bound no test can install against; measured by hand, 0.10.0 and 0.10.1 fail to import on a fresh 3.12, recorded in the record"
