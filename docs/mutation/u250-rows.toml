@@ -75,21 +75,27 @@ new = '''    try:
         return int(value)'''
 
 [[rows]]
-id = "M7_walk_ignores_reader"
-description = "library_truth: ignore a reader the caller passed and always read the files"
-file = "src/cratekit/write/rebuild.py"
-surface = "maintainer"
-tests = ["tests/test_rebuild_one_open.py", "tests/test_rebuild.py"]
-old = '''    read = read_truth if reader is None else reader'''
-new = '''    read = read_truth'''
+id = "M7_energy_word_reads_absent"
+description = "read_energy_checked: answer None for a stored energy that is not a number instead of raising, so a damaged file reads as untagged"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_adopt_energy.py", "tests/test_tags.py", "tests/test_rebuild_one_open.py", "tests/test_organize_mirror_edits_u227.py"]
+old = '''    if number is None:
+        raise TagReadFailed(f"energylevel is not a number: {value!r}")'''
+new = '''    if number is None:
+        return None'''
 
 [[rows]]
-id = "M8_walk_binds_reader_early"
-description = "library_truth: bind the default reader at definition time again, so a fake read_truth no longer reaches the walk"
-file = "src/cratekit/write/rebuild.py"
-surface = "maintainer"
-tests = ["tests/test_rebuild_one_open.py", "tests/test_routing_workers.py", "tests/test_export_collection.py"]
-old = '''    reader: Callable[[Path], Truth] | None = None,
-) -> Iterator[Truth]:'''
-new = '''    reader: Callable[[Path], Truth] | None = read_truth,
-) -> Iterator[Truth]:'''
+id = "M8_conversion_learns_decimals"
+description = "whole_number: read a decimal as its whole part, so 7.0 files at energy 7 where today it reads None"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_tags.py", "tests/test_rebuild.py"]
+old = '''    try:
+        return int(value)
+    except ValueError:
+        log.debug("non-numeric %s tag on %s: %r", field, path, value)'''
+new = '''    try:
+        return int(float(value))
+    except ValueError:
+        log.debug("non-numeric %s tag on %s: %r", field, path, value)'''
