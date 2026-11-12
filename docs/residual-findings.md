@@ -49867,3 +49867,45 @@ failure rather than a red one.
 every run, for instance a holding worker given its whole half up front whose
 tail is read back from xdist's own scheduling log, or the pins are accepted
 as the guard and this is closed as such. Ledger only.
+
+---
+
+## R-1576. U253's review round ran on Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #682, U253, 2026-11-12.
+
+**The mechanism.** The one review round of U253, the location decoder guard
+that computes each file's relative path once, was refused by Fable on its
+usage limit and run by Opus 5.5 at high effort under the same reviewer
+definition and merge bar, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None measured. The review a card is meant to have is
+Fable's, and it has not been run on this range.
+
+**Closes when:** Fable at high effort reviews U253's merged range against the
+merge bar and its findings are filed. Ledger only.
+
+---
+
+## R-1577. The one decoder guard skips every module named locations.py, in any package, not only the decoder's own
+
+**Found:** at the review of #682, U253, 2026-11-12.
+
+**The mechanism.** `_location_codec_offenders` in `tests/test_locations.py`,
+the sweep behind `test_no_module_outside_this_one_decodes_a_location_itself`,
+skips a file when `path.name == "locations.py"`, so a module of that name in
+any package under `src` is never read. Driven on a planted tree: a
+`cratekit/library/locations.py` and a `cratekit/sync/locations.py`, each
+calling `urllib.parse.unquote`, are reported by neither `main`'s guard nor
+U253's, while `cratekit/core/locations_extra.py` is. U253 kept the skip as it
+was, since its brief asks the guard to assert exactly what it asserted, and
+its exclusion test now claims only the lookalikes it pins.
+
+**Measured cost.** None today: the only `locations.py` under `src` is
+`cratekit/core/locations.py`, the decoder itself. The cost is a future
+`locations.py` elsewhere hand rolling a decoder unseen, the drift the guard
+exists to stop. No producer of such a module was found.
+
+**Closes when:** the skip names the decoder's own path under the root
+(`cratekit/core/locations.py`), with a planted `locations.py` in another
+package reported, as its own card if wanted. Ledger only.
