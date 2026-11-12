@@ -7,6 +7,13 @@ battery now fetches the full history before it measures, refuses when it
 cannot, and writes a baseline header that says so, which `compare` and the
 mutation driver read before they subtract anything.
 
+U268: the failing ids used to be cut out of pytest's summary lines up to
+their first space, so a parametrized test failing on the base for the
+machine's reason excused a sibling whose id differs only after the space. The
+scratch suite below fails one case as the base and another as the branch, and
+`compare` must read the second as new; the report the ids now come from is
+refused when it disagrees with the summary line.
+
 The clones here are real: a local repository with three commits, cloned at
 depth one over ``file://`` so git really writes a shallow clone, and unshallowed
 by the real fetch.
@@ -163,7 +170,7 @@ def test_a_baseline_header_says_it_was_measured_with_full_history(origin, tmp_pa
     assert battery.cmd_baseline(None) == 0
 
     header = (state / "baseline.txt").read_text(encoding="utf-8").splitlines()[0]
-    assert header.endswith(" history full")
+    assert header.endswith(" history full ids whole")
     assert _is_shallow(clone) == "false"
     assert battery.read_baseline() == ({"tests/a.py::t"}, header.split()[2])
 
@@ -232,18 +239,33 @@ def test_the_suite_command_leaves_the_distribution_to_addopts(monkeypatch):
     """
     seen = []
 
-    def recording_run(cmd):
+    def recording_run(cmd, env=None):
         seen.append(cmd)
+        Path(env[battery.REPORT_VARIABLE]).write_text(
+            '{"failed": {"ids": ["tests/a.py::t"], "counted": 1},'
+            ' "error": {"ids": [], "counted": 0}}',
+            encoding="utf-8",
+        )
         return subprocess.CompletedProcess(cmd, 1, stdout="1 failed, 2 passed\n", stderr="")
 
     monkeypatch.setattr(battery, "run", recording_run)
-    battery.failing_ids()
+    assert battery.failing_ids() == ({"tests/a.py::t"}, "1 failed, 2 passed")
     (command,) = seen
     # The whole command, each token read for what it changes. A list of the
     # flags forbidden would let the next spelling past (`--maxprocesses=1`,
-    # `--tx popen`, `-d`); an exact command lets nothing past unread.
+    # `--tx popen`, `-d`); an exact command lets nothing past unread. The one
+    # plugin it loads is the battery's own reporter (U268), which reads the
+    # run and changes nothing in it.
     assert command[0] == str(battery.PYTHON)
-    assert command[1:] == ["-m", "pytest", "--tb=no", "-rfE", "-p", "no:cacheprovider"]
+    assert command[1:] == [
+        "-m",
+        "pytest",
+        "--tb=no",
+        "-p",
+        battery.PLUGIN_MODULE,
+        "-p",
+        "no:cacheprovider",
+    ]
 
 
 def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkeypatch):
@@ -257,3 +279,237 @@ def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkey
     assert ids == {stealing.STOLEN_FAILURE}
     assert f"1 failed, {stealing.FULL_COUNT - 1} passed" in summary
     stealing.assert_the_failure_moved(log)
+
+
+# ---------------------------------------------------------------------------
+# Every failing id is read and compared whole, U268
+# ---------------------------------------------------------------------------
+
+#: A scratch suite whose ids differ only after a space, or after ` - `, the
+#: separator a summary line puts after an id. Which cases fail is read from the
+#: environment, so one suite plays the base and then the branch.
+SPACED_SUITE = '''import os
+
+import pytest
+
+FAILING = set(filter(None, os.environ.get("BATTERY_FIXTURE_FAILING", "").split("|")))
+
+
+@pytest.mark.parametrize("case", ["one two", "one three", "x - y", "x - z"])
+def test_case(case):
+    assert case not in FAILING
+
+
+@pytest.fixture(params=["setup a", "setup b"])
+def resource(request):
+    if request.param in FAILING:
+        raise RuntimeError("the fixture cannot be set up")
+    return request.param
+
+
+def test_with_resource(resource):
+    assert resource
+'''
+
+FAILING_VARIABLE = "BATTERY_FIXTURE_FAILING"
+
+
+def _spaced_suite(root: Path) -> Path:
+    (root / "tests").mkdir(parents=True)
+    # Its own ini, so the run is this suite's alone and not the repository's.
+    (root / "pytest.ini").write_text("[pytest]\naddopts = -q\n", encoding="utf-8")
+    (root / "tests" / "test_spaced.py").write_text(SPACED_SUITE, encoding="utf-8")
+    return root
+
+
+@pytest.fixture
+def spaced(tmp_path, monkeypatch) -> Path:
+    """The battery pointed at the scratch suite, with nothing but the suite real."""
+    suite = _spaced_suite(tmp_path / "suite")
+    state = suite / ".cloud-battery"
+    for name in stealing.INHERITED_RUN_STATE:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(battery, "ROOT", suite)
+    monkeypatch.setattr(battery, "STATE", state)
+    monkeypatch.setattr(battery, "BASELINE", state / "baseline.txt")
+    monkeypatch.setattr(battery, "VERDICT", state / "last-compare.txt")
+    monkeypatch.setattr(battery, "PYTHON", Path(sys.executable))
+    monkeypatch.setattr(battery, "ensure_full_history", lambda root=None: None)
+    monkeypatch.setattr(battery, "static_checks", lambda: True)
+    monkeypatch.setattr(battery, "head", lambda: "abc1234")
+    return suite
+
+
+def _measure_then_compare(monkeypatch, capsys, *, base: str, branch: str) -> tuple[int, str]:
+    monkeypatch.setenv(FAILING_VARIABLE, base)
+    assert battery.cmd_baseline(None) == 0
+    capsys.readouterr()
+    monkeypatch.setenv(FAILING_VARIABLE, branch)
+    code = battery.cmd_compare(None)
+    return code, capsys.readouterr().out
+
+
+def _listed_under(out: str, heading: str) -> list[str]:
+    """The ids `compare` printed under one of its three headings."""
+    lines = out.splitlines()
+    start = next(n for n, line in enumerate(lines) if line.startswith(heading))
+    listed = []
+    for line in lines[start + 1 :]:
+        if not line.startswith("  "):
+            break
+        listed.append(line[2:])
+    return listed
+
+
+SPACED = "tests/test_spaced.py::test_case"
+
+
+def test_a_new_failure_that_differs_from_the_machines_only_after_a_space_is_yours(
+    spaced, monkeypatch, capsys
+):
+    """The card's own case: today's reader kept `test_case[one` for both."""
+    code, out = _measure_then_compare(monkeypatch, capsys, base="one two", branch="one three")
+
+    assert code == 1
+    assert _listed_under(out, "NEWLY FAILING, yours") == [f"{SPACED}[one three]"]
+    assert _listed_under(out, "no longer failing") == [f"{SPACED}[one two]"]
+    assert "still failing, the machine's: 0" in out
+
+
+def test_an_id_holding_the_summary_separator_is_read_whole(spaced, monkeypatch, capsys):
+    code, out = _measure_then_compare(monkeypatch, capsys, base="x - y", branch="x - z|x - y")
+
+    assert code == 1
+    assert _listed_under(out, "NEWLY FAILING, yours") == [f"{SPACED}[x - z]"]
+    assert "still failing, the machine's: 1" in out
+    baseline = (spaced / ".cloud-battery" / "baseline.txt").read_text(encoding="utf-8")
+    assert f"\n{SPACED}[x - y]\n" in baseline
+
+
+def test_an_erroring_id_is_read_whole(spaced, monkeypatch, capsys):
+    code, out = _measure_then_compare(monkeypatch, capsys, base="setup a", branch="setup b")
+
+    assert code == 1
+    erroring = "tests/test_spaced.py::test_with_resource"
+    assert _listed_under(out, "NEWLY FAILING, yours") == [f"{erroring}[setup b]"]
+    assert _listed_under(out, "no longer failing") == [f"{erroring}[setup a]"]
+
+
+def test_the_same_failures_on_the_branch_are_the_machines(spaced, monkeypatch, capsys):
+    """A control: the whole ids still match themselves, so nothing reads as new."""
+    failing = "one two|x - y|setup a"
+    code, out = _measure_then_compare(monkeypatch, capsys, base=failing, branch=failing)
+
+    assert code == 0
+    assert "still failing, the machine's: 3" in out
+    assert "NEWLY FAILING, yours: 0" in out
+
+
+def test_a_file_that_cannot_be_collected_is_read_by_its_path(spaced, monkeypatch):
+    (spaced / "tests" / "test_broken.py").write_text("import not_a_module_here\n")
+    monkeypatch.setenv(FAILING_VARIABLE, "")
+
+    ids, summary = battery.failing_ids()
+
+    assert ids == {"tests/test_broken.py"}
+    assert "1 error" in summary
+
+
+def test_a_baseline_written_before_u268_is_refused_with_the_command_that_measures_it(
+    tmp_path, monkeypatch, capsys
+):
+    """Today's file kept ids cut at a space, so it is never read beside whole ids."""
+    baseline = tmp_path / "baseline.txt"
+    baseline.write_text(
+        f"# commit abc123 host {socket.gethostname()} history full\n# 1 failed\n"
+        "tests/a.py::t[one\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(battery, "BASELINE", baseline)
+
+    def must_not_run(*_a, **_k):
+        raise AssertionError("compare ran against a baseline it should refuse")
+
+    monkeypatch.setattr(battery, "ensure_full_history", must_not_run)
+    monkeypatch.setattr(battery, "failing_ids", must_not_run)
+
+    assert battery.read_baseline() is None
+    out = capsys.readouterr().out
+    assert "first space" in out
+    assert "scripts/cloud_battery.py baseline" in out
+    assert battery.cmd_compare(None) == 2
+
+
+def test_a_whole_baseline_reads_back_every_id_unchanged(tmp_path, monkeypatch):
+    baseline = tmp_path / "baseline.txt"
+    ids = {f"{SPACED}[one two]", f"{SPACED}[x - y]", "tests/test_été.py::t"}
+    baseline.write_text(
+        f"# commit abc123 host {socket.gethostname()} history full ids whole\n# 3 failed\n"
+        + "".join(f"{i}\n" for i in sorted(ids)),
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(battery, "BASELINE", baseline)
+
+    assert battery.read_baseline() == (ids, "abc123")
+
+
+def _report(failed=(), errors=(), failed_counted=None, errors_counted=None) -> dict:
+    return {
+        "failed": {
+            "ids": list(failed),
+            "counted": len(failed) if failed_counted is None else failed_counted,
+        },
+        "error": {
+            "ids": list(errors),
+            "counted": len(errors) if errors_counted is None else errors_counted,
+        },
+    }
+
+
+def test_a_report_that_agrees_with_the_summary_line_is_read():
+    report = _report(failed=[f"{SPACED}[one two]"], errors=["tests/test_broken.py"])
+    ids = battery.read_report(report, "1 failed, 4 passed, 1 error in 0.10s")
+    assert ids == {f"{SPACED}[one two]", "tests/test_broken.py"}
+
+
+@pytest.mark.parametrize(
+    ("report", "summary"),
+    [
+        (_report(), "1 failed, 2 passed in 0.10s"),
+        (_report(failed=["tests/a.py::t"]), "2 failed in 0.10s"),
+        (_report(errors=["tests/a.py::t"]), "1 passed in 0.10s"),
+        (_report(failed=[], failed_counted=1), "1 failed in 0.10s"),
+        ({"failed": {"ids": [], "counted": 0}}, "1 passed in 0.10s"),
+        (_report(failed=[""]), "1 failed in 0.10s"),
+        (_report(failed=["tests/a.py::t[a\nb]"]), "1 failed in 0.10s"),
+        (_report(failed=[" tests/a.py::t"]), "1 failed in 0.10s"),
+        (_report(failed=["# tests/a.py::t"]), "1 failed in 0.10s"),
+        (_report(failed=[None]), "1 failed in 0.10s"),
+    ],
+    ids=[
+        "a-failure-the-report-missed",
+        "fewer-failures-than-the-summary",
+        "an-error-the-summary-never-counted",
+        "counted-but-not-listed",
+        "no-error-entry",
+        "an-empty-id",
+        "a-line-break",
+        "padded",
+        "a-comment",
+        "not-a-string",
+    ],
+)
+def test_a_report_that_cannot_be_read_whole_is_refused(report, summary):
+    with pytest.raises(SystemExit, match="cannot be read"):
+        battery.read_report(report, summary)
+
+
+def test_a_run_that_wrote_no_report_is_refused(spaced, monkeypatch):
+    """A summary line alone is never read for ids, whatever it says."""
+
+    def summary_only(cmd, env=None):
+        return subprocess.CompletedProcess(cmd, 1, stdout="1 failed, 2 passed\n", stderr="")
+
+    monkeypatch.setattr(battery, "run", summary_only)
+    with pytest.raises(SystemExit, match="wrote no report"):
+        battery.failing_ids()
