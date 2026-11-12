@@ -270,7 +270,7 @@ def _mark_step(cfg, area: Area, name: str, plan: Callable[[], Any]) -> bool:
         title=title,
         state=PLANNED if planned.planned else NOTHING,
         detail=(
-            f"prefix {totals['mark']} playlist(s) as downloaded"
+            f"record {totals['mark']} playlist(s) as taken"
             if planned.planned
             else f"nothing to mark: {totals['skip']} playlist(s) left alone, each with its reason"
         ),
@@ -373,11 +373,11 @@ def _set_steps(cfg, area: Area) -> None:
         planned = archived.planned
         folder = planned.folder_name if planned is not None else "its folder"
         if archived.writes and planned.move:
-            detail = f"file it in {folder} and prefix it, proven by {proof}"
+            detail = f"file it in {folder} and record it as taken, proven by {proof}"
         elif archived.writes:
-            # IN THE FOLDER ALREADY, with the title it was built with: a prefix
+            # IN THE FOLDER ALREADY, with the title it was built with: a mark
             # and no move, so the line does not promise one.
-            detail = f"prefix it where it is, already in {folder}, proven by {proof}"
+            detail = f"record it as taken where it is, already in {folder}, proven by {proof}"
         elif planned is not None and planned.left == sets.RETITLED:
             detail = f"already in {folder}, its title left as a person set it"
         else:
@@ -431,6 +431,7 @@ def _filing_plan(
         labels=labels,
         marks=mark_record.MarkRecord(cfg).all(),
         working=placeholders.is_placeholder,
+        taken=tuple(mark_record.MarkRecord(cfg).taken().values()),
     )
 
 
@@ -568,6 +569,9 @@ def _yours(
             # U198. A PAIRED PLAYLIST IS SYNC PAIR'S, not one of yours to home.
             | pairs.paired_ids(cfg)
         )
+        # U242. WHAT THE RECORD HOLDS AS TAKEN, so a playlist stripped of its
+        # old prefix is still said to be marked by a sync.
+        taken = playlists.taken_ids(cfg)
     except CratekitError as exc:
         area.steps.append(refused(YOURS, title, exc.cause))
         return
@@ -590,7 +594,7 @@ def _yours(
                 "kind": "playlist",
                 "sync": (
                     "swept and marked by a sync"
-                    if playlists.is_swept_name(one.name)
+                    if playlists.is_taken(one.playlist_id, one.name, taken)
                     else "a sync sweeps it as intake"
                 ),
                 "suggested_home": own.account_home(one.name, labels),
@@ -709,7 +713,8 @@ def plan_area(
     if area.wants(MIRROR):
         account_mirror.add_steps(cfg, area, remote_of.get, run, shared=shared)
     area.facts["writes"] = (
-        "folders are created and playlists filed and prefixed; at the root, only the "
+        "folders are created and playlists filed, and what is marked is recorded in "
+        "Cratekit's own record with no title changed; at the root, only the "
         "source system's label debris whose tracks are in its label's folder, an empty "
         "playlist and an emptied legacy year folder are removed, each named; a mirrored "
         "playlist the product made loses the tracks its rekordbox playlist no longer holds"

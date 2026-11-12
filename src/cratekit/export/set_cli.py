@@ -2,9 +2,11 @@
 
 The source system turns an identified set, or a tracklist somebody typed, into
 a private playlist on the streaming account, and once the set has been
-downloaded it prefixes that playlist ``DOWNLOADED `` and files it in a root
-folder named for the year the set was processed. These two verbs are those two
-steps, each behind one explicit gate.
+downloaded it files that playlist in a root folder named for the year the set
+was processed. These two verbs are those two steps, each behind one explicit
+gate. The source system also prefixed the playlist ``DOWNLOADED ``; since U242
+the archive changes no title and holds the set as taken in Cratekit's own
+record instead, decided by Phillip on 2026-11-11.
 
 ``export set TRACKLIST`` READS THE LIST THE INTAKE VERBS READ, the text file
 ``intake identify`` writes or one somebody typed, or a list document, through
@@ -30,9 +32,9 @@ nothing when every matched track is on it.
 
 ``export archive NAME --xml INTAKE`` IS THE STEP AFTER THE DOWNLOAD. The intake
 file ``intake land`` wrote is the proof it landed and names the pass, on
-``sync/marks.py``'s rule that a title is changed only once the importable file
-is on disk. The rename is recorded in ``sync mark``'s record under that pass,
-so ``sync unmark --pass`` takes it off. A landing of a set (U129) runs the same
+``sync/marks.py``'s rule that a playlist is marked only once the importable
+file is on disk. The mark is a taken entry in ``sync mark``'s record under
+that pass, so ``sync unmark --pass`` lets it go. A landing of a set (U129) runs the same
 archive body behind its own gate once the batch is in the library, and a
 backfill over INSPIRATION playlists that have no account playlist yet plans
 both steps behind one gate each.
@@ -58,7 +60,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.acquire import match, match_cli
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, timestamp
 from cratekit.core import config, review, secrets, tags
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
@@ -746,7 +748,6 @@ def _archive_payload(planned: sets.ArchivePlan | None, *, name: str, pass_name: 
                 "kind": "playlist",
                 "name": planned.title if planned.title is not None else "",
                 "built_as": planned.playlist.name,
-                "to": planned.to,
                 "move": planned.move,
                 "action": sets.MARK if planned.mark else "skip",
                 **({"reason": planned.left} if planned.left else {}),
@@ -772,18 +773,18 @@ def _archive_shown(planned: sets.ArchivePlan | None, *, name: str, pass_name: st
         sets.REUSE: "use the one already recorded",
     }[planned.folder_action]
     if planned.left:
-        title = f"left as {planned.title!r}, since " + (
-            "its name already carries the prefix"
+        title = "not marked, since " + (
+            "Cratekit already holds it as taken"
             if planned.left == sets.ALREADY_MARKED
             else f"it was retitled since it was made as {planned.playlist.name!r}"
         )
     elif planned.move:
         title = (
-            f"{planned.playlist.name} -> {planned.to}, if its title in the folder is "
+            f"recorded as taken, its title left as it is, if its title in the folder is "
             f"still {planned.playlist.name!r} once it is there"
         )
     else:
-        title = f"{planned.playlist.name} -> {planned.to}"
+        title = "recorded as taken, its title left as it is"
     shown: dict[str, Any] = {
         "set playlist": planned.playlist.name,
         "pass": pass_name,
@@ -791,7 +792,7 @@ def _archive_shown(planned: sets.ArchivePlan | None, *, name: str, pass_name: st
         "place": (
             "put it in the folder" if planned.move else "already in the folder, left there"
         ),
-        "title": title,
+        "mark": title,
         "undone by": f"crate sync unmark --pass {pass_name}",
     }
     if planned.stale_folder and planned.writes:
@@ -805,7 +806,7 @@ def _archive_shown(planned: sets.ArchivePlan | None, *, name: str, pass_name: st
         shown["nothing to write"] = (
             "the playlist is already in its folder, its title left as a person set it"
             if planned.left == sets.RETITLED
-            else "the playlist is already in its folder and marked"
+            else "the playlist is already in its folder and held as taken"
         )
     return shown
 
@@ -817,13 +818,10 @@ def _archive_failed(exc: Exception, done: sets.ArchiveApplied, unrecorded: bool)
         parts.append(f"the folder was {'created' if done.folder_created else 'in hand'}")
     if done.moved:
         parts.append("the playlist was put in it")
-    if done.marked:
-        parts.append(
-            "the playlist was renamed and the mark record could not take it, so sync "
-            "unmark will not find it and its prefix is taken off by hand"
-            if unrecorded
-            else "the playlist was renamed and recorded for sync unmark"
-        )
+    if unrecorded:
+        parts.append("the mark record could not hold the playlist as taken")
+    elif done.marked:
+        parts.append("the playlist was recorded as taken")
     said = (
         "before this failed " + ", ".join(parts)
         if parts
@@ -968,9 +966,21 @@ def apply_archive(cfg, archived: ArchivePlanned) -> tuple[dict[str, Any], list[d
     done = sets.ArchiveApplied()
     unrecorded = [False]
 
-    def keep(before: str, to: str) -> None:
+    def keep(title: str) -> None:
+        # HELD AS TAKEN, NO TITLE CHANGES (U242): what ``sync unmark --pass``
+        # lets go, and what the INSPIRATION step reads a set by.
         try:
-            record.record_marked(archived.pass_name, {planned.playlist.remote_id: (before, to)})
+            record.take(
+                [
+                    mark_record.Taken(
+                        playlist_id=planned.playlist.remote_id,
+                        name=title,
+                        by=archived.pass_name,
+                        how=mark_record.BY_SET,
+                        at=timestamp(),
+                    )
+                ]
+            )
         except (CratekitError, OSError):
             unrecorded[0] = True
             raise
@@ -988,14 +998,14 @@ def apply_archive(cfg, archived: ArchivePlanned) -> tuple[dict[str, Any], list[d
                 "message": (
                     f"{planned.playlist.name} was "
                     + {
-                        sets.ALREADY_MARKED: "already marked when it was read in the folder",
+                        sets.ALREADY_MARKED: "already taken when it was read in the folder",
                         sets.RETITLED: "retitled by somebody when it was read in the folder",
                     }.get(
                         done.left,
                         "not yet listed in the folder it was put in; archive it again "
                         "once the account lists it",
                     )
-                    + ", so it was not renamed"
+                    + ", so it was not recorded as taken"
                 ),
             }
         )

@@ -373,7 +373,7 @@ def plan(
         return planned
     year_name = folders.year_name(catalogue.name, year)
     # THE RECORDED YEAR FIRST, when the folder still holds it, then one by its
-    # name or by the name the mark gives it, as the year build adopts one.
+    # name or by the name the mark gave it before U242, as the year build adopts one.
     recorded = shape.years.get(year)
     year_id = recorded.remote_id if recorded is not None and recorded.remote_id in inside else ""
     year_id = year_id or _one_named(inside, year_name, folders.MARK_PREFIX + year_name)

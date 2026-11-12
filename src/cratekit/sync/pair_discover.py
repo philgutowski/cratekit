@@ -605,21 +605,32 @@ def before_adoption(
     return ""
 
 
-def downloaded_copy(folder: str, title: str, paired: Iterable[str]) -> str:
-    """The paired account title ``title`` is a ``DOWNLOADED `` copy of, or ``""``.
+def downloaded_copy(
+    folder: str, title: str, paired: Iterable[str], *, taken: bool = False
+) -> str:
+    """The paired account title ``title`` is a downloaded copy of, or ``""``.
 
     U216. Less the mark's prefix, the title names the same playlist as one a
     pair in the same root folder holds: both are read less the folder's own
     prefix (:func:`name_of`), ignoring case, so ``DOWNLOADED Techno`` copies
     ``Genre Trivia! Techno`` in ``Genre Trivia!``. A title with nothing left
     after the prefix copies nothing.
+
+    ``taken`` IS WHETHER CRATEKIT'S RECORD HOLDS THE PLAYLIST AS TAKEN (U242).
+    Once ``crate sync strip`` takes the prefix off, the copy is titled as the
+    playlist it copies, and the record is what still says it is the
+    downloaded one, so a taken title is read as a copy with no prefix to take
+    off. One the record does not hold and that carries no prefix is never a
+    copy, whatever it is named.
     """
-    from cratekit.modules.outbound.folders import MARK_PREFIX
+    from cratekit.sync.playlists import SWEPT_PREFIX, untaken_name
 
     text = str(title or "")
-    if text[: len(MARK_PREFIX)].casefold() != MARK_PREFIX.casefold():
+    prefixed = text[: len(SWEPT_PREFIX)].casefold() == SWEPT_PREFIX.casefold()
+    if not prefixed and not taken:
         return ""
-    wanted = name_of(folder, text[len(MARK_PREFIX) :].strip()).casefold()
+    rest = text[len(SWEPT_PREFIX) :] if prefixed else text
+    wanted = name_of(folder, untaken_name(rest)).casefold()
     if not wanted:
         return ""
     for one in sorted(str(each) for each in paired):

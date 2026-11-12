@@ -1,4 +1,10 @@
-"""``sync.mark``: a landed sync pass marks the playlists it finished, behind one gate.
+"""``sync.mark``: a landed sync pass records the playlists it finished as taken, behind one gate.
+
+SINCE U242 NO TITLE CHANGES. The ``DOWNLOADED `` prefix is retired, decided by
+Phillip on 2026-11-11: a finished playlist is held as taken in Cratekit's own
+record (:mod:`cratekit.sync.mark_record`), and the account is read and never
+written. Everything below that says rename now means that record, and the
+words are kept where they name the rule rather than the write.
 
 R-358's production half. A pass resolves each account playlist and acquires
 nothing, ``intake missing --run`` lists what it found missing, ``acquire
@@ -47,10 +53,10 @@ THE PLAN IS SHOWN BEFORE ANYTHING IS RENAMED, and what runs after the answer is
 the engine's own recheck against a second listing, so a playlist retitled or
 removed since the plan is skipped and said, never forced.
 
-A FAILURE PART WAY NAMES WHAT WAS MARKED. Each rename is its own write to the
-account. A refusal the account raised keeps its reason, anything else is this
-build's own defect and says so, and either way the message and detail carry the
-playlists already renamed, which stay renamed.
+A FAILURE PART WAY NAMES WHAT WAS MARKED. Each playlist is its own write to
+the record. A refusal the account or the record raised keeps its reason,
+anything else is this build's own defect and says so, and either way the
+message and detail carry the playlists already taken, which stay taken.
 
 A DATABASE NATIVE INTAKE TREE WRITES NO INTAKE FILE (R-777), so there the
 pass is named with ``--pass`` instead of ``--xml``. The pass's jobs are found
@@ -62,10 +68,9 @@ the medium reads native, and the medium is read again before the first rename.
 ``--pass`` on a tree still on the bridge is refused naming ``--xml``, because
 there the intake file is the proof and a pass named without it is unproven.
 
-EVERY RENAME THAT LANDS IS RECORDED (R-838), under the pass, with the title
-before and the title written, on the failure path as well. That record is what
-``sync unmark`` reads to put a mistaken mark back, and the only thing it trusts
-to say which pass wrote a prefix.
+EVERY MARK IS A TAKEN ENTRY UNDER THE PASS (U242), with the title the plan
+listed and the time, which ``organize --only file`` reads a year from. That
+entry is what ``sync unmark`` lets go to put a mistaken mark back.
 
 Layer: modules. The builder's parameters are unannotated so this file does not
 import the CLI registry (KTD23).
@@ -79,7 +84,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit.acquire import match, match_cli
-from cratekit.cli.output import Envelope, digest_of
+from cratekit.cli.output import Envelope, digest_of, timestamp
 from cratekit.core import config, jobs, locations
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.intake import cli as intake_cli
@@ -120,7 +125,7 @@ ONLY_SAID = "only the playlists named"
 #: What the gate screen and the warning say about a file of no pass.
 NO_PASS_SAID = (
     "no playlist job a sync pass queued on this library belongs to this file, so "
-    "there is nothing to rename from it"
+    "there is nothing to record from it"
 )
 
 #: The three ways a track the pass did not find is no longer owed.
@@ -367,8 +372,8 @@ def _spelled(wanted: match.Wanted) -> str:
 
 
 _WHY = {
-    NOT_LISTED: "the account no longer lists it, so there is no name to prefix",
-    ALREADY_MARKED: "its name already carries the prefix",
+    NOT_LISTED: "the account no longer lists it, so there is nothing to record",
+    ALREADY_MARKED: "Cratekit already holds it as taken",
     LABEL_DEBRIS: (
         "its name is the source system's label run debris, which a sync never "
         "offers and never renames"
@@ -392,7 +397,7 @@ def _decided(store, sweep: playlists.Sweep, found: list[jobs.Job]) -> list[_Play
         decided.append(entry)
         if not entry.name:
             entry.reason = NOT_LISTED
-        elif playlists.is_swept_name(entry.name):
+        elif playlists.is_taken(identity, entry.name, sweep.taken):
             entry.reason = ALREADY_MARKED
         elif playlists.is_library_debris(entry.name):
             entry.reason = LABEL_DEBRIS
@@ -465,7 +470,7 @@ def _settle(decided: list[_Playlist], named: frozenset[str], cfg: config.Config)
 def _item(entry: _Playlist) -> dict[str, Any]:
     base: dict[str, Any] = {"id": entry.identity, "name": entry.name, "job_id": entry.job.job_id}
     if entry.planned:
-        return {**base, "action": MARK, "to": playlists.SWEPT_PREFIX + entry.name, **entry.settled}
+        return {**base, "action": MARK, **entry.settled}
     return {
         **base,
         "action": SKIP,
@@ -483,7 +488,7 @@ def _payload(
     named: tuple[str, ...] = (),
 ) -> dict[str, Any]:
     items = [_item(entry) for entry in decided]
-    planned = sorted((item["id"], item["to"]) for item in items if item["action"] == MARK)
+    planned = sorted((item["id"], item["name"]) for item in items if item["action"] == MARK)
     if isinstance(proof, marks.NativeLanding):
         # NO FILE TO FINGERPRINT. The pass and the tree it landed on are what
         # the person was shown, and the marks themselves, which a track
@@ -539,9 +544,9 @@ def _shown(
     )
     shown: dict[str, Any] = {
         **said,
-        "renamed on the account": [
-            f"{item['name']} -> {item['to']}"
-            + (f" (sync unmark put this title back {item['put_back']})" if "put_back" in item else "")
+        "recorded as taken": [
+            f"{item['name']}"
+            + (f" (sync unmark let it go {item['put_back']})" if "put_back" in item else "")
             for item in payload["items"]
             if item["action"] == MARK
         ],
@@ -554,7 +559,8 @@ def _shown(
     if named:
         shown[ONLY_SAID] = list(named)
     if not payload["items"]:
-        shown["nothing to rename"] = NO_PASS_SAID
+        shown["nothing to record"] = NO_PASS_SAID
+    shown["on the account"] = "nothing is renamed; the record is Cratekit's own"
     return shown
 
 
@@ -563,37 +569,26 @@ def _failed_part_way(
     landed: list[str],
     names: dict[str, str],
     planned: list[str],
-    unrecorded: CratekitError | None = None,
 ) -> CratekitError:
-    """The failure, with what was already marked named in it.
+    """The failure, with what was already taken named in it.
 
-    A REFUSAL THE ACCOUNT RAISED KEEPS ITS REASON AND ITS REMEDY. The adapter
-    turns its provider's failures into causes itself, so anything else arriving
-    here is this build's own defect, and calling that a provider outage would
-    send a person to retry against a bug.
-
-    ``unrecorded`` is the mark record's own refusal when it could not take what
-    landed. It is SAID beside the account's failure and never replaces it, so
-    the reason, the remedy and what is still unmarked all survive.
+    A REFUSAL THE ACCOUNT OR THE RECORD RAISED KEEPS ITS REASON AND ITS
+    REMEDY: the recheck's listing and the record's own refusal are causes
+    already, so anything else arriving here is this build's own defect, and
+    calling that a provider outage would send a person to retry against a bug.
     """
     marked = [names.get(identity, identity) for identity in landed]
     said = (
-        f"{len(marked)} playlist(s) were marked before this failed and stay marked: "
-        + ", ".join(marked)
+        f"{len(marked)} playlist(s) were recorded as taken before this failed and "
+        f"stay taken: " + ", ".join(marked)
         if marked
-        else "no playlist was marked before this failed"
+        else "no playlist was recorded as taken before this failed"
     )
-    if unrecorded is not None:
-        said += (
-            f". The record crate sync unmark reads could not take them "
-            f"({unrecorded.cause.message})"
-        )
     detail = {
         "marked": list(landed),
         "unmarked": [identity for identity in planned if identity not in landed],
-        "unrecorded": unrecorded is not None,
     }
-    again = "run crate sync mark again; a marked playlist is skipped by its name"
+    again = "run crate sync mark again; a playlist already taken is skipped"
     if isinstance(exc, CratekitError):
         cause = exc.cause
         return refuse(
@@ -615,43 +610,6 @@ def _failed_part_way(
         origin=_ORIGIN,
         detail={**detail, "kind": type(exc).__name__},
     )
-
-
-def _remember(
-    cfg: config.Config, name: str, landed: list[str], names: dict[str, str]
-) -> CratekitError | None:
-    """Record every rename that landed, under the pass, for ``sync unmark`` (R-838).
-
-    ON THE FAILURE PATH TOO, since what landed before a refusal is on the
-    account and is exactly what a person may want put back. RETURNS the refusal
-    rather than raising it, so a caller already holding the account's failure
-    can say both. The refusal names what was renamed, because those renames
-    stand whether or not the record took them.
-    """
-    try:
-        mark_record.MarkRecord(cfg).record_marked(
-            name,
-            {
-                identity: (names[identity], playlists.SWEPT_PREFIX + names[identity])
-                for identity in landed
-            },
-        )
-    except (CratekitError, OSError) as exc:
-        message = exc.cause.message if isinstance(exc, CratekitError) else str(exc)
-        renamed = ", ".join(names.get(identity, identity) for identity in landed)
-        failure = refuse(
-            "sync-mark-record-unusable",
-            f"{len(landed)} playlist(s) were renamed and stay renamed, {renamed}, and "
-            f"the record crate sync unmark reads could not take them ({message})",
-            steps=("repair the mark record; sync unmark cannot put these back until then",),
-            scope=Scope.RUN,
-            origin=_ORIGIN,
-            detail={"marked": list(landed)},
-            inner=exc.cause if isinstance(exc, CratekitError) else None,
-        )
-        failure.__cause__ = exc
-        return failure
-    return None
 
 
 @dataclass
@@ -769,14 +727,22 @@ def plan_pass(
     _refuse_unfinished(named, decided, name)
 
     # THE RECORD BEFORE THE GATE (R-838). One that cannot be read or locked
-    # refuses now, while nothing is on the account, and not after renames it
-    # then could not take. A playlist this pass marked and ``sync unmark`` put
-    # back is planned again like any other, and the screen says so.
+    # refuses now, and not after marks it then could not take. A playlist this
+    # pass marked and ``sync unmark`` put back, or let go since U242, is
+    # planned again like any other, and the screen says so.
+    record = mark_record.MarkRecord(cfg)
     put_back = {
         entry.playlist_id: entry.unmarked
-        for entry in mark_record.MarkRecord(cfg).ready()
+        for entry in record.ready()
         if entry.pass_name == name and entry.unmarked
     }
+    put_back.update(
+        {
+            entry.playlist_id: entry.released
+            for entry in record.taken().values()
+            if entry.by == name and entry.released
+        }
+    )
     payload = _payload(decided, proof=proof, seen=seen, named=named)
     for item in payload["items"]:
         if item["action"] == MARK and item["id"] in put_back:
@@ -847,15 +813,15 @@ def shown(planned: PassPlan) -> dict[str, Any]:
 
 
 def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], list[dict[str, str]], list[str]]:
-    """Rename what the plan marks and record it, after the gate said apply.
+    """Record what the plan marks as taken, after the gate said apply (U242).
 
-    Returns the payload as applied, its warnings and the identifiers renamed.
-    Raises naming what was marked when the account or the record fails.
+    Returns the payload as applied, its warnings and the identifiers taken.
+    Raises naming what was taken when the account's recheck or the record
+    fails. NOTHING IS WRITTEN TO THE ACCOUNT: it is listed once more, for the
+    recheck, and no title changes.
     """
-    from cratekit.modules.outbound import account
-
     if planned.native is not None:
-        # THE MEDIUM AGAIN, before the first rename. A tree reverted to the
+        # THE MEDIUM AGAIN, before the first mark. A tree reverted to the
         # bridge since the plan has an intake file to wait for, and the native
         # proof would stand in for a file that should exist.
         if _native_proof(cfg, planned.name) != planned.native:
@@ -865,24 +831,37 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
                 "run crate sync mark again and answer the new plan",
                 pass_name=planned.name,
             )
-    remote = account.resolve(cfg)
+    record = mark_record.MarkRecord(cfg)
+    # THE RECORD IS LOCKABLE BEFORE THE FIRST MARK, so one that cannot be
+    # written refuses while nothing is taken yet.
+    record.ready()
     landed: list[str] = []
     sweep = planned.sweep
+
+    def take(identity: str, name: str) -> None:
+        record.take(
+            [
+                mark_record.Taken(
+                    playlist_id=identity,
+                    name=name,
+                    by=planned.name,
+                    how=mark_record.BY_PASS,
+                    at=timestamp(),
+                )
+            ]
+        )
+
     try:
         playlists.mark_swept(
             sweep,
             planned.catalogue_found,
-            remote,
+            take,
             local_output=planned.proof,
             applied=landed,
             only=frozenset(planned.planned),
         )
     except Exception as exc:
-        unrecorded = _remember(cfg, planned.name, landed, sweep.names())
-        raise _failed_part_way(exc, landed, sweep.names(), planned.planned, unrecorded) from exc
-    unrecorded = _remember(cfg, planned.name, landed, sweep.names())
-    if unrecorded is not None:
-        raise unrecorded
+        raise _failed_part_way(exc, landed, sweep.names(), planned.planned) from exc
 
     items: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
@@ -899,7 +878,7 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
                     "reason": CHANGED_SINCE,
                     "why": (
                         "the account lists it under another name, or not at all, "
-                        "since the plan was shown, so it was not renamed"
+                        "since the plan was shown, so it was not recorded as taken"
                     ),
                 }
             )
@@ -907,7 +886,7 @@ def apply_pass(cfg: config.Config, planned: PassPlan) -> tuple[dict[str, Any], l
                 {
                     "code": "sync-mark-changed-since-plan",
                     "message": f"{item['name']} changed on the account since the plan "
-                    f"was shown and was not renamed",
+                    f"was shown and was not recorded as taken",
                 }
             )
     totals = {

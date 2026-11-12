@@ -2,10 +2,14 @@
 
 The source system keeps a set on the account one way: the identified set, or a
 tracklist somebody typed, becomes one private playlist, and once the set has
-been downloaded that playlist is prefixed ``DOWNLOADED `` and filed in a root
-folder named for the year the set was processed, so the account's root does
-not fill with sets. This module is both steps, each planned and then applied,
-against the account seam.
+been downloaded that playlist is filed in a root folder named for the year the
+set was processed, so the account's root does not fill with sets. This module
+is both steps, each planned and then applied, against the account seam.
+
+THE ARCHIVE CHANGES NO TITLE (U242). The source system also prefixed the set
+``DOWNLOADED ``; that prefix is retired, decided by Phillip on 2026-11-11, and
+an archived set is held as taken in Cratekit's own record instead, which is
+what ``crate organize``'s INSPIRATION step reads a set by.
 
 THE SET'S FOLDER IS ``Downloaded Sets <year>`` (U142), the folder the author
 keeps every downloaded set in, and never the plain ``<year>`` folder a marked
@@ -14,9 +18,9 @@ ledger's folder map, each the folder's own name, so neither step reuses the
 other's folder.
 
 ADD ONLY, BECAUSE THE PROTOCOL IS. A playlist is created, tracks are added, a
-folder is created and a playlist is put in one. One retitle is the archive
-mark, recorded in ``sync mark``'s record so ``sync unmark`` can take it off.
-The other follows the library (U140): a set whose INSPIRATION playlist a
+folder is created and a playlist is put in one. The archive's mark is a taken
+entry in ``sync mark``'s record, which ``sync unmark`` lets go. The one
+retitle follows the library (U140): a set whose INSPIRATION playlist a
 person renamed has its account playlist renamed to match, and the ledger's key
 and the job's frozen name move with it, so a backfill finds it and makes no
 twin.
@@ -28,7 +32,7 @@ what that playlist now holds. A second run onto the same set plans nothing.
 
 THE ARCHIVE PUTS THE PLAYLIST IN ITS FOLDER FIRST AND THEN READS ITS TITLE
 THERE. The account seam reads a title only through a folder's listing, so the
-recheck before the rename, ``sync/marks.py``'s rule, is made on the listing of
+recheck before the mark, ``sync/marks.py``'s rule, is made on the listing of
 the folder the playlist was just put in. A move changes where a playlist sits
 and nothing it holds, so a playlist moved and then found retitled by a person
 has lost nothing, and is left with its title.
@@ -45,8 +49,8 @@ from typing import Any
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import ledger
-from cratekit.modules.outbound.folders import MARK_PREFIX
 from cratekit.modules.outbound.service import RemoteAccount
+from cratekit.sync.playlists import is_swept_name, taken_ids
 
 _ORIGIN = ("outbound", "sets")
 
@@ -61,7 +65,7 @@ FOLDER_PREFIX = "Downloaded Sets "
 #: How many tracks one add carries, so each chunk is recorded as it lands.
 CHUNK = 100
 
-#: What the archive does to the playlist's title once it is in the folder.
+#: What the archive does once the playlist is in the folder: hold it as taken.
 MARK = "mark"
 #: Why the archive leaves a title alone, one word each.
 ALREADY_MARKED = "already-marked"
@@ -224,14 +228,12 @@ class ArchivePlan:
     #: The playlist's title in the folder, when it is in the folder already.
     #: ``None`` while it is not, since the seam reads a title only there.
     title: str | None = None
+    #: Whether Cratekit's record already holds the playlist as taken (U242).
+    taken: bool = False
 
     @property
     def folder_name(self) -> str:
         return folder_name(self.year)
-
-    @property
-    def to(self) -> str:
-        return MARK_PREFIX + self.playlist.name
 
     @property
     def move(self) -> bool:
@@ -239,15 +241,21 @@ class ArchivePlan:
 
     @property
     def mark(self) -> bool:
-        """Whether a rename is planned. One not yet in the folder is rechecked there."""
-        return self.title is None or self.title == self.playlist.name
+        """Whether the set is to be held as taken. One not yet in the folder is rechecked there."""
+        return not self.left
 
     @property
     def left(self) -> str:
-        """Why the title is left alone, or ``""`` when it is not."""
+        """Why the set is not marked, or ``""`` when it is.
+
+        TAKEN ALREADY, by the record or by a legacy prefix still on its title,
+        or retitled by a person since it was made, whose title is theirs.
+        """
+        if self.taken:
+            return ALREADY_MARKED
         if self.title is None or self.title == self.playlist.name:
             return ""
-        return ALREADY_MARKED if self.title.startswith(MARK_PREFIX) else RETITLED
+        return ALREADY_MARKED if is_swept_name(self.title) else RETITLED
 
     @property
     def writes(self) -> bool:
@@ -264,7 +272,7 @@ class ArchivePlan:
             "kind": "export-archive",
             "playlist": self.playlist.remote_id,
             "name": self.playlist.name,
-            "to": self.to,
+            "taken": self.taken,
             "year": self.year,
             "folder": [self.folder_action, self.folder_id, self.stale_folder],
             "folder_name": self.folder_name,
@@ -332,6 +340,7 @@ def plan_archive(
         folder_id=folder_id,
         stale_folder=stale,
         title=title,
+        taken=playlist.remote_id in taken_ids(cfg),
     )
 
 
@@ -341,12 +350,12 @@ def apply_archive(
     planned: ArchivePlan,
     done: ArchiveApplied,
     *,
-    record: Callable[[str, str], None],
+    record: Callable[[str], None],
 ) -> ArchiveApplied:
     """Make or reuse the folder, put the playlist in it, then mark it if still due.
 
-    ``record`` is handed the title before and the title written, once the
-    rename has landed, and raises if it cannot keep it.
+    ``record`` is handed the title the set carries in the folder and holds the
+    set as taken, raising if it cannot keep it. NO TITLE CHANGES (U242).
     """
     playlist = planned.playlist
     folder_id, made = ledger.reserve_set_folder(
@@ -364,7 +373,7 @@ def apply_archive(
         done.left = planned.left
         return done
     # THE RECHECK, ON THE FOLDER IT NOW SITS IN. A title that is no longer the
-    # one it was built under is somebody's, and a prefixed one is already done.
+    # one it was built under is somebody's, and a prefixed one is already taken.
     now = account.folder_playlists(folder_id).get(playlist.remote_id)
     if now is None:
         # NOT A RETITLE. A listing that does not show the playlist yet says
@@ -372,11 +381,10 @@ def apply_archive(
         done.left = NOT_LISTED
         return done
     if now != playlist.name:
-        done.left = ALREADY_MARKED if now.startswith(MARK_PREFIX) else RETITLED
+        done.left = ALREADY_MARKED if is_swept_name(now) else RETITLED
         return done
-    account.rename_playlist(playlist.remote_id, planned.to)
+    record(playlist.name)
     done.marked = True
-    record(playlist.name, planned.to)
     return done
 
 

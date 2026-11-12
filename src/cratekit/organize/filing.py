@@ -61,7 +61,7 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import kinds, ledger, sets
 from cratekit.modules.outbound.service import RemoteAccount
 from cratekit.organize import own
-from cratekit.sync.playlists import is_library_debris, is_swept_name
+from cratekit.sync.playlists import is_library_debris, is_taken
 
 _ORIGIN = ("organize.filing",)
 
@@ -85,7 +85,8 @@ WORKING_CUSTOM = (
     "downloaded and it is filed by its year"
 )
 PREFIXED_UNMARKED = (
-    "its name says downloaded but no sync recorded when, so no year can be chosen"
+    "it is taken, by its old DOWNLOADED prefix or Cratekit's record of it, but no "
+    "sync recorded when, so no year can be chosen"
 )
 UNDATED = "its mark carries no year, so no year folder is its own"
 #: Why a playlist goes to its kind's folder rather than a year's (U131).
@@ -268,15 +269,28 @@ def year_folder(cfg: config.Config, year: str, root: Mapping[str, str]) -> YearF
     return YearFolder(year=year, action=sets.CREATE, stale=recorded)
 
 
-def _standing_marks(marks: Iterable[Any]) -> dict[str, str]:
-    """Each playlist with a mark still standing, to the instant of its latest one."""
+def _standing_marks(marks: Iterable[Any], taken: Iterable[Any] = ()) -> dict[str, str]:
+    """Each playlist with a mark still standing, to the instant of its latest one.
+
+    ``taken`` is the record's taken ledger (U242), and an entry a pass made,
+    or one the migration copied from a pass's legacy mark, is a mark standing
+    at its stamp. An entry the migration made for a prefix no mark dated is
+    not: its stamp is when it was found, and filing by it would choose the
+    year of the migration, so it stays the undated prefixed playlist it was.
+    """
     standing: dict[str, str] = {}
+
+    def keep(playlist_id: str, marked: str) -> None:
+        held = standing.get(playlist_id)
+        if held is None or marked > held:
+            standing[playlist_id] = marked
+
     for entry in marks:
-        if entry.unmarked:
-            continue
-        held = standing.get(entry.playlist_id)
-        if held is None or str(entry.marked) > held:
-            standing[entry.playlist_id] = str(entry.marked)
+        if not entry.unmarked:
+            keep(entry.playlist_id, str(entry.marked))
+    for entry in taken:
+        if entry.held and entry.dated:
+            keep(entry.playlist_id, str(entry.at))
     return standing
 
 
@@ -315,11 +329,12 @@ def plan(
     labels: Iterable[str],
     marks: Iterable[Any],
     working: Any,
+    taken: Iterable[Any] = (),
 ) -> FilePlan:
     """Decide every playlist at the account root. Reads, and writes nothing.
 
     ``listed`` is every playlist the account created, ``marks`` is ``sync
-    mark``'s record, and ``working`` answers whether a name is one of the
+    mark``'s record, ``taken`` its taken ledger's entries (U242), and ``working`` answers whether a name is one of the
     product's own working playlists. A playlist in any folder is not at the
     root and is not this step's, save one in the ``Mine`` this product made,
     which is read for a mark that sends it on to its year (U131).
@@ -332,7 +347,9 @@ def plan(
     exported = ledger.exported_playlist_ids(cfg)
     root_playlists = at_root(listed, in_folders)
     made = ledger.product_made_among(cfg, (one.playlist_id for one in root_playlists))
-    standing = _standing_marks(marks)
+    taken = tuple(taken)
+    standing = _standing_marks(marks, taken)
+    held_taken = frozenset(entry.playlist_id for entry in taken if entry.held)
     years: dict[str, YearFolder] = {}
     kind_folders: dict[str, kinds.KindFolder] = {}
     rows: list[Placement] = []
@@ -402,7 +419,7 @@ def plan(
             continue
         # NO LEDGER CLAIMS IT AND NO SYNC MARKED IT: a working custom playlist,
         # kept at the root (U143), however old.
-        if identity not in standing and not is_swept_name(name):
+        if identity not in standing and not is_taken(identity, name, held_taken):
             rows.append(Placement(identity, name, LEFT, why=WORKING_CUSTOM))
             continue
         # NO LEDGER CLAIMS IT AND NO YEAR FILES IT, so it is the author's own
