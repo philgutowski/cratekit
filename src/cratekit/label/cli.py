@@ -1448,12 +1448,14 @@ def _refuse_unfinished(entry, result: run.IncrementResult, source: sweep.LabelSo
     #
     # THE RELEASE RE-VERIFIED IS NAMED, with its answer (U277): ``unconfirmed``
     # is no label credit found for it, and ``mismatch`` a credit the needle
-    # does not match, with the name it was credited as.
+    # does not match, with the name it was credited as, and how it was asked
+    # (R-1634): read again from the provider, or from its own copyright line.
     unconfirmed = len(source.dropped) + source.held_unconfirmed
     if result.shortfall == "empty" and source.dropped and unconfirmed == source.read:
         canaries = [listing.canary for _, listing in source.listings if listing.canary]
         asked_again = "".join(
-            f" A release already asked about or in review was verified again: {one.said()}."
+            f" A release already asked about or in review was verified again, "
+            f"{one.how()}: {one.said()}."
             for one in canaries
         )
         raise refuse(

@@ -462,6 +462,19 @@ class Catalogue(Protocol):
         is the question that decides whether it is kept.
         """
 
+    def reread_release(self, claimed: str, release: Any) -> Mapping[str, Any]:
+        """Ask the provider again who is credited on one release, READ BY ITS IDENTIFIER (R-1634).
+
+        The same answer :meth:`search_release` gives, for
+        ``verify.verify_release`` to judge, except that it is never answered
+        from the copyright line the listed object already carries: the provider
+        is read for the release whatever the listing holds. The sweep's
+        re-verification of one held release is its one call site, because the
+        question there is whether the provider is answering, and a line read
+        off the listing says nothing about that. A release the provider no
+        longer has, or one with no identifier, answers with no label credit.
+        """
+
     def check_label(self, name: str) -> dict:
         """Ask the catalogue whether a harvested label name is a real imprint.
 

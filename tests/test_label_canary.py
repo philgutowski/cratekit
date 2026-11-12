@@ -20,6 +20,13 @@ line from that line alone (round one of U277's review). These tests verify
 through the shipped catalogue's own read over a fake session, and drive both
 the guided ``--next`` and the sweep worker.
 
+R-1634 closed the case U277 left: with every held release carrying a line,
+the one re-verified was judged from it with no provider read, so a provider
+answering album reads with no line left the label saying nothing new. When a
+drop is not a mismatch, the held release is now read again from the provider
+through the catalogue's ``reread_release``, and the ``reverified`` line says
+whether an answer came from the provider or from the release's own line.
+
 NOTHING HERE REACHES A NETWORK OR ACCEPTS A RELEASE.
 """
 
@@ -95,6 +102,11 @@ class LineCatalogue(FakeCatalogue):
     def search_release(self, claimed: str, release: Any) -> dict:
         self.verified.append(str(release.id))
         return dict(tidal_catalogue.TidalCatalogue.search_release(self, claimed, release))
+
+    #: The shipped forced read (R-1634) and the album read it makes, so a held
+    #: release re-verified is read from ``_session`` whatever line it carries.
+    reread_release = tidal_catalogue.TidalCatalogue.reread_release
+    _album = tidal_catalogue.TidalCatalogue._album
 
 
 def release(identity: str, year: str, line: str, *, artist: str = "Arapu") -> FakeRelease:
@@ -294,8 +306,10 @@ def test_an_unanswered_release_with_no_held_release_to_read_refuses_as_before(
 ):
     """Sitting 94's shape with three new releases the provider answers with no line.
 
-    No held release lacks a line, so nothing held can show the provider
-    answering: the newest held is asked, as on main, and it is a RAWAXXX one.
+    No held release lacks a line. On U277 the newest held, a RAWAXXX one, was
+    judged from its line and answered mismatch; since R-1634 a held ``Rawax``
+    one is read again from the provider, which answers it with no line, so the
+    label still refuses, now naming the provider's answer.
     """
     held = [*rawaxxx(), *rawax()]
     session = Session(degraded=True)
@@ -306,7 +320,9 @@ def test_an_unanswered_release_with_no_held_release_to_read_refuses_as_before(
 
     assert code == int(ExitCode.PRECONDITION), envelope
     assert envelope["cause"]["reason"] == "label-sync-unlisted"
-    assert "release x0, answered mismatch" in check(envelope, f"reverified.{SLUG}")["detail"]
+    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
+    assert "release a1, answered unconfirmed" in reverified
+    assert "read again from the provider" in reverified
 
 
 def test_a_listing_with_no_release_held_asks_no_canary_and_says_none(installed, monkeypatch):
@@ -537,3 +553,193 @@ def test_a_degraded_provider_refuses_though_every_held_line_names_the_label(
     assert "read again from the provider" in reverified
     # THE PROVIDER WAS READ FOR THE HELD RELEASE, though its line names the label.
     assert session.reads == ["m0", "m1", "m2", "a1"]
+
+
+def test_the_worker_refuses_a_degraded_provider_though_every_held_line_names_the_label(
+    installed, monkeypatch
+):
+    session = Session({"a1": "2025 Rawax"}, degraded=True)
+    every_line_shape(installed, monkeypatch, session)
+
+    code, job_id = sweep_job()
+
+    assert code != int(ExitCode.OK)
+    cause = item_cause(job_id)
+    assert cause.reason == "label-sweep-incomplete"
+    assert cause.detail["reverified"]["identity"] == "a1"
+    assert cause.detail["reverified"]["verdict"] == "unconfirmed"
+    assert cause.detail["reverified"]["basis"] == sweep.READ_PROVIDER
+    assert "read again from the provider" in cause.message
+    assert "a1" in session.reads
+    assert filed(installed) == []
+
+
+def test_a_provider_crediting_another_label_still_answers_nothing_new(installed, monkeypatch):
+    """Every drop a mismatch: the held line shows the needle right, and no held release is read."""
+    session = Session({f"m{n}": "2026 Moon Harbour" for n in range(3)})
+    every_line_shape(installed, monkeypatch, session)
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
+    assert reverified.endswith("release a1, answered confirmed")
+    # SAID: the answer came from the release's own line, not from the provider.
+    assert "from its own copyright line, with no provider read" in reverified
+    assert session.reads == ["m0", "m1", "m2"]
+
+
+def test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing_new(
+    installed, monkeypatch
+):
+    """The real nothing new kept: the provider reads the held release and credits the label.
+
+    The new releases genuinely carry no credit, the provider answers the held
+    one's read with its line, so the label has nothing new. The RAWAXXX holds
+    newest are passed over for a held ``Rawax`` line, which a healthy read
+    confirms, so R-1635's false refusal clears too.
+    """
+    session = Session({one.id: "2025 Rawax" for one in rawax()})
+    every_line_shape(installed, monkeypatch, session, also=rawaxxx())
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
+    assert "release a1, answered confirmed" in reverified
+    assert "read again from the provider" in reverified
+    assert session.reads == ["m0", "m1", "m2", "a1"]
+
+
+def test_the_worker_answers_nothing_new_when_the_provider_reads_the_held_release(
+    installed, monkeypatch
+):
+    session = Session({one.id: "2025 Rawax" for one in rawax()})
+    every_line_shape(installed, monkeypatch, session, also=rawaxxx())
+
+    code, job_id = sweep_job()
+
+    assert code == int(ExitCode.OK)
+    assert item_cause(job_id) is None
+    assert filed(installed) == []
+    assert "a1" in session.reads
+
+
+def test_with_no_provider_read_to_hand_a_held_line_counts_as_unverified(installed, entry):
+    """A sweep handed only a verifier cannot read the provider for a held release with a line.
+
+    So it is not asked, and the listing counts as one that confirmed nothing,
+    rather than answering nothing new from the line.
+    """
+    releases = [lineless("m1"), *rawax(), *others(3)]
+    fake = LineCatalogue(session=Session({"a1": "2025 Rawax"}))
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(releases),
+        verify=fake.search_release,
+        offered=frozenset({"a1", "a2", "a3", "a4"}),
+    )
+
+    assert found.canary is not None
+    assert found.canary.identity == "a1"
+    assert not found.canary.confirmed
+    assert found.canary.basis == sweep.READ_NONE
+    assert found.held_unconfirmed == 4
+    assert "a1" not in fake.verified
+
+
+def test_the_forced_read_is_asked_only_when_a_drop_is_not_a_mismatch(installed, entry):
+    """Every drop a mismatch: the ordinary verifier is asked, and the forced read never."""
+    releases = [*rawax(), *others(3)]
+    fake = LineCatalogue(session=Session({"a1": "2025 Rawax"}))
+    reread: list[str] = []
+
+    def forced(claimed, one):
+        reread.append(one.id)
+        return fake.reread_release(claimed, one)
+
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(releases),
+        verify=fake.search_release,
+        reread=forced,
+        offered=frozenset({"a1", "a2", "a3", "a4"}),
+    )
+
+    assert (found.canary.identity, found.canary.verdict) == ("a1", "confirmed")
+    assert found.canary.basis == sweep.READ_LINE
+    assert reread == []
+    assert fake._session.reads == []
+
+
+def test_with_a_drop_given_no_credit_the_held_label_line_comes_before_another_acts(
+    installed, entry
+):
+    """No held release lacks a line: a held ``Rawax`` is read, not the newer RAWAXXX."""
+    releases = [lineless("m1"), *rawaxxx(), *rawax(), *others(3)]
+    fake = LineCatalogue(session=Session({"a1": "2025 Rawax"}))
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(releases),
+        verify=fake.search_release,
+        reread=fake.reread_release,
+        offered=frozenset({"x0", "x1", "x2", "a1", "a2", "a3", "a4"}),
+    )
+
+    assert (found.canary.identity, found.canary.verdict) == ("a1", "confirmed")
+    assert found.canary.basis == sweep.READ_PROVIDER
+    assert found.held_unconfirmed == 0
+    assert fake._session.reads == ["m1", "a1"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. The seam: ``TidalCatalogue.reread_release``
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class Gone(Exception):
+    """Named as the provider's client names a release it does not have."""
+
+
+class GoneNotFound(Gone):
+    pass
+
+
+def test_the_shipped_reread_reads_the_provider_though_the_release_carries_a_line(installed):
+    session = Session({"a1": "2025 Moon Harbour"})
+    found = tidal_catalogue.TidalCatalogue(session)
+
+    answer = found.reread_release(LABEL, release("a1", "2025", "Rawax"))
+
+    assert session.reads == ["a1"]
+    assert answer["resolved_label"] == "Moon Harbour"
+    # The ordinary read judges the same release from its line, with no call.
+    assert found.search_release(LABEL, release("a1", "2025", "Rawax"))["resolved_label"] == "Rawax"
+    assert session.reads == ["a1"]
+
+
+def test_the_shipped_reread_of_a_release_the_provider_no_longer_has_is_no_credit(installed):
+    class Withdrawn(Session):
+        def album(self, identity):
+            self.reads.append(identity)
+            raise GoneNotFound(identity)
+
+    session = Withdrawn()
+    answer = tidal_catalogue.TidalCatalogue(session).reread_release(LABEL, release("a1", "2025", "Rawax"))
+
+    assert answer["verdict"] == "unconfirmed"
+    assert answer["resolved_label"] == ""
+    assert session.reads == ["a1"]
+
+
+def test_the_shipped_reread_of_a_release_with_no_identifier_reads_nothing(installed):
+    session = Session({"": "2025 Rawax"})
+    answer = tidal_catalogue.TidalCatalogue(session).reread_release(LABEL, release("", "2025", "Rawax"))
+
+    assert answer["verdict"] == "unconfirmed"
+    assert session.reads == []
