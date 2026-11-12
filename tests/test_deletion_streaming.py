@@ -89,7 +89,7 @@ def test_a_library_with_streaming_rows_offers_the_removed_file(cfg):
         "/v4/catalog/tracks/",
         "/v4/catalog/albums/123/",
         "/v5/catalog/tracks/123/",
-        "/Volumes/v4/catalog/tracks/123/",
+        "/Elsewhere/v4/catalog/tracks/123/",
         "/v4/catalog/tracks/123/\n",
     ],
 )
@@ -140,37 +140,37 @@ def test_an_unmapped_local_path_still_refuses_and_names_its_prefix_and_rule(cfg)
         _active(
             "/Users/someone/Music/a.flac",
             "/Users/someone/Music/b.flac",
-            "/Volumes/OLD/Music/c.flac",
+            "/Old Drive/Music/c.flac",
             STREAMED[0],
         ),
         stat=_absent,
     )
     assert references.streaming == ("a3",)
     assert references.unmapped == ("a0", "a1", "a2")
-    assert references.unmapped_prefixes == (("/Users/someone", 2), ("/Volumes/OLD", 1))
+    assert references.unmapped_prefixes == (("/Users/someone", 2), ("/Old Drive/Music", 1))
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
     cause = excinfo.value.cause
     assert cause.reason == "deletion-reference-set-incomplete"
     assert "3 active rows record a location this machine cannot resolve" in cause.message
     assert "2 under /Users/someone" in cause.message
-    assert "1 under /Volumes/OLD" in cause.message
+    assert "1 under /Old Drive/Music" in cause.message
     steps = " ".join(cause.remediation.steps)
     assert "library.location_prefix_map" in steps
     assert 'from = "/Users/someone"' in steps
-    assert 'from = "/Volumes/OLD"' in steps
-    assert cause.detail["unmapped_prefixes"] == {"/Users/someone": 2, "/Volumes/OLD": 1}
+    assert 'from = "/Old Drive/Music"' in steps
+    assert cause.detail["unmapped_prefixes"] == {"/Users/someone": 2, "/Old Drive/Music": 1}
     assert cause.detail["streaming"] == 1
 
 
 def test_a_refusal_names_at_most_five_prefixes_and_counts_the_rest(cfg):
-    rows = _active(*(f"/Volumes/D{n}/x.flac" for n in range(7)))
+    rows = _active(*(f"/Drive{n}/Music/x.flac" for n in range(7)))
     references = _references(cfg, rows, stat=_absent)
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
     message = excinfo.value.cause.message
     assert "and 2 other prefixes" in message
-    assert message.count(" under /Volumes/D") == 5
+    assert message.count(" under /Drive") == 5
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -263,11 +263,11 @@ def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows
             ("2", "/v4/catalog/tracks/11111111/", False, 20, 0, "Streamed 2"),
         ],
     )
-    _insert_active(db_path, [("3", "/Volumes/A Retired Drive/Music/x.flac")])
+    _insert_active(db_path, [("3", "/A Retired Drive/Music/x.flac")])
 
     code, out, err = _drive(["--output", "json", "delete", "review"])
     assert code != int(ExitCode.OK)
     refused = json.loads(out)
     assert refused["cause"]["reason"] == "deletion-reference-set-incomplete"
-    assert "1 under /Volumes/A Retired Drive" in refused["cause"]["message"]
+    assert "1 under /A Retired Drive/Music" in refused["cause"]["message"]
     assert music.exists() and not any(trash.iterdir())
