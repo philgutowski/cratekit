@@ -50,7 +50,7 @@ from cratekit.modules.reports import export as library_export
 from cratekit.write import collection_export, metadata_cli, rbxml
 from tests import cutover_fixtures, outbound_fakes
 from tests._containers import synth_container
-from tests._readings import serve_by_field
+from tests._readings import serve_readings
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
 from tests.test_no_beatgrid_ever import FORBIDDEN_TOKENS, GRIDLESS_AVERAGE_BPM
@@ -1080,16 +1080,14 @@ def test_a_cutover_takes_the_file_as_its_fresh_export(either):
 def tagged(monkeypatch):
     """The tag readings the routing rules ask for, served from the file name.
 
-    ``read_truth`` is served from the single field readers patched here (U250).
+    Served at the tag reader, so the production ``read_truth`` runs (U250).
     """
-    serve_by_field(monkeypatch)
-    monkeypatch.setattr(
-        tags, "read_genre_from_file", lambda path: READINGS.get(Path(path).name, (None, None))[0]
+    serve_readings(
+        monkeypatch,
+        genre=lambda path: READINGS.get(path.name, (None, None))[0],
+        energy=lambda path: READINGS.get(path.name, (None, None))[1],
+        vox=lambda path: None,
     )
-    monkeypatch.setattr(
-        tags, "read_energy_from_file", lambda path: READINGS.get(Path(path).name, (None, None))[1]
-    )
-    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: None)
 
 
 def _sub_keys(document: bytes, folder: str, sub: str) -> tuple[str, ...]:

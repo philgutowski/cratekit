@@ -68,11 +68,14 @@ def _tagged(folder: Path, suffix: str, name: str, fields: dict[str, object]) -> 
 
 
 # The tag sets each container is read under. A numeric energy and level, a non
-# numeric energy, a non numeric level, a genre alone, and no tags at all.
+# numeric energy, a non numeric level, padded numbers, decimals, a genre alone,
+# and no tags at all.
 READINGS = {
     "numeric": {"genre": "Deep House", "energylevel": 7, "voxlevel": 55},
     "energy-word": {"genre": "Techno", "energylevel": "high", "voxlevel": 20},
     "vox-word": {"genre": "Disco", "energylevel": 4, "voxlevel": "loud"},
+    "padded": {"genre": " Garage ", "energylevel": " 6 ", "voxlevel": " 40 "},
+    "decimal": {"genre": "Electro", "energylevel": "7.0", "voxlevel": "0.5"},
     "genre-only": {"genre": "Ambient"},
     "untagged": {},
 }
@@ -106,6 +109,17 @@ def test_a_numeric_reading_converts_the_way_the_single_readers_convert(tmp_path)
     vox = _tagged(tmp_path / "lib", ".m4a", "vox", READINGS["vox-word"])
     assert rebuild.read_truth(vox) == rebuild.Truth(
         location=str(vox), genre="Disco", energy=4, voxlevel=None
+    )
+    padded = _tagged(tmp_path / "lib", ".aiff", "padded", READINGS["padded"])
+    assert rebuild.read_truth(padded) == rebuild.Truth(
+        location=str(padded), genre="Garage", energy=6, voxlevel=40
+    )
+    # A decimal is not a whole number, for the energy reader and read_truth
+    # alike, so a conversion that learned decimals in one place shows here.
+    decimal = _tagged(tmp_path / "lib", ".ogg", "decimal", READINGS["decimal"])
+    assert tags.read_energy_from_file(decimal) is None
+    assert rebuild.read_truth(decimal) == rebuild.Truth(
+        location=str(decimal), genre="Electro", energy=None, voxlevel=None
     )
 
 
@@ -189,19 +203,3 @@ def test_a_derivation_over_n_files_makes_n_opens(tmp_path, opens):
     assert sorted(opens) == sorted(made)
     assert walked == expected
 
-
-def test_the_walk_reads_through_read_truth_as_it_stands_at_call_time(tmp_path, monkeypatch):
-    """The walk's default reader is looked up when it runs, not when it was defined.
-
-    So a test that feeds the derivation fake readings by replacing
-    ``read_truth`` reaches the walk too, which is the seam the routing suites
-    use since the three single field readers stopped being the path.
-    """
-    music = tmp_path / "Music"
-    music.mkdir()
-    (music / "a.flac").write_bytes(b"")
-    monkeypatch.setattr(
-        rebuild, "read_truth", lambda path: rebuild.Truth(location=str(path), genre="Fake")
-    )
-
-    assert [entry.genre for entry in rebuild.library_truth(music)] == ["Fake"]
