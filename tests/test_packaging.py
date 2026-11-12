@@ -2,7 +2,10 @@
 
 These assertions run against ``pyproject.toml`` as data rather than against an
 installed distribution, so they fail in the pull request that introduces the
-regression instead of on the first friend's machine.
+regression instead of on the first friend's machine. One reads the installed
+distributions as well: the import guard (U269) asks the environment's own
+metadata which modules each core dependency provides, so it needs the core
+dependencies installed, as the battery's environment has them.
 
 The end-to-end proof that a clean environment installs and imports lives in
 CI's ``cold-install`` job and in the manual rehearsal recorded for U1. A unit
@@ -11,6 +14,7 @@ test cannot build a virtual environment honestly.
 
 from __future__ import annotations
 
+import ast
 import re
 import sys
 import tomllib
@@ -169,6 +173,129 @@ def test_slim_core_carries_no_dsp_web_or_ml_dependency(pyproject):
         f"slim core declares heavy dependencies {offenders}; "
         "move each into the extra named for the module that needs it (KTD7)"
     )
+
+
+# ---------------------------------------------------------------------------
+# U269: every core dependency earns its place, and the comments name real files.
+#
+# lxml sat in the core list for months "for rekordbox XML parsing" while every
+# reader of an export under src scanned bytes and nothing imported it, so each install
+# downloaded and unpacked a compiled library that no line of Cratekit used. No
+# test could see that: the slim core test above asks whether a dependency is
+# heavy, never whether anything needs it.
+# ---------------------------------------------------------------------------
+
+#: A core dependency declared for a reason other than an import of our own, such
+#: as bounding a transitive dependency, is named here with that reason. Empty
+#: today: every core dependency is imported by the package.
+DECLARED_WITHOUT_AN_IMPORT: dict[str, str] = {}
+
+
+def _imported_top_level_names(root: Path) -> set[str]:
+    """Every top level name an import under ``root`` reaches, lazy ones included.
+
+    Read from the syntax tree, so an import inside a function counts (the
+    Bandcamp transport imports ``curl_cffi`` only when a request is made), and
+    an ``importlib.import_module("name")`` with a literal name counts too.
+    Relative imports name the package itself and are skipped.
+    """
+    names: set[str] = set()
+    for path in root.rglob("*.py"):
+        tree = ast.parse(path.read_bytes(), filename=str(path))
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                names.update(alias.name.split(".", 1)[0] for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                if node.level == 0 and node.module:
+                    names.add(node.module.split(".", 1)[0])
+            elif isinstance(node, ast.Call) and node.args:
+                func = node.func
+                called = func.attr if isinstance(func, ast.Attribute) else getattr(func, "id", "")
+                first = node.args[0]
+                if called in ("import_module", "__import__") and isinstance(first, ast.Constant):
+                    if isinstance(first.value, str):
+                        names.add(first.value.split(".", 1)[0])
+    return names
+
+
+def test_every_core_dependency_is_imported_by_the_package(pyproject):
+    """A core dependency nothing imports is weight every install carries for nothing.
+
+    The import names come from the installed distributions' own metadata, never
+    from a table written here, because a hand table of which distribution
+    provides which module is the second copy that drifts (Pillow is ``PIL``,
+    pycryptodome is ``Crypto``, python-ffmpeg is ``ffmpeg``). The sweep covers
+    the whole package, the vendored downloader included, because the vendored
+    tree's own dependencies are declared in the core list too.
+    """
+    from importlib.metadata import packages_distributions
+
+    from packaging.requirements import Requirement
+    from packaging.utils import canonicalize_name
+
+    provides: dict[str, set[str]] = {}
+    for top_level, distributions in packages_distributions().items():
+        for distribution in distributions:
+            provides.setdefault(canonicalize_name(distribution), set()).add(top_level)
+
+    imported = _imported_top_level_names(REPO_ROOT / "src" / "cratekit")
+    not_installed, unused = [], []
+    for spec in pyproject["project"]["dependencies"]:
+        requirement = Requirement(spec)
+        name = canonicalize_name(requirement.name)
+        if name in DECLARED_WITHOUT_AN_IMPORT:
+            continue
+        if requirement.marker is not None and not requirement.marker.evaluate():
+            # Declared for another platform or interpreter, so not installed
+            # here by design; the battery on that platform judges it.
+            continue
+        if name not in provides:
+            not_installed.append(name)
+        elif not provides[name] & imported:
+            unused.append(f"{name} (provides {sorted(provides[name])})")
+
+    assert not not_installed, (
+        f"core dependencies {not_installed} are not installed here, so the modules "
+        "they provide cannot be read; install the package with its dependencies"
+    )
+    assert not unused, (
+        f"core dependencies {unused} are imported nowhere under src/cratekit; drop "
+        "each one, or name it in DECLARED_WITHOUT_AN_IMPORT with the reason it stays"
+    )
+
+
+#: A repository path ``pyproject.toml`` names under one of the repository's own
+#: top level directories, with an optional ``::test_name`` after a test file.
+#: Not preceded by a path or address character, so the tail of a URL is not
+#: read as a path, and not followed by one, so a glob such as ``tests/test_*.py``
+#: is skipped whole rather than read as the prefix before its star; a full stop
+#: that ends a sentence after a path is not part of it.
+_NAMED_PATH = re.compile(
+    r"(?<![\w./:-])((?:tests|scripts|src|docs|vendor)/[\w./-]*[\w/])(?![\w*/-]|\.[\w*])(?:::(\w+))?"
+)
+
+
+def test_every_path_pyproject_names_exists():
+    """A comment that names a guard must name one that exists.
+
+    The slim core comment named ``tests/test_slim_core.py`` as the test that
+    fails the build when a heavy dependency appears, a file that never existed
+    under that name, so a reader looking for the guard found nothing.
+    """
+    text = PYPROJECT.read_text(encoding="utf-8")
+    named = _NAMED_PATH.findall(text)
+    assert named, "pyproject.toml names no repository path; the pattern no longer reads it"
+
+    missing = []
+    for relative, function in named:
+        path = REPO_ROOT / relative.rstrip("/")
+        if not path.exists():
+            missing.append(relative)
+        elif function and not re.search(
+            rf"^def {re.escape(function)}\(", path.read_text(encoding="utf-8"), re.M
+        ):
+            missing.append(f"{relative}::{function}")
+    assert not missing, f"pyproject.toml names paths that do not exist: {missing}"
 
 
 def test_extras_are_named_for_modules_and_carry_the_weight(pyproject):
