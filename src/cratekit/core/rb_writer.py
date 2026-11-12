@@ -1293,8 +1293,7 @@ class SharedRead:
     path every time: the key derivation of an encrypted file, the binding's
     configuration read, the process walk, the canary, the schema pin and the
     foreign tree read. The report makes one of these and hands it to every
-    reader, so the open, and
-    every check it runs, happens once.
+    reader, so the open, and every check it runs, happens once.
 
     LAZY, AND A FAILED OPEN IS NOT KEPT. :meth:`handle` opens where the first
     reader would have opened its own, through :func:`open_db` with read intent
