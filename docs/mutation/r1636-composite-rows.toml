@@ -1,0 +1,47 @@
+name = "r1636-composite"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_m08_with_m02"
+description = '''The composite for M08_numbered_later_part_an_artist in r1636.md, what it holds behind the credit test: a later part opening with a track number may be the artist AND a part credits the artist when it merely holds one of the names (M02), so "Album - 02 Artist" may take the artist for its credit'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    elif _numbered(words):
+        return False
+    folded = tuple(_folded(word) for word in _words(text))
+    if names & _credited_names(text):'''
+new = '''    elif False:
+        return False
+    folded = tuple(_folded(word) for word in _words(text))
+    if any(_runs_in(name, folded) for name in names):'''
+
+[[rows]]
+id = "C2_m09_with_tempo_flag"
+description = '''The composite for M09_head_unbounded in r1636.md, what it holds behind the one key one tempo flags: the head runs to the title's last part AND any number may follow as a tempo, so a title of numbers after a head is eaten'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    while end < min(2, len(parts) - 1):
+        words = _words(parts[end])
+        if len(words) != 1:
+            break
+        if naming.is_camelot(words[0]) and not keys:
+            keys = True
+        elif not tempos and (_a_tempo(words[0]) if not keys else words[0].isdecimal()):'''
+new = '''    while end < len(parts) - 1:
+        words = _words(parts[end])
+        if len(words) != 1:
+            break
+        if naming.is_camelot(words[0]) and not keys:
+            keys = True
+        elif (_a_tempo(words[0]) if not keys else words[0].isdecimal()):'''
+
+[[rows]]
+id = "C3_tempo_flag_alone"
+description = '''The pair for C2: any number may follow as a tempo, with the head still bounded to two parts, to show what the bound adds'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        elif not tempos and (_a_tempo(words[0]) if not keys else words[0].isdecimal()):'''
+new = '''        elif (_a_tempo(words[0]) if not keys else words[0].isdecimal()):'''
