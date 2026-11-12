@@ -198,21 +198,33 @@ def records_warnings(plan: rotate.RotationPlan) -> list[dict[str, str]]:
     ]
 
 
-def planned(cfg: config.Config, declared, today: date) -> rotate.RotationPlan:
+def planned(
+    cfg: config.Config,
+    declared,
+    today: date,
+    *,
+    one_read: rb_writer.SharedRead | None = None,
+) -> rotate.RotationPlan:
     """The plan over INBOX as it stands, through a handle opened to read and closed.
 
     PUBLIC FOR ``crate organize`` (U112), which plans the rotation as one step
-    of its database area and must plan it exactly as this verb does.
+    of its database area and must plan it exactly as this verb does. Its
+    ``--report`` passes ``one_read``, its one read handle (U267), which the
+    plan reads through and releases rather than opening a handle of its own.
     """
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    db = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db(
+            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        )
     )
     try:
         return rotate.plan_rotation(
             cfg, db, declared=declared, registry=tree_registry.read(cfg), today=today
         )
     finally:
-        rb_writer.close_db(db)
+        rb_writer.done_reading(db, one_read)
 
 
 def written(cfg: config.Config, declared, plan: rotate.RotationPlan) -> rotate.Rotated:

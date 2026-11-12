@@ -111,10 +111,18 @@ def acknowledgment(cfg: config.Config) -> CratekitError | None:
     return None
 
 
-def _adoption(cfg: config.Config, declared, registry, ctx, gate: str, area: Area) -> Step:
+def _adoption(
+    cfg: config.Config,
+    declared,
+    registry,
+    ctx,
+    gate: str,
+    area: Area,
+    one_read: rb_writer.SharedRead | None = None,
+) -> Step:
     title = f"file tracks into {declared.tree.display}"
     try:
-        plan = apply_cli.current_plan(cfg, declared)
+        plan = apply_cli.current_plan(cfg, declared, one_read=one_read)
     except CratekitError as exc:
         return refused(ADOPT, title, exc.cause)
     try:
@@ -217,10 +225,16 @@ def _adoption(cfg: config.Config, declared, registry, ctx, gate: str, area: Area
     return step
 
 
-def _rotation(cfg: config.Config, declared, today: date, area: Area) -> Step:
+def _rotation(
+    cfg: config.Config,
+    declared,
+    today: date,
+    area: Area,
+    one_read: rb_writer.SharedRead | None = None,
+) -> Step:
     title = f"rotate {declared.intake.display}"
     try:
-        plan = rotate_cli.planned(cfg, declared, today)
+        plan = rotate_cli.planned(cfg, declared, today, one_read=one_read)
     except CratekitError as exc:
         return refused(ROTATE, title, exc.cause)
     shown = rotate_cli.plan_payload(plan)
@@ -297,14 +311,20 @@ def _record_labels(declared) -> Step:
     return Step(key=RECORD_LABELS, title="file landed label batches", state=LISTED, detail=detail)
 
 
-def _inspiration(cfg: config.Config, declared, available: frozenset[str] | None) -> Step:
+def _inspiration(
+    cfg: config.Config,
+    declared,
+    available: frozenset[str] | None,
+    one_read: rb_writer.SharedRead | None = None,
+) -> Step:
     """Every downloaded set on the account given its INSPIRATION playlist (U144).
 
     Planned through read handles, as the author's own listing is read, so it
-    plans while rekordbox runs, and no handle is held across a provider call;
-    the write opens its own handle and needs rekordbox closed. A refusal of
-    the intake tree, the database, the account or the catalogue refuses this
-    step alone.
+    plans while rekordbox runs, and no read is held across a provider call:
+    each handle is closed, or under ``--report`` the one shared handle
+    released (U267), before the account is read. The write opens its own
+    handle and needs rekordbox closed. A refusal of the intake tree, the
+    database, the account or the catalogue refuses this step alone.
     """
     title = "give every downloaded set its INSPIRATION playlist"
     if available is not None and EXPORT_MODULE not in available:
@@ -320,13 +340,17 @@ def _inspiration(cfg: config.Config, declared, available: frozenset[str] | None)
 
     @contextmanager
     def reading():
-        db = rb_writer.open_db(
-            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        db = (
+            one_read.handle()
+            if one_read is not None
+            else rb_writer.open_db(
+                rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+            )
         )
         try:
             yield db
         finally:
-            rb_writer.close_db(db)
+            rb_writer.done_reading(db, one_read)
 
     try:
         set_playlist.assert_native(ingest.intake_medium(cfg), landing=False)
@@ -386,12 +410,22 @@ def _kind(row: Any) -> str:
     return {0: "playlist", 1: "folder"}.get(attribute, "smart playlist")
 
 
-def _yours(cfg: config.Config, declared, labels: tuple[str, ...], area: Area) -> Step:
+def _yours(
+    cfg: config.Config,
+    declared,
+    labels: tuple[str, ...],
+    area: Area,
+    one_read: rb_writer.SharedRead | None = None,
+) -> Step:
     """Every top level node outside the declared trees, read through a read handle."""
     title = "list your own playlists"
     try:
-        db = rb_writer.open_db(
-            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        db = (
+            one_read.handle()
+            if one_read is not None
+            else rb_writer.open_db(
+                rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+            )
         )
     except CratekitError as exc:
         return refused(YOURS, title, exc.cause)
@@ -403,7 +437,7 @@ def _yours(cfg: config.Config, declared, labels: tuple[str, ...], area: Area) ->
             and str(getattr(row, "ParentID", "")) in rb_writer.ROOT_PARENT_SENTINELS
         ]
     finally:
-        rb_writer.close_db(db)
+        rb_writer.done_reading(db, one_read)
     declared_roots = _declared_roots(declared)
     catalog = declared.catalog.display if declared.catalog is not None else None
     # U185. ANOTHER APP'S FOLDER IS NAMED ONCE, as a fact, and is not yours:
@@ -447,6 +481,7 @@ def plan_area(
     only: frozenset[str] | None = None,
     available: frozenset[str] | None = None,
     shared=None,
+    one_read: rb_writer.SharedRead | None = None,
 ) -> Area:
     """Plan every database step, or refuse the area before any when no backup is acknowledged.
 
@@ -455,6 +490,11 @@ def plan_area(
     ``available`` is the profile's modules, ``None`` for every one. ``shared``
     is the organize run's one account mirror reading (U201), which the
     mirror edits step decides from; with none that step is listed, not planned.
+
+    ``one_read`` IS ``--report``'s ONE READ HANDLE (U267), and every step reads
+    the database through it rather than through a handle of its own. The run
+    that answers a gate passes none, so each of its plans reads as before and
+    each write opens its own handle to write.
     """
     area = Area(name=AREA, only=selection(STEPS, only))
     unacknowledged = acknowledgment(cfg)
@@ -472,19 +512,19 @@ def plan_area(
         area.cause = exc.cause
         return area
     if area.wants(ADOPT):
-        area.steps.append(_adoption(cfg, declared, registry, ctx, gate, area))
+        area.steps.append(_adoption(cfg, declared, registry, ctx, gate, area, one_read))
     # THE ROTATION IS PLANNED FOR ``yours`` TOO, since what it leaves alone
     # under INBOX is the author's and its suggestions ride the same screen. Its
     # step is shown when selected, or when it refused, because a refusal is
     # why that listing is short and unread is not none.
     if area.wants(ROTATE) or area.wants(YOURS):
-        rotation = _rotation(cfg, declared, today, area)
+        rotation = _rotation(cfg, declared, today, area, one_read)
         if area.wants(ROTATE) or rotation.cause is not None:
             area.steps.append(rotation)
     if area.wants(RECORD_LABELS):
         area.steps.append(_record_labels(declared))
     if area.wants(INSPIRATION):
-        area.steps.append(_inspiration(cfg, declared, available))
+        area.steps.append(_inspiration(cfg, declared, available, one_read))
     if area.wants(MIRROR_EDITS):
         if shared is None:
             area.steps.append(
@@ -496,7 +536,7 @@ def plan_area(
                 )
             )
         else:
-            edited = mirror_edits.add_step(cfg, declared, registry, shared)
+            edited = mirror_edits.add_step(cfg, declared, registry, shared, one_read=one_read)
             # EVERY MEMBERSHIP TAKEN AWAY IS NAMED ON THE GATE, as a removal is.
             area.deletes.extend(mirror_edits.deletes(edited.items))
             area.steps.append(edited)
@@ -511,9 +551,9 @@ def plan_area(
                 )
             )
         else:
-            area.steps.append(mirror_downloads.add_step(cfg, shared))
+            area.steps.append(mirror_downloads.add_step(cfg, shared, one_read=one_read))
     if area.wants(YOURS):
-        area.steps.append(_yours(cfg, declared, labels, area))
+        area.steps.append(_yours(cfg, declared, labels, area, one_read))
     area.facts["rehearse"] = (
         "every write here is a database write: rehearse it on a copy of the "
         "database first, with library state redirected, and compare the digest"

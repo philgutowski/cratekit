@@ -376,7 +376,11 @@ def _frozen(found: dict[str, dict[str, set[str]]]) -> dict[str, dict[str, tuple[
 
 
 def _read_tree(
-    cfg: config.Config, declared: taxonomy.Taxonomy, *, tags: bool
+    cfg: config.Config,
+    declared: taxonomy.Taxonomy,
+    *,
+    tags: bool,
+    one_read: rb_writer.SharedRead | None = None,
 ) -> tuple[Sequence[rebuild.TreeNode], convergence.TreeConvergence | None, frozenset[str] | None] | None:
     """The configured library's tree, read once. None when it cannot be read.
 
@@ -392,14 +396,19 @@ def _read_tree(
     the plan cannot be trusted rather than a tree with nothing in it.
 
     THE HANDLE IS CLOSED BEFORE THIS RETURNS, in a ``finally``, through
-    ``close_db``, for the reason the collection reader gives.
+    ``close_db``, for the reason the collection reader gives; a read only
+    report's one handle, ``one_read`` (U267), is read through and released.
     """
     registry = tree_registry.read(cfg)
-    handle = rb_writer.open_db(
-        rb_writer.live_db_path(cfg),
-        require_closed=False,
-        check_app_version=False,
-        cfg=cfg,
+    handle = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db(
+            rb_writer.live_db_path(cfg),
+            require_closed=False,
+            check_app_version=False,
+            cfg=cfg,
+        )
     )
     try:
         try:
@@ -413,12 +422,17 @@ def _read_tree(
         nodes = rebuild.read_tree(handle, root_id)
         tagged = vox_tagged(handle) if tags else None
     finally:
-        rb_writer.close_db(handle)
+        rb_writer.done_reading(handle, one_read)
     state = convergence.read(cfg)
     return nodes, state.tree(declared.tree.id), tagged
 
 
-def read_placements(cfg: config.Config, declared: taxonomy.Taxonomy) -> Placements:
+def read_placements(
+    cfg: config.Config,
+    declared: taxonomy.Taxonomy,
+    *,
+    one_read: rb_writer.SharedRead | None = None,
+) -> Placements:
     """The configured library's tree, read once, as what each track holds.
 
     NOT CACHED, unlike the collection. A worker reads the placements, writes
@@ -426,9 +440,10 @@ def read_placements(cfg: config.Config, declared: taxonomy.Taxonomy) -> Placemen
     hand the second run the tree as it stood before the first one wrote.
 
     A TREE THAT CANNOT BE READ ANSWERS ``UNREAD``. See :func:`_read_tree` for
-    which refusals that is and which are raised as they came.
+    which refusals that is and which are raised as they came. ``one_read`` is
+    :func:`read_holdings`'.
     """
-    found = _read_tree(cfg, declared, tags=False)
+    found = _read_tree(cfg, declared, tags=False, one_read=one_read)
     if found is None:
         return UNREAD
     nodes, record, _tagged = found
@@ -436,7 +451,11 @@ def read_placements(cfg: config.Config, declared: taxonomy.Taxonomy) -> Placemen
 
 
 def read_holdings(
-    cfg: config.Config, declared: taxonomy.Taxonomy, *, standing: bool | None = None
+    cfg: config.Config,
+    declared: taxonomy.Taxonomy,
+    *,
+    standing: bool | None = None,
+    one_read: rb_writer.SharedRead | None = None,
 ) -> tuple[Placements, Vocals]:
     """What each track holds and what the vocal subs hold, from ONE read of the tree.
 
@@ -457,10 +476,13 @@ def read_holdings(
     whatever the tag tables hold, so they are not opened and a row in them
     that cannot be read stops nothing. The vocals then say which of the two
     it was.
+
+    ``one_read`` is a read only report's one handle (U267), which the tree is
+    read through rather than through a handle of its own.
     """
     if standing is None:
         standing = vocal_standing(cfg, declared)
-    found = _read_tree(cfg, declared, tags=standing)
+    found = _read_tree(cfg, declared, tags=standing, one_read=one_read)
     if found is None:
         return UNREAD, NO_VOCALS
     nodes, record, tagged = found

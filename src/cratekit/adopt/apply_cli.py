@@ -137,7 +137,11 @@ def _load() -> config.Config:
 
 
 def census(
-    cfg: config.Config, declared: taxonomy.Taxonomy, *, scope: frozenset[str] | None = None
+    cfg: config.Config,
+    declared: taxonomy.Taxonomy,
+    *,
+    scope: frozenset[str] | None = None,
+    one_read: rb_writer.SharedRead | None = None,
 ) -> tuple:
     """The scanned rows this run applies: the person's own collection, classified.
 
@@ -163,9 +167,10 @@ def census(
 
     ``scope`` NAMES THE ROWS A LANDING JUST MADE (U165), so the census a
     landing files is over its own content ids and walks no other file. None
-    is the whole collection, as before.
+    is the whole collection, as before. ``one_read`` is a read only report's
+    one handle (U267), which the collection is read through.
     """
-    rows = collection.read_collection(cfg)
+    rows = collection.read_collection(cfg, one_read=one_read)
     if scope is not None:
         rows = tuple(row for row in rows if row.content_id in scope)
     return tuple(
@@ -184,6 +189,7 @@ def current_plan(
     *,
     vocals: bool = True,
     scope: frozenset[str] | None = None,
+    one_read: rb_writer.SharedRead | None = None,
 ) -> plan_engine.AdoptionPlan:
     """Rebuild the plan this run is approving, from the census rather than a file.
 
@@ -219,13 +225,21 @@ def current_plan(
     ``scope`` is :func:`census`'s, and narrows the census alone: the tree and
     the vox tag are read whole, so a scoped plan withholds and files exactly
     as the whole one would for the same rows (U165).
+
+    ``one_read`` IS ``crate organize --report``'s ONE READ HANDLE (U267): the
+    census and the tree are both read through it rather than through two
+    handles of their own. Every other caller passes none, and a plan an apply
+    is about to write against is always read on its own handles.
     """
     standing = placements.vocal_standing(cfg, declared) if vocals else False
-    scanned = census(cfg, declared, scope=scope)
+    scanned = census(cfg, declared, scope=scope, one_read=one_read)
     held, sung = (
-        placements.read_holdings(cfg, declared, standing=standing)
+        placements.read_holdings(cfg, declared, standing=standing, one_read=one_read)
         if vocals
-        else (placements.read_placements(cfg, declared), plan_engine.NO_VOCALS)
+        else (
+            placements.read_placements(cfg, declared, one_read=one_read),
+            plan_engine.NO_VOCALS,
+        )
     )
     return plan_engine.build_adoption_plan(
         scanned,

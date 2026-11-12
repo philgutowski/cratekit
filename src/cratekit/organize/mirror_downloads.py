@@ -339,7 +339,12 @@ def _remote_of(recorded: Mapping[str, Any], folder: str, title: str) -> str:
 
 
 def plan(
-    cfg: config.Config, reading: Any, *, listed: Any = None, owned: Any = None
+    cfg: config.Config,
+    reading: Any,
+    *,
+    listed: Any = None,
+    owned: Any = None,
+    one_read: Any = None,
 ) -> Planned:
     """Every wanted track as it would be queued. Reads the queue, the provider and the library.
 
@@ -348,7 +353,8 @@ def plan(
     list is named and the rest are planned, and a track it set aside is named
     and the playlist's others are planned (R-1289). ``owned`` answers each ISRC the
     library already holds with its rows, the database's and the mirror's
-    matches by default. Raises the queue's refusal.
+    matches by default, read through ``one_read``, ``--report``'s one read
+    handle on the database (U267), when given. Raises the queue's refusal.
     """
     wanted: Sequence[Any] = reading.decided.wanted
     named: list[dict[str, Any]] = []
@@ -394,7 +400,7 @@ def plan(
     if listed is None:
         listed = _catalogue_listing(cfg)
     if owned is None:
-        owned = _owned(cfg, reading)
+        owned = _owned(cfg, reading, one_read)
     queue: dict[str, tuple[str, dict[str, dict[str, Any]]]] = {}
     for pid, (title, tracks) in sorted(grouped.items()):
         try:
@@ -463,7 +469,7 @@ def plan(
     return Planned(queue=queue, named=tuple(named))
 
 
-def _owned(cfg: config.Config, reading: Any) -> Any:
+def _owned(cfg: config.Config, reading: Any, one_read: Any = None) -> Any:
     """Each ISRC to the library rows that carry it: the database's codes, and the mirror's.
 
     The mirror's matches carry a code read off a file the database holds none
@@ -479,14 +485,18 @@ def _owned(cfg: config.Config, reading: Any) -> Any:
         token = match.isrc_token(code)
         if token:
             found.setdefault(token, set()).add(str(content_id))
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    db = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db(
+            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        )
     )
     try:
         for token, rows in playlist_pair.rows_by_isrc(db, match.isrc_token).items():
             found.setdefault(token, set()).update(rows)
     finally:
-        rb_writer.close_db(db)
+        rb_writer.done_reading(db, one_read)
 
     def owned(code: Any) -> tuple[str, ...]:
         return tuple(sorted(found.get(match.isrc_token(code), ())))
@@ -538,10 +548,11 @@ def write(cfg: config.Config, approved: Planned) -> list[str]:
     return made
 
 
-def add_step(cfg: config.Config, shared: Any) -> Step:
+def add_step(cfg: config.Config, shared: Any, *, one_read: Any = None) -> Step:
     """The rekordbox area's step: plan from the run's one reading, queue on approval (U204).
 
     A reading, a queue or a catalogue that cannot be read refuses this step alone.
+    ``one_read`` is ``--report``'s one read handle on the database (U267).
     """
     try:
         reading = shared.reading()
@@ -550,7 +561,7 @@ def add_step(cfg: config.Config, shared: Any) -> Step:
     if reading.unread:
         return Step(key=KIND, title=TITLE, state=LISTED, detail=reading.unread)
     try:
-        planned = plan(cfg, reading)
+        planned = plan(cfg, reading, one_read=one_read)
     except CratekitError as exc:
         return refused(KIND, TITLE, exc.cause)
     writes = bool(planned.queue)

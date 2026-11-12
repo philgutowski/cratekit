@@ -69,7 +69,7 @@ class World:
             catalog={f"c{n}": f"r{n}" for n in range(1, 400) if n not in unmatched}
         )
         self.library = account_mirror.Library()
-        monkeypatch.setattr(account_mirror, "read_library", lambda _cfg: self.library)
+        monkeypatch.setattr(account_mirror, "read_library", lambda _cfg, **_: self.library)
 
     def mirror(self, *folders: mirror.Folder, refused=None, favorites: str = "") -> None:
         self.library = account_mirror.Library(

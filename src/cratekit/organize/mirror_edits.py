@@ -1060,11 +1060,15 @@ def _stale(approved: Planned, now: Planned) -> None:
         )
 
 
-def add_step(cfg: config.Config, declared: Any, registry: Any, shared: Any) -> Step:
+def add_step(
+    cfg: config.Config, declared: Any, registry: Any, shared: Any, *, one_read: Any = None
+) -> Step:
     """The rekordbox area's step: plan on a read handle, write on its own (U201).
 
     ``shared`` is the organize run's one mirror reading. A reading or a tree
-    that cannot be read refuses this step alone.
+    that cannot be read refuses this step alone. ``one_read`` is ``--report``'s
+    one read handle (U267), which the plan reads through; the write, which a
+    report never runs, opens its own handle to write as before.
     """
     from cratekit.core import rb_writer
     from cratekit.write import metadata_cli
@@ -1082,8 +1086,12 @@ def add_step(cfg: config.Config, declared: Any, registry: Any, shared: Any) -> S
     genre = any(one.tree == edits.GENRE for one in decided.carried)
     try:
         threshold = metadata_cli.load_vocal_threshold(cfg) if genre else None
-        db = rb_writer.open_db(
-            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        db = (
+            one_read.handle()
+            if one_read is not None
+            else rb_writer.open_db(
+                rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+            )
         )
     except CratekitError as exc:
         return refused(KIND, TITLE, exc.cause)
@@ -1092,7 +1100,7 @@ def add_step(cfg: config.Config, declared: Any, registry: Any, shared: Any) -> S
     except CratekitError as exc:
         return refused(KIND, TITLE, exc.cause)
     finally:
-        rb_writer.close_db(db)
+        rb_writer.done_reading(db, one_read)
     counts = planned.counts()
     writes = bool(planned.changes)
     detail = (
