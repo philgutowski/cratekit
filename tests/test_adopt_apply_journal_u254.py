@@ -285,6 +285,62 @@ def test_a_ledger_damaged_since_this_process_left_it_refuses_the_next_mark(cfg):
     assert path.read_bytes() == damaged, "a mark appended to a damaged ledger"
 
 
+def _same_size_document(path: Path) -> bytes:
+    """A schema 1 document padded to the journal's exact size, with its records.
+
+    Appending to it would leave a file no build can read, so a mark that takes
+    it for the journal it replaced is visible at the next read.
+    """
+    size = path.stat().st_size
+    body = DOCUMENT_BEFORE_U254.encode("utf-8").rstrip(b"\n")
+    assert len(body) + 1 <= size, "mark more entries so the journal outgrows it"
+    return body + b" " * (size - len(body) - 1) + b"\n"
+
+
+def _marked_past_the_document(cfg_value) -> Path:
+    for n in range(6):
+        adopt_apply.mark_applied(cfg_value, _entry(n))
+    return adopt_apply.path_for(cfg_value)
+
+
+def _after_one_more_mark_reads_the_document_and_the_mark(cfg_value):
+    adopt_apply.mark_applied(cfg_value, _entry(9))
+    assert adopt_apply.read(cfg_value).entry_ids() == {
+        *(record.entry_id for record in RECORDS_BEFORE_U254),
+        _entry(9).entry_id,
+    }
+
+
+def test_a_file_put_in_place_with_the_same_size_and_time_is_read_again(cfg):
+    """A restore's shape: a new file, the same size and time. The inode tells.
+
+    Copied beside the ledger, given its modification time, and renamed over
+    it, as a staged restore does. Taken for the file this process left, the
+    next mark would append a journal record to a whole document.
+    """
+    path = _marked_past_the_document(cfg)
+    before = os.stat(path)
+    staged = path.with_name("staged.tmp")
+    staged.write_bytes(_same_size_document(path))
+    os.utime(staged, ns=(before.st_atime_ns, before.st_mtime_ns))
+    os.replace(staged, path)
+    after = os.stat(path)
+    assert (after.st_size, after.st_mtime_ns) == (before.st_size, before.st_mtime_ns)
+    assert after.st_ino != before.st_ino
+    _after_one_more_mark_reads_the_document_and_the_mark(cfg)
+
+
+def test_a_file_rewritten_in_place_at_the_same_size_is_read_again(cfg):
+    """The same inode and size, written over: the modification time tells."""
+    path = _marked_past_the_document(cfg)
+    before = os.stat(path)
+    path.write_bytes(_same_size_document(path))
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns + 1_000_000_000))
+    after = os.stat(path)
+    assert (after.st_ino, after.st_size) == (before.st_ino, before.st_size)
+    _after_one_more_mark_reads_the_document_and_the_mark(cfg)
+
+
 def test_a_torn_record_another_process_left_is_cut_before_the_next_append(cfg):
     """Another process killed mid append: this one must not append after its bytes."""
     adopt_apply.mark_applied(cfg, _entry(0))

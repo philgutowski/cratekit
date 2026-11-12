@@ -43,11 +43,12 @@ alone.
 and reads no environment variable: is pytest in `sys.modules`, and does the
 resolved target sit under `config._TEST_WRITE_ROOT`, which the conftest's
 `_isolate_state_roots` sets to pytest's base temporary directory for each
-test. It runs in three places:
+test. It runs in four places:
 
 - `_write_lock`, taken first by every configuration writer (`save`,
   `update`, the migration write back). Test root only.
-- `atomic_write_bytes` and `_exclusive_lock`, which every other state writer
+- `atomic_write_bytes`, `append_durable_bytes` (the synced append U254 added
+  for a journal ledger) and `_exclusive_lock`, which every other state writer
   uses. Test root, or the system temporary directory, registered root or not.
 
 ## What a future session would get wrong

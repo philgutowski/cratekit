@@ -4418,13 +4418,14 @@ def _refuse_write_outside_test_root(path: Path, *, system_temporary: bool = Fals
     folder is reached through a symlink on macOS and a link inside the root can
     point anywhere. A process without pytest loaded is never checked.
 
-    Called from the three primitives every state writer in the package goes
+    Called from the four primitives every state writer in the package goes
     through, ``_write_lock`` for the configuration document, then
-    ``atomic_write_bytes`` and ``_exclusive_lock``, so a ledger, a watermark or
-    a session lock written by an unisolated test is refused the same way, and a
-    link swapped in after the configuration check is caught again at the write.
+    ``atomic_write_bytes``, ``append_durable_bytes`` (U254) and
+    ``_exclusive_lock``, so a ledger, a watermark or a session lock written by
+    an unisolated test is refused the same way, and a link swapped in after the
+    configuration check is caught again at the write.
 
-    ``system_temporary`` is what those two primitives pass. Shipped code writes
+    ``system_temporary`` is what those three primitives pass. Shipped code writes
     its own scratch files through them into a folder ``tempfile.mkdtemp`` made,
     the provider session's token among them, and the user's state never lives
     there, so the system temporary directory is a second allowed root for them
@@ -4739,8 +4740,9 @@ def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_M
     0600 REGARDLESS OF UMASK. ``mkstemp`` already creates at 0600, so the mode was
     previously an undocumented side effect that nothing would have caught if the
     writer changed. The explicit chmod makes it a stated property, and it is the
-    reason this function is the shared writer for every state file rather than one
-    of two: the sibling that wrote the credential presence index with
+    reason this function is the shared writer for every state file, beside only
+    the append :func:`append_durable_bytes` makes to a file this one created,
+    rather than one of two: the sibling that wrote the credential presence index with
     ``write_text`` inherited the user's umask and landed 0666 under umask 000,
     which is the exact defect class ``secrets.py`` was chartered to end. That file
     carries no credential VALUES, but world-writable means any local account can
