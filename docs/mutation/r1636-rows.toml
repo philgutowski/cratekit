@@ -1,0 +1,243 @@
+name = "r1636"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_artist_never_named"
+description = '''_names_the_artist: no part credits the artist, so the artist's part of a name is read as its title'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if names & _credited_names(text):
+        return True
+    return len(folded) > 1 and any(_runs_in(folded, name, initials=True) for name in names)'''
+new = '''    return False'''
+
+[[rows]]
+id = "M02_artist_by_containment"
+description = '''_names_the_artist: a part holding one of the artist's names is the artist's part, round two's B-1'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if names & _credited_names(text):'''
+new = '''    if any(_runs_in(name, folded) for name in names):'''
+
+[[rows]]
+id = "M03_no_initials"
+description = '''_names_the_artist: an initial never stands for a word, so "B. Badie" is a title'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''any(_runs_in(folded, name, initials=True) for name in names)'''
+new = '''any(_runs_in(folded, name, initials=False) for name in names)'''
+
+[[rows]]
+id = "M04_artist_whole_credit_only"
+description = '''_artist_names: the whole credit only, never the names it joins'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    names = _credited_names(text)
+'''
+new = '''    names: set[tuple[str, ...]] = set()
+'''
+
+[[rows]]
+id = "M05_no_credit_words"
+description = '''_CREDIT_WORDS: no word joins two names but the sentinel, so "Artist x Tide" and "Artist feat. Tide" are no credit'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''_CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents"}) | _FEATURING'''
+new = '''_CREDIT_WORDS = frozenset({"x"})'''
+
+[[rows]]
+id = "M06_and_with_join"
+description = '''_CREDIT_WORDS: "and" and "with" join names, so a title "Dancing With Artist" passes for a credit, round two'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''_CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents"}) | _FEATURING'''
+new = '''_CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents", "and", "with"}) | _FEATURING'''
+
+[[rows]]
+id = "M07_no_accent_fold"
+description = '''_folded: accents are kept, so "Ame" is not "Âme"'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return "".join(c for c in unicodedata.normalize("NFKD", word) if not unicodedata.combining(c))'''
+new = '''    return word'''
+
+[[rows]]
+id = "M08_numbered_later_part_an_artist"
+description = '''_names_the_artist: a later part opening with a track number may be the artist'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    elif _numbered(words):
+        return False'''
+new = '''    elif False:
+        return False'''
+
+[[rows]]
+id = "M09_head_unbounded"
+description = '''_head_end: any run of numbers and keys is the head, eating a title of numbers'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    while end < min(2, len(parts) - 1):'''
+new = '''    while end < len(parts) - 1:'''
+
+[[rows]]
+id = "M10_head_any_number"
+description = '''_head_end: any number is a tempo, so "909 - Artist - Album" loses its title'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        elif not tempos and (_a_tempo(words[0]) if not keys else words[0].isdecimal()):'''
+new = '''        elif not tempos and words[0].isdecimal():'''
+
+[[rows]]
+id = "M11_head_tempo_ranged_after_key"
+description = '''_head_end: a tempo after a key must be in range, so "08A - 300 - Title" reads 300 as its title'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        elif not tempos and (_a_tempo(words[0]) if not keys else words[0].isdecimal()):'''
+new = '''        elif not tempos and _a_tempo(words[0]):'''
+
+[[rows]]
+id = "M12_lone_number_three_figures"
+description = '''_LONE_TRACK_NUMBER: "007" alone is a track number, round two's B-4'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''_LONE_TRACK_NUMBER = re.compile(r"0[0-9]")'''
+new = '''_LONE_TRACK_NUMBER = re.compile(r"0[0-9]{1,2}")'''
+
+[[rows]]
+id = "M13_lone_number_before_a_version"
+description = '''_title_starts: a lone number before a version is skipped as a track number, so "05 - Original Mix" loses its title'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        and _names_a_title(_words(_title_core(parts[head + 1])[0]), tail=True, head=False)
+    ):
+        head += 1'''
+new = '''    ):
+        head += 1'''
+
+[[rows]]
+id = "M14_part_after_number_an_artist"
+description = '''_title_starts: a part after a lone track number may be the artist'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            if index - 1 not in numbers and _names_the_artist('''
+new = '''            if _names_the_artist('''
+
+[[rows]]
+id = "M15_self_titled_never"
+description = '''_title_starts: the artist's part is never the title once another part follows it'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if title > head and (
+        head + 1 in artists
+        or not _names_a_title(_words(_title_core(parts[title])[0]), tail=True, head=False)
+    ):
+        title = head'''
+new = '''    if False:
+        title = head'''
+
+[[rows]]
+id = "M16_self_titled_artist_artist_dropped"
+description = '''_title_starts: two leading artist parts no longer keep the first as the title'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        head + 1 in artists
+        or not'''
+new = '''        not'''
+
+[[rows]]
+id = "M17_no_numbered_start"
+description = '''_title_starts: no track numbered later start'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        and (index - 1 in numbers or _numbered(_words(_title_core(parts[index])[0])))'''
+new = '''        and False'''
+
+[[rows]]
+id = "M18_every_part_a_start"
+description = '''_title_starts: every part is a start, R-1636's defect itself'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return head, title, artists - {title}, numbers | frozenset(numbered), (title, *numbered, *either)'''
+new = '''    return head, title, artists - {title}, numbers | frozenset(numbered), tuple(range(len(parts)))'''
+
+[[rows]]
+id = "M19_first_either_any_title"
+description = '''_title_starts: the artist's part is read both ways before any title, round two's B-3'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if title > head and head in artists and _a_tail_to_shed(parts[title], searched=False):'''
+new = '''    if title > head and head in artists:'''
+
+[[rows]]
+id = "M20_first_either_never"
+description = '''_title_starts: the artist's part is never read both ways, round one's B1'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if title > head and head in artists and _a_tail_to_shed(parts[title], searched=False):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M21_second_either_any_head"
+description = '''_title_starts: the second part is read when it alone credits the artist, round two's B-2'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    elif title == head and head in artists and head + 1 in artists:'''
+new = '''    elif title == head and head + 1 in artists:'''
+
+[[rows]]
+id = "M22_run_ends_before_numbered"
+description = '''_readings: a run from the title may end before a track numbered title, reading the album'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''                last in later
+                or not'''
+new = '''                not'''
+
+[[rows]]
+id = "M23_no_artist_led_tail"
+description = '''_readings: a run never ends before a part naming the artist, so "Title - Artist - Album" with no head misses'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''or not (after_head or last in artists or _a_tail_to_shed(after, searched=searched))'''
+new = '''or not (after_head or _a_tail_to_shed(after, searched=searched))'''
+
+[[rows]]
+id = "M24_matcher_drops_artist"
+description = '''_title_matches: the file's title is read with no artist'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        _readings(searched, searched=True, artist=artist), _readings(found, searched=False)'''
+new = '''        _readings(searched, searched=True, artist=""), _readings(found, searched=False)'''
+
+[[rows]]
+id = "M25_number_shed_across_a_dash"
+description = '''_readings: a track number is shed from a run whose first part is a number alone, reading "007 - Original Mix" as its version'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            if searched and not exact and _numbered(_words(parts[first])):'''
+new = '''            if searched and not exact and _numbered(_words(core)):'''

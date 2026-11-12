@@ -10,7 +10,7 @@ resolution_type: code_fix
 applies_when:
   - "A unit compares titles, artists or any names by containment after stripping part of them"
   - "A unit adds a new catalogue source, or a new caller of the shared title matcher"
-tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534, r-1631, camelot-head]
+tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534, r-1631, r-1636, camelot-head, dash-parts]
 ---
 
 # A strip that can empty a title turns a substring match into a match of anything
@@ -50,10 +50,10 @@ and Beatport's own scoring, which strips separately from the shared matcher.
 - **Ask of any list in a matcher which way it fails.** A list that refuses a
   match for its words fails open on every word it lacks. The version words now
   come from the domain's `core.tombstone.VERSION_WORDS` and mostly shed a
-  trailing version from a title, where a word the list lacks costs a miss. One
-  place still refuses on it, a file's dash tail of version words alone
-  (`_names_a_title`), so "Other Song - Vocal Mix" still reads "vocal mix" as a
-  title, as it did before; that is recorded as a residual.
+  trailing version from a title, where a word the list lacks costs a miss. A
+  file's dash tail of version words alone was refused on it (`_names_a_title`),
+  so "Other Song - Vocal Mix" read "vocal mix" as a title until R-1636 replaced
+  the list's verdict with the tail's position (below).
 - **A number is part of the title (round one of R-1631).** Shedding numbers
   with a version read "Kitchen Session 2" as "Kitchen Session 1"; shedding a
   leading number after the bracket words joined read "909 (Jack Mix)" as
@@ -66,10 +66,41 @@ and Beatport's own scoring, which strips separately from the shared matcher.
 - **The file's title is not shaped like a catalogue's.** The live library
   writes `KEY - BPM - ` into the title tag (the solution on the head in the
   title tag), and a file with no title tag is asked by its "Artist - Album -
-  01 Title" name, so the file's side is read by any run of its dash parts and
-  a catalogue row only by its head before a version tail. Read the two the
-  same way and either the head is the title ("Aurora Bloom" matching every
-  "Aurora Bloom - X" heading) or the headed library matches nothing.
+  01 Title" name, so a catalogue row is read only by its head before a
+  version tail and the file's side differently. Read the two the same way and
+  either the head is the title ("Aurora Bloom" matching every "Aurora Bloom -
+  X" heading) or the headed library matches nothing.
+- **Which of a file's dash parts is its title is a matter of position and the
+  artist, not of a list (R-1636).** R-1631 read the file's side from any run
+  of its dash parts, so a version tail the list lacked ("Other Song - Vocal
+  Mix" as "vocal mix"), an untagged name's album ("KEY - BPM - Tide - Artist -
+  Sun Path" as "sun path") and its artist ("KEY - BPM - Artist - Sun Path" as
+  the artist) each wrote another recording's genre. The searcher already
+  holds the file's artist, so `_title_starts` places the title at the first
+  part after the head that does not credit the artist, and never reads a
+  later part alone, save a track numbered "02 Title". Read the artist's part
+  as a name writes it, not as the tag does: round one of the review drove a
+  collaboration ("Artist & Tide"), "The", an accent, the naming verb's
+  "[MP3]" marker and a track number before the artist, each losing the
+  file's own row once the artist test was word for word. But a part merely
+  holding the artist's name is a title, "Riding The Tide" by Tide or
+  "Bernard Badie Theme": round two drove that looser test to wrong genres.
+  The test is a credit, the part's names split on the joins a credit is
+  written with ("&", ",", "x", "feat"), one of them the artist's name, accents
+  folded; "and" and "with" join nothing, since titles hold them. And some
+  shapes no rule tells apart without a list: "Artist - Vocal Mix" is a title
+  "Vocal Mix" or a self titled track's version, so it is read both ways, as
+  before, rather than either way alone, which lost a row on page order. A
+  differential that wraps titles only in the exact artist string is a
+  measurement on a fixture: wrap them in the artist as names write it, and
+  put the artist's name inside titles too. Bound the head
+  to the shapes the naming verb writes (a key, a tempo, or one of each,
+  `_head_end`): an unbounded run of numbers ate "909" of "08A - 124 - 909 -
+  Artist - Album" and moved the title onto the album. And the artist is the
+  title only when nothing else can be, judged by version words alone, never
+  by a part that merely ends in one: "Artist - Sunrise Mood Extended Mix" is
+  "sunrise mood", found only by wrapping every suite title in each name shape
+  and comparing it with the plain title's own matches.
 - **What the new rule cannot tell apart, it refuses.** "How Does It Feel"
   against "Untitled (How Does It Feel)" has the same evidence as "Intro"
   against "Sunrise Mood (Intro)", so both are refused; that loss is pinned as

@@ -14,9 +14,10 @@ onto the file for good, since a genre is fill if empty.
 
 WHAT HOLDS NOW. Two titles match when they name the same words once each has
 shed what is not its title: its trailing bracket groups, read as balanced
-groups from the end; a catalogue row's dash tail, or any run of the file's dash
-segments, since the live library writes its ``KEY - BPM - `` head into the
-title tag; a feature credit; a trailing run of the domain's version words; its
+groups from the end; a catalogue row's dash tail; the file's head, the
+``KEY - BPM - `` the live library writes into the title tag, and every dash
+part of it that is not its title, the searched artist's name, a version, an
+album (R-1636); a feature credit; a trailing run of the domain's version words; its
 leading bracket groups. Nothing is compared by characters, and a word read only
 inside the other title's brackets is never its title. A side with no letter or
 digit matches nothing, and a number is part of the title. The tables below
@@ -58,6 +59,11 @@ BRACKETED = "(Not Just) Knee Deep (Part 1)"
 
 #: Titles nothing can be read off: empty, blank, punctuation, empty brackets.
 NOISE = ("", "   ", "-", "...", "()", "( )", "!?", "___")
+
+
+def _matches(searched: str, found: str) -> bool:
+    """The shared matcher for a file by the suite's artist, as every source asks it."""
+    return searchers._title_matches(searched, found, artist=ARTIST)
 
 
 @pytest.fixture(scope="module")
@@ -221,24 +227,24 @@ HEADED_NOT = [
 
 @pytest.mark.parametrize(("searched", "found"), SAME)
 def test_a_title_matches_its_own_recording_either_way_round(searched, found):
-    assert searchers._title_matches(searched, found)
-    assert searchers._title_matches(found, searched)
+    assert _matches(searched, found)
+    assert _matches(found, searched)
 
 
 @pytest.mark.parametrize(("searched", "found"), DIFFERENT)
 def test_a_title_matches_no_other_recording_either_way_round(searched, found):
-    assert not searchers._title_matches(searched, found)
-    assert not searchers._title_matches(found, searched)
+    assert not _matches(searched, found)
+    assert not _matches(found, searched)
 
 
 @pytest.mark.parametrize(("searched", "found"), HEADED)
 def test_a_headed_file_title_matches_its_own_row(searched, found):
-    assert searchers._title_matches(searched, found)
+    assert _matches(searched, found)
 
 
 @pytest.mark.parametrize(("searched", "found"), HEADED_NOT)
 def test_a_files_head_is_never_its_title(searched, found):
-    assert not searchers._title_matches(searched, found)
+    assert not _matches(searched, found)
     assert _traxsource_hit(searched, found).genre is None
     assert _bandcamp_hit(searched, found).genre is None
     assert discogs_answer(_discogs_hit(searched, found)).answer == "miss"
@@ -258,33 +264,33 @@ def test_two_titles_are_compared_by_whole_words_never_by_characters(searched, fo
     """The pairs R-1534 pinned as a known residual, two cores matched by raw
     substring. A title is its words, so a word inside another word is no
     match, and a title is never a part of another title's words."""
-    assert not searchers._title_matches(searched, found)
-    assert not searchers._title_matches(found, searched)
-    assert searchers._title_matches(f"{searched}!", searched)
+    assert not _matches(searched, found)
+    assert not _matches(found, searched)
+    assert _matches(f"{searched}!", searched)
 
 
 def test_a_catalogue_rows_dash_tail_is_never_its_title():
     """A catalogue writes a version after a dash; a file writes its head before
-    one. So the row is read by its head and the file by any run of its
-    segments, and a tail of version words alone is no title on either side."""
-    assert not searchers._title_matches("Original Mix", f"{OTHER} - Original Mix")
-    assert not searchers._title_matches(f"{OTHER} - Original Mix", "Original Mix")
-    assert searchers._title_matches(f"{OTHER} - Original Mix", OTHER)
-    assert searchers._title_matches(OTHER, f"{OTHER} - Original Mix")
-    assert not searchers._title_matches("Hate", "Love - Hate")
+    one. So the row is read by its head and the file from where its title
+    starts, and a tail of version words alone is no title on either side."""
+    assert not _matches("Original Mix", f"{OTHER} - Original Mix")
+    assert not _matches(f"{OTHER} - Original Mix", "Original Mix")
+    assert _matches(f"{OTHER} - Original Mix", OTHER)
+    assert _matches(OTHER, f"{OTHER} - Original Mix")
+    assert not _matches("Hate", "Love - Hate")
 
 
 @pytest.mark.parametrize("noise", NOISE)
 @pytest.mark.parametrize("other", [OTHER, "(Intro)", BRACKETED, "Original Mix", "-"])
 def test_a_title_with_no_letter_or_digit_matches_nothing(noise, other):
-    assert not searchers._title_matches(noise, other)
-    assert not searchers._title_matches(other, noise)
+    assert not _matches(noise, other)
+    assert not _matches(other, noise)
 
 
 @pytest.mark.parametrize("noise", NOISE)
 def test_a_title_with_no_letter_or_digit_does_not_match_itself(noise):
     """Nothing identifies the recording, so even an identical row is no match."""
-    assert not searchers._title_matches(noise, noise)
+    assert not _matches(noise, noise)
 
 
 # ---------------------------------------------------------------------------
@@ -421,7 +427,7 @@ def test_a_title_written_only_inside_the_rows_trailing_brackets_is_a_known_cost(
     name = "Untitled (How Does It Feel)"
     hit = _beatport_hit("How Does It Feel", [_beatport_track(ARTIST, name, BUCKET_GENRE)])
     assert _beatport_answer(hit) == "miss"
-    assert not searchers._title_matches("How Does It Feel", name)
+    assert not _matches("How Does It Feel", name)
 
 
 def test_beatport_reads_no_artist_from_a_row_crediting_an_empty_name():
@@ -647,3 +653,362 @@ def test_a_file_whose_title_tag_carries_its_head_still_takes_its_own_genre(
 
     assert result.genre_written is not None
     assert tags.read_genre_from_file(path) == result.genre_written
+
+
+# ---------------------------------------------------------------------------
+# F. R-1636: a dash part of the file's title that is not its title
+# ---------------------------------------------------------------------------
+
+#: (file title, another recording by the artist) pairs in which the file's
+#: title was read from a dash part that is not its title: a version tail with a
+#: word the version list lacks ("vocal"), the album of an untagged "KEY - BPM -
+#: Title - Artist - Album" name, or the artist of a "KEY - BPM - Artist -
+#: Title" name. R-1631's review drove the first two shapes to a wrong genre
+#: through ``tag_one``.
+NOT_THE_TITLE = [
+    ("08A - 124 - Other Song - Vocal Mix", "Vocal Mix"),
+    ("08A - 124 - Other Song - Vocal Mix", "Vocal"),
+    ("Other Song - Vocal Mix", "Vocal"),
+    ("Other Song - Vocal Mix", "Vocal Mix"),
+    ("Other Song - Vocal", "Vocal"),
+    ("08A - 124 - Other Song - Vocal Dub", "Vocal"),
+    (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Sun Path"),
+    (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Sun Path (Original Mix)"),
+    (f"Tide - {ARTIST} - Sun Path", "Sun Path"),
+    (f"08A - 124 - {ARTIST} - Sun Path", ARTIST),
+    (f"08A - 124 - {ARTIST} - Sun Path", f"{ARTIST} (Extended Mix)"),
+    (f"08A - 124 - {ARTIST} feat. Someone - Sun Path", ARTIST),
+    (f"{ARTIST} - Sun Path - 02 Tide", "Sun Path"),
+]
+
+#: (file title, its own row) pairs the same rule must keep: the title after the
+#: head, after the artist's part, before a version, an artist or an album, a
+#: self titled record, and the track numbered title of an untagged name.
+OWN_TITLE = [
+    (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Tide"),
+    (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Tide (Extended Mix)"),
+    (f"Tide - {ARTIST} - Sun Path", "Tide"),
+    (f"Tide - {ARTIST}", "Tide"),
+    (f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+    (f"{ARTIST} - Sun Path", "Sun Path (Extended Mix)"),
+    (f"08A - 124 - {ARTIST} feat. Someone - Sun Path", "Sun Path"),
+    (f"{ARTIST} - Sun Path - 02 Tide", "Tide"),
+    ("08A - 124 - Other Song - Vocal Mix", "Other Song"),
+    ("08A - 124 - Other Song - Vocal Mix", "Other Song (Vocal Mix)"),
+    ("Other Song - Vocal Mix", "Other Song"),
+    ("08A - 124 - Make Luv - Room 5", "Make Luv"),
+    (f"08A - 124 - {ARTIST}", ARTIST),
+    (f"{ARTIST} - Original Mix", ARTIST),
+    (f"08A - 124 - {ARTIST} - Original Mix", f"{ARTIST} (Extended Mix)"),
+]
+
+
+@pytest.mark.parametrize(("searched", "found"), NOT_THE_TITLE)
+def test_a_files_dash_part_that_is_not_its_title_matches_nothing(searched, found):
+    assert not _matches(searched, found)
+    assert _traxsource_hit(searched, found).genre is None
+    assert _bandcamp_hit(searched, found).genre is None
+    assert _bandcamp_hit(searched, f"{ARTIST} - {found}").genre is None
+    assert discogs_answer(_discogs_hit(searched, found)).answer == "miss"
+    hit = _beatport_hit(searched, [_beatport_track(ARTIST, found, BUCKET_GENRE)])
+    assert _beatport_answer(hit) == "miss"
+
+
+@pytest.mark.parametrize(("searched", "found"), OWN_TITLE)
+def test_a_files_title_among_its_dash_parts_still_finds_its_own_row(searched, found):
+    assert _matches(searched, found)
+    assert _traxsource_hit(searched, found).genre == BUCKET_GENRE
+    assert _bandcamp_hit(searched, f"{ARTIST} - {found}").genre == BUCKET_GENRE
+    assert discogs_answer(_discogs_hit(searched, found)).answer == "matched"
+    hit = _beatport_hit(searched, [_beatport_track(ARTIST, found, BUCKET_GENRE)])
+    assert hit.genre == BUCKET_GENRE
+
+
+def test_the_artists_part_is_read_word_for_word_never_by_characters():
+    """Only a part that is the artist's name is passed over: "Badie" is not
+    "Bernard Badie", so it is the title, and its later part is not."""
+    assert _matches("08A - 124 - Badie - Sun Path", "Badie")
+    assert not _matches("08A - 124 - Badie - Sun Path", "Sun Path")
+
+
+def test_a_name_with_no_artist_is_read_from_its_first_part():
+    """With no artist to tell "Artist - Title" from "Title - Version", the part
+    after the first is never read alone: a miss, never another recording."""
+    assert not searchers._title_matches("Other Song - Vocal Mix", "Vocal", artist="")
+    assert searchers._title_matches("Other Song - Vocal Mix", "Other Song", artist="")
+    assert not searchers._title_matches(f"{ARTIST} - Sun Path", ARTIST, artist="")
+
+
+def _file(tmp_path: Path, silence: Path, name: str, wanted: dict[str, str]) -> Path:
+    path = tmp_path / f"{name}.flac"
+    path.write_bytes(Path(silence).read_bytes())
+    assert tags.write_tags(path, wanted)
+    return path
+
+
+def _beatport_and_discogs(row: str, number: int):
+    beatport = searchers.Fetched(
+        text=_beatport_page([_beatport_track(ARTIST, row, BUCKET_GENRE, mix="Original Mix")]),
+        status=200,
+    )
+    tracks = [{"position": "A1", "type_": "track", "title": row}]
+    return routed(search=results(number), releases={number: release(number, tracks=tracks)}, beatport=beatport)
+
+
+@pytest.mark.parametrize(("title", "other"), NOT_THE_TITLE)
+def test_a_files_title_tag_writes_no_genre_off_a_dash_part_that_is_not_its_title(
+    tmp_path, silence, title, other
+):
+    """The card's shapes as R-1631's review drove them: Beatport's row and
+    Discogs' track are another recording by the artist, and neither may write
+    its genre onto a file whose title tag carries the shape."""
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(other, 46)))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "other"),
+    [
+        (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Sun Path"),
+        (f"08A - 124 - {ARTIST} - Sun Path", ARTIST),
+        ("08A - 124 - Other Song - Vocal Mix", "Vocal"),
+    ],
+)
+def test_an_untagged_file_writes_no_genre_off_its_names_album_or_artist(
+    tmp_path, silence, name, other
+):
+    """A file with no title tag is asked by its name, which carries its album
+    and its artist as dash parts; neither is its title."""
+    path = _file(tmp_path, silence, name, {"artist": ARTIST})
+    assert tags.read_tag(path, "title") is None
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(other, 47)))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize(
+    ("name", "own"),
+    [
+        (f"08A - 124 - Tide - {ARTIST} - Sun Path", "Tide"),
+        (f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+        (f"{ARTIST} - Sun Path - 02 Tide", "Tide"),
+    ],
+)
+def test_an_untagged_file_still_takes_its_own_rows_genre_by_its_name(tmp_path, silence, name, own):
+    path = _file(tmp_path, silence, name, {"artist": ARTIST})
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(own, 48)))
+
+    assert result.genre_written == BUCKET_GENRE
+    assert tags.read_genre_from_file(path) == BUCKET_GENRE
+
+
+# ---------------------------------------------------------------------------
+# G. R-1636, review round one: the artist's part as a name writes it
+# ---------------------------------------------------------------------------
+
+#: (artist tag, file title, its own row): the artist's part of the title is
+#: the tag's artist written as a name writes it, a collaboration, "The", an
+#: accent, the naming verb's "[MP3]" marker, a track number before it, or a
+#: track number written as its own part. Each found its own row on main and
+#: lost it at round one's head.
+ARTIST_AS_WRITTEN = [
+    (ARTIST, f"08A - 124 - [MP3] {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST} & Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - Tide & {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST}, Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST} x Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST} vs Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"01 - {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - 01 - {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"{ARTIST} - Sun Path - 02 - Tide", "Tide"),
+    (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - 02 - Tide", "Tide"),
+    ("Black Madonna", "The Black Madonna - Sun Path", "Sun Path"),
+    ("The Black Madonna", "08A - 124 - Black Madonna - Sun Path", "Sun Path"),
+    ("Âme", "08A - 124 - Ame - Sun Path", "Sun Path"),
+    ("Ame", "08A - 124 - Âme - Sun Path", "Sun Path"),
+    (f"{ARTIST}; Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+    (f"{ARTIST} & Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+    (f"{ARTIST} feat. Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+    (f"{ARTIST} x Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "own"), ARTIST_AS_WRITTEN)
+def test_the_artists_part_is_known_as_a_name_writes_it(artist, title, own):
+    assert searchers._title_matches(title, own, artist=artist)
+    if not artist.startswith(ARTIST):
+        return
+    assert not searchers._title_matches(title, ARTIST, artist=artist)
+    hit = _beatport_hit(title, [_beatport_track(ARTIST, own, BUCKET_GENRE)])
+    assert hit.genre == BUCKET_GENRE
+    assert discogs_answer(_discogs_hit(title, own)).answer == "matched"
+
+
+@pytest.mark.parametrize(
+    ("name", "own"),
+    [
+        (f"08A - 124 - [MP3] {ARTIST} - Sun Path", "Sun Path"),
+        (f"08A - 124 - {ARTIST} & Tide - Sun Path", "Sun Path"),
+        (f"01 - {ARTIST} - Sun Path", "Sun Path"),
+        (f"{ARTIST} - Sun Path - 02 - Tide", "Tide"),
+    ],
+)
+def test_an_untagged_file_named_with_its_artist_as_written_takes_its_own_genre(
+    tmp_path, silence, name, own
+):
+    path = _file(tmp_path, silence, name, {"artist": ARTIST})
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(own, 49)))
+
+    assert result.genre_written == BUCKET_GENRE
+    assert tags.read_genre_from_file(path) == BUCKET_GENRE
+
+
+def test_a_self_titled_tracks_dash_version_the_list_lacks_still_finds_its_own_row(tmp_path, silence):
+    """Round one's B1: "Artist - Vocal Mix" is either a title "Vocal Mix" or a
+    self titled track and its version, and nothing but a list tells them
+    apart, so both are read, as on main. The file's own row listed first wins,
+    as it did on main, and the self titled reading is never taken when the
+    other part does not end in a version."""
+    title = f"08A - 124 - {ARTIST} - Vocal Mix"
+    assert _matches(title, ARTIST)
+    assert _matches(title, f"{ARTIST} (Extended Mix)")
+    assert not _matches(f"08A - 124 - {ARTIST} - Sun Path", ARTIST)
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
+    rows = [
+        _beatport_track(ARTIST, ARTIST, BUCKET_GENRE, mix="Extended Mix"),
+        _beatport_track(ARTIST, "Vocal", "Techno"),
+    ]
+    fetch = routed(search=results(), beatport=searchers.Fetched(text=_beatport_page(rows), status=200))
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "own", "other"),
+    [
+        # The next part naming the artist keeps a self titled first part the title.
+        (ARTIST, f"08A - 124 - {ARTIST} - {ARTIST} - Sun Path", ARTIST, "Sun Path"),
+        # A tag crediting two names, or a feature, knows the name alone.
+        (f"{ARTIST} & Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
+        (f"{ARTIST} feat. Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
+        # A number outside a tempo's range before anything else is a title.
+        (ARTIST, f"909 - {ARTIST} - Sun Path", "909", "Sun Path"),
+        # A number after a key is its tempo whatever its value.
+        (ARTIST, "08A - 300 - Sun Path - Tide", "Sun Path", "Tide"),
+        # The part before a track numbered title is its album, never read alone.
+        (ARTIST, "08A - 124 - Sun Path - 02 Tide", "Tide", "Sun Path"),
+        (ARTIST, f"{ARTIST} - Sun Path - 02 Tide Extended Mix", "Tide", "Sun Path"),
+    ],
+)
+def test_each_rule_of_the_title_start_holds(artist, title, own, other):
+    assert searchers._title_matches(title, own, artist=artist)
+    assert not searchers._title_matches(title, other, artist=artist)
+
+
+# ---------------------------------------------------------------------------
+# H. R-1636, review round two: a title holding the artist's name, and where
+#    the both ways reading stops
+# ---------------------------------------------------------------------------
+
+#: (artist tag, file title, its own row, another recording by the artist).
+ROUND_TWO = [
+    # A title holding the artist's name is a title, never the artist's credit.
+    (ARTIST, f"08A - 124 - {ARTIST} Theme - Pt. 2", f"{ARTIST} Theme (Pt. 2)", "Pt. 2"),
+    ("Tide", "08A - 124 - Riding The Tide - Part 2", "Riding The Tide (Part 2)", "Part 2"),
+    ("Tide", "08A - 124 - Riding The Tide - Intro", "Riding The Tide (Intro)", "Intro"),
+    (ARTIST, f"{ARTIST} - {ARTIST} Theme", f"{ARTIST} Theme", ARTIST),
+    ("Tide", "Tide - Riding The Tide", "Riding The Tide", "Tide"),
+    ("Tide", "08A - 124 - Riding The Tide - Vocal Mix", "Riding The Tide", "Vocal Mix"),
+    (ARTIST, f"08A - 124 - {ARTIST} Theme - Vocal Mix", f"{ARTIST} Theme", "Vocal Mix"),
+    # The artist after the title, or in its version, is never read alone.
+    ("Tide", "08A - 124 - Sun Path - Tide - Fabric Live", "Sun Path", "Tide"),
+    ("Tide", "08A - 124 - Sun Path - Tide", "Sun Path", "Tide"),
+    ("Tide", "Sun Path - Tide", "Sun Path", "Tide"),
+    (ARTIST, f"08A - 124 - Sun Path - {ARTIST} Remix", "Sun Path", ARTIST),
+    ("Tide", "08A - 124 - Sun Path - Tide Dub", "Sun Path", "Tide"),
+    # The artist's part is read both ways only before a version, never a title.
+    (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - Original Mix", "Sun Path", ARTIST),
+    # A number of three figures, or one before a version, is a title.
+    (ARTIST, "08A - 124 - 007 - Original Mix", "007", "Original Mix"),
+    ("Tide", "007 - Tide - Sun Path", "007", "Sun Path"),
+    (ARTIST, "08A - 124 - 05 - Original Mix", "05", "Original Mix"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "own", "other"), ROUND_TWO)
+def test_round_two_a_title_keeps_its_own_row_and_takes_no_other(artist, title, own, other):
+    assert searchers._title_matches(title, own, artist=artist)
+    assert not searchers._title_matches(title, other, artist=artist)
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "other"),
+    [
+        (ARTIST, f"08A - 124 - Sun Path - {ARTIST} Remix", ARTIST),
+        ("Tide", "08A - 124 - Sun Path - Tide - Fabric Live", "Tide"),
+        (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - Original Mix", ARTIST),
+        ("Tide", "08A - 124 - Riding The Tide - Vocal Mix", "Vocal Mix"),
+    ],
+)
+def test_round_two_no_genre_is_written_off_another_recording(tmp_path, silence, artist, title, other):
+    path = _file(tmp_path, silence, "a", {"artist": artist, "title": title})
+    beatport = searchers.Fetched(
+        text=_beatport_page([_beatport_track(artist, other, BUCKET_GENRE, mix="Original Mix")]), status=200
+    )
+    tracks = [{"position": "A1", "type_": "track", "title": other}]
+    fetch = routed(search=results(50), releases={50: release(50, tracks=tracks)}, beatport=beatport)
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "own"),
+    [
+        # An initial stands for a word of a name of two words or more.
+        (ARTIST, "08A - 124 - B. Badie - Sun Path", "Sun Path"),
+        # "The" opens a name on either side.
+        ("The Black Madonna", "08A - 124 - Black Madonna - Sun Path", "Sun Path"),
+        # Every join a credit is written with.
+        (f"{ARTIST}; Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
+        (f"{ARTIST} + Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
+        (ARTIST, f"08A - 124 - {ARTIST} pres. Tide - Sun Path", "Sun Path"),
+        # A track number glued to the first part, or alone before it.
+        (ARTIST, f"01 {ARTIST} - Sun Path", "Sun Path"),
+        (ARTIST, f"01 - {ARTIST} - Sun Path", "Sun Path"),
+        # A part after a lone track number is the title, even the artist's name.
+        (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", ARTIST),
+        # Two parts crediting the artist read the second too.
+        (ARTIST, f"08A - 124 - Tide & {ARTIST} - {ARTIST}", ARTIST),
+    ],
+)
+def test_each_way_a_credit_is_written_is_known(artist, title, own):
+    assert searchers._title_matches(title, own, artist=artist)
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "other"),
+    [
+        (ARTIST, "08A - 124 - B. Badie - Sun Path", "B Badie"),
+        (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", "Sun Path"),
+        (ARTIST, "08A - 124 - Badie - Sun Path", "Sun Path"),
+        ("Tide", "08A - 124 - Love And Tides - Sun Path", "Sun Path"),
+        # "with" and "and" are in titles: a title is never taken for a credit.
+        (ARTIST, f"{ARTIST} - Dancing With {ARTIST}", ARTIST),
+        (ARTIST, f"08A - 124 - Love And {ARTIST} - Sun Path", "Sun Path"),
+    ],
+)
+def test_what_is_not_the_artists_credit_is_never_passed_over(artist, title, other):
+    assert not searchers._title_matches(title, other, artist=artist)
