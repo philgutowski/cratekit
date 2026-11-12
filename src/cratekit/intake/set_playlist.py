@@ -1365,7 +1365,8 @@ def assert_read_back(written: Written) -> None:
     live = set(written.read_back)
     missing = [one for one in wanted if one not in live]
     filled = written.added == len(wanted)
-    in_order = [one for one in written.read_back if one in set(wanted)] == wanted
+    named = set(wanted)
+    in_order = [one for one in written.read_back if one in named] == wanted
     if missing or (filled and not in_order):
         raise refuse(
             "session-committed-unverified",

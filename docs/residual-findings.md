@@ -49143,3 +49143,82 @@ items, and that the playlist holds the set in order; an add on a stale tag
 always refused is then measured by a sitting that edits a product made
 playlist by hand between two adds. Ledger only: it closes at an attended
 sitting.
+
+---
+
+## R-1545. The invariant set guard reads comprehensions only and a few spellings of a set, so the same rebuild in another form passes it
+
+**Found:** at the review of #675, U246, 2026-11-12.
+
+**The mechanism.** `tests/test_comprehension_sets.py` refuses a set built anew
+per element from names that do not vary, in a comprehension's condition or as
+the set a membership test in its element tests against. It does not read a
+`for` statement's body, nor the iterable of a comprehension's second or later
+`for` clause, which is also evaluated once per outer element. Round one's
+wider walk over the 336 modules found one live instance of the first kind:
+`modules/outbound/hearts.py`, around line 89, builds a set comprehension over
+the constant `REMOVE_FLAGS` once per flag key it tests.
+
+Round two probed sixty shapes; besides those two it still passes `{*ys}`,
+`set().union(ys)`, `dict(pairs)`, `collections.Counter(ys)`, `{**a, **b}`, a
+set operation or method on the set in an element (`a in set(ys) | extra`,
+`set(ys).isdisjoint(x.tags)`), and a lambda handed to `filter` or `sorted`
+outside a comprehension. It still flags three that vary: a walrus bound name,
+`set(next(it))` and `set(queue.pop())`. Some of its own lines kill none of its
+self tests (round two's table: a lambda's keyword only parameters, the vendored
+exclusion, a walk that skips modules, which a clean tree cannot pin).
+
+**Measured cost.** Not measured. The hearts loop runs over the flags of one
+command line, so its size is a handful; nothing on a library sized path was
+found in any of these shapes; a wider scan of the 315 modules found the
+eleven sites on `main` and none on the branch.
+
+**Closes when:** the guard reads a `for` statement's body and a later `for`
+clause's iterable with the same free name rule, and the hearts loop builds its
+set once. Ledger only: a maintainer facing cost.
+
+---
+
+## R-1546. Three of U246's hoisted sets are built on paths that never read them, and two hash a value main never hashed there
+
+**Found:** at the review of #675, U246, 2026-11-12.
+
+**The mechanism.** Hoisting a set above its comprehension builds it even when
+the comprehension tests nothing. `sync/pair_calls.py` builds `held_before` and
+`held_after` when `removes` or `adds` is empty, and `sync/pair_cli.py` keeps an
+`else set()` arm for `started` that no reader reaches when `folded` is false.
+Two of them also hash their source before main did: `InvocationResult` in
+`acquire/adapter.py` with requested keys and no results, and the inspiration
+`assert_read_back` with live rows and no planned members. Given an unhashable
+value there (round one passed a list as a requested key), main accepted it and
+the branch raises `TypeError`.
+
+**Measured cost.** None reachable found. Two producers were read and neither
+yields an unhashable value: `request_for` takes the key from a text column and
+`set_playlist.read_back` builds `str(row[0])`. Neither was driven through a
+verb. The wasted builds are over one playlist's length.
+
+**Closes when:** each set is built only where its comprehension runs, or a
+test pins that every producer yields strings. Ledger only.
+
+---
+
+## R-1547. U246's forecast pin filters the adds itself, and its growth bound admits a small quadratic term
+
+**Found:** at the review of #675, U246, 2026-11-12.
+
+**The mechanism.** `test_an_add_is_counted_against_what_the_playlist_holds_after_its_removals`
+in `tests/test_sync_pair_calls.py` computes which adds the playlist lacks and
+sends only those, where `TidalAccount.add_tracks` makes that decision itself,
+so an adapter that began sending an add for a held track would not be seen.
+And `tests/test_rebuild_growth.py` holds the count under three times for twice
+the tracks; with the measured linear term of three comparisons per track, a
+quadratic term under an eighth of a comparison per pair at 24 tracks passes.
+
+**Measured cost.** None. Round two drove the adapter unfiltered over eight
+inputs, the two pinned among them, and the request count equalled the
+forecast on all eight. No mutant tried lands under the bound: the old shape
+grows 3.92 times and a tuple scan 4.03.
+
+**Closes when:** the pin calls `add_tracks` with every add, and the growth test
+reads a third size or a tighter coefficient. Ledger only.
