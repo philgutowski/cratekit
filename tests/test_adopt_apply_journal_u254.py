@@ -352,6 +352,27 @@ def test_a_torn_record_another_process_left_is_cut_before_the_next_append(cfg):
     assert all(json.loads(line) for line in _lines(path))
 
 
+def test_a_torn_tail_left_inside_one_clock_tick_is_still_cut(cfg):
+    """The size tells, where a coarse clock gives the torn file its old time.
+
+    FAT, exFAT and HFS+ keep modification times to a second or two, so another
+    process's torn append can leave the inode and the time as this process
+    left them. Taken for the file it left, the next mark would join its record
+    to the torn bytes and read back as not applied.
+    """
+    for n in range(3):
+        adopt_apply.mark_applied(cfg, _entry(n))
+    path = adopt_apply.path_for(cfg)
+    before = os.stat(path)
+    with path.open("ab") as other:
+        other.write(_line_of(_entry(5))[:15])
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    adopt_apply.mark_applied(cfg, _entry(9))
+    assert adopt_apply.read(cfg).entry_ids() == {
+        _entry(n).entry_id for n in (0, 1, 2, 9)
+    }
+
+
 def test_a_record_another_process_appended_is_kept(cfg):
     adopt_apply.mark_applied(cfg, _entry(0))
     path = adopt_apply.path_for(cfg)
