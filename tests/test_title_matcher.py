@@ -117,6 +117,9 @@ SAME = [
     ("1998", "1998"),
     ("808 (Extended Mix)", "808 (Original Mix)"),
     ("Kitchen Session 2 (Extended Mix)", "Kitchen Session 2"),
+    ("Sunrise Mood - Remastered 2011", "Sunrise Mood (Extended Mix)"),
+    ("Sunrise Mood 2014 Remaster", "Sunrise Mood"),
+    ("Summer 1999 (Original Mix)", "Summer 1999"),
 ]
 
 #: (searched, found) pairs that name different recordings and must not match.
@@ -169,6 +172,10 @@ DIFFERENT = [
     ("Kitchen Session 2", "Kitchen Session 1"),
     ("Shout Part 2 (Extended Mix)", "Shout Part 1 (Original Mix)"),
     ("Track 2 (Extended Mix)", "Track"),
+    # Round two: a year names the recording unless a remaster carries it.
+    ("Summer 1999 (Original Mix)", "Summer 2000 (Original Mix)"),
+    ("Ibiza 2001 (Club Mix)", "Ibiza 2002 (Club Mix)"),
+    ("Summer 1999 Club Mix", "Summer 2000 Club Mix"),
 ]
 
 #: (file title, catalogue row) pairs that name the same recording, read one way
@@ -206,6 +213,9 @@ HEADED_NOT = [
     ("08A - 124 - 22 (Original Mix)", "Original Mix"),
     ("08A - 124 - 909 (Jack Mix)", "Jack"),
     ("08A - 124 - Kitchen Session 2", "Kitchen Session 1"),
+    ("08A - 124 - Summer 1999 (Original Mix)", "Summer 2000 (Original Mix)"),
+    ("Sun Path - 08A - 124", "08A"),
+    ("22 Bullets", "Bullets"),
 ]
 
 

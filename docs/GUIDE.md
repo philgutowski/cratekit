@@ -325,8 +325,9 @@ crate route pending
   recording word for word, once the version, a featured artist and the
   `KEY - BPM` head are set aside; a title is never matched by words that sit
   only inside the other title's brackets, so "Intro" is never "Sunrise Mood
-  (Intro)", and a number in a title is never set aside, so "Session 2" is
-  never "Session 1". Discogs' first style that names a folder is written, through the
+  (Intro)", and a number in a title is kept, save a remaster's year and the
+  zero padded track number a file's name opens with, so "Session 2" is never
+  "Session 1" and "Summer 1999" never "Summer 2000". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the

@@ -577,8 +577,10 @@ _LEADING_GROUPS = re.compile(r"^(?:\s*(?:\([^()]*\)|\[[^\[\]]*\]))+\s*")
 #: never read without it.
 _TRACK_NUMBER = re.compile(r"0\d{1,2}")
 
-#: A year, the only number a version carries: "2014" of "2014 Remaster".
+#: A year, the only number a version carries, and only beside a remaster:
+#: "2014" of "2014 Remaster".
 _YEAR = re.compile(r"(?:19|20)\d\d")
+_REMASTER = frozenset({"remaster", "remastered"})
 
 #: A run of letters or digits, in any script. The underscore ``\w`` admits is
 #: punctuation here.
@@ -694,18 +696,20 @@ def _without_version(words: tuple[str, ...]) -> tuple[str, ...] | None:
     """The words before a trailing run of version words, "sunrise mood" of
     "Sunrise Mood Extended Mix", or None.
 
-    The run is words of the domain's :data:`VERSION_WORDS` and years ("2014
-    Remaster"), at least one of them a version word, and something must be
-    left before it: "Original Mix" and "Dub Club" are titles, never a version
-    of nothing. Any other number stays, since it names the recording: "Kitchen
-    Session 2" is never "Kitchen Session 1" (R-1631, round one). Here the list
+    The run is words of the domain's :data:`VERSION_WORDS` and a remaster's
+    year ("2014 Remaster", "Remastered 2011"), at least one of them a version
+    word, and something must be left before it: "Original Mix" and "Dub Club"
+    are titles, never a version of nothing. Any other number stays, since it
+    names the recording: "Kitchen Session 2" is never "Kitchen Session 1"
+    (R-1631, round one), and "Summer 1999 (Original Mix)" is never "Summer
+    2000 (Original Mix)" (round two). Here the list
     only sheds, so a version word it lacks costs a title its own row ("Sunrise
     Mood Vocal" reads as three words): the hand list it replaced refused
     containment for its words alone, and a word it lacked, "vocal", let "Vocal
     Mix" match "Other Song (Vocal Mix)" (R-1631).
     """
     end = len(words)
-    while end and (words[end - 1] in VERSION_WORDS or _a_year(words[end - 1])):
+    while end and (words[end - 1] in VERSION_WORDS or _a_remasters_year(words, end - 1)):
         end -= 1
     if end == 0 or end == len(words):
         return None
@@ -730,6 +734,16 @@ def _shed(words: tuple[str, ...]) -> set[tuple[str, ...]]:
 def _a_year(word: str) -> bool:
     """Whether a word is a year, as a remaster names one: "2014 Remaster"."""
     return _YEAR.fullmatch(word) is not None
+
+
+def _a_remasters_year(words: tuple[str, ...], index: int) -> bool:
+    """Whether the word at ``index`` is a year written beside "remaster" or
+    "remastered", the one year a version carries. Any other year names the
+    recording, "Summer 1999"."""
+    if not _a_year(words[index]):
+        return False
+    beside = words[max(index - 1, 0) : index] + words[index + 1 : index + 2]
+    return any(word in _REMASTER for word in beside)
 
 
 def _a_head_word(word: str) -> bool:
@@ -779,7 +793,7 @@ def _names_a_title(words: tuple[str, ...], *, tail: bool, head: bool) -> bool:
     A ``head`` part of numbers and keys alone, the "08A" or "126" of a ``KEY -
     BPM - `` head, is not; outside the head a number is a title, "1998" of
     "08A - 124 - 1998" (R-1631, round one). A tail made only of version words
-    and years after a title, the "Original Mix" of "Sunrise Mood - Original
+    and a remaster's year after a title, the "Original Mix" of "Sunrise Mood - Original
     Mix", is that title's version, never a title; after a head alone it is
     the title, "Interlude" of "08A - 124 - Interlude". THIS ONE REFUSES ON THE
     LIST, so a version tail with a word the list lacks, "Other Song - Vocal
@@ -787,7 +801,13 @@ def _names_a_title(words: tuple[str, ...], *, tail: bool, head: bool) -> bool:
     """
     if head and all(_a_head_word(word) for word in words):
         return False
-    return not (tail and all(word in VERSION_WORDS or _a_year(word) for word in words))
+    return not (
+        tail
+        and all(
+            word in VERSION_WORDS or _a_remasters_year(words, index)
+            for index, word in enumerate(words)
+        )
+    )
 
 
 Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]
@@ -796,7 +816,8 @@ Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]
 def _a_tail_to_shed(tail: str, *, searched: bool) -> bool:
     """Whether the dash parts after a title are a version of it, or a head.
 
-    A version is a tail whose core ends in a version word, years aside:
+    A version is a tail whose core ends in a version word, a remaster's year
+    aside:
     "Original Mix", "Kerri Chandler Remix", "Remastered 2011", and never "126 -
     Burning (Extended Mix)", whose core ends in "burning", or "Session 2". On
     the file's side only, a head is numbers and keys alone with a key among
@@ -810,7 +831,7 @@ def _a_tail_to_shed(tail: str, *, searched: bool) -> bool:
     words = _words(core)
     if searched and _a_head(words):
         return True
-    named = [word for word in words if not _a_year(word)]
+    named = [word for index, word in enumerate(words) if not _a_remasters_year(words, index)]
     return bool(named) and named[-1] in VERSION_WORDS
 
 

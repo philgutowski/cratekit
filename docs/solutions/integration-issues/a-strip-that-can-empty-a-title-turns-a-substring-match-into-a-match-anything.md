@@ -58,8 +58,11 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   with a version read "Kitchen Session 2" as "Kitchen Session 1"; shedding a
   leading number after the bracket words joined read "909 (Jack Mix)" as
   "Jack"; and refusing every all number part refused "1998" its own row behind
-  a head. Only a year rides with a version, only a zero padded number is a
-  track number, and only the head's own parts are refused for being numbers.
+  a head. Round two found the class one rule over: a year riding with any
+  version read "Summer 1999 (Original Mix)" as "Summer 2000 (Original Mix)".
+  Only a year beside "remaster" rides with a version, only a zero padded
+  number is a track number, and only the head's own parts are refused for
+  being numbers.
 - **The file's title is not shaped like a catalogue's.** The live library
   writes `KEY - BPM - ` into the title tag (the solution on the head in the
   title tag), and a file with no title tag is asked by its "Artist - Album -
