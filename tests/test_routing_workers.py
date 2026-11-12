@@ -78,6 +78,7 @@ from cratekit.core import (
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import rebuild, routing_cli, routing_pass, trees
+from tests._readings import serve_by_field
 from tests.test_active_taxonomy import shipped_without, write_active
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import (
@@ -2249,11 +2250,14 @@ def _write_export(
 def tagged(monkeypatch):
     """The three tag readings, served from the file NAME.
 
-    Patched at the tag reader rather than at ``read_truth``, so the reader the
-    native path uses is the one that runs. An empty file has no tags, and a
-    tag writer here would be a second thing under test.
+    Patched at the single field readers, and ``read_truth`` served from them
+    (``tests/_readings.py``, U250), so another fixture can add a field and the
+    two compose. An empty file has no tags, and a tag writer here would be a
+    second thing under test.
     """
     from cratekit.core import tags
+
+    serve_by_field(monkeypatch)
 
     by_name = {
         name: (genre, energy)
@@ -3294,11 +3298,12 @@ def _vox_members(cfg: config.Config, root_id: str) -> set[str]:
 def vox_levels(monkeypatch) -> dict[str, int]:
     """Voxlevel readings served from the file NAME, set by each test.
 
-    Patched at the tag reader, as ``tagged`` patches genre and energy, so the
-    reader the routing derivation calls is the one that runs.
+    Patched at the tag reader, as ``tagged`` patches genre and energy, with
+    ``read_truth`` served from the single field readers (U250).
     """
     from cratekit.core import tags
 
+    serve_by_field(monkeypatch)
     levels: dict[str, int] = {}
     monkeypatch.setattr(tags, "read_vox_from_file", lambda path: levels.get(Path(path).name))
     return levels
@@ -4476,6 +4481,7 @@ def rominimal(monkeypatch):
     """The intake file reads as a Rominimal track at energy 3, with no vocal reading."""
     from cratekit.core import tags
 
+    serve_by_field(monkeypatch)
     readings = {ARRIVED: ("Rominimal", 3)}
     monkeypatch.setattr(
         tags, "read_genre_from_file", lambda path: readings.get(Path(path).name, (None, None))[0]

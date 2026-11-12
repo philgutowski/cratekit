@@ -50,6 +50,7 @@ from cratekit.modules.reports import export as library_export
 from cratekit.write import collection_export, metadata_cli, rbxml
 from tests import cutover_fixtures, outbound_fakes
 from tests._containers import synth_container
+from tests._readings import serve_by_field
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_config import valid_data
 from tests.test_no_beatgrid_ever import FORBIDDEN_TOKENS, GRIDLESS_AVERAGE_BPM
@@ -1077,7 +1078,11 @@ def test_a_cutover_takes_the_file_as_its_fresh_export(either):
 
 @pytest.fixture
 def tagged(monkeypatch):
-    """The tag readings the routing rules ask for, served from the file name."""
+    """The tag readings the routing rules ask for, served from the file name.
+
+    ``read_truth`` is served from the single field readers patched here (U250).
+    """
+    serve_by_field(monkeypatch)
     monkeypatch.setattr(
         tags, "read_genre_from_file", lambda path: READINGS.get(Path(path).name, (None, None))[0]
     )
