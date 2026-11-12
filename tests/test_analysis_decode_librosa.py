@@ -281,8 +281,9 @@ def _awkward_stereo(frames: int, seed: int) -> np.ndarray:
     out[frames // 4 + 128 : frames // 4 + 192] = [3 * _TINY, -0.0]
     out[frames // 3 : frames // 3 + 999] = [1.0, -1.0]  # clipped
     patterns = np.frombuffer(rng.integers(0, 2**32, 2 * 4096, dtype=np.uint32).tobytes(), "<f4")
-    # Finite and under 1e38, so no frame's sum overflows: an overflow is
-    # refused by the resampler, which the not finite tests below drive.
+    # Finite and under 1e38, so no frame's sum overflows: a finite pair whose
+    # sum overflows is refused as librosa refuses it, which
+    # ``test_audio_that_is_not_finite_is_refused_as_before`` drives.
     keep = np.isfinite(patterns) & (np.abs(patterns) < 1e38)
     patterns = np.where(keep, patterns, np.float32(0.25)).reshape(-1, 2)
     out[frames // 2 : frames // 2 + 4096] = patterns
@@ -408,10 +409,17 @@ def test_the_mix_itself_refuses_audio_that_is_not_finite_as_to_mono_does(bad):
     assert str(now.value) == str(before.value)
 
 
-@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+@pytest.mark.parametrize(
+    "bad",
+    [(0.25, np.nan), (0.25, np.inf), (0.25, -np.inf), (3e38, 1e38), (-3e38, -3e38)],
+    ids=["nan", "inf", "minus-inf", "finite-pair-overflows", "finite-pair-overflows-down"],
+)
 def test_audio_that_is_not_finite_is_refused_as_before(tmp_path, bad):
+    """A sample that is not finite, and a finite pair whose float32 sum is
+    not: librosa's mean overflows on the pair, where a float64 sum would
+    halve it to a finite value, and the one add must overflow with it."""
     stereo = _awkward_stereo(NATIVE_RATE, seed=1)
-    stereo[NATIVE_RATE // 2, 1] = bad
+    stereo[NATIVE_RATE // 2] = bad
     path = tmp_path / "bad.wav"
     soundfile.write(str(path), stereo, NATIVE_RATE, subtype="FLOAT")
     with pytest.raises(librosa.util.exceptions.ParameterError) as before:

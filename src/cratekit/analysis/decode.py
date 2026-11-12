@@ -140,8 +140,9 @@ def _mono_at(librosa: Any, native: Any, native_rate: int, rate: int) -> Any:
 #: minus zero mixes to plus zero; 1.0 then adds the mean into a buffer of
 #: zeros, so a mean that rounds to minus zero is plus zero as well (True
 #: here). Every other value is the correctly rounded half sum on every
-#: release, or an infinity where the float32 sum overflows, as librosa's. Any other release, a patch or a pre release included, mixes
-#: through its own ``to_mono``: it can lose the speed, never change a sample.
+#: release, or an infinity where the float32 sum overflows, as librosa's.
+#: Any other release, a patch or a pre release included, mixes through its
+#: own ``to_mono``: it can lose the speed, never change a sample.
 #: Measuring a new release and naming it here is what gives it the speed.
 _MEASURED_MIX: dict[str, bool] = {
     "0.10.2": False,
@@ -168,8 +169,9 @@ def mono(samples: Any) -> Any:
     overflows to an infinity here as in librosa's float32 reduction (a float64
     sum would not), and the resampler then refuses it as before. What the
     ways differ in is a zero's sign, which :data:`_MEASURED_MIX` holds per
-    release, measured on 0.10.2, 0.10.2.post1, 0.11.0 and 1.0.0. Anything else, mono, three or more
-    channels, another dtype, a release not measured, is ``to_mono``'s.
+    release, measured on 0.10.2, 0.10.2.post1, 0.11.0 and 1.0.0. Anything
+    else, mono, three or more channels, another dtype, a release not
+    measured, is ``to_mono``'s.
     """
     import librosa
 
