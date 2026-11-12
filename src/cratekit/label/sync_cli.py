@@ -66,6 +66,7 @@ remove. The go behind the one gate is what writes files, see
 from __future__ import annotations
 
 import json
+import math
 from collections.abc import Callable, Container, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -74,12 +75,12 @@ from typing import Any
 from cratekit.acquire import match_cli
 from cratekit.cli import prompt
 from cratekit.cli.output import Envelope, from_cause, timestamp
-from cratekit.core import active_taxonomy, config, review
+from cratekit.core import active_taxonomy, config, provider_gate, review
 from cratekit.core.cause import Cause, CratekitError, Outcome, Scope, refuse
 from cratekit.core.review import Queue, Verdict
 from cratekit.core.routing import KindVerdict
 from cratekit.core.taxonomy import Taxonomy
-from cratekit.label import catalogue, sweep
+from cratekit.label import catalogue, kept_listing, sweep
 from cratekit.label import cli as label_cli
 from cratekit.label import gate as genre_gate
 from cratekit.label import registry as labels
@@ -115,6 +116,14 @@ BYTES_PER_SECOND = 110_000
 SECONDS_PER_TRACK = 360
 
 QUEUE = str(Queue.LABEL_RELEASE)
+
+#: The key of the line a walk over every label says its estimate in (U278).
+_ESTIMATE_KEY = "label.sync.estimate"
+
+#: The calls a label with no kept listing is estimated at, when no followed
+#: label has one to average (U278). A hundred, about a small label's roster;
+#: Defected's was about 1,800, so an estimate is a guide and says so.
+UNLISTED_ESTIMATE = 100
 
 #: How the interactive path gets its prompter. A module attribute so a suite
 #: can hand in a scripted one and drive the same ``_ask`` a person reaches.
@@ -1166,6 +1175,90 @@ def _entry_or_refuse(followed: labels.Registry, name: str) -> labels.LabelEntry:
 # ---------------------------------------------------------------------------
 
 
+def _estimate(
+    entries: Sequence[labels.LabelEntry], document: Mapping[str, Any]
+) -> tuple[int, int]:
+    """The calls a walk over ``entries`` may make, and how many labels it may list (U278).
+
+    A label with a saved question is printed again without a call and costs
+    nothing. Any other costs its kept listing's aged answers, nothing when
+    every answer is still young, and a label no kept listing answers for costs
+    the mean of the kept listings' sizes, or :data:`UNLISTED_ESTIMATE` when
+    there are none. The walk may stop at the first label with something to
+    ask, so this is what it costs at most, as far as the kept answers say.
+    """
+    costs: list[kept_listing.Cost | None] = []
+    for entry in entries:
+        held = document["labels"].get(entry.label_id) or {}
+        pending = held.get("pending")
+        if isinstance(pending, Mapping) and pending.get("releases"):
+            continue
+        costs.append(kept_listing.cost(entry))
+    known = [one for one in costs if one is not None]
+    unknown = len(costs) - len(known)
+    each = (
+        math.ceil(sum(one.held for one in known) / len(known)) if known else UNLISTED_ESTIMATE
+    )
+    return sum(one.aged for one in known) + unknown * each, len(costs)
+
+
+def _sweep_check(
+    cfg: config.Config, entries: Sequence[labels.LabelEntry], document: Mapping[str, Any]
+) -> dict[str, Any]:
+    """Say what a walk over every followed label may cost, or refuse it before
+    its first call when the account's hour cannot hold it outside the reserve (U278).
+
+    The label crawl is the account's (U205), so the account's line is the one
+    asked. A gate file that cannot be read is read as the gate reads it, as
+    nothing spent, and said; the gate still stops each call at its line.
+    """
+    calls, listed = _estimate(entries, document)
+    settings = provider_gate.GateSettings.from_config(cfg)
+    line = provider_gate.line_for(settings)
+    standing = provider_gate.read_standing()
+    spent = standing.spent(provider_gate.ACCOUNT) if standing is not None else 0
+    left = max(0, line - spent)
+    unread = "" if standing is not None else " (the gate's file could not be read, so as none spent)"
+    labels_said = "label" if listed == 1 else "labels"
+    if calls > left:
+        frees = (
+            # THE MOMENT THE WINDOW HOLDS AT MOST ``line - calls``, which a
+            # line one higher answers as "fewer than"; an estimate past the
+            # whole line never fits, and says so.
+            provider_gate.iso(standing.frees_at(provider_gate.ACCOUNT, line - calls + 1))
+            if standing is not None and calls <= line
+            else None
+        )
+        wait = (
+            f"or wait until {frees}, when the hour holds it"
+            if frees is not None
+            else "or raise the hour's budget for one run with crate --calls-per-hour N "
+            "before the verb"
+        )
+        raise refuse(
+            provider_gate.BUDGET,
+            f"walking the followed labels may ask the streaming provider about {calls} "
+            f"calls over {listed} {labels_said}, an estimate from each label's kept "
+            f"listing, and the account has {left} of its {line} read calls left this "
+            f"hour{unread}, the rest kept for writes and downloads; nothing was asked",
+            steps=(
+                "ask about one label at a time with: crate label sync --next --label NAME",
+                wait,
+            ),
+            scope=Scope.RUN,
+            origin=("label.sync",),
+            detail={"estimate": calls, "labels": listed, "left": left, "line": line,
+                    "spent": spent},
+        )
+    return _check(
+        "estimate",
+        "info",
+        f"about {calls} calls to the streaming provider over {listed} {labels_said}, "
+        f"an estimate from each label's kept listing; the account has {left} of its "
+        f"{line} read calls left this hour{unread}",
+    )
+
+
 def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     """Print the next question, saving it, and ask nothing.
 
@@ -1191,7 +1284,11 @@ def _next(ctx, cfg: config.Config, name: str | None = None) -> Envelope:
     tools = _Tools(cfg=cfg, run_id=ctx.run.run_id, followed=followed)
     document = load_record(cfg)
     seen: list[dict[str, Any]] = []
-    checks: list[dict[str, Any]] = []
+    # A WALK OVER EVERY LABEL SAYS ITS COST FIRST (U278); one label named is
+    # one listing, held by the gate call by call like any other.
+    checks: list[dict[str, Any]] = (
+        [_sweep_check(cfg, entries, document)] if only is None else []
+    )
     withheld = 0
     nothing: list[str] = []
     with review.open_store(cfg) as store:
@@ -1390,7 +1487,11 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
     tools = _Tools(cfg=cfg, run_id=ctx.run.run_id, followed=followed)
     answered: list[Answered] = []
     seen: list[dict[str, Any]] = []
-    checks: list[dict[str, Any]] = []
+    # Every label is listed afresh here, a saved question included, so the
+    # estimate is asked over an empty record (U278).
+    checks: list[dict[str, Any]] = [
+        _sweep_check(cfg, list(followed.labels.values()), {"labels": {}})
+    ]
     stopped_at: str | None = None
     withheld = 0
     with review.open_store(cfg) as store:
@@ -1461,8 +1562,10 @@ def _walk(ctx, cfg: config.Config, prompter: prompt.Prompter) -> Envelope:
         # EVERY LABEL WITH SOMETHING NEW IS ANSWERED, so the walk ends at the
         # one gate over the summary of every saved answer, in this verb (U108).
         # A walk that stopped asks nothing: the labels after it are unanswered.
-        return _go(ctx, cfg, walk=[one["detail"] for one in checks], data=data,
-                   wrote=bool(answered or withheld))
+        # THE ESTIMATE IS NOT AN ANSWER (U278), so it is left out of the
+        # lines the go's gate shows as what this walk answered.
+        walk = [one["detail"] for one in checks if one["key"] != _ESTIMATE_KEY]
+        return _go(ctx, cfg, walk=walk, data=data, wrote=bool(answered or withheld))
     return ctx.envelope(
         data=data,
         # A QUESTION LEFT UNANSWERED IS STILL A RUN THAT WROTE: the question
@@ -1477,7 +1580,10 @@ def _go(ctx, cfg: config.Config, **kwargs: Any) -> Envelope:
     for the record, and a module scope import each way is a cycle."""
     from cratekit.label import go  # noqa: PLC0415 - see the docstring
 
-    return go.go(ctx, cfg, **kwargs)
+    # THE GO SPENDS THE RESERVE (U278), the walk's go too, which runs in this
+    # read mode's command: only as far as the verb's declared writes allow.
+    with provider_gate.spending():
+        return go.go(ctx, cfg, **kwargs)
 
 
 def label_sync(ctx) -> Envelope:
@@ -1529,6 +1635,11 @@ def label_sync(ctx) -> Envelope:
             "to record an answer, pass --answer; or drop them to ask at the terminal",
         )
     cfg = label_cli._load()
+    # ONLY THE GO SPENDS THE HOUR'S RESERVE (U278). Asking, answering and the
+    # walk read the catalogue, so they stop where every read stops, and a
+    # ``--calls`` past that line is refused here, before the first call.
+    if not args.go:
+        provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
     if args.go:
         return _go(ctx, cfg)
     if args.answer is not None:
@@ -1550,6 +1661,7 @@ __all__ = [
     "RECORD_VERSION",
     "SECONDS_PER_TRACK",
     "SETTLED",
+    "UNLISTED_ESTIMATE",
     "STOP",
     "Answered",
     "Offered",

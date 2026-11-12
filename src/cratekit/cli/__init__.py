@@ -410,6 +410,18 @@ def build_parser(
             "[provider] calls_per_command for this run only"
         ),
     )
+    parser.add_argument(
+        "--calls-per-hour",
+        dest="calls_per_hour",
+        type=_positive_calls,
+        default=None,
+        metavar="N",
+        help=(
+            "the most calls each identity may make to the streaming provider in an "
+            "hour, counted across every command, raising [provider] calls_per_hour "
+            "for this run only"
+        ),
+    )
     choices = argparse._SubParsersAction if eager else _LazyChoices
     root = parser.add_subparsers(dest="_verb", metavar="<command>", action=choices)
 
@@ -772,6 +784,34 @@ def dispatch(argv: Sequence[str], *, stderr) -> Envelope:
 #: caught the park and answered normally (U193).
 CALL_CEILING = provider_gate.CEILING
 
+#: The write surfaces whose verbs may spend the hour's reserve (U278): a verb
+#: that writes the account, or downloads, which writes files. Read off the
+#: registry, so a verb added later is classed by what it declares it writes.
+RESERVE_WRITES: frozenset[str] = frozenset({"remote", "files"})
+
+
+def spends_reserve(entry: Entry, args: argparse.Namespace) -> bool:
+    """Whether this command may spend the hour's reserve (U278).
+
+    A verb that declares a write to the account or to files, unless it runs a
+    report, which reads and plans and writes nothing. A verb with a read mode
+    of its own narrows itself with ``provider_gate.reading``, as ``label sync``
+    does for everything but ``--go``. Nothing widens a command past its verb.
+    """
+    if getattr(args, "report", False):
+        return False
+    return bool(entry.writes & RESERVE_WRITES)
+
+
+def _gate_settings() -> provider_gate.GateSettings | None:
+    """The configured gate numbers, or None when the configuration cannot be
+    loaded, in which case the gate refuses the same ``--calls`` at its first
+    call instead, off the configuration the verb loads."""
+    try:
+        return provider_gate.GateSettings.from_config(config.load())
+    except Exception:  # noqa: BLE001 - see the docstring, the gate is the backstop
+        return None
+
 
 def _without_calls(tokens: Sequence[str]) -> list[str]:
     """The global options with any ``--calls`` taken out, so it is given once."""
@@ -886,17 +926,30 @@ def _dispatched(
     clean report over a run the ceiling cut short is a report over reads that
     were never made.
     """
-    with provider_gate.command(getattr(args, "calls", None)) as scope:
+    with provider_gate.command(
+        getattr(args, "calls", None),
+        calls_per_hour=getattr(args, "calls_per_hour", None),
+        reserve=spends_reserve(entry, args),
+    ) as scope:
         envelope = _dispatched_in_scope(args, argv, entry, as_json=as_json, stderr=stderr)
     stopped = scope.stopped
-    reported = envelope.cause is not None and envelope.cause.reason == CALL_CEILING
+    reported = envelope.cause is not None and envelope.cause.reason == (
+        stopped.reason if stopped is not None else None
+    )
     if stopped is not None and not reported:
-        command = continue_command(argv, entry, stopped)
+        if stopped.reason == CALL_CEILING:
+            command = continue_command(argv, entry, stopped)
+            then = f"Continue with: {command}"
+        else:
+            # THE HOUR'S LINE (U278): continued by waiting, which no command
+            # line can say, so the cause's own first step is the instruction.
+            steps = stopped.remediation.steps
+            then = steps[0][:1].upper() + steps[0][1:] if steps else ""
         entry_warning = {
-            "code": CALL_CEILING,
+            "code": stopped.reason,
             "message": (
                 f"{stopped.message}; what this run reports after that point was not "
-                f"read from the provider. Continue with: {command}"
+                f"read from the provider. {then}"
             ),
         }
         envelope = dataclasses.replace(envelope, warnings=(*envelope.warnings, entry_warning))
@@ -926,6 +979,15 @@ def _dispatched_in_scope(
         blocked = gates.blocked_by(state, entry.name)
         if blocked is not None:
             raise CratekitError(blocked)
+        # A ``--calls`` THE HOUR CANNOT HOLD IS REFUSED BEFORE THE VERB RUNS
+        # (U278), never capped in silence: a command line that says one ceiling
+        # and runs another is a report over a run nobody asked for.
+        if getattr(args, "calls", None) is not None:
+            settings = _gate_settings()
+            if settings is not None:
+                over = provider_gate.over_the_line(settings)
+                if over is not None:
+                    raise CratekitError(over)
 
         context = Context(
             entry=entry,
@@ -943,6 +1005,13 @@ def _dispatched_in_scope(
         ceiling_stop = cause.reason == provider_gate.CEILING
         if ceiling_stop:
             cause = _with_continue(cause, argv, entry)
+        # THE HOUR'S LINE IS A PARK TOO (U278) when the gate raised it as one:
+        # what the run did is kept and it continues once the line frees. The
+        # same reason refused before the verb ran, over ``--calls``, is a
+        # command line to fix and stays a failure.
+        from cratekit.core.jobs import Parked  # noqa: PLC0415 - the engine imports this package
+
+        budget_stop = cause.reason == provider_gate.BUDGET and isinstance(exc, Parked)
         # A PARKED JOB IS BLOCKED TOO, AND IT IS NOT RESUMABLE IN THIS FIELD'S
         # SENSE (R-290). ``resumable`` names the GATE RUN: it tells a caller that
         # ``crate run`` can continue this run id, and it is what saves the run
@@ -957,7 +1026,7 @@ def _dispatched_in_scope(
         # THE CALL CEILING IS A PARK TOO (U193), raised as ``Parked`` straight
         # out of a verb that drives no job. What the run did is kept, so it is
         # blocked at a line the person set and not failed.
-        parked = isinstance(exc, JobBlocked) or ceiling_stop
+        parked = isinstance(exc, JobBlocked) or ceiling_stop or budget_stop
         # A REFUSAL THAT KEEPS ITS RUN (U211). Raised before the step it
         # guards and clearing on its own, so the run is saved with its answers
         # and the cause names the command that continues it. ONLY THE SCAN'S
