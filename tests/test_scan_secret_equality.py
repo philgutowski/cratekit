@@ -24,6 +24,8 @@ import re
 import sys
 from pathlib import Path
 
+import pytest
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -300,6 +302,13 @@ def test_the_fast_scan_equals_the_reference_on_every_tracked_file():
 # ---------------------------------------------------------------------------
 
 
+def _shortcuts() -> dict[str, object]:
+    """The shipped shortcuts by label, for reading; the scan pairs them by position."""
+    labels = [label for label, _ in scan.SECRET_PATTERNS]
+    assert len(set(labels)) == len(labels)
+    return dict(zip(labels, scan._SECRET_SHORTCUTS, strict=True))
+
+
 def test_every_pattern_takes_a_shortcut_on_the_shipped_table():
     """A pattern whose source drifted from its shortcut falls back to the plain scan.
 
@@ -307,11 +316,11 @@ def test_every_pattern_takes_a_shortcut_on_the_shipped_table():
     names the pattern that lost its shortcut, so whoever edited the pattern
     edits the shortcut beside it.
     """
-    plain = [label for label, _ in scan.SECRET_PATTERNS if scan._SECRET_SHORTCUTS.get(label) is None]
+    plain = [label for label, shortcut in _shortcuts().items() if shortcut is None]
     assert plain == [], f"patterns scanned without a shortcut: {plain}"
-    gated = [label for label, s in scan._SECRET_SHORTCUTS.items() if isinstance(s, scan._KeywordGate)]
+    gated = [label for label, s in _shortcuts().items() if isinstance(s, scan._KeywordGate)]
     assert gated == ["OAuth token field", "credential assignment"]
-    leads = {label: s.literal for label, s in scan._SECRET_SHORTCUTS.items() if isinstance(s, scan._LiteralLead)}
+    leads = {label: s.literal for label, s in _shortcuts().items() if isinstance(s, scan._LiteralLead)}
     assert leads == {
         "bearer token": "Bearer",
         "JSON web token": "ey" + "J",
@@ -339,9 +348,39 @@ def test_a_pattern_that_drifted_from_its_shortcut_is_scanned_plainly():
         assert scan._shortcut_for(label, pattern) is None
     text = "bearer " + _LONG + _LONG + f"\ntoken = {_Q}{_LONG}{_Q}"
     patterns = tuple((label, widened.get(label, pattern)) for label, pattern in scan.SECRET_PATTERNS)
-    shortcuts = {label: scan._shortcut_for(label, pattern) for label, pattern in patterns}
+    shortcuts = tuple(scan._shortcut_for(label, pattern) for label, pattern in patterns)
     found = scan._secret_violations_over(text, patterns, shortcuts)
     assert [line.split(":", 1)[0] for line in found] == ["bearer token", "credential assignment"]
+
+
+@pytest.mark.parametrize(
+    "source, flags",
+    [
+        (r"\bBearer\s+[A-Za-z0-9]{24,}", re.IGNORECASE),
+        (r"(?i)\bBearer\s+[A-Za-z0-9]{24,}", 0),
+        (r"\b(?i:B)earer\s+[A-Za-z0-9]{24,}", 0),
+        (r"\bBearer\s+x|token\s+[A-Za-z0-9]{24,}", 0),
+        (r"\b[Bb]earer\s+[A-Za-z0-9]{24,}", 0),
+    ],
+)
+def test_a_pattern_that_may_match_off_its_literal_gets_no_literal_lead(source, flags):
+    """Case folding, an inline flag, an opening alternation or class: the literal is not a necessary start."""
+    assert scan._literal_lead(re.compile(source, flags)) is None
+
+
+def test_two_patterns_sharing_a_label_never_borrow_each_others_shortcut():
+    """The shortcuts are paired with the patterns by position, so a repeated label costs nothing."""
+    extra = ("GitHub token", re.compile(r"\bgithub_oauth_[A-Za-z0-9]{20,}\b"))
+    patterns = (*scan.SECRET_PATTERNS, extra)
+    shortcuts = tuple(scan._shortcut_for(label, pattern) for label, pattern in patterns)
+    text = "token " + "gh" + "p_" + _LONG
+    expected = [
+        f"{label}: {scan._elide(match.group(0))}"
+        for label, pattern in patterns
+        for match in pattern.finditer(text)
+    ]
+    assert expected, "the planted token must be a finding of the plain loop"
+    assert scan._secret_violations_over(text, patterns, shortcuts) == expected
 
 
 def test_the_keyword_lookback_window_reaches_the_longest_keyword():
@@ -352,7 +391,7 @@ def test_the_keyword_lookback_window_reaches_the_longest_keyword():
     alternation is driven through the gate at the very edge of its window.
     """
     for label in ("OAuth token field", "credential assignment"):
-        shortcut = scan._SECRET_SHORTCUTS[label]
+        shortcut = _shortcuts()[label]
         spelled = [word for word in _KEYWORDS if shortcut.keyword_end.fullmatch(word)]
         longest = max(spelled, key=len)
         assert shortcut.width == len(longest), (label, longest)
@@ -397,16 +436,18 @@ def test_the_keyword_gate_hands_over_almost_no_tracked_file():
     One on the tree at U257, ``tests/test_portability.py``, whose planted
     credentials pass the gate on purpose. A gate that passed every text would
     still be exact and would cost the whole saving, which no equality test sees,
-    so the count is held under one file in a hundred.
+    so the count is held under one file in five hundred. A gate that skipped
+    its value check handed over 34 files of 3,672 at its review, so that bound
+    is what sees the value check go.
     """
     texts = _tracked_texts()
     handed = [
         relative
         for relative, text in texts
         if any(
-            scan._keyword_gate_passes(scan._SECRET_SHORTCUTS[label], text)
+            scan._keyword_gate_passes(_shortcuts()[label], text)
             for label in ("OAuth token field", "credential assignment")
         )
     ]
     assert "tests/test_portability.py" in handed
-    assert len(handed) * 100 < len(texts), f"the gate handed over {len(handed)} files: {handed}"
+    assert len(handed) * 500 < len(texts), f"the gate handed over {len(handed)} files: {handed}"

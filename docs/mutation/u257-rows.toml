@@ -3,14 +3,12 @@ pass_kind = "light"
 
 [[rows]]
 id = "M1_skip_after_match"
-description = "_matches_at_literal: try every literal position, even one inside the last match, so a literal inside a reported secret is reported again"
+description = "_matches_at_literal: look for the next literal one past the match's start rather than at its end, so a literal inside a reported secret is reported again"
 file = "scripts/scan_repo.py"
 surface = "user"
 tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
-old = '''        if position >= end:
-            match = pattern.match(text, position)'''
-new = '''        if True:
-            match = pattern.match(text, position)'''
+old = '''            position = text.find(literal, match.end())'''
+new = '''            position = text.find(literal, position + 1)'''
 
 [[rows]]
 id = "M2_gate_never_passes"
@@ -97,3 +95,14 @@ tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
 old = '''        if gate.value.match(text, separator) is None:
             continue'''
 new = '''        pass'''
+
+[[rows]]
+id = "M11_paired_by_label"
+description = "_secret_violations_over: pair each pattern with its shortcut by label, so a repeated label borrows another pattern's literal and its finding is lost"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''    for (label, pattern), shortcut in zip(patterns, shortcuts, strict=True):'''
+new = '''    by_label = dict(zip((label for label, _ in patterns), shortcuts))
+    for label, pattern in patterns:
+        shortcut = by_label[label]'''

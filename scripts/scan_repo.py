@@ -462,20 +462,22 @@ _KEYWORD_PATTERNS: dict[str, tuple[str, str, int]] = {
     ),
 }
 
+# Python's own pattern parser and its opcodes, the ones ``re.compile`` uses, so
+# a shortcut is read off the pattern rather than written beside it. Private
+# modules, and the pre commit hook runs whatever ``python3`` is installed, so
+# their absence costs the shortcuts and never a finding: every pattern is
+# then scanned plainly.
+try:
+    from re import _constants as _re_constants
+    from re import _parser as _re_parser
+except ImportError:  # pragma: no cover - the supported Pythons have them
+    _re_constants = _re_parser = None
+
 # Every candidate separator for either alternation: a colon or an equals sign,
 # then whitespace, then a quote. A match of either holds exactly this run, and
 # ``finditer`` over it reports every colon or equals sign that opens one,
 # because a run holds one separator and none of its later characters can be
 # one, so no run hides the start of another.
-# Python's own pattern parser and its opcodes, the ones ``re.compile`` uses, so
-# a shortcut is read off the pattern rather than written beside it. Private
-# modules, so their absence costs the shortcuts and never a finding.
-try:
-    from re import _constants as _re_constants
-    from re import _parser as _re_parser
-except ImportError:  # pragma: no cover - every supported Python has them
-    _re_constants = _re_parser = None
-
 _SEPARATOR_RUN = re.compile(r"""[:=]\s*["']""")
 _SPACE = re.compile(r"\s")
 _QUOTES = "\"'"
@@ -585,29 +587,32 @@ def _matches_at_literal(pattern: re.Pattern[str], literal: str, text: str):
     keeps the first that matches. A match here starts with ``literal``, so
     every position where it does not start is a rejection, and the positions
     ``str.find`` reports are the only ones to try, in the same order and with
-    the same skip past each match. ``match(text, pos)`` reads the character
-    before ``pos`` for a word boundary exactly as ``finditer`` does there.
+    the same skip past each match: the next position is looked for from the
+    match's end. ``match(text, pos)`` reads the character before ``pos`` for a
+    word boundary exactly as ``finditer`` does there.
     """
-    end = 0
     position = text.find(literal)
     while position != -1:
-        if position >= end:
-            match = pattern.match(text, position)
-            if match is not None:
-                yield match
-                end = match.end()
-        position = text.find(literal, max(position + 1, end))
+        match = pattern.match(text, position)
+        if match is None:
+            position = text.find(literal, position + 1)
+        else:
+            yield match
+            position = text.find(literal, match.end())
 
 
-_SECRET_SHORTCUTS: dict[str, _LiteralLead | _KeywordGate | None] = {
-    label: _shortcut_for(label, pattern) for label, pattern in SECRET_PATTERNS
-}
+# One shortcut per pattern, in the table's order and paired with it by
+# position, never by label, so two patterns that shared a label could never
+# borrow each other's shortcut.
+_SECRET_SHORTCUTS: tuple[_LiteralLead | _KeywordGate | None, ...] = tuple(
+    _shortcut_for(label, pattern) for label, pattern in SECRET_PATTERNS
+)
 
 
 def _secret_violations_over(text: str, patterns, shortcuts) -> list[str]:
     problems: list[str] = []
-    for label, pattern in patterns:
-        for match in _matches(pattern, shortcuts.get(label), text):
+    for (label, pattern), shortcut in zip(patterns, shortcuts, strict=True):
+        for match in _matches(pattern, shortcut, text):
             span = match.group(0)
             if _PLACEHOLDER_VALUE.search(span):
                 continue
