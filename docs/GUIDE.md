@@ -321,7 +321,13 @@ crate route pending
   registered label with a genre takes that genre with no catalogue asked; any
   other file is asked of Beatport, then of Discogs when Beatport does not
   carry it and a `discogs-token` is recorded, then of the general catalogue
-  by ISRC. Discogs' first style that names a folder is written, through the
+  by ISRC. A catalogue's row counts only when its title names the file's own
+  recording word for word, once the version, a featured artist and the
+  `KEY - BPM` head are set aside; a title is never matched by words that sit
+  only inside the other title's brackets, so "Intro" is never "Sunrise Mood
+  (Intro)", and a number in a title is kept, save a remaster's year and the
+  zero padded track number a file's name opens with, so "Session 2" is never
+  "Session 1" and "Summer 1999" never "Summer 2000". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the
@@ -513,13 +519,18 @@ crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 A label whose listing fails is a `[FAIL]` line, never "nothing new"; a run
 where no label could be read ends refused, `label-sync-unlisted`. When a
 listing turns down every release it asked about, one release already asked
-about is verified again, and a `reverified` line names it and the answer. If
-every release turned down was credited to another label, it is one whose
-copyright line names the label where one does, which shows the needle still
-matches. If any came back with no label credit, it is one with no line where
-one has none, which makes the provider read it again, and otherwise the
-newest, judged from its own line. Confirmed, the label has nothing new;
-`unconfirmed` (no label credit) or `mismatch` (credited to another name), its
+about is verified again, and a `reverified` line names it, the answer, and
+whether it was read again from the provider or judged from its own copyright
+line. If every release turned down was credited to another label, it is one
+whose copyright line names the label where one does, judged from that line,
+which shows the needle still matches. If any came back with no label credit,
+the provider is read again for it whatever line it carries, one call, since
+only the provider's answer shows it is answering: one with no line first,
+then one whose line names the label, then another act's. One the provider no
+longer has is passed over, one more call, for the next whose line is the
+label's or absent. Confirmed, the label has nothing new; `unconfirmed` (no label
+credit), `mismatch` (credited to another name) or `gone` (the provider no
+longer has it, and no other held release could be read in its place), its
 line fails as a listing that confirmed nothing. A label's
 listing is kept seven days, so a second ask makes no listing calls; deleting
 the file its `listing` line names lists it afresh.

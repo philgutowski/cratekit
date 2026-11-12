@@ -1,0 +1,245 @@
+name = "r1631"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_strip_from_first_bracket"
+description = "_without_trailing_groups: strip from the first bracket to the last, the mid title cut R-1631 names"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    text = value.strip()
+    start = _trailing_group_start(text)
+    while start is not None:
+        text = text[:start].rstrip()
+        start = _trailing_group_start(text)
+    return text'''
+new = '''    return re.sub(r"\s*\(.*?\)\s*$", "", value).strip()'''
+
+[[rows]]
+id = "M02_nested_group_depth"
+description = "_trailing_group_start: close a group one bracket early, so a nested group is cut at its inner bracket"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            if depth == 0:
+                return index'''
+new = '''            if depth <= 1:
+                return index'''
+
+[[rows]]
+id = "M03_round_brackets_only"
+description = "_OPENING and _CLOSING: read round brackets only, so a square bracket suffix stays in the title"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''_OPENING = frozenset("([")
+_CLOSING = frozenset(")]")'''
+new = '''_OPENING = frozenset("(")
+_CLOSING = frozenset(")")'''
+
+[[rows]]
+id = "M04_core_bare_empty"
+description = "_title_core: take the strip even when it leaves nothing (R-1534's guard, sampled)"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if _identifies(bare):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "M05_no_featuring"
+description = "_FEATURING: no word opens a feature credit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''_FEATURING = frozenset({"feat", "ft", "featuring"})'''
+new = '''_FEATURING = frozenset()'''
+
+[[rows]]
+id = "M06_any_year_rides_with_a_version"
+description = "_without_version: any year rides with a version run, not only a remaster's, round two's B4"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    while end and (words[end - 1] in VERSION_WORDS or _a_remasters_year(words, end - 1)):'''
+new = '''    while end and (words[end - 1] in VERSION_WORDS or _a_year(words[end - 1])):'''
+
+[[rows]]
+id = "M07_version_run_never"
+description = "_shed: never shed a trailing version run"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        plain = _without_version(reading)'''
+new = '''        plain = None'''
+
+[[rows]]
+id = "M08_head_refused_everywhere"
+description = "_names_a_title: refuse a part of numbers alone anywhere, not only in the head, round one's B1"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if head and all(_a_head_word(word) for word in words):'''
+new = '''    if all(_a_head_word(word) for word in words):'''
+
+[[rows]]
+id = "M09_head_words_are_titles"
+description = "_names_a_title: read a head part of numbers and keys alone as a title"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if head and all(_a_head_word(word) for word in words):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M10_version_tail_is_a_title"
+description = "_names_a_title: read a tail of version words alone after a title as a title"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return not (
+        tail
+        and all('''
+new = '''    return True or not (
+        tail
+        and all('''
+
+[[rows]]
+id = "M11_every_tail_sheds"
+description = "_a_tail_to_shed: every tail is a version, so any first part is a reading"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return bool(named) and named[-1] in VERSION_WORDS'''
+new = '''    return True'''
+
+[[rows]]
+id = "M12_no_tail_sheds"
+description = "_a_tail_to_shed: no tail is a version, so a row is never read by its head"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    core, _ = _title_core(tail)
+    words = _words(core)'''
+new = '''    return False
+    core, _ = _title_core(tail)
+    words = _words(core)'''
+
+[[rows]]
+id = "M13_tail_whole_not_core"
+description = "_a_tail_to_shed: read the tail's last word whole, brackets and all, not its core"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    core, _ = _title_core(tail)
+    words = _words(core)'''
+new = '''    core = _unbracketed(tail)
+    words = _words(core)'''
+
+[[rows]]
+id = "M14_head_tail_never"
+description = "_a_tail_to_shed: a KEY - BPM tail never sheds on the file's side"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if searched and _a_head(words):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M15_head_needs_no_key"
+description = "_a_head: numbers alone are a head, no Camelot key needed"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return bool(words) and all(map(_a_head_word, words)) and any(map(naming.is_camelot, words))'''
+new = '''    return bool(words) and all(map(_a_head_word, words))'''
+
+[[rows]]
+id = "M16_after_title_never"
+description = "_readings: never treat a later part as following a title, so a version tail after a title is a reading"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        after_title = not all(_a_head_word(word) for word in _words(_DASH.join(parts[:first])))'''
+new = '''        after_title = False'''
+
+[[rows]]
+id = "M17_after_head_never"
+description = "_readings: a part after a head alone is a reading only when what follows sheds"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        after_head = first > 0 and not after_title'''
+new = '''        after_head = False'''
+
+[[rows]]
+id = "M18_file_read_from_first_part_only"
+description = "_readings: read the file's title from its first part only, as a catalogue's"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    firsts = range(len(parts)) if searched else range(1)'''
+new = '''    firsts = range(1)'''
+
+[[rows]]
+id = "M19_no_whole_words"
+description = "_readings: read a part by its core only, never by all its words"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            found = {_words(core)} if exact else _shed(_words(core)) | _shed(_words(part))'''
+new = '''            found = {_words(core)} if exact else _shed(_words(core))'''
+
+[[rows]]
+id = "M20_track_number_any_digits"
+description = "_TRACK_NUMBER: any one to three digits is a track number, round one's B2"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''_TRACK_NUMBER = re.compile(r"0\d{1,2}")'''
+new = '''_TRACK_NUMBER = re.compile(r"\d{1,3}")'''
+
+[[rows]]
+id = "M21_no_track_number"
+description = "_readings: never shed a file's leading track number"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            if searched and not exact and _numbered(_words(core)):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M22_shed_meets_shed"
+description = "_meet: two readings with leading groups shed meet each other"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return bool(left_read & right_read or left_read & right_shed or left_shed & right_read)'''
+new = '''    return bool(left_read & right_read or left_read & right_shed or left_shed & (right_read | right_shed))'''
+
+[[rows]]
+id = "M23_beatport_no_shared_tier"
+description = "_beatport_best: score no row on a shared reading"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        elif _meet(searched_readings, _readings(name, searched=False)):'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M24_beatport_ranks_with_head"
+description = "_beatport_best: rank the title with its head, so a headed file's own mix never outranks another"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    proper = _without_head(title_normalized)'''
+new = '''    proper = title_normalized'''
+
+[[rows]]
+id = "M25_bandcamp_any_head"
+description = "_bandcamp_heading_matches: drop a heading's head whether or not it names the artist"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if dash and _artist_matches(artist, head):'''
+new = '''    if dash:'''

@@ -38,6 +38,8 @@ PROTOCOL_METHODS = frozenset(
         "artist_for",
         "playlist_for",
         "search_release",
+        # R-1634. The sweep's re-verification reads the provider again by identifier.
+        "reread_release",
         "check_label",
         "account_playlists",
         "favourite_tracks",
@@ -286,6 +288,15 @@ class FakeCatalogue:
             "source": "fake-catalogue",
             "notes": "",
         }
+
+    def reread_release(self, claimed: str, release: Any) -> dict:
+        """The forced read (R-1634), answered as :meth:`search_release` answers.
+
+        This fake never judges from a copyright line, so the two reads are one
+        question here, and a subclass that degrades or counts the first does
+        the same to the second.
+        """
+        return self.search_release(claimed, release)
 
     def account_playlists(self) -> tuple[Any, ...]:
         self.account_listings += 1
