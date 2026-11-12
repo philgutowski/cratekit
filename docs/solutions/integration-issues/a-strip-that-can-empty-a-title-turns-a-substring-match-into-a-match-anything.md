@@ -37,9 +37,13 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   `_title_core` keeps the leading bracket groups and the text after them, and
   for a title of brackets alone takes the groups' words and marks them for
   exact comparison only.
-- **A containment test needs a contained side that names a recording.**
-  Version words alone ("Original Mix", "Dub") are contained in half a
-  catalogue; `_contains` refuses them as the inner side and keeps equality.
+- **A containment that reaches into a bracketed suffix needs a contained
+  side that names more than a version.** Version words alone ("Original Mix",
+  "Dub") are in the suffix of half a catalogue; `_contains` refuses them there.
+  Between two cores, where the suffix is gone, they compare as any title does,
+  or a track called "Original" loses "Original feat. Someone" (round one of
+  R-1534 drove that loss through `tag_one`). A differential that filters out
+  the pairs the new rule is about measures nothing: run it unfiltered.
 - **Every scorer that strips on its own needs the same care.** Beatport's
   `_beatport_best` never called the shared matcher; fixing the matcher alone
   would have left it open. Grep for `in name`, `in right` and the strip's

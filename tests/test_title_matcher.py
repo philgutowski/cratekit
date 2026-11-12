@@ -11,10 +11,13 @@ and Discogs carried its own guard since U244.
 WHAT HOLDS NOW. A side with no letter or digit matches nothing. A title the
 strip empties is read by its core: the leading bracket groups and the text
 after them, or for a title of brackets alone, the groups' words, compared
-exactly. A title made only of version words ("Original Mix", "Dub") matches an
-identical title and is never read as contained in another. Every title that
-matched its own row before still does, which the tables below drive on every
-source.
+exactly. A title made only of version words ("Original Mix", "Dub") is never
+read as contained in another title's bracketed suffix, and still finds its own
+row ("Original" in "Original feat. Someone"). A title that matched its own
+row before still does, which the tables below drive on every source; the one
+kind known lost is a title of brackets alone against a row that differs by
+more than its brackets ("(Intro)" against "Intro feat. X"), which the base
+matched only because it matched every row, and which is a residual.
 
 NOTHING HERE OPENS A SOCKET. Pages are synthetic text in the shapes the
 parsers read, handed to the injected fetch seam.
@@ -82,6 +85,12 @@ SAME = [
     ("Dub", "Dub"),
     ("Dub", "Dub (Original Mix)"),
     ("Original Mix", "Original Mix"),
+    ("Original feat. Toni Halliday", "Original"),
+    ("Radio - Radio Edit", "Radio"),
+    ("Club!", "Club"),
+    ("Dub", "Dub - 2014 Remaster"),
+    ("VIP", "VIP."),
+    ("Version feat. Someone", "Version"),
 ]
 
 #: (searched, found) pairs that name different recordings and must not match.
@@ -95,9 +104,10 @@ DIFFERENT = [
     ("(Intro) (Extended Mix)", OTHER),
     ("Original Mix", f"{OTHER} (Original Mix)"),
     ("Extended Mix", f"{OTHER} (Extended Mix)"),
-    ("Dub", "Dub Siren"),
-    ("Mix", f"{OTHER} Mix"),
-    ("Remix", f"{OTHER} Remix"),
+    ("Mix", f"{OTHER} (Original Mix)"),
+    ("Remix", f"{OTHER} (Kerri Chandler Remix)"),
+    ("(Intro)", f"{OTHER} (Intro)"),
+    (f"{OTHER} (Dub)", "Dub"),
     ("- (Intro)", "- (Outro)"),
 ]
 
@@ -175,6 +185,8 @@ def test_beatport_passes_over_a_row_whose_name_has_no_letter_or_digit(noise):
         (BRACKETED, "Not Just Knee Deep", "Original Mix"),
         ("(Intro)", "Intro", "Original Mix"),
         ("Dub", "Dub", "Original Mix"),
+        ("Original feat. Toni Halliday", "Original", "Original Mix"),
+        ("Radio - Radio Edit", "Radio", "Original Mix"),
     ],
 )
 def test_beatport_still_matches_a_title_to_its_own_row(searched, name, mix):

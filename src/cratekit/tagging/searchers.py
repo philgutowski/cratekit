@@ -580,8 +580,11 @@ _LEADING_GROUPS = re.compile(r"^(?:\s*\([^()]*\))+\s*")
 _WORD = re.compile(r"[^\W_]+")
 
 #: Words that name a version of a recording rather than the recording. A title
-#: of these alone, "Original Mix" or "Dub", is contained in half a catalogue,
-#: so it may match an identical title and is never read as contained in another.
+#: of these alone, "Original Mix" or "Dub", is contained in the bracketed
+#: suffix of half a catalogue, so it is never read as contained in a whole
+#: title, suffix and all. Between two cores, where the suffix is gone, it is
+#: compared as any title is, so a track called "Original" still finds
+#: "Original feat. Someone".
 _VERSION_WORDS = frozenset(
     {
         "bootleg",
@@ -652,10 +655,12 @@ def _title_core(value: str) -> tuple[str, bool]:
 
 
 def _contains(outer: str, inner: str) -> bool:
-    """Whether ``inner`` is in ``outer``, for an ``inner`` that names a recording.
+    """Whether ``inner`` is in the whole title ``outer``, suffix and all, for an
+    ``inner`` that names more than a version.
 
     An inner of version words alone is refused: "original mix" is in every
-    title a catalogue lists as an original mix.
+    title a catalogue lists as an original mix. Only a comparison that reaches
+    into a bracketed suffix asks this; two cores are compared with ``in``.
     """
     words = _WORD.findall(inner)
     return any(word not in _VERSION_WORDS for word in words) and inner in outer
@@ -695,7 +700,8 @@ def _title_matches(searched: str, found: str) -> bool:
     NOTHING IS NO MATCH (R-1534). A side with no letter or digit matches
     nothing, on either side. Each side is read by :func:`_title_core`, so a
     title the strip would empty is never the empty string contained in every
-    title, and a containment test needs a contained side that names more than
+    title. The cores may contain one another, and a containment between the
+    whole titles, suffix and all, needs a contained side that names more than
     a version (:func:`_contains`). Every reader of a title by artist and title
     asks this, Discogs included since R-1534, and Beatport's scoring reads the
     same core.
@@ -710,8 +716,8 @@ def _title_matches(searched: str, found: str) -> bool:
     if exact_left or exact_right:
         return False
     return (
-        _contains(core_right, core_left)
-        or _contains(core_left, core_right)
+        core_left in core_right
+        or core_right in core_left
         or _contains(right, left)
         or _contains(left, right)
     )
@@ -820,9 +826,10 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
 
     THE TITLE IS READ BY ITS CORE, as the shared matcher reads it (R-1534). A
     title of no letter or digit scores no row, a row whose name carries none is
-    passed over, a title of brackets alone scores only a row it equals, and a
-    containment needs a contained side that names more than a version. A credit
-    with no name is no credit: the empty string is in every searched artist.
+    passed over, a title or a name of brackets alone scores only a row it
+    equals, the two cores may contain one another, and a name read inside the
+    whole title, suffix and all, must name more than a version. A credit with
+    no name is no credit: the empty string is in every searched artist.
     """
     title_normalized = _normalized(title)
     if not _identifies(title_normalized):
@@ -840,6 +847,7 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         name = _normalized(track.get("track_name", ""))
         if not _identifies(name):
             continue
+        name_core, exact_name = _title_core(name)
         mix = _normalized(track.get("mix_name", ""))
         credited = [_normalized(entry.get("artist_name", "")) for entry in track.get("artists", [])]
         credited = [other for other in credited if other]
@@ -855,7 +863,7 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
             title_score = 3
         elif exact_only:
             continue
-        elif _contains(name, bare_title) or _contains(bare_title, name):
+        elif not exact_name and (name_core in bare_title or bare_title in name_core):
             title_score = 2
         elif _contains(title_normalized, name):
             title_score = 1
