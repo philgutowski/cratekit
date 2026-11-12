@@ -7,7 +7,8 @@ pass_kind = "light"
 # over planted source. A test only change to a static guard, so the table is
 # sized as a static registry's, about eight rows: each layer of the sweep
 # reverted or widened alone, and the U253 change itself put back to its per
-# node shape. Every row runs tests/test_locations.py; a zero on it is promoted
+# node shape, and the guard function itself narrowed or emptied (round
+# one's review found the second surviving every test). Every row runs tests/test_locations.py; a zero on it is promoted
 # to the full suite by the driver.
 
 [[rows]]
@@ -111,3 +112,21 @@ surface = "maintainer"
 tests = ["tests/test_locations.py"]
 old = '''        relative = path.relative_to(root).as_posix()'''
 new = '''        relative = path.name'''
+
+[[rows]]
+id = "L11_guard_narrowed_root"
+description = "test_no_module_outside_this_one_decodes_a_location_itself: sweep one package of the tree rather than the whole root it is given"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''    offenders = _location_codec_offenders(SRC_ROOT)'''
+new = '''    offenders = _location_codec_offenders(SRC_ROOT / "cratekit" / "core")'''
+
+[[rows]]
+id = "L12_guard_drops_the_sweep"
+description = "test_no_module_outside_this_one_decodes_a_location_itself: assert on an empty list, so the sweep's findings never reach the assert (round one's surviving row)"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''    offenders = _location_codec_offenders(SRC_ROOT)'''
+new = '''    offenders = []'''

@@ -498,8 +498,8 @@ def _location_codec_offenders(root: Path) -> list[str]:
 
     The path relative to ``root`` is computed once per file, before the walk
     over its nodes (U253). Computed once per node, as it was, the guard spent
-    forty seconds of a suite run in ``pathlib`` producing the same string
-    hundreds of thousands of times.
+    most of about forty seconds of a suite run in ``pathlib`` producing the
+    same string hundreds of thousands of times (measured at ``a7fcc9f4``).
     """
     vendor_root = root / "cratekit" / "_vendor"
     offenders: list[str] = []
@@ -574,18 +574,55 @@ def test_the_sweep_still_reports_a_planted_decoder_by_its_relative_path(tmp_path
     ]
 
 
-def test_the_sweep_reports_every_name_in_both_call_shapes_and_every_call(tmp_path):
-    """Each of the four names, called bare or as an attribute, once per call."""
+def test_the_guard_itself_fails_naming_a_decoder_planted_under_its_root(tmp_path, monkeypatch):
+    """The guard, not only its sweep, bites: its root is the whole tree it is given.
+
+    Pointed at a planted source root, the guard fails and its message names the
+    planted module by its path under that root, so a guard narrowed to a corner
+    of the tree, or one that stops asserting on what the sweep found, fails here.
+    """
+    _plant(
+        tmp_path,
+        "cratekit/library/planted.py",
+        "from urllib.parse import unquote\n\ndef decode(value):\n    return unquote(value)\n",
+    )
+    monkeypatch.setitem(globals(), "SRC_ROOT", tmp_path)
+
+    with pytest.raises(AssertionError) as raised:
+        test_no_module_outside_this_one_decodes_a_location_itself()
+
+    message = str(raised.value)
+    assert message.startswith(
+        "Location encoding and decoding live in cratekit.core.locations and nowhere else:\n"
+    )
+    assert "cratekit/library/planted.py calls unquote()" in message
+
+
+@pytest.mark.parametrize("shape", ["bare", "attribute"])
+@pytest.mark.parametrize("name", ["unquote", "unquote_plus", "quote", "quote_plus"])
+def test_the_sweep_reports_each_name_called_bare_or_as_an_attribute(tmp_path, name, shape):
+    """Each of the four names is reported in both call shapes, eight cells.
+
+    Spelled as a literal list rather than read from ``_LOCATION_CODEC_CALLS``,
+    so a name dropped from the constant is a failure here rather than a cell
+    that quietly disappears with it.
+    """
+    if shape == "bare":
+        source = f"from urllib.parse import {name}\n\n{name}('a%20b')\n"
+    else:
+        source = f"import urllib.parse\n\nurllib.parse.{name}('a%20b')\n"
+    _plant(tmp_path, "cratekit/library/planted.py", source)
+
+    assert _location_codec_offenders(tmp_path) == [f"cratekit/library/planted.py calls {name}()"]
+
+
+def test_the_sweep_reports_every_call_and_reads_the_name_alone(tmp_path):
+    """One line per call, two calls in one file are two lines, and the name is
+    read without its owner, so ``shlex.quote`` is reported as ``quote`` is."""
     _plant(
         tmp_path,
         "cratekit/a.py",
-        "import urllib.parse as parse\n"
-        "from urllib.parse import quote, unquote\n\n"
-        "def f(v):\n"
-        "    unquote(v)\n"
-        "    unquote(v)\n"
-        "    parse.quote_plus(v)\n"
-        "    return quote(v)\n",
+        "from urllib.parse import unquote\n\ndef f(v):\n    unquote(v)\n    return unquote(v)\n",
     )
     _plant(
         tmp_path,
@@ -593,17 +630,11 @@ def test_the_sweep_reports_every_name_in_both_call_shapes_and_every_call(tmp_pat
         "import shlex\n\ndef g(v):\n    return shlex.quote(v)\n",
     )
 
-    offenders = _location_codec_offenders(tmp_path)
-
-    assert sorted(offenders) == sorted(
-        [
-            "cratekit/a.py calls unquote()",
-            "cratekit/a.py calls unquote()",
-            "cratekit/a.py calls quote_plus()",
-            "cratekit/a.py calls quote()",
-            "cratekit/b/c.py calls quote()",
-        ]
-    )
+    assert _location_codec_offenders(tmp_path) == [
+        "cratekit/a.py calls unquote()",
+        "cratekit/a.py calls unquote()",
+        "cratekit/b/c.py calls quote()",
+    ]
 
 
 def test_the_permitted_quote_plus_is_excused_and_nothing_else_is(tmp_path):
@@ -632,10 +663,15 @@ def test_the_permitted_quote_plus_is_excused_and_nothing_else_is(tmp_path):
     ]
 
 
-def test_the_sweep_skips_the_decoder_and_the_vendored_tree_and_nothing_beside_them(
-    tmp_path,
-):
-    """locations.py and the vendored tree are excluded, their lookalikes are not."""
+def test_the_sweep_skips_the_decoder_and_the_vendored_tree(tmp_path):
+    """The decoder's module and the vendored tree are skipped, and these lookalikes are not.
+
+    The vendored skip is the one directory, ``cratekit/_vendor`` under the root,
+    so a ``_vendor`` elsewhere or a sibling named like it is swept. The decoder's
+    skip is by file name, as it was before U253, so a module named
+    ``locations.py`` in any package is skipped too; only a differently named
+    neighbour is pinned here as swept.
+    """
     call = "from urllib.parse import unquote\n\ndef f(v):\n    return unquote(v)\n"
     _plant(tmp_path, "cratekit/core/locations.py", call)
     _plant(tmp_path, "cratekit/_vendor/downloader/fetch.py", call)
@@ -654,9 +690,10 @@ def test_the_sweep_skips_the_decoder_and_the_vendored_tree_and_nothing_beside_th
 def test_the_sweep_computes_each_relative_path_once_per_file(tmp_path, monkeypatch):
     """U253's proof is a count: one ``relative_to`` per file swept, not per node.
 
-    Computed per node, the guard made 834,825 calls for 311 files and took
-    forty seconds of every suite run. The files planted here have hundreds of
-    nodes each, so a per node computation is read as hundreds of calls.
+    Computed per node, as the brief measured it at ``a7fcc9f4``, the guard made
+    834,825 calls for 311 files and took about forty seconds of a suite run.
+    The files planted here have hundreds of nodes each, so a per node
+    computation is read as hundreds of calls.
     """
     body = "".join(f"x{n} = [{n}, {n} + 1, ({n},)]\n" for n in range(100))
     for name in ("one", "two", "three"):
