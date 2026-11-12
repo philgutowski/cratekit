@@ -248,6 +248,8 @@ def test_a_featured_credit_is_a_performer_and_never_a_version():
         ("[]", ("", "")),
         ("[With You]", ("With You", "")),
         ("(With Or Without You)", ("With Or Without You", "")),
+        ("(Without You)", ("Without You", "")),
+        ("(Without You Remix)", ("", "Without You Remix")),
         ("(With Love) (Remix)", ("With Love", "Remix")),
         ("(feat. Mira)", ("feat. Mira", "")),
         ("(Extended)", ("", "Extended")),
@@ -262,11 +264,224 @@ def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
     so the row named no title and refused every playlist ``crate sync twins``
     planned. An empty group is still nothing, and a group after a title is
     still the version it always was. A first group is the title even when it
-    reads like a credit, since ``with `` is a credit prefix and ``[With You]``
+    reads like a credit, since ``with`` is a credit marker and ``[With You]``
     is a title.
     """
     assert match.split_version(spelled) == expected
     assert match.split_title(spelled) == expected
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U262: a credit is a first WORD, not the first letters of a group
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Groups whose first word only BEGINS with a credit marker's letters. Each is a
+#: mix name, so each is a version. The letters rule read all five as credits and
+#: dropped them, so the remix resolved as the plain record, matched exact.
+U262_VERSION_GROUPS: tuple[str, ...] = (
+    "Without You Remix",
+    "Withdrawn Mix",
+    "Within Mix",
+    "Feature Edit",
+    "Featureless Dub",
+)
+
+#: Groups whose first word IS a credit marker, in the spellings a listing uses.
+U262_CREDIT_GROUPS: tuple[str, ...] = ("feat. Anna", "ft Anna", "Featuring Anna", "with Anna")
+
+
+def u262_plain_record(tmp_path: Path) -> match.LibraryIndex:
+    """A library holding only the plain ``Nova Reef - Sun Path``, tagged."""
+    path = tagged_container(
+        tmp_path, tmp_path / "library" / "Sun Path.flac", artist="Nova Reef", title="Sun Path"
+    )
+    return match.index_paths([path])
+
+
+def u262_wanted(spelled: str) -> match.Wanted:
+    title, version = match.split_title(spelled)
+    return match.Wanted(artist="Nova Reef", title=title, version=version, spelled=spelled)
+
+
+@pytest.mark.parametrize("group", U262_VERSION_GROUPS)
+def test_a_group_that_only_begins_with_a_credits_letters_is_a_version(tmp_path, group):
+    """U262. ``Sun Path (Without You Remix)`` is a remix, not the plain record.
+
+    The credit test folded its prefixes, which took off the space that made
+    each one a whole word, so ``with`` matched the first letters of
+    ``Without`` and the whole group came off the title. The row then resolved
+    matched, exact, against a library holding only the plain record: the remix
+    was reported owned and never downloaded, and nobody was asked.
+    """
+    spelled = f"Sun Path ({group})"
+    assert match.split_title(spelled) == ("Sun Path", group)
+    assert match.split_version(spelled) == ("Sun Path", group)
+    (found,) = resolve([u262_wanted(spelled)], u262_plain_record(tmp_path)).matches
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
+
+
+@pytest.mark.parametrize("group", U262_CREDIT_GROUPS)
+def test_a_group_whose_first_word_is_a_credit_still_comes_off(tmp_path, group):
+    """The other half: a real featured credit is still a performer and no version."""
+    spelled = f"Sun Path ({group})"
+    assert match.split_title(spelled) == ("Sun Path", "")
+    (found,) = resolve([u262_wanted(spelled)], u262_plain_record(tmp_path)).matches
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.EXACT)
+
+
+def test_a_group_whose_first_word_is_the_abbreviation_ft_stays_a_credit(tmp_path):
+    """``(Ft Worth Edit)`` reads as a credit, because ``Ft`` IS the word ``ft``.
+
+    The brief listed it among the versions, beside a rule (the group's first
+    whole word is a marker) under which it is a credit, and the rule is the one
+    ``core.tombstone`` records deletions by. A Fort Worth edit and a guest
+    called Worth Edit are one spelling, and telling them apart would need a
+    rule both modules share, which moves the tombstone identity stamp. Pinned
+    so the choice is visible; the card asks Phillip about it.
+    """
+    from cratekit.core import tombstone
+
+    spelled = "Sun Path (Ft Worth Edit)"
+    assert match.split_title(spelled) == ("Sun Path", "")
+    assert match._is_a_credit("Ft Worth Edit") and tombstone._is_a_credit("Ft Worth Edit")
+    (found,) = resolve([u262_wanted(spelled)], u262_plain_record(tmp_path)).matches
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.EXACT)
+
+
+def test_a_library_file_whose_group_only_begins_with_a_credits_letters_is_that_version(tmp_path):
+    """The index reads a held title through the same split, so the fix reaches both sides.
+
+    Held only as ``Sun Path (Without You Remix)``, a list asking for the plain
+    record was matched exact against the remix, because the index had walked
+    the group off the held title as a credit.
+    """
+    held = tagged_container(
+        tmp_path,
+        tmp_path / "library" / "Sun Path (Without You Remix).flac",
+        artist="Nova Reef",
+        title="Sun Path (Without You Remix)",
+    )
+    index = match.index_paths([held])
+    (found,) = resolve([u262_wanted("Sun Path")], index).matches
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
+    (same,) = resolve([u262_wanted("Sun Path (Without You Remix)")], index).matches
+    assert (same.state, same.why) == (match.MatchState.MATCHED, match.Why.EXACT)
+
+
+#: One list of groups both credit predicates are asked about: the brief's ten,
+#: a marker that is a later word, the bare markers, and spellings of the marker
+#: that differ in case and punctuation.
+U262_EVERY_GROUP: tuple[str, ...] = (
+    *U262_VERSION_GROUPS,
+    *U262_CREDIT_GROUPS,
+    "Live with Strings",
+    "Nightwave Remix",
+    "feat",
+    "With",
+    "FT. Anna",
+    "Feat.Anna",
+    "ft.anna",
+    "featuring",
+    "Featurette",
+    "Ftw Edit",
+    "Ft Worth Edit",
+    "With You",
+    "",
+)
+
+
+@pytest.mark.parametrize("group", U262_EVERY_GROUP)
+def test_the_matcher_and_the_tombstone_agree_on_what_a_credit_is(group):
+    """U262. Two modules ask whether a group is a credit, and they now answer alike.
+
+    ``core.tombstone._is_a_credit`` read the first whole word and the matcher
+    read the first letters, so ``(Without You Remix)`` was a credit to one and
+    a mix name to the other. The tombstone module's rule is inside the
+    identity stamp, so the matcher keeps its own copy, and this holds the two
+    equal over one list of groups.
+    """
+    from cratekit.core import tombstone
+
+    assert match._is_a_credit(group) == tombstone._is_a_credit(group)
+
+
+def test_the_matcher_and_the_tombstone_share_one_credit_vocabulary():
+    from cratekit.core import tombstone
+
+    assert match._CREDIT_MARKERS == tombstone._CREDIT_MARKERS
+
+
+def test_a_defect_title_keeps_the_tombstone_identity_its_spelling_always_had():
+    """A tombstone recorded from such a row is still met.
+
+    The identity is the listing's verbatim spelling and the deletion pass
+    records a row's Title column composed by ``core.tombstone``, which this
+    unit does not touch, so the consult reaches the same record before and
+    after. What changes is only which other spellings it composes: the
+    remix's bracket and dash forms, where the letters rule composed the null
+    qualifier forms of a record it had read as plain.
+    """
+    from cratekit.core import tombstone
+
+    spelled = "Sun Path (Without You Remix)"
+    wanted = u262_wanted(spelled)
+    recorded = tombstone.version_identity(
+        artist="Nova Reef", title=tombstone.version_title(spelled, "")
+    )
+    assert wanted.identity == {"artist": "nova reef", "title": "sun path (without you remix)"}
+    assert recorded in wanted.suppression_spellings
+    assert wanted.addresses == (
+        "Sun Path (Without You Remix)",
+        "Sun Path [Without You Remix]",
+        "Sun Path (Without) (You Remix)",
+        "Sun Path (Without You) (Remix)",
+        "Sun Path - Without You Remix",
+        "Sun Path - Without You Remix (Without You Remix)",
+    )
+    plain = tombstone.version_identity(artist="Nova Reef", title="Sun Path")
+    assert plain not in wanted.suppression_spellings
+
+
+#: The addresses three credited listings composed before U262, run and recorded
+#: on the base. A credited row's spellings must not move.
+U262_CREDITED_ADDRESSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Sun Path (feat. Mira) (Nightwave Remix)",
+        (
+            "Sun Path (feat. Mira) (Nightwave Remix)",
+            "Sun Path (feat. Mira) [Nightwave Remix]",
+            "Sun Path (feat. Mira) (Nightwave) (Remix)",
+            "Sun Path (feat. Mira) - Nightwave Remix",
+            "Sun Path (feat. Mira) - Nightwave Remix (Nightwave Remix)",
+        ),
+    ),
+    ("Sun Path (Nightwave Remix) (ft Mira)", ("Sun Path (Nightwave Remix) (ft Mira)",)),
+    (
+        "Sun Path (with Mira)",
+        (
+            "Sun Path (with Mira)",
+            "Sun Path (with Mira) (original)",
+            "Sun Path (with Mira) [original]",
+            "Sun Path (with Mira) (original mix)",
+            "Sun Path (with Mira) [original mix]",
+            "Sun Path (with Mira) (original) (mix)",
+            "Sun Path (with Mira) - original mix",
+            "Sun Path (with Mira) - original mix (original mix)",
+            "Sun Path (with Mira) (original version)",
+            "Sun Path (with Mira) [original version]",
+            "Sun Path (with Mira) (original) (version)",
+            "Sun Path (with Mira) - original version",
+            "Sun Path (with Mira) - original version (original version)",
+        ),
+    ),
+)
+
+
+@pytest.mark.parametrize(("spelled", "addresses"), U262_CREDITED_ADDRESSES)
+def test_a_credited_rows_suppression_spellings_are_unchanged(spelled, addresses):
+    wanted = u262_wanted(spelled)
+    assert wanted.addresses == addresses
+    assert wanted.uncredited_spellings == ()
 
 
 def test_a_provider_row_titled_wholly_in_brackets_reads_rather_than_refuses():
