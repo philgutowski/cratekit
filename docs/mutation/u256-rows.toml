@@ -79,11 +79,18 @@ description = "_build_disposable_database: hand every caller the first caller's 
 file = "tests/test_rb_writer_db.py"
 surface = "maintainer"
 tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
-old = '''    with open(db_path, "xb") as handle:
-        handle.write(template)'''
+old = '''    descriptor = os.open(db_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SQLITE_FILE_MODE)'''
 new = '''    first = _TEMPLATES.setdefault(("first", key), db_path)
     if first != db_path and os.path.exists(first):
         os.link(first, db_path)
         return
-    with open(db_path, "xb") as handle:
-        handle.write(template)'''
+    descriptor = os.open(db_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SQLITE_FILE_MODE)'''
+
+[[rows]]
+id = "T9_copy_mode"
+description = "_SQLITE_FILE_MODE: create a copy at 0666 before the umask, a plain create, so under a loose umask a copy is group writable where a build from nothing is not"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''_SQLITE_FILE_MODE = 0o644'''
+new = '''_SQLITE_FILE_MODE = 0o666'''
