@@ -51271,3 +51271,134 @@ whose line names the label before another act's when no held release lacks
 a line, so a healthy provider read confirms it and the label answers nothing
 new (`test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing_new`).
 The record is `docs/restart/r1634.md`.
+
+---
+
+## R-1636. A file's dash part that is not its title can still be read as its title, so another row by the artist writes its genre
+
+**Found:** at the review of #770, R-1631, rounds one and two, 2026-11-12.
+
+**The mechanism.** Since R-1631 the file's side of the record shop matcher in
+`tagging/searchers.py` (`_readings`, `searched=True`) is read by any run of
+its dash parts, because the live library writes `KEY - BPM - ` into the title
+tag and a file with no title tag is asked by its name. Which part is the
+title cannot be told without the artist, so three shapes still read a part
+that is not the title. A dash version tail with a word `VERSION_WORDS` lacks
+is read as a title: "08A - 124 - Other Song - Vocal Mix" meets a Discogs track
+"Vocal Mix", and "Other Song - Vocal Mix" a Beatport row "Vocal"
+(`_names_a_title` refuses a tail of version words only by the list). A name
+"KEY - BPM - Title - Artist - Album" reads its album, so an untagged "08A -
+124 - Tide - Aurora Bloom - Sun Path" meets the title track "Sun Path"; and a
+name "KEY - BPM - Artist - Title" reads its artist, meeting a self titled row.
+Every one matched on `main` too, by containment.
+
+**Measured cost.** Driven through `tag.tag_one` at round one: the Discogs
+style of "Vocal Mix" was written onto "08A - 124 - Other Song - Vocal Mix",
+and Beatport's "Vocal" row onto "Other Song - Vocal Mix", on `main` and on
+the branch alike. The producer of a dash version in a title tag was read,
+not driven: the fallback landing writes `Wanted.listed`, and `split_title`
+says the playlist API ships "Title - Version". `naming_cli` measures 53% of
+live names as "Title - Artist - Album". Not measured: how many files carry
+such a title or no title tag.
+
+**Closes when:** the matcher is given the searched artist and album, so a
+dash part that names either is shed rather than read, and a dash version
+tail is told from a title by its position after the title rather than by a
+list. A wrong genre written onto a file is the board bar's damaged data.
+
+---
+
+## R-1637. A plain title takes a remix row's genre when the remix is listed first on Beatport
+
+**Found:** at the review of #770, R-1631, round two, 2026-11-12.
+
+**The mechanism.** `_beatport_best` ranks a row whose name is the title's
+core at one tier whatever its mix, so a plain title "Sunrise Mood" against
+rows "Sunrise Mood" / Kerri Chandler Remix (listed first) and "Sunrise Mood"
+/ Original Mix takes the remix's genre on page order. `main` does the same;
+R-1631 gave a title that names its mix a tier of its own, not a title that
+names none.
+
+**Measured cost.** Driven through `tag_one` at round two: the remix row's
+genre was written, on `main` and on the branch. A remix of the same
+recording, so a genre of the same record's family, not another recording's.
+
+**Closes when:** a title naming no mix prefers a row whose mix is "Original
+Mix" or empty over one naming a remix. Ledger only.
+
+---
+
+## R-1638. A title written only inside another title's trailing brackets no longer finds it
+
+**Found:** at the build of #770, R-1631, 2026-11-12.
+
+**The mechanism.** R-1631 refuses a title whose words sit only inside the
+other title's trailing brackets, because "How Does It Feel" against
+"Untitled (How Does It Feel)" carries the same evidence as the wrong match
+"Intro" against "Sunrise Mood (Intro)". `main` matched both through its
+containment between whole titles. Telling them apart needs a list of version
+and part words, and every word such a list lacks writes a wrong genre.
+Pinned as a known cost by
+`test_a_title_written_only_inside_the_rows_trailing_brackets_is_a_known_cost`.
+
+**Measured cost.** A miss, never a wrong genre: the file gets no genre from
+that row and the next source is asked. Not measured: how many files carry an
+alternate title in brackets on the catalogue side only.
+
+**Closes when:** Phillip answers the question on #770 (keep refusing, the
+recommendation, or match an alternate title when the bracket holds no version
+word). Ledger only: a miss with no wrong data.
+
+---
+
+## R-1639. Shapes the containment matcher found that the word reading misses
+
+**Found:** at the build and review of #770, R-1631, 2026-11-12.
+
+**The mechanism.** R-1631 replaced containment with readings of whole words
+in `tagging/searchers.py`. Each shape below matched its own row on `main` by
+containment and misses now, because nothing in the title tells it from a
+wrong match without a list or the artist:
+- An unpadded or two digit track number opening a file's name, "12 Sunrise
+  Mood", "1 Sunrise Mood", "A1 Sunrise Mood", "1-03 Sunrise Mood"
+  (`_TRACK_NUMBER` is zero padded only, so "22 Bullets" is never "Bullets").
+- A dash with no spaces, "Aurora Bloom-Sunrise Mood", and a name "Sunrise
+  Mood - Aurora Bloom" with no head.
+- A tempo with no key after the title, "Sun Path - 124".
+- A title that is a Camelot code behind a head, "08A - 124 - 8A" (Beatport's
+  top tier still finds it).
+- A dash version with a number after it, "Sunrise Mood - Dub 2", "- Mix 1".
+- A credit written with "with", "Sunrise Mood with Someone", since "Stay With
+  Me" is not "Stay".
+- An unbracketed remixer, "Sunrise Mood Kerri Chandler Remix" against plain
+  "Sunrise Mood"; a catalogue dash tail the list lacks, "Sunrise Mood -
+  Vocal", "- Live At Fabric", "- Tom Rmx"; "Sunrise Mood / Tide".
+- An untagged name "Artist - Interlude" against "Interlude", since a tail of
+  version words after a title is refused.
+- A Discogs single whose release title adds "EP" to the track's, on the
+  single fallback only.
+
+**Measured cost.** Misses, never a wrong genre: the next source is asked and
+the file stays askable. Found by the review grid and the build's
+differential; the untagged shapes need a file with no title tag, whose
+producer was not driven.
+
+**Closes when:** a shape is shown common in a real library, and is then read
+by a rule that cannot also match another recording. Ledger only.
+
+---
+
+## R-1640. The exact only flag of a title of brackets alone kills nothing in the title matcher
+
+**Found:** at the review of #770, R-1631, round one, 2026-11-12.
+
+**The mechanism.** `_title_core` marks a title of bracket groups alone,
+"(Intro)", as compared exactly, and `_readings` then gives it no shed
+reading. With the flag forced false the three matcher test files pass 624 of
+624: the only pairs it changes are of the shape "(Love) (Is)" against "Love
+Is", which no table holds.
+
+**Measured cost.** None to a person: a maintainer facing guard no test pins.
+
+**Closes when:** a test drives a pair the flag decides, or the flag is
+removed. Ledger only.

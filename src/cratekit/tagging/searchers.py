@@ -140,10 +140,11 @@ from typing import Any
 from urllib.parse import quote_plus, urlencode
 
 from cratekit import __version__
-from cratekit.core import art, routing, secrets
+from cratekit.core import art, naming, routing, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy
+from cratekit.core.tombstone import VERSION_WORDS
 from cratekit.tagging.tag import FetchImage, Searcher, SearchHit, SourceAnswer
 
 log = logging.getLogger(__name__)
@@ -562,49 +563,41 @@ def _normalized(value: str) -> str:
     return unicodedata.normalize("NFC", value).lower().strip()
 
 
-def _without_trailing_bracket(value: str) -> str:
-    return re.sub(r"\s*\(.*?\)\s*$", "", value).strip()
-
-
-#: The last bracketed group of a title, alone: "(Part 1)" of
-#: "(Not Just) Knee Deep (Part 1)", where the shared strip takes the whole
-#: title, since its group runs from the first bracket to the last.
+#: The last bracketed group of a title, alone, for the Discogs query: "(Part 1)"
+#: of "(Not Just) Knee Deep (Part 1)". Never a reader of a title's words, which
+#: :func:`_trailing_group_start` is.
 _LAST_GROUP = re.compile(r"\s*\([^()]*\)\s*$")
 
-#: The bracketed groups a title opens with: "(Not Just) " of
-#: "(Not Just) Knee Deep (Part 1)".
-_LEADING_GROUPS = re.compile(r"^(?:\s*\([^()]*\))+\s*")
+#: The bracketed groups a title opens with, round or square: "(Not Just) " of
+#: "(Not Just) Knee Deep (Part 1)", "[MP3] " of "[MP3] Real Title".
+_LEADING_GROUPS = re.compile(r"^(?:\s*(?:\([^()]*\)|\[[^\[\]]*\]))+\s*")
+
+#: A track number a file's name opens with, "01" of "01 Sunrise Mood": padded
+#: with a zero, so a title that opens with a number, "22 Bullets" or "909", is
+#: never read without it.
+_TRACK_NUMBER = re.compile(r"0\d{1,2}")
+
+#: A year, the only number a version carries, and only beside a remaster:
+#: "2014" of "2014 Remaster".
+_YEAR = re.compile(r"(?:19|20)\d\d")
+_REMASTER = frozenset({"remaster", "remastered"})
 
 #: A run of letters or digits, in any script. The underscore ``\w`` admits is
 #: punctuation here.
 _WORD = re.compile(r"[^\W_]+")
 
-#: Words that name a version of a recording rather than the recording. A title
-#: of these alone, "Original Mix" or "Dub", is contained in the bracketed
-#: suffix of half a catalogue, so it is never read as contained in a whole
-#: title, suffix and all. Between two cores, where the suffix is gone, it is
-#: compared as any title is, so a track called "Original" still finds
-#: "Original feat. Someone".
-_VERSION_WORDS = frozenset(
-    {
-        "bootleg",
-        "club",
-        "dub",
-        "edit",
-        "extended",
-        "instrumental",
-        "mix",
-        "original",
-        "radio",
-        "re",
-        "remaster",
-        "remastered",
-        "remix",
-        "rework",
-        "version",
-        "vip",
-    }
-)
+#: The spaced dash between the parts of a title. A catalogue writes a version
+#: after it, "Sunrise Mood - Original Mix"; the live library writes its
+#: ``KEY - BPM - `` head before it in the title tag, and a file with no title
+#: tag is asked by its "Artist - Title" stem.
+_DASH = " - "
+
+#: The brackets a title's groups are written in, round or square.
+_OPENING = frozenset("([")
+_CLOSING = frozenset(")]")
+
+#: The words that open a featured artist's credit written into a title.
+_FEATURING = frozenset({"feat", "ft", "featuring"})
 
 
 def _last_group_stripped(value: str) -> str:
@@ -620,6 +613,46 @@ def _identifies(value: str) -> bool:
     return _WORD.search(value) is not None
 
 
+def _words(value: str) -> tuple[str, ...]:
+    """A title's words, in order. Brackets, dashes and punctuation are not words,
+    so "(Not Just) Knee Deep" and "Not Just Knee Deep" read the same, and "Club"
+    is one word, never a part of "Nightclub"."""
+    return tuple(_WORD.findall(value))
+
+
+def _trailing_group_start(value: str) -> int | None:
+    """Where the balanced bracket group a title ends with opens, or None.
+
+    Read from the end, bracket by bracket, so a group with a group inside it,
+    "(Mike's (Dub) Mix)", is one group, and a bracket in mid title is never
+    taken for the start of the suffix: "Knee (Not Just) Deep (Part 1)" ends
+    with "(Part 1)", not with everything from "(Not Just)" on (R-1631). A
+    square bracket is a bracket too, "Sun Path [Nightwave Remix]".
+    """
+    text = value.rstrip()
+    if not text.endswith(tuple(_CLOSING)):
+        return None
+    depth = 0
+    for index in range(len(text) - 1, -1, -1):
+        if text[index] in _CLOSING:
+            depth += 1
+        elif text[index] in _OPENING:
+            depth -= 1
+            if depth == 0:
+                return index
+    return None
+
+
+def _without_trailing_groups(value: str) -> str:
+    """The title with every bracket group it ends with taken off."""
+    text = value.strip()
+    start = _trailing_group_start(text)
+    while start is not None:
+        text = text[:start].rstrip()
+        start = _trailing_group_start(text)
+    return text
+
+
 def _unbracketed(value: str) -> str:
     """The title with its round brackets taken out and its spaces collapsed, so
     "(Not Just) Knee Deep" and "Not Just Knee Deep" compare equal."""
@@ -629,41 +662,244 @@ def _unbracketed(value: str) -> str:
 def _title_core(value: str) -> tuple[str, bool]:
     """A normalized title's core, and whether it may be compared exactly only.
 
-    THE SHARED STRIP takes a trailing bracket from the FIRST "(" to the last
-    ")", so a title that opens with a bracket strips to nothing, and nothing is
-    a substring of every title: any row by the artist matched (R-1534). So the
-    strip is taken only where it leaves a letter or a digit. A title that opens
-    with bracket groups keeps them and the text after them, stripped the same
-    way, "(Not Just) Knee Deep" of "(Not Just) Knee Deep (Part 1)". A title of
-    bracket groups alone, "(Intro)" or "(Intro) (Extended Mix)", is its first
-    groups' words, "intro", and is compared exactly, never by containment,
-    since a word out of a bracket is contained in too many titles.
+    The core is the title with the bracket groups it ENDS with taken off, read
+    as balanced groups from the end, so a group in mid title stays: "Knee (Not
+    Just) Deep (Part 1)" is "Knee (Not Just) Deep" (R-1631), and "(Not Just)
+    Knee Deep (Part 1)" is "(Not Just) Knee Deep". The strip once ran from the
+    FIRST "(" to the last ")", which emptied a title opening with a bracket
+    (R-1534) and cut one with a bracket in mid title to its first word. A title
+    of bracket groups alone, "(Intro)" or "(Intro) (Extended Mix)", is its
+    first groups' words, "intro", read as they are and never shed further,
+    since a word out of a bracket is a word in too many titles.
     """
-    bare = _without_trailing_bracket(value)
+    bare = _without_trailing_groups(value)
     if _identifies(bare):
         return bare, False
-    leading = _LEADING_GROUPS.match(value)
-    if leading is not None:
-        rest = _without_trailing_bracket(value[leading.end() :])
-        if _identifies(rest):
-            return value[: leading.end()] + rest, False
-    current = value
-    shorter = _last_group_stripped(current)
-    while shorter != current and _identifies(shorter):
-        current, shorter = shorter, _last_group_stripped(shorter)
+    current = value.strip()
+    start = _trailing_group_start(current)
+    while start is not None and _identifies(current[:start]):
+        current = current[:start].rstrip()
+        start = _trailing_group_start(current)
     return _unbracketed(current), True
 
 
-def _contains(outer: str, inner: str) -> bool:
-    """Whether ``inner`` is in the whole title ``outer``, suffix and all, for an
-    ``inner`` that names more than a version.
+def _without_featuring(words: tuple[str, ...]) -> tuple[str, ...] | None:
+    """The words before a feature credit, "sunrise mood" of "Sunrise Mood feat.
+    Someone", or None for a title with no credit after its first word."""
+    for index, word in enumerate(words):
+        if index and word in _FEATURING:
+            return words[:index]
+    return None
 
-    An inner of version words alone is refused: "original mix" is in every
-    title a catalogue lists as an original mix. Only a comparison that reaches
-    into a bracketed suffix asks this; two cores are compared with ``in``.
+
+def _without_version(words: tuple[str, ...]) -> tuple[str, ...] | None:
+    """The words before a trailing run of version words, "sunrise mood" of
+    "Sunrise Mood Extended Mix", or None.
+
+    The run is words of the domain's :data:`VERSION_WORDS` and a remaster's
+    year ("2014 Remaster", "Remastered 2011"), at least one of them a version
+    word, and something must be left before it: "Original Mix" and "Dub Club"
+    are titles, never a version of nothing. Any other number stays, since it
+    names the recording: "Kitchen Session 2" is never "Kitchen Session 1"
+    (R-1631, round one), and "Summer 1999 (Original Mix)" is never "Summer
+    2000 (Original Mix)" (round two). Here the list
+    only sheds, so a version word it lacks costs a title its own row ("Sunrise
+    Mood Vocal" reads as three words): the hand list it replaced refused
+    containment for its words alone, and a word it lacked, "vocal", let "Vocal
+    Mix" match "Other Song (Vocal Mix)" (R-1631).
     """
-    words = _WORD.findall(inner)
-    return any(word not in _VERSION_WORDS for word in words) and inner in outer
+    end = len(words)
+    while end and (words[end - 1] in VERSION_WORDS or _a_remasters_year(words, end - 1)):
+        end -= 1
+    if end == 0 or end == len(words):
+        return None
+    if not any(word in VERSION_WORDS for word in words[end:]):
+        return None
+    return words[:end]
+
+
+def _shed(words: tuple[str, ...]) -> set[tuple[str, ...]]:
+    """The words, and the words with a feature credit or a version run shed."""
+    readings = {words}
+    credited = _without_featuring(words)
+    if credited:
+        readings.add(credited)
+    for reading in list(readings):
+        plain = _without_version(reading)
+        if plain:
+            readings.add(plain)
+    return readings
+
+
+def _a_year(word: str) -> bool:
+    """Whether a word is a year, as a remaster names one: "2014 Remaster"."""
+    return _YEAR.fullmatch(word) is not None
+
+
+def _a_remasters_year(words: tuple[str, ...], index: int) -> bool:
+    """Whether the word at ``index`` is a year written beside "remaster" or
+    "remastered", the one year a version carries. Any other year names the
+    recording, "Summer 1999"."""
+    if not _a_year(words[index]):
+        return False
+    beside = words[max(index - 1, 0) : index] + words[index + 1 : index + 2]
+    return any(word in _REMASTER for word in beside)
+
+
+def _a_head_word(word: str) -> bool:
+    """Whether a word is a number or a Camelot key, as a head is written."""
+    return word.isdigit() or naming.is_camelot(word)
+
+
+def _a_head(words: tuple[str, ...]) -> bool:
+    """Whether words are a ``KEY - BPM`` head: numbers and keys, a key among them."""
+    return bool(words) and all(map(_a_head_word, words)) and any(map(naming.is_camelot, words))
+
+
+def _head_parts(parts: list[str]) -> tuple[int, int]:
+    """How many dash parts a file's title opens with that are its head, and
+    where the head it ends with starts: each part a key or a number, a key
+    among them, and the title's last part never all head."""
+    count = len(parts)
+    lead = 0
+    while lead < count - 1 and len(_words(parts[lead])) == 1 and _a_head_word(_words(parts[lead])[0]):
+        lead += 1
+    if not _a_head(_words(_DASH.join(parts[:lead]))):
+        lead = 0
+    trail = count
+    while trail > 1 and len(_words(parts[trail - 1])) == 1 and _a_head_word(_words(parts[trail - 1])[0]):
+        trail -= 1
+    if not _a_head(_words(_DASH.join(parts[trail:]))):
+        trail = count
+    return lead, trail
+
+
+def _without_head(text: str) -> str:
+    """A file's title with the ``KEY - BPM - `` head it opens with taken off."""
+    parts = text.split(_DASH)
+    lead, _ = _head_parts(parts)
+    return _DASH.join(parts[lead:])
+
+
+def _numbered(words: tuple[str, ...]) -> bool:
+    """Whether a file's title opens with a track number before its words, as a
+    file named "01 Sunrise Mood" with no title tag is asked."""
+    return len(words) > 1 and _TRACK_NUMBER.fullmatch(words[0]) is not None
+
+
+def _names_a_title(words: tuple[str, ...], *, tail: bool, head: bool) -> bool:
+    """Whether a reading taken from part of a title can be a title.
+
+    A ``head`` part of numbers and keys alone, the "08A" or "126" of a ``KEY -
+    BPM - `` head, is not; outside the head a number is a title, "1998" of
+    "08A - 124 - 1998" (R-1631, round one). A tail made only of version words
+    and a remaster's year after a title, the "Original Mix" of "Sunrise Mood - Original
+    Mix", is that title's version, never a title; after a head alone it is
+    the title, "Interlude" of "08A - 124 - Interlude". THIS ONE REFUSES ON THE
+    LIST, so a version tail with a word the list lacks, "Other Song - Vocal
+    Mix", is still read as a title on the file's side, as it was before.
+    """
+    if head and all(_a_head_word(word) for word in words):
+        return False
+    return not (
+        tail
+        and all(
+            word in VERSION_WORDS or _a_remasters_year(words, index)
+            for index, word in enumerate(words)
+        )
+    )
+
+
+Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]
+
+
+def _a_tail_to_shed(tail: str, *, searched: bool) -> bool:
+    """Whether the dash parts after a title are a version of it, or a head.
+
+    A version is a tail whose core ends in a version word, a remaster's year
+    aside:
+    "Original Mix", "Kerri Chandler Remix", "Remastered 2011", and never "126 -
+    Burning (Extended Mix)", whose core ends in "burning", or "Session 2". On
+    the file's side only, a head is numbers and keys alone with a key among
+    them, the ``KEY - BPM`` a library may write after the title. Anything
+    else, "Tide" of "Aurora Bloom - Tide", is the title, and the part before it
+    is no reading: shedding it read an artist's name as the title of every one
+    of their records. Here the list only sheds: a version word it lacks costs
+    a miss.
+    """
+    core, _ = _title_core(tail)
+    words = _words(core)
+    if searched and _a_head(words):
+        return True
+    named = [word for index, word in enumerate(words) if not _a_remasters_year(words, index)]
+    return bool(named) and named[-1] in VERSION_WORDS
+
+
+def _readings(value: str, *, searched: bool) -> Readings:
+    """Every way a title can name its recording, as tuples of words, and those
+    read with its leading bracket groups shed, kept apart.
+
+    A title is read in its dash parts, and a run of them is a reading when
+    what it leaves after it is a version or a head (:func:`_a_tail_to_shed`):
+    "Sunrise Mood - Original Mix" is also "sunrise mood". A catalogue row is
+    read from its first part. The file's title, the ``searched`` side, is also
+    read from any later part, since the live library writes ``KEY - BPM - ``
+    before the title in the tag and a file with no tag is asked by its "Artist
+    - Album - 01 Title" name: "04A - 126 - Burning (Extended Mix)" is also
+    "burning", with a padded track number shed, and the part after a head
+    alone is the title whatever follows it, since the naming verb keeps
+    whatever body a file's name carries after the head ("Title - Artist",
+    "Artist - Title" and "Title - Artist - Album" all occur). A tail of
+    version words alone after a title is never a title. Each run is read by its core (:func:`_title_core`) and
+    by all its words, brackets or none, so "Sunrise Mood Kerri Chandler Remix"
+    reads as "Sunrise Mood (Kerri Chandler Remix)" does, and each reading is
+    shed of a feature credit and a version run (:func:`_shed`). The core with
+    its leading groups shed, "knee deep" of "(Not Just) Knee Deep", is kept
+    apart, so two titles whose leading groups differ, "(Love) Is The Message"
+    and "(Hate) Is The Message", never meet on what is left.
+    """
+    text = _normalized(value)
+    if not _identifies(text):
+        return frozenset(), frozenset()
+    parts = text.split(_DASH)
+    whole = (0, len(parts))
+    head_end, tail_start = _head_parts(parts) if searched else (0, len(parts))
+    firsts = range(len(parts)) if searched else range(1)
+    readings: set[tuple[str, ...]] = set()
+    shed: set[tuple[str, ...]] = set()
+    for first in firsts:
+        after_title = not all(_a_head_word(word) for word in _words(_DASH.join(parts[:first])))
+        after_head = first > 0 and not after_title
+        for last in range(first + 1, len(parts) + 1):
+            after = _DASH.join(parts[last:])
+            if last < len(parts) and not after_head and not _a_tail_to_shed(after, searched=searched):
+                continue
+            part = _DASH.join(parts[first:last])
+            if not _identifies(part):
+                continue
+            core, exact = _title_core(part)
+            found = {_words(core)} if exact else _shed(_words(core)) | _shed(_words(part))
+            if searched and not exact and _numbered(_words(core)):
+                found |= _shed(_words(core)[1:])
+            lead = None if exact else _LEADING_GROUPS.match(core)
+            bare = core[lead.end() :] if lead is not None else ""
+            found_shed = _shed(_words(bare)) if _identifies(bare) else set()
+            for into, these in ((readings, found), (shed, found_shed)):
+                into.update(
+                    words
+                    for words in these
+                    if (first, last) == whole
+                    or _names_a_title(words, tail=after_title, head=last <= head_end or first >= tail_start)
+                )
+    return frozenset(readings), frozenset(shed)
+
+
+def _meet(left: Readings, right: Readings) -> bool:
+    """Whether two titles' readings share one. Two readings with leading groups
+    shed never meet each other, only a reading the other title holds whole."""
+    left_read, left_shed = left
+    right_read, right_shed = right
+    return bool(left_read & right_read or left_read & right_shed or left_shed & right_read)
 
 
 def _artist_parts(value: str, separators: str) -> list[str]:
@@ -691,36 +927,20 @@ def _artist_matches(searched: str, found: str) -> bool:
 
 
 def _title_matches(searched: str, found: str) -> bool:
-    """Whether two titles name the same recording.
+    """Whether the file's title, ``searched``, names the same recording as a
+    catalogue's title, ``found``.
 
-    The bracketed suffix is stripped from both sides first, because a catalogue
-    calls it an extended mix and a file calls it nothing at all, and that suffix
-    is the single commonest reason an exact comparison misses.
-
-    NOTHING IS NO MATCH (R-1534). A side with no letter or digit matches
-    nothing, on either side. Each side is read by :func:`_title_core`, so a
-    title the strip would empty is never the empty string contained in every
-    title. The cores may contain one another, and a containment between the
-    whole titles, suffix and all, needs a contained side that names more than
-    a version (:func:`_contains`). Every reader of a title by artist and title
-    asks this, Discogs included since R-1534, and Beatport's scoring reads the
-    same core.
+    They match when they share a reading (:func:`_readings`): the same words,
+    once each has shed what is not its title, the bracket groups it ends with,
+    a dash part, a feature credit, a trailing run of version words, its leading
+    groups. Whole words, never characters, and never one whole title inside
+    the other: "Club" is not in "Nightclub", "Intro" is not "Sunrise Mood
+    (Intro)", and "Dub" is not "Dub Siren" (R-1631). A side with no letter or
+    digit matches nothing, on either side (R-1534). Every reader of a title by
+    artist and title asks this, Discogs included, and Beatport's scoring reads
+    the same readings.
     """
-    left, right = _normalized(searched), _normalized(found)
-    if not (_identifies(left) and _identifies(right)):
-        return False
-    core_left, exact_left = _title_core(left)
-    core_right, exact_right = _title_core(right)
-    if _unbracketed(core_left) == _unbracketed(core_right):
-        return True
-    if exact_left or exact_right:
-        return False
-    return (
-        core_left in core_right
-        or core_right in core_left
-        or _contains(right, left)
-        or _contains(left, right)
-    )
+    return _meet(_readings(searched, searched=True), _readings(found, searched=False))
 
 
 def _query(artist: str, title: str) -> str:
@@ -824,21 +1044,27 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
     row than the genre is how a file ends up wearing another record's cover, so
     the artist and title gate that picks the genre picks the picture too.
 
-    THE TITLE IS READ BY ITS CORE, as the shared matcher reads it (R-1534). A
-    title of no letter or digit scores no row, a row whose name carries none is
-    passed over, and a title of brackets alone scores only a row it equals.
-    The middle tier reads the whole row name inside the title's core, as it
-    always did, so a row "Love (feat. X)" never outscores the file's own "Love
-    Is The Message" by its core "love"; the title's core inside the name's
-    core; or, reaching into the name's suffix, a title that names more than a
-    version. A credit with no name is no credit: the empty string is in every
-    searched artist.
+    THE TITLE IS READ AS THE SHARED MATCHER READS IT (R-1534, R-1631). A
+    title of no letter or digit scores no row, and a row whose name carries
+    none is passed over. The title is ranked without its ``KEY - BPM - ``
+    head, so a headed file ranks its rows as a plain one does. The top tier
+    is the title the row's name with its mix in brackets, so a file's own mix
+    outranks the same title's other mixes; the next is the title's core word
+    for word the row's name; the last is a reading the two share
+    (:func:`_readings`), the title read as a file's and the name as a
+    catalogue's, so a row "Love (feat. X)" never scores against "Love Is The
+    Message", a row "(Intro)" or "Intro" never against "Sunrise Mood
+    (Intro)", and a row "(Sunrise Mood)" never against "Mood". No tier reads
+    a row's name inside the title's brackets, or the title inside the name's.
+    A credit with no name is no credit: the empty string is in every searched
+    artist.
     """
     title_normalized = _normalized(title)
     if not _identifies(title_normalized):
         return None
-    bare_title, exact_only = _title_core(title_normalized)
-    loose_title = _unbracketed(bare_title)
+    proper = _without_head(title_normalized)
+    whole_title = _words(_title_core(proper)[0])
+    searched_readings = _readings(title_normalized, searched=True)
     searched = _artist_parts(artist, r"[,&]")
 
     best_score = 0
@@ -850,7 +1076,6 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         name = _normalized(track.get("track_name", ""))
         if not _identifies(name):
             continue
-        name_core, _ = _title_core(name)
         mix = _normalized(track.get("mix_name", ""))
         credited = [_normalized(entry.get("artist_name", "")) for entry in track.get("artists", [])]
         credited = [other for other in credited if other]
@@ -862,18 +1087,12 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         if artist_score == 0:
             continue
 
-        if loose_title == _unbracketed(name) or title_normalized == f"{name} ({mix})":
+        if _words(proper) == _words(f"{name} ({mix})"):
+            title_score = 4
+        elif whole_title == _words(name):
             title_score = 3
-        elif exact_only:
-            continue
-        elif (
-            name in bare_title
-            or bare_title in name_core
-            or _contains(name, bare_title)
-        ):
+        elif _meet(searched_readings, _readings(name, searched=False)):
             title_score = 2
-        elif _contains(title_normalized, name):
-            title_score = 1
         else:
             continue
 
@@ -1058,15 +1277,19 @@ def _bandcamp_credited(entry: str) -> str:
     return credited.group(1).strip() if credited else ""
 
 
-def _bandcamp_heading_matches(title: str, heading: str) -> bool:
-    if _title_matches(title, heading):
-        return True
+def _bandcamp_heading_matches(title: str, heading: str, artist: str) -> bool:
     # A listing heading is sometimes "Artist - Title" rather than the title
     # alone, and dropping the credit is the difference between a match and a
-    # miss on a self released record.
-    if " - " in heading:
-        return _title_matches(title, heading.split(" - ", 1)[1])
-    return False
+    # miss on a self released record. ONLY A HEAD THAT NAMES THE ARTIST IS
+    # DROPPED, AND THEN IT IS NEVER READ: a heading "Sunrise Mood - Original
+    # Mix" is a title and its version, and reading its tail as the title
+    # matched a file titled "Original Mix" to another recording, while a
+    # heading "Probe - Friday Night Mix" read whole is "probe" and its version,
+    # which met a file named "05B - 98 - Probe - Body" (R-1631).
+    head, dash, rest = heading.partition(_DASH)
+    if dash and _artist_matches(artist, head):
+        return _title_matches(title, rest)
+    return _title_matches(title, heading)
 
 
 def _bandcamp_tag(tags: Sequence[str], declared: Taxonomy) -> str:
@@ -1115,7 +1338,7 @@ def _search_bandcamp(
             continue
         headings_read += 1
         track_url, text = heading.group(1).split("?")[0], heading.group(2).strip()
-        if not _bandcamp_heading_matches(title, text):
+        if not _bandcamp_heading_matches(title, text, artist):
             continue
         credited = _bandcamp_credited(entry)
         if credited and not _artist_matches(artist, credited):
