@@ -961,6 +961,36 @@ def test_a_second_run_reads_no_tag_it_already_holds(configured, place, monkeypat
     assert reads == [other]
 
 
+def test_the_first_run_opens_each_file_once_and_the_second_none(configured, place, monkeypatch):
+    """U266: the cost the card names, counted as container OPENS through the verb.
+
+    The index used to read its seven fields through seven single field reads,
+    each opening the file again, so a first run over a library opened every file
+    seven times. Counted at ``mutagen.File``, which every tag read opens through,
+    so a second opener anywhere on the verb's path shows here too.
+    """
+    import mutagen
+
+    anchor = place("Alder", "Anchor Work", "08A", 124, energy=6)
+    other = place("Birch", "Same Key Lower", "08A", 124, energy=4)
+    third = place("Cedar", "Next Key Up", "09A", 124, energy=5, vox=30)
+    opens: list[Path] = []
+    real = mutagen.File
+
+    def counting(target, *args, **kwargs):
+        opens.append(Path(target))
+        return real(target, *args, **kwargs)
+
+    monkeypatch.setattr(mutagen, "File", counting)
+
+    code, _ = envelope_of(["setbuild", str(anchor)])
+    assert code == int(ExitCode.OK)
+    assert sorted(opens) == sorted([anchor, other, third]), "a cold run opens each file once"
+    opens.clear()
+    envelope_of(["setbuild", str(anchor)])
+    assert opens == [], "a warm run opened a file the cache holds"
+
+
 def test_a_cache_that_cannot_be_written_does_not_cost_the_set(configured, place):
     """A performance feature must not become an outage.
 
