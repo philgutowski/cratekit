@@ -51010,3 +51010,56 @@ shape as the mutation driver's own controller only write guard, R-1574.
 
 **Closes when:** a test runs a suite where the controller's write could come
 before a worker's, or the guard is accepted as equivalent. Ledger only.
+
+---
+
+## R-1628. Modules import sqlalchemy, construct and soundfile directly while Cratekit declares none of them, relying on another package's requirements
+
+**Found:** at the review of #698, U269, 2026-11-12.
+
+**The mechanism.** A sweep of `src/cratekit` for imports no line of
+`pyproject.toml` declares, made while proving lxml unused, found three that a
+default install still resolves only through someone else's metadata.
+`sqlalchemy` (imported in `write/row_link.py`, `write/playlist_pair.py`,
+`sync/twins.py`, `tagging/rows.py`, `organize/` and others) and `construct`
+(`analysis/rekordbox_check.py`) arrive because `pyrekordbox==0.4.4` requires
+them. `soundfile` (`analysis/decode.py`) arrives because `librosa` requires
+it. The others the sweep names are handled: `yaml` in `cli/doctor.py` is
+caught as `ImportError` and named as the dev extra's, `streamrip` is the
+optional adapter's lazy import, and `PySide6` is the vendored tree's GUI,
+which Cratekit never runs.
+
+**Measured cost.** None today. `pyrekordbox` is pinned exactly, so its
+requirements cannot move under the core; `librosa` has a floor and no
+ceiling, so a release that drops `soundfile` would break `analysis/decode.py`
+with a `ModuleNotFoundError` naming none of this. `tests/test_packaging.py`
+already argues the same for numpy in the analysis extra.
+
+**Closes when:** `sqlalchemy` and `construct` are declared in the core with
+the floors `pyrekordbox` states, and `soundfile` in the analysis extra, or a
+recorded decision says the pin makes the first two unnecessary. Ledger only:
+out of U269's scope, which names no other dependency.
+
+---
+
+## R-1629. The core dependency import guard counts an import anywhere under src, so a core line only an extra's module imports passes it
+
+**Found:** at the review of #698, U269, 2026-11-12.
+
+**The mechanism.** `tests/test_packaging.py::test_every_core_dependency_is_imported_by_the_package`
+sweeps every module under `src/cratekit` for imports and passes a core
+dependency any of them names. A module that only runs with an extra installed
+(the analysis, vocals, web or desktop modules) counts the same as a core
+module, so a dependency that belongs in an extra but sits in the core list is
+read as used. The review drove it: `numpy>=1.24` added to the core list passes
+this guard (the existing heavy package guard catches numpy, but a light
+package only an extra's module imports, such as one the web module alone
+uses, would pass both).
+
+**Measured cost.** None today: every core line is imported by a core module.
+The cost is a future core line that belongs in an extra, downloaded by every
+slim install, with this guard green.
+
+**Closes when:** the guard reads only the modules the slim profile can import,
+or the registry's module to extra mapping is used to exclude an extra's
+modules from the sweep. Ledger only: maintainer facing and unreached.
