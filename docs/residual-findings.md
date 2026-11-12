@@ -50366,3 +50366,121 @@ answer: the refreshed token reaches the keychain on the next login, which
 
 **Closes when:** the watch tells the library's recoverable expiry from a
 refusal, or the cost is judged too small to matter. Ledger only.
+
+---
+
+## R-1598. U258 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #687, U258, 2026-11-12.
+
+**The mechanism.** The `fable-reviewer` agent was refused on Fable's usage
+limit at round one, so the same reviewer definition and merge bar ran on Opus
+5.5 at high effort, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None known. The review that ran is recorded in
+`docs/restart/u258.md`; this entry says only which model's reading is missing.
+
+**Closes when:** Fable reviews U258's merged range against the merge bar.
+Ledger only.
+
+---
+
+## R-1599. The brief's process wide parse memo was built, measured to cost more than it saved, and narrowed to one test
+
+**Found:** at the build of #687, U258, 2026-11-12.
+
+**The mechanism.** The brief asked that "within one test process a source text
+is parsed once however many guards ask". The first build did exactly that,
+`tests/_parse_memo.py` holding every tree for the life of the worker. Measured
+on the touched test files in the suite's own distribution, four workers, two
+runs each: wall time 85 to 91 s on `main` against 97 to 99 s with the memo, and
+peak worker memory about 200 to 290 MB on `main` against 410 to 970 MB. Every
+swept tree is about 720 MB in one process, and the collector walking that many
+live nodes made the permissive soft delete sweep slower, 19.5 s to 22.5 s alone,
+which outside pytest was 19.7 s without the memo, 25.0 s with it and 17.9 s with
+it and the collector switched off. The guards that share files across tests
+spend most of their time in analysis, so retaining trees bought them nothing.
+
+The memo now shares a tree only inside one test that opens a scope, and drops
+it when that test ends. The reading of the brief recorded here: its goal, that
+a guard stops repeating the reading and parsing that feed it, is met inside
+each test, where the repetition was; its literal wording, across tests, is not,
+on measurement.
+
+**Measured cost.** None to a person using the verbs. A future card that wants
+cross test sharing would have to beat the collector's cost first; this entry
+says what it is.
+
+**Closes when:** ledger only. It records a decision and its measurement.
+
+---
+
+## R-1600. The at risk test's headroom check over the widened key set is reached by no test
+
+**Found:** at the review of #687, U258, 2026-11-12.
+
+**The mechanism.** `test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned`
+in `tests/test_reserved_causes.py` asserts that adding every kebab shaped
+literal in the package to the key set reports no offender outside the two
+table owners. No test plants a module that reaches it: the suite's only
+planted run of the at risk test, in `tests/test_parse_memo.py`, plants a table
+whose new kebab literals move a pin earlier in the same test. Running the check
+over an empty population (row M10 of `docs/mutation/u258.md`) kills no test, on
+the branch and, by the review's hand mutation, on `main` before it: the gap
+predates U258. The round two review drove two plants that do reach it, a new
+module holding `{"cancelled": 30}` (a declared cause that is not kebab shaped,
+so no kebab pin moves) and `{"auth-failed": 30}` appended to
+`acquire/adapter.py` (which already pins that literal): each fails first at the
+headroom assertion, and with the check emptied each is still caught later, by
+the literal holder pin and the named with integer pin. So the check is
+unreached by the suite, and redundant with later pins for those two plants.
+
+**Measured cost.** Maintainer facing. The check guards an argument in a
+residual's prose, not a verb.
+
+**Closes when:** a test runs the at risk test over the package plus a one line
+plant like `{"cancelled": 30}` and sees it fail at the headroom assertion.
+Ledger only.
+
+---
+
+## R-1601. The slowest package wide guards left after U258 spend their time in analysis, not in parsing
+
+**Found:** at the build of #687, U258, 2026-11-12.
+
+**The mechanism.** U258 shares parses inside the tests that asked the same
+texts again and again, and that halved the at risk population test. Four of
+the slowest guards it was filed against were measured and found to spend their
+time elsewhere, so a parse memo cannot reach them:
+
+- `tests/test_rb_writer_guard.py`, the permissive soft delete sweep and the
+  reader pin, about 19.5 s and 15 s alone on a four core container. Each runs
+  `SoftDeleteNames` and `_soft_delete_reads` over 681 files; the parse is about
+  5 s of each. Measured outside pytest, the analysis of one sweep takes 10.3 s
+  on trees already parsed. It makes about six passes over each tree, and
+  `_laundered_reads` calls `_soft_delete_reads` once per `If` it walks, about
+  69,000 calls for 683 files (69,064 and 69,052 in two measurements a few
+  commits apart). An iterative `_own_nodes` in the same order was tried
+  and measured no faster, 16.0 s against 15.4 s for the recursive one over the
+  same analysis, with identical output.
+- `tests/test_pool_sizing.py::test_no_module_outside_the_sizing_module_builds_a_process_pool`,
+  about 12.5 s, the settling loop in `process_pool_constructions` walking each
+  function again on every pass.
+- `tests/test_skills_lint.py::test_real_skills_pass_lint`, about 4 s in the
+  parallel run and 7.4 s under the profiler, 7.1 s of which is
+  `cratekit.cli.build_parser` called 308 times, once per command line, by the
+  documented choice in `real_parser` that a failed parse must not leak argparse
+  state into the next line's verdict.
+
+Sharing a guard's ANSWERS across tests, rather than its parses, is not safe
+here: `tests/test_reserved_causes.py` and `tests/test_review_queue.py`
+monkeypatch the guard module's own constants (`EXIT_CODE_MODULE`,
+`EXIT_CODE_CLASS`, `MAX_HOPS`, `REVIEW_MODULE`), so an answer cached by text
+would be served under the wrong rule.
+
+**Measured cost.** Maintainer facing: about 50 s of a worker's time in each
+full run, spread across four workers. Nothing a person using the verbs sees.
+
+**Closes when:** a card of its own rewrites the soft delete analysis as fewer
+passes, proved identical on the tree and on planted shapes the way U258's
+comparison was, or decides the time is the price of the rule. Ledger only.
