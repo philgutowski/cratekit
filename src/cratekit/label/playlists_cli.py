@@ -105,12 +105,18 @@ NOTHING_TAKEN_SAID = (
     "add without reading its whole catalogue"
 )
 #: What it says when a go took releases and none of them has a dated track to
-#: add: every one is gone from the provider, dated by nothing, or named by no
-#: release. Not "nothing taken", which would be false.
+#: add: every one is gone from the provider, dated by nothing, named by no
+#: release, or holds only tracks the library removed (U243). Not "nothing
+#: taken", which would be false.
 NOTHING_LEFT_SAID = (
     "label sync goes took {taken} release(s) of this label and none of them has "
     "a dated track the provider still lists: {gone} gone from the provider, "
     "{undated} with no year, {unnamed} named by no release"
+)
+#: What it adds when tracks were left out as removed from the library.
+NOTHING_LEFT_TOMBSTONED_SAID = (
+    "; {tombstoned} track(s) of them were removed from the library through crate "
+    "delete review and are never added"
 )
 
 
@@ -286,6 +292,9 @@ def _group(
     years: dict[str, list[str]] = {}
     by_release: dict[str, tuple[str, tuple[str, ...]]] = {}
     taken_away: dict[str, None] = {}
+    #: The years a removed track was left out of, so a year emptied by removals
+    #: alone is not made, and one the provider plays nothing of is as before.
+    emptied_by: set[str] = set()
     undated = gone = 0
     for release_id, listed_year in wanted:
         answered = _read_one(entry, tracks, release_id, reads)
@@ -319,17 +328,21 @@ def _group(
             # client skips it on an add and it would be refused every run.
             # NOR IS ONE THE LIBRARY REMOVED, which a build would otherwise
             # put back on a year it makes or adopts afresh (U243).
-            if (
-                identifier
-                and getattr(row, "available", True) is not False
-                and identifier not in taken_away
-            ):
+            if identifier in taken_away:
+                emptied_by.add(year)
+                continue
+            if identifier and getattr(row, "available", True) is not False:
                 if identifier not in held:
                     held.append(identifier)
     return _Grouped(
-        # A YEAR LEFT WITH NO TRACK IS NOT A YEAR: every track it had was
-        # removed, so no playlist is made for it.
-        years={year: tuple(ids) for year, ids in years.items() if ids},
+        # A YEAR EVERY PLAYABLE TRACK OF WHICH WAS REMOVED IS NOT A YEAR, so no
+        # playlist is made for it. One left empty for any other reason, a
+        # release the provider plays nothing of, is planned as it always was.
+        years={
+            year: tuple(ids)
+            for year, ids in years.items()
+            if ids or year not in emptied_by
+        },
         by_release=by_release,
         undated=undated,
         gone=gone,
@@ -716,12 +729,15 @@ def _nothing_said(
     """Why a releases build of a followed label plans nothing to make."""
     if not taken or read is None:
         return NOTHING_TAKEN_SAID
-    return NOTHING_LEFT_SAID.format(
+    said = NOTHING_LEFT_SAID.format(
         taken=len(taken),
         gone=read.gone,
         undated=read.undated,
         unnamed=sum(1 for one in taken if _unnamed(one.identity)),
     )
+    if read.tombstoned:
+        said += NOTHING_LEFT_TOMBSTONED_SAID.format(tombstoned=len(read.tombstoned))
+    return said
 
 
 def _shown(

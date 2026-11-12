@@ -151,8 +151,13 @@ class HeardPlan:
     #: The tracks this run puts in the year: all of them on a removal, the
     #: named releases' on a take off.
     merging: tuple[str, ...] = ()
-    #: Those of ``merging`` the year does not hold yet.
+    #: Those of ``merging`` the year does not hold yet, less ``tombstoned``.
     add: tuple[str, ...] = ()
+    #: Those of ``merging`` the library removed through ``crate delete review``
+    #: (U243): they leave the dated playlist with the rest and are never put in
+    #: the year, so hearing a playlist cannot undo a prune or a build that left
+    #: them out.
+    tombstoned: tuple[str, ...] = ()
     #: The year is the one the ledger records, so what is added is recorded on it.
     year_recorded: bool = False
     #: A dated playlist the ledger records by this name and the folder does not hold.
@@ -208,7 +213,8 @@ class HeardPlan:
                     "name": folders.year_name(self.label, self.year),
                     "action": "add",
                     "add": len(self.add),
-                    "already": len(self.merging) - len(self.add),
+                    "already": len(self.merging) - len(self.add) - len(self.tombstoned),
+                    **({"removed from the library": len(self.tombstoned)} if self.tombstoned else {}),
                 }
             )
         return items
@@ -371,6 +377,12 @@ def plan(
     planned = replace(base, action=action, dated_id=dated_id, tracks=tracks, merging=merging)
     if not merging:
         return planned
+    taken_away = set(catalogue.tombstoned)
+    if all(one in taken_away for one in merging):
+        # EVERY TRACK IT WOULD MERGE WAS REMOVED (U243), so no year is needed
+        # to hold them and none is asked for: a year whose every track was
+        # removed is never built, and refusing for it would stop the verb.
+        return replace(planned, tombstoned=merging)
     year_name = folders.year_name(catalogue.name, year)
     # THE RECORDED YEAR FIRST, when the folder still holds it, then one by its
     # name or by the name the mark gives it, as the year build adopts one.
@@ -387,11 +399,15 @@ def plan(
             name=year_name,
         )
     have = set(account.playlist_tracks(year_id))
+    # A TRACK THE LIBRARY REMOVED IS NEVER ADDED (U243). It is counted held by
+    # the apply, as a track the year already has is, so the dated playlist is
+    # still removed or taken off with it on it, and nothing puts it back.
     return replace(
         planned,
         year_id=year_id,
         year_recorded=recorded is not None and recorded.remote_id == year_id,
-        add=tuple(one for one in merging if one not in have),
+        add=tuple(one for one in merging if one not in have and one not in taken_away),
+        tombstoned=tuple(one for one in merging if one in taken_away and one not in have),
     )
 
 

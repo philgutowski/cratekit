@@ -22,7 +22,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import rb_writer
+from cratekit.core import locations, rb_writer
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.deletion import candidates, library, stores, watermark
@@ -85,6 +85,9 @@ def test_a_library_with_streaming_rows_offers_the_removed_file(cfg):
     [
         "/v4/catalog/tracks/123/track.flac",
         "/v4/catalog/tracks/123.flac/",
+        "/v4/catalog/tracks/12_3/",
+        "/V4/catalog/tracks/123/",
+        "/v4//catalog/tracks/123/",
         "/v4/catalog/tracks//",
         "/v4/catalog/tracks/",
         "/v4/catalog/albums/123/",
@@ -156,7 +159,10 @@ def test_an_unmapped_local_path_still_refuses_and_names_its_prefix_and_rule(cfg)
     assert "2 under /Users/someone" in cause.message
     assert "1 under /Old Drive/Music" in cause.message
     steps = " ".join(cause.remediation.steps)
-    assert "library.location_prefix_map" in steps
+    # ONE ENTRY TO ADD TO THE LIST, never a second assignment of the key, which
+    # a configuration already holding a rule refuses to load.
+    assert "to the library.location_prefix_map list" in steps
+    assert "location_prefix_map = [" not in steps
     assert 'from = "/Users/someone"' in steps
     assert 'from = "/Old Drive/Music"' in steps
     assert cause.detail["unmapped_prefixes"] == {"/Users/someone": 2, "/Old Drive/Music": 1}
@@ -271,3 +277,14 @@ def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows
     assert refused["cause"]["reason"] == "deletion-reference-set-incomplete"
     assert "1 under /A Retired Drive/Music" in refused["cause"]["message"]
     assert music.exists() and not any(trash.iterdir())
+
+
+def test_a_rule_a_person_wrote_over_the_streaming_spelling_wins(cfg):
+    """Configuration wins: the row resolves through the rule and is indexed."""
+    target = Path(cfg.library.root) / "Music" / "tracks" / "123"
+    target.mkdir(parents=True)
+    rule = locations.PrefixRule("/v4/catalog", str(Path(cfg.library.root) / "Music"))
+    references = _references(cfg, _active("/v4/catalog/tracks/123/"), prefix_map=[rule])
+    assert references.streaming == ()
+    assert references.unmapped == ()
+    assert len(references.by_identity) == 1

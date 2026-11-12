@@ -292,7 +292,7 @@ def plan_label(
         notes.append(
             f"{catalogue.gone} confirmed release(s) the provider no longer has, so a "
             f"release credited to another label is not judged and only the tracks "
-            f"of held releases are taken off"
+            f"of held releases, and tracks removed from the library, are taken off"
         )
     if unexplained:
         notes.append(

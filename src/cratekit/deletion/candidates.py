@@ -38,7 +38,9 @@ references no existing file, so it cannot be the row that references a file that
 does exist. Counting it as incomplete would refuse the whole feature for any
 library holding a single row whose file the user moved by hand, which is every
 real library. A row that exists and cannot be STAT'd is the incomplete case, and
-so is one whose recorded prefix nothing maps, and both refuse.
+so is one whose recorded prefix nothing maps, and both refuse. The one unmapped
+spelling excused is a rekordbox streaming row, ``/v4/catalog/tracks/<id>/`` with
+nothing at it (U243), which names no file: see :func:`_streaming`.
 
 **AND THERE IS ONE PLACE THAT READING DOES NOT REACH, WHICH IS THE ANCHOR.**
 ``FileNotFoundError`` carries two facts and only one of them is an answer about
@@ -804,11 +806,15 @@ def assert_complete(references: ReferenceSet) -> None:
                 if references.dead_anchors
                 else ()
             ),
+            # ONE ENTRY TO ADD TO THE LIST, never an assignment of the list: a
+            # configuration that already holds a rule would refuse a second
+            # assignment of the key, and setup always writes the key.
             *(
-                f'add library.location_prefix_map = [{{ from = "{prefix}", '
-                f'to = "<where those files are now>" }}] to the configuration for '
-                f"the {count} row(s) under {prefix}, with from equal to to when "
-                f"the files are exactly where the rows say, then run this again"
+                f'add {{ from = "{prefix}", to = "<where those files are now>" }} '
+                f"to the library.location_prefix_map list in the configuration "
+                f"for the {count} row(s) under {prefix}, with from equal to to "
+                f"when the files are exactly where the rows say, then run this "
+                f"again"
                 for prefix, count in named
             ),
         ),

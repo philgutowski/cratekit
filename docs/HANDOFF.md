@@ -130,7 +130,10 @@ difference, a hard link, a symbolic link and a path later reclaimed by a
 different track, without knowing about any of them. The reference set must be
 COMPLETE before any of it means anything: an active row that will not resolve or
 will not stat contributes no inode, so the proof would pass on absence of
-evidence, and the run refuses instead of offering a smaller set.
+evidence, and the run refuses instead of offering a smaller set. The rows
+excused are the ones that can name no local file: a location that is not a path,
+such as `soundcloud:tracks:<id>`, and rekordbox's streaming spelling
+`/v4/catalog/tracks/<id>/` with nothing at it on the machine (U243).
 
 **`cratekit.core.tombstone` is a new domain module, in a slot the layering rules
 had already reserved.** It owns the version identity both halves of R36 need: the

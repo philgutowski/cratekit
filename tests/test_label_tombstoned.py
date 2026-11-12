@@ -26,6 +26,9 @@ from cratekit.deletion import library, stores
 from cratekit.label import catalogue, kept_reads, tombstoned
 from cratekit.modules.outbound import ledger
 from tests import outbound_fakes
+from tests import test_label_dated as dated_suite
+from tests import test_label_heard as heard_suite
+from tests import test_label_playlists as playlists_suite
 from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeTrack, catalogue_factory
 from tests.test_label_playlists import LABEL, LABEL_ID, LISTED
@@ -35,6 +38,7 @@ from tests.test_outbound_workers import bind as bind_account
 from tests.test_outbound_workers import installed as installed  # noqa: PLC0414 - fixture
 
 BUILD = "label.playlists.confirm"
+DAY = "2026-10-09"
 PRUNE = "label.prune.confirm"
 ACT = "Label Act"
 
@@ -371,3 +375,105 @@ def test_the_track_words_are_read_as_the_downloader_tags_them():
     assert tombstoned.track_artist(SimpleNamespace()) == ""
     assert tombstoned.track_title(SimpleNamespace(title="Plain")) == "Plain"
     assert tombstoned.track_title(SimpleNamespace(full_name="", name="Bare")) == "Bare"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. Round one's findings: heard, the releases screen, a year of nothing
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def plain(installed, monkeypatch):
+    """The heard suite's world: Kompakt followed over the shared unnamed tracks."""
+    register(LABEL)
+    fake = playlists_suite._catalogue()
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    account = outbound_fakes.StrictAccount()
+    bind_account(monkeypatch, account)
+    return installed, fake, account
+
+
+def test_hearing_a_dated_playlist_never_puts_a_removed_track_back(plain):
+    """R1 B1: the prune took the track off the year and hearing merged it back."""
+    cfg, fake, account = plain
+    folder_id = heard_suite._made(cfg, fake, account, [dated_suite._answer(["r3", "r4"], DAY)])
+    dated_id = heard_suite._ids(account, folder_id)[heard_suite.DATED]
+    _tombstone(cfg, "", "Track t4")
+    code, done = _two_acts(["label", "prune", LABEL], PRUNE)
+    assert code == int(ExitCode.OK), done
+    assert playlists_suite._years(account, folder_id)[heard_suite.YEAR] == ["t5", "t6", "t7"]
+
+    code, refused = drive(heard_suite.VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert "1 left out as removed" in refused["cause"]["detail"]["shown"]["year playlist"]
+    code, envelope = heard_suite._two_acts(heard_suite.VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert playlists_suite._years(account, folder_id)[heard_suite.YEAR] == ["t5", "t6", "t7"]
+    # THE DATED PLAYLIST STILL GOES, with the removed track on it.
+    assert heard_suite.DATED not in heard_suite._ids(account, folder_id)
+    assert account.deleted == [(dated_id, ("t4", "t5", "t6", "t7"))]
+
+
+def test_hearing_a_playlist_of_only_removed_tracks_needs_no_year(plain):
+    cfg, fake, account = plain
+    folder_id = heard_suite._made(cfg, fake, account, [dated_suite._answer(["r3"], DAY)])
+    _tombstone(cfg, "", "Track t4", content_id="44")
+    _tombstone(cfg, "", "Track t5", content_id="45")
+    year_id = heard_suite._ids(account, folder_id)[heard_suite.YEAR]
+    del account.placed[year_id]
+    code, envelope = heard_suite._two_acts(heard_suite.VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert heard_suite.DATED not in heard_suite._ids(account, folder_id)
+
+
+def test_a_releases_build_of_a_wholly_removed_release_says_why(followed):
+    """R1 D1: the screen said the provider no longer lists a track it lists."""
+    _took(followed.cfg, ("r2", "2022"))
+    _tombstone(followed.cfg, ACT, "Track t3")
+    code, refused = drive(["label", "playlists", LABEL, "--releases"])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    said = refused["cause"]["detail"]["shown"]["nothing to build"]
+    assert "1 track(s) of them were removed from the library" in said
+
+
+def test_a_year_the_provider_plays_nothing_of_is_planned_as_before(followed):
+    """R1 R6: only a year emptied by removals is left unmade."""
+    followed.fake.releases["r2"][0][0].available = False
+    code, done = _two_acts(["label", "playlists", LABEL], BUILD)
+    assert code == int(ExitCode.OK), done
+    assert "Kompakt 2022" in followed.account.titles.values()
+
+
+@pytest.mark.parametrize(
+    "tracks",
+    [
+        [{"id": "t4", "available": True, "artist": ACT}],
+        [
+            {"id": "t4", "available": True, "artist": ACT, "title": "Track t4"},
+            {"id": "t5", "available": True},
+        ],
+    ],
+    ids=["no-title", "one-track-unnamed"],
+)
+def test_a_kept_read_missing_any_track_word_is_read_again(followed, tracks):
+    path = kept_reads.path_for(LABEL_ID)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(
+            {
+                "version": kept_reads.VERSION,
+                "label_id": LABEL_ID,
+                "reads": {
+                    "r3": {
+                        "read_at": datetime.now(timezone.utc).isoformat(),
+                        "year": 2023,
+                        "tracks": tracks,
+                    }
+                },
+            }
+        ),
+        encoding="utf-8",
+    )
+    code, refused = drive(["label", "playlists", LABEL])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert "r3" in followed.fake.releases_asked_for
