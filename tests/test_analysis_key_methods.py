@@ -1,13 +1,14 @@
 """U241: the three ways the key's chroma is taken, on audio whose key is known.
 
-The whole track is the shipped method. Windows spread over the track, and the
-whole track without the harmonic separation, are the cheaper two. What is
+The whole track without the harmonic separation is the shipped method since
+U276, and ``tests/test_analysis_key_default.py`` holds that. The whole track
+after the separation, and windows spread over it, are the other two. What is
 asserted here is what a fixture can honestly say: that the windowed key hears
 a key change wherever it falls, that a track shorter than its windows is the
 whole track method bit for bit, and that the drift is still read over all of
 the track. Whether either cheaper method AGREES WITH REKORDBOX on a real
-library within the card's one percentage point is not a fixture's to say, and
-is owed to an attended sitting with ``scripts/head_agreement.py --key``.
+library within the card's one percentage point is not a fixture's to say: it
+was read at an attended sitting with ``scripts/head_agreement.py --key`` (A121).
 
 Skipped where the analysis extra is absent, because the chroma is librosa's.
 """
@@ -156,11 +157,11 @@ def test_the_timings_of_a_whole_file_name_every_stage(tmp_path):
     timings: dict[str, float] = {}
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
-        found = detect.analyse_file(path, timings=timings)
-        again = detect.analyse_file(path)
+        found = detect.analyse_file(path, key=detect.KEY_WHOLE, timings=timings)
+        again = detect.analyse_file(path, key=detect.KEY_WHOLE)
         windowed = detect.analyse_file(path, key=detect.KEY_WINDOWS)
     assert found is not None and found.get("terminal") is None, found
-    assert set(timings) == set(detect.STAGES)
+    assert set(timings) == set(detect.STAGES) == set(detect.stages_of(detect.KEY_WHOLE))
     assert all(seconds >= 0.0 for seconds in timings.values())
     assert found == again, "timing a run changed what it measured"
     assert windowed == found, "a forty second file is shorter than its windows"

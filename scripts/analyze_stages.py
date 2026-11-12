@@ -11,7 +11,9 @@ The one thing it can write is the synthetic set, into an empty folder you name.
 
 ``stages`` times each stage of the shipped functions in place, one process,
 one track after another: decode, tempo and drift, harmonic separation, chroma
-and key, energy, vocal decode, vocal model. ``memory`` measures the peak
+and key, energy, vocal decode, vocal model. The key is read with the shipped
+method unless ``--key`` names another, and the plain chroma, the shipped one
+since U276, meets no harmonic separation, so its table counts none. ``memory`` measures the peak
 memory of one light worker per track, each in a fresh process, which is the
 number ``cratekit.analysis.light`` declares to the pool. ``batch`` runs the
 measuring an ``analyze run`` does, once with one worker and once with the pool
@@ -352,7 +354,7 @@ def stages(args: argparse.Namespace) -> int:
         )
         if not args.json:
             print(f"  {path.name}: {rows[-1]['wall']:.1f} s", file=sys.stderr, flush=True)
-    totals = {key: sum(row["stages"].get(key, 0.0) for row in rows) for key, _ in STAGE_WORDS}
+    totals = stage_totals(rows, args.key)
     result = {
         "tracks": len(rows),
         "audio_seconds": sum(row["seconds"] for row in rows),
@@ -370,6 +372,22 @@ def stages(args: argparse.Namespace) -> int:
     return 0
 
 
+def stage_totals(rows: list[dict[str, Any]], method: str) -> dict[str, float]:
+    """Each stage's seconds over the rows, leaving out a detector stage the method never meets.
+
+    The plain chroma does no separation (U276), so its totals carry no
+    ``harmonic``, in the JSON as in the table.
+    """
+    from cratekit.analysis import detect
+
+    met = set(detect.stages_of(method))
+    return {
+        key: sum(row["stages"].get(key, 0.0) for row in rows)
+        for key, _ in STAGE_WORDS
+        if key not in detect.STAGES or key in met
+    }
+
+
 def stage_table(result: dict[str, Any]) -> str:
     """The stage totals as a table a record can hold, seconds and share of the run."""
     wall = result["wall_seconds"] or 1.0
@@ -381,7 +399,14 @@ def stage_table(result: dict[str, Any]) -> str:
         "| stage | seconds | share |",
         "|---|---|---|",
     ]
+    from cratekit.analysis import detect
+
+    # A STAGE THE METHOD NEVER MEETS IS NOT A ROW (U276): the plain chroma does
+    # no separation, and a row of naught seconds would read as one that ran.
+    met = set(detect.stages_of(result["key"]))
     for key, words in STAGE_WORDS:
+        if key in detect.STAGES and key not in met:
+            continue
         seconds = result["totals"].get(key, 0.0)
         lines.append(f"| {words} | {seconds:.1f} | {100 * seconds / wall:.0f}% |")
     lines.append(f"| the whole run | {result['wall_seconds']:.1f} | |")
@@ -532,7 +557,8 @@ def batch(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The script's commands and arguments, the key method's default the detector's."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -560,7 +586,7 @@ def main(argv: list[str] | None = None) -> int:
     from cratekit.analysis import detect
 
     timed = measuring("stages", "wall time of each stage, one process", stages)
-    timed.add_argument("--key", default=detect.KEY_WHOLE, choices=detect.KEY_METHODS)
+    timed.add_argument("--key", default=detect.KEY_DEFAULT, choices=detect.KEY_METHODS)
     with_vocals(timed)
     measuring("memory", "peak memory of one light worker per track", memory)
     pooled = measuring("batch", "one worker against the pool this machine affords", batch)
@@ -572,7 +598,11 @@ def main(argv: list[str] | None = None) -> int:
         help="cores kept back from the light pool (the shipped figure is 2)",
     )
     with_vocals(pooled)
+    return parser
 
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.command in ("stages", "memory", "batch") and not args.folder.is_dir():
         parser.error(f"{args.folder} is not a folder")

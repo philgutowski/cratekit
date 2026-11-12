@@ -1,0 +1,254 @@
+name = "r1534"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_identifies_always"
+description = "_identifies: read every title as carrying a letter or digit, so a blank or punctuation title is a title"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    return _WORD.search(value) is not None'''
+new = '''    return True'''
+
+[[rows]]
+id = "M02_matcher_noise_refusal"
+description = "_title_matches: drop the refusal of a side with no letter or digit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    if not (_identifies(left) and _identifies(right)):
+        return False
+    core_left'''
+new = '''    core_left'''
+
+[[rows]]
+id = "M03_core_bare_empty"
+description = "_title_core: take the shared strip even when it leaves nothing, the defect itself"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    bare = _without_trailing_bracket(value)
+    if _identifies(bare):'''
+new = '''    bare = _without_trailing_bracket(value)
+    if True:'''
+
+[[rows]]
+id = "M04_core_no_leading_branch"
+description = "_title_core: drop the leading bracket groups branch, so (Not Just) Knee Deep (Part 1) is read as brackets alone"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    if leading is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M05_core_leading_rest_empty"
+description = "_title_core: keep the leading groups even when the text after them strips to nothing"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        if _identifies(rest):
+            return value[: leading.end()] + rest, False'''
+new = '''        if True:
+            return value[: leading.end()] + rest, False'''
+
+[[rows]]
+id = "M06_core_no_group_loop"
+description = "_title_core: read a title of brackets alone whole, never with its last groups stripped"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    while shorter != current and _identifies(shorter):'''
+new = '''    while False:'''
+
+[[rows]]
+id = "M07_core_brackets_not_exact"
+description = "_title_core: let a title of brackets alone take part in containment"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    return _unbracketed(current), True'''
+new = '''    return _unbracketed(current), False'''
+
+[[rows]]
+id = "M08_matcher_exact_refusal"
+description = "_title_matches: drop the refusal of containment for a side compared exactly only"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    if exact_left or exact_right:
+        return False'''
+new = '''    if False:
+        return False'''
+
+[[rows]]
+id = "M09_contains_version_words"
+description = "_contains: read a version word title as contained in any whole title carrying those words"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    return any(word not in _VERSION_WORDS for word in words) and inner in outer'''
+new = '''    return bool(words) and inner in outer'''
+
+[[rows]]
+id = "M10_version_words_coefficient"
+description = "_VERSION_WORDS: drop mix, so Mix names a recording"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        "mix",
+'''
+new = ''''''
+
+[[rows]]
+id = "M11_matcher_loose_equality"
+description = "_title_matches: compare the cores with their brackets in, so Not Just Knee Deep misses (Not Just) Knee Deep"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    if _unbracketed(core_left) == _unbracketed(core_right):'''
+new = '''    if core_left == core_right:'''
+
+[[rows]]
+id = "M12_matcher_no_core_containment"
+description = "_title_matches: drop containment between the cores, keeping it between the whole titles"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        core_left in core_right
+        or core_right in core_left
+        or _contains(right, left)'''
+new = '''        _contains(right, left)'''
+
+[[rows]]
+id = "M13_matcher_cores_refuse_versions"
+description = "_title_matches: refuse a version word core inside another core, round one's BLOCKING"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        core_left in core_right
+        or core_right in core_left
+'''
+new = '''        _contains(core_right, core_left)
+        or _contains(core_left, core_right)
+'''
+
+[[rows]]
+id = "M14_word_underscore"
+description = "_WORD: admit the underscore as a letter, so a title of underscores is a title"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''_WORD = re.compile(r"[^\W_]+")'''
+new = '''_WORD = re.compile(r"\w+")'''
+
+[[rows]]
+id = "M15_beatport_title_noise"
+description = "_beatport_best: drop the refusal of a title with no letter or digit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    if not _identifies(title_normalized):
+        return None
+    bare_title, exact_only'''
+new = '''    bare_title, exact_only'''
+
+[[rows]]
+id = "M16_beatport_name_noise"
+description = "_beatport_best: score a row whose name carries no letter or digit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        if not _identifies(name):
+            continue
+        name_core'''
+new = '''        name_core'''
+
+[[rows]]
+id = "M17_beatport_empty_credit"
+description = "_beatport_best: keep a credit with no name, contained in every searched artist"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        credited = [other for other in credited if other]
+'''
+new = ''''''
+
+[[rows]]
+id = "M18_beatport_exact_only"
+description = "_beatport_best: let a title of brackets alone score a row by containment"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        elif exact_only:
+            continue'''
+new = '''        elif False:
+            continue'''
+
+[[rows]]
+id = "M19_beatport_tier2_on_cores"
+description = "_beatport_best: read the row name's core inside the title, round two's BLOCKING"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''            name in bare_title
+            or bare_title in name_core'''
+new = '''            name_core in bare_title
+            or bare_title in name_core'''
+
+[[rows]]
+id = "M20_beatport_suffix_clause_raw"
+description = "_beatport_best: read a version word title inside the row name's suffix"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''            or _contains(name, bare_title)
+'''
+new = '''            or bare_title in name
+'''
+
+[[rows]]
+id = "M21_beatport_no_name_core_direction"
+description = "_beatport_best: drop the title's core inside the name's core"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''            or bare_title in name_core
+'''
+new = ''''''
+
+[[rows]]
+id = "M22_beatport_loose_equality"
+description = "_beatport_best: score 3 only on the bracketed core equal to the name, as before"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        if loose_title == _unbracketed(name) or title_normalized'''
+new = '''        if bare_title == name or title_normalized'''
+
+[[rows]]
+id = "M23_beatport_tier1_raw"
+description = "_beatport_best: the lowest tier without the version word check, so a row named Dub scores off any (Dub) title"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        elif _contains(title_normalized, name):'''
+new = '''        elif name in title_normalized:'''
+
+[[rows]]
+id = "M24_discogs_track_title"
+description = "_release_matches: accept a track by the artist whatever its title (sample of the existing guard, now read through the shared matcher)"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''        if credited and _title_matches(title, track_title):'''
+new = '''        if credited:'''
+
+[[rows]]
+id = "M25_leading_groups_one"
+description = "_LEADING_GROUPS: take only the first leading group, so (A) (B) Title is read without its second group"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''_LEADING_GROUPS = re.compile(r"^(?:\s*\([^()]*\))+\s*")'''
+new = '''_LEADING_GROUPS = re.compile(r"^(?:\s*\([^()]*\))\s*")'''
