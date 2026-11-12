@@ -326,6 +326,23 @@ def _no_live_general_catalogue():
 
 
 @pytest.fixture(autouse=True)
+def _forget_library_reads():
+    """Start and end every test with the library index reader remembering nothing.
+
+    U249 made the reader keep what each file's tags said for the life of the
+    process, keyed on the path and the file's stat. Test paths are unique, so
+    one test's library cannot answer another's, but a memory that outlives its
+    test is a memory a later test's assertion about opens or reads can trip
+    on, and it grows with every library the worker indexes.
+    """
+    from cratekit.acquire import match
+
+    match.reset_cache()
+    yield
+    match.reset_cache()
+
+
+@pytest.fixture(autouse=True)
 def _block_real_library_paths(request, tmp_path_factory):
     """Point the library root at a temp directory and disarm the mount check.
 
