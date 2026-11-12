@@ -39,6 +39,7 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -298,7 +299,13 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file no catalogue knows keeps no genre. A file's label is its label
+  other file is asked of Beatport, then of Discogs when Beatport does not
+  carry it and a `discogs-token` is recorded, then of the general catalogue
+  by ISRC. Discogs' first style that names a folder is written, through the
+  taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
+  folder is a decline. Traxsource and Bandcamp, which answer every search
+  with a bot check, are no longer asked. A file no catalogue knows keeps no
+  genre. A file's label is its label
   tag, else `--label`, else the one registered label whose whole `--match`
   needle its copyright line carries, as whole words, so a folder of several
   labels is tagged in one call with every catalogue refusing, as long as each

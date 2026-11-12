@@ -107,7 +107,8 @@ as a residual rather than hidden.
 
 THE PICTURE RIDES THE GENRE'S ROW. A match carries the cover URL off the same
 row that supplied its genre, Beatport's release image or Bandcamp's listing or
-page image, and Traxsource names none, which is parity. The image is fetched
+page image, and Traxsource names none, which is parity. Discogs names none
+either: its covers are out of U244's scope, and Beatport stays the art source. The image is fetched
 later, and only for a file with no picture, by :func:`default_image_fetch`,
 which shares this module's pacer shape and rate limit policy.
 
@@ -385,9 +386,10 @@ def default_fetch(
     """The shipped fetch seam: one GET, one timeout, one rate limit policy.
 
     ``headers`` is what the request says about itself, :data:`HEADERS` unless a
-    caller names its own. The three record catalogues are asked as a browser
+    caller names its own. The three record shop pages are asked as a browser
     because they serve pages; :mod:`cratekit.tagging.published` asks a public
-    API and says what it is.
+    API and says what it is, and Discogs is asked with
+    :func:`discogs_headers` for the same reason.
 
     R22's classification lives here and nowhere else, so there is one answer to
     "was that source unreachable" rather than three that drift. A transport
@@ -491,7 +493,7 @@ def default_image_fetch(
 
 
 # ---------------------------------------------------------------------------
-# Matching, shared by all three sources
+# Matching, shared by every source asked by artist and title
 # ---------------------------------------------------------------------------
 
 
@@ -544,7 +546,7 @@ def _title_matches(searched: str, found: str) -> bool:
 
 
 def _query(artist: str, title: str) -> str:
-    """One escaped query string for all three catalogues.
+    """One escaped query string for the three record shop pages.
 
     Escaping is not cosmetic here: an unescaped ampersand truncates the query at
     the first delimiter, which returns a page for a different search and reports
@@ -1552,7 +1554,7 @@ def _decide(
     file is not reported as one no catalogue carries (R-791). Only when nobody
     answered at all does the question become which refusal, and a parse break
     beats an unreachable there because a broken parser is actionable today and a
-    network is not. A blocked source is not an answer about the track, so three
+    network is not. A blocked source is not an answer about the track, so
     refusals of this client raise the unreachable refusal and say so.
 
     The decline is a :class:`SearchHit` with no genre rather than None, because

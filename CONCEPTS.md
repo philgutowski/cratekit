@@ -80,8 +80,10 @@ it in an `acquire-refused` warning. Raised by a worker as `jobs.Declined`.
 *Avoid:* calling it a failure, or reading `settled` as all landed.
 
 ### Searcher
-The injected component that asks the record shops (Beatport, Traxsource,
-Bandcamp) for a track's genre, `tagging/searchers.py`. Each source answers one of
+The injected component that asks the record catalogues for a track's genre,
+`tagging/searchers.py`: Beatport, then Discogs through its API with a person's
+token (U244). Traxsource and Bandcamp are kept off the walk, since both answer
+a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
 limit, never got past) or a parse break. Only a miss can make a decline. With no
 source answered it refuses, failing that item and leaving the job resumable.

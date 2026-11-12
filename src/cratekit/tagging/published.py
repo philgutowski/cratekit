@@ -1,9 +1,9 @@
 """Ask a general music catalogue what genre a track was published under, by its ISRC.
 
-WHY A SECOND KIND OF SOURCE (R-796). The three record shops in
+WHY A SECOND KIND OF SOURCE (R-796). The record shops in
 :mod:`cratekit.tagging.searchers` sell dance music and are asked by artist and
-title. They do not carry funk, rock or soul, and two of them refuse this machine
-with bot checks, so every such file waited for a genre by hand while the
+title. They do not carry funk, rock or soul, and two of them refused this machine
+with bot checks (both off the default walk since U244, which asks Discogs), so every such file waited for a genre by hand while the
 taxonomy already had folders for it. A general catalogue knows those records,
 and it can be asked by the one identifier a download already carries, so no
 search result needs interpreting and nothing here is a guess.
@@ -76,8 +76,10 @@ BEATPORT MUST HAVE ANSWERED BEFORE THIS CATALOGUE IS ASKED. A genre is written
 once, fill if empty, so an album level answer written while Beatport was
 unreachable would stand in for Beatport's for good. When Beatport's answer is
 anything but a match or a miss, this catalogue is recorded as not asked and the
-file stays askable. The two fallbacks do not hold it back: they refuse this
-machine on every search, and waiting on them would mean never asking.
+file stays askable. Nothing after Beatport holds it back: the two scraped
+fallbacks refused this machine on every search, and Discogs, asked after
+Beatport since U244, is a decline or an unread source by the time this
+catalogue is weighed, never a write it could stand in for.
 
 A WORD NOTHING DECLARES IS A DECLINE HERE AND A WRITE FOR BEATPORT, on purpose.
 The resolver's last tier passes an unknown word through so a new dance genre
