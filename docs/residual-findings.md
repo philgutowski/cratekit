@@ -51063,3 +51063,75 @@ slim install, with this guard green.
 **Closes when:** the guard reads only the modules the slim profile can import,
 or the registry's module to extra mapping is used to exclude an extra's
 modules from the sweep. Ledger only: maintainer facing and unreached.
+
+---
+
+## R-1630. A title of brackets alone misses its own row when the row adds a feature, a dash suffix or punctuation
+
+**Found:** at the review of #713, R-1534, round one, 2026-11-12.
+
+**The mechanism.** Since R-1534 a title made only of bracket groups,
+"(Intro)", is compared exactly by its words, never by containment, since a
+word out of a bracket is contained in too many titles. So it matches "(Intro)",
+"Intro" and "Intro (Original Mix)", and misses its own recording listed as
+"Intro feat. X", "Intro - Original Mix", "Intro." or "[Intro]". A title that
+opens with punctuation and a bracket, "- (Intro)", misses "Intro", and square
+brackets are not read as brackets at all ("[Not Just] Knee Deep (Part 1)").
+A title that opens with bracket groups keeps them in its core, so "(Not Just)
+Knee Deep (Part 1)" misses "Not Just Knee Deep feat. X" while it finds "(Not
+Just) Knee Deep feat. X" (round two).
+Before R-1534 these matched, but only because such a title matched every row
+by the artist, so the right row was taken by its order in the page.
+
+**Measured cost.** Driven at round one through `tag_one`: "(Intro)" against a
+Beatport row "Intro feat. X" writes nothing where the base wrote that row's
+genre. A miss, so the file is offered to the next source and the general
+catalogue; no wrong data. Not measured: how often a catalogue lists a bracket
+title with an added feature.
+
+**Closes when:** a bracket only title also matches a row whose own core,
+with a feature or dash suffix taken off, equals its words, driven against the
+R-1534 tables so no different recording matches. Ledger only: the cost is a
+miss.
+
+---
+
+## R-1631. The title matcher still reads a word cut out of a bracket, or a title cut short by the strip, as contained in another recording by the artist
+
+**Found:** at the review of #713, R-1534, round one, 2026-11-12.
+
+**The mechanism.** R-1534 closed the empty title: a title the shared strip
+empties, or one with no letter or digit, now matches nothing in
+`tagging/searchers.py`. Three looser shapes of the same substring comparison
+remain, all on the base before R-1534. A bracket in mid title still cuts the
+title at its first bracket, so "Knee (Not Just) Deep (Part 1)" strips to
+"knee", contained in "Knee Slapper". The containment between whole titles,
+suffix and all, reads a bracketed word as the title: "Sunrise Mood (Intro)"
+matches a row named "Intro", and Beatport's lowest tier scores that row. And
+`_VERSION_WORDS` is a hand list: "vocal", "acapella", "mixed", "remixes",
+"intro" and "reprise" are not on it, so a file titled "Vocal Mix" matches the
+Bandcamp heading "Other Song (Vocal Mix)" where "Original Mix" is refused.
+Two cores are compared by raw characters, not words, so "Club" is in
+"Nightclub", "Re" in "There She Goes", and a dash suffix is never stripped, so
+"Original Mix" is in "Sunrise Mood - Original Mix" (round two). Beatport's
+lowest tier and the suffix clause of its middle tier read a row name inside a
+bracket the same way: "Sunrise Mood (Intro)" scores a row "(Intro)", and
+"Mood" a row "(Sunrise Mood)". A title cut to one or two letters is R-1540's,
+on Discogs, and the same holds for the other sources.
+
+**Measured cost.** Driven at rounds one and two through the shipped parsers
+and `tag_one`; every shape here matched on the base too. Beatport
+wrote the genre of the artist's "Knee Slapper" onto "Knee (Not Just) Deep
+(Part 1)", the genre of the artist's "Intro" row onto "Sunrise Mood (Intro)",
+and Bandcamp's onto "Vocal Mix"; "Club" took "Nightclub"'s on all four
+sources. A genre is fill if empty, so each is written
+for good. Not measured: how many files in a real library carry such a title.
+
+**Closes when:** the strip keeps a title's text before a mid title bracket
+when what follows it is not a suffix, the containment between whole titles is
+dropped or limited to a suffix the other side carries, and the version word
+list is replaced by a rule (a word read only inside brackets is never the
+title) and two cores are compared by runs of whole words, each driven with
+the unfiltered differential of R-1534 so no title loses its own row. The
+known pairs are pinned as such in `tests/test_title_matcher.py`. A wrong genre written onto a file is the board bar's
+damaged data.
