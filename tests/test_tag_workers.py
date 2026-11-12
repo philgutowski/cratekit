@@ -1545,6 +1545,68 @@ def test_new_art_reaches_the_file_the_artifact_and_the_summary(
     }
 
 
+def test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep(
+    cfg, folder, silence, monkeypatch
+):
+    """U260 through the verb. Ten files of one album name one cover address.
+
+    Only the shipped image fetch's HTTP getter and sleep are replaced, so the
+    binder the worker calls per item, its memory and the encoder's are the
+    shipped ones. Before the unit this made ten paced requests and ten encodes.
+    """
+    from tests.test_album_cover_once import ALBUM, Host
+    from tests.test_tagging_engine import _jpeg, blocks
+
+    names = [f"t{index:02d}" for index in range(10)]
+    for name in names:
+        place(folder, silence, name)
+    cover = _jpeg(1000, 1000)
+    bound(
+        monkeypatch,
+        answering(
+            {
+                name: SearchHit(
+                    genre=SPECIFIC,
+                    source=searchers.BEATPORT,
+                    source_genre="deep house",
+                    art_url=ALBUM,
+                )
+                for name in names
+            }
+        ),
+    )
+    host = Host({ALBUM: [cover]})
+    slept: list[float] = []
+    real_fetch = searchers.default_image_fetch
+    monkeypatch.setattr(
+        searchers, "default_image_fetch", lambda: real_fetch(get=host, sleep=slept.append)
+    )
+    expected = art.to_cdj_jpeg(cover).data
+    encoded: list[bytes] = []
+    real_encode = art.to_cdj_jpeg
+
+    def counting(data, *args, **kwargs):
+        encoded.append(data)
+        return real_encode(data, *args, **kwargs)
+
+    monkeypatch.setattr(art, "to_cdj_jpeg", counting)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert host.asked == [ALBUM]
+    assert len(slept) == 1
+    assert encoded == [cover]
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert {reports[f"{name}.flac"]["art_fetch"] for name in names} == {tag.ART_EMBEDDED}
+    for name in names:
+        (block,) = blocks(folder / f"{name}.flac")
+        assert block.data == expected
+        assert (block.width, block.height, block.depth) == (800, 800, 24)
+
+
 def test_the_counts_are_read_off_the_artifacts_rather_than_accumulated_in_memory(
     cfg, folder, silence, monkeypatch
 ):

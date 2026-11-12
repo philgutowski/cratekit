@@ -32,8 +32,11 @@ Nothing in this module reads, writes or deletes a tempo value in any container.
 
 from __future__ import annotations
 
+import hashlib
 import io
 import logging
+import threading
+from collections import OrderedDict
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -252,6 +255,77 @@ def to_cdj_jpeg(
         f"the image does not fit in {max_bytes} bytes even at quality "
         f"{ART_MIN_QUALITY}, at {img.size[0]} by {img.size[1]} pixels"
     )
+
+
+# ---------------------------------------------------------------------------
+# The encode, remembered for the life of the process (U260)
+# ---------------------------------------------------------------------------
+
+#: How many encoded covers one process keeps, the least recently used dropped
+#: first. An album's files usually sit together in a sweep, so a few covers
+#: hold every album of a landed folder, and each entry is under
+#: :data:`ART_MAX_BYTES`. More albums interleaved than this encode per file.
+COVER_MEMORY = 4
+
+_remembered: OrderedDict[tuple[bytes, int, int | None, int], CdjJpeg] = OrderedDict()
+_remembered_lock = threading.Lock()
+
+
+def to_cdj_jpeg_remembered(
+    data: bytes, *, size: int | None = ART_SIZE, max_bytes: int = ART_MAX_BYTES
+) -> CdjJpeg:
+    """:func:`to_cdj_jpeg`, made once per picture while the picture is remembered.
+
+    A sweep over an album hands the encoder the same fetched bytes for every
+    file, and every one of them decoded, resized and encoded the same picture
+    again (U260). The answer is the same object the first encode made, so every
+    file is handed exactly the bytes it would have been handed by its own
+    encode, since the encode is a pure function of its arguments.
+
+    KEYED ON WHAT MAKES THE PICTURE, never on where it came from: a SHA 256
+    digest of the bytes and their length, with the edge and the byte cap the
+    encode was asked for. Two addresses serving one picture share an encode,
+    and one address that answered different bytes does not. The encoder's
+    module constants (the quality ladder, the flattening colour) are not in
+    the key, because they do not change in a running process.
+
+    A REFUSAL IS NEVER REMEMBERED. :class:`ArtError` propagates as it always
+    did and the next call encodes again, so a picture that failed for one file
+    fails for the next on its own encode, exactly as it did before.
+
+    The memory holds :data:`COVER_MEMORY` pictures, the least recently used
+    dropped first, so a picture asked for again after that many others is
+    encoded again. Nothing is kept across processes. :func:`reset_cache` drops
+    the memory.
+    """
+    key = (hashlib.sha256(data).digest(), len(data), size, max_bytes)
+    with _remembered_lock:
+        made = _remembered.get(key)
+        if made is not None:
+            _remembered.move_to_end(key)
+            return made
+    made = to_cdj_jpeg(data, size=size, max_bytes=max_bytes)
+    with _remembered_lock:
+        _remembered[key] = made
+        _remembered.move_to_end(key)
+        while len(_remembered) > COVER_MEMORY:
+            _remembered.popitem(last=False)
+    return made
+
+
+def reset_cache() -> None:
+    """Forget every remembered encode. The suite calls it around every test."""
+    with _remembered_lock:
+        _remembered.clear()
+
+
+def decodes(data: bytes) -> bool:
+    """Whether Pillow decodes ``data`` in full, which :func:`_measure` decides.
+
+    The test a remembered fetch admits a picture by (U260), so bytes that are
+    not a picture are never kept as an answer and the next file asks again.
+    """
+    return _measure(data) is not None
 
 
 def _picture(mime: str, data: bytes, declared: tuple[int, int, int] | None) -> EmbeddedPicture:
@@ -535,6 +609,7 @@ __all__ = [
     "ART_MAX_BYTES",
     "ART_SIZE",
     "ART_SUFFIXES",
+    "COVER_MEMORY",
     "REPAIR_ERROR",
     "REPAIR_FIXED",
     "REPAIR_NONE",
@@ -546,8 +621,11 @@ __all__ = [
     "CdjJpeg",
     "EmbeddedPicture",
     "UnreadableFile",
+    "decodes",
     "read_pictures",
     "repair_in_place",
+    "reset_cache",
     "to_cdj_jpeg",
+    "to_cdj_jpeg_remembered",
     "write_front_cover",
 ]

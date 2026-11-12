@@ -193,7 +193,8 @@ APPLEDOUBLE_PREFIX = "._"
 
 #: Given a picture's URL, its bytes, or None when there are none to be had. The
 #: shipped one is :func:`cratekit.tagging.searchers.default_image_fetch`, paced
-#: like every other catalogue touch.
+#: like every other catalogue touch, behind the per process memory
+#: :func:`cratekit.tagging.searchers.for_images` keeps of each address's bytes.
 FetchImage = Callable[[str], "bytes | None"]
 
 
@@ -513,7 +514,10 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     if not data:
         return result(ART_UNAVAILABLE, f"the picture at {url} could not be fetched")
     try:
-        cdj = art.to_cdj_jpeg(data)
+        # REMEMBERED BY ITS BYTES (U260): an album's files hand over the same
+        # fetched picture, and while it is among the last few encoded, the
+        # one encode is handed to each.
+        cdj = art.to_cdj_jpeg_remembered(data)
     except art.ArtError as exc:
         return result(ART_UNAVAILABLE, f"what {url} returned is not a usable picture: {exc}")
     try:
