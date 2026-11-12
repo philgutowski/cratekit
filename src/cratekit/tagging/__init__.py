@@ -1,7 +1,8 @@
 """Genre and album-art tagging. Core, no extra.
 
 Search is injectable so the suite can prove the write path without a
-network. The live searchers (Beatport, Traxsource, Bandcamp) live in
+network. The live searchers (Beatport, then Discogs; Traxsource and Bandcamp
+off the default walk) live in
 ``searchers`` and a worker binds one through ``for_taxonomy`` at call
 time, and its picture fetch through ``for_images``, so a test can
 substitute a fake in process. A general catalogue asked by ISRC lives in

@@ -2189,7 +2189,8 @@ ENTRIES: tuple[Entry, ...] = (
         name="label.playlists",
         summary=(
             "build a followed label's folder of private year playlists on the "
-            "streaming account; adds, never removes"
+            "streaming account; adds, never removes, and never adds a track the "
+            "library removed through delete review"
         ),
         module="cratekit.label.playlists_cli",
         builder="build_playlists",
@@ -2262,8 +2263,9 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="label.prune",
         summary=(
-            "take the tracks the genre gate holds or the catalogue no longer "
-            "confirms off the year playlists this product made for a label"
+            "take the tracks the genre gate holds, the catalogue no longer "
+            "confirms, or the library removed through delete review off the year "
+            "playlists this product made for a label"
         ),
         module="cratekit.label.prune_cli",
         builder="build_prune",
@@ -3623,7 +3625,8 @@ ENTRIES: tuple[Entry, ...] = (
                 name="label.heard.confirm",
                 options=("apply", "abort"),
                 prompt="Mark these releases heard, put the dated playlist's tracks in "
-                "the year and remove it from the streaming account?",
+                "the year, less any removed or pruned, and remove it from the "
+                "streaming account?",
                 #: EXPLICIT, as every other write to the account is (R34).
                 explicit=True,
                 digest_source="plan",
@@ -3633,12 +3636,14 @@ ENTRIES: tuple[Entry, ...] = (
     # ── The taxonomy copy brought up to the shipped schema (U132) ───────────
     #
     # Appended, for the reason the deferred routing block above gives. Setup
-    # copies the shipped template once; this is how a class or a bucket the
-    # shipped template gained since reaches a library's copy.
+    # copies the shipped template once; this is how a class, a bucket or a
+    # source's vocabulary table the shipped template gained since reaches a
+    # library's copy.
     Entry(
         name="taxonomy.upgrade",
-        summary="add the classes and buckets the shipped taxonomy template declares "
-        "and this library's copy lacks, and state the shipped schema version",
+        summary="add the classes, buckets and vocabulary tables the shipped taxonomy "
+        "template declares and this library's copy lacks, and state the shipped "
+        "schema version",
         module="cratekit.cli.verbs.taxonomy",
         builder="build",
         handler_key="taxonomy.upgrade",
@@ -3660,8 +3665,8 @@ ENTRIES: tuple[Entry, ...] = (
             GateSpec(
                 name="taxonomy.upgrade.apply",
                 options=("approve", "abort"),
-                prompt="Add these classes and buckets to this library's taxonomy copy "
-                "and state the shipped schema version?",
+                prompt="Add these classes, buckets and vocabulary tables to this "
+                "library's taxonomy copy and state the shipped schema version?",
                 #: EXPLICIT (R34). The copy is the declaration every verb routes
                 #: by, so no blanket affirmative satisfies it.
                 explicit=True,

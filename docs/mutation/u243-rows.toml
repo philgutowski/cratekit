@@ -1,0 +1,258 @@
+name = "u243"
+pass_kind = "light"
+
+# U243 changes what the deletion reference set excuses (D rows) and what the
+# label verbs do with a tombstoned track (L rows). The D rows carry the merge
+# blocker class: any widening of the streaming excusal is a real path the
+# proof would stop counting. Rows are the author's; every zero is the author
+# could not kill it.
+
+[[rows]]
+id = "D1_id_class_takes_a_dot"
+description = "_STREAMING_LOCATION: the id class takes any character but a slash, so /v4/catalog/tracks/123.flac/ is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?\Z")'''
+new = '''_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[^/]+/?\Z")'''
+
+[[rows]]
+id = "D2_end_anchor_is_dollar"
+description = "_STREAMING_LOCATION: \\Z becomes $, which also accepts a trailing newline"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?\Z")'''
+new = '''_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?$")'''
+
+[[rows]]
+id = "D3_no_end_anchor"
+description = "_STREAMING_LOCATION: no end anchor, so /v4/catalog/tracks/123/track.flac is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?\Z")'''
+new = '''_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+")'''
+
+[[rows]]
+id = "D4_search_not_match"
+description = "_streaming: search rather than match, so a spelling under another directory is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''    if not _STREAMING_LOCATION.match(text):'''
+new = '''    if not _STREAMING_LOCATION.search(text):'''
+
+[[rows]]
+id = "D5_spelling_not_asked"
+description = "_streaming: the spelling test is dropped, so every unmapped row with nothing at it is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''    if not _STREAMING_LOCATION.match(text):
+        return False'''
+new = '''    if False:
+        return False'''
+
+[[rows]]
+id = "D6_disk_not_asked"
+description = "_streaming: the stat is not asked, so a streaming spelling with a file at it is excused"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''    try:
+        stat(text)
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return False'''
+new = '''    return True'''
+
+[[rows]]
+id = "D7_an_error_reads_as_absent"
+description = "_streaming: a stat error other than not found reads as nothing there, failing open"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''    except (OSError, ValueError):
+        return False
+    return False'''
+new = '''    except (OSError, ValueError):
+        return True
+    return False'''
+
+[[rows]]
+id = "D8_something_there_reads_as_absent"
+description = "_streaming: a stat that answers, a file or directory at the spelling, reads as nothing there"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''    except (OSError, ValueError):
+        return False
+    return False'''
+new = '''    except (OSError, ValueError):
+        return False
+    return True'''
+
+[[rows]]
+id = "D9_streaming_still_counted_unmapped"
+description = "reference_set: a streaming row is counted but also left unmapped, so the run still refuses"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''                streaming.append(row.content_id)
+                continue'''
+new = '''                streaming.append(row.content_id)'''
+
+[[rows]]
+id = "D10_prefix_order_fewest_first"
+description = "reference_set: unmapped prefixes sorted fewest first, so the refusal names the smallest groups"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''key=lambda pair: (-pair[1], pair[0])'''
+new = '''key=lambda pair: (pair[1], pair[0])'''
+
+[[rows]]
+id = "D11_refusal_names_no_prefix"
+description = "assert_complete: the prefixes are left out of the refusal's sentence"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''        f"cannot resolve{f' ({under})' if under else ''}, "'''
+new = '''        f"cannot resolve, "'''
+
+[[rows]]
+id = "D12_refusal_offers_no_rule"
+description = "assert_complete: the location_prefix_map step is not offered"
+file = "src/cratekit/deletion/candidates.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''                for prefix, count in named
+            ),'''
+new = '''                for prefix, count in ()
+            ),'''
+
+[[rows]]
+id = "D14_screen_never_says_ignored"
+description = "deletion.cli._shown: the count of rows excused as no local file is never put on the gate screen"
+file = "src/cratekit/deletion/cli.py"
+surface = "user"
+tests = ["tests/test_deletion_streaming.py", "tests/test_deletion.py"]
+old = '''    if ignored:
+        shown["ignored, not local files"] = ignored'''
+new = '''    if False:
+        shown["ignored, not local files"] = ignored'''
+
+[[rows]]
+id = "L1_companion_not_asked"
+description = "Tombstoned: the uncredited companion kind is not asked"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '''        for kind in (tombstone.KIND_VERSION, tombstone.KIND_VERSION_UNCREDITED):'''
+new = '''        for kind in (tombstone.KIND_VERSION,):'''
+
+[[rows]]
+id = "L2_revoked_tombstones_count"
+description = "Tombstoned: the snapshot includes revoked records, so a lifted deletion still takes the track off"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '''                record.suppression_id for record in store.suppressions()'''
+new = '''                record.suppression_id for record in store.suppressions(include_revoked=True)'''
+
+[[rows]]
+id = "L3_artists_joined_with_ampersand"
+description = "track_artist: the billed artists are joined by an ampersand, not as the downloader tags them"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '''        return ", ".join(names)'''
+new = '''        return " & ".join(names)'''
+
+[[rows]]
+id = "L4_title_without_version"
+description = "track_title: the bare name is read before the full name, so the version is dropped"
+file = "src/cratekit/label/tombstoned.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '''    for attribute in ("full_name", "name", "title"):'''
+new = '''    for attribute in ("name", "full_name", "title"):'''
+
+[[rows]]
+id = "L5_build_adds_a_tombstoned_track"
+description = "playlists_cli._group: a tombstoned track is not left out of its year, so a build adds it"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '''            if identifier in taken_away:
+                emptied_by.add(year)
+                continue'''
+new = '''            if identifier in taken_away:
+                emptied_by.add(year)'''
+
+[[rows]]
+id = "L6_empty_years_kept"
+description = "playlists_cli._group: a year emptied by removals is still planned, so an empty playlist is made"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '''            if ids or year not in emptied_by'''
+new = '''            if True'''
+
+[[rows]]
+id = "L7_kept_read_judged_blind"
+description = "KeptReads._is_fresh: a kept read without the tracks' words is reused and judged without them"
+file = "src/cratekit/label/kept_reads.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_label_playlists_kept.py"]
+old = '''        return timedelta(0) <= age < KEPT_FOR and kept.named'''
+new = '''        return timedelta(0) <= age < KEPT_FOR'''
+
+[[rows]]
+id = "L9_prune_ignores_tombstones"
+description = "prune.plan_label: a tombstoned track leaves only when a held or mismatched release says so"
+file = "src/cratekit/modules/outbound/prune.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py"]
+old = '''            if one in taken_away
+            or (one not in staying(year) and (one in on_held or one in on_other))'''
+new = '''            if (one not in staying(year) and (one in on_held or one in on_other))'''
+
+[[rows]]
+id = "L10_empties_never_said"
+description = "prune._step: a playlist the plan empties is never marked, so the screen does not say so"
+file = "src/cratekit/modules/outbound/prune.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py"]
+old = '''        empties=bool(take) and set(order) <= {one.remote_id for one in take},'''
+new = '''        empties=False,'''
+
+[[rows]]
+id = "L11_heard_adds_a_tombstoned_track"
+description = "heard.plan: a tombstoned track on the dated playlist is added to the year, round one's blocker"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_label_heard.py"]
+old = '''        add=tuple(one for one in merging if one not in have and one not in taken_away),'''
+new = '''        add=tuple(one for one in merging if one not in have),'''
+
+[[rows]]
+id = "L12_suppressed_releases_unjudged"
+description = "playlists_cli.read_catalogue: the tracks of a release the tombstone suppressed are not judged, so a removed single stays on its year"
+file = "src/cratekit/label/playlists_cli.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_prune.py", "tests/test_label_playlists.py"]
+old = '''        tombstoned=tuple(sorted({*grouped.tombstoned, *held_back})),'''
+new = '''        tombstoned=grouped.tombstoned,'''
+
+[[rows]]
+id = "L13_heard_merges_a_pruned_track"
+description = "heard.plan: a track the ledger records as pruned from the year is merged back by hearing"
+file = "src/cratekit/label/heard.py"
+surface = "user"
+tests = ["tests/test_label_tombstoned.py", "tests/test_label_heard.py"]
+old = '''        set(year_record.pruned) if year_record is not None else set()'''
+new = '''        set()'''

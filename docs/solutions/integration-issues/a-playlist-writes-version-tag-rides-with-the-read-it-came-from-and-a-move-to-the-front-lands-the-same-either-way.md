@@ -8,7 +8,7 @@ component: tooling
 severity: high
 root_cause: wrong_api
 resolution_type: code_fix
-tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220, u231, reparse, pending]
+tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220, u231, u255, reparse, hold, pending]
 applies_when:
   - "Anything moves, removes or adds tracks on a playlist on the streaming account"
   - "A write on the account is answered 412, or its read back does not show it"
@@ -30,7 +30,8 @@ stopped every later pair.
   `If-None-Match: <etag>` with the tag of the object's LAST read, and the
   provider answers a tag that is not the playlist's current one with 412,
   changing nothing. Despite the header's name it is used as a precondition.
-- `Playlist.tracks` overwrites the object's tag with the tracks response's own.
+- `Playlist.tracks` overwrites the object's tag with the tracks response's own,
+  and leaves its length (`num_tracks`) as the open parsed it.
   So a move by position carries the tag of the very reading its positions came
   from. That is the protection, not a bug: a reading the provider has moved on
   from, a lagging one, is refused instead of moving the wrong track. Refreshing
@@ -96,9 +97,44 @@ landed, at 5,794 calls against a forecast of 4,142. So:
   would have the rest of the moves sent by position from it: the one
   remaining exposure, recorded as a residual.
 
+## Changed by U255, adds through a held playlist
+
+An add sends the object's tag and puts the track at the object's length,
+`num_tracks`, which only the open and the client's read after a write set.
+So for an add the rule above runs the other way: **the tag must come from
+the same answer as the length**, and a tracks read must not touch the
+object an add is sent through. After a tracks read the object carries one
+answer's tag and another's length, and a write landing between the two was
+driven accepted at the stale position, the add put before it (U255's round
+one review). The rule above, that a write by position carries the tag of
+the reading its positions came from, is for a move or a removal.
+
+- `TidalAccount` holds, per playlist, the object its membership read
+  opened, and adds through it, so an add costs the POST and the client's
+  read after it rather than a fresh open of two GETs as well (4,003
+  requests for 1,000 adds became 2,003, measured on the real client over a
+  counting transport).
+- `_membership` reads the tracks through `copy.copy` of the opened object,
+  and holds the opened object only once that read has succeeded. The copy
+  shares nothing the tracks read writes back (round two, on client 0.8.11).
+- Any failed add drops the hold; the one retry a write has (`WRITE_RETRIES`)
+  opens the playlist again, on the open's own retry, and sends the add once
+  more, with no pause of its own. Every other open goes through `_playlist`,
+  which drops the hold first, so an object another member wrote through is
+  never reused.
+- The client's read after each write (point three of U231 above) is now
+  what the next add relies on for its tag and its position.
+
 ## Still unmeasured
 
 How long the provider's reads lag its writes, so the pauses (1, 2 and 4
 seconds) are a bound, not a fit; whether its tracks endpoint and its playlist
-endpoint issue the same tag; where it lands a move to the length. The attended
-card U220 filed measures them.
+endpoint issue the same tag, which since U255 no add depends on; where it
+lands a move to the length. The attended card U220 filed measures them.
+
+U255 leaves these open, for its own attended card: how often the client's
+read after an add serves a tag the next add is refused on (for moves, 24 of
+359 in Sitting 86), whether an add on a stale tag is always refused rather
+than accepted at a stale length (one live add was answered 412, the U147
+mirror build in `docs/cutover.md`, but a refusal every time is not
+measured), and whether a folder move moves a playlist's tag.

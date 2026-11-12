@@ -245,8 +245,8 @@ class SearchHit:
 
     ``answers`` is every catalogue's answer, so the item's record can say what
     each one said rather than only the disposition they added up to. ``unread``
-    names the catalogues asked whose answer left the question open, blocked,
-    unreachable or unparsable. On a decline it is what keeps the file from
+    names the catalogues whose answer left the question open, blocked,
+    unreachable or unparsable, or passed over for want of a token (U244). On a decline it is what keeps the file from
     reading as ``no-hit`` (R-791); on a match it only keeps the record's two
     fields agreeing.
 
@@ -484,7 +484,7 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
         # one. Which kind of decline it was decides the sentence, never whether
         # there is one.
         unread = hit.unread if hit is not None else ()
-        named = f"{', '.join(unread)} could not be read and no other catalogue" if unread else (
+        named = f"{', '.join(unread)} went unread and no other catalogue" if unread else (
             "no catalogue"
         )
         if hit is not None and hit.source:

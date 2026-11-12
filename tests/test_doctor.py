@@ -220,6 +220,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "keychain.reachable",
         "credential.bandcamp",
         "credential.catalogue",
+        "credential.discogs",
         "credential.provider",
         "credential.recognition",
         *(f"binary.{name}" for name in doctor.BINARY_NAMES),
@@ -2108,10 +2109,13 @@ def test_the_wizard_offers_every_credential_the_profile_needs_and_records_it(con
     """What is offered is the same registry question doctor asks, so a module
     switched on above is a credential offered here with no edit.
     """
-    values = ["one", "two", "three"]
-    wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"], values))
+    values = ["one", "two", "three", "four"]
+    wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes", "yes"], values))
     setup_verb._capture_credentials(wizard, configured)
 
+    # OFFERED AND NOT REQUIRED (U244): the tagging verbs spend a Discogs token
+    # when there is one, so the wizard offers it to a profile that has them.
+    assert secrets.exists(str(secrets.Credential.DISCOGS_TOKEN))
     assert secrets.exists(str(secrets.Credential.PROVIDER_SESSION))
     assert secrets.exists(str(secrets.Credential.IDENTIFY_KEY))
     assert all(note.status is doctor.Status.OK for note in wizard.notes)
@@ -2175,7 +2179,7 @@ def test_a_credential_offer_accepted_and_left_empty_is_the_same_note_as_a_no(con
 
 def test_a_credential_offer_that_could_not_be_read_still_fails(configured):
     """The other half. An empty answer is a person; a dead stream is not."""
-    wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes"]))
+    wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes", "yes"]))
     setup_verb._capture_credentials(wizard, configured)
 
     offered = [note for note in wizard.notes if note.key.startswith("setup.credential.")]
@@ -8323,6 +8327,35 @@ def test_the_bandcamp_session_check_names_the_verbs_that_spend_it(configured):
     assert "no verb" not in finding.detail
     other = doctor._check_credential("credential.recognition", inputs)
     assert other.status is doctor.Status.FAIL or "no verb" in other.detail
+
+
+def test_the_discogs_token_is_reported_never_failed_and_says_how_to_record_it(configured):
+    """U244. No verb needs the token: without one the tagging verbs record
+    Discogs as not asked, so the finding is INFO naming those verbs and the
+    login step, never a failure and never "no verb needs it"."""
+    inputs = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: False))
+    finding = doctor._check_credential("credential.discogs", inputs)
+    assert finding.status is doctor.Status.INFO
+    assert "crate tag folder, crate tag retag, crate tag suggest" in finding.detail
+    assert "crate login discogs-token --from-file PATH" in finding.detail
+    assert "no verb" not in finding.detail
+    recorded = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: True))
+    assert doctor._check_credential("credential.discogs", recorded).status is doctor.Status.OK
+
+
+def test_setup_offers_the_discogs_token_where_a_tagging_verb_is_switched_on():
+    """Offered, not required: ``offered`` is true for the token wherever one of
+    the verbs that spend it is on, and stays the registry's question for the
+    rest, so the Bandcamp session is still not offered to every installation."""
+    full = profiles.resolve("full")
+    assert doctor.offered("credential.discogs", full)
+    assert not doctor.requires_check("credential.discogs", full)
+    assert not doctor.offered("credential.bandcamp", full)
+    spenders = set(doctor.OFFERED_WHEN_SPENT["credential.discogs"])
+    assert spenders <= {entry.name for entry in registry.entries()}, "each is a real verb"
+    assert {
+        entry.name for entry in registry.entries() if entry.name in spenders
+    } == spenders == {"tag.folder", "tag.retag", "tag.suggest"}
 
 
 # ---------------------------------------------------------------------------

@@ -39,6 +39,7 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -299,7 +300,15 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file no catalogue knows keeps no genre. A file's label is its label
+  other file is asked of Beatport, then of Discogs when Beatport does not
+  carry it and a `discogs-token` is recorded, then of the general catalogue
+  by ISRC. Discogs' first style that names a folder is written, through the
+  taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
+  folder is a decline. A library set up before that table shipped gets it
+  with `crate taxonomy upgrade`, which doctor names; until then nine of the
+  common dance styles, Nu-Disco and Techno among them, are declined. Traxsource and Bandcamp, which answer every search
+  with a bot check, are no longer asked. A file no catalogue knows keeps no
+  genre. A file's label is its label
   tag, else `--label`, else the one registered label whose whole `--match`
   needle its copyright line carries, as whole words, so a folder of several
   labels is tagged in one call with every catalogue refusing, as long as each
@@ -522,9 +531,9 @@ Other label verbs:
 | `label held [return RELEASE_ID ...]` | Lists releases the genre gate holds back, or returns some to review. |
 | `label judge [--label NAME]` | Judges releases waiting in review by the label's kind and holds what the gate would not file. |
 | `label artists` | Puts the artist's name on open releases whose artist reads as a provider address. |
-| `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
+| `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes, and never adds a track removed through `delete review`. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
 | `label mark LABEL --pass PASS` (or `--xml FILE`) | Records the year playlists a landed batch filed as taken; no title changes. |
-| `label prune LABEL` | Takes held or no longer confirmed tracks off the label's year playlists. |
+| `label prune LABEL` | Takes held or no longer confirmed tracks, and tracks removed through `delete review`, off the year playlists it made; a playlist left empty is said and kept. |
 | `label heard LABEL YEAR DATE [--release ID]` | Moves a dated `<Label> <year> new <date>` playlist's tracks into the year playlist and removes the dated one. |
 
 `crate sync labels` is retired; it only resumes a labels sweep queued before
@@ -818,7 +827,7 @@ writes their genre tags.
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
 | `taxonomy folder WORD [--like GENRE]` | Makes the word a genre folder of its own with energy bands, copying family, tempo window and rating. |
-| `taxonomy upgrade` | Adds the classes and buckets the shipped template has and your copy lacks. |
+| `taxonomy upgrade` | Adds the classes, buckets and source vocabulary tables (`[vocabulary.discogs]`, `[vocabulary.deezer]`) the shipped template has and your copy lacks, never changing one your copy holds. |
 
 `taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
 dated name and refuse a word too coarse to be a genre (such as `Electronic`),
@@ -828,9 +837,16 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
-removed in rekordbox; confirmed ones go to the system Trash only. `crate
-tombstone list` shows what was removed; `--revoke ID` lets that version be
-acquired again.
+removed in rekordbox; confirmed ones go to the system Trash only. It refuses
+while any active row records a path it cannot resolve, naming each prefix and
+the `library.location_prefix_map` rule that would resolve it; rows that are no
+local file, rekordbox's streaming rows and `soundcloud:` locations among them,
+are left out and counted on the gate. `crate tombstone list` shows what was
+removed; `--revoke ID` lets that version be acquired again. A removed track
+also stays off its label's year playlists: `label playlists` never adds it,
+`label heard` never merges it in from a dated playlist (nor a track `label
+prune` took off that year), and `label prune` takes it off, a single named for
+its track included.
 
 **Review queue.** `crate review list [--queue Q] [--kind K]`, `review show
 ID`, `review resolve ID --verdict accepted|rejected [--option X]` (or

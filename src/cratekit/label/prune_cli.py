@@ -3,7 +3,8 @@
 ``label playlists`` builds a followed label's folder of year playlists and adds,
 never removes. This verb is the other half: it plans which tracks each year
 playlist this product CREATED should no longer hold, a release the genre gate
-now holds or the catalogue no longer confirms, shows every one of them by
+now holds or the catalogue no longer confirms, or a track the library removed
+through ``crate delete review`` (U243), shows every one of them by
 artist and title at one explicit gate, and on ``apply`` takes them off. A year
 playlist adopted from the account is said and left alone. The planning and
 the apply are :mod:`cratekit.modules.outbound.prune`'s.
@@ -98,6 +99,7 @@ def label_prune(ctx) -> Envelope:
     entry = labels.RegistryStore().load().resolve(name)
     planned: prune.Plan | None = None
     remote = None
+    read = None
     if entry is not None:
         from cratekit.modules.outbound import account
 
@@ -113,6 +115,8 @@ def label_prune(ctx) -> Envelope:
         if planned is not None
         else {"label": name, "nothing to take off": playlists_cli.NOT_FOLLOWED_SAID}
     )
+    if read is not None and read.tombstoned:
+        shown["removed from the library"] = playlists_cli.tombstoned_said(len(read.tombstoned))
     # AN EMPTY PLAN STILL ASKS, so a person always sees what the prune judged.
     option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=shown)
     if planned is None:

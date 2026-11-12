@@ -261,23 +261,33 @@ def _advisories(plan: suggest.SuggestPlan) -> list[dict[str, str]]:
                 ),
             }
         )
-    unread = [
-        item.content_id
+    unread_items = [
+        item
         for item in plan.items
         if item.catalogue is not None and item.catalogue.said == suggest.UNREAD
     ]
-    if unread:
-        found.append(
-            {
-                "code": CATALOGUE_UNREAD,
-                "message": (
-                    f"the catalogues could not be read for {len(unread)} row(s), "
-                    f"{_named(unread)}, so those were suggested from the library "
-                    f"alone; a lookup nobody could read is kept for the day and asked "
-                    f"again on a later one"
-                ),
-            }
+    # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED is said as that, with
+    # how to have it asked, and never as catalogues that could not be read
+    # (U244's review, round two): every catalogue asked about it answered.
+    refused = [item.content_id for item in unread_items if not item.catalogue.passed_over]
+    passed = [item.content_id for item in unread_items if item.catalogue.passed_over]
+    parts = []
+    if refused:
+        parts.append(
+            f"the catalogues could not be read for {len(refused)} row(s), "
+            f"{_named(refused)}, so those were suggested from the library "
+            f"alone; a lookup nobody could read is kept for the day and asked "
+            f"again on a later one"
         )
+    if passed:
+        parts.append(
+            f"Discogs was not asked about {len(passed)} row(s), {_named(passed)}, "
+            f"because no Discogs token is recorded, so those were suggested from "
+            f"the library alone; once one is, the next run asks it. To record it: "
+            f"{searchers.DISCOGS_LOGIN_STEPS}"
+        )
+    if parts:
+        found.append({"code": CATALOGUE_UNREAD, "message": "; ".join(parts)})
     if plan.unmatched:
         found.append(
             {
@@ -338,7 +348,12 @@ def _plan(cfg: config.Config, declared, args, chosen: dict[str, str], progress):
         lookup = suggest.catalogue_lookup(
             searchers.for_taxonomy(declared), published.for_taxonomy(declared)
         )
-        with suggest.KeptCatalogue(cfg, lookup) as kept:
+        # WHAT THIS RUN CANNOT ASK, so a row kept for the day as passed over is
+        # asked again once a Discogs token has been recorded (U244).
+        unasked = frozenset(
+            {searchers.DISCOGS} if searchers.for_discogs().token is None else ()
+        )
+        with suggest.KeptCatalogue(cfg, lookup, unasked=unasked) as kept:
             return suggest.plan_suggestions(cfg, db, declared, catalogue=kept, **options)
     finally:
         rb_writer.close_db(db)

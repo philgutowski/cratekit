@@ -1147,6 +1147,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'catalogue-app-id',  # 2026-11-05, U205
         'catalogue-app-key',  # 2026-11-05, U205
         'credential-index-unreadable',
+        'discogs-token',  # 2026-11-12, U244
         'identify-key',
         'identify-signing-key',
         'install-keychain-backend',
@@ -2017,6 +2018,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'source-missing',
         'tag-folder-absent',
         'tag-folder-copyright-ambiguous',
+        'tag-folder-discogs-no-token',  # 2026-11-12, U244
         'tag-folder-label-no-genre',
         'tag-folder-label-on-resume',
         'tag-folder-label-registry-unread',
@@ -2112,8 +2114,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'tagging/searchers.py': [
         'catalogue-parse-broken',
         'catalogue-unreachable',
+        'credential-missing',  # 2026-11-12, U244: a token Discogs rejected
         'not-asked',
         'parse-break',
+        'x-discogs-ratelimit-remaining',  # 2026-11-12, U244
     ],
     'tagging/shell.py': ['internal-error'],
     'tagging/suggest.py': [
@@ -2382,7 +2386,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     ],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
+    # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
+    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'credential-missing'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
@@ -2584,7 +2589,13 @@ PINNED_NAMED_WITH_OWN = {
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
+    # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
+    'tagging/searchers.py': [
+        'catalogue-parse-broken',
+        'catalogue-unreachable',
+        'credential-missing',
+        'parse-break',
+    ],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
@@ -3237,7 +3248,8 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'tagging/rows.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
     'tagging/rows_cli.py': ['config-unusable', 'internal-error'],
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
+    # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
+    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'credential-missing'],
     'tagging/shell.py': ['internal-error'],
     'tagging/suggest_cli.py': [
         'config-unusable',

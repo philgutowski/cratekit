@@ -1271,10 +1271,12 @@ kind = "kids"
 # with no genre and askable, and is named in the run's summary, which is where
 # to read what to add a row for.
 #
-# ONLY THE GENERAL CATALOGUE HAS ONE. The record shops' words are resolved by
-# the aliases above, which were written for them, and a table under any other
-# name is refused, since nothing would read it. Delete this table and the
-# general catalogue's words are filed by the aliases too, as before R-799.
+# TWO SOURCES HAVE ONE, the general catalogue and Discogs. The record shops'
+# words are resolved by the aliases above, which were written for them, and a
+# table under any other name is refused, since nothing would read it. Delete a
+# table and that source's words are filed by the aliases too, as before R-799,
+# until `crate taxonomy upgrade` adds the shipped table back: it adds any table
+# this template declares and a copy lacks, and never changes one a copy holds.
 #
 # MEASURED on 2026-10-01: the general catalogue's 27 top level words. The 11
 # below have a folder. Electro and Dance are too coarse for a dance track and
@@ -1296,4 +1298,48 @@ words = [
   { word = "Jazz", tag = "Jazz" },
   { word = "Classical", tag = "Classical" },
   { word = "Reggae", tag = "Caribbean" },
+]
+
+
+# DISCOGS' STYLES (U244). A release on Discogs carries a coarse genre and a
+# finer style, tagged mostly by DJs and collectors, and the styles are what a
+# folder is chosen by: the first of a release's styles, in Discogs' order, that
+# names a folder by the rule above is the one written. Its genres, Electronic
+# or Funk / Soul, are too coarse to choose by and are not read here.
+#
+# MEASURED on 2026-11-12 against this template: Disco, Deep House, House, Tech
+# House, Afro House, Funk, Balearic, Downtempo, Minimal, Progressive House and
+# UK Garage already name a folder through the aliases above, so they have no
+# row. The nine below did not. Techno has a row because the aliases refuse the
+# bare word on purpose, a record shop's catch-all, where on Discogs it is a
+# style of its own. Electro has a row because the aliases send it to the
+# fallback bucket, too coarse to write.
+#
+# THE SUBSTRING RULES ABOVE WERE WRITTEN FOR THE RECORD SHOPS' COMBINED NAMES,
+# and they read a Discogs style by any word it contains: Progressive Trance,
+# Progressive Rock and Progressive Metal were filed as Progressive House. Those
+# three have rows below the nine, and Heavy Metal files with them as Rock.
+# Afro-Cuban and Afro-Cuban Jazz still file as Afro House: their folder would be
+# Jazz, which a copy made before that folder lacks, and a row naming it leaves
+# such a copy unloadable once the upgrade's hand edits are made. Electro House
+# and Progressive Breaks still file by those rules too, with no folder naming
+# them.
+#
+# Edit a row's tag to file a style elsewhere in your copy; the upgrade never
+# changes a row you hold.
+[vocabulary.discogs]
+words = [
+  { word = "Nu-Disco", tag = "Nu Disco / Indie Dance" },
+  { word = "Italo-Disco", tag = "Nu Disco / Indie Dance" },
+  { word = "Boogie", tag = "Nu Disco / Indie Dance" },
+  { word = "Electro", tag = "Breaks / D&B / Dubstep" },
+  { word = "Leftfield", tag = "Downtempo" },
+  { word = "Acid House", tag = "House / Funky House / Disco" },
+  { word = "Techno", tag = "Techno" },
+  { word = "Garage House", tag = "Deep House" },
+  { word = "Soulful House", tag = "Deep House" },
+  { word = "Progressive Trance", tag = "Trance" },
+  { word = "Progressive Rock", tag = "Rock" },
+  { word = "Progressive Metal", tag = "Rock" },
+  { word = "Heavy Metal", tag = "Rock" },
 ]

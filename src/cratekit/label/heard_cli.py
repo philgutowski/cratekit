@@ -74,8 +74,19 @@ def _shown(planned: heard.HeardPlan | None, *, name: str) -> dict[str, Any]:
             f"{len(planned.unheard)} left unheard"
         ),
         "year playlist": (
-            f"{len(planned.add)} track(s) added, {len(planned.merging) - len(planned.add)} "
-            f"already there"
+            f"{len(planned.add)} track(s) added, "
+            f"{len(planned.merging) - len(planned.add) - len(planned.tombstoned)} already there"
+            + (
+                f", {len(planned.tombstoned)} left out as removed from the library "
+                f"or taken off the year by a prune"
+                if planned.tombstoned
+                else ""
+            )
+            if planned.year_id or not planned.tombstoned
+            else (
+                f"nothing goes in the year: all {len(planned.tombstoned)} track(s) were "
+                f"removed from the library or taken off the year by a prune"
+            )
         ),
         "rekordbox": heard.TREE_SAID,
     }
