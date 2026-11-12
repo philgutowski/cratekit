@@ -50,7 +50,7 @@ discovery itself would never pair.
 root folder was synced. :func:`before_adoption` says when a playlist is one
 the folder held before a sync adopted it, from the record of what it held, or
 by time for a folder adopted before that record, every unknown read as held;
-:func:`downloaded_copy` says when a playlist is a ``DOWNLOADED `` copy of one
+:func:`downloaded_copy` says when a playlist is a downloaded copy of one
 a pair in the same folder already holds.
 
 Layer: modules.
@@ -97,7 +97,7 @@ SAID = {
     TWICE: "refused, two taking one account title",
     TAKEN: "left, the account already holds its folder or title for something else",
     BEFORE: "left, its account folder held it before a sync adopted the folder",
-    COPY: "left, a DOWNLOADED copy of a playlist a pair already holds",
+    COPY: "left, a downloaded copy of a playlist a pair already holds",
 }
 
 #: The attributes a playlist row carries: a plain playlist and a folder.
@@ -605,27 +605,60 @@ def before_adoption(
     return ""
 
 
-def downloaded_copy(folder: str, title: str, paired: Iterable[str]) -> str:
-    """The paired account title ``title`` is a ``DOWNLOADED `` copy of, or ``""``.
+def downloaded_copy(
+    folder: str, title: str, paired: Iterable[str], *, taken: bool = False
+) -> str:
+    """The paired account title ``title`` is a downloaded copy of, or ``""``.
 
     U216. Less the mark's prefix, the title names the same playlist as one a
     pair in the same root folder holds: both are read less the folder's own
     prefix (:func:`name_of`), ignoring case, so ``DOWNLOADED Techno`` copies
     ``Genre Trivia! Techno`` in ``Genre Trivia!``. A title with nothing left
     after the prefix copies nothing.
+
+    ``taken`` IS WHETHER CRATEKIT'S RECORD HOLDS THE PLAYLIST AS TAKEN (U242).
+    Once ``crate sync strip`` takes the prefix off, the copy is titled as the
+    playlist it copies, and the record is what still says it is the
+    downloaded one, so a taken title is read as a copy with no prefix to take
+    off. One the record does not hold and that carries no prefix is never a
+    copy, whatever it is named.
     """
-    from cratekit.modules.outbound.folders import MARK_PREFIX
+    from cratekit.sync.playlists import SWEPT_PREFIX, untaken_name
 
     text = str(title or "")
-    if text[: len(MARK_PREFIX)].casefold() != MARK_PREFIX.casefold():
+    prefixed = text[: len(SWEPT_PREFIX)].casefold() == SWEPT_PREFIX.casefold()
+    if not prefixed and not taken:
         return ""
-    wanted = name_of(folder, text[len(MARK_PREFIX) :].strip()).casefold()
+    rest = text[len(SWEPT_PREFIX) :] if prefixed else text
+    wanted = name_of(folder, untaken_name(rest)).casefold()
     if not wanted:
         return ""
     for one in sorted(str(each) for each in paired):
         if name_of(folder, one).casefold() == wanted:
             return one
     return ""
+
+
+def copy_candidates(
+    fresh: Iterable[tuple[str, str]], account_id: str, title: str, taken: Iterable[str]
+) -> list[str]:
+    """The titles beside ``account_id`` it may be a downloaded copy of, as :func:`downloaded_copy` reads them.
+
+    TWO TAKEN PLAYLISTS OF ONE NAME ARE NOT EACH OTHER'S COPY (U242, rounds one
+    and two of its review). A taken title with no prefix reads as a copy only
+    of a playlist a pair holds or of one beside it that is not taken. A title
+    still carrying the prefix reads every one beside it, as before U242, so
+    ``DOWNLOADED Disco`` is still the copy of a taken ``Disco``.
+    """
+    from cratekit.sync.playlists import is_swept_name
+
+    held = frozenset(taken)
+    plain_taken = account_id in held and not is_swept_name(title)
+    return [
+        other
+        for other_id, other in fresh
+        if other_id != account_id and not (plain_taken and other_id in held)
+    ]
 
 
 def _chain(live: Iterable[Any], node_id: str) -> tuple[str, ...]:
@@ -671,6 +704,7 @@ __all__ = [
     "adoption_moment",
     "before_adoption",
     "by_kind",
+    "copy_candidates",
     "discover",
     "downloaded_copy",
     "home_of",

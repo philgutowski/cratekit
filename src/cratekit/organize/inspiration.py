@@ -1,7 +1,8 @@
 """INSPIRATION brought level with the account's downloaded sets (U144).
 
-The account's ``Downloaded Sets <year>`` folders hold one ``DOWNLOADED``
-playlist per set the source system downloaded, and most of those sets were
+The account's ``Downloaded Sets <year>`` folders hold one downloaded playlist
+per set the source system downloaded, once prefixed ``DOWNLOADED `` and since
+U242 held as taken in Cratekit's own record, and most of those sets were
 downloaded before a set landing wrote a playlist under INSPIRATION (U121), so
 their tracks are in the library with nothing naming the set. This step of
 ``crate organize``'s rekordbox area backfills them by MATCHING, chosen by the
@@ -9,11 +10,12 @@ author over running each set through the intake again: no track is
 downloaded, a set the source system did not finish shows as a short playlist,
 and every track left out is named under its set.
 
-THE PLAN. Every ``DOWNLOADED`` playlist in every root folder named
-``Downloaded Sets <year>``, or recorded by the archive as that year's folder
-whatever it is called now, is one set, and its INSPIRATION name is the account
-name with that prefix off, spelled by the rule a set playlist's name is made
-by (a slash becomes a dash). A playlist in such a folder without the prefix,
+THE PLAN. Every taken playlist (:func:`cratekit.sync.playlists.is_taken`, the
+record or the old prefix) in every root folder named ``Downloaded Sets
+<year>``, or recorded by the archive as that year's folder whatever it is
+called now, is one set, and its INSPIRATION name is the account name with any
+old prefix off, spelled by the rule a set playlist's name is made
+by (a slash becomes a dash). A playlist in such a folder that is not taken,
 and a folder whose playlists could not be listed, are named on the gate and
 read no further. A set whose name an INSPIRATION playlist already
 carries, by the rule the set archive reads that proof with (U142), is skipped,
@@ -89,7 +91,8 @@ TWICE = "two-of-one-name"
 UNPREFIXED = "unprefixed"
 FOLDER_UNREAD = "folder-unread"
 
-#: The prefix a downloaded set's account playlist carries, the archive's own.
+#: The prefix a downloaded set's account playlist carried before U242, which
+#: a set still carrying it is read by until ``crate sync strip`` takes it off.
 PREFIX = MARK_PREFIX
 
 
@@ -211,7 +214,7 @@ class ParityPlan:
             "no match": tally[EMPTY],
             "unread": tally[UNREAD],
             "two of one name": tally[TWICE],
-            "not prefixed": tally[UNPREFIXED],
+            "not taken": tally[UNPREFIXED],
             "folders unread": tally[FOLDER_UNREAD],
             "tracks matched": sum(len(row.members) for row in self.creates),
             "tracks missed": sum(len(row.misses) + row.withheld for row in self.creates),
@@ -225,7 +228,7 @@ class ParityPlan:
         rest = (
             f"{counts['already in INSPIRATION']} set(s) already in INSPIRATION, "
             f"{counts['no match']} with no track in the library, {counts['unread']} unread, "
-            f"{counts['not prefixed']} not prefixed, {counts['folders unread']} folder(s) unread"
+            f"{counts['not taken']} not taken, {counts['folders unread']} folder(s) unread"
         )
         if self.writes:
             return (
@@ -273,7 +276,7 @@ class Applied:
 
 
 def account_sets(
-    remote: Any, recorded: Iterable[str] = ()
+    remote: Any, recorded: Iterable[str] = (), taken: Iterable[str] = ()
 ) -> tuple[list[tuple[str, str, str]], list[SetRow]]:
     """Every downloaded set on the account, and every row nothing is planned for.
 
@@ -285,10 +288,17 @@ def account_sets(
     whose playlists could not be listed, unread and not empty, and a playlist
     in a sets folder without the prefix, which the archive leaves unprefixed
     when a person retitled it, named so it is not silently passed over.
+
+    A SET IS A TAKEN PLAYLIST (U242): one ``taken``, the record's taken
+    ledger, holds, or one whose title still carries the old prefix. Its
+    INSPIRATION name is its title less any prefix, so a set stripped of the
+    prefix is the same set under the same name.
     """
     from cratekit.export import set_cli
+    from cratekit.sync.playlists import is_taken, untaken_name
 
     marked = frozenset(recorded)
+    held = frozenset(taken)
     sets_found: list[tuple[str, str, str]] = []
     rows: list[SetRow] = []
     folders = sorted(remote.folders().items(), key=lambda one: (one[1], one[0]))
@@ -309,7 +319,7 @@ def account_sets(
             )
             continue
         for playlist_id, name in sorted(listed.items(), key=lambda one: (one[1], one[0])):
-            stripped = name[len(PREFIX):].strip() if name.startswith(PREFIX) else ""
+            stripped = untaken_name(name) if is_taken(playlist_id, name, held) else ""
             if not stripped:
                 rows.append(
                     SetRow(
@@ -318,9 +328,9 @@ def account_sets(
                         folder_name,
                         UNPREFIXED,
                         why=(
-                            f"it does not carry the {PREFIX.strip()} prefix, so it is "
-                            f"not read as a downloaded set; prefix it on the account if "
-                            f"it is one"
+                            f"Cratekit does not hold it as taken and it does not carry "
+                            f"the old {PREFIX.strip()} prefix, so it is not read as a "
+                            f"downloaded set"
                         ),
                     )
                 )
@@ -498,7 +508,9 @@ def plan(
     with reading() as db:
         folder_id, node = set_playlist.folder_for(db, declared)
         held = _held(db, folder_id)
-    listed, rows = account_sets(remote, recorded_folders(cfg))
+    from cratekit.sync.playlists import taken_ids
+
+    listed, rows = account_sets(remote, recorded_folders(cfg), taken_ids(cfg))
     named = Counter(name for _folder, _pid, name in listed)
     read: list[tuple[str, str, str, _Listed]] = []
     for folder, playlist_id, name in listed:

@@ -2231,7 +2231,7 @@ ENTRIES: tuple[Entry, ...] = (
     ),
     Entry(
         name="label.mark",
-        summary="prefix the year playlists of a label whose batch has landed",
+        summary="record the year playlists of a label whose batch has landed as taken",
         module="cratekit.label.mark_cli",
         builder="build_mark",
         handler_key="label.mark",
@@ -2239,20 +2239,18 @@ ENTRIES: tuple[Entry, ...] = (
         module_id="labels",
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: One surface, the account, and the one write is ``rename_playlist``
-        #: on a year playlist the outbound ledger records for the label. Each
-        #: rename is recorded in ``sync mark``'s record so ``sync unmark``
-        #: puts it back. ``destructive`` for ``sync.mark``'s reason: a year
-        #: playlist adopted by its name was made by a person, and a retitle
-        #: lands on it.
-        writes=frozenset({"remote"}),
-        destructive=True,
+        #: NO WRITE SURFACE since U242, and not destructive: the label's
+        #: folder on the account is read and nothing on it changes. Each year
+        #: playlist marked is held as taken in ``sync mark``'s record, this
+        #: product's own state, which ``sync unmark`` lets go. Before U242 the
+        #: mark was a retitle with the ``DOWNLOADED `` prefix.
+        writes=frozenset(),
         doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="label.mark.confirm",
                 options=("apply", "abort"),
-                prompt="Rename these year playlists on the streaming account?",
+                prompt="Record these year playlists as taken?",
                 # EXPLICIT, as sync.mark's is, for the same reason (R34).
                 explicit=True,
                 digest_source="plan",
@@ -2569,7 +2567,7 @@ ENTRIES: tuple[Entry, ...] = (
         name="export.archive",
         summary=(
             "file a downloaded set's playlist in Downloaded Sets <year> on the "
-            "streaming account, prefixed as downloaded"
+            "streaming account, and record it as taken"
         ),
         module="cratekit.export.set_cli",
         builder="build_archive",
@@ -2579,11 +2577,10 @@ ENTRIES: tuple[Entry, ...] = (
         emits=frozenset({"plan"}),
         output_schema="plan/1",
         #: One surface, the account: the year's Downloaded Sets folder is
-        #: created (U142), the set playlist is put in it, and the playlist is
-        #: retitled with the swept prefix, recorded in ``sync mark``'s record
-        #: so ``sync unmark`` puts it back.
-        #: ``destructive`` for ``label.mark``'s reason: a retitle lands on a
-        #: title a person can see.
+        #: created (U142) and the set playlist is put in it. No title changes
+        #: since U242: the set is held as taken in ``sync mark``'s record,
+        #: which ``sync unmark`` lets go. ``destructive`` is kept: the move
+        #: changes where a person finds a playlist they can see.
         writes=frozenset({"remote"}),
         destructive=True,
         # library.mounted: the no-name backfill opens the rekordbox database
@@ -2849,7 +2846,7 @@ ENTRIES: tuple[Entry, ...] = (
     # deferred routing block above gives.
     Entry(
         name="sync.mark",
-        summary="prefix the account playlists a landed sync pass finished",
+        summary="record the account playlists a landed sync pass finished as taken",
         module="cratekit.sync.mark_cli",
         builder="build_mark",
         handler_key="sync.mark",
@@ -2857,26 +2854,23 @@ ENTRIES: tuple[Entry, ...] = (
         source_scripts=("dj-sync",),
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: One surface, the account. The only write is ``rename_playlist``, a
-        #: retitle keyed by identifier that changes no membership. The cursor
-        #: is READ and never written here, no file on the library is written
-        #: and no database is opened. Each rename that lands is recorded in
-        #: this product's own state, the mark record, which is not a declared
-        #: surface. ``destructive`` because a retitle lands on a playlist the
-        #: product did not make, and only ``sync unmark``, a separate gated
-        #: act, puts the old title back (R-838).
-        writes=frozenset({"remote"}),
-        destructive=True,
+        #: NO WRITE SURFACE since U242, and not destructive. The account is
+        #: read, to plan and to recheck, and nothing on it changes: each
+        #: finished playlist is held as taken in the mark record, this
+        #: product's own state, which ``sync unmark`` lets go. The cursor is
+        #: READ and never written here, no file on the library is written and
+        #: no database is opened. Before U242 the mark was a retitle with the
+        #: ``DOWNLOADED `` prefix.
+        writes=frozenset(),
         doctor_checks=("credential.provider",),
         gates=(
             GateSpec(
                 name="sync.mark.confirm",
                 options=("apply", "abort"),
-                prompt="Rename these playlists on the streaming account?",
-                # EXPLICIT, as the other question about a write to the account
-                # is. A retitle of a playlist the product did not make is
-                # answered by a separate recorded act, never by one more flag
-                # on the run that found the question (R34).
+                prompt="Record these playlists as taken?",
+                # EXPLICIT, kept from when the mark was a retitle (R34): a
+                # playlist held as taken is never offered by a sync again, so
+                # the answer is a separate recorded act.
                 explicit=True,
                 digest_source="plan",
             ),
@@ -2887,18 +2881,20 @@ ENTRIES: tuple[Entry, ...] = (
     # Appended, for the reason the deferred routing block above gives.
     Entry(
         name="sync.unmark",
-        summary="put back the account playlist titles a sync pass's mark wrote",
+        summary="let go what a sync pass took, and put back any title its mark wrote",
         module="cratekit.sync.unmark_cli",
         builder="build_unmark",
         handler_key="sync.unmark",
         emits=frozenset({"plan"}),
         output_schema="plan/1",
         #: One surface, the account, and the one write is ``rename_playlist``,
-        #: a retitle back to the title the mark record says the playlist had.
-        #: The record is this product's own state and is stamped as each rename
-        #: lands; no file on the library is written and no database is opened.
-        #: ``destructive`` for ``sync.mark``'s reason: the retitle lands on a
-        #: playlist the product did not make.
+        #: a retitle back to the title the mark record says the playlist had:
+        #: a legacy prefix a pass wrote, or a title ``sync strip`` changed.
+        #: A taken entry the pass holds is let go in the record, this
+        #: product's own state, with no write to the account (U242). No file
+        #: on the library is written and no database is opened.
+        #: ``destructive`` because the retitle lands on a playlist the product
+        #: did not make.
         writes=frozenset({"remote"}),
         destructive=True,
         doctor_checks=("credential.provider",),
@@ -2908,6 +2904,65 @@ ENTRIES: tuple[Entry, ...] = (
                 options=("apply", "abort"),
                 prompt="Put these playlist titles back on the streaming account?",
                 # EXPLICIT, as sync.mark's is, for the same reason (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    # ── The DOWNLOADED prefix, retired (U242) ───────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.taken",
+        summary="record every account playlist already taken, the prefixed and the "
+        "marked, in Cratekit's own record",
+        module="cratekit.sync.taken_cli",
+        builder="build_taken",
+        handler_key="sync.taken",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: NO WRITE SURFACE, and not destructive: the account is listed and
+        #: nothing on it changes, and the one write is the taken ledger in the
+        #: mark record, this product's own state. Idempotent.
+        writes=frozenset(),
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="sync.taken.confirm",
+                options=("apply", "abort"),
+                prompt="Record these playlists as taken in Cratekit's own record?",
+                #: EXPLICIT: a playlist recorded as taken is never offered by a
+                #: sync again, so the answer is a separate recorded act (R34).
+                explicit=True,
+                digest_source="plan",
+            ),
+        ),
+    ),
+    Entry(
+        name="sync.strip",
+        summary="take the retired DOWNLOADED prefix off every account playlist, "
+        "each recorded as taken first",
+        module="cratekit.sync.strip_cli",
+        builder="build_strip",
+        handler_key="sync.strip",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: One surface, the account, and the one write is ``rename_playlist``,
+        #: to the title less the prefix, made only once the mark record holds
+        #: the playlist as taken. Each rename is recorded first under the pass
+        #: ``prefix-strip``, so ``sync unmark`` puts the old title back.
+        #: ``destructive`` because the retitle lands on a playlist the product
+        #: did not make.
+        writes=frozenset({"remote"}),
+        destructive=True,
+        doctor_checks=("credential.provider",),
+        gates=(
+            GateSpec(
+                name="sync.strip.confirm",
+                options=("apply", "abort"),
+                prompt="Take the DOWNLOADED prefix off these playlists on the streaming "
+                "account?",
+                # EXPLICIT, as sync.unmark's is, for the same reason (R34).
                 explicit=True,
                 digest_source="plan",
             ),

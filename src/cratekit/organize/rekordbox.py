@@ -23,7 +23,7 @@ THE STEPS, each the owning verb's plan:
 * A BATCH NAMED FOR ITS RUN, ``..._inboxed``, is a rename SUGGESTED and never
   made, since no verb renames a batch;
 * INSPIRATION BROUGHT LEVEL WITH THE ACCOUNT (U144),
-  :mod:`cratekit.organize.inspiration`: every ``DOWNLOADED`` set in the
+  :mod:`cratekit.organize.inspiration`: every downloaded (taken) set in the
   account's ``Downloaded Sets <year>`` folders with no INSPIRATION playlist of
   its name gets one, of the library rows its tracks match, every miss named.
   A set already there is skipped, so a second run plans nothing. Listed and

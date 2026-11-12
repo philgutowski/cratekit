@@ -147,13 +147,15 @@ the report says what it named.
 
 ## 5. The account's tail: every finished pass marked, then filed
 
-Both steps write the streaming account, so each stops at its own explicit
-gate, `organize.account.apply`, answered as the session once its plan is read.
-Neither writes the database.
+Both steps stop at their own explicit gate, `organize.account.apply`,
+answered as the session once its plan is read. Neither writes the database.
+Filing moves playlists on the account; marking changes nothing on it and
+records each finished playlist as taken in Cratekit's own record, since the
+`DOWNLOADED ` prefix is retired (U242).
 
 **Mark every pass whose playlists landed and were never marked**, not only
 this one. At sitting 48 a playlist from the 2026-10-14 pass sat at the account
-root unrenamed because only the latest pass was marked. Organize plans one
+root unmarked because only the latest pass was marked. Organize plans one
 step per landed pass, each listing its playlists with whether it is marked
 and why not:
 

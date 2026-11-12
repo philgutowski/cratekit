@@ -21,7 +21,8 @@ first and by exact name under the folder second, and never made twice:
   which one is the label's is not something a name decides.
 * a year: the playlist recorded for it, or the one playlist in the folder named
   ``<Label> <year>`` or ``DOWNLOADED <Label> <year>``, the second being what the
-  label mark leaves. Two such playlists leave that year alone, said in the plan.
+  label mark left before U242 retired the prefix, and the first what ``sync
+  strip`` leaves. Two such playlists leave that year alone, said in the plan.
 
 THE APPLY RECORDS EACH WRITE AS IT LANDS, so a refusal part way leaves every
 folder, playlist and track already written recorded, and the next plan reads
@@ -45,8 +46,8 @@ from cratekit.modules.outbound.service import RemoteAccount
 
 _ORIGIN = ("outbound", "folders")
 
-#: The prefix the label mark puts on a year playlist, spelled as the sweep
-#: spells it. Repeated here rather than imported, since ``sync.playlists`` is a
+#: The prefix the label mark put on a year playlist before U242 retired it,
+#: spelled as the sweep spells it. Still read, never written. Repeated here rather than imported, since ``sync.playlists`` is a
 #: core module that imports the label catalogue, and a test pins the two equal.
 MARK_PREFIX = "DOWNLOADED "
 

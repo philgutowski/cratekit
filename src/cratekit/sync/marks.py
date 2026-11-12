@@ -1,9 +1,11 @@
-"""Irreversible remote marks wait until the local output exists.
+"""Marks wait until the local output exists.
 
-Deferred prefixing: a provider playlist is renamed only after the importable
-file is on disk, and only after a recheck shows the remote side is still the
-thing the run planned to mark. Applying the mark first is how a crash leaves
-the provider believing the run finished while the library has nothing to import.
+Deferred marks: a provider playlist is marked only after the importable file
+is on disk, and only after a recheck shows the remote side is still the thing
+the run planned to mark. Since U242 a mark is a taken entry in Cratekit's own
+record and no title changes; before it, the mark was the ``DOWNLOADED ``
+prefix. Applying the mark first is how a crash leaves a playlist taken, never
+offered again, while the library has nothing to import.
 """
 
 from __future__ import annotations

@@ -1095,6 +1095,30 @@ def _recording_pass(cfg, fake) -> playlists.Sweep:
     return sweep
 
 
+class _Taker:
+    """What ``mark_swept`` hands each mark to since U242: the real record.
+
+    ``taken`` is every ``(id, name)`` handed in, in order; ``fail_on`` names
+    the playlists whose take raises, the shape a record write failing part way
+    takes.
+    """
+
+    def __init__(self, cfg: config.Config, *, fail_on=()) -> None:
+        self.cfg = cfg
+        self.fail_on = frozenset(fail_on)
+        self.taken: list[tuple[str, str]] = []
+
+    def __call__(self, identity: str, name: str) -> None:
+        from cratekit.sync import mark_record
+
+        if identity in self.fail_on:
+            raise RuntimeError(f"interrupted take for {identity}")
+        mark_record.MarkRecord(self.cfg).take(
+            [mark_record.Taken(identity, name, "a-pass", mark_record.BY_PASS, "2026-11-12T00:00:00Z")]
+        )
+        self.taken.append((identity, name))
+
+
 def test_a_mark_without_a_real_importable_file_renames_nothing(slim, monkeypatch, tmp_path):
     """Both halves of the file rule, and neither reaches the account at all.
 
@@ -1104,7 +1128,7 @@ def test_a_mark_without_a_real_importable_file_renames_nothing(slim, monkeypatch
     """
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(slim, fake)
-    account = outbound_fakes.FakeAccount()
+    account = _Taker(slim)
     output = tmp_path / "run-1_synced.xml"
     listings = fake.account_listings
 
@@ -1117,16 +1141,16 @@ def test_a_mark_without_a_real_importable_file_renames_nothing(slim, monkeypatch
         playlists.mark_swept(sweep, fake, account, local_output=output)
     assert empty.value.cause.reason == "sync-marks-blocked"
 
-    assert account.renamed == []
+    assert account.taken == []
     assert fake.account_listings == listings, "the recheck read ran before the file check"
 
 
-def test_a_mark_after_a_real_importable_file_prefixes_the_recorded_playlist(
+def test_a_mark_after_a_real_importable_file_takes_the_recorded_playlist(
     slim, monkeypatch, tmp_path
 ):
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(slim, fake)
-    account = outbound_fakes.FakeAccount()
+    account = _Taker(slim)
     output = tmp_path / "run-1_synced.xml"
     output.write_text("<COLLECTION/>", encoding="utf-8")
     listings = fake.account_listings
@@ -1134,8 +1158,8 @@ def test_a_mark_after_a_real_importable_file_prefixes_the_recorded_playlist(
     marked = playlists.mark_swept(sweep, fake, account, local_output=output)
 
     assert marked == ("pl-a",)
-    assert account.renamed == [("pl-a", playlists.SWEPT_PREFIX + "Warmup")]
-    assert playlists.is_swept_name(account.titles["pl-a"])
+    assert account.taken == [("pl-a", "Warmup")]
+    assert "pl-a" in playlists.taken_ids(slim), "held as taken, no title written (U242)"
     assert fake.account_listings == listings + 1, "the recheck was not a second read"
 
 
@@ -1148,12 +1172,12 @@ def test_a_playlist_renamed_on_the_account_since_the_plan_is_left_alone(
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(slim, fake)
     fake.account = [_playlist("pl-a", "Warmup Rework")]
-    account = outbound_fakes.FakeAccount()
+    account = _Taker(slim)
     output = tmp_path / "run-1_synced.xml"
     output.write_text("<COLLECTION/>", encoding="utf-8")
 
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
-    assert account.renamed == []
+    assert account.taken == []
 
 
 def test_a_playlist_gone_from_the_account_since_the_plan_is_not_marked(
@@ -1162,12 +1186,12 @@ def test_a_playlist_gone_from_the_account_since_the_plan_is_not_marked(
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(slim, fake)
     fake.account = []
-    account = outbound_fakes.FakeAccount()
+    account = _Taker(slim)
     output = tmp_path / "run-1_synced.xml"
     output.write_text("<COLLECTION/>", encoding="utf-8")
 
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
-    assert account.renamed == []
+    assert account.taken == []
 
 
 def test_a_recorded_playlist_the_pass_never_listed_is_not_pending_at_all(
@@ -1229,12 +1253,12 @@ def test_a_playlist_the_source_system_already_prefixed_is_not_prefixed_twice(
         sweep = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
     assert sweep.recorded_now == ("pl-a",)
 
-    account = outbound_fakes.FakeAccount()
+    account = _Taker(slim)
     output = tmp_path / "run-1_synced.xml"
     output.write_text("<COLLECTION/>", encoding="utf-8")
 
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ()
-    assert account.renamed == []
+    assert account.taken == []
 
 
 def test_a_mark_that_did_not_land_is_offered_again_by_the_next_pass(
@@ -1246,12 +1270,12 @@ def test_a_mark_that_did_not_land_is_offered_again_by_the_next_pass(
     cfg = slim
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(cfg, fake)
-    account = outbound_fakes.FakeAccount()
+    account = _Taker(slim)
     output = tmp_path / "run-1_synced.xml"
 
     with pytest.raises(CratekitError):
         playlists.mark_swept(sweep, fake, account, local_output=output)
-    assert account.renamed == []
+    assert account.taken == []
 
     # The next pass records nothing new and still owes the mark.
     with jobs.open_store() as store:
@@ -1262,29 +1286,27 @@ def test_a_mark_that_did_not_land_is_offered_again_by_the_next_pass(
 
     output.write_text("<COLLECTION/>", encoding="utf-8")
     assert playlists.mark_swept(later, fake, account, local_output=output) == ("pl-a",)
-    assert account.renamed == [("pl-a", playlists.SWEPT_PREFIX + "Warmup")]
+    assert account.taken == [("pl-a", "Warmup")]
 
 
 def test_a_mark_that_landed_is_not_owed_a_second_time(slim, monkeypatch, tmp_path):
-    """What ends the retrying is the prefix itself, read back off the account."""
+    """What ends the retrying is the taken entry, read back off the record."""
     cfg = slim
     fake = bind_playlists(monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")))
     sweep = _recording_pass(cfg, fake)
-    account = outbound_fakes.FakeAccount()
+    account = _Taker(slim)
     output = tmp_path / "run-1_synced.xml"
     output.write_text("<COLLECTION/>", encoding="utf-8")
     assert playlists.mark_swept(sweep, fake, account, local_output=output) == ("pl-a",)
 
-    # PINNED BEFORE IT IS FED BACK. Handing the account's own title straight to
-    # the next listing without asserting it first would make the whole test an
-    # expected value taken from the code under test.
-    assert account.titles["pl-a"] == playlists.SWEPT_PREFIX + "Warmup"
-    fake.account = [_playlist("pl-a", account.titles["pl-a"])]
+    # THE RECORD, NOT THE TITLE (U242): the account still lists it unprefixed.
+    assert playlists.taken_ids(cfg) == frozenset({"pl-a"})
     with jobs.open_store() as store:
         later = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
+    assert later.listed[0].name == "Warmup"
     assert playlists.pending_marks(later) == ()
     assert playlists.mark_swept(later, fake, account, local_output=output) == ()
-    assert len(account.renamed) == 1
+    assert len(account.taken) == 1
 
 
 def test_a_rename_that_fails_mid_batch_still_names_the_ones_that_landed(
@@ -1313,7 +1335,7 @@ def test_a_rename_that_fails_mid_batch_still_names_the_ones_that_landed(
         sweep = playlists.plan(store, cfg, fake, handler_key=INTAKE_PLAYLIST)
     assert sorted(sweep.recorded) == ["pl-a", "pl-b"]
 
-    account = outbound_fakes.FakeAccount(fail_on={"pl-b"})
+    account = _Taker(cfg, fail_on={"pl-b"})
     output = tmp_path / "run-1_synced.xml"
     output.write_text("<COLLECTION/>", encoding="utf-8")
     landed: list[str] = []
@@ -1322,9 +1344,10 @@ def test_a_rename_that_fails_mid_batch_still_names_the_ones_that_landed(
         playlists.mark_swept(
             sweep, fake, account, local_output=output, applied=landed
         )
+    assert playlists.taken_ids(cfg) == frozenset({"pl-a"})
 
     assert landed == ["pl-a"]
-    assert account.renamed == [("pl-a", playlists.SWEPT_PREFIX + "Warmup")]
+    assert account.taken == [("pl-a", "Warmup")]
 
 
 def test_the_current_intake_path_marks_nothing_and_still_reports_unbound(slim, monkeypatch):

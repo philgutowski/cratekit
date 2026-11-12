@@ -64,7 +64,8 @@ name already held the account's own playlists, and those never come to
 rekordbox: the adoption records what the folder held (``MadeFolder.held``),
 and a folder adopted before that record existed is read by when the account
 says each playlist was made against the earliest mark of a pair made in it,
-an unknown read as held. A ``DOWNLOADED `` copy of a playlist a pair in the
+an unknown read as held. A downloaded copy (``DOWNLOADED `` titled, or taken
+since U242) of a playlist a pair in the
 same folder holds is that playlist again, and is not made either. Each is
 named on the gate, never dropped.
 
@@ -2868,6 +2869,9 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
 
     root = reader.root_folders
     paired_ids = set(document.pairs)
+    # U242. WHAT THE RECORD HOLDS AS TAKEN, so a downloaded copy stripped of
+    # its old prefix is still read as the copy it is.
+    taken = playlists.taken_ids(cfg)
     released = document.released.account
     favorites = placement.source_name(active_taxonomy.load(cfg))
     wanted: list[tuple[str, str, str, Any]] = []
@@ -2927,8 +2931,10 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
             # AND A DOWNLOADED COPY of a playlist a pair in this folder holds, or
             # of one this sync brings in beside it (U216, from the review), is
             # that playlist again, so making it would put it in rekordbox twice.
-            beside = [other for other_id, other in fresh if other_id != account_id]
-            copied = pair_discover.downloaded_copy(folder, title, [*paired_titles, *beside])
+            beside = pair_discover.copy_candidates(fresh, account_id, title, taken)
+            copied = pair_discover.downloaded_copy(
+                folder, title, [*paired_titles, *beside], taken=account_id in taken
+            )
             if copied:
                 whose = (
                     "a pair in the same folder already holds"
@@ -2940,7 +2946,7 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
                     title,
                     folder,
                     pair_discover.COPY,
-                    f"it is a DOWNLOADED copy of {copied!r}, which {whose}, so it is not "
+                    f"it is a downloaded copy of {copied!r}, which {whose}, so it is not "
                     f"made in rekordbox; {pair_discover.BY_HAND}",
                 )
                 continue
