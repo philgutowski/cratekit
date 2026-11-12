@@ -50253,3 +50253,116 @@ cost is small in practice.
 **Closes when:** `plan_clear` reads the members a chunk of IDs to a
 statement and judges them with `analyzed.judge`, its digest equal to today's
 on the same database. Ledger only: a speed point, no false answer.
+
+---
+
+## R-1593. An older account adapter a caller kept meets a refusal and drops the newer session the held adapter was built over, costing a login
+
+**Found:** at the review of #690, U261, 2026-11-12, round two.
+
+**The mechanism.** `account.provider_failure` reads the refused adapter as
+the one `account` holds and drops the shared session that one was built
+over (`_forget_refused`). A caller that kept an older adapter
+(`export/set_cli.py`, `organize/account.py`'s lazy holder, `sync/pair_cli.py`)
+and meets a 401 through it, after the held adapter was rebuilt over a
+session logged in since, drops that newer session instead.
+
+**Measured cost.** Driven by the review on the suite's doubles (probe P4):
+one extra login, two paced requests, never a refused client held. The
+producer also needs the keychain to change in the middle of a process,
+which only another process does, and was not driven.
+
+**Closes when:** the refusal drops the held session whose client is the
+refused adapter's own, rather than the session the module's held adapter
+names. Ledger only.
+
+---
+
+## R-1594. A session the provider withdraws in the middle of a process is handed to the next resolve without a request, and the label crawl's discovery search reads its 401 as no credited artists
+
+**Found:** at the review of #690, U261, 2026-11-12, round one.
+
+**The mechanism.** Since U261 a later resolve of the catalogue or the
+account reuses the process's held session after asking the gate and the
+keychain, never the provider, as the card chose. A session the provider
+withdraws between two resolves, with no call made in between, is handed out
+again; the first call over it is answered 401, which `provider_session._watch`
+reads and drops the hold, so the resolve after that refuses. The cost lands
+on that first call: `tidal_catalogue._credited_by` catches every exception
+but the gate's and the client's own authentication error as "one query, not
+the session", and the client raises a 401 as its HTTP error, so the
+discovery search answers no credited artists. The same swallow meets a
+revocation between login and the first search on `main` too.
+
+**Measured cost.** Driven by the review with the real client library over
+a fake provider (probes P4 and P5): on the branch one resolve's discovery
+searches read a withdrawn session as no credits, where `main` refused that
+resolve with `credential-missing`. The producer, the provider withdrawing a
+session in the middle of a process, was not driven against the live
+account, so its reachability is unmeasured.
+
+**Closes when:** `_credited_by` reads a 401 or 403 as the session and
+raises, as the account's `provider_failure` does, so a withdrawn session
+refuses the run on its first call whichever resolve handed it out. Ledger
+only until the producer is driven.
+
+---
+
+## R-1595. A scope that left the session unchanged no longer records the session's name in the credential index, which every login used to do
+
+**Found:** at the review of #690, U261, 2026-11-12, round one.
+
+**The mechanism.** Before U261 every scope wrote the session back through
+`secrets.set_json`, which records the name in the presence index, so a
+login repaired an index that had lost the name. An unchanged session is now
+not written, so the index is left as it was.
+
+**Measured cost.** Driven by the review: with the name removed from the
+index and the session still in the keychain, an unchanged downloader scope
+leaves `secrets.exists` False on the branch where `main` made it True. The
+catalogue and the account then refuse `credential-missing` until the session
+is recorded again, the remedy that refusal already names. The producers, a
+full disk in the window `secrets.set` documents or a person removing a
+damaged index, were not driven.
+
+**Closes when:** a scope that read the session records its name in the
+index when the index lacks it, without a keychain write, or the refusal's
+remedy is judged enough. Ledger only.
+
+---
+
+## R-1596. U261 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass over its merged range is owed
+
+**Found:** at the review of #690, U261, 2026-11-12.
+
+**The mechanism.** The review of U261 was refused on Fable's usage limit,
+so by the rule of 2026-11-08 the same reviewer definition ran on Opus 5.5 at
+high effort, under the same merge bar and round cap.
+
+**Measured cost.** None measured. A second model's review found no BLOCKING
+finding in either round; a Fable pass is what the rule asks for.
+
+**Closes when:** Fable at high effort reviews the merged range of U261
+(`provider_session.session_for`, the unchanged write back, the account's
+hold over the shared session) and its findings are filed. Ledger only.
+
+---
+
+## R-1597. The provider library's own recoverable expired token 401 drops the held session, costing a login and an account adapter rebuild per expiry
+
+**Found:** at the review of #690, U261, 2026-11-12, round one.
+
+**The mechanism.** `provider_session._watch` drops the process's held
+session on any 401 or 403 answered through the shared client. The provider
+library answers an expired access token with a 401, refreshes it and asks
+again, which the watch cannot tell from a refusal, so the hold is dropped
+although the client recovered.
+
+**Measured cost.** Driven by the review (probes P3 and P7): one more login
+per token expiry, two paced requests, and the account's held adapter is
+rebuilt, so its per process reads are made again (not measured). No wrong
+answer: the refreshed token reaches the keychain on the next login, which
+`main` never stored.
+
+**Closes when:** the watch tells the library's recoverable expiry from a
+refusal, or the cost is judged too small to matter. Ledger only.
