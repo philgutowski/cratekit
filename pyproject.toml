@@ -196,9 +196,24 @@ pythonpath = ["src"]
 # safe here because of the sentence above: every test already owns its state
 # roots, so no two workers share a directory, a keychain or a library. Pass
 # `-n 0` to run in this process, which a debugger and a profiler both need.
+#
+# `--dist worksteal` lets a worker that runs out of tests take half of the
+# busiest worker's queue (U251). Under the default distribution a worker that
+# draws a long test keeps the tests queued behind it while the others sit
+# idle, so a run ends when the unluckiest queue drains. Measured 2026-11-12 on
+# a four core Linux container at 18,085 tests, one run each way: 789 seconds
+# of pytest's own time by default against 629 stealing, the workers' summed
+# test seconds spread by 178 against 67. Measured again at 18,550 tests the
+# same day: 964 seconds by default on the base, one run, against 680, 771 and
+# 718 stealing, three runs, about twelve minutes each. A worker that steals
+# part of a module sets that module's scoped fixtures up again, which is
+# correct and costs their set up once more.
+#
 # `scripts/mutate.py` inherits this line, so the driver's full suite baselines
-# run parallel too, and its reporting plugin writes from the controller only.
-addopts = "-q -n auto"
+# run parallel and stealing too, and its reporting plugin writes from the
+# controller only; `scripts/cloud_battery.py` passes nothing over it.
+# `tests/test_suite_distribution.py` pins both options.
+addopts = "-q -n auto --dist worksteal"
 
 [tool.coverage.run]
 source = ["cratekit"]

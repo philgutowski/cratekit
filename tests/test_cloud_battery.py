@@ -22,6 +22,8 @@ from pathlib import Path
 
 import pytest
 
+from tests import _stealing_suite as stealing
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -214,3 +216,44 @@ def test_compare_refuses_a_branch_it_cannot_unshallow(origin, tmp_path, monkeypa
     monkeypatch.setattr(battery, "failing_ids", must_not_run)
 
     assert battery.cmd_compare(None) == 1
+
+
+# ---------------------------------------------------------------------------
+# The suite run reads a work stealing run exactly, U251
+# ---------------------------------------------------------------------------
+
+
+def test_the_suite_command_leaves_the_distribution_to_addopts(monkeypatch):
+    """The battery passes nothing that would override ``pyproject.toml``.
+
+    ``-o``, a worker count or a distribution here would measure a different run
+    from the one a person gets from ``pytest``, and the base and the branch
+    would each be read under the option the battery chose.
+    """
+    seen = []
+
+    def recording_run(cmd):
+        seen.append(cmd)
+        return subprocess.CompletedProcess(cmd, 1, stdout="1 failed, 2 passed\n", stderr="")
+
+    monkeypatch.setattr(battery, "run", recording_run)
+    battery.failing_ids()
+    (command,) = seen
+    # The whole command, each token read for what it changes. A list of the
+    # flags forbidden would let the next spelling past (`--maxprocesses=1`,
+    # `--tx popen`, `-d`); an exact command lets nothing past unread.
+    assert command[0] == str(battery.PYTHON)
+    assert command[1:] == ["-m", "pytest", "--tb=no", "-rfE", "-p", "no:cacheprovider"]
+
+
+def test_a_failure_that_moved_between_workers_is_read_by_its_id(tmp_path, monkeypatch):
+    """The real run, under the repository's distribution, with a stolen failure."""
+    suite = stealing.write(tmp_path / "suite")
+    log = tmp_path / "workers"
+    stealing.prepare_environment(monkeypatch, log)
+    monkeypatch.setattr(battery, "ROOT", suite)
+    monkeypatch.setattr(battery, "PYTHON", Path(sys.executable))
+    ids, summary = battery.failing_ids()
+    assert ids == {stealing.STOLEN_FAILURE}
+    assert f"1 failed, {stealing.FULL_COUNT - 1} passed" in summary
+    stealing.assert_the_failure_moved(log)

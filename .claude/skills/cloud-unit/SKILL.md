@@ -262,7 +262,7 @@ the `**Depends on:**` line first and every field the brief form has.
 ## 3. Start
 
     git checkout -b cloud/N-<slug> origin/main      # the name board.py cloud printed
-    .venv/bin/python scripts/cloud_battery.py baseline   # background job, about ten minutes
+    .venv/bin/python scripts/cloud_battery.py baseline   # background job, about twelve minutes
 
 The baseline measures the machine's failures on the base, on this container,
 and writes them to `.cloud-battery/baseline.txt`. The clone is shallow, so it
