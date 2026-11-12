@@ -68,7 +68,7 @@ from cratekit.core import config as core_config
 from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Outcome, Scope, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.label import catalogue, dated, kept_reads, sweep, sync_cli
+from cratekit.label import catalogue, dated, kept_reads, sweep, sync_cli, tombstoned
 from cratekit.label import cli as label_cli
 from cratekit.label import registry as labels
 from cratekit.modules.outbound import folders
@@ -112,6 +112,15 @@ NOTHING_LEFT_SAID = (
     "a dated track the provider still lists: {gone} gone from the provider, "
     "{undated} with no year, {unnamed} named by no release"
 )
+
+
+def tombstoned_said(count: int) -> str:
+    """What a screen says of the tracks the library removed on purpose (U243)."""
+    return (
+        f"{count} track(s) of this catalogue were removed from the library through "
+        f"crate delete review, so no build adds them and crate label prune takes "
+        f"them off the year playlists this product made"
+    )
 
 
 def _unnamed(identity: str) -> bool:
@@ -182,6 +191,7 @@ class _Grouped:
     by_release: dict[str, tuple[str, tuple[str, ...]]]
     undated: int
     gone: int
+    tombstoned: tuple[str, ...] = ()
 
 
 def _read_one(
@@ -222,6 +232,7 @@ def _grouped(
     entry: labels.LabelEntry,
     found: catalogue.Catalogue,
     wanted: Sequence[tuple[str, str]],
+    gone_from_library: tombstoned.Tombstoned,
     reads: kept_reads.KeptReads | None = None,
 ) -> _Grouped:
     """Each release's tracks read once and grouped by year, or the refusal.
@@ -235,11 +246,15 @@ def _grouped(
     asked again, and what is read now is kept, written as it goes and once
     more on the way out, a breaker's park or a refusal included, so a stopped
     build keeps everything it read.
+
+    ``gone_from_library`` is the tombstone question (U243): a track it answers
+    for is one the library removed on purpose, and is left out of every year,
+    so no build adds it, and named in ``tombstoned`` for the prune to take off.
     """
     if reads is None:
-        return _group(entry, catalogue.ReleaseTracks(found), wanted, None)
+        return _group(entry, catalogue.ReleaseTracks(found), wanted, None, gone_from_library)
     try:
-        grouped = _group(entry, catalogue.ReleaseTracks(found), wanted, reads)
+        grouped = _group(entry, catalogue.ReleaseTracks(found), wanted, reads, gone_from_library)
     except BaseException as exc:
         # THE STOP IS WHAT THE PERSON IS TOLD, never a failure to keep the
         # reads behind it: a park read as a disk error would send somebody to
@@ -266,9 +281,11 @@ def _group(
     tracks: catalogue.ReleaseTracks,
     wanted: Sequence[tuple[str, str]],
     reads: kept_reads.KeptReads | None,
+    gone_from_library: tombstoned.Tombstoned,
 ) -> _Grouped:
     years: dict[str, list[str]] = {}
     by_release: dict[str, tuple[str, tuple[str, ...]]] = {}
+    taken_away: dict[str, None] = {}
     undated = gone = 0
     for release_id, listed_year in wanted:
         answered = _read_one(entry, tracks, release_id, reads)
@@ -276,6 +293,14 @@ def _group(
             gone += 1
             continue
         rows, stated = answered
+        # A TRACK THE LIBRARY REMOVED is judged on every release, dated or not,
+        # so the prune can take it off whichever year it was put on (U243).
+        for row in rows:
+            identifier = _id(row)
+            if identifier and gone_from_library(
+                tombstoned.track_artist(row), tombstoned.track_title(row)
+            ):
+                taken_away[identifier] = None
         year = _year(stated, listed_year)
         # EVERY TRACK the release carries, playable or not, is what the prune
         # reads as still the label's (R-836): a track that stopped playing is
@@ -292,14 +317,23 @@ def _group(
             identifier = _id(row)
             # A TRACK THE PROVIDER WILL NOT PLAY is never asked for, since the
             # client skips it on an add and it would be refused every run.
-            if identifier and getattr(row, "available", True) is not False:
+            # NOR IS ONE THE LIBRARY REMOVED, which a build would otherwise
+            # put back on a year it makes or adopts afresh (U243).
+            if (
+                identifier
+                and getattr(row, "available", True) is not False
+                and identifier not in taken_away
+            ):
                 if identifier not in held:
                     held.append(identifier)
     return _Grouped(
-        years={year: tuple(ids) for year, ids in years.items()},
+        # A YEAR LEFT WITH NO TRACK IS NOT A YEAR: every track it had was
+        # removed, so no playlist is made for it.
+        years={year: tuple(ids) for year, ids in years.items() if ids},
         by_release=by_release,
         undated=undated,
         gone=gone,
+        tombstoned=tuple(sorted(taken_away)),
     )
 
 
@@ -342,6 +376,7 @@ def read_catalogue(
             (str(getattr(release, "id", "") or ""), sweep.year_of(release))
             for release in confirmed.releases
         ],
+        tombstoned.Tombstoned(cfg),
         reads,
     )
     return folders.LabelCatalogue(
@@ -354,6 +389,7 @@ def read_catalogue(
         gone=grouped.gone,
         suppressed=confirmed.suppressed,
         by_release=grouped.by_release,
+        tombstoned=grouped.tombstoned,
         # A VERDICT OF MISMATCH IS THE CATALOGUE SAYING ANOTHER LABEL, which is
         # what "no longer confirms" means to the prune. "unconfirmed" is no
         # credit found, an absence, and is not evidence of anything (R-836).
@@ -411,6 +447,7 @@ def taken_releases(document: Mapping[str, Any], label_id: str) -> tuple[TakenRel
 
 
 def read_taken(
+    cfg,
     entry: labels.LabelEntry,
     found: catalogue.Catalogue,
     taken: Sequence[TakenRelease],
@@ -422,7 +459,9 @@ def read_taken(
     screen counts it on its own.
     """
     readable = [one for one in taken if not _unnamed(one.identity)]
-    grouped = _grouped(entry, found, [(one.identity, one.year) for one in readable])
+    grouped = _grouped(
+        entry, found, [(one.identity, one.year) for one in readable], tombstoned.Tombstoned(cfg)
+    )
     return folders.LabelCatalogue(
         label_id=entry.label_id,
         name=entry.name,
@@ -431,6 +470,7 @@ def read_taken(
         undated=grouped.undated,
         gone=grouped.gone,
         by_release=grouped.by_release,
+        tombstoned=grouped.tombstoned,
     )
 
 
@@ -724,6 +764,8 @@ def _shown(
         "catalogue": said,
         "removes": "nothing, ever: no track, playlist or folder is taken away",
     }
+    if read.tombstoned:
+        shown["removed from the library"] = tombstoned_said(len(read.tombstoned))
     if taken is not None:
         shown["releases read"] = [_named(one) for one in taken if not _unnamed(one.identity)]
     if listed is not None:
@@ -919,7 +961,7 @@ def label_playlists(ctx) -> Envelope:
         found = catalogue.resolve(cfg)
         if from_releases:
             taken = taken_releases(sync_cli.load_record(cfg), entry.label_id)
-            read = read_taken(entry, found, taken)
+            read = read_taken(cfg, entry, found, taken)
         else:
             # THE KEPT READS FIRST, so a store that cannot be read refuses
             # before the provider is asked anything (R-1091).
@@ -1005,5 +1047,6 @@ __all__ = [
     "read_catalogue",
     "read_taken",
     "refused_warnings",
+    "tombstoned_said",
     "taken_releases",
 ]

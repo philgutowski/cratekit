@@ -729,7 +729,7 @@ playlist pair.
 ### Prune
 `crate label prune` or `crate export prune`: takes ledger-added tracks off a
 product made playlist on evidence (a hold, another label's release, a row that
-left), behind an explicit gate. Moves them to `pruned`. Never removes a
+left, a tombstone over the track), behind an explicit gate. Moves them to `pruned`. Never removes a
 playlist, folder or heart.
 
 ### Heard

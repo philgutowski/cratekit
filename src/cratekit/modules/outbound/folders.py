@@ -6,7 +6,8 @@ year, each holding that year's tracks from the label's catalogue. This module is
 that shape, planned and then applied, against the account seam.
 
 ADD ONLY. Nothing here takes a track, a playlist or a folder away. A track that
-has left the label's catalogue, or that the genre gate now holds, is taken off
+has left the label's catalogue, that the genre gate now holds, or that the
+library removed through ``crate delete review`` (U243), is taken off
 a year playlist this product made by ``label prune`` (R-836), in
 :mod:`cratekit.modules.outbound.prune`, behind its own gate.
 
@@ -94,6 +95,10 @@ class LabelCatalogue:
     #: Releases the verifier answered ``mismatch``, credited to another label,
     #: which is what the prune reads as the catalogue no longer confirming one.
     mismatched: tuple[str, ...] = ()
+    #: Tracks of a release the read reached that the library removed on purpose,
+    #: a tombstone standing over their artist and title (U243). Already left out
+    #: of ``years``, so no build adds one; the prune takes them off.
+    tombstoned: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
