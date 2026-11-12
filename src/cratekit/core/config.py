@@ -4772,6 +4772,37 @@ def atomic_write_bytes(payload: bytes, path: Path, *, mode: int = PRIVATE_FILE_M
 
 
 
+def append_durable_bytes(payload: bytes, path: Path) -> None:
+    """Append ``payload`` to the EXISTING file at ``path`` and sync it, or raise.
+
+    The second shared state writer, beside :func:`atomic_write_bytes`, for a
+    ledger that grows a record at a time (U254). Rewriting a whole ledger to add
+    one record makes N records cost N squared bytes, and every one of them a
+    synced write; appending makes them cost N.
+
+    WHAT IT DOES NOT PROMISE IS ATOMICITY, and the caller is built for that. A
+    kill partway through leaves the file with a torn last line, so a caller
+    appends only whole lines, one per call, under its own lock, and reads a torn
+    last line as the record that did not land. It never creates the file: the
+    first write of a file goes through :func:`atomic_write_bytes`, which sets
+    the owner only mode and the private directory this keeps.
+
+    SYNCED BEFORE IT RETURNS, which is the durability the atomic writer's fsync
+    gives: a record a caller was told is written is on the disk. The same test
+    root refusal as every other state writer, so a test that escaped its
+    isolation cannot append to a real file either.
+    """
+    _refuse_write_outside_test_root(path, system_temporary=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND)
+    try:
+        view = memoryview(payload)
+        while view:
+            view = view[os.write(fd, view) :]
+        os.fsync(fd)
+    finally:
+        os.close(fd)
+
+
 class _exclusive_lock:
     """An exclusive advisory lock that REFUSES rather than proceeding unlocked.
 
@@ -4883,6 +4914,7 @@ __all__ = [
     "StateFile",
     "StateRoot",
     "TaxonomyConfig",
+    "append_durable_bytes",
     "atomic_write_bytes",
     "backup_remote_disagreement",
     "backup_remote_name",

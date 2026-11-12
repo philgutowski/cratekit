@@ -151,6 +151,40 @@ def test_a_state_write_outside_the_root_is_refused_with_the_isolation_in_place()
     assert not OUTSIDE.exists()
 
 
+def test_an_append_outside_every_temporary_folder_is_refused(unisolated):
+    """U254's synced append is a state writer like the other two, and refuses alike.
+
+    Refused by the guard, not by the missing file: the append never creates a
+    file, so a refusal that came from ``os.open`` would be a ``FileNotFoundError``
+    and would say nothing about the guard.
+    """
+    target = OUTSIDE / "ledger.json"
+    with pytest.raises(config.WriteOutsideTestRoot) as refused:
+        config.append_durable_bytes(b"{}\n", target)
+    assert str(target) in str(refused.value)
+    assert "no test root is registered" in str(refused.value)
+    assert not OUTSIDE.exists()
+
+
+def test_an_append_outside_the_root_is_refused_with_the_isolation_in_place():
+    with pytest.raises(config.WriteOutsideTestRoot) as refused:
+        config.append_durable_bytes(b"{}\n", OUTSIDE / "ledger.json")
+    assert "outside the test root" in str(refused.value)
+    assert not OUTSIDE.exists()
+
+
+def test_an_append_inside_the_root_adds_to_the_file_and_never_creates_one(tmp_path):
+    target = tmp_path / "ledger.json"
+    with pytest.raises(FileNotFoundError):
+        config.append_durable_bytes(b"one\n", target)
+    assert not target.exists()
+    config.atomic_write_bytes(b"zero\n", target)
+    config.append_durable_bytes(b"one\n", target)
+    config.append_durable_bytes(b"", target)
+    config.append_durable_bytes(b"two\n", target)
+    assert target.read_bytes() == b"zero\none\ntwo\n"
+
+
 def test_a_lock_outside_every_temporary_folder_is_refused(unisolated):
     lock = config._exclusive_lock(OUTSIDE / "session.lock")
     with pytest.raises(config.WriteOutsideTestRoot), lock:
