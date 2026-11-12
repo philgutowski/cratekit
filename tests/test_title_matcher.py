@@ -166,6 +166,12 @@ HEADED = [
     ("Bernard Badie - Sunrise Mood", "Sunrise Mood"),
     ("08A - 124 - (Intro)", "Intro"),
     ("08A - 124 - (Not Just) Knee Deep (Part 1)", "Knee Deep"),
+    ("08A - 124 - Interlude", "Interlude"),
+    ("04A - 126 - Dub", "Dub (Original Mix)"),
+    ("01 Sunrise Mood", "Sunrise Mood (Extended Mix)"),
+    ("Bernard Badie - Sun Path - 02 Sunrise Mood", "Sunrise Mood"),
+    ("08A - 124 - [MP3] Sunrise Mood", "Sunrise Mood"),
+    ("08A - 124 - Make Luv - Room 5", "Make Luv"),
 ]
 
 
