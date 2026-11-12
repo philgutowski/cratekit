@@ -1577,6 +1577,28 @@ def reserved_code_tables(
     """
     tree = ast.parse(source)
     table = ReservedCodeTable(tree, causes, code_range, package)
+    return _reservations(table)
+
+
+def reserved_code_tables_in(
+    tree: ast.AST,
+    causes: frozenset[str],
+    code_range: tuple[int, int],
+    package: str | None = None,
+) -> list[str]:
+    """:func:`reserved_code_tables` asked of a tree already parsed (U258).
+
+    The same question with the same answer: both build the one table and read it
+    with :func:`_reservations`. It exists so a sweep can hand over a tree it
+    shares with other guards, since a parse memo keyed on the text could not live
+    in this module without the text reaching something other than ``ast.parse``.
+    The tree is read and never written.
+    """
+    return _reservations(ReservedCodeTable(tree, causes, code_range, package))
+
+
+def _reservations(table: ReservedCodeTable) -> list[str]:
+    """Every reservation one table reads, one line per (line, slug, status)."""
     found: list[str] = []
     # ONE HIT PER (LINE, SLUG, STATUS), and this is not decoration. A duplicate
     # key in a mapping literal, which is the very first defect this unit's suite
@@ -1905,7 +1927,15 @@ def process_status_literals(source: str) -> list[str]:
     fixture anywhere wrote a negative status.
     ``test_a_negative_status_is_a_bare_status_too`` writes three of them.
     """
-    tree = ast.parse(source)
+    return process_status_literals_in(ast.parse(source))
+
+
+def process_status_literals_in(tree: ast.AST) -> list[str]:
+    """:func:`process_status_literals` asked of a tree already parsed (U258).
+
+    The body of the question itself, so the two forms cannot drift. The tree is
+    read and never written.
+    """
     found: list[str] = []
     _scan_for_exits(
         tree,
@@ -2553,7 +2583,15 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     "What the soft-delete guard cannot see, and two gaps in the gate contract"
     rather than left for a reader to discover by being wrong.
     """
-    tree = ast.parse(source)
+    return permissive_soft_delete_reads_in(ast.parse(source))
+
+
+def permissive_soft_delete_reads_in(tree: ast.AST) -> list[str]:
+    """:func:`permissive_soft_delete_reads` asked of a tree already parsed (U258).
+
+    The body of the question itself, so the two forms cannot drift. The tree is
+    read and never written.
+    """
     names = SoftDeleteNames(tree)
     found = [
         f"line {node.lineno}: {ast.unparse(node)}"
@@ -2586,5 +2624,13 @@ def reads_soft_delete_marker(source: str) -> bool:
     reader and the pin does not have to carve out an exception for the module
     that owns the name.
     """
-    tree = ast.parse(source)
+    return reads_soft_delete_marker_in(ast.parse(source))
+
+
+def reads_soft_delete_marker_in(tree: ast.AST) -> bool:
+    """:func:`reads_soft_delete_marker` asked of a tree already parsed (U258).
+
+    The body of the question itself, so the two forms cannot drift. The tree is
+    read and never written.
+    """
     return bool(_soft_delete_reads(tree, SoftDeleteNames(tree)))
