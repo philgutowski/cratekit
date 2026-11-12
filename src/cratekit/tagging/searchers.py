@@ -140,7 +140,7 @@ from typing import Any
 from urllib.parse import quote_plus, urlencode
 
 from cratekit import __version__
-from cratekit.core import art, routing, secrets
+from cratekit.core import art, naming, routing, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy
@@ -572,9 +572,6 @@ _LAST_GROUP = re.compile(r"\s*\([^()]*\)\s*$")
 #: "(Not Just) Knee Deep (Part 1)", "[MP3] " of "[MP3] Real Title".
 _LEADING_GROUPS = re.compile(r"^(?:\s*(?:\([^()]*\)|\[[^\[\]]*\]))+\s*")
 
-#: A Camelot key, "08a", as a library writes it into a title's head.
-_CAMELOT = re.compile(r"\d{1,2}[ab]")
-
 #: A track number a file's name opens with, "01" of "01 Sunrise Mood": one to
 #: three digits, never a year.
 _TRACK_NUMBER = re.compile(r"\d{1,3}")
@@ -727,7 +724,7 @@ def _shed(words: tuple[str, ...]) -> set[tuple[str, ...]]:
 
 def _a_head_word(word: str) -> bool:
     """Whether a word is a number or a Camelot key, as a head is written."""
-    return word.isdigit() or _CAMELOT.fullmatch(word) is not None
+    return word.isdigit() or naming.is_camelot(word)
 
 
 def _numbered(words: tuple[str, ...]) -> bool:
