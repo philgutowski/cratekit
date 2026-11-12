@@ -446,11 +446,23 @@ APPROXIMATE_LIMIT = 5
 _MARKS = re.compile(r"[^\w\s]", re.UNICODE)
 _RUNS = re.compile(r"\s+")
 
-#: Trailing bracketed groups that name a PERFORMER rather than a version. They
-#: come off the title because two listings of one record disagree constantly
-#: about whether the guest is in the title or in the artist field, and they are
-#: not folded into the version because a guest vocalist is not an edit.
-_CREDIT_PREFIXES: tuple[str, ...] = ("feat ", "feat. ", "ft ", "ft. ", "featuring ", "with ")
+#: The FIRST WORDS that make a trailing bracketed group a PERFORMER credit rather
+#: than a version. Credits come off the title because two listings of one record
+#: disagree constantly about whether the guest is in the title or in the artist
+#: field, and they are not folded into the version because a guest vocalist is
+#: not an edit.
+#:
+#: WORDS AND NOT LETTERS (U262). This was a tuple of prefixes, ``"with "`` and
+#: the rest, each ending on the space that made it a whole word, and the test
+#: folded them before comparing, which took the space off. ``with`` then matched
+#: the first letters of ``Without``, so ``Sun Path (Without You Remix)`` dropped
+#: its remix as a credit, read as the plain record, and was reported owned and
+#: never fetched; ``Withdrawn``, ``Within``, ``Feature`` and ``Featureless``
+#: did the same. ``core.tombstone._CREDIT_MARKERS`` is this set, and
+#: ``test_the_matcher_and_the_tombstone_share_one_credit_vocabulary`` holds the
+#: two equal. It is a copy rather than an import because the tombstone module's
+#: set is inside the identity stamp ``deletion.stores.identity_scheme`` walks.
+_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})
 
 #: Version qualifiers that mean "no qualifier at all". A record listed as the
 #: original mix and the same record listed with nothing are one version, and
@@ -493,9 +505,18 @@ def _is_a_credit(inside: str) -> bool:
     version, and :func:`_credits_in` checks that a head this module composed from
     still carries every one the listing spelled, which is a check that means
     nothing if the two answer the question differently.
+
+    THE GROUP'S FIRST WHOLE WORD, folded, and nothing else (U262), which is the
+    rule ``core.tombstone._is_a_credit`` asks: ``(feat. Anna)``, ``(ft Anna)``
+    and ``(with Anna)`` are credits, ``(Without You Remix)`` and ``(Feature
+    Edit)`` are versions, and ``(Live with Strings)`` is a version because its
+    marker is not first. The same answer as the letters test it replaced for
+    every group whose first word IS a marker, so the only groups that moved are
+    those whose first word merely begins with one. ``(Ft Worth Edit)`` reads as
+    a credit under it, since ``Ft`` is the word ``ft``.
     """
-    folded = fold(inside)
-    return any(folded.startswith(fold(prefix)) for prefix in _CREDIT_PREFIXES)
+    words = fold(inside).split()
+    return bool(words) and words[0] in _CREDIT_MARKERS
 
 
 def _names_a_version(inside: str) -> bool:
@@ -531,7 +552,7 @@ def split_version(title: str) -> tuple[str, str]:
     whole ``crate sync twins`` run, and a library file tagged that way indexed
     under an empty title no row could reach. A qualifier needs a title to
     qualify, so the group that stands first is never one. NOT EVEN A CREDIT:
-    the credit prefixes include ``with ``, and ``[With You]`` or ``(With Or
+    the credit markers include ``with``, and ``[With You]`` or ``(With Or
     Without You)`` are titles, so excepting credits put the defect back for
     them (U213's review, round two). A row titled only ``(feat. Mira)`` reads
     as the title ``feat. Mira``, a residual. A GROUP THAT NAMES A VERSION
