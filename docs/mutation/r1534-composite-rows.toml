@@ -1,0 +1,69 @@
+name = "r1534-composite"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_m15_composite"
+description = "The composite for M15_beatport_title_noise in r1534.md, what it holds with exact_only: drop both the noise title refusal and the exact only refusal in _beatport_best, so a blank or punctuation title scores rows by containment"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py"]
+old = '''    if not _identifies(title_normalized):
+        return None
+    bare_title, exact_only = _title_core(title_normalized)
+    loose_title = _unbracketed(bare_title)
+    searched = _artist_parts(artist, r"[,&]")
+
+    best_score = 0
+    best: _Pick | None = None
+    for track in tracks:
+        genre = _beatport_genre(track)
+        if not genre:
+            continue
+        name = _normalized(track.get("track_name", ""))
+        if not _identifies(name):
+            continue
+        name_core, _ = _title_core(name)
+        mix = _normalized(track.get("mix_name", ""))
+        credited = [_normalized(entry.get("artist_name", "")) for entry in track.get("artists", [])]
+        credited = [other for other in credited if other]
+
+        artist_score = 0
+        for part in searched:
+            if any(part == other or part in other or other in part for other in credited):
+                artist_score += 1
+        if artist_score == 0:
+            continue
+
+        if loose_title == _unbracketed(name) or title_normalized == f"{name} ({mix})":
+            title_score = 3
+        elif exact_only:
+            continue
+'''
+new = '''    bare_title, exact_only = _title_core(title_normalized)
+    loose_title = _unbracketed(bare_title)
+    searched = _artist_parts(artist, r"[,&]")
+
+    best_score = 0
+    best: _Pick | None = None
+    for track in tracks:
+        genre = _beatport_genre(track)
+        if not genre:
+            continue
+        name = _normalized(track.get("track_name", ""))
+        if not _identifies(name):
+            continue
+        name_core, _ = _title_core(name)
+        mix = _normalized(track.get("mix_name", ""))
+        credited = [_normalized(entry.get("artist_name", "")) for entry in track.get("artists", [])]
+        credited = [other for other in credited if other]
+
+        artist_score = 0
+        for part in searched:
+            if any(part == other or part in other or other in part for other in credited):
+                artist_score += 1
+        if artist_score == 0:
+            continue
+
+        if loose_title == _unbracketed(name) or title_normalized == f"{name} ({mix})":
+            title_score = 3
+'''
