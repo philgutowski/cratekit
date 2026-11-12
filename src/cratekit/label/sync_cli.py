@@ -1638,7 +1638,8 @@ def label_sync(ctx) -> Envelope:
     cfg = label_cli._load()
     # ONLY THE GO SPENDS THE HOUR'S RESERVE (U278). Asking, answering and the
     # walk read the catalogue, so they stop where every read stops, and a
-    # ``--calls`` past that line is refused here, before the first call.
+    # ``--calls`` past the hour's budget is refused here, before the first
+    # call. The walk's go spends the reserve again, through ``_go``.
     if not args.go:
         provider_gate.reading(provider_gate.GateSettings.from_config(cfg))
     if args.go:

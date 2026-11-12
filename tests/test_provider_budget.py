@@ -372,13 +372,25 @@ def test_the_read_line_is_the_budget_less_the_reserve(share, line):
     ) == 8
 
 
-def test_calls_above_the_read_line_is_refused_before_any_call(paths, clock):
+def test_calls_above_the_hours_budget_is_refused_before_any_call(paths, clock):
     gate = make_gate(paths, clock, per_hour=8, share=0.25)
-    with provider_gate.command(calls=7):
+    with provider_gate.command(calls=9):
         error, sent = refused(gate)
     assert sent == []
     assert error.cause.reason == BUDGET
-    assert error.cause.detail["raised"] == 7
+    assert error.cause.detail["raised"] == 9
+    assert error.cause.detail["budget"] == 8
+    assert "--calls 8 or lower" in error.cause.remediation.steps[0]
+
+
+def test_calls_up_to_the_budget_on_a_read_still_stops_at_the_reserve(paths, clock):
+    """The brief: refused only ABOVE the budget; #742: never into the reserve."""
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    with provider_gate.command(calls=8):
+        assert len(spend_calls(gate, 6)) == 6
+        error, sent = refused(gate)
+    assert sent == []
+    assert error.cause.reason == BUDGET
     assert error.cause.detail["line"] == 6
 
 
@@ -422,7 +434,7 @@ def test_a_ceilings_continue_never_names_a_ceiling_past_the_line(paths, clock):
         spend_calls(gate, 4)
         error, _ = refused(gate)
     assert error.cause.reason == provider_gate.CEILING
-    assert error.cause.detail["higher"] == 6
+    assert error.cause.detail["higher"] == 8
 
 
 def test_the_budget_reason_is_declared_as_a_policy_refusal():
@@ -654,3 +666,105 @@ def test_next_counts_no_label_past_the_first_saved_question(two_followed):
     assert two_followed.asked_for == asked, "a label was listed for a saved question"
     (said,) = [c for c in again["data"]["checks"] if c["key"] == "label.sync.estimate"]
     assert "about 0 calls" in said["detail"]
+
+
+def test_a_minute_stamped_in_the_future_counts_for_an_hour_from_now_and_no_longer(paths, clock):
+    """A clock set back: the calls it stamped ahead still count, so no fresh
+    hour, and free an hour after now, never days later (round one, R4)."""
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    ahead = clock.now
+    clock.now += 30 * 86_400
+    with provider_gate.command():
+        spend_calls(gate, 6)
+    clock.now = ahead
+    with provider_gate.command():
+        error, _ = refused(gate)
+    frees = provider_gate._bucket(ahead) + provider_gate.BUCKET_S + provider_gate.WINDOW_S
+    assert error.cause.detail["frees_at"] == provider_gate.iso(frees)
+    clock.now = frees
+    with provider_gate.command():
+        assert len(spend_calls(gate, 1)) == 1
+
+
+def test_an_hour_raised_in_the_environment_reaches_a_call_outside_any_scope(
+    paths, clock, monkeypatch
+):
+    """A detached child's library caller reads the raised hour off the environment."""
+    monkeypatch.setenv(provider_gate.BUDGET_ENV, "16")
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    assert len(spend_calls(gate, 12)) == 12
+    error, _ = refused(gate)
+    assert error.cause.detail["budget"] == 16
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The dispatcher's classes and its --calls refusal
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _entry_named(name: str):
+    from cratekit.cli import registry  # noqa: PLC0415
+
+    return next(one for one in registry.landed_entries() if one.name == name)
+
+
+@pytest.mark.parametrize(
+    ("verb", "report", "spends"),
+    [
+        ("acquire.download", False, True),
+        ("export.playlist", False, True),
+        ("organize", False, True),
+        ("organize", True, False),
+        ("label.sync", False, True),
+        ("label.harvest", False, False),
+        ("job.resume", False, False),
+        ("run.decide", False, False),
+        ("doctor", False, False),
+    ],
+)
+def test_a_command_spends_the_reserve_only_when_its_verb_writes_and_runs_no_report(
+    verb, report, spends
+):
+    from cratekit import cli  # noqa: PLC0415
+
+    args = SimpleNamespace(report=report)
+    assert cli.spends_reserve(_entry_named(verb), args) is spends
+
+
+@pytest.fixture
+def configured(monkeypatch, tmp_path):
+    from tests import test_label_sync as ls  # noqa: PLC0415
+
+    root = tmp_path / "library"
+    (root / "Music").mkdir(parents=True)
+    (root / "db").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    data = ls.valid_data(root)
+    data["profile"] = {"name": "full"}
+    config.save(config.from_dict(data))
+    config.reset_cache()
+
+
+def test_the_continue_a_parked_job_prints_is_not_refused_by_its_own_calls(configured):
+    """Round one's blocker: ``crate --calls 1500 job resume JOB_ID`` is what a
+    download stopped at a raised ceiling prints, and ``job resume`` reads; the
+    check is against the hour's budget, so it reaches the job."""
+    from tests.cli_drive import drive  # noqa: PLC0415
+
+    _, at_budget = drive(["--calls", "1500", "job", "resume", "2026-11-12T00:00:00Z-none"])
+    assert (at_budget.get("cause") or {}).get("reason") != BUDGET, at_budget
+
+    code, past = drive(["--calls", "1501", "job", "resume", "2026-11-12T00:00:00Z-none"])
+    assert code == int(ExitCode.REFUSED_BY_POLICY), past
+    assert past["cause"]["reason"] == BUDGET
+    assert past["cause"]["detail"]["budget"] == 1500
+
+
+def test_calls_past_the_budget_is_refused_before_a_verb_that_makes_no_call_runs(configured):
+    from tests.cli_drive import drive  # noqa: PLC0415
+
+    code, envelope = drive(["--calls", "1200", "doctor"])
+    assert (envelope.get("cause") or {}).get("reason") != BUDGET, envelope
+    code, envelope = drive(["--calls", "1600", "doctor"])
+    assert envelope["cause"]["reason"] == BUDGET
+    assert envelope["outcome"] == "failed", "a command line to fix is not a park"

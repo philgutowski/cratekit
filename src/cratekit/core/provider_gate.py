@@ -92,9 +92,9 @@ identity's last sixty minutes past its line is not sent: it parks as
 number of separate commands can step around. And the line depends on the
 command: one whose verb writes the account or downloads may spend the whole
 of ``[provider] calls_per_hour``, and any other stops ``reserve_share`` of it
-short, so a day of reads cannot use up what a go needs. ``--calls`` never
-reaches past the line its command may spend to; one that asks to is refused
-before a call is made. The window is checked before the ceiling, since a
+short, so a day of reads cannot use up what a go needs. The line holds
+whatever ``--calls`` says, so a raised ceiling never spends the reserve, and a
+``--calls`` past the whole budget is refused before a call is made. The window is checked before the ceiling, since a
 continue with a higher ceiling cannot help a run the hour has stopped, and
 after the cooldown, which keeps its own meaning: the budget never trips the
 breaker, and a refusal of either is a park and never a retry.
@@ -306,6 +306,21 @@ class _State:
     def spent(self, identity: str, now: float) -> int:
         """The identity's calls in the window at ``now``."""
         return sum(_live(self.window.get(identity, {}), now).values())
+
+    def settle(self, now: float) -> bool:
+        """The window as :func:`_live` reads it at ``now``, kept: minutes past
+        the hour dropped and a minute stamped ahead of the clock brought to the
+        current one. True when anything moved, so the caller writes it and a
+        minute from the future is placed once rather than read as now again
+        at every later reading, which would hold it until the clock caught up."""
+        moved = False
+        for identity in IDENTITIES:
+            held = self.window.get(identity, {})
+            live = _live(held, now)
+            if live != held:
+                self.window[identity] = live
+                moved = True
+        return moved
 
     def count(self, identity: str, now: float) -> None:
         """One more call by ``identity`` at ``now``, and the window pruned."""
@@ -523,10 +538,23 @@ def _expires(bucket: int) -> float:
 
 
 def _live(window: Mapping[int, int], now: float) -> dict[int, int]:
-    """The minutes still inside the window at ``now``. A minute stamped in the
-    future, which only a clock set back writes, is kept and counted: dropping
-    it would hand the account a fresh hour for as long as the clock is wrong."""
-    return {bucket: n for bucket, n in window.items() if _expires(bucket) > now and n > 0}
+    """The minutes still inside the window at ``now``.
+
+    A MINUTE STAMPED IN THE FUTURE, which only a clock set back writes, is
+    read as made in the current minute and counted. Dropped, it would hand the
+    account a fresh hour for as long as the clock is wrong; kept where it was,
+    it would hold the line until the clock reached it, days away, which is the
+    corrupt counter locking the provider out that this module refuses to be.
+    """
+    current = _bucket(now)
+    live: dict[int, int] = {}
+    for bucket, n in window.items():
+        if n <= 0:
+            continue
+        at = min(bucket, current)
+        if _expires(at) > now:
+            live[at] = live.get(at, 0) + n
+    return live
 
 
 def _frees_at(window: Mapping[int, int], now: float, line: int) -> float:
@@ -637,8 +665,8 @@ def reading(settings: GateSettings | None = None) -> None:
     For a verb that writes the account or downloads in one mode and only reads
     in another: ``label sync`` spends the reserve under ``--go`` alone. It only
     ever narrows: a read scope stays a read scope. Given ``settings``, a ceiling
-    ``--calls`` raised past the read line is refused at once, before the verb
-    makes a call, rather than at the first one.
+    ``--calls`` raised past the hour's budget is refused at once, before the
+    verb makes a call, rather than at the first one.
     """
     scope = _COMMAND
     if scope is None:
@@ -664,28 +692,34 @@ def _class_words(reserve: bool, budget: int, line: int) -> str:
 
 
 def over_the_line(settings: GateSettings | None = None) -> Cause | None:
-    """The refusal for a ``--calls`` raised past the line this command may
-    reach, or None. Never a silent cap: a ceiling the hour cannot hold is a
-    command line that says one thing and runs another."""
+    """The refusal for a ``--calls`` raised past the hour's budget, or None.
+
+    Never a silent cap: a ceiling no hour can hold is a command line that says
+    one thing and runs another. Against the WHOLE budget and not the line this
+    command may reach, the brief's words, since the line is held call by call
+    whatever ``--calls`` says: a read raised to the budget still stops at the
+    reserve. And because a wrapper verb, ``job resume`` or ``run decide``,
+    runs another verb whose line may be higher, which a check against the
+    wrapper's own line refused (round one's blocker).
+    """
     scope = _COMMAND
     if scope is None or scope.raised is None:
         return None
     settings = settings or GateSettings()
-    line = line_for(settings)
-    if scope.raised <= line:
-        return None
     budget = hourly(settings)
+    if scope.raised <= budget:
+        return None
     return Cause(
         reason=BUDGET,
         message=(
-            f"--calls {scope.raised} asks for more calls than this command may make in "
-            f"an hour: {_class_words(scope.reserve, budget, line)}, so nothing was asked "
-            f"of the streaming provider"
+            f"--calls {scope.raised} asks for more calls than any command may make in "
+            f"an hour, the hour's budget of {budget} for each identity, so nothing was "
+            f"asked of the streaming provider"
         ),
         remediation=Remediation(
             remedy=Remedy.FIX_COMMAND_LINE,
             steps=(
-                f"run it again with --calls {line} or lower",
+                f"run it again with --calls {budget} or lower",
                 "or raise the hour's budget for one run with --calls-per-hour, or "
                 "[provider] calls_per_hour for every run",
             ),
@@ -693,7 +727,7 @@ def over_the_line(settings: GateSettings | None = None) -> Cause | None:
         scope=Scope.RUN,
         retryable=False,
         origin=("provider_gate",),
-        detail={"raised": scope.raised, "line": line, "budget": budget, "reserve": scope.reserve},
+        detail={"raised": scope.raised, "budget": budget, "reserve": scope.reserve},
     )
 
 
@@ -972,10 +1006,10 @@ class Gate:
             else "the ceiling for one command, [provider] calls_per_command"
         )
         # NEVER A CONTINUE THE HOUR WOULD REFUSE (U278). Doubled as before, but
-        # held to the line this command may spend to, since a ``--calls`` past
-        # it is refused before a call; at that line already, doubled anyway,
-        # and the refusal it meets names --calls-per-hour.
-        reach = line_for(self.settings)
+        # held to the hour's budget, since a ``--calls`` past it is refused
+        # before a call; at the budget already, doubled anyway, and the refusal
+        # it meets names --calls-per-hour.
+        reach = hourly(self.settings)
         higher = min(line * 2, reach) if reach > line else line * 2
         # NEVER "WHAT IT DID IS KEPT" (U217). Said by every command, it was
         # false for each that read and did not keep, and a label listing paid
@@ -1124,6 +1158,8 @@ class Gate:
             with self._held():
                 state = self._read()
                 now = self._clock()
+                if state.settle(now):
+                    self._write(state)
                 if state.cooling(now):
                     raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
                 scope = _COMMAND

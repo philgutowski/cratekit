@@ -235,7 +235,9 @@ counts calls and rate limits, and allows one call in flight. Settings are
   with `--calls-per-hour N`; a call past it parks as `provider-budget`.
 - **Reserve**: the share of the hour a command that only reads never spends,
   `[provider] reserve_share` (0.25), kept for verbs that declare a `remote` or
-  `files` write, outside a `--report` run and a `label sync` that is not `--go`.
+  `files` write, outside a `--report` run and `label sync`'s asking (its `--go`
+  and the go a walk ends at spend it). The line holds whatever `--calls` says;
+  a `--calls` above the whole hour is refused.
 
 ### Active taxonomy
 The library's copy of the taxonomy, `.cratekit/coupled/taxonomy.toml` on the
