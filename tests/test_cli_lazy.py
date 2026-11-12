@@ -42,10 +42,10 @@ from cratekit.modules import extras
 from tests import _import_probe
 
 #: The ceiling on Cratekit's own modules after ``crate doctor --help`` in a fresh
-#: interpreter. Measured at U248: 74 against 298 before it (the card's survey
-#: counted 298 after a whole parser). The margin is for the doctor's own closure
-#: growing; a return of the eager parser lands far above it.
-DOCTOR_HELP_CEILING = 110
+#: interpreter. Measured at U248 on the full preset: 58, against 301 before it,
+#: when every invocation loaded the whole registry's verb modules. The margin is
+#: for the doctor's own closure growing; the eager parser lands far above it.
+DOCTOR_HELP_CEILING = 90
 
 #: Two verb modules the card names, which ``doctor --help`` must not load.
 #: Each has a large closure of its own (163 and about 128 modules), so loading
@@ -346,7 +346,7 @@ def test_a_verb_is_built_once_however_often_it_is_asked():
     _help(parser, ["analyze", "--help"])
     assert parser.parse_args(["analyze", "demo"])._entry.name == "analyze.demo"
     assert parser.parse_args(["analyze", "demo"])._entry.name == "analyze.demo"
-    assert len(calls) <= 2
+    assert calls == ["tests.cli_fixtures.plain"] * 2, "one for the listing, one to build"
 
 
 # ═══════════════════════════════════════════════════════════════════════════

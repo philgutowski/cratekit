@@ -75,8 +75,11 @@ def _parser_flags() -> dict[str, frozenset[str] | None]:
     is recorded with ``None`` so its flags are not judged against a stub.
     Every other verb takes its own flags only: a top level option written after
     the verb is one argparse refuses.
+
+    EAGER, because it walks every verb's own arguments, and since U248 the
+    default parser builds a verb's arguments only when that verb is chosen.
     """
-    parser = build_parser(membership=profiles.resolve("full"))
+    parser = build_parser(membership=profiles.resolve("full"), eager=True)
     verbs: dict[str, frozenset[str] | None] = {}
 
     def walk(node: argparse.ArgumentParser, path: tuple[str, ...]) -> None:
