@@ -376,17 +376,19 @@ def _unanalysed(db: Any) -> dict[str, Any]:
     reads a private copy, so nothing changes a row between the read and the
     judgment.
 
-    A ROW WHOSE ID IS NOT TEXT IS LEFT OUT, as the read by ID always left it
-    (review round one): an ID stored as bytes is never found by the text of
-    its ID, so it was never in this scope, and judging it in hand would add
-    it. Whether it belongs in the scope is a question of its own, not one
+    A ROW WHOSE ID IS STORED AS BYTES IS LEFT OUT, as the read by ID always
+    left it (review round one): the text of such an ID, ``str`` of the bytes,
+    never finds it, so it was never in this scope, and judging it in hand
+    would add it. ONLY BYTES (review round two): an ID stored as an integer,
+    in a column of integer affinity, IS found by its text, so it stays in.
+    Whether a bytes ID belongs in the scope is a question of its own, not one
     this saving answers.
     """
     waiting: dict[str, Any] = {}
     for content in db.get_content():
-        if not isinstance(content.ID, str):
+        if isinstance(content.ID, bytes):
             continue
-        content_id = content.ID
+        content_id = str(content.ID)
         one = analyzed.judge(content_id, content)
         if one.why == analyzed.NOT_ANALYSED or one.why == analyzed.NO_ANALYSIS_PATH:
             waiting[one.content_id] = content

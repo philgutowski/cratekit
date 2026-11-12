@@ -1,5 +1,5 @@
 ---
-title: A collection row whose ID is not text is left out of the check's scope of every row not analysed
+title: A collection row whose ID is stored as bytes is left out of the check's scope of every row not analysed
 found: at the review of #688, U259, 2026-11-12.
 issue: no
 ---
@@ -10,7 +10,8 @@ each one again by the text of its ID, and a row whose `djmdContent.ID` is
 stored as bytes (`typeof(ID)` reads `blob`) was never found that way, so it
 was silently left out of the scope. U259 judges each row in hand, which would
 have put it in, and keeps it out on purpose (`_unanalysed` skips an ID that
-is not a `str`), because the card required the check's answer to equal the
+is `bytes`; an ID stored as an integer, which the read by ID did find, is
+kept, review round two), because the card required the check's answer to equal the
 answer before it on every database. The skip is absence read as evidence of
 absence, the first of METHOD's recurring patterns, kept rather than repaired.
 

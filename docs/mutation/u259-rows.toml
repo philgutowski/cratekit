@@ -136,11 +136,20 @@ new = '''            content=None if held is None else held.get(content_id),'''
 
 [[rows]]
 id = "M15_id_not_text_judged"
-description = "_unanalysed: judge a row whose ID is not text, so it joins a scope the read by ID never put it in"
+description = "_unanalysed: judge a row whose ID is stored as bytes, so it joins a scope the read by ID never put it in"
 file = "src/cratekit/analysis/rekordbox_check.py"
 surface = "user"
 tests = ["tests/test_analyze_check.py"]
-old = '''        if not isinstance(content.ID, str):
+old = '''        if isinstance(content.ID, bytes):
             continue'''
 new = '''        if False:
             continue'''
+
+[[rows]]
+id = "M16_id_skip_widened"
+description = "_unanalysed: leave out every ID that is not text, round one's fix, so integer IDs read as nothing to check"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if isinstance(content.ID, bytes):'''
+new = '''        if not isinstance(content.ID, str):'''

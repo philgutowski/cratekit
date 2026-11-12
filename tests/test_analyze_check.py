@@ -1012,6 +1012,47 @@ def test_a_row_whose_id_is_not_text_stays_out_of_every_row_as_it_did(
     assert "Delta" not in _items(batched)
 
 
+def _redeclare_content_id(cfg: config.Config, declared: str) -> None:
+    """Rebuild djmdContent with its ID column declared ``declared``, the rows kept."""
+    conn = sqlite3.connect(cfg.library.db_path)
+    (ddl,) = conn.execute("SELECT sql FROM sqlite_master WHERE name = 'djmdContent'").fetchone()
+    assert '"ID" VARCHAR(255) NOT NULL' in ddl
+    rebuilt = ddl.replace('"djmdContent"', '"djmdContent_new"', 1).replace(
+        '"ID" VARCHAR(255) NOT NULL', f'"ID" {declared}', 1
+    )
+    with conn:
+        conn.execute(rebuilt)
+        conn.execute('INSERT INTO "djmdContent_new" SELECT * FROM "djmdContent"')
+        conn.execute('DROP TABLE "djmdContent"')
+        conn.execute('ALTER TABLE "djmdContent_new" RENAME TO "djmdContent"')
+        kinds = {row[0] for row in conn.execute("SELECT typeof(ID) FROM djmdContent")}
+    conn.close()
+    assert kinds == {"integer"}, kinds
+
+
+@pytest.mark.parametrize("scope", [rc.SCOPE_ANALYZE, rc.SCOPE_UNANALYSED])
+def test_a_collection_whose_ids_are_stored_as_integers_reads_as_it_did(
+    native_library, silence, monkeypatch, scope
+):
+    """Review round two: an ID column of integer affinity holds integers, which a
+    read by the ID's text always found. Round one's fix left every such row out
+    of the scope of every row not analysed, and the check answered nothing to
+    check over rows still waiting; only an ID stored as bytes is left out."""
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    _visit(cfg, "Alpha")
+    if scope == rc.SCOPE_UNANALYSED:
+        _empty_analyze(cfg, root_id)
+    _redeclare_content_id(cfg, "INT")
+
+    batched, per_row = _both(monkeypatch, VERB)
+
+    assert batched == per_row
+    summary = batched["data"]["summary"]
+    assert summary["scope"] == scope and summary["verdict"] == rc.WAITING
+    assert {"Bravo", "Charlie", "Delta", "Echo"} <= set(_items(batched))
+
+
 def test_read_row_handed_no_row_reads_it_and_answers_as_handed_one(native_library, silence):
     """The one read by ID left in read_row, for a caller holding no row, answers alike."""
     cfg, root_id = native_library
