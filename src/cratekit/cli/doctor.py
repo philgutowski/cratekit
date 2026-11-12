@@ -130,6 +130,7 @@ from cratekit.core.cause import (
 )
 from cratekit.core.exit_codes import Remedy
 from cratekit.deletion import trash
+from cratekit.tagging import searchers
 from cratekit.write import metadata_cli
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
@@ -1521,7 +1522,7 @@ def _check_taxonomy_schema(inputs: _Inputs) -> Finding:
             detail=(
                 f"the active copy states schema_version {found.from_version} and the "
                 f"shipped {found.template!r} template states {found.shipped_version}, and "
-                f"the copy declares every class and bucket it ships"
+                f"the copy declares every class, bucket and vocabulary table it ships"
             ),
         )
     return Finding(
@@ -1963,6 +1964,9 @@ CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProx
         # without it every catalogue lookup goes to the account as it always
         # did, and the finding says so and how to move them.
         "credential.catalogue": catalogue_api.CREDENTIALS,
+        # U244. Declared by no verb, so it reports and never fails: without a
+        # token the tagging verbs record Discogs as not asked and go on.
+        "credential.discogs": (secrets.Credential.DISCOGS_TOKEN,),
         "credential.provider": (secrets.Credential.PROVIDER_SESSION,),
         "credential.recognition": (
             secrets.Credential.IDENTIFY_KEY,
@@ -1979,6 +1983,7 @@ _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
     {
         "credential.bandcamp": Remedy.AUTHENTICATE_PROVIDER,
         "credential.catalogue": Remedy.SET_CREDENTIAL,
+        "credential.discogs": Remedy.SET_CREDENTIAL,
         "credential.provider": Remedy.AUTHENTICATE_PROVIDER,
         "credential.recognition": Remedy.SET_CREDENTIAL,
     }
@@ -1991,6 +1996,30 @@ _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
 _SPENT_WHEN_ASKED: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {"credential.bandcamp": ("acquire bandcamp", "acquire bandcamp-fetch")}
 )
+
+#: Credentials no verb needs and some verbs SPEND WHEN THERE IS ONE, by the
+#: registry names of those verbs (U244). Without one those verbs go on and say
+#: what they did not ask, so the finding is never a failure, and setup offers
+#: the credential whenever one of them is switched on, since a person who never
+#: hears of it never gets the answers it buys.
+OFFERED_WHEN_SPENT: Mapping[str, tuple[str, ...]] = MappingProxyType(
+    {"credential.discogs": ("tag.folder", "tag.retag", "tag.suggest")}
+)
+
+
+def offered(key: str, membership: profiles.Membership) -> bool:
+    """Whether setup offers ``key``'s credentials to this profile.
+
+    When a verb it switches on declares the check, as before, and when one of
+    the verbs :data:`OFFERED_WHEN_SPENT` names for it is switched on.
+    """
+    if requires_check(key, membership):
+        return True
+    spenders = OFFERED_WHEN_SPENT.get(key, ())
+    return any(
+        entry.name in spenders and entry.available_to(membership)
+        for entry in registry.entries()
+    )
 
 
 def _required_credentials(inputs: _Inputs) -> tuple[str, ...]:
@@ -2092,6 +2121,19 @@ def _check_credential(key: str, inputs: _Inputs) -> Finding:
             title=title,
             status=Status.OK,
             detail=f"recorded: {', '.join(str(n) for n in names)}",
+        )
+    if not inputs.required(key) and key in OFFERED_WHEN_SPENT:
+        verbs = ", ".join("crate " + verb.replace(".", " ") for verb in OFFERED_WHEN_SPENT[key])
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"not recorded ({', '.join(missing)}); {verbs} "
+                f"ask Discogs only with it, and without it record Discogs as not "
+                f"asked and leave those files askable. To record it: "
+                f"{searchers.DISCOGS_LOGIN_STEPS}"
+            ),
         )
     if not inputs.required(key):
         spenders = _SPENT_WHEN_ASKED.get(key)
@@ -4346,6 +4388,7 @@ __all__ = [
     "CHECKS",
     "CHECK_KEYS",
     "CREDENTIALS_BY_CHECK",
+    "OFFERED_WHEN_SPENT",
     "Check",
     "Finding",
     "ISRC_CACHE_CHECK",
