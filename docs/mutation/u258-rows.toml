@@ -1,0 +1,141 @@
+name = "u258"
+pass_kind = "light"
+
+# U258 adds no source. What it adds is a parse memo shared inside one test
+# (tests/_parse_memo.py), a tree form of one guard question in
+# tests/_source_guards.py, and the two reserved cause population tests reading
+# the package once and sharing their parses. A test only change to static guards, so the table is sized as a
+# static registry's, eleven rows: each promise of the memo broken alone
+# (one parse per text, never stale, nothing held outside a scope, nested scopes,
+# never written), the decorator, the tree form, and each restructured sweep
+# narrowed or pointed back at a second reading. Rows on the memo run its tests;
+# a row on a sweep runs its own file and the memo's tests. A zero is promoted to
+# the full suite by the driver.
+
+[[rows]]
+id = "M1_key_on_length"
+description = "parsed: key the memo on the text's length, not the text, so an equal length edit is served the old tree"
+file = "tests/_parse_memo.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py"]
+old = '''    tree = _TREES.get(source)
+    if tree is None:
+        tree = ast.parse(source)
+        _TREES[source] = tree'''
+new = '''    tree = _TREES.get(len(source))
+    if tree is None:
+        tree = ast.parse(source)
+        _TREES[len(source)] = tree'''
+
+[[rows]]
+id = "M2_scope_shares_nothing"
+description = "parsed: parse on every call inside a scope too, so a test's sweeps parse each file again"
+file = "tests/_parse_memo.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py"]
+old = '''    tree = _TREES.get(source)
+    if tree is None:'''
+new = '''    tree = _TREES.get(source)
+    if True:'''
+
+[[rows]]
+id = "M3_scope_never_ends"
+description = "sharing_parses: leave the trees in place when the scope ends, so a test's trees outlive it"
+file = "tests/_parse_memo.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py"]
+old = '''    try:
+        yield
+    finally:
+        _TREES = None'''
+new = '''    try:
+        yield
+    finally:
+        pass'''
+
+[[rows]]
+id = "M4_inner_scope_ends_the_outer"
+description = "sharing_parses: open a fresh memo for a scope inside a scope, so the inner one drops the outer one's trees"
+file = "tests/_parse_memo.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py"]
+old = '''    if _TREES is not None:
+        yield
+        return
+    _TREES = {}'''
+new = '''    _TREES = {}'''
+
+[[rows]]
+id = "M5_decorator_opens_no_scope"
+description = "shares_parses: call the test without opening a scope, so a decorated test shares nothing"
+file = "tests/_parse_memo.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py"]
+old = '''        with sharing_parses():
+            return test(*args, **kwargs)'''
+new = '''        return test(*args, **kwargs)'''
+
+[[rows]]
+id = "M6_decorator_returns_the_test"
+description = "shares_parses: hand the test back undecorated"
+file = "tests/_parse_memo.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py"]
+old = '''    return shared  # type: ignore[return-value]'''
+new = '''    return test'''
+
+[[rows]]
+id = "M7_a_question_writes_the_shared_tree"
+description = "reserved_code_tables_in: leave a note on every node of the tree it is handed, which every question after it would read"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py", "tests/test_reserved_causes.py"]
+old = '''    return _reservations(ReservedCodeTable(tree, causes, code_range, package))'''
+new = '''    for node in ast.walk(tree):
+        node.seen_by_guard = True
+    return _reservations(ReservedCodeTable(tree, causes, code_range, package))'''
+
+[[rows]]
+id = "M8_tree_form_answers_nothing"
+description = "reserved_code_tables_in: report no reservation, so the widened headroom check over the population passes on anything"
+file = "tests/_source_guards.py"
+surface = "maintainer"
+tests = ["tests/test_parse_memo.py", "tests/test_reserved_causes.py"]
+old = '''    return _reservations(ReservedCodeTable(tree, causes, code_range, package))'''
+new = '''    return []'''
+
+[[rows]]
+id = "M9_population_keeps_the_owners"
+description = "population_under_measurement: keep the two table owners, so every count in the at risk section is over a wider basis than its pins"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py", "tests/test_parse_memo.py"]
+old = '''        for relative, source in sources
+        if relative not in TABLE_OWNERS
+    ]'''
+new = '''        for relative, source in sources
+    ]'''
+
+[[rows]]
+id = "M10_headroom_check_over_nothing"
+description = "the at risk test: run the widened headroom check over an empty population, so a module the wide rule fires on is never asked"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py", "tests/test_parse_memo.py"]
+old = '''        for relative, source in population_under_measurement(scanned)
+        if reserved_code_tables_in(parsed(source), widened, RANGE, package_of(relative))'''
+new = '''        for relative, source in population_under_measurement([])
+        if reserved_code_tables_in(parsed(source), widened, RANGE, package_of(relative))'''
+
+[[rows]]
+id = "M11_kebab_reads_a_second_package"
+description = "kebab_literals_by_module: read the package again rather than the sources the test handed it, so the two can disagree"
+file = "tests/test_reserved_causes.py"
+surface = "maintainer"
+tests = ["tests/test_reserved_causes.py", "tests/test_parse_memo.py"]
+old = '''    found: dict[str, list[str]] = {}
+    for relative, source in sources:
+        hits = sorted('''
+new = '''    found: dict[str, list[str]] = {}
+    for relative, source in package_sources():
+        hits = sorted('''
