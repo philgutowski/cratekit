@@ -472,6 +472,16 @@ def test_a_report_that_agrees_with_the_summary_line_is_read():
     assert ids == {f"{SPACED}[one two]", "tests/test_broken.py"}
 
 
+def test_a_plural_count_on_the_summary_line_is_read():
+    """pytest writes `1 error` and `2 errors`; both are counts, never a refusal."""
+    report = _report(
+        failed=["tests/a.py::t[a b]", "tests/a.py::t[a c]"],
+        errors=["tests/b.py::u[x - y]", "tests/c.py"],
+    )
+    ids = battery.read_report(report, "2 failed, 9 passed, 2 errors in 0.10s")
+    assert ids == {"tests/a.py::t[a b]", "tests/a.py::t[a c]", "tests/b.py::u[x - y]", "tests/c.py"}
+
+
 @pytest.mark.parametrize(
     ("report", "summary"),
     [
@@ -482,6 +492,9 @@ def test_a_report_that_agrees_with_the_summary_line_is_read():
         ({"failed": {"ids": [], "counted": 0}}, "1 passed in 0.10s"),
         (_report(failed=[""]), "1 failed in 0.10s"),
         (_report(failed=["tests/a.py::t[a\nb]"]), "1 failed in 0.10s"),
+        (_report(failed=["tests/a.py::t[a\rb]"]), "1 failed in 0.10s"),
+        (_report(failed=["tests/a\x0bb.py::t"]), "1 failed in 0.10s"),
+        (_report(failed=["tests/a\u2028b.py::t"]), "1 failed in 0.10s"),
         (_report(failed=[" tests/a.py::t"]), "1 failed in 0.10s"),
         (_report(failed=["# tests/a.py::t"]), "1 failed in 0.10s"),
         (_report(failed=[None]), "1 failed in 0.10s"),
@@ -494,6 +507,9 @@ def test_a_report_that_agrees_with_the_summary_line_is_read():
         "no-error-entry",
         "an-empty-id",
         "a-line-break",
+        "a-carriage-return",
+        "a-vertical-tab",
+        "a-line-separator",
         "padded",
         "a-comment",
         "not-a-string",

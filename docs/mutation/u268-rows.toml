@@ -56,7 +56,7 @@ description = "read_report: store an id holding a line break, which the file wou
 file = "scripts/cloud_battery.py"
 surface = "maintainer"
 tests = ["tests/test_cloud_battery.py"]
-old = '''                or "\n" in nodeid
+old = '''                or nodeid.splitlines() != [nodeid]
 '''
 new = ''''''
 
@@ -97,3 +97,12 @@ surface = "maintainer"
 tests = ["tests/test_mutation_driver.py"]
 old = '''    whole = f" {KNOWN_FAILURES_FULL_HISTORY} {KNOWN_FAILURES_WHOLE_IDS}"'''
 new = '''    whole = f" {KNOWN_FAILURES_FULL_HISTORY}"'''
+
+[[rows]]
+id = "W11_error_count_singular_only"
+description = "read_report: read only the singular error count, so a run with two errors is refused"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        "error": _summary_count(summary, "errors?"),'''
+new = '''        "error": _summary_count(summary, "error"),'''

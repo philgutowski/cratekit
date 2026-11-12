@@ -244,8 +244,9 @@ def read_report(report: dict, summary: str) -> set[str]:
     """The whole ids of a run's report, refused unless it agrees with the summary line.
 
     Each id must survive a baseline file unchanged, one a line and compared
-    exactly, so an id that is empty, holds a line break, starts with `#` or is
-    padded with spaces is refused rather than stored altered.
+    exactly, so an id that is empty, holds anything `str.splitlines` breaks a
+    line at, starts with `#` or is padded with spaces is refused rather than
+    stored altered.
     """
     expected = {
         "failed": _summary_count(summary, "failed"),
@@ -271,8 +272,7 @@ def read_report(report: dict, summary: str) -> set[str]:
                 or not nodeid
                 or nodeid != nodeid.strip()
                 or nodeid.startswith("#")
-                or "\n" in nodeid
-                or "\r" in nodeid
+                or nodeid.splitlines() != [nodeid]
             ):
                 raise SystemExit(
                     f"a {category} test's id cannot be stored whole, one a line, so the run "
