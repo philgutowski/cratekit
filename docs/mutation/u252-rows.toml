@@ -1,0 +1,69 @@
+# U252 changes tests only, so these rows mutate the retry ladder the new
+# assertions now pin, and the seam the fixture binds, with the subset held to
+# tests/test_sync_twins.py: before U252 that file asserted no wait, so a row it
+# kills here is killed by the waits U252 asserts.
+name = "u252"
+pass_kind = "light"
+
+[[rows]]
+id = "L1_ladder_exponent"
+description = "fetch_with_retry: double every wait, 2, 4, 8, 16 and 16 in place of 1, 2, 4, 8 and 16"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py"]
+old = '''            sleep(min(max_delay, base_delay * (2 ** (attempt - 1))))'''
+new = '''            sleep(min(max_delay, base_delay * (2 ** attempt)))'''
+
+[[rows]]
+id = "L2_ladder_rungs"
+description = "DEFAULT_MAX_RETRIES: four rungs in place of five, so a reading waits 15 seconds and asks four times"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py"]
+old = '''DEFAULT_MAX_RETRIES = 5'''
+new = '''DEFAULT_MAX_RETRIES = 4'''
+
+[[rows]]
+id = "L3_ladder_ceiling_off_by_one"
+description = "fetch_with_retry: re-raise at the ceiling one attempt early"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py"]
+old = '''            if attempt > max_retries:'''
+new = '''            if attempt >= max_retries:'''
+
+[[rows]]
+id = "L4_ladder_cap"
+description = "DEFAULT_MAX_DELAY_S: cap a wait at 8 seconds in place of 30, so the last rung waits 8 not 16"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py"]
+old = '''DEFAULT_MAX_DELAY_S = 30.0'''
+new = '''DEFAULT_MAX_DELAY_S = 8.0'''
+
+[[rows]]
+id = "L5_ladder_base"
+description = "DEFAULT_BASE_DELAY_S: halve the first wait, the coefficient of every rung"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py"]
+old = '''DEFAULT_BASE_DELAY_S = 1.0'''
+new = '''DEFAULT_BASE_DELAY_S = 0.5'''
+
+[[rows]]
+id = "L6_no_ladder"
+description = "fetch_with_retry: take every failure as not retryable, so a timeout is re-raised at the first attempt with no wait"
+file = "src/cratekit/acquire/listing.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py"]
+old = '''            if isinstance(exc, CratekitError) and not exc.cause.retryable:'''
+new = '''            if True:'''
+
+[[rows]]
+id = "L7_seam_drops_keywords"
+description = "harvest.playlist_tracks: stop handing its keywords to the listing, so the fixture's sleep never reaches the ladder"
+file = "src/cratekit/label/harvest.py"
+surface = "maintainer"
+tests = ["tests/test_sync_twins.py"]
+old = '''    return listing.playlist_tracks(playlist, **kwargs)'''
+new = '''    return listing.playlist_tracks(playlist)'''
