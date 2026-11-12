@@ -203,13 +203,15 @@ pythonpath = ["src"]
 # idle, so a run ends when the unluckiest queue drains. Measured 2026-11-12 on
 # a four core Linux container at 18,085 tests, one run each way: 789 seconds
 # of pytest's own time by default against 629 stealing, the workers' summed
-# test seconds spread by 178 against 67. A worker that steals part of a module
-# sets that module's scoped fixtures up again, which is correct and costs
-# their set up once more.
+# test seconds spread by 178 against 67. Measured again at 18,550 tests the
+# same day: 964 seconds by default on the base, one run, against 680, 771 and
+# 718 stealing, three runs, about twelve minutes each. A worker that steals
+# part of a module sets that module's scoped fixtures up again, which is
+# correct and costs their set up once more.
 #
 # `scripts/mutate.py` inherits this line, so the driver's full suite baselines
 # run parallel and stealing too, and its reporting plugin writes from the
-# controller only; `scripts/cloud_battery.py` reads it from this file.
+# controller only; `scripts/cloud_battery.py` passes nothing over it.
 # `tests/test_suite_distribution.py` pins both options.
 addopts = "-q -n auto --dist worksteal"
 

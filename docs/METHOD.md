@@ -229,8 +229,10 @@ bill is tool calls times context size. Thinking is cheap here. Reading is not.
   U65, 2026-09-17: `mutate.py`'s fixed overhead on this suite is over 600 seconds,
   which is the harness tool ceiling, so a foreground run is KILLED mid row. (That
   600 was measured on the serial suite. The driver inherits `-n auto` since
-  2026-09-18, so its baseline is now about a minute, and a 25 row table can
-  still pass the ceiling, so the rule stands.) Three
+  2026-09-18 and `--dist worksteal` since U251, so a full suite baseline was
+  about a minute on 11 cores at 7,678 tests and is about twelve on a four core
+  container at 18,550, and a 25 row table passes the ceiling either way, so the
+  rule stands.) Three
   were, and two left a partial mutation in the source that had to be restored from
   `git show HEAD:`. Foreground is now the contaminating option. Run it as a
   tracked background job, start nothing else against the tree until it reports,
@@ -291,11 +293,16 @@ holds the branch, with that checkout's own venv:
     ./.venv/bin/python -m pytest --tb=no
     ./.venv/bin/python scripts/scan_repo.py
 
-**The suite is parallel and takes about a minute, measured 2026-09-18.**
-`addopts` carries `-n auto`, so the command above already uses every core:
-7,678 tests, 532 seconds serial, 61 to 67 parallel on 11 cores. A venv made
-before that date needs `pip install -e '.[dev]'` once for `pytest-xdist`. Pass
-`-n 0` for a debugger or a profiler.
+**The suite is parallel, and its idle workers take queued tests from a busy
+one.** `addopts` carries `-n auto --dist worksteal`, so the command above
+already uses every core, and a worker that runs out of tests takes half of the
+busiest worker's queue rather than waiting while one long test holds the rest
+(U251). Measured 2026-11-12 on a four core Linux container at 18,550 tests: a
+full run is about twelve minutes, 680 to 771 seconds of pytest's own time over
+three runs, against 964 in one run under the default distribution. On 11 cores
+it was 61 to 67 seconds at 7,678 tests on 2026-09-18, and has not been measured
+since. A venv made before 2026-09-18 needs `pip install -e '.[dev]'` once for
+`pytest-xdist`. Pass `-n 0` for a debugger or a profiler.
 
 **The full battery is the MERGE gate, not the edit loop.** While building, run
 the test files for the modules you touched, `pytest tests/test_x.py`, which is

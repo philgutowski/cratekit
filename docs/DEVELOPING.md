@@ -39,8 +39,9 @@ Nothing merges until all three are clean:
 .venv/bin/python scripts/scan_repo.py
 ```
 
-- pytest runs with `-q -n auto` from `pyproject.toml`; add `-n 0` for a
-  debugger or profiler. While building, run the test files for what you
+- pytest runs with `-q -n auto --dist worksteal` from `pyproject.toml`, so
+  a worker that runs out of tests takes queued ones from a busy worker; add
+  `-n 0` for a debugger or profiler. While building, run the test files for what you
   touched.
 - The suite is a macOS proof. On Linux run `scripts/cloud_battery.py baseline`
   on the base commit and `scripts/cloud_battery.py compare` on the branch; it
