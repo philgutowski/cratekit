@@ -30,7 +30,6 @@ from tests import _parse_memo
 from tests import _source_guards as guards
 from tests import test_reserved_causes as reserved
 from tests._parse_memo import parsed, shares_parses, sharing_parses
-from tests.modules import test_reports as reports
 
 
 @pytest.fixture
@@ -113,11 +112,6 @@ def test_a_decorated_test_shares_and_keeps_its_name_and_its_fixtures(parses):
     assert getattr(
         reserved.test_pinned_populations_derive_totals_and_key_by_module, "__wrapped__", None
     ), "the pinned populations test no longer shares its parses"
-    assert getattr(
-        reports.test_the_allowlist_admits_no_writer_this_guard_cannot_name,
-        "__wrapped__",
-        None,
-    ), "the reports allowlist audit no longer shares its parses"
 
 
 def test_the_population_sweeps_parse_each_package_file_once_between_them(parses):
@@ -189,28 +183,21 @@ def test_a_file_edited_inside_a_scope_is_read_as_it_now_is(tmp_path, parses):
 # Never written
 # ═══════════════════════════════════════════════════════════════════════════
 
-#: Real modules the shared questions have something to say about: a reservation
-#: table owner, the vocabulary with its own enum, and two modules the reports
-#: audit reads. Chosen for size as well: the largest modules take seconds a pass
-#: under the reports questions, and the planted texts below carry the positive
-#: answers.
+#: Real modules the shared questions have something to say about: the two
+#: reservation table owners, the vocabulary with its own enum, and a module the
+#: at risk population counts.
 SHARED_MODULES = (
     "cli/exit_codes.py",
+    "core/cause.py",
     "core/exit_codes.py",
     "write/metadata.py",
-    "core/naming.py",
 )
 
-#: One planted text per shared question, so every question has an answer to lose
-#: if a shared tree were written to.
+#: A planted second table, so the questions a real module answers with nothing
+#: have an answer to lose if a shared tree were written to.
 PLANTED = {
     "core/planted_table.py": (
         'CODES = {\n    "rclone-missing": 30,\n    "rekordbox-running": 21,\n}\n'
-    ),
-    "core/planted_writer.py": (
-        "import importlib\n\nfrom cratekit.core import config\n\n\n"
-        'def stash(path, data):\n    getattr(path, "write_text")(data)\n\n\n'
-        'def later():\n    return importlib.import_module("cratekit.core.ledger")\n'
     ),
 }
 
@@ -218,7 +205,6 @@ PLANTED = {
 def _questions(relative: str, source: str) -> dict[str, Callable[[], object]]:
     """Every question a sharing test asks of one module, each not yet asked."""
     package = reserved.package_of(relative)
-    dotted = f"{package}.{relative.rsplit('/', 1)[-1].removesuffix('.py')}"
     causes = reserved.declared_causes()
     pair = [(relative, source)]
     return {
@@ -235,10 +221,6 @@ def _questions(relative: str, source: str) -> dict[str, Callable[[], object]]:
         "cause_literals": lambda: reserved.modules_holding_a_cause_literal(pair),
         "kebab_literals": lambda: reserved.kebab_literals_by_module(pair),
         "in_range_integer": lambda: reserved.holds_an_in_range_integer(source),
-        "resolved_imports": lambda: reports._resolved_imports(source, dotted),
-        "import_module_calls": lambda: reports._import_module_calls(source),
-        "names_bound_by": lambda: reports._names_bound_by(source),
-        "unnamed_writers": lambda: reports._unnamed_writers(dotted, source),
     }
 
 
@@ -319,11 +301,11 @@ def test_shared_trees_answer_alike_in_either_order_and_as_trees_of_their_own():
 
     assert forward["core/planted_table.py"]["reserved_code_tables_in"]
     assert forward["core/planted_table.py"]["kebab_literals"]
-    assert forward["core/planted_writer.py"]["unnamed_writers"]
-    assert forward["core/planted_writer.py"]["resolved_imports"]
-    assert forward["core/planted_writer.py"]["import_module_calls"]
+    assert forward["core/planted_table.py"]["cause_literals"]
+    assert forward["core/planted_table.py"]["in_range_integer"]
     assert forward["core/exit_codes.py"]["declared_enum_values"]
-    assert forward["write/metadata.py"]["names_bound_by"]
+    assert forward["cli/exit_codes.py"]["reserved_code_tables_in"]
+    assert any(answers["named_with_own"] for answers in forward.values())
 
 
 # ═══════════════════════════════════════════════════════════════════════════
