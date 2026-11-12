@@ -55,6 +55,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from collections.abc import Callable, Iterable, Iterator, Mapping, Sequence
 from dataclasses import asdict, dataclass, fields
 from pathlib import Path
@@ -256,7 +257,7 @@ def match_key(artist: str, title: str) -> str:
 # ---------------------------------------------------------------------------
 
 TagReader = Callable[[Path], Mapping[str, str | None]]
-FileLister = Callable[[Path], Iterable[Path]]
+FileLister = Callable[[Path, Sequence[Path]], Iterable[Path]]
 
 
 def read_index_tags(path: Path) -> dict[str, str | None]:
@@ -280,17 +281,154 @@ def read_index_tags(path: Path) -> dict[str, str | None]:
     return tags.read_tags(path, INDEX_FIELDS)
 
 
-def iter_audio(root: Path) -> Iterator[Path]:
-    """Every audio file under ``root``, in a stable order.
+def iter_audio(root: Path, exclude: Iterable[Path] = ()) -> Iterator[Path]:
+    """Every audio file under ``root``, in a stable order, less ``exclude``.
 
     Sorted, because the index order decides which of two duplicate works
     survives the collapse, and an unsorted walk would make that choice depend on
     the filesystem's mood.
+
+    ``exclude`` names folders the library holds that are NOT the library's own
+    music (U279): Cratekit's library state folder, whose rehearsals keep staged
+    copies of real tracks, and the download staging folder when it sits under
+    the root, which is where setup puts it by default. Their copies sorted ahead
+    of ``Music`` and took the real files' place in the collapse. Each is matched
+    by :class:`Exclusion`, by the directory it IS and never by its name, and is
+    pruned rather than walked and filtered. Everything outside them is yielded
+    exactly as ``sorted(root.rglob("*"))`` yields it, in the same order.
     """
     suffixes = frozenset(AUDIO_EXTS)
-    for candidate in sorted(root.rglob("*")):
+    for candidate in sorted(Exclusion.under(root, exclude).walk(root)):
         if candidate.suffix.lower() in suffixes:
             yield candidate
+
+
+#: A directory's identity for the length of one walk: device and inode.
+_Identity = tuple[int, int]
+
+
+def _identity(status: os.stat_result) -> _Identity:
+    return (status.st_dev, status.st_ino)
+
+
+@dataclass(frozen=True, slots=True)
+class Exclusion:
+    """The folders under a root the index leaves out, BY LOCATION (U279).
+
+    A path is not an identity. The configured staging folder may be spelled
+    through a symlinked mount, with a trailing separator or a ``..``, or in
+    another letter case on a volume that ignores case, and a library folder
+    deeper down may share the state folder's NAME. So each configured folder is
+    read once as the directory it is, its device and inode, and the walk
+    compares directories against that, never names.
+
+    ``folders`` maps each excluded directory's identity to the configured path,
+    which a refusal names. ``ancestors`` holds the directories strictly between
+    the root and an excluded folder: only those are walked by hand, and every
+    other subtree is handed to ``rglob`` whole, so what is yielded outside the
+    excluded folders is what today's walk yields. A configured folder that is
+    missing, is the root, holds the root, or sits outside it excludes nothing.
+    """
+
+    folders: Mapping[_Identity, Path]
+    ancestors: frozenset[_Identity]
+    root: _Identity | None
+
+    @classmethod
+    def under(cls, root: Path, exclude: Iterable[Path]) -> Exclusion:
+        try:
+            top = _identity(os.stat(root))
+        except OSError:
+            return cls(folders={}, ancestors=frozenset(), root=None)
+        folders: dict[_Identity, Path] = {}
+        ancestors: set[_Identity] = set()
+        for folder in exclude:
+            chain = _chain_to(Path(folder), top)
+            if chain:
+                folders.setdefault(chain[0], Path(folder))
+                ancestors.update(chain[1:])
+        return cls(folders=folders, ancestors=frozenset(ancestors), root=top)
+
+    def walk(self, root: Path) -> Iterator[Path]:
+        """What ``root.rglob("*")`` yields, less every excluded folder and its contents.
+
+        ``rglob`` yields every entry of every directory it reaches and descends
+        into real directories only, never a symlink to one, and an entry it
+        cannot list it passes over. The hand walk below keeps all three.
+        """
+        if not self.folders:
+            yield from root.rglob("*")
+            return
+        try:
+            with os.scandir(root) as listing:
+                entries = list(listing)
+        except OSError:
+            return
+        for entry in entries:
+            child = root / entry.name
+            identity = None
+            try:
+                if entry.is_dir(follow_symlinks=False):
+                    identity = _identity(entry.stat(follow_symlinks=False))
+            except OSError:
+                identity = None
+            if identity in self.folders:
+                continue
+            yield child
+            if identity is None:
+                continue
+            if identity in self.ancestors:
+                yield from self.walk(child)
+            else:
+                yield from child.rglob("*")
+
+    def holder(self, path: Path) -> Path | None:
+        """The configured excluded folder ``path`` sits in, or None.
+
+        Read up the path's own folders, each as the directory it is, until the
+        root: so an anchor spelled through a link into staging is placed where
+        it is rather than where its spelling says.
+        """
+        if not self.folders:
+            return None
+        for folder in Path(path).parents:
+            try:
+                identity = _identity(os.stat(folder))
+            except OSError:
+                continue
+            if identity in self.folders:
+                return self.folders[identity]
+            if identity == self.root:
+                return None
+        return None
+
+
+def _chain_to(folder: Path, top: _Identity) -> list[_Identity]:
+    """``folder`` and each directory above it, up to and not including ``top``.
+
+    Empty when ``folder`` is not a directory strictly under ``top``. Read on the
+    resolved path, so the chain is the real directories whatever the spelling,
+    and each step compared by identity, so case and mount spelling cannot hide
+    the root.
+    """
+    try:
+        current = folder.resolve()
+        if not current.is_dir():
+            return []
+    except OSError:
+        return []
+    chain: list[_Identity] = []
+    while True:
+        try:
+            identity = _identity(os.stat(current))
+        except OSError:
+            return []
+        if identity == top:
+            return chain
+        chain.append(identity)
+        if current.parent == current:
+            return []
+        current = current.parent
 
 
 def parse_entry(
@@ -360,6 +498,7 @@ def build_index(
     cache_path: Path | None = None,
     reader: TagReader = read_index_tags,
     lister: FileLister = iter_audio,
+    exclude: Sequence[Path] = (),
 ) -> tuple[Track, ...]:
     """Scan ``root`` and return the deduplicated index, in walk order.
 
@@ -401,9 +540,15 @@ def build_index(
     A cache write failure is logged and swallowed. The cache is an optimization,
     and refusing to produce a set because a cache could not be written would turn
     a performance feature into an outage.
+
+    ``exclude`` names the folders under ``root`` that are not the library's own
+    music, handed to the lister (U279); :func:`iter_audio` prunes them. A cache
+    entry is only ever served for a path the walk yields, and the cache written
+    back holds only those, so an entry an earlier build cached under an excluded
+    folder is never served and is gone after the next write.
     """
     root = Path(root)
-    files = list(lister(root))
+    files = list(lister(root, tuple(exclude)))
     stamp = _template_stamp(template)
     cached = _load_cache(cache_path, stamp)
 
@@ -1160,6 +1305,7 @@ __all__ = [
     "TIER_SCORE",
     "Anchor",
     "AnchorMatch",
+    "Exclusion",
     "Scored",
     "SetPlan",
     "Track",
