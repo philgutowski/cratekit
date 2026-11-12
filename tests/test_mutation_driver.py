@@ -25,6 +25,8 @@ from pathlib import Path
 import platformdirs
 import pytest
 
+from tests import _stealing_suite as stealing
+
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 
@@ -1437,3 +1439,52 @@ def test_a_batch_with_no_python_target_cannot_produce_a_control(tmp_path):
     """No control, no batch. The control is not optional."""
     with pytest.raises(mutate.DriverRefusal, match="null control needs a Python target"):
         mutate.null_control_row([_row("D1", "a", "b", file="docs/notes.md")])
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Under the repository's work stealing distribution, U251
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.fixture
+def stealing_repo(tmp_path, monkeypatch) -> tuple[Path, Path]:
+    """A committed suite in which a queued test has to move to the idle worker.
+
+    ``tests/_stealing_suite.py`` says how it forces the move. Its ``addopts``
+    are the repository's own with two workers, so the driver meets the
+    distribution the real tree runs under. Returns the repository and the
+    directory its tests record their workers in.
+    """
+    repo = stealing.write(tmp_path / "stealing-repo")
+    _git(repo, "init", "-q", "-b", "main")
+    _git(repo, "add", "-A")
+    _git(repo, "commit", "-q", "-m", "a suite whose tests move between workers")
+    log = tmp_path / "workers"
+    stealing.prepare_environment(monkeypatch, log)
+    return repo, log
+
+
+def test_the_count_and_the_failure_survive_a_steal(stealing_repo):
+    """Only the controller writes, and it hears from both workers.
+
+    A report written by every worker would hold one worker's share; a count
+    taken off one worker's queue rather than its collection would shrink by
+    the tests stolen from it.
+    """
+    repo, log = stealing_repo
+    result = mutate.run_pytest(repo, None)
+    assert result.collected == stealing.FULL_COUNT
+    assert list(result.failed) == [stealing.STOLEN_FAILURE]
+    assert not result.errored
+    assert not result.collect_errors
+    stealing.assert_the_failure_moved(log)
+
+
+def test_a_three_file_subset_still_collects_and_reports_under_a_steal(stealing_repo):
+    """The shape of a row's subset run: named test files, not the whole suite."""
+    repo, log = stealing_repo
+    result = mutate.run_pytest(repo, list(stealing.SUBSET))
+    assert result.collected == stealing.SUBSET_COUNT
+    assert list(result.failed) == [stealing.STOLEN_FAILURE]
+    assert not result.errored
+    stealing.assert_the_failure_moved(log)
