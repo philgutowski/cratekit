@@ -1,0 +1,113 @@
+name = "u253"
+pass_kind = "light"
+
+# U253 adds no source. Its guard is the one decoder sweep in
+# tests/test_locations.py, lifted into _location_codec_offenders(root) so the
+# relative path is computed once per file, and five tests that drive the sweep
+# over planted source. A test only change to a static guard, so the table is
+# sized as a static registry's, about eight rows: each layer of the sweep
+# reverted or widened alone, and the U253 change itself put back to its per
+# node shape. Every row runs tests/test_locations.py; a zero on it is promoted
+# to the full suite by the driver.
+
+[[rows]]
+id = "L1_relative_per_node"
+description = "_location_codec_offenders: compute the relative path inside the node loop again, main's shape, so a run makes one relative_to per node"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''        relative = path.relative_to(root).as_posix()
+        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+'''
+new = '''        tree = ast.parse(path.read_text())
+        for node in ast.walk(tree):
+            relative = path.relative_to(root).as_posix()
+'''
+
+[[rows]]
+id = "L2_relative_before_exclusions"
+description = "_location_codec_offenders: compute the relative path before the two exclusions, so a skipped file still costs one"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''    for path in sorted(root.rglob("*.py")):
+        if path.name == "locations.py":'''
+new = '''    for path in sorted(root.rglob("*.py")):
+        path.relative_to(root)
+        if path.name == "locations.py":'''
+
+[[rows]]
+id = "L3_no_decoder_skip"
+description = "_location_codec_offenders: drop the locations.py skip, so the one decoder reports itself"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''        if path.name == "locations.py":
+            continue
+'''
+new = ""
+
+[[rows]]
+id = "L4_no_vendor_skip"
+description = "_location_codec_offenders: drop the vendored tree exclusion"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''        if vendor_root in path.parents:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "L5_vendor_skip_by_part"
+description = "_location_codec_offenders: widen the vendored exclusion to any directory named _vendor anywhere in the tree"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''        if vendor_root in path.parents:'''
+new = '''        if "_vendor" in path.parts:'''
+
+[[rows]]
+id = "L6_permit_by_name_only"
+description = "_location_codec_offenders: excuse quote_plus in every module, the permitted pair narrowed on one axis only"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''            if called in _LOCATION_CODEC_CALLS and (relative, called) not in _PERMITTED_CODEC_CALLS:'''
+new = '''            if called in _LOCATION_CODEC_CALLS and called != "quote_plus":'''
+
+[[rows]]
+id = "L7_bare_calls_only"
+description = "_location_codec_offenders: stop reading an attribute call, so parse.quote and shlex.quote pass"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''                elif isinstance(node.func, ast.Attribute):'''
+new = '''                elif False:'''
+
+[[rows]]
+id = "L8_three_names"
+description = "_LOCATION_CODEC_CALLS: drop unquote_plus from the four names"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''_LOCATION_CODEC_CALLS = frozenset({"unquote", "unquote_plus", "quote", "quote_plus"})'''
+new = '''_LOCATION_CODEC_CALLS = frozenset({"unquote", "quote", "quote_plus"})'''
+
+[[rows]]
+id = "L9_one_line_per_file"
+description = "_location_codec_offenders: stop at a file's first offending call, so a second call in it goes unreported"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''                offenders.append(f"{relative} calls {called}()")'''
+new = '''                offenders.append(f"{relative} calls {called}()")
+                break'''
+
+[[rows]]
+id = "L10_relative_is_the_name"
+description = "_location_codec_offenders: key the offender and the permitted pair on the file name, not its path under the root"
+file = "tests/test_locations.py"
+surface = "maintainer"
+tests = ["tests/test_locations.py"]
+old = '''        relative = path.relative_to(root).as_posix()'''
+new = '''        relative = path.name'''
