@@ -326,6 +326,26 @@ def _no_live_general_catalogue():
 
 
 @pytest.fixture(autouse=True)
+def _forget_cover_memory():
+    """Start and end every test with no remembered picture and no shared fetch.
+
+    U260 made the worker's image fetch one per process, remembering each
+    address's bytes, and the encoder remember each picture it made. A shared
+    fetch built while one test had replaced the HTTP getter would carry that
+    getter into every later test in the worker, and a picture one test's fake
+    host answered would answer the next test's address without a request.
+    """
+    from cratekit.core import art
+    from cratekit.tagging import searchers
+
+    searchers.reset_images()
+    art.reset_cache()
+    yield
+    searchers.reset_images()
+    art.reset_cache()
+
+
+@pytest.fixture(autouse=True)
 def _forget_library_reads():
     """Start and end every test with the library index reader remembering nothing.
 
