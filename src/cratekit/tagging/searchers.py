@@ -572,9 +572,13 @@ _LAST_GROUP = re.compile(r"\s*\([^()]*\)\s*$")
 #: "(Not Just) Knee Deep (Part 1)", "[MP3] " of "[MP3] Real Title".
 _LEADING_GROUPS = re.compile(r"^(?:\s*(?:\([^()]*\)|\[[^\[\]]*\]))+\s*")
 
-#: A track number a file's name opens with, "01" of "01 Sunrise Mood": one to
-#: three digits, never a year.
-_TRACK_NUMBER = re.compile(r"\d{1,3}")
+#: A track number a file's name opens with, "01" of "01 Sunrise Mood": padded
+#: with a zero, so a title that opens with a number, "22 Bullets" or "909", is
+#: never read without it.
+_TRACK_NUMBER = re.compile(r"0\d{1,2}")
+
+#: A year, the only number a version carries: "2014" of "2014 Remaster".
+_YEAR = re.compile(r"(?:19|20)\d\d")
 
 #: A run of letters or digits, in any script. The underscore ``\w`` admits is
 #: punctuation here.
@@ -690,17 +694,18 @@ def _without_version(words: tuple[str, ...]) -> tuple[str, ...] | None:
     """The words before a trailing run of version words, "sunrise mood" of
     "Sunrise Mood Extended Mix", or None.
 
-    The run is words of the domain's :data:`VERSION_WORDS` and numbers ("2014
+    The run is words of the domain's :data:`VERSION_WORDS` and years ("2014
     Remaster"), at least one of them a version word, and something must be
     left before it: "Original Mix" and "Dub Club" are titles, never a version
-    of nothing. THE LIST ONLY SHEDS. It never decides that two titles differ,
-    so a version word it lacks costs a title its own row ("Sunrise Mood Vocal"
-    reads as three words), never a row another recording's genre: the hand
-    list it replaced refused containment for its words alone, and a word it
-    lacked, "vocal", let "Vocal Mix" match "Other Song (Vocal Mix)" (R-1631).
+    of nothing. Any other number stays, since it names the recording: "Kitchen
+    Session 2" is never "Kitchen Session 1" (R-1631, round one). Here the list
+    only sheds, so a version word it lacks costs a title its own row ("Sunrise
+    Mood Vocal" reads as three words): the hand list it replaced refused
+    containment for its words alone, and a word it lacked, "vocal", let "Vocal
+    Mix" match "Other Song (Vocal Mix)" (R-1631).
     """
     end = len(words)
-    while end and (words[end - 1] in VERSION_WORDS or words[end - 1].isdigit()):
+    while end and (words[end - 1] in VERSION_WORDS or _a_year(words[end - 1])):
         end -= 1
     if end == 0 or end == len(words):
         return None
@@ -722,9 +727,44 @@ def _shed(words: tuple[str, ...]) -> set[tuple[str, ...]]:
     return readings
 
 
+def _a_year(word: str) -> bool:
+    """Whether a word is a year, as a remaster names one: "2014 Remaster"."""
+    return _YEAR.fullmatch(word) is not None
+
+
 def _a_head_word(word: str) -> bool:
     """Whether a word is a number or a Camelot key, as a head is written."""
     return word.isdigit() or naming.is_camelot(word)
+
+
+def _a_head(words: tuple[str, ...]) -> bool:
+    """Whether words are a ``KEY - BPM`` head: numbers and keys, a key among them."""
+    return bool(words) and all(map(_a_head_word, words)) and any(map(naming.is_camelot, words))
+
+
+def _head_parts(parts: list[str]) -> tuple[int, int]:
+    """How many dash parts a file's title opens with that are its head, and
+    where the head it ends with starts: each part a key or a number, a key
+    among them, and the title's last part never all head."""
+    count = len(parts)
+    lead = 0
+    while lead < count - 1 and len(_words(parts[lead])) == 1 and _a_head_word(_words(parts[lead])[0]):
+        lead += 1
+    if not _a_head(_words(_DASH.join(parts[:lead]))):
+        lead = 0
+    trail = count
+    while trail > 1 and len(_words(parts[trail - 1])) == 1 and _a_head_word(_words(parts[trail - 1])[0]):
+        trail -= 1
+    if not _a_head(_words(_DASH.join(parts[trail:]))):
+        trail = count
+    return lead, trail
+
+
+def _without_head(text: str) -> str:
+    """A file's title with the ``KEY - BPM - `` head it opens with taken off."""
+    parts = text.split(_DASH)
+    lead, _ = _head_parts(parts)
+    return _DASH.join(parts[lead:])
 
 
 def _numbered(words: tuple[str, ...]) -> bool:
@@ -733,18 +773,21 @@ def _numbered(words: tuple[str, ...]) -> bool:
     return len(words) > 1 and _TRACK_NUMBER.fullmatch(words[0]) is not None
 
 
-def _names_a_title(words: tuple[str, ...], *, tail: bool) -> bool:
+def _names_a_title(words: tuple[str, ...], *, tail: bool, head: bool) -> bool:
     """Whether a reading taken from part of a title can be a title.
 
-    A part of numbers and keys alone, the "08A" or "126" of a ``KEY - BPM - ``
-    head, is not. A tail made only of version words and numbers after a title,
-    the "Original Mix" of "Sunrise Mood - Original Mix", is that title's
-    version, never a title; after a head alone it is the title, "Interlude" of
-    "08A - 124 - Interlude".
+    A ``head`` part of numbers and keys alone, the "08A" or "126" of a ``KEY -
+    BPM - `` head, is not; outside the head a number is a title, "1998" of
+    "08A - 124 - 1998" (R-1631, round one). A tail made only of version words
+    and years after a title, the "Original Mix" of "Sunrise Mood - Original
+    Mix", is that title's version, never a title; after a head alone it is
+    the title, "Interlude" of "08A - 124 - Interlude". THIS ONE REFUSES ON THE
+    LIST, so a version tail with a word the list lacks, "Other Song - Vocal
+    Mix", is still read as a title on the file's side, as it was before.
     """
-    if all(_a_head_word(word) for word in words):
+    if head and all(_a_head_word(word) for word in words):
         return False
-    return not (tail and all(word in VERSION_WORDS or word.isdigit() for word in words))
+    return not (tail and all(word in VERSION_WORDS or _a_year(word) for word in words))
 
 
 Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]
@@ -753,22 +796,22 @@ Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]
 def _a_tail_to_shed(tail: str, *, searched: bool) -> bool:
     """Whether the dash parts after a title are a version of it, or a head.
 
-    A version is a tail whose core ends in a version word, numbers aside:
+    A version is a tail whose core ends in a version word, years aside:
     "Original Mix", "Kerri Chandler Remix", "Remastered 2011", and never "126 -
-    Burning (Extended Mix)", whose core ends in "burning". On the file's side
-    only, a head is numbers and keys alone, the ``KEY - BPM`` a library may
-    write after the title. Anything else, "Tide" of "Aurora Bloom - Tide", is
-    the title, and the part before it is no reading: shedding it read an
-    artist's name as the title of every one of their records. THE LIST ONLY
-    SHEDS here too: a version word it lacks costs a miss.
+    Burning (Extended Mix)", whose core ends in "burning", or "Session 2". On
+    the file's side only, a head is numbers and keys alone with a key among
+    them, the ``KEY - BPM`` a library may write after the title. Anything
+    else, "Tide" of "Aurora Bloom - Tide", is the title, and the part before it
+    is no reading: shedding it read an artist's name as the title of every one
+    of their records. Here the list only sheds: a version word it lacks costs
+    a miss.
     """
     core, _ = _title_core(tail)
-    named = [word for word in _words(core) if not word.isdigit()]
-    if not named:
-        return searched and _identifies(core)
-    if searched and all(_a_head_word(word) for word in named):
+    words = _words(core)
+    if searched and _a_head(words):
         return True
-    return named[-1] in VERSION_WORDS
+    named = [word for word in words if not _a_year(word)]
+    return bool(named) and named[-1] in VERSION_WORDS
 
 
 def _readings(value: str, *, searched: bool) -> Readings:
@@ -782,10 +825,11 @@ def _readings(value: str, *, searched: bool) -> Readings:
     read from any later part, since the live library writes ``KEY - BPM - ``
     before the title in the tag and a file with no tag is asked by its "Artist
     - Album - 01 Title" name: "04A - 126 - Burning (Extended Mix)" is also
-    "burning", with a leading track number shed, and the part after a head
-    alone is the title whatever follows it, as the naming verb's "KEY - BPM -
-    Title - Artist" names a file. A tail of version words alone after a title
-    is never a title. Each run is read by its core (:func:`_title_core`) and
+    "burning", with a padded track number shed, and the part after a head
+    alone is the title whatever follows it, since the naming verb keeps
+    whatever body a file's name carries after the head ("Title - Artist",
+    "Artist - Title" and "Title - Artist - Album" all occur). A tail of
+    version words alone after a title is never a title. Each run is read by its core (:func:`_title_core`) and
     by all its words, brackets or none, so "Sunrise Mood Kerri Chandler Remix"
     reads as "Sunrise Mood (Kerri Chandler Remix)" does, and each reading is
     shed of a feature credit and a version run (:func:`_shed`). The core with
@@ -798,6 +842,7 @@ def _readings(value: str, *, searched: bool) -> Readings:
         return frozenset(), frozenset()
     parts = text.split(_DASH)
     whole = (0, len(parts))
+    head_end, tail_start = _head_parts(parts) if searched else (0, len(parts))
     firsts = range(len(parts)) if searched else range(1)
     readings: set[tuple[str, ...]] = set()
     shed: set[tuple[str, ...]] = set()
@@ -813,8 +858,8 @@ def _readings(value: str, *, searched: bool) -> Readings:
                 continue
             core, exact = _title_core(part)
             found = {_words(core)} if exact else _shed(_words(core)) | _shed(_words(part))
-            if searched:
-                found |= {words[1:] for words in found if _numbered(words)}
+            if searched and not exact and _numbered(_words(core)):
+                found |= _shed(_words(core)[1:])
             lead = None if exact else _LEADING_GROUPS.match(core)
             bare = core[lead.end() :] if lead is not None else ""
             found_shed = _shed(_words(bare)) if _identifies(bare) else set()
@@ -822,7 +867,8 @@ def _readings(value: str, *, searched: bool) -> Readings:
                 into.update(
                     words
                     for words in these
-                    if (first, last) == whole or _names_a_title(words, tail=after_title)
+                    if (first, last) == whole
+                    or _names_a_title(words, tail=after_title, head=last <= head_end or first >= tail_start)
                 )
     return frozenset(readings), frozenset(shed)
 
@@ -979,20 +1025,24 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
 
     THE TITLE IS READ AS THE SHARED MATCHER READS IT (R-1534, R-1631). A
     title of no letter or digit scores no row, and a row whose name carries
-    none is passed over. The top tier is the title's core word for word the
-    row's name, or the title the name with its mix in brackets. The other
-    tier is a reading the two share (:func:`_readings`), the title read as a
-    file's and the name as a catalogue's, so a row "Love (feat. X)" never
-    scores against "Love Is The Message", a row "(Intro)" or "Intro" never
-    against "Sunrise Mood (Intro)", and a row "(Sunrise Mood)" never against
-    "Mood". No tier reads a row's name inside the title's brackets, or the
-    title inside the name's. A credit with no name is no credit: the empty
-    string is in every searched artist.
+    none is passed over. The title is ranked without its ``KEY - BPM - ``
+    head, so a headed file ranks its rows as a plain one does. The top tier
+    is the title the row's name with its mix in brackets, so a file's own mix
+    outranks the same title's other mixes; the next is the title's core word
+    for word the row's name; the last is a reading the two share
+    (:func:`_readings`), the title read as a file's and the name as a
+    catalogue's, so a row "Love (feat. X)" never scores against "Love Is The
+    Message", a row "(Intro)" or "Intro" never against "Sunrise Mood
+    (Intro)", and a row "(Sunrise Mood)" never against "Mood". No tier reads
+    a row's name inside the title's brackets, or the title inside the name's.
+    A credit with no name is no credit: the empty string is in every searched
+    artist.
     """
     title_normalized = _normalized(title)
     if not _identifies(title_normalized):
         return None
-    whole_title = _words(_title_core(title_normalized)[0])
+    proper = _without_head(title_normalized)
+    whole_title = _words(_title_core(proper)[0])
     searched_readings = _readings(title_normalized, searched=True)
     searched = _artist_parts(artist, r"[,&]")
 
@@ -1016,7 +1066,9 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         if artist_score == 0:
             continue
 
-        if whole_title == _words(name) or title_normalized == f"{name} ({mix})":
+        if _words(proper) == _words(f"{name} ({mix})"):
+            title_score = 4
+        elif whole_title == _words(name):
             title_score = 3
         elif _meet(searched_readings, _readings(name, searched=False)):
             title_score = 2

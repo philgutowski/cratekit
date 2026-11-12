@@ -19,12 +19,13 @@ segments, since the live library writes its ``KEY - BPM - `` head into the
 title tag; a feature credit; a trailing run of the domain's version words; its
 leading bracket groups. Nothing is compared by characters, and a word read only
 inside the other title's brackets is never its title. A side with no letter or
-digit matches nothing. A title that matched its own row before still does,
-which the tables below drive on every source, the headed title included. The
-one kind known lost is a title written only inside the other's trailing
-brackets ("How Does It Feel" against "Untitled (How Does It Feel)"), whose
-evidence is the same as the wrong shape "Intro" against "Sunrise Mood
-(Intro)", pinned below as a known cost.
+digit matches nothing, and a number is part of the title. The tables below
+drive the shapes the matcher must keep on every source, the headed title
+included. What it gives up is recorded in R-1631's residuals: a title written
+only inside the other's trailing brackets ("How Does It Feel" against
+"Untitled (How Does It Feel)"), whose evidence is the same as the wrong shape
+"Intro" against "Sunrise Mood (Intro)", pinned below as a known cost, and some
+shapes of a file with no title tag, asked by its name.
 
 NOTHING HERE OPENS A SOCKET. Pages are synthetic text in the shapes the
 parsers read, handed to the injected fetch seam.
@@ -112,6 +113,10 @@ SAME = [
     ("Vocal Mix", "Vocal Mix"),
     ("Sun Path", "Sun Path [Nightwave Remix]"),
     ("Sunrise Mood Kerri Chandler Remix", "Sunrise Mood (Kerri Chandler Remix)"),
+    # Round one: a title of numbers is a title.
+    ("1998", "1998"),
+    ("808 (Extended Mix)", "808 (Original Mix)"),
+    ("Kitchen Session 2 (Extended Mix)", "Kitchen Session 2"),
 ]
 
 #: (searched, found) pairs that name different recordings and must not match.
@@ -157,6 +162,13 @@ DIFFERENT = [
     ("Love", "Love Is The Message"),
     ("Track 2", "Track"),
     ("(Hate) Is The Message", "(Love) Is The Message"),
+    # Round one: a number is never shed with a bracket's words or a version.
+    ("909 (Jack Mix)", "Jack"),
+    ("303 (Acid Mix)", "Acid"),
+    ("100% (Vocal Mix)", "Vocal (Original Mix)"),
+    ("Kitchen Session 2", "Kitchen Session 1"),
+    ("Shout Part 2 (Extended Mix)", "Shout Part 1 (Original Mix)"),
+    ("Track 2 (Extended Mix)", "Track"),
 ]
 
 #: (file title, catalogue row) pairs that name the same recording, read one way
@@ -177,6 +189,8 @@ HEADED = [
     ("08A - 124 - [MP3] Sunrise Mood", "Sunrise Mood"),
     ("08A - 124 - Make Luv - Room 5", "Make Luv"),
     ("Sun Path - 08A - 124", "Sun Path"),
+    ("08A - 124 - 1998 (Original Mix)", "1998"),
+    ("08A - 124 - 909", "909 (Original Mix)"),
 ]
 
 #: (file title, catalogue row) pairs that name different recordings, read one
@@ -189,6 +203,9 @@ HEADED_NOT = [
     ("Bernard Badie - Sunrise Mood", "Bernard Badie"),
     ("Bernard Badie - Sunrise Mood", "Bernard Badie - Tide"),
     ("Bernard Badie - Corner Talk (Club Mix)", "Bernard Badie - Glass Hour (Extended Mix)"),
+    ("08A - 124 - 22 (Original Mix)", "Original Mix"),
+    ("08A - 124 - 909 (Jack Mix)", "Jack"),
+    ("08A - 124 - Kitchen Session 2", "Kitchen Session 1"),
 ]
 
 
@@ -537,7 +554,39 @@ R1631_WRITES = [
     ("Club", "Nightclub"),
     ("Original Mix", f"{OTHER} - Original Mix"),
     ("Mood", "(Sunrise Mood)"),
+    ("08A - 124 - 909 (Jack Mix)", "Jack"),
+    ("08A - 124 - Kitchen Session 2", "Kitchen Session 1"),
+    ("100% (Vocal Mix)", "Vocal (Original Mix)"),
 ]
+
+
+@pytest.mark.parametrize(
+    ("title", "other", "own", "mix"),
+    [
+        ("08A - 124 - Kitchen Session 2", "Kitchen Session 1", "Kitchen Session 2", ""),
+        ("08A - 124 - Burning (Extended Mix)", "Burning", "Burning", "Extended Mix"),
+        ("08A - 124 - 909 (Jack Mix)", "Jack", "909", "Jack Mix"),
+    ],
+)
+def test_a_headed_file_takes_its_own_rows_genre_over_another_listed_first(
+    tmp_path, silence, title, other, own, mix
+):
+    """Round one: the top tier read the head's words too, so a headed title
+    never reached it, and page order chose between the file's own row and
+    another by the artist."""
+    path = tmp_path / "a.flac"
+    path.write_bytes(Path(silence).read_bytes())
+    assert tags.write_tags(path, {"artist": ARTIST, "title": title})
+    rows = [
+        _beatport_track(ARTIST, other, "Techno", mix="Original Mix"),
+        _beatport_track(ARTIST, own, BUCKET_GENRE, mix=mix),
+    ]
+    fetch = routed(search=results(), beatport=searchers.Fetched(text=_beatport_page(rows), status=200))
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written == BUCKET_GENRE
+    assert tags.read_genre_from_file(path) == BUCKET_GENRE
 
 
 @pytest.mark.parametrize(("title", "other"), R1631_WRITES)

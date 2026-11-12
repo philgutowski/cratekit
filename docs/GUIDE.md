@@ -323,8 +323,10 @@ crate route pending
   carry it and a `discogs-token` is recorded, then of the general catalogue
   by ISRC. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the
-  `KEY - BPM` head are set aside; a word inside the other title's brackets
-  never counts, so "Intro" is never "Sunrise Mood (Intro)". Discogs' first style that names a folder is written, through the
+  `KEY - BPM` head are set aside; a title is never matched by words that sit
+  only inside the other title's brackets, so "Intro" is never "Sunrise Mood
+  (Intro)", and a number in a title is never set aside, so "Session 2" is
+  never "Session 1". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the

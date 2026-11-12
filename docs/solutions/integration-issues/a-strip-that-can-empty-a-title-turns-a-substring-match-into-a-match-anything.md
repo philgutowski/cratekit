@@ -47,11 +47,19 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   What landed compares readings, tuples of whole words once a title has shed
   what is not its title (`_readings` in `tagging/searchers.py`), and two titles
   match on a shared reading.
-- **A vocabulary may only shed, never refuse.** A list that refuses a match
-  for its words fails open on every word it lacks. The version words now come
-  from the domain's `core.tombstone.VERSION_WORDS` and are used only to shed a
-  trailing version from a title, so a word the list lacks costs a miss, never
-  another row's genre. Ask of any list in a matcher which way it fails.
+- **Ask of any list in a matcher which way it fails.** A list that refuses a
+  match for its words fails open on every word it lacks. The version words now
+  come from the domain's `core.tombstone.VERSION_WORDS` and mostly shed a
+  trailing version from a title, where a word the list lacks costs a miss. One
+  place still refuses on it, a file's dash tail of version words alone
+  (`_names_a_title`), so "Other Song - Vocal Mix" still reads "vocal mix" as a
+  title, as it did before; that is recorded as a residual.
+- **A number is part of the title (round one of R-1631).** Shedding numbers
+  with a version read "Kitchen Session 2" as "Kitchen Session 1"; shedding a
+  leading number after the bracket words joined read "909 (Jack Mix)" as
+  "Jack"; and refusing every all number part refused "1998" its own row behind
+  a head. Only a year rides with a version, only a zero padded number is a
+  track number, and only the head's own parts are refused for being numbers.
 - **The file's title is not shaped like a catalogue's.** The live library
   writes `KEY - BPM - ` into the title tag (the solution on the head in the
   title tag), and a file with no title tag is asked by its "Artist - Album -
