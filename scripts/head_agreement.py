@@ -14,13 +14,15 @@ rate. Writes nothing. Refuses while rekordbox or its agent is running.
     .venv/bin/python scripts/head_agreement.py --analyse 300 --step 4 --key windows
 
 ``--key`` chooses how the detector takes the key's chroma for ``--analyse``:
-``whole``, which is what ships, ``windows`` or ``plain`` (U241). The two
-cheaper methods become the default only if their key agreement over the same
-sample is within one percentage point of the whole track's.
+``plain``, which is what ships and what is read when no ``--key`` is named,
+``whole`` or ``windows`` (U241). ``plain`` became the default with U276,
+after A121 read it within one percentage point of the whole track's
+agreement over the same sample, in about half the time.
 
 The recorded numbers in ``cratekit.analysis.detect`` were taken with
-``--analyse 300 --step 4`` on 2026-09-30, and are replaced by hand from this
-script's output after any change to the detector.
+``--analyse 300 --step 4`` on 2026-09-30, the key with ``whole``, and each
+method's key agreement again on 2026-11-12; they are replaced by hand from
+this script's output after any change to the detector.
 """
 
 from __future__ import annotations
@@ -35,7 +37,10 @@ if SRC.is_dir() and str(SRC) not in sys.path:
     sys.path.insert(0, str(SRC))
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The script's arguments, the key method's default read from the detector."""
+    from cratekit.analysis import detect
+
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument(
         "--database",
@@ -58,18 +63,23 @@ def main(argv: list[str] | None = None) -> int:
     )
     parser.add_argument(
         "--key",
-        default="whole",
-        choices=("whole", "windows", "plain"),
+        default=detect.KEY_DEFAULT,
+        choices=detect.KEY_METHODS,
         help=(
-            "how --analyse takes the key's chroma: the whole track, which is what "
-            "ships, evenly spread windows, or the whole track without the harmonic "
-            "separation (U241); run each over the same sample to compare their key "
-            "agreement"
+            "how --analyse takes the key's chroma: the whole track after the harmonic "
+            "separation, evenly spread windows of it, or the whole track without the "
+            f"separation, which is what ships (default {detect.KEY_DEFAULT}, U276); run "
+            "each over the same sample to compare their key agreement"
         ),
     )
     parser.add_argument(
         "--json", action="store_true", help="print the distributions as JSON instead"
     )
+    return parser
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.step < 1:
         parser.error("--step must be one or more")

@@ -11,7 +11,9 @@ The one thing it can write is the synthetic set, into an empty folder you name.
 
 ``stages`` times each stage of the shipped functions in place, one process,
 one track after another: decode, tempo and drift, harmonic separation, chroma
-and key, energy, vocal decode, vocal model. ``memory`` measures the peak
+and key, energy, vocal decode, vocal model. The key is read with the shipped
+method unless ``--key`` names another, and the plain chroma, the shipped one
+since U276, meets no harmonic separation, so its table counts none. ``memory`` measures the peak
 memory of one light worker per track, each in a fresh process, which is the
 number ``cratekit.analysis.light`` declares to the pool. ``batch`` runs the
 measuring an ``analyze run`` does, once with one worker and once with the pool
@@ -381,7 +383,14 @@ def stage_table(result: dict[str, Any]) -> str:
         "| stage | seconds | share |",
         "|---|---|---|",
     ]
+    from cratekit.analysis import detect
+
+    # A STAGE THE METHOD NEVER MEETS IS NOT A ROW (U276): the plain chroma does
+    # no separation, and a row of naught seconds would read as one that ran.
+    met = set(detect.stages_of(result["key"]))
     for key, words in STAGE_WORDS:
+        if key in detect.STAGES and key not in met:
+            continue
         seconds = result["totals"].get(key, 0.0)
         lines.append(f"| {words} | {seconds:.1f} | {100 * seconds / wall:.0f}% |")
     lines.append(f"| the whole run | {result['wall_seconds']:.1f} | |")
@@ -532,7 +541,8 @@ def batch(args: argparse.Namespace) -> int:
 # ---------------------------------------------------------------------------
 
 
-def main(argv: list[str] | None = None) -> int:
+def build_parser() -> argparse.ArgumentParser:
+    """The script's commands and arguments, the key method's default the detector's."""
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     commands = parser.add_subparsers(dest="command", required=True)
 
@@ -560,7 +570,7 @@ def main(argv: list[str] | None = None) -> int:
     from cratekit.analysis import detect
 
     timed = measuring("stages", "wall time of each stage, one process", stages)
-    timed.add_argument("--key", default=detect.KEY_WHOLE, choices=detect.KEY_METHODS)
+    timed.add_argument("--key", default=detect.KEY_DEFAULT, choices=detect.KEY_METHODS)
     with_vocals(timed)
     measuring("memory", "peak memory of one light worker per track", memory)
     pooled = measuring("batch", "one worker against the pool this machine affords", batch)
@@ -572,7 +582,11 @@ def main(argv: list[str] | None = None) -> int:
         help="cores kept back from the light pool (the shipped figure is 2)",
     )
     with_vocals(pooled)
+    return parser
 
+
+def main(argv: list[str] | None = None) -> int:
+    parser = build_parser()
     args = parser.parse_args(argv)
     if args.command in ("stages", "memory", "batch") and not args.folder.is_dir():
         parser.error(f"{args.folder} is not a folder")
