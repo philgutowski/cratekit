@@ -90,6 +90,8 @@ REASON_AUDIO_UNDECODABLE = "vocal-audio-undecodable"
 REASON_AUDIO_TOO_LARGE = "vocal-audio-too-large"
 REASON_HEAD_TERMINAL = "vocal-head-terminal"
 REASON_INFERENCE_FAILED = "vocal-inference-failed"
+#: A file only ffmpeg could decode, on a machine without it (U263).
+REASON_NO_DECODER = "vocal-no-decoder"
 
 _VOCAL_LOADER: Callable[[], Any] | None = None
 _VOCAL_MODEL: Any = None
@@ -363,8 +365,13 @@ def analyse(
     model = _load()
     if model is None:
         return _inactive(result, REASON_MODEL_UNAVAILABLE)
-    with timed(timings, "vocal_decode"):
-        samples = _decode(result.get("path"))
+    from cratekit.analysis.decode import DecoderMissing
+
+    try:
+        with timed(timings, "vocal_decode"):
+            samples = _decode(result.get("path"))
+    except DecoderMissing:
+        return _inactive(result, REASON_NO_DECODER)
     if samples is None:
         return _inactive(result, REASON_AUDIO_UNDECODABLE)
     from cratekit.analysis.vocal import class_indices, infer_frames, reduce_frames

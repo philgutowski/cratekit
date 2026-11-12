@@ -27,6 +27,10 @@ TERMINAL_UNDECODABLE = "skipped-undecodable"
 #: Kept apart from keyless, which is a track the analyser READ and found
 #: atonal, for the reason ``TERMINAL_UNDECODABLE`` is kept apart from it.
 TERMINAL_UNANALYSABLE = "skipped-unanalysable"
+#: The terminal status for a file only ffmpeg could decode, on a machine with
+#: no ffmpeg (U263). The decoder is the fault, not the file, so it is kept apart
+#: from ``TERMINAL_UNDECODABLE``, which reads as a damaged file.
+TERMINAL_NO_DECODER = "skipped-no-decoder"
 
 _PITCHES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")
 _MAJOR = (6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88)
@@ -527,10 +531,12 @@ def analyse_file(
         # rather than swallowed below as a track that could not be analysed.
         raise ValueError(f"the key method is one of {KEY_METHODS}, not {key!r}")
     try:
-        import librosa
+        import librosa  # noqa: F401 - asked for so its absence is the extra's absence
         import numpy  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
+    from cratekit.analysis import decode
+
     # THIS PROCESS'S FIRST HEAD IS PRECEDED BY A WARM UP, ALONE (U241). librosa's
     # compiled kernels are cached on disk, and two processes filling that cache
     # together crash and leave it damaged; ``analysis.warm`` says how that was
@@ -543,10 +549,15 @@ def analyse_file(
         # AT THE ENERGY MEASURE RATE, one constant for both, because every
         # spectral feature is rate dependent and the calibration fitted on the
         # restamp path scores the samples decoded here.
+        # THROUGH THE ONE DECODER (U263): ``librosa.load`` as before for
+        # every file it reads, and ffmpeg only for a file libsndfile cannot
+        # open, an M4A on librosa 1.0.
         with timed(timings, "decode"):
-            y, sr = librosa.load(str(path), sr=MEASURE_RATE, mono=True)
+            y, sr = decode.load(path, MEASURE_RATE)
         if y.size == 0:
             return {"path": path, "terminal": TERMINAL_UNDECODABLE}
+    except decode.DecoderMissing:
+        return {"path": path, "terminal": TERMINAL_NO_DECODER}
     except Exception:
         # A FILE THE DECODER COULD NOT READ IS NOT A TRACK WITH NO KEY. The
         # first version returned None here, which the light pass reported as

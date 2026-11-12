@@ -100,7 +100,11 @@ dependencies = [
 # this install command and exits non-zero — `crate --help` never crashes on a
 # missing heavy dependency.
 analysis = [
-    "librosa>=0.10",       # BPM detection and the pure-Python key fallback
+    # BPM detection and the pure-Python key fallback. 0.10.2 is the floor because
+    # 0.10.0 and 0.10.1 import pkg_resources and do not import at all on a fresh
+    # Python 3.12 (U263). No ceiling: an M4A, which 1.0 cannot read, is decoded
+    # through ffmpeg by cratekit.analysis.decode.
+    "librosa>=0.10.2",
     "numpy>=1.24",         # feature math
     "scipy>=1.10",         # peak finding for transition detection
 ]

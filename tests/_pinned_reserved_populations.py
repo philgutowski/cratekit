@@ -444,7 +444,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'vocal-calibration-unreadable',
         'vocal-cut-out-of-range',
     ],
-    'analysis/detect.py': ['skipped-unanalysable', 'skipped-undecodable'],
+    'analysis/decode.py': ['utf-8'],  # 2026-11-12, U263: the one decoder joined.
+    # 2026-11-12, U263: a file only ffmpeg decodes, on a machine without it.
+    'analysis/detect.py': ['skipped-no-decoder', 'skipped-unanalysable', 'skipped-undecodable'],
     'analysis/energy.py': [
         'analysis-write-failed',
         'energy-calibration-unreadable',
@@ -460,6 +462,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'vocal-head-terminal',
         'vocal-inference-failed',
         'vocal-model-unavailable',
+        'vocal-no-decoder',  # 2026-11-12, U263
     ],
     'backup/cli.py': [
         'backup-already-queued',
