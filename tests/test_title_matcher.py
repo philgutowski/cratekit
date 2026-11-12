@@ -432,6 +432,15 @@ def test_traxsource_writes_no_genre_off_another_track_by_the_artist(searched, fo
     assert _traxsource_hit(searched, found).genre is None
 
 
+def test_bandcamp_never_reads_a_headings_artist_as_its_title():
+    """A heading "Artist - Friday Night Mix" read whole is the artist's name
+    and a version; the file asked by its name "KEY - BPM - Artist - Title"
+    carries the same name, and the two met on it."""
+    hit = _bandcamp_hit(f"05B - 98 - {ARTIST} - Body", f"{ARTIST} - Friday Night Mix")
+    assert hit.genre is None
+    assert _bandcamp_hit("Body", f"{ARTIST} - Body (Extended Mix)").genre == BUCKET_GENRE
+
+
 @pytest.mark.parametrize(("searched", "found"), DIFFERENT)
 def test_bandcamp_writes_no_genre_off_another_track_by_the_artist(searched, found):
     assert _bandcamp_hit(searched, found).genre is None

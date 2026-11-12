@@ -1208,18 +1208,18 @@ def _bandcamp_credited(entry: str) -> str:
 
 
 def _bandcamp_heading_matches(title: str, heading: str, artist: str) -> bool:
-    if _title_matches(title, heading):
-        return True
     # A listing heading is sometimes "Artist - Title" rather than the title
     # alone, and dropping the credit is the difference between a match and a
     # miss on a self released record. ONLY A HEAD THAT NAMES THE ARTIST IS
-    # DROPPED: a heading "Sunrise Mood - Original Mix" is a title and its
-    # version, and reading its tail as the title matched a file titled
-    # "Original Mix" to another recording (R-1631).
+    # DROPPED, AND THEN IT IS NEVER READ: a heading "Sunrise Mood - Original
+    # Mix" is a title and its version, and reading its tail as the title
+    # matched a file titled "Original Mix" to another recording, while a
+    # heading "Probe - Friday Night Mix" read whole is "probe" and its version,
+    # which met a file named "05B - 98 - Probe - Body" (R-1631).
     head, dash, rest = heading.partition(_DASH)
     if dash and _artist_matches(artist, head):
         return _title_matches(title, rest)
-    return False
+    return _title_matches(title, heading)
 
 
 def _bandcamp_tag(tags: Sequence[str], declared: Taxonomy) -> str:
