@@ -116,8 +116,11 @@ def _forget_refused() -> None:
 
     Only that session: one the catalogue logged in since, from a session
     recorded afresh, was not the one refused, and dropping it would cost a
-    login for nothing. An adapter built over no shared session forgets every
-    hold, the safe direction.
+    login for nothing. The refused adapter is read as the one this module
+    holds, so an older adapter a caller kept and that meets the refusal drops
+    the session the held one was built over, which costs one login and never
+    leaves a refused client held. An adapter built over no shared session
+    forgets every hold, the safe direction.
     """
     global _OPENED, _OPENED_OVER
     over = _OPENED_OVER
