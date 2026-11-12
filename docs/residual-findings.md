@@ -49726,3 +49726,294 @@ playlist once without the ladder, or the continuation reuse the plan's
 refusal for a playlist it left, and a card builds the answer. Ledger only:
 it costs time, not data, truth or a finishing workflow, so it meets none of
 the board bar's four costs. U252's card left this question out of scope.
+
+---
+
+## R-1570. Three verbs convert a stored level by their own copies of the tag reader's rule
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** U250 made `tags.whole_number` the one conversion the energy
+and vocal readers and `rebuild.read_truth` take from a stored level's text to a
+number. Three copies of the same rule stand outside it, each written before it:
+`_as_level` in `src/cratekit/analysis/cli.py` (`crate analyze restamp`),
+`_as_level` in `src/cratekit/vocals/cli.py`, and `_as_int` in
+`src/cratekit/modules/tools/setbuilder.py`, which strips the text first. Round
+two of the review drove all three against `whole_number` over 17 values (None,
+padded, decimal, underscore, non ASCII digits, NUL, hex) and all four agree
+today.
+
+**Measured cost.** None today. A change to `whole_number` (a decimal read as its
+whole part, say) would leave those verbs reading a stored level the old way
+while routing reads it the new way, and no test compares them.
+
+**Closes when:** each copy calls `tags.whole_number`, or is deleted for it.
+Ledger only: out of U250's scope, which named the derivation's three readers.
+
+---
+
+## R-1571. The U250 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** Fable's review of #679 was refused on its usage limit in both
+rounds, so by Phillip's rule of 2026-11-08 Opus 5.5 at high effort ran the
+`fable-reviewer` definition on the branch under the same merge bar and round
+cap. Neither round found a BLOCKING finding. The merged range has not had the
+reviewer the cloud lane names.
+
+**Measured cost.** None driven. The range changes `rebuild.read_truth`, which
+every derivation, preview and resort reads the library through; round one read
+469 files over every supported suffix three ways (the branch, the three single
+field readers, main's `read_truth`) and found no difference.
+
+**Closes when:** Fable reviews the merged range of U250 at high effort and its
+findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1572. U250's test helper patches single readers no routing test reads, and its energy failure no longer chains its cause
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** Two small things round two of the review measured and the
+two round cap left. `serve_readings` in `tests/_readings.py` serves each field
+at `tags.read_tags` and also patches the matching single field reader, "so a
+path that reads one field alone sees the same fake"; removing those side
+patches kills no test in `tests/test_routing_workers.py` or
+`tests/test_export_collection.py`, since every served read there comes through
+`read_truth` (272 of 272 calls). And `tags.read_energy_checked` now raises
+`TagReadFailed` for a stored energy that is not a number without
+`from exc`, so the exception carries no `ValueError` as its `__cause__`; its
+three callers discard it, and its message, which only a debug line shows, is
+identical to main's and pinned by no test.
+
+**Measured cost.** None: 98 inputs over five containers read, raise and word
+identically to main; only `__cause__` differs, and nothing reads it.
+
+**Closes when:** the side patches are dropped or a test reads one, and the raise
+chains its cause again. Ledger only.
+
+---
+
+## R-1573. U251's review was Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #680, U251, 2026-11-12.
+
+**The mechanism.** The Fable reviewer was refused on its usage limit at round
+one, and the same reviewer definition ran on Opus 5.5 at high effort in its
+place, as the cloud-unit skill's Models section allows. Nothing BLOCKING was
+found, four residual points and four docs points; the docs and three of the
+residual points were fixed in the round.
+
+**Measured cost.** None known. The merged range has had one reviewer of a
+different model from the one METHOD names.
+
+**Closes when:** a Fable pass at high effort reads the range U251 merged
+(the `feat(u251)`, `fix(u251)` and `docs(u251)` commits) and finds nothing
+BLOCKING, or its findings are filed. Ledger only.
+
+---
+
+## R-1574. The mutation driver's controller only write guard kills no test, because every worker write is followed by one of the controller's
+
+**Found:** at the review of #680, U251, 2026-11-12, and measured as row W4 of its mutation table.
+
+**The mechanism.** The reporting plugin that `scripts/mutate.py` writes into
+each child run returns from `_flush` in an xdist worker (`if _IS_WORKER: return`),
+so only the controller writes the report. With the guard gone, a worker writes
+only when it finishes collecting and when one of its own tests fails; it
+collects the whole suite, so its count is right, and the controller writes
+again after every report a worker forwards, so the controller's write is the
+last one. Row W4 of `docs/mutation/u251.md` removed the guard: zero kills on
+`tests/test_mutation_driver.py`, and zero on the promoted full run of 18,551.
+The review drove the same in memory: 8 of 8 stealing runs and every parallel
+driver test passed.
+
+**Measured cost.** None found. No run was produced in which a worker's write
+lands after the controller's last, so the guard holds against a race nothing
+here provokes.
+
+**Closes when:** a fixture makes a worker write after the controller's last
+write (a worker failure in its teardown after the controller has written,
+for instance) and a test fails without the guard, or the guard is shown to be
+unneeded and removed with its docstring. Ledger only.
+
+---
+
+## R-1575. The stealing suite's real runs pass under xdist's default distribution most of the time, so only the two pins catch work stealing being dropped
+
+**Found:** at the review of #680, U251, 2026-11-12.
+
+**The mechanism.** `tests/_stealing_suite.py` writes a suite in which, under
+`--dist worksteal`, a queued test must move to the idle worker, and the
+moved test's failure is what the driver and the battery are each asked to
+report. Under `--dist load` a queued test usually moves too, because the
+default distribution hands the holding worker only a short first chunk. So
+the three tests that run the suite (`tests/test_suite_distribution.py`,
+`tests/test_mutation_driver.py` and `tests/test_cloud_battery.py`) pass under
+either distribution on most runs. The review drove it: under `--dist load`
+the moved assertion failed in 4 of 22 runs, under `--dist loadgroup` in 5 of
+12, and the holding test never timed out.
+
+**Measured cost.** None while the two pins stand: dropping `--dist worksteal`
+from `pyproject.toml`, or the driver stripping it, fails
+`test_the_suite_runs_on_every_core_and_steals_queued_work` or
+`test_the_mutation_driver_passes_the_distribution_on` every time (the
+mutation table's W1 to W3). Without them it would read as an intermittent
+failure rather than a red one.
+
+**Closes when:** the suite holds a property only work stealing produces on
+every run, for instance a holding worker given its whole half up front whose
+tail is read back from xdist's own scheduling log, or the pins are accepted
+as the guard and this is closed as such. Ledger only.
+
+---
+
+## R-1576. U253's review round ran on Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #682, U253, 2026-11-12.
+
+**The mechanism.** The one review round of U253, the location decoder guard
+that computes each file's relative path once, was refused by Fable on its
+usage limit and run by Opus 5.5 at high effort under the same reviewer
+definition and merge bar, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None measured. The review a card is meant to have is
+Fable's, and it has not been run on this range.
+
+**Closes when:** Fable at high effort reviews U253's merged range against the
+merge bar and its findings are filed. Ledger only.
+
+---
+
+## R-1577. The one decoder guard skips every module named locations.py, in any package, not only the decoder's own
+
+**Found:** at the review of #682, U253, 2026-11-12.
+
+**The mechanism.** `_location_codec_offenders` in `tests/test_locations.py`,
+the sweep behind `test_no_module_outside_this_one_decodes_a_location_itself`,
+skips a file when `path.name == "locations.py"`, so a module of that name in
+any package under `src` is never read. Driven on a planted tree: a
+`cratekit/library/locations.py` and a `cratekit/sync/locations.py`, each
+calling `urllib.parse.unquote`, are reported by neither `main`'s guard nor
+U253's, while `cratekit/core/locations_extra.py` is. U253 kept the skip as it
+was, since its brief asks the guard to assert exactly what it asserted, and
+its exclusion test now claims only the lookalikes it pins.
+
+**Measured cost.** None today: the only `locations.py` under `src` is
+`cratekit/core/locations.py`, the decoder itself. The cost is a future
+`locations.py` elsewhere hand rolling a decoder unseen, the drift the guard
+exists to stop. No producer of such a module was found.
+
+**Closes when:** the skip names the decoder's own path under the root
+(`cratekit/core/locations.py`), with a planted `locations.py` in another
+package reported, as its own card if wanted. Ledger only.
+
+---
+
+## R-1578. U256 was reviewed by Opus 5.5 standing in for Fable, out of usage, so a Fable pass on its merged range is owed
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** Both review rounds of U256 were refused on Fable's usage
+limit, and ran on Opus 5.5 at high effort under the same reviewer definition,
+merge bar and round cap, as the cloud unit skill's Models section allows.
+
+**Measured cost.** None known. Round one drove every one of the 2,694 copies
+in a full run against a build from nothing in the caller's own environment
+and found them identical; round two drove the fix round's mutants. Neither
+found anything blocking.
+
+**Closes when:** Fable reviews the merged range of U256, the changes to
+`tests/test_rb_writer_db.py` and `tests/test_fixture_database_template.py`,
+and its findings are driven or filed. Ledger only.
+
+---
+
+## R-1579. The fixture rows test's check that every row is stamped reads two columns the binding fills itself, so it guards nothing
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** `tests/test_fixture_database_template.py::test_a_copy_carries_the_rows_the_safety_chain_reads`
+asserts that no row of the four fixed tables has a null `created_at` or
+`updated_at`. The binding gives both columns a default of its own, so they
+are filled whether or not `_row` stamps them, and the check leaves out
+`agentRegistry.date_1` and `date_2`, the only stamp columns `_row` has to
+fill, which fail at the insert when unfilled.
+
+**Measured cost.** None to a person. Round two drove three mutants of
+`_row`: skipping both columns and skipping `updated_at` alone killed nothing,
+and skipping `date_1` and `date_2` failed at the insert before the clause was
+read. A reader may think the stamps are guarded by the clause when they are
+guarded by the binding.
+
+**Closes when:** the clause is removed, or rewritten to say what it holds.
+Ledger only.
+
+---
+
+## R-1580. The fixture template's refusal of a build that left a sidecar has no input that reaches it, so it kills no test
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** `tests/test_rb_writer_db.py::_template` refuses when the
+build from nothing leaves anything beside `master.db` in its directory, so a
+copy of the one file could never be half a database. A WAL build closes its
+last connection and SQLite folds the log into the main file, so nothing is
+left, and every probe build in both review rounds left only `master.db`.
+
+**Measured cost.** None to a person. Round one replaced the check with
+`if False:` and all ten tests of the new file passed; it is mutation row T6.
+A maintainer facing backstop for a change in SQLite or in the binding's
+close.
+
+**Closes when:** an input that leaves a sidecar is found and a test drives
+it, or the check is accepted as a backstop no current build reaches. Ledger
+only.
+
+---
+
+## R-1581. U257's review was Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #686, U257, 2026-11-12.
+
+**The mechanism.** The Fable reviewer was refused on its usage limit at round
+one, and the same reviewer definition ran on Opus 5.5 at high effort in its
+place, as the cloud-unit skill's Models section allows. Nothing BLOCKING was
+found after 256,000 fuzzed texts, every tracked file, every code point's
+folding and five pathological inputs; its four residual points were fixed in
+the round.
+
+**Measured cost.** None known. The merged range has had one reviewer of a
+different model from the one METHOD names.
+
+**Closes when:** a Fable pass at high effort reads the range U257 merged
+(the `test(u257)`, `feat(u257)`, `fix(u257)` and `record(u257)` commits) and
+finds nothing BLOCKING, or its findings are driven to the merge bar. Ledger
+only: no shipped verb pays for it.
+
+---
+
+## R-1582. The mutation driver writes test ids verbatim, so a table whose rows kill the scan's own tests quotes their planted credentials and fails the scan
+
+**Found:** at the mutation table of #686, U257, 2026-11-12.
+
+**The mechanism.** `scripts/mutate.py` lists each killed test by its node id
+in `docs/mutation/<unit>.md`. `tests/test_portability.py` parametrizes some
+tests with a credential shaped body assembled at runtime, so pytest's id for
+the case spells the whole body, for example a JSON `access_token` field
+holding the file's fake token. A table whose rows kill those tests then
+carries the shape on disk, and `scripts/scan_repo.py` refuses it: U257's
+table drew five findings (three OAuth token fields, two credential
+assignments). The JSON sidecar escapes its quotes and stays clean.
+
+**Measured cost.** Maintainer facing only. The unit that measured it spells
+the token as a placeholder in the table by hand and says so in it, which is
+an edit to a measured record. No shipped verb pays for it.
+
+**Closes when:** the driver elides a parametrized id's value where it would
+write a credential shape (for example by running the table's text through
+`secret_violations` and replacing each span with a placeholder before
+writing), or the portability tests take ids that do not spell the body.
+Ledger only.
