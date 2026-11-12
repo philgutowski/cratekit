@@ -11,6 +11,7 @@ resolution_type: code_fix
 applies_when:
   - "A brief explains a slow run by a pool's gate, ceiling or worker count before anyone has checked the run uses the pool"
   - "A module declares what its worker costs and no run has ever been planned at that figure"
+  - "A worker's memory figure was measured on one platform and the pool runs on another"
   - "A stage built on librosa.effects.harmonic, hpss or scipy.ndimage.median_filter is the hot one"
   - "A queued verb is about to be made parallel"
   - "A process pool's workers are about to outlive a foreground command for the first time"
@@ -27,6 +28,7 @@ related_components:
   - pool
 tags:
   - u241
+  - u275
   - analysis
   - pool
   - process-pool
@@ -72,6 +74,16 @@ from the cores at 64 MB a worker would have planned nine two gigabyte workers
 on an 18 GB machine, the exact kill the pool was written to prevent, through
 the pool's own arithmetic. A cost is a measurement or it is a guess, and the
 only way to know which is to measure it: `scripts/analyze_stages.py memory`.
+
+**And a cost measured on one platform is that platform's.** U241 measured the
+line on a Linux container, 1.35 MB a second, and declared 1.5 with a ninth of
+margin. The same probe on the Mac (A121, sitting 94) put every one of six
+library tracks over the declared figure: 2.76 MB a second, 2346 MB at 729
+seconds against 1413 declared. U275 declared the Mac's line on every platform,
+since a cost that is right on the machine the tests run on and low on the
+machine the DJ runs plans the kill the pool exists to prevent. Before
+trusting a memory figure, ask which machine and which library release it was
+read on, and rerun the probe on the one that pays for it.
 
 **Half the time was two median filters, and the same medians are ten times
 cheaper.** `librosa.effects.harmonic` asks scipy for a two dimensional rank

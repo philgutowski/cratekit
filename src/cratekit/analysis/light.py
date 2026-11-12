@@ -11,7 +11,10 @@ a 45 second track and 2.0 gigabytes for an eleven minute one, the whole of
 the transform and its medians at once. With the separation in
 ``analysis.separation`` it holds 345 megabytes and 1.18 gigabytes for the
 same two, and the peak is now shared between the decode, the tempogram and
-the constant Q transform, which are librosa's own. The cost is a line in the
+the constant Q transform, which are librosa's own. The same head on the Mac
+peaks about twice as steeply, 2.35 gigabytes for a twelve minute track, so
+the declared line is the Mac's (U275), and Linux is planned narrower than its
+own peaks need rather than the Mac wider than its peaks allow. The cost is a line in the
 track's length, so it is declared as one, from the COSTLIEST track in the
 batch: a folder of radio edits affords more workers than a folder of ten
 minute tracks, and a folder holding one hour long mix affords the count that
@@ -43,16 +46,25 @@ from typing import Any, Callable, Sequence
 from cratekit.core import cores, pool, tags
 
 #: What a light worker holds before it has read a sample: the interpreter,
-#: numpy, scipy, librosa and its compiled kernels. Measured at 238 megabytes
-#: on a two second file and 284 as the intercept of the line through nine
-#: lengths; declared above both.
-LIGHT_BASE_BYTES = 320 * 1024 * 1024
-#: What each second of the longest track adds at the peak. Measured at 1.35
-#: megabytes a second (345 megabytes at 45 seconds, 1175 at 660, on Linux);
-#: declared a ninth above it, because the probe that would raise a low figure
-#: cannot run here, and the planner's own ceiling is the brake on its being
-#: wrong.
-LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024 // 2
+#: numpy, scipy, librosa and its compiled kernels. On Linux (a four core
+#: container, 2026-11-10, U241) measured at 238 megabytes on a two second file
+#: and 284 as the intercept of the line through nine lengths, and declared at
+#: 320, an eighth above. On the Mac (arm64, Python 3.12.5, librosa 1.0.0,
+#: 2026-11-12, A121 at sitting 94, U275) the line through six library tracks
+#: from 236 to 729 seconds meets the axis at 336 megabytes through its ends
+#: and 299 by least squares; declared an eighth above the higher, as on Linux,
+#: and one figure on every platform, the larger, so no machine is planned
+#: wider than its peaks.
+LIGHT_BASE_BYTES = 384 * 1024 * 1024
+#: What each second of the longest track adds at the peak. On Linux measured
+#: at 1.35 megabytes a second (345 megabytes at 45 seconds, 1175 at 660). On
+#: the Mac, the same six tracks, 44.1 kHz stereo FLAC: 987 megabytes at 236
+#: seconds, 1281 at 376, 1805 at 576, 2105 at 668, 2162 at 690 and 2346 at
+#: 729, every one over the 1.5 then declared, a line of 2.76 megabytes a
+#: second through its ends and 2.72 by least squares. Declared a ninth above
+#: the steeper, the margin the Linux figure had, and rounded up to three and an
+#: eighth, so each of the six is declared about 13 percent over its peak.
+LIGHT_BYTES_PER_SECOND = 25 * 1024 * 1024 // 8
 #: What the decode holds for each sample frame of the file at its own rate:
 #: four bytes for each channel as it is read, four for the mono mix, and
 #: eight more for the working copies the resampler takes. Measured twice at
