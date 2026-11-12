@@ -761,8 +761,9 @@ crate organize --only file
 
 One plan per side, one explicit gate each: `organize.rekordbox.approve`, then
 `organize.account.apply`. Approve one and abort the other and only the
-approved side is written. `--report` asks nothing. `--only KIND`, repeatable,
-plans just those steps; a side with no kind named is not asked.
+approved side is written. `--report` asks nothing, and opens the rekordbox
+database once, every step reading through that one read handle. `--only KIND`,
+repeatable, plans just those steps; a side with no kind named is not asked.
 
 | Side | Kind | Does |
 |---|---|---|
