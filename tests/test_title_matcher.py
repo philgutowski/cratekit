@@ -14,9 +14,10 @@ onto the file for good, since a genre is fill if empty.
 
 WHAT HOLDS NOW. Two titles match when they name the same words once each has
 shed what is not its title: its trailing bracket groups, read as balanced
-groups from the end; a catalogue row's dash tail, or any run of the file's dash
-segments, since the live library writes its ``KEY - BPM - `` head into the
-title tag; a feature credit; a trailing run of the domain's version words; its
+groups from the end; a catalogue row's dash tail; the file's head, the
+``KEY - BPM - `` the live library writes into the title tag, and every dash
+part of it that is not its title, the searched artist's name, a version, an
+album (R-1636); a feature credit; a trailing run of the domain's version words; its
 leading bracket groups. Nothing is compared by characters, and a word read only
 inside the other title's brackets is never its title. A side with no letter or
 digit matches nothing, and a number is part of the title. The tables below
@@ -270,8 +271,8 @@ def test_two_titles_are_compared_by_whole_words_never_by_characters(searched, fo
 
 def test_a_catalogue_rows_dash_tail_is_never_its_title():
     """A catalogue writes a version after a dash; a file writes its head before
-    one. So the row is read by its head and the file by any run of its
-    segments, and a tail of version words alone is no title on either side."""
+    one. So the row is read by its head and the file from where its title
+    starts, and a tail of version words alone is no title on either side."""
     assert not _matches("Original Mix", f"{OTHER} - Original Mix")
     assert not _matches(f"{OTHER} - Original Mix", "Original Mix")
     assert _matches(f"{OTHER} - Original Mix", OTHER)
