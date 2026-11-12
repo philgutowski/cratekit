@@ -521,7 +521,7 @@ def test_only_prefixed_playlists_in_a_downloaded_sets_folder_are_sets(machine, a
     assert shown[GOATS]["action"] == inspiration.UNPREFIXED
     assert "prefix" in shown[GOATS]["reason"]
     assert retitled not in account.found.playlists_asked_for
-    assert step["counts"]["not prefixed"] == 1
+    assert step["counts"]["not taken"] == 1
 
 
 def test_a_sets_folder_the_archive_recorded_is_read_whatever_it_is_called_now(
