@@ -850,7 +850,7 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         name = _normalized(track.get("track_name", ""))
         if not _identifies(name):
             continue
-        name_core, exact_name = _title_core(name)
+        name_core, _ = _title_core(name)
         mix = _normalized(track.get("mix_name", ""))
         credited = [_normalized(entry.get("artist_name", "")) for entry in track.get("artists", [])]
         credited = [other for other in credited if other]
@@ -868,7 +868,7 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
             continue
         elif (
             name in bare_title
-            or (not exact_name and bare_title in name_core)
+            or bare_title in name_core
             or _contains(name, bare_title)
         ):
             title_score = 2

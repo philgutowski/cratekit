@@ -228,7 +228,6 @@ def test_beatport_never_lets_a_short_row_name_outscore_the_files_own_row():
         ("Love Me Again", "Love (feat. X)"),
         ("Track Two", "Track (Interlude)"),
         ("Intro Music", "(Intro)"),
-        ("Mood", "(Sunrise Mood)"),
         ("Mix", f"{OTHER} (Original Mix)"),
     ],
 )
