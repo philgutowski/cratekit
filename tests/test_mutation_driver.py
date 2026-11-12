@@ -230,6 +230,17 @@ def test_writes_into_the_guarded_directory_only_when_the_guard_is_gone():
 '''
 
 
+#: A red test whose failing ids hold a space and the summary separator, beside a
+#: passing sibling that shares everything before the space (U268).
+TEST_RED_SPACED = '''import pytest
+
+
+@pytest.mark.parametrize("case", ["one two", "one three", "x - y"])
+def test_that_fails(case):
+    assert case == "one three"
+'''
+
+
 def _build_fixture(
     root: Path,
     *,
@@ -237,6 +248,7 @@ def _build_fixture(
     env_dependent: bool = False,
     sandbox: bool = False,
     leaky: bool = False,
+    red_spaced: bool = False,
 ) -> Path:
     """A committed git repository holding a four test package."""
     (root / "src" / "fixtpkg").mkdir(parents=True)
@@ -251,6 +263,8 @@ def _build_fixture(
         (root / "tests" / "test_red.py").write_text(
             "def test_that_fails():\n    assert False\n", encoding="utf-8"
         )
+    if red_spaced:
+        (root / "tests" / "test_red.py").write_text(TEST_RED_SPACED, encoding="utf-8")
     if env_dependent:
         (root / "tests" / "test_environment.py").write_text(TEST_ENVIRONMENT, encoding="utf-8")
     if sandbox:
@@ -285,6 +299,18 @@ def repo(green_template, tmp_path) -> Path:
 def red_repo(red_template, tmp_path) -> Path:
     target = tmp_path / "red-repo"
     shutil.copytree(red_template, target)
+    return target
+
+
+@pytest.fixture(scope="session")
+def red_spaced_template(tmp_path_factory) -> Path:
+    return _build_fixture(tmp_path_factory.mktemp("red-spaced-template"), red_spaced=True)
+
+
+@pytest.fixture
+def red_spaced_repo(red_spaced_template, tmp_path) -> Path:
+    target = tmp_path / "red-spaced-repo"
+    shutil.copytree(red_spaced_template, target)
     return target
 
 
@@ -684,7 +710,9 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
     """
     red_id = "tests/test_red.py::test_that_fails"
     known = tmp_path / "baseline.txt"
-    known.write_text(f"# commit abc host here history full\n{red_id}\n", encoding="utf-8")
+    known.write_text(
+        f"# commit abc host here history full ids whole\n{red_id}\n", encoding="utf-8"
+    )
     read = mutate.read_known_failures(known)
     assert read == frozenset({red_id})
 
@@ -712,6 +740,66 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
         )
 
 
+def test_a_known_failure_whose_id_holds_a_space_is_subtracted_whole(red_spaced_repo, tmp_path):
+    """U268: the battery now stores ids whole, and the driver subtracts them whole.
+
+    The same ids cut at their first space, as the battery kept them before,
+    equal no id the driver reads off a report, so the baseline stays red.
+    """
+    whole = {
+        "tests/test_red.py::test_that_fails[one two]",
+        "tests/test_red.py::test_that_fails[x - y]",
+    }
+    known = tmp_path / "baseline.txt"
+    known.write_text(
+        "# commit abc host here history full ids whole\n# 2 failed\n"
+        + "".join(f"{i}\n" for i in sorted(whole)),
+        encoding="utf-8",
+    )
+    read = mutate.read_known_failures(known)
+    assert read == frozenset(whole)
+
+    batch = mutate.measure_batch(
+        red_spaced_repo,
+        "spaced-known",
+        [_row("K1", "if value > limit:", "if value > 10000:")],
+        known=read,
+        known_source=str(known),
+    )
+    assert batch.valid, batch.invalid_reason
+    assert batch.known_failures == 2
+    row = batch.results[0]
+    assert row.status == "killed"
+    assert row.killed == ["tests/test_guards.py::test_clamp_caps_at_the_limit"]
+
+    cut = frozenset(
+        {"tests/test_red.py::test_that_fails[one", "tests/test_red.py::test_that_fails[x"}
+    )
+    with pytest.raises(mutate.DriverRefusal, match="BASELINE IS NOT GREEN: 2 failing"):
+        mutate.measure_batch(
+            red_spaced_repo,
+            "spaced-cut",
+            [_row("K1", "if value > limit:", "if value > 10000:")],
+            known=cut,
+        )
+
+
+def test_known_failures_measured_before_u268_are_refused_with_the_command(tmp_path, capsys):
+    """A baseline whose ids were cut at their first space is measured again, never read."""
+    listed = tmp_path / "known.txt"
+    listed.write_text("# commit abc host here history full\ntests/a.py::t[one\n", encoding="utf-8")
+    with pytest.raises(mutate.DriverRefusal, match="first space"):
+        mutate.read_known_failures(listed)
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+    argv = ["mutate.py", str(spec), "--known-failures", str(listed)]
+    argv += ["--repo-root", str(tmp_path), "--out-dir", str(tmp_path / "out")]
+    assert mutate.main(argv) == 2
+    err = capsys.readouterr().err
+    assert "first space" in err
+    assert "scripts/cloud_battery.py baseline" in err
+
+
 def test_a_zero_row_promoted_on_a_known_red_suite_stays_a_zero(red_repo):
     """The promoted full run reads the known set too.
 
@@ -736,7 +824,7 @@ def test_a_zero_row_promoted_on_a_known_red_suite_stays_a_zero(red_repo):
 def test_known_failures_ignore_indented_comments_and_refuse_a_missing_file(tmp_path, capsys):
     listed = tmp_path / "known.txt"
     listed.write_text(
-        "# commit abc host here history full\n  # indented\n\n  tests/a.py::t  \n",
+        "# commit abc host here history full ids whole\n  # indented\n\n  tests/a.py::t  \n",
         encoding="utf-8",
     )
     assert mutate.read_known_failures(listed) == frozenset({"tests/a.py::t"})
@@ -762,9 +850,22 @@ ONE_ROW_SPEC = (
         "# header",
         "# header history full",
         "# commit abc host here history full and more",
+        "# commit abc host here history full ids whole and more",
+        "# commit abc host here ids whole",
+        "# header history full ids whole",
         "",
     ],
-    ids=["before-u200", "shallow", "by-hand", "by-hand-with-field", "field-not-last", "empty"],
+    ids=[
+        "before-u200",
+        "shallow",
+        "by-hand",
+        "by-hand-with-field",
+        "field-not-last",
+        "whole-field-not-last",
+        "whole-without-history",
+        "by-hand-with-both-fields",
+        "empty",
+    ],
 )
 def test_known_failures_not_measured_with_full_history_are_refused(header, tmp_path, capsys):
     """U200, from R-1191: a shallow clone's baseline subtracts a test the missing
@@ -794,7 +895,9 @@ def test_known_failures_are_refused_on_a_shallow_clone(repo, tmp_path, capsys):
     )
     assert done.returncode == 0, done.stderr
     listed = tmp_path / "known.txt"
-    listed.write_text("# commit abc host here history full\ntests/a.py::t\n", encoding="utf-8")
+    listed.write_text(
+        "# commit abc host here history full ids whole\ntests/a.py::t\n", encoding="utf-8"
+    )
     spec = tmp_path / "rows.toml"
     spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
 

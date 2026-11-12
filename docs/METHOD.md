@@ -244,7 +244,9 @@ bill is tool calls times context size. Thinking is cheap here. Reading is not.
 - **Set `PYTHONDONTWRITEBYTECODE=1`.** Two mutations of identical byte length
   written a second apart make CPython reuse cached bytecode and invent a result.
 - **Read node ids from pytest report objects,** never by splitting a `FAILED`
-  line on `" - "`. That separator appears inside parametrized ids here.
+  line on `" - "`, nor by cutting it at a space. That separator, and spaces,
+  appear inside parametrized ids here; the cloud battery read them this way
+  until U268.
 - **Reword a message mutation, never append.** The suite asserts with `in`.
 - **Mutate to a realistic nearby value, and mutate coefficients too.** A bound
   whose multiplier can be halved with a green suite is not pinned.
@@ -527,7 +529,12 @@ commit before the first edit, `compare` reads the branch against them, and
 so the driver's baseline is green net of them and its table says so. Both
 read the full history first, since the clone is shallow and a test held red
 by missing history would hide every later failure of it (U200): the battery
-unshallows or refuses, and the driver refuses a shallow clone. Nothing
+unshallows or refuses, and the driver refuses a shallow clone. Both compare
+every failing id whole: the battery reads them off pytest's own reports
+rather than its summary lines, whose ids it once cut at their first space so
+that one parametrized test failing for the machine excused a sibling failing
+for the branch, and both refuse a baseline whose header does not end `ids
+whole`, which is measured again (U268). Nothing
 is skipped or marked, a newly failing test is the branch's, and a test that
 fails only under a parallel run on ext4 is rerun alone before it is called
 either. The macOS battery is owed on a Mac and named in each record's OWED
