@@ -230,14 +230,20 @@ def test_twice_the_marks_write_about_twice_the_bytes(tmp_path, monkeypatch):
 def test_a_mark_does_not_parse_the_ledger_it_appends_to(cfg, monkeypatch):
     """The CPU half of the square: no whole read per mark once the file exists."""
     adopt_apply.mark_applied(cfg, _entry(0))
+    ledger = adopt_apply.path_for(cfg)
+    real_read = Path.read_bytes
+    whole_reads: list[Path] = []
 
-    def whole_read(*_args, **_kwargs):
-        raise AssertionError("a mark parsed the whole ledger to append one record")
+    def watched(self):
+        if self == ledger:
+            whole_reads.append(self)
+        return real_read(self)
 
-    monkeypatch.setattr(adopt_apply, "read", whole_read)
-    for n in range(1, 20):
-        adopt_apply.mark_applied(cfg, _entry(n))
-    monkeypatch.undo()
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "read_bytes", watched)
+        for n in range(1, 20):
+            adopt_apply.mark_applied(cfg, _entry(n))
+    assert whole_reads == [], f"{len(whole_reads)} marks read the whole ledger"
     assert len(adopt_apply.read(cfg).applied) == 20
 
 
@@ -255,9 +261,9 @@ def test_an_append_the_system_writes_in_pieces_still_lands_whole(cfg, monkeypatc
     """``os.write`` may write fewer bytes than it was handed; the rest must follow."""
     adopt_apply.mark_applied(cfg, _entry(0))
     real_write = os.write
-    monkeypatch.setattr(os, "write", lambda fd, data: real_write(fd, bytes(data[:3])))
-    adopt_apply.mark_applied(cfg, _entry(1))
-    monkeypatch.undo()
+    with monkeypatch.context() as patched:
+        patched.setattr(os, "write", lambda fd, data: real_write(fd, bytes(data[:3])))
+        adopt_apply.mark_applied(cfg, _entry(1))
     assert adopt_apply.read(cfg).entry_ids() == {_entry(0).entry_id, _entry(1).entry_id}
     assert all(json.loads(line) for line in _lines(adopt_apply.path_for(cfg)))
 
@@ -576,6 +582,10 @@ def test_the_next_mark_cuts_a_torn_record_away(cfg, monkeypatch, tail):
 WRONG_JOURNALS = {
     "a damaged line before the last": (
         HEADER + b'{"actor": "a-pe\n' + _journal_of(2)[len(HEADER) :],
+        Remedy.RUN_DOCTOR,
+    ),
+    "two torn lines at the end": (
+        _journal_of(2) + b'{"actor": "a-pe\n' + b'{"act',
         Remedy.RUN_DOCTOR,
     ),
     "a record missing its actor, last": (
