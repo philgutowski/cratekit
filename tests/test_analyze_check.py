@@ -1042,5 +1042,7 @@ def test_the_check_reads_the_collection_in_statements_that_do_not_grow_with_it(
 
 
 #: What a handful is: the statements one check issues whatever the library's
-#: size, measured at 9 for INBOX / Analyze and 6 for every row on 2026-11-12.
-_FEW = 12
+#: size, measured at 6 in both scopes on 2026-11-12, with room for two more.
+#: A scope of playlist members past 500 rows adds one statement a 500, the
+#: chunk the rows are read in, which neither size here reaches.
+_FEW = 8
