@@ -15,8 +15,10 @@ playlist the provider cannot list costs one ladder at the plan and another
 at the continuation. The ladder is correct for what it is given: a timeout
 can succeed on the next attempt, and a refusal that cannot
 (`ListingNotPaginated`, an expired session refused `credential-missing`)
-already leaves it at once, which `test_a_refusal_that_is_not_about_one_playlist_still_stops_the_run`
-shows in the same file. What is open is a product question, not a defect:
+already leaves it at once, which
+`tests/test_adapter_listing.py::test_a_refusal_that_says_waiting_cannot_help_is_not_slept_on`
+pins. The twins test that hands the verb an expired session asserts the
+refusal and not the ladder, so it passes with that exclusion reverted. What is open is a product question, not a defect:
 whether a backfill that already leaves a playlist it could not read and
 reads it again next run should climb the ladder for it, and whether the
 continuation should read again a playlist the plan already left.

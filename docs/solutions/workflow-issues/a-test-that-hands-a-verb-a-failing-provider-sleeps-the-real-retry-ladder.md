@@ -29,8 +29,8 @@ The speed survey of 2026-11-12 found the three slowest tests of 18,085 in
 `tests/test_sync_twins.py`, 187 seconds between them, each a whole number of
 31 second ladders: a fake playlist raising `RuntimeError("the provider timed
 out")` climbed `listing.fetch_with_retry`'s ladder, 1, 2, 4, 8 and 16 real
-seconds, once per reading. U252 bound the sleep and they take a third of a
-second each.
+seconds, once per reading. U252 bound the sleep and each now runs in under a
+second.
 
 ## Why patching time.sleep does not help
 
@@ -45,9 +45,15 @@ failure of any other type is taken for transient.
 - Bind the sleep through the caller that hands its keywords down to the
   ladder, and keep the real function: wrap it with
   `kwargs.setdefault("sleep", waits.append)`. `harvest.playlist_tracks` is
-  that caller for a playlist read (`ladder_waits` in
-  `tests/test_sync_twins.py`), `crawl.releases` for the label crawl
-  (`_ladder_without_waiting` in `tests/test_label_workers.py`).
+  that caller for the window read `label.cli._listed` makes
+  (`ladder_waits` in `tests/test_sync_twins.py`), `crawl.releases` for the
+  label crawl (`_ladder_without_waiting` in `tests/test_label_workers.py`).
+- Find the caller for the read your test fails, since not every read goes
+  through one wrapper: `_listed` with `current=True` (`crate sync pair`)
+  also calls `listing.playlist_tracks_unpaged` directly, and the outbound
+  account calls `listing.playlist_tracks` directly. A fake that fails only
+  later reads, or only the unpaged one, needs that caller bound too.
+  `git grep -n "listing\." src` lists them.
 - Assert the recorded waits, `[1, 2, 4, 8, 16]` per reading, so the test
   proves the ladder was climbed and notices if it stops being.
 - Run the new test with `--durations=5`: a time near a multiple of 31
