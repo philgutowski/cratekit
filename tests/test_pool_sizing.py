@@ -58,7 +58,6 @@ from types import SimpleNamespace
 import pytest
 
 from cratekit.core import pool
-from tests._parse_memo import parsed
 from tests._source_guards import ImportsOf, calls_attribute, package_modules, package_of
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -3221,14 +3220,14 @@ def test_the_real_available_reading_is_a_believable_byte_count():
 def _attributes_read(source: str) -> set[str]:
     """Every attribute name this source reads, from the tree rather than the text."""
     return {
-        node.attr for node in ast.walk(parsed(source)) if isinstance(node, ast.Attribute)
+        node.attr for node in ast.walk(ast.parse(source)) if isinstance(node, ast.Attribute)
     }
 
 
 def _names_used(source: str) -> set[str]:
     """Every bare name and attribute name in this source, prose excluded."""
     used: set[str] = set()
-    for node in ast.walk(parsed(source)):
+    for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Attribute):
             used.add(node.attr)
         elif isinstance(node, ast.Name):
@@ -3389,7 +3388,7 @@ def process_pool_constructions(source: str) -> list[str]:
     the one place this guard trades a little precision for the shape that would
     otherwise be trivial to write on purpose.
     """
-    tree = parsed(source)
+    tree = ast.parse(source)
     module_names: set[str] = set()
     imported_modules: set[str] = set()
     symbols: set[str] = set()
@@ -3763,7 +3762,7 @@ def pool_plan_constructions(source: str, *, package: str | None = None) -> list[
     is where the source sits, and it is what stops a relative import in an
     unrelated package from being read as a relative import of this one.
     """
-    tree = parsed(source)
+    tree = ast.parse(source)
     imports = ImportsOf(tree, POOL_MODULE, package)
     if not imports.reaches:
         return []
@@ -4082,7 +4081,7 @@ def unplanned_map_workers(source: str, *, package: str | None = None) -> list[st
     shipped tree from having constructed one, which is what makes accepting it
     sound rather than generous.
     """
-    tree = parsed(source)
+    tree = ast.parse(source)
     imports = ImportsOf(tree, POOL_MODULE, package)
     if not imports.reaches:
         return []

@@ -1,17 +1,22 @@
-"""The parse memo the package wide guards share, held to its three promises (U258).
+"""The parse memo the package wide guards share inside one test, held to its promises (U258).
 
-``tests/_parse_memo.py`` hands one tree per source text to every guard that
-asks. That buys back the parses the guards used to repeat, and it is only
-sound if three things hold, each driven here rather than trusted:
+``tests/_parse_memo.py`` hands one tree per source text to every question asked
+inside a sharing scope. That buys back the parses a test used to repeat, and it
+is only sound if four things hold, each driven here rather than trusted:
 
-1. ONE PARSE PER TEXT. A guard's sweep parses each file once, and a second
-   sweep of the same texts parses nothing.
-2. NEVER STALE. The key is the text itself, so a file edited between two
-   sweeps is parsed afresh and answered from what it now says.
-3. NEVER WRITTEN. Every guard question the sweeps ask, run over one shared tree
-   in either order, gives the same answers, and leaves every tree equal to a
-   fresh parse of its text, node by node, field by field, with no attribute
-   added.
+1. ONE PARSE PER TEXT inside a scope, and the sweeps that share one really do
+   parse each file once between them.
+2. NEVER STALE. The key is the text itself, so a file edited between two reads
+   is parsed afresh and answered from what it now says.
+3. NOTHING HELD OUTSIDE A SCOPE. Outside one, ``parsed`` is ``ast.parse``, and
+   a scope's trees are dropped when it ends, however it ends.
+4. NEVER WRITTEN. Every question the shared scopes ask, run over one shared tree
+   in either order, answers as it does over a tree of its own, and leaves each
+   tree equal to a fresh parse of its text, node by node, field by field, with
+   no attribute added.
+
+And the at risk population test, which now reads the package once, still fails
+naming a module planted beside the real ones.
 """
 
 from __future__ import annotations
@@ -23,31 +28,14 @@ import pytest
 
 from tests import _parse_memo
 from tests import _source_guards as guards
-from tests._parse_memo import parsed
+from tests import test_reserved_causes as reserved
+from tests._parse_memo import parsed, shares_parses, sharing_parses
 from tests.modules import test_reports as reports
-from tests.test_pool_sizing import (
-    _attributes_read,
-    _names_used,
-    pool_plan_constructions,
-    process_pool_constructions,
-    unplanned_map_workers,
-)
-from tests.test_reserved_causes import (
-    RANGE,
-    converting_handlers,
-    declared_causes,
-    holds_an_in_range_integer,
-    kebab_literals_by_module,
-    modules_holding_a_cause_literal,
-    modules_holding_a_named_cause,
-    package_of,
-    package_sources,
-)
 
 
 @pytest.fixture
 def parses(monkeypatch):
-    """Count every call ``ast.parse`` receives, starting from an empty memo."""
+    """Count every call ``ast.parse`` receives while the test runs."""
     calls: list[str] = []
     real = ast.parse
 
@@ -55,52 +43,117 @@ def parses(monkeypatch):
         calls.append(source)
         return real(source, *args, **kwargs)
 
-    _parse_memo.forget()
     monkeypatch.setattr(ast, "parse", counting)
-    yield calls
-    _parse_memo.forget()
+    return calls
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# One parse per text
+# One parse per text, inside a scope and only there
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_one_text_is_parsed_once_however_many_ask(parses):
+def test_inside_a_scope_one_text_is_parsed_once_however_many_ask(parses):
     source = "def read(row):\n    return row.rb_local_deleted\n"
-    first = parsed(source)
-    assert parsed(source) is first
-    assert parsed(str(source.encode().decode())) is first, (
-        "an equal text read back as a new string object is the same key"
-    )
+    with sharing_parses():
+        first = parsed(source)
+        assert parsed(source) is first
+        assert parsed(source.encode().decode()) is first, (
+            "an equal text read back as a new string object is the same key"
+        )
     assert parses == [source]
     assert ast.dump(first) == ast.dump(ast.parse(source))
 
 
-def test_a_sweep_parses_each_package_file_once_and_a_second_sweep_none(parses):
+def test_outside_a_scope_nothing_is_held_and_every_ask_parses(parses):
+    source = "VALUE = 1\n"
+    assert parsed(source) is not parsed(source)
+    assert parses == [source, source]
+    assert _parse_memo._TREES is None
+
+
+def test_a_scope_drops_its_trees_when_it_ends_however_it_ends(parses):
+    source = "VALUE = 1\n"
+    with pytest.raises(RuntimeError), sharing_parses():
+        held = parsed(source)
+        raise RuntimeError("the test body failed")
+    assert _parse_memo._TREES is None, "a failed test left its trees for the next"
+    with sharing_parses():
+        assert parsed(source) is not held
+    assert len(parses) == 2
+
+
+def test_a_scope_inside_a_scope_shares_the_outer_one_and_ends_with_it(parses):
+    source = "VALUE = 1\n"
+    with sharing_parses():
+        outer = parsed(source)
+        with sharing_parses():
+            assert parsed(source) is outer
+        assert parsed(source) is outer, "the inner scope ended the outer one's trees"
+    assert _parse_memo._TREES is None
+    assert parses == [source]
+
+
+def test_a_decorated_test_shares_and_keeps_its_name_and_its_fixtures(parses):
+    source = "VALUE = 1\n"
+
+    def body(given):
+        assert parsed(given) is parsed(given)
+        return "answered"
+
+    shared = shares_parses(body)
+    assert shared.__name__ == "body" and shared.__wrapped__ is body
+    assert shared(source) == "answered"
+    assert parses == [source]
+    assert _parse_memo._TREES is None
+    assert getattr(
+        reserved.test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned,
+        "__wrapped__",
+        None,
+    ), "the at risk population test no longer shares its parses"
+    assert getattr(
+        reserved.test_pinned_populations_derive_totals_and_key_by_module, "__wrapped__", None
+    ), "the pinned populations test no longer shares its parses"
+    assert getattr(
+        reports.test_the_allowlist_admits_no_writer_this_guard_cannot_name,
+        "__wrapped__",
+        None,
+    ), "the reports allowlist audit no longer shares its parses"
+
+
+def test_the_population_sweeps_parse_each_package_file_once_between_them(parses):
     """The brief's count, over the real package and the helpers that sweep it.
 
-    Three helpers of ``tests/test_reserved_causes.py`` walk the same files one
-    after another, and before U258 each parsed every file again. Now the first
-    walk parses each distinct text once, and the walks after it parse nothing.
+    The at risk population test asks six helpers about the same files, and before
+    U258 each parsed every file again and two of them read the package again
+    once per module. Inside one scope the first sweep parses each distinct text
+    once and every sweep after it parses nothing.
     """
-    scanned = package_sources()
+    # The first eighty modules in the sweep's own order: the count is per file, so
+    # a slice measures it as well as the whole package does at a quarter the cost.
+    scanned = reserved.package_sources()[:80]
     distinct = {source for _, source in scanned}
-    assert len(distinct) >= 51, f"the package collapsed to {len(distinct)} texts"
-
-    by_module = kebab_literals_by_module(scanned)
-    assert len(parses) == len(distinct), (
-        f"one sweep of {len(distinct)} distinct texts called ast.parse "
-        f"{len(parses)} times"
-    )
-    assert len(parses) == len(set(parses)), "a text was parsed twice in one sweep"
-
-    holders = modules_holding_a_cause_literal(scanned)
-    integers = {relative: holds_an_in_range_integer(source) for relative, source in scanned}
-    assert len(parses) == len(distinct), (
-        f"two more sweeps of the same texts parsed "
-        f"{len(parses) - len(distinct)} of them again"
-    )
+    assert len(distinct) >= 51, f"the slice collapsed to {len(distinct)} texts"
+    # The cause set imports the package and reads each module's annotations once
+    # per process, through its own cache; asked first so its parses, which are
+    # not a sweep of these texts, stay out of the count.
+    reserved.declared_causes()
+    parses.clear()
+    with sharing_parses():
+        by_module = reserved.kebab_literals_by_module(scanned)
+        assert len(parses) == len(distinct), (
+            f"one sweep of {len(distinct)} distinct texts called ast.parse "
+            f"{len(parses)} times"
+        )
+        assert len(parses) == len(set(parses)), "a text was parsed twice in one sweep"
+        holders = reserved.modules_holding_a_cause_literal(scanned)
+        integers = {
+            relative: reserved.holds_an_in_range_integer(source)
+            for relative, source in scanned
+        }
+        assert len(parses) == len(distinct), (
+            f"two more sweeps of the same texts parsed "
+            f"{len(parses) - len(distinct)} of them again"
+        )
     assert by_module and holders and any(integers.values()), (
         "the sweeps found nothing on the tree, so their counts measure nothing"
     )
@@ -111,57 +164,36 @@ def test_a_sweep_parses_each_package_file_once_and_a_second_sweep_none(parses):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_an_edited_text_is_parsed_afresh_and_answered_from_what_it_says(parses):
-    clean = "def read(row):\n    return getattr(row, COLUMN, _ABSENT)\n"
-    edited = 'def read(row):\n    return getattr(row, "rb_local_deleted", 0)\n'
-    assert guards.permissive_soft_delete_reads_in(parsed(clean)) == []
-    assert guards.permissive_soft_delete_reads_in(parsed(edited)) == [
-        "line 2: getattr(row, 'rb_local_deleted', 0)"
-    ]
-    assert parses == [clean, edited]
-
-
-def test_a_file_edited_between_two_sweeps_is_read_as_it_now_is(tmp_path, parses):
+def test_a_file_edited_inside_a_scope_is_read_as_it_now_is(tmp_path, parses):
     """The case a key on the path or the size would get wrong, on disk.
 
     The edit keeps the file's length, so a key on the path, the size, or both
     would serve the old tree; the text differs, so the memo cannot.
     """
     module = tmp_path / "planted.py"
-    module.write_text("import sys\n\n\ndef bail():\n    sys.exit(0)\n")
-    before = guards.process_status_literals_in(parsed(module.read_text()))
-    module.write_text("import sys\n\n\ndef bail():\n    sys.exit(7)\n")
-    after = guards.process_status_literals_in(parsed(module.read_text()))
-    assert before == []
-    assert after == ["line 5: sys.exit(7)"]
+    module.write_text('CODES = {"rclone-missing": 30}\n')
+    with sharing_parses():
+        before = guards.reserved_code_tables_in(
+            parsed(module.read_text()), reserved.declared_causes(), reserved.RANGE
+        )
+        module.write_text('CODES = {"rclone-missing": 3}\n ')
+        after = guards.reserved_code_tables_in(
+            parsed(module.read_text()), reserved.declared_causes(), reserved.RANGE
+        )
+    assert before == ["line 1: 'rclone-missing' -> status 30"]
+    assert after == [], "the edited file was answered from the text it no longer holds"
     assert len(parses) == 2
-
-
-def test_crossing_the_text_budget_empties_the_memo_and_answers_stay_right(
-    monkeypatch, parses
-):
-    monkeypatch.setattr(_parse_memo, "TEXT_BUDGET", 40)
-    first = "VALUE = 1\nOTHER = 2\n"
-    second = "VALUE = 3\nOTHER = 4\nTHIRD = 5\n"
-    one = parsed(first)
-    assert parsed(first) is one
-    parsed(second)
-    assert parses == [first, second]
-    again = parsed(first)
-    assert again is not one, "the budget was crossed and the old tree was still served"
-    assert ast.dump(again) == ast.dump(ast.parse(first))
-    assert parses[:3] == [first, second, first]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
 # Never written
 # ═══════════════════════════════════════════════════════════════════════════
 
-#: Real modules the swept questions have something to say about: a reservation
-#: table owner, the vocabulary with its own enum, a soft delete reader, and a
-#: module the reports audit admits. Chosen for size as well: the largest modules
-#: take seconds a pass under the reports questions, and the planted texts below
-#: carry the positive answers, so four real modules keep this under five seconds.
+#: Real modules the shared questions have something to say about: a reservation
+#: table owner, the vocabulary with its own enum, and two modules the reports
+#: audit reads. Chosen for size as well: the largest modules take seconds a pass
+#: under the reports questions, and the planted texts below carry the positive
+#: answers.
 SHARED_MODULES = (
     "cli/exit_codes.py",
     "core/exit_codes.py",
@@ -169,50 +201,40 @@ SHARED_MODULES = (
     "core/naming.py",
 )
 
-#: And one planted text per guard, so every question has a positive answer to
-#: lose if a shared tree were written to.
+#: One planted text per shared question, so every question has an answer to lose
+#: if a shared tree were written to.
 PLANTED = {
-    "core/planted_table.py": 'CODES = {\n    "rclone-missing": 30,\n    "rekordbox-running": 21,\n}\n',
-    "core/planted_exit.py": "import sys\n\n\ndef bail():\n    sys.exit(7)\n",
-    "core/planted_read.py": 'def read(row):\n    return getattr(row, "rb_local_deleted", 0)\n',
-    "core/planted_pool.py": (
-        "from concurrent.futures import ProcessPoolExecutor\n\n\n"
-        "def run():\n    return ProcessPoolExecutor(max_workers=9)\n"
+    "core/planted_table.py": (
+        'CODES = {\n    "rclone-missing": 30,\n    "rekordbox-running": 21,\n}\n'
     ),
-    "core/planted_writer.py": 'def stash(path, data):\n    getattr(path, "write_text")(data)\n',
+    "core/planted_writer.py": (
+        "import importlib\n\nfrom cratekit.core import config\n\n\n"
+        'def stash(path, data):\n    getattr(path, "write_text")(data)\n\n\n'
+        'def later():\n    return importlib.import_module("cratekit.core.ledger")\n'
+    ),
 }
 
 
 def _questions(relative: str, source: str) -> dict[str, Callable[[], object]]:
-    """Every question a package wide sweep asks of one module, each not yet asked."""
-    package = package_of(relative)
+    """Every question a sharing test asks of one module, each not yet asked."""
+    package = reserved.package_of(relative)
     dotted = f"{package}.{relative.rsplit('/', 1)[-1].removesuffix('.py')}"
-    causes = declared_causes()
+    causes = reserved.declared_causes()
     pair = [(relative, source)]
     return {
         "reserved_code_tables_in": lambda: guards.reserved_code_tables_in(
-            parsed(source), causes, RANGE, package
+            parsed(source), causes, reserved.RANGE, package
         ),
-        "process_status_literals_in": lambda: guards.process_status_literals_in(parsed(source)),
-        "permissive_soft_delete_reads_in": lambda: guards.permissive_soft_delete_reads_in(
-            parsed(source)
+        "declared_enum_values": lambda: guards._declared_enum_values(parsed(source)),
+        "named_without_own": lambda: reserved.modules_holding_a_named_cause(
+            pair, own_declarations=False
         ),
-        "reads_soft_delete_marker_in": lambda: guards.reads_soft_delete_marker_in(parsed(source)),
-        "_declared_enum_values": lambda: guards._declared_enum_values(parsed(source)),
-        "converting_handlers": lambda: [
-            ast.dump(handler) for handler in converting_handlers(parsed(source))
-        ],
-        "named_without_own": lambda: modules_holding_a_named_cause(pair, own_declarations=False),
-        "named_with_own": lambda: modules_holding_a_named_cause(pair, own_declarations=True),
-        "cause_literals": lambda: modules_holding_a_cause_literal(pair),
-        "kebab_literals": lambda: kebab_literals_by_module(pair),
-        "in_range_integer": lambda: holds_an_in_range_integer(source),
-        "process_pool_constructions": lambda: process_pool_constructions(source),
-        "pool_plan_constructions": lambda: pool_plan_constructions(source, package=package),
-        "unplanned_map_workers": lambda: unplanned_map_workers(source, package=package),
-        "names_used": lambda: _names_used(source),
-        "attributes_read": lambda: _attributes_read(source),
-        "filesystem_mutations": lambda: reports.filesystem_mutations(source),
+        "named_with_own": lambda: reserved.modules_holding_a_named_cause(
+            pair, own_declarations=True
+        ),
+        "cause_literals": lambda: reserved.modules_holding_a_cause_literal(pair),
+        "kebab_literals": lambda: reserved.kebab_literals_by_module(pair),
+        "in_range_integer": lambda: reserved.holds_an_in_range_integer(source),
         "resolved_imports": lambda: reports._resolved_imports(source, dotted),
         "import_module_calls": lambda: reports._import_module_calls(source),
         "names_bound_by": lambda: reports._names_bound_by(source),
@@ -241,66 +263,85 @@ def _fingerprint(tree: ast.AST) -> tuple[str, list[tuple[str, tuple[str, ...]]]]
 
 
 def _sources() -> dict[str, str]:
-    scanned = dict(package_sources())
+    scanned = dict(reserved.package_sources())
     sources = {relative: scanned[relative] for relative in SHARED_MODULES}
     sources.update(PLANTED)
     return sources
 
 
-def test_every_swept_question_leaves_a_shared_tree_as_a_fresh_parse_would(parses):
+def test_every_shared_question_leaves_a_shared_tree_as_a_fresh_parse_would():
     sources = _sources()
-    trees = {relative: parsed(source) for relative, source in sources.items()}
+    with sharing_parses():
+        trees = {relative: parsed(source) for relative, source in sources.items()}
+        for relative, source in sources.items():
+            questions = _questions(relative, source)
+            _asked(questions, list(questions))
+        for relative, source in sources.items():
+            assert parsed(source) is trees[relative], (
+                f"{relative} was parsed again, so this test shared no tree"
+            )
     for relative, source in sources.items():
-        questions = _questions(relative, source)
-        _asked(questions, list(questions))
-    for relative, source in sources.items():
-        assert parsed(source) is trees[relative], (
-            f"{relative} was parsed again, so this test shared no tree"
-        )
         assert _fingerprint(trees[relative]) == _fingerprint(ast.parse(source)), (
-            f"a guard question wrote to the shared tree of {relative}, and every "
-            f"guard asking after it reads what that guard left"
+            f"a question wrote to the shared tree of {relative}, and every "
+            f"question asked after it reads what that one left"
         )
 
 
-def test_two_orders_over_shared_trees_give_the_same_answers(parses):
-    """The brief's scenario: guards sharing a tree answer alike in either order.
+def test_shared_trees_answer_alike_in_either_order_and_as_trees_of_their_own():
+    """The brief's scenario: questions sharing a tree answer alike in either order.
 
-    The first pass asks each module's questions in the order written, the second,
-    over a memo emptied and refilled, in the reverse order, and both are compared
-    with answers from trees nobody else touched.
+    One pass asks each module's questions in the order written over shared trees,
+    another in the reverse order over a fresh scope, and a third asks each
+    question alone, outside any scope, over a tree nobody else touched.
     """
     sources = _sources()
     forward: dict[str, dict[str, object]] = {}
-    for relative, source in sources.items():
-        questions = _questions(relative, source)
-        forward[relative] = _asked(questions, list(questions))
+    with sharing_parses():
+        for relative, source in sources.items():
+            questions = _questions(relative, source)
+            forward[relative] = _asked(questions, list(questions))
 
-    _parse_memo.forget()
     backward: dict[str, dict[str, object]] = {}
-    for relative, source in reversed(list(sources.items())):
-        questions = _questions(relative, source)
-        backward[relative] = _asked(questions, list(reversed(list(questions))))
+    with sharing_parses():
+        for relative, source in reversed(list(sources.items())):
+            questions = _questions(relative, source)
+            backward[relative] = _asked(questions, list(reversed(list(questions))))
     assert forward == backward
 
-    _parse_memo.forget()
-    alone: dict[str, dict[str, object]] = {}
-    for relative, source in sources.items():
-        questions = _questions(relative, source)
-        alone[relative] = {}
-        for name in questions:
-            _parse_memo.forget()
-            alone[relative][name] = questions[name]()
+    alone = {
+        relative: _asked(_questions(relative, source), list(_questions(relative, source)))
+        for relative, source in sources.items()
+    }
     assert forward == alone, (
         "a question asked over a tree it shared answered differently from the "
         "same question asked over a tree of its own"
     )
 
-    for relative in PLANTED:
-        found = {name: answer for name, answer in forward[relative].items() if answer}
-        assert found, f"no question found anything in {relative}, so it proves nothing"
     assert forward["core/planted_table.py"]["reserved_code_tables_in"]
-    assert forward["core/planted_exit.py"]["process_status_literals_in"]
-    assert forward["core/planted_read.py"]["permissive_soft_delete_reads_in"]
-    assert forward["core/planted_pool.py"]["process_pool_constructions"]
+    assert forward["core/planted_table.py"]["kebab_literals"]
     assert forward["core/planted_writer.py"]["unnamed_writers"]
+    assert forward["core/planted_writer.py"]["resolved_imports"]
+    assert forward["core/planted_writer.py"]["import_module_calls"]
+    assert forward["core/exit_codes.py"]["declared_enum_values"]
+    assert forward["write/metadata.py"]["names_bound_by"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The population test that now reads the package once still sees all of it
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# It was rewritten to read the package once and hand that reading to every
+# helper. On the real tree every pin holds, so a helper that stopped looking at
+# what it was handed would pass there as long as the pins agreed. It is run here
+# over the real package plus one planted module holding a second table, and has
+# to fail naming it. The pinned populations test reads the same helpers, and
+# its exact per module pins already fail on any module a helper stops seeing.
+
+
+def test_the_at_risk_population_names_a_planted_module(monkeypatch):
+    real = reserved.package_sources()
+    planted = ("core/planted_table.py", PLANTED["core/planted_table.py"])
+    monkeypatch.setattr(reserved, "package_sources", lambda: [*real, planted])
+    with pytest.raises(AssertionError) as caught:
+        reserved.test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned()
+    assert "core/planted_table.py" in str(caught.value).split("\nassert ")[0]

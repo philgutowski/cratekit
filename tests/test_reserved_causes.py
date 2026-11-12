@@ -174,7 +174,7 @@ from cratekit.core import backup_facts, config
 from cratekit.core.cause import REASONS, Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import BANDS, MAX_CODE, ExitCode, Remedy, band_of, meaning_of
 from tests import _source_guards as _guards
-from tests._parse_memo import parsed
+from tests._parse_memo import parsed, shares_parses
 from tests._pinned_reserved_populations import (
     PINNED_KEBAB_LITERALS_BY_MODULE,
     PINNED_LITERAL_HOLDERS,
@@ -187,7 +187,6 @@ from tests._pinned_reserved_populations import (
 )
 from tests._source_guards import (
     process_status_literals,
-    process_status_literals_in,
     reserved_code_tables,
     reserved_code_tables_in,
 )
@@ -692,7 +691,7 @@ def _annotation_namespace(module: ModuleType | None) -> dict[str, object]:
     if source_file is None:
         return namespace
     try:
-        tree = parsed(Path(source_file).read_text())
+        tree = ast.parse(Path(source_file).read_text())
     except OSError:  # pragma: no cover - a module with no readable source
         return namespace
     for node in ast.walk(tree):
@@ -1059,7 +1058,7 @@ def _converted_exception_types() -> set[type]:
         source_file = getattr(module, "__file__", None)
         if source_file is None or "_vendor" in source_file:
             continue
-        tree = parsed(Path(source_file).read_text())
+        tree = ast.parse(Path(source_file).read_text())
         for node in converting_handlers(tree):
             caught = node.type.elts if isinstance(node.type, ast.Tuple) else [node.type]
             for entry in caught:
@@ -4593,7 +4592,9 @@ def population_under_measurement(
     """The 49 non-owner files every count in this section is taken over.
 
     ``sources`` is what ``package_sources()`` returned, read once by the test
-    asking, so every count a test takes is over the one reading (U258).
+    asking, so every count one test takes is over one reading of the package
+    (U258). The tests here used to read it again inside each helper and inside
+    each comprehension, 246 readings in two tests by the profile of 2026-11-12.
     """
     return [
         (relative, source)
@@ -4667,7 +4668,7 @@ def kebab_shaped_literals() -> set[str]:
     return {
         node.value
         for _, source in package_sources()
-        for node in ast.walk(parsed(source))
+        for node in ast.walk(ast.parse(source))
         if isinstance(node, ast.Constant)
         and isinstance(node.value, str)
         and _guards.CAUSE_SLUG.match(node.value)
@@ -4707,6 +4708,7 @@ def kebab_literals_by_module(sources: list[tuple[str, str]]) -> dict[str, list[s
 
 
 
+@shares_parses
 def test_pinned_populations_derive_totals_and_key_by_module():
     """U125: totals come from per-module pins, so parallel cards edit different lines.
 
@@ -4781,6 +4783,7 @@ def test_pinned_populations_derive_totals_and_key_by_module():
     assert all(isinstance(slug, str) and slug for slug in PINNED_NON_RESERVED_CAUSES)
 
 
+@shares_parses
 def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     """The numbers the residual argues from, recomputed here rather than recalled.
 
@@ -4850,13 +4853,13 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     )
 
     widened = frozenset(set(causes) | literals)
-    widened_reports = {
+    assert {
         relative: reserved_code_tables_in(
             parsed(source), widened, RANGE, package_of(relative)
         )
         for relative, source in population_under_measurement(scanned)
-    }
-    assert {relative: found for relative, found in widened_reports.items() if found} == {}, (
+        if reserved_code_tables_in(parsed(source), widened, RANGE, package_of(relative))
+    } == {}, (
         "the wide rule has a headroom problem now: adding every kebab-shaped "
         "literal in the package to the key set reports an offender, and the "
         "argument for one key set rests on it reporting none"
@@ -4981,7 +4984,7 @@ def test_the_static_enum_rule_agrees_with_the_interpreter_over_the_whole_package
     modules, unimportable = imported_package_modules()
     assert not unimportable
     static = {
-        relative: _guards._declared_enum_values(parsed(source))
+        relative: _guards._declared_enum_values(ast.parse(source))
         for relative, source in package_sources()
     }
     missed: dict[str, list[str]] = {}
@@ -5030,14 +5033,12 @@ def test_no_module_in_the_package_keeps_a_second_reservation_table():
     duplicate taxonomy resolvers.
     """
     causes = declared_causes()
-    reports = {
-        relative: reserved_code_tables_in(
-            parsed(source), causes, RANGE, package_of(relative)
-        )
+    offenders = {
+        relative: reserved_code_tables(source, causes, RANGE, package_of(relative))
         for relative, source in package_sources()
         if relative not in TABLE_OWNERS
+        and reserved_code_tables(source, causes, RANGE, package_of(relative))
     }
-    offenders = {relative: found for relative, found in reports.items() if found}
     assert not offenders, f"a second reservation table: {offenders}"
 
 
@@ -5919,11 +5920,11 @@ def test_the_hop_bound_is_the_depth_of_the_deepest_spelling(monkeypatch):
 
 
 def test_no_module_in_the_package_turns_a_bare_integer_into_a_status():
-    reports = {
-        relative: process_status_literals_in(parsed(source))
+    offenders = {
+        relative: process_status_literals(source)
         for relative, source in package_sources()
+        if process_status_literals(source)
     }
-    offenders = {relative: found for relative, found in reports.items() if found}
     assert not offenders, (
         f"these bypass the vocabulary entirely and exit with an integer nobody "
         f"reserved: {offenders}"

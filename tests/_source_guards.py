@@ -1589,8 +1589,8 @@ def reserved_code_tables_in(
     """:func:`reserved_code_tables` asked of a tree already parsed (U258).
 
     The same question with the same answer: both build the one table and read it
-    with :func:`_reservations`. It exists so a sweep can hand over a tree it
-    shares with other guards, since a parse memo keyed on the text could not live
+    with :func:`_reservations`. It exists so a test can hand over a tree it shares
+    with its other questions, since a parse memo keyed on the text could not live
     in this module without the text reaching something other than ``ast.parse``.
     The tree is read and never written.
     """
@@ -1927,15 +1927,7 @@ def process_status_literals(source: str) -> list[str]:
     fixture anywhere wrote a negative status.
     ``test_a_negative_status_is_a_bare_status_too`` writes three of them.
     """
-    return process_status_literals_in(ast.parse(source))
-
-
-def process_status_literals_in(tree: ast.AST) -> list[str]:
-    """:func:`process_status_literals` asked of a tree already parsed (U258).
-
-    The body of the question itself, so the two forms cannot drift. The tree is
-    read and never written.
-    """
+    tree = ast.parse(source)
     found: list[str] = []
     _scan_for_exits(
         tree,
@@ -2583,15 +2575,7 @@ def permissive_soft_delete_reads(source: str) -> list[str]:
     "What the soft-delete guard cannot see, and two gaps in the gate contract"
     rather than left for a reader to discover by being wrong.
     """
-    return permissive_soft_delete_reads_in(ast.parse(source))
-
-
-def permissive_soft_delete_reads_in(tree: ast.AST) -> list[str]:
-    """:func:`permissive_soft_delete_reads` asked of a tree already parsed (U258).
-
-    The body of the question itself, so the two forms cannot drift. The tree is
-    read and never written.
-    """
+    tree = ast.parse(source)
     names = SoftDeleteNames(tree)
     found = [
         f"line {node.lineno}: {ast.unparse(node)}"
@@ -2624,13 +2608,5 @@ def reads_soft_delete_marker(source: str) -> bool:
     reader and the pin does not have to carve out an exception for the module
     that owns the name.
     """
-    return reads_soft_delete_marker_in(ast.parse(source))
-
-
-def reads_soft_delete_marker_in(tree: ast.AST) -> bool:
-    """:func:`reads_soft_delete_marker` asked of a tree already parsed (U258).
-
-    The body of the question itself, so the two forms cannot drift. The tree is
-    read and never written.
-    """
+    tree = ast.parse(source)
     return bool(_soft_delete_reads(tree, SoftDeleteNames(tree)))

@@ -43,7 +43,6 @@ import pytest
 
 from cratekit.core import config
 from cratekit.core import rb_writer as W
-from tests._parse_memo import parsed
 from tests.test_config import valid_data
 
 
@@ -1897,7 +1896,7 @@ def test_no_module_in_the_package_reads_the_soft_delete_marker_permissively():
     guard = _source_guard()
     offenders: dict[str, list[str]] = {}
     for path, source in _package_sources():
-        found = guard.permissive_soft_delete_reads_in(parsed(source))
+        found = guard.permissive_soft_delete_reads(source)
         if found:
             offenders[path] = found
     assert not offenders, (
@@ -1977,9 +1976,7 @@ def test_defining_the_marker_on_a_row_double_is_not_reading_it():
 def test_only_the_declared_modules_read_the_soft_delete_marker_at_all():
     guard = _source_guard()
     readers = {
-        path
-        for path, source in _package_sources()
-        if guard.reads_soft_delete_marker_in(parsed(source))
+        path for path, source in _package_sources() if guard.reads_soft_delete_marker(source)
     }
     assert readers == SOFT_DELETE_READERS, (
         f"the modules reading the soft-delete marker are {sorted(readers)}, and "

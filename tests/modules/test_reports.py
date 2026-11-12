@@ -51,7 +51,7 @@ from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.modules.reports import aging, duplicates, export
 from cratekit.write import rbxml
-from tests._parse_memo import parsed
+from tests._parse_memo import parsed, shares_parses
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -2088,7 +2088,7 @@ def filesystem_mutations(source: str) -> list[str]:
        did not ask it about ``table = vars(Path)``. There is ONE place a receiver
        resolves now, ``_bound_value``, and every rule asks it.
     """
-    tree = parsed(source)
+    tree = ast.parse(source)
     modules, direct = _writer_bindings(tree)
     return mutations_in(tree, modules=modules, direct=direct)
 
@@ -5332,6 +5332,7 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
     return unnamed
 
 
+@shares_parses
 def test_the_allowlist_admits_no_writer_this_guard_cannot_name():
     """The allowlist's ARGUMENT, checked instead of asserted.
 
