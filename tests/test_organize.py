@@ -1661,6 +1661,25 @@ def test_a_set_archived_by_its_inspiration_proof_stays_archived_once_that_playli
     assert (step["state"], step["detail"]) == ("nothing", "already archived and marked"), step
 
 
+def test_a_set_found_prefixed_by_the_migration_is_still_filed_by_the_archive(world):
+    """U242, round two: a prefix a person put on a set says only that it was
+    prefixed, never that the archive filed it, so the step still plans it."""
+    from cratekit.modules.outbound import ledger
+    from cratekit.sync import taken_cli
+
+    cfg, _fake, held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    recorded = ledger.set_playlist(cfg, SET_NAME)
+    held.titles[recorded.remote_id] = f"DOWNLOADED {SET_NAME}"
+    taken_cli.migrate(cfg, {recorded.remote_id: f"DOWNLOADED {SET_NAME}"})
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert step["state"] == "planned", step
+    assert step["detail"].startswith("file it in Downloaded Sets"), step
+
+
 def test_a_set_in_its_folder_with_its_built_title_is_taken_and_not_moved(world):
     from cratekit.modules.outbound import ledger
 

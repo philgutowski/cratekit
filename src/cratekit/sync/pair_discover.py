@@ -639,6 +639,28 @@ def downloaded_copy(
     return ""
 
 
+def copy_candidates(
+    fresh: Iterable[tuple[str, str]], account_id: str, title: str, taken: Iterable[str]
+) -> list[str]:
+    """The titles beside ``account_id`` it may be a downloaded copy of, as :func:`downloaded_copy` reads them.
+
+    TWO TAKEN PLAYLISTS OF ONE NAME ARE NOT EACH OTHER'S COPY (U242, rounds one
+    and two of its review). A taken title with no prefix reads as a copy only
+    of a playlist a pair holds or of one beside it that is not taken. A title
+    still carrying the prefix reads every one beside it, as before U242, so
+    ``DOWNLOADED Disco`` is still the copy of a taken ``Disco``.
+    """
+    from cratekit.sync.playlists import is_swept_name
+
+    held = frozenset(taken)
+    plain_taken = account_id in held and not is_swept_name(title)
+    return [
+        other
+        for other_id, other in fresh
+        if other_id != account_id and not (plain_taken and other_id in held)
+    ]
+
+
 def _chain(live: Iterable[Any], node_id: str) -> tuple[str, ...]:
     """Every folder above ``node_id``, nearest first, through live rows."""
     parent_of = {
@@ -682,6 +704,7 @@ __all__ = [
     "adoption_moment",
     "before_adoption",
     "by_kind",
+    "copy_candidates",
     "discover",
     "downloaded_copy",
     "home_of",

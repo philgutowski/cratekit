@@ -194,7 +194,7 @@ def _item(
             **base,
             "action": SKIP,
             "reason": ALREADY_UNMARKED,
-            "why": f"an unmark already put its title back, {entry.unmarked}",
+            "why": f"an unmark already put its title back or let it go, {entry.unmarked}",
         }
     later = _later(entry, every)
     if later:
@@ -251,10 +251,26 @@ def _with_taken(
     back is put back and its entry let go with it; an entry still held with no
     title to put back is a release alone, which writes nothing on the account;
     an entry already let go says so.
+
+    A TITLE STILL CARRYING A PREFIX THIS PASS DOES NOT OWN IS LEFT ALONE, with
+    the reason the title half gave, as before U242 (round two of its review):
+    retitled since the mark and still prefixed, or marked again by a later
+    pass. Letting its entry go would say it is no longer taken while its title
+    still says it is. Every release the apply makes stamps the pass's legacy
+    mark with it, so no later migration takes it again.
     """
     taken_held = held is not None and held.held
     if item is not None and item["action"] == UNMARK:
         return {**item, "release": taken_held}
+    if (
+        item is not None
+        and item["action"] == SKIP
+        and (
+            item.get("reason") == MARKED_AGAIN
+            or (item.get("reason") == RENAMED_SINCE and playlists.is_swept_name(item.get("name")))
+        )
+    ):
+        return {**item, "release": False}
     if taken_held:
         return {
             "id": identity,
@@ -263,9 +279,6 @@ def _with_taken(
             "to": (item or {}).get("to", ""),
             "action": RELEASE,
             "release": True,
-            # What the title half decided, so the apply stamps a legacy mark
-            # only when its title is already the one before the mark.
-            **({"title_reason": item["reason"]} if item is not None and "reason" in item else {}),
             "why": "Cratekit holds it as taken under this pass, and lets it go; no title changes",
         }
     if item is not None:
@@ -334,7 +347,11 @@ def _shown(payload: dict[str, Any], *, name: str, passes: tuple[str, ...]) -> di
 
 
 def _failed_part_way(
-    exc: Exception, landed: list[str], titles: dict[str, str], planned: list[str]
+    exc: Exception,
+    landed: list[str],
+    titles: dict[str, str],
+    planned: list[str],
+    released: list[str] | None = None,
 ) -> CratekitError:
     """The failure, with what was already put back named in it.
 
@@ -348,9 +365,15 @@ def _failed_part_way(
         if back
         else "no playlist had its title put back before this failed"
     )
+    if released:
+        said += (
+            f", and {len(released)} playlist(s) were let go, no longer held as taken: "
+            + ", ".join(released)
+        )
     detail = {
         "unmarked": list(landed),
         "still_marked": [identity for identity in planned if identity not in landed],
+        "released": list(released or ()),
     }
     again = "run crate sync unmark again; a playlist already put back is skipped"
     if isinstance(exc, CratekitError):
@@ -446,7 +469,6 @@ def sync_unmark(ctx) -> Envelope:
     by_id = {entry.playlist_id: entry for entry in found}
     planned = [item["id"] for item in items if item["action"] == UNMARK]
     letting = [item["id"] for item in items if item["action"] == RELEASE]
-    by_item = {item["id"]: item for item in items}
     if option != "apply" or not (planned or letting):
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
@@ -463,15 +485,12 @@ def sync_unmark(ctx) -> Envelope:
         for identity in letting:
             record.release(name, identity)
             released.append(identity)
-            # THE PASS'S LEGACY MARK IS STAMPED WITH IT, when one stands: its
-            # title is already the one before the mark, so the release is the
-            # whole undo, and an unstamped mark would be taken again by the
-            # next migration (U242, round one of its review).
-            if (
-                identity in by_id
-                and not by_id[identity].unmarked
-                and by_item[identity].get("title_reason") == ALREADY_UNMARKED
-            ):
+            # THE PASS'S LEGACY MARK IS STAMPED WITH IT, when one stands: no
+            # title of the pass's is left to put back (the cases where one is
+            # are left alone above), so the release is the whole undo, and an
+            # unstamped mark would be taken again by the next migration or
+            # strip (U242, rounds one and two of its review).
+            if identity in by_id and not by_id[identity].unmarked:
                 record.record_unmarked(name, identity)
         if planned:
             from cratekit.modules.outbound import account
@@ -491,7 +510,7 @@ def sync_unmark(ctx) -> Envelope:
                     record.release(name, identity)
                     released.append(identity)
     except Exception as exc:
-        raise _failed_part_way(exc, landed, titles_put, planned) from exc
+        raise _failed_part_way(exc, landed, titles_put, planned, released) from exc
 
     done: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []

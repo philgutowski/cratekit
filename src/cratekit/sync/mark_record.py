@@ -21,8 +21,10 @@ carries the title the record says was written. The title alone cannot say who
 wrote a prefix, since the source system wrote the same one and a person can
 type it.
 
-AN ENTRY IS NEVER DELETED. An unmark stamps a mark, and a release stamps a
-taken entry, so a second run finds them done and plans nothing.
+AN ENTRY IS NEVER DELETED. An unmark that puts a title back stamps its mark;
+a release stamps the taken entry it lets go, and the pass's legacy mark with
+it when one stands, since that mark is then undone with no title to put back.
+A second run finds them done and plans nothing.
 
 VERSION 1 READS AS A RECORD WITH NOTHING TAKEN, so a record written before
 U242 is never refused for its age; the first write rewrites it as version 2.
@@ -85,7 +87,8 @@ class Marked:
     #: The title the mark wrote, which is what an unmark expects to find.
     to: str
     marked: str
-    #: When an unmark put the title back, or ``""`` while the mark stands.
+    #: When an unmark put the title back, or let the playlist go with no title
+    #: of the mark's left to put back (U242), or ``""`` while the mark stands.
     unmarked: str = ""
 
     @property

@@ -700,7 +700,8 @@ titles the strip took it off.
 The library's `sync_marks.json`: the taken ledger (id, title, who took it, how,
 when, released when `sync unmark` lets it go), and every title a pass's mark or
 `sync strip` rewrote (pass, id, old and new title), stamped when `sync unmark`
-puts it back. The only proof Cratekit wrote a title.
+puts it back, or lets the playlist go with no title of the mark's left to put
+back. The only proof Cratekit wrote a title.
 
 ### Label folder
 A followed label on the account: a root folder named for the label with one
