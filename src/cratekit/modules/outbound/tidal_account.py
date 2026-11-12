@@ -61,6 +61,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+import copy
 import re
 import time
 from collections.abc import Callable, Iterable
@@ -818,11 +819,12 @@ class TidalAccount:
     def _playlist(self, playlist_id: str) -> Any:
         """The client's object for one playlist, opened now: two requests.
 
-        THE HOLD IS DROPPED FIRST (U255). Every member but the add opens its own
-        object through here to write or read by, and a write through another
-        object moves the playlist's version tag on, so the held one would carry
-        a tag the provider refuses. Dropping it here covers every such member,
-        a later one included, rather than a list of them that can go stale.
+        THE HOLD IS DROPPED FIRST (U255). Every open goes through here, and a
+        member that writes through the object it opened moves the playlist's
+        version tag on, so the held one would carry a tag the provider
+        refuses. Dropping it here covers every such member, a later one
+        included, rather than a list of them that can go stale; only
+        :meth:`_membership` and :meth:`_held` hold what they open, after it.
         """
         self._opened.pop(playlist_id, None)
         found = self._call(
@@ -855,11 +857,21 @@ class TidalAccount:
         as 4,003 requests for 1,000 adds. Adding through the held object costs
         the POST and the client's read after it.
 
-        THE TAG IS THE CLIENT'S OWN, NEVER ONE THIS ADAPTER KEEPS. The client
-        sets it from every read it makes, the read after each write included,
-        so a held object always sends the tag of the last thing it read. The
-        provider answers a tag that is not current with 412 and changes nothing
-        (Sitting 62), which :meth:`add_to_playlist` meets by opening afresh.
+        THE TAG AND THE POSITION COME FROM ONE ANSWER. The client's add sends
+        the object's version tag and puts the track at the object's length,
+        and the client sets both from one read: its open, or its own read of
+        the playlist after each write. A held object is only ever one whose
+        last read was one of those, which is why :meth:`_membership` reads the
+        tracks through a copy: the client's track read overwrites the tag and
+        leaves the length, so an add after it would send a tag from one answer
+        and a position from another, and a write landing between the two was
+        driven placing the add before it (round one's review). Nothing is held
+        until the read it was opened for has succeeded.
+
+        A held object the provider has moved on from sends a stale tag; the
+        provider refuses a move on a stale tag with 412 and changes nothing
+        (Sitting 62), the client sends the same header on an add, and
+        :meth:`add_to_playlist` meets a refusal by opening afresh.
 
         Held per identifier for the life of the adapter, which ``account.forget``
         drops; :meth:`_playlist` drops it first whenever another member opens
@@ -873,10 +885,14 @@ class TidalAccount:
 
     def _membership(self, playlist_id: str) -> list[str]:
         if playlist_id not in self._members:
-            tracks = self._listed(playlist_id, self._held(playlist_id))
+            opened = self._playlist(playlist_id)
+            # THROUGH A COPY, so the opened object keeps the tag and the length
+            # its own open read together (U255, see :meth:`_held`).
+            tracks = self._listed(playlist_id, copy.copy(opened))
             self._members[playlist_id] = [
                 str(getattr(track, "id", "") or "") for track in tracks
             ]
+            self._opened[playlist_id] = opened
         return self._members[playlist_id]
 
     def create_playlist(self, name: str) -> str:
@@ -950,12 +966,14 @@ class TidalAccount:
         """Add one track, through the playlist's held object (U255).
 
         A FAILED ATTEMPT DROPS THE HOLD, AND THE RETRY OPENS AFRESH. The retry
-        is the one the policy already allows a write, and no more: the open
-        rides inside it, so an attempt is an open and an add or, while the
-        object is held, an add alone. A 412 for a stale tag changed nothing,
-        so the add sent again on the fresh object is the first to land; an
-        add that landed before its answer was lost is skipped by the provider
-        as a duplicate and read back below.
+        is the one the policy already allows a write, and no more. The first
+        open, when nothing is held, is made before the add's attempts on its
+        own retry, as it always was; the retry's open is made inside the
+        retried attempt, on its own retry too, so a failed open is never sent
+        an add. A 412 for a stale tag changed nothing, so the add sent again
+        on the fresh object is the first to land; an add that landed before
+        its answer was lost is skipped by the provider as a duplicate and read
+        back below.
         """
         identifier = str(remote_id)
         members = self._membership(playlist_id)
@@ -967,10 +985,7 @@ class TidalAccount:
         def attempt() -> Any:
             playlist = self._opened.get(playlist_id)
             if playlist is None:
-                playlist = self._session.playlist(playlist_id)
-                if playlist is None:
-                    return _ABSENT
-                self._opened[playlist_id] = playlist
+                playlist = self._held(playlist_id)
             try:
                 return playlist.add([identifier])
             except Exception:
@@ -979,7 +994,6 @@ class TidalAccount:
 
         added = self._call(doing, attempt)
         if added is _ABSENT:
-            self._opened.pop(playlist_id, None)
             raise account.provider_failure(
                 LookupError(f"the provider no longer has the playlist {playlist_id!r}"),
                 doing,
@@ -990,10 +1004,10 @@ class TidalAccount:
         # track may have been added elsewhere since the membership was read, and
         # recording one the playlist does not hold would make a resume skip it.
         if identifier not in {str(item) for item in added or ()}:
-            # READ ON A FRESH OPEN, as before U255: whether this track counts as
-            # on the playlist is never decided by an object held across writes.
+            # READ ON A FRESH OPEN, as before U255, since ``_membership`` opens
+            # through ``_playlist``, which drops the hold: whether this track
+            # counts as on the playlist is never decided by a held object.
             del self._members[playlist_id]
-            self._opened.pop(playlist_id, None)
             if identifier not in self._membership(playlist_id):
                 raise account.provider_failure(
                     LookupError(
@@ -1205,8 +1219,6 @@ class TidalAccount:
         """
         handle = self._folder(folder_id)
         doing = f"put the playlist {playlist_id} in the folder {folder_id}"
-        # A move may move the playlist's tag on too, so the hold goes (U255).
-        self._opened.pop(str(playlist_id), None)
         moved = self._call(
             doing, lambda: handle.move_items_to_folder([str(playlist_id)], str(folder_id))
         )
@@ -1917,7 +1929,6 @@ class TidalAccount:
                 detail={"playlist_id": identifier, "problem": "not-product-made"},
             )
         doing = f"remove the playlist {identifier}"
-        self._opened.pop(identifier, None)
         found = self._call(doing, lambda: self._session.playlist(identifier))
         if found is _ABSENT or found is None:
             self._members.pop(identifier, None)
@@ -2021,7 +2032,6 @@ class TidalAccount:
                 playlist_id=identifier,
             )
         doing = f"remove the {kind} playlist {identifier}"
-        self._opened.pop(identifier, None)
         found = self._call(doing, lambda: self._session.playlist(identifier))
         if found is _ABSENT or found is None:
             self._members.pop(identifier, None)

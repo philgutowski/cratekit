@@ -8,12 +8,18 @@ and the client's own ``add`` reads it a third time after its POST. Every
 provider request waits at the gate and counts against the command's ceiling,
 so the two wasted requests were two seconds a track and half the ceiling.
 
-The adapter now holds the object its first open returned, per playlist, and
-adds through it. These tests drive the REAL client over a transport that keeps
-the account's playlists, moves each one's version tag on every write, answers
-a write carrying a tag that is not the current one with 412 as the provider
-does (Sitting 62), and counts every request by method and path. The request
-count is the assertion, never a wall clock.
+The adapter now holds the object its membership read opened, per playlist,
+and adds through it. These tests drive the REAL client over a transport that
+keeps the account's playlists, moves each one's version tag on every write,
+answers a write carrying a tag that is not the current one with 412, as the
+provider answers a move (Sitting 62; whether it holds an add to the tag the
+same way is owed to an attended sitting), and counts every request by method
+and path. The request count is the assertion, never a wall clock.
+
+Round one's review drove three things the first transport could not serve,
+and the transport serves them now: a write by another writer between the
+open and the tracks read, a playlist read or a tracks read served one write
+behind, and a tracks read that fails after the open.
 """
 
 from __future__ import annotations
@@ -25,7 +31,7 @@ from urllib.parse import urlsplit
 import pytest
 
 from cratekit.core import config
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.modules.outbound import account, export, ledger
 from cratekit.modules.outbound.tidal_account import TidalAccount
 from tests.test_adapter_listing import OWNER, _logged_in_over, _owned_playlist
@@ -103,14 +109,38 @@ class Account:
         self.refusals: list[int] = []
         #: Answer every add 412, as a tag that never comes fresh.
         self.always_stale = False
+        #: Every state each playlist has had, oldest first, for a lagging read.
+        self.history: dict[str, list[tuple[int, list[str]]]] = {
+            uuid: [(1, [])] for uuid in uuids
+        }
+        #: Serve the playlist read, or the tracks read, one write behind.
+        self.lag_open = False
+        self.lag_window = False
+        #: Run once just before the next tracks read is served.
+        self.before_tracks: list = []
+        #: Refusals the next tracks reads raise, in order.
+        self.tracks_fail: list[Exception] = []
+        #: Statuses the next playlist reads are answered with, in order.
+        self.open_fail: list[int] = []
+        #: Statuses armed on ``open_fail`` when an add is refused 412.
+        self.open_fail_after_refusal: list[int] = []
 
     def tag(self, uuid: str) -> str:
         return f'"{self.version[uuid]}"'
 
+    def _moved(self, uuid: str) -> None:
+        self.version[uuid] += 1
+        self.history[uuid].append((self.version[uuid], list(self.items[uuid])))
+
     def outside_add(self, uuid: str, identifier: str) -> None:
         """A write made by something other than this adapter, which moves the tag."""
         self.items[uuid].append(identifier)
-        self.version[uuid] += 1
+        self._moved(uuid)
+
+    def _served(self, uuid: str, lagging: bool) -> tuple[int, list[str]]:
+        """The playlist's state as a read serves it: now, or one write behind."""
+        states = self.history[uuid]
+        return states[-2] if lagging and len(states) > 1 else states[-1]
 
     def gets(self, uuid: str) -> int:
         """GETs of the playlist itself, the request the card counts."""
@@ -122,9 +152,9 @@ class Account:
     def track_reads(self, uuid: str) -> int:
         return self.requests[("GET", f"/v1/playlists/{uuid}/tracks")]
 
-    def _data(self, uuid: str) -> dict:
+    def _data(self, uuid: str, items: list[str]) -> dict:
         data = _owned_playlist(0)
-        data.update(uuid=uuid, title=self.titles[uuid], numberOfTracks=len(self.items[uuid]))
+        data.update(uuid=uuid, title=self.titles[uuid], numberOfTracks=len(items))
         return data
 
     def request(self, method, url, params=None, data=None, headers=None, **_):
@@ -137,22 +167,32 @@ class Account:
         rest = parts[4:]
         version = self.version[uuid]
         if method == "GET" and not rest:
-            return _Answer(url, self._data(uuid), tag=version)
+            if self.open_fail:
+                return _Answer(url, {}, status=self.open_fail.pop(0), tag=version)
+            tag, items = self._served(uuid, self.lag_open)
+            return _Answer(url, self._data(uuid, items), tag=tag)
         if method == "GET" and rest == ["tracks"]:
+            while self.before_tracks:
+                self.before_tracks.pop(0)()
+            if self.tracks_fail:
+                raise self.tracks_fail.pop(0)
+            tag, items = self._served(uuid, self.lag_window)
             params = params or {}
             start = int(params.get("offset") or 0)
-            window = self.items[uuid][start : start + int(params.get("limit") or 100)]
+            window = items[start : start + int(params.get("limit") or 100)]
             body = {
                 "items": [_track(one) for one in window],
-                "totalNumberOfItems": len(self.items[uuid]),
+                "totalNumberOfItems": len(items),
             }
-            return _Answer(url, body, tag=version)
+            return _Answer(url, body, tag=tag)
         sent = (headers or {}).get("If-None-Match")
         if method == "POST" and rest == ["items"]:
             self.adds.append((uuid, dict(data or {}), sent))
             if self.refusals:
                 return _Answer(url, {}, status=self.refusals.pop(0), tag=version)
             if self.always_stale or sent != self.tag(uuid):
+                self.open_fail.extend(self.open_fail_after_refusal)
+                self.open_fail_after_refusal = []
                 return _Answer(url, {}, status=412, tag=version)
             added = []
             at = int(data["toIndex"])
@@ -164,12 +204,12 @@ class Account:
                 self.items[uuid].insert(at, one)
                 at += 1
                 added.append(one)
-            self.version[uuid] += 1
+            self._moved(uuid)
             return _Answer(url, {"addedItemIds": added}, tag=self.version[uuid])
         if method == "POST" and not rest:
             # The client's ``edit``: a retitle, which moves the tag too.
             self.titles[uuid] = str(data["title"])
-            self.version[uuid] += 1
+            self._moved(uuid)
             return _Answer(url, {}, tag=self.version[uuid])
         raise AssertionError(f"the account serves no {method} {path}")
 
@@ -475,3 +515,114 @@ def test_the_owner_the_transport_serves_is_the_session_user():
     session = _logged_in_over(provider)
     assert session.playlist("pl0").creator.id == OWNER
     assert callable(getattr(session.playlist("pl0"), "add", None))
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Round one's review: the tag and the position come from one answer
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _three(provider: Account) -> None:
+    for one in ("1", "2", "3"):
+        provider.outside_add("pl0", one)
+
+
+def test_a_write_between_the_open_and_the_tracks_read_never_puts_the_add_before_it():
+    """Drive A: another writer adds between the open and the tracks read. The
+    add is refused on the open's tag, sent again on a fresh open, and lands at
+    the end, as main lands it; it is never accepted at the open's length."""
+    provider = Account("pl0")
+    _three(provider)
+    provider.before_tracks.append(lambda: provider.outside_add("pl0", "7"))
+    remote = _adapter(provider)
+
+    remote.add_to_playlist("pl0", "100")
+
+    assert provider.items["pl0"] == ["1", "2", "3", "7", "100"]
+    assert [form["toIndex"] for _, form, _ in provider.adds] == [3, 4]
+    assert remote.playlist_tracks("pl0") == ("1", "2", "3", "7", "100")
+
+
+def test_a_playlist_read_one_write_behind_writes_nothing():
+    """Drive B: every playlist read lags one write while the tracks read is
+    current. The add carries the lagging read's tag with its length, so it is
+    refused and refused again, and nothing is written, as on main."""
+    provider = Account("pl0")
+    _three(provider)
+    provider.lag_open = True
+    remote = _adapter(provider)
+
+    with pytest.raises(CratekitError):
+        remote.add_to_playlist("pl0", "100")
+
+    assert provider.items["pl0"] == ["1", "2", "3"]
+    assert [(form["toIndex"], tag) for _, form, tag in provider.adds] == [(2, '"3"')] * 2
+
+
+def test_a_tracks_read_one_write_behind_never_reaches_the_add():
+    """Finding two: the tag the add sends is the open's, not a lagging tracks
+    read's, so one POST lands at the end and nothing is refused."""
+    provider = Account("pl0")
+    _three(provider)
+    provider.lag_window = True
+    remote = _adapter(provider)
+
+    remote.add_to_playlist("pl0", "100")
+
+    assert [(form["toIndex"], tag) for _, form, tag in provider.adds] == [(3, '"4"')]
+    assert provider.items["pl0"] == ["1", "2", "3", "100"]
+
+
+def test_a_tracks_read_that_fails_after_the_open_holds_nothing():
+    """Drive H: the open succeeded and the read it was made for did not, so no
+    object is held, and the next add after two more writes opens afresh and
+    lands at the end rather than at the old length."""
+    provider = Account("pl0")
+    provider.outside_add("pl0", "7")
+    provider.tracks_fail.append(
+        refuse("credential-missing", "the session was refused mid read", retryable=False)
+    )
+    remote = _adapter(provider)
+    with pytest.raises(CratekitError):
+        remote.add_to_playlist("pl0", "100")
+    provider.outside_add("pl0", "8")
+    provider.outside_add("pl0", "9")
+
+    remote.add_to_playlist("pl0", "100")
+
+    assert provider.items["pl0"] == ["7", "8", "9", "100"]
+    assert [form["toIndex"] for _, form, _ in provider.adds] == [3]
+
+
+def test_an_open_that_fails_is_refused_on_its_own_retry_before_any_add_is_sent():
+    """The first open, nothing held, is made before the add's attempts, as it
+    always was: two tries of the open, then the open's own refusal, no POST."""
+    provider = Account("pl0")
+    remote = _adapter(provider)
+    remote.add_to_playlist("pl0", "100")
+    remote.rename_playlist("pl0", "Renamed")
+    provider.open_fail = [503, 503]
+    gets_before = provider.gets("pl0")
+
+    with pytest.raises(CratekitError) as excinfo:
+        remote.add_to_playlist("pl0", "101")
+
+    assert "open the playlist pl0" in excinfo.value.cause.message
+    assert provider.gets("pl0") - gets_before == 2
+    assert provider.posts("pl0") == 1
+    assert provider.items["pl0"] == ["100"]
+
+
+def test_the_retrys_open_has_a_retry_of_its_own():
+    """Finding three: an add refused 412 whose fresh open meets one transient
+    failure still opens on the open's own retry and lands, as main's open did."""
+    provider = Account("pl0")
+    remote = _adapter(provider)
+    remote.add_to_playlist("pl0", "100")
+    provider.outside_add("pl0", "7")
+    provider.open_fail_after_refusal = [503]
+
+    remote.add_to_playlist("pl0", "101")
+
+    assert provider.items["pl0"] == ["100", "7", "101"]
+    assert provider.posts("pl0") == 3
