@@ -56,15 +56,23 @@ def decode(path: Any) -> np.ndarray | None:
     heard and found instrumental, and a track the model never heard is not
     that (U58, the wav defect).
 
+    Raises :class:`cratekit.analysis.decode.DecoderMissing` for a file only
+    ffmpeg could decode on a machine without it (U263), which ``vocals``
+    reports as ``vocal-no-decoder``: the decoder is the fault, not the file.
+
     librosa is imported inside the function so a slim install can still import
     the package.
     """
     try:
-        import librosa
+        import librosa  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
+    from cratekit.analysis import decode as decoder
+
     try:
-        wav, _rate = librosa.load(str(path), sr=MODEL_SAMPLE_RATE, mono=True)
+        wav, _rate = decoder.load(path, MODEL_SAMPLE_RATE)
+    except decoder.DecoderMissing:
+        raise
     except Exception:
         return None
     if wav is None or wav.size == 0:

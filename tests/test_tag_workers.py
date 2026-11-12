@@ -45,6 +45,7 @@ from cratekit.tagging import artifacts, published, retag, retag_cli, searchers, 
 from cratekit.tagging import cli as tag_cli
 from cratekit.tagging.tag import SearchHit
 from tests._containers import synth_container
+from tests._taxonomy_parses import counted, unique
 from tests.cli_drive import approve_and_queue, drive, drive_human
 from tests.test_catalogue_searcher import _beatport_page as beatport_page
 from tests.test_catalogue_searcher import _beatport_track as beatport_track
@@ -3101,3 +3102,66 @@ def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
     unread = warnings[tag_cli.SOURCES_UNREAD]
     assert "discogs not asked for want of a token on 2" in unread
     assert not unread.rstrip().endswith("the sweep:")
+
+
+# ---------------------------------------------------------------------------
+# The active taxonomy, parsed once a sweep (U247)
+# ---------------------------------------------------------------------------
+
+
+def test_a_sweep_parses_the_active_taxonomy_once_however_many_files_it_tags(
+    cfg, folder, silence, monkeypatch
+):
+    """The worker reads the library's copy for every file and parses it for the first."""
+    from cratekit.core import taxonomy
+    from tests.test_tagging_engine import _jpeg, plant
+
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    active = config.state_path("taxonomy_active", cfg)
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text(text, encoding="utf-8")
+    place(folder, silence, "a")
+    place(folder, silence, "b")
+    plant(place(folder, silence, "c", genre=SPECIFIC), _jpeg(320, 200), dims=(320, 200, 24))
+    bound(
+        monkeypatch,
+        answering({"a": hit("deep house", SPECIFIC), "b": hit("deep house", SPECIFIC)}),
+    )
+    parses = counted(monkeypatch)
+
+    code, queued = drive(["tag", "folder", "--queue-only", str(folder)])
+    assert code == int(ExitCode.OK), queued
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert set(item_states(job.job_id).values()) == {jobs.ItemState.DONE}
+    assert len(item_states(job.job_id)) == 3
+    assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
+    assert parses.of(text) == 1, f"three files parsed the active copy {parses.of(text)} times"
+
+
+def test_a_retag_parses_the_active_taxonomy_once_however_many_files_it_corrects(
+    repair_on, folder, silence, monkeypatch
+):
+    """The third per item handler the speed survey named, counted the same way."""
+    from cratekit.core import taxonomy
+
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    active = config.state_path("taxonomy_active", repair_on)
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text(text, encoding="utf-8")
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
+    parses = counted(monkeypatch)
+
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert item_states(job_id) == {
+        str(folder / f"{name}.flac"): jobs.ItemState.DONE for name in "abc"
+    }
+    assert all(tags.read_genre_from_file(folder / f"{name}.flac") == SPECIFIC for name in "abc")
+    assert parses.of(text) == 1, f"three files parsed the active copy {parses.of(text)} times"

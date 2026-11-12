@@ -49306,3 +49306,364 @@ runs cleanly in the eager build.
 
 **Closes when:** the subparser is rebuilt fresh for a second attempt, or the
 first error is kept and raised again. Ledger only.
+
+---
+
+## R-1552. On an older librosa an M4A is still decoded by its own fallback, so an M4A's samples depend on the librosa installed
+
+**Found:** at the plan of #692, U263, 2026-11-12.
+
+**The mechanism.** `analysis/decode.py` calls `librosa.load` first and goes
+to ffmpeg only when that raises and libsndfile cannot open the file. librosa
+1.0 raises on an M4A, so the M4A is decoded through ffmpeg; 0.10.2 to 0.11
+read it through audioread (CoreAudio on macOS, ffmpeg as 16 bit integers on
+Linux) and return those samples. The card asked for the same samples
+whichever supported librosa is installed; the orchestrator's merge bar asked
+that nothing analysed today change. The second won, as the conservative call,
+and the question is on the card for Phillip.
+
+**Measured cost.** On this container an AAC M4A decodes to 176,640 samples
+at 22,050 Hz through audioread and through ffmpeg alike; their values were
+not compared, since AAC is lossy and the fallback quantises to 16 bits. An
+ALAC M4A gives the same key and tempo either way. Which librosa the Mac's
+installed copy runs is owed to the attended check this unit files.
+
+**Closes when:** Phillip answers the question on #692, or the installed copy
+is on librosa 1.0, where only ffmpeg reads an M4A. Ledger only.
+
+---
+
+## R-1553. Without ffmpeg a damaged file libsndfile cannot open settles skipped-no-decoder rather than skipped-undecodable
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** `decode.load` cannot tell an M4A from a file too damaged
+for libsndfile to open without trying ffmpeg, so with ffmpeg absent both
+raise `DecoderMissing`, which the head reports as `skipped-no-decoder`. The
+docstrings and the guide now say so.
+
+**Measured cost.** Driven by the review with ffmpeg off the PATH: an empty
+FLAC, a headless FLAC and random bytes named MP3 settled
+`skipped-no-decoder`, where the base said `skipped-undecodable`. Nothing is
+written or lost; doctor already fails `binary.ffmpeg` on such a machine, and
+a rerun with ffmpeg present settles each file correctly.
+
+**Closes when:** the status says "no decoder tried" in words a person reads
+that way, or the head tells an M4A by its container header before blaming
+the decoder. Ledger only.
+
+---
+
+## R-1554. An analyze run whose M4As all settle skipped-no-decoder ends ok with no warning a person at the terminal sees
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** `analyze run` reports each item's status in the JSON
+envelope's `by_status`, which the human rendering does not show, on the base
+as on the branch. A machine fault, ffmpeg absent, is reported per item like
+a file's own fault, with no envelope warning of the kind `unscored_warning`
+gives for a missing vocal model.
+
+**Measured cost.** Driven by the review: three M4As with ffmpeg off the PATH
+ended `analyze.run: ok`, `items: 3 of 3 settled`, exit 0, `warnings: []`;
+`skipped-no-decoder` appeared only in the JSON. `crate doctor` fails the
+`binary.ffmpeg` row on that machine.
+
+**Closes when:** the run carries a warning naming ffmpeg when any item
+settled `skipped-no-decoder`, as it does for the vocal model. Ledger only.
+
+---
+
+## R-1555. analyze restamp and analyze calibrate count an M4A without ffmpeg as features-unavailable and never name the decoder
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** `energy.features_from_path` returns None for every
+failure, `DecoderMissing` included, as the plan chose, so the energy measure
+of restamp and calibrate cannot tell a missing decoder from a file it could
+not measure.
+
+**Measured cost.** Driven by the review with ffmpeg off the PATH over 12
+M4As: restamp settled 12 of 12 `features-unavailable`, outcome ok; calibrate
+reported 0 of 12 measurable with the remedy "check the command line". With
+ffmpeg present both worked. The guide says what each reports.
+
+**Closes when:** the energy measure carries the decoder's absence up as its
+own reason, and calibrate's refusal names ffmpeg. Ledger only.
+
+---
+
+## R-1556. The energy measure of restamp and calibrate decodes an M4A whole twice, once for its length and once for its slice
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** `energy.features_from_path` asks `decode.duration` and
+then `decode.load` with an offset and a duration. For a file libsndfile
+reads both are a header read and a seek; for an M4A through ffmpeg each is a
+whole decode, cut afterwards. The docstring says so.
+
+**Measured cost.** Counted by the review on a 200 second ALAC: two ffmpeg
+runs of 70,560,068 bytes each in one measure. No timing was taken; speed is
+out of the card's scope.
+
+**Closes when:** the ffmpeg path decodes once per measure, or asks ffmpeg
+for the slice. Ledger only.
+
+---
+
+## R-1557. A multichannel M4A decoded through ffmpeg holds its native samples twice, above the light worker's declared cost
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** `decode._ffmpeg_samples` reads ffmpeg's whole output into
+one bytes object and views it as float32, and the mix to mono then builds
+its own array, while a libsndfile read is planned at one native copy. The
+light worker's declared cost (U241) is per second of track, not per channel.
+
+**Measured cost.** Single readings by the review, 400 second files: a 5.1
+ALAC peaked at 883 MB against 622 MB for the same audio as FLAC and a
+planned 606 MB; stereo peaked at 353 MB either way, inside the plan. No
+producer of a multichannel M4A in the library was driven.
+
+**Closes when:** the ffmpeg path streams its output, or asks ffmpeg for the
+mono mix, or the worker's cost counts channels. Ledger only.
+
+---
+
+## R-1558. test_the_detector_asks_for_the_warm_up_before_it_decodes now depends on whether ffmpeg is installed
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** The test stands in for librosa with a file that is not
+there; since U263 a load failure on a file libsndfile cannot open goes on to
+ffmpeg, so with the extra installed and ffmpeg absent the head answers
+`skipped-no-decoder` and the test's expectation fails.
+
+**Measured cost.** Driven by the review under librosa 1.0 with ffmpeg off
+the PATH: the test fails. The suite already fails without ffmpeg by design
+(`require_ffmpeg`), so no machine the suite is run on is affected.
+
+**Closes when:** the test binds its decode at `decode.load` rather than at
+the file. Ledger only.
+
+---
+
+## R-1559. Seven guards in analysis/decode.py kill no test when reverted
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** The review's mutation rows removing `-nostdin`, the
+libsndfile guard in `decode.duration`, the empty frames guard,
+`TimeoutExpired` in the caught exceptions, and `env=binaries.subprocess_env()`
+(the line that keeps opted in credentials out of ffmpeg's environment) each
+killed none of 773 tests in round one; in round two `-xerror`, and the exit
+code half of the failure condition alone, killed none of 46, since every
+tested non zero exit also says something. Each was read and is correct as
+shipped.
+
+**Measured cost.** None measured. A later change that dropped one would
+pass the suite: ffmpeg could read the terminal, an error could go on decoding past
+itself, a silent non zero exit would be read, a damaged FLAC's length
+could be asked of ffmpeg, an empty decode would reach the mix, a stuck
+ffmpeg would fail the item as an internal error, and a credential could
+reach ffmpeg's environment.
+
+**Closes when:** a test drives each. Ledger only.
+
+---
+
+## R-1560. A damaged but playable MP3 or FLAC is analysed on an older librosa and skipped-undecodable on librosa 1.0
+
+**Found:** at the review of #692, U263, round one, 2026-11-12.
+
+**The mechanism.** libsndfile opens the file and fails part way through
+it. An older librosa then reads it through audioread; 1.0 has no fallback
+and raises. `decode.load` keeps that failure as the caller's on purpose,
+since a file libsndfile opens is never handed to ffmpeg, so the librosa
+version decides whether such a file is analysed, on the base and the branch
+alike.
+
+**Measured cost.** Driven by the review with 2000 bytes zeroed in an MP3
+and a FLAC: a head on 0.10.2.post1, `skipped-undecodable` on 1.0.0. Hand
+damaged files; no producer was driven.
+
+**Closes when:** decided which answer is right for a damaged file and both
+librosa versions give it. Ledger only.
+
+---
+
+## R-1561. An M4A with its index first, cut exactly on a packet boundary, decodes short through ffmpeg with nothing said
+
+**Found:** at the review of #692, U263, round two, 2026-11-12.
+
+**The mechanism.** A faststart or fragmented M4A carries its index before
+its audio. Cut inside a packet, ffmpeg reports the short packet and the
+decode fails; cut exactly on a packet boundary, the index's missing packets
+are simply absent, ffmpeg exits 0 with nothing on stderr, and
+`decode._ffmpeg_samples` returns the part before the cut. The head measures
+key, tempo and energy from that part and the file is renamed.
+
+**Measured cost.** Driven by the review on 450 hand damaged cases over 9
+base files: 35 decoded short in silence, every one a cut on a packet
+boundary of a faststart or fragmented file, yielding 25 to 99.9 percent of
+the frames. A random cut lands on a boundary about once per packet length
+in bytes. The vendored downloader tolerates a failed last segment
+(`download.py` near line 294), which would cut on a fragment boundary; that
+producer was not driven.
+
+**Closes when:** the decoded length is checked against the length the
+container declares, and a short decode is undecodable. Ledger only.
+
+---
+
+## R-1562. The rule that any ffmpeg error about the audio fails a decode is measured on ffmpeg 6.1 only
+
+**Found:** at the review of #692, U263, round two, 2026-11-12.
+
+**The mechanism.** `decode._ffmpeg_samples` fails a decode when ffmpeg at
+`-v error` says anything not from its three cover decoders, on the measured
+ground that a clean decode says nothing. A later ffmpeg that logs a benign
+line at that level, or names its cover decoder differently, would refuse a
+playable M4A as `skipped-undecodable`, or keep a cover complaint as a fault.
+
+**Measured cost.** On ffmpeg 6.1.1, round two decoded 209 generated M4As
+and 78 of 83 public sample files from real encoders (afconvert, fdkaac,
+Nero, FAAC, QuickTime, ALAC 24 bit and 6 channel) with nothing said; the 5
+refused also exit non zero. Static builds of other versions could not be
+fetched here. The Mac's ffmpeg is read by the attended check this unit
+files.
+
+**Closes when:** the attended check counts no library M4A refused that
+plays, on the Mac's ffmpeg. Ledger only.
+
+---
+
+## R-1563. Two repair rows tests pass or fail by where ext4 places pytest's temporary directory
+
+**Found:** at the mutation table of #692, U263, 2026-11-12.
+
+**The mechanism.** `test_an_id_above_the_bound_that_is_the_files_inode_is_not_random`
+in `tests/test_repair_rows.py` writes a file in its temporary directory and
+needs that file's inode above the bound of 2,000,000, the premise of a
+volume whose counter has run past it, and
+`test_the_real_bound_is_a_fresh_files_inode_and_leaves_no_file_behind`
+needs the opposite of a fresh file there. On ext4 an
+inode number follows the block group of its parent directory, which the
+allocator chooses, so on a Linux container the test passes when pytest's
+temporary root lands in a high group and fails when it does not.
+
+**Measured cost.** On this container the test failed alone on the base
+commit `6febd202` and on the branch, then passed on the base in a full run
+twelve minutes later; it reddened one mutation driver baseline and killed
+one null control, each an invalid batch. Pointing `TMPDIR` at a directory
+whose inode was 3,744,431 made the first pass three runs in three, and
+then reddened the second in the next driver baseline. So no temporary
+directory holds both green on this container. Not seen on the
+Mac, whose APFS hands out inodes from one counter.
+
+**Closes when:** the test makes its premise rather than reading it from the
+filesystem, by giving the row an id known to be the file's identity above
+the bound. Ledger only.
+
+---
+
+## R-1564. An active taxonomy copy whose tables have the wrong shape escapes the loader as an AttributeError, not a config-unusable refusal
+
+**Found:** at the review of #676, U247, 2026-11-12.
+
+**The mechanism.** `active_taxonomy.load` turns a `TaxonomyError` into the
+`config-unusable` refusal with the setup remedy. A copy that is valid TOML but
+gives a table the wrong type, `tree = "x"` where a table belongs, reaches
+`build_taxonomy`, which calls `.get` on the string and raises
+`AttributeError: 'str' object has no attribute 'get'`. The review drove it
+twice through `active_taxonomy.load` on a disposable library, and the same
+copy raises the same on `main` without U247's memo, so it predates this unit.
+The memo did not change it: a raise is never remembered, so it raises on
+every call as before.
+
+**Measured cost.** Driven on a disposable copy only. A person who hand edits
+their active copy into this shape is shown a traceback, reported as an
+internal defect, where the refusal would name the copy and tell them to run
+setup. The other shape checks in `build_taxonomy` were not swept.
+
+**Closes when:** `build_taxonomy` checks that each top level key it reads is
+the type it reads it as, and reports a wrong type as one of its problems, with
+a test that `tree = "x"` refuses `config-unusable` through
+`active_taxonomy.load`. Ledger only.
+
+---
+
+## R-1565. One remembered taxonomy is shared by every caller of the same text, and its ten index fields are plain dicts a caller could write through
+
+**Found:** at the review of #676, U247, 2026-11-12.
+
+**The mechanism.** Since U247, `taxonomy.load_taxonomy` hands every caller
+that passes the same text the one `Taxonomy` the first parse built. The
+dataclass is frozen, but ten of its fields are plain dicts: the seven indexes
+(`_by_id`, `_by_display`, `_routing_alias`, `_tagging_alias`,
+`_former_places`, `_split_places`, `_vocabulary`), `BucketEnergy.band_display`,
+`SubBySource.map` and `FamilyAffinity.supergroup`. A caller that wrote into
+one would change what every later caller of that text is answered, for the
+rest of the process. Before U247 each load built its own object, so a write
+like that reached only the caller that made it. The review drove the shape:
+after `first._routing_alias[genre] = "deep_house"`, the next load of the same
+text answered `deep_house` where a fresh parse answers `None`.
+
+**Measured cost.** None reached. Three candidates were driven and none
+produces it: an AST sweep of `src`, `tests` and `scripts` for writes through
+those fields (none), a sweep of `src` for writes through a local name bound to
+one of them (two such names, no write), and the whole suite under an oracle
+that compared every remembered answer with a fresh parse at the end of the
+test that received it (18,320 tests, 12,048 loads, no answer changed).
+
+**Closes when:** the ten fields are read only by construction, as
+`MappingProxyType` over each, as `sync/pair_merge.py` already does, with a
+test that a write through one raises. Not done here because a `Taxonomy` might
+cross a process boundary through `core/pool.py`, which pickles its work, and
+a mapping proxy does not pickle; that path was not measured. Ledger only.
+
+---
+
+## R-1566. The index reader's memory trusts the volume's change time, which a FAT or exFAT volume may not keep, so a same size rewrite that puts the old time back while a pass runs is answered from memory
+
+**Found:** at the review of #678, U249, 2026-11-12.
+
+**The mechanism.** `match._read_from_disk` answers an unchanged file from
+memory for the rest of the process when its path, name template, size,
+modification time, change time, inode and device are all as they were and its
+modification time is at least two seconds older than the entry. On APFS and on
+Linux every write and every `os.utime` moves the change time, so a rewrite is
+always read again. Where a volume reports no change time of its own (FAT and
+exFAT under some drivers report the modification time or the creation time in
+its place), a tool outside Cratekit that rewrites a library file to the same
+size and puts its old modification time back, while one sync pass is running,
+would be answered with the file's old tags until the process ends. The window
+also reads the volume's clock against the machine's, which a network volume
+need not share.
+
+**Measured cost.** Not driven: no producer inside Cratekit restores a time
+(round one found no `os.utime` in `src`, and every `copy2` lands where the
+change time moves), and the live library is recorded on APFS
+(`docs/cutover.md`). The window and every stamp field are pinned by
+`tests/test_library_reads_remembered.py`.
+
+**Closes when:** the change time on the volume the live library uses is read
+on the Mac, or the reader keys on a content digest of the tag block. Ledger
+only.
+
+---
+
+## R-1567. U249's two review rounds ran on Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #678, U249, 2026-11-12.
+
+**The mechanism.** Both review rounds of U249, the library index reader that
+remembers each unchanged file for the process, were refused by Fable on its
+usage limit and run by Opus 5.5 at high effort under the same reviewer
+definition and merge bar, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None measured. The review a card is meant to have is
+Fable's, and it has not been run on this range.
+
+**Closes when:** Fable at high effort reviews U249's merged range against the
+merge bar and its findings are filed. Ledger only.

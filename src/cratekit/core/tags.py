@@ -613,12 +613,33 @@ def read_tags_checked(path: Path, fields: Sequence[str]) -> dict[str, str | None
     return _read_tags(path, fields, strict=True)
 
 
-def _read_tags(path: Path, fields: Sequence[str], *, strict: bool) -> dict[str, str | None]:
+def read_tags_noting(path: Path, fields: Sequence[str]) -> tuple[dict[str, str | None], bool]:
+    """:func:`read_tags`'s answer, through the same one open, and whether it is whole.
+
+    The second value is True when nothing failed, False wherever
+    :func:`read_tags_checked` would have raised: a container this module does
+    not read, one mutagen could not open or did not recognise, or a stored value
+    that could not be decoded. The values are exactly what :func:`read_tags`
+    answers in every case. The library index's reader needs both at once (U249):
+    the lenient answer to index the file by, and whether that answer may be
+    remembered, since a failed read on an external volume can be a moment's I/O
+    error. Asking the checked reader and then the lenient one opened a refused
+    file twice on every walk.
+    """
+    failed: list[str] = []
+    values = _read_tags(path, fields, strict=False, failed=failed)
+    return values, not failed
+
+
+def _read_tags(
+    path: Path, fields: Sequence[str], *, strict: bool, failed: list[str] | None = None
+) -> dict[str, str | None]:
     """The body of both readers. Not strict, every failure reads as absent.
 
     Per field in the lenient mode, deliberately: one undecodable field reads as
     None and its neighbours still come back, which is what :func:`read_tags`
-    has always answered.
+    has always answered. A ``failed`` list given in the lenient mode gains one
+    line for each failure the strict mode would have raised on.
     """
     specs: dict[str, TagSpec] = {}
     for field in fields:
@@ -635,6 +656,8 @@ def _read_tags(path: Path, fields: Sequence[str], *, strict: bool) -> dict[str, 
     except UnsupportedContainer as exc:
         if strict:
             raise TagReadFailed(str(exc)) from exc
+        if failed is not None:
+            failed.append(str(exc))
         return absent
     try:
         import mutagen
@@ -644,10 +667,14 @@ def _read_tags(path: Path, fields: Sequence[str], *, strict: bool) -> dict[str, 
         if strict:
             raise TagReadFailed(f"{type(exc).__name__}: {exc}") from exc
         log.debug("tag read failed for %s: %s", path, exc)
+        if failed is not None:
+            failed.append(f"{type(exc).__name__}: {exc}")
         return absent
     if handle is None:
         if strict:
             raise TagReadFailed("not a container the tag library recognises")
+        if failed is not None:
+            failed.append("not a container the tag library recognises")
         return absent
     if handle.tags is None:
         return absent
@@ -660,6 +687,8 @@ def _read_tags(path: Path, fields: Sequence[str], *, strict: bool) -> dict[str, 
             if strict:
                 raise TagReadFailed(f"{key}: {type(exc).__name__}: {exc}") from exc
             log.debug("tag read failed for %s %s: %s", path, key, exc)
+            if failed is not None:
+                failed.append(f"{key}: {type(exc).__name__}: {exc}")
             values[field] = None
     return values
 

@@ -22,12 +22,15 @@ import pytest
 
 from cratekit.core import routing
 from cratekit.core.taxonomy import (
+    DEFAULT_TEMPLATE_NAME,
     SubPolicy,
     TaxonomyError,
     build_taxonomy,
     default_taxonomy,
     load_taxonomy,
+    shipped_template_text,
 )
+from tests._taxonomy_parses import counted, renamed_in_place, unique
 
 HERE = Path(__file__).resolve().parent
 SECOND_TEMPLATE = HERE / "taxonomies" / "second.toml"
@@ -1181,3 +1184,112 @@ def test_a_template_without_the_favorites_class_loads_clean(default_raw):
     data = mutated(default_raw, lambda d: d["sub_class"].pop(2))
     built = build_taxonomy(data)
     assert [entry.id for entry in built.sub_classes if entry.additive] == ["with_vox"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# One parse per text in a process (U247)
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Every count below is of a text the test made unique, since the memo outlives
+# the test and a text another test parsed would be answered with no parse.
+
+
+def _shipped_text() -> str:
+    return shipped_template_text(DEFAULT_TEMPLATE_NAME)
+
+
+def test_the_same_text_is_parsed_once_and_answers_what_a_fresh_parse_builds(monkeypatch):
+    text = unique(_shipped_text())
+    parses = counted(monkeypatch)
+
+    answers = [load_taxonomy(text) for _ in range(3)]
+
+    assert parses.of(text) == 1, "the same text was parsed again"
+    fresh = build_taxonomy(tomllib.loads(text))
+    assert all(answer == fresh for answer in answers)
+    assert answers[0] is answers[1] is answers[2]
+
+
+def test_two_texts_are_each_parsed_once_and_each_answers_its_own(monkeypatch):
+    """The two templates of one process, interleaved, as doctor and the upgrade ask."""
+    first = unique(_shipped_text())
+    second = unique(SECOND_TEMPLATE.read_text(encoding="utf-8"))
+    parses = counted(monkeypatch)
+
+    answers = [load_taxonomy(text) for text in (first, second, first, second)]
+
+    assert (parses.of(first), parses.of(second)) == (1, 1)
+    assert answers[0] == answers[2] == build_taxonomy(tomllib.loads(first))
+    assert answers[1] == answers[3] == build_taxonomy(tomllib.loads(second))
+    assert answers[0] != answers[1]
+    assert routing.resolve_bucket(answers[3], "Banger").bucket_id == "floor_filler"
+
+
+def test_an_edit_that_keeps_the_length_is_a_different_text_and_is_parsed_again(monkeypatch):
+    """The key is the whole text: an edit a size could not see still counts."""
+    before = unique(_shipped_text())
+    display = load_taxonomy(_shipped_text()).buckets[0].display
+    after, renamed = renamed_in_place(before, display)
+    parses = counted(monkeypatch)
+
+    assert load_taxonomy(before).buckets[0].display == display
+    assert load_taxonomy(after).buckets[0].display == renamed
+    assert load_taxonomy(before).buckets[0].display == display
+    assert (parses.of(before), parses.of(after)) == (1, 1)
+
+
+@pytest.mark.parametrize(
+    "text, problem",
+    [
+        ("this is not = = toml", "not valid TOML"),
+        ("schema_version = 1\n", None),
+    ],
+    ids=["not-toml", "not-a-taxonomy"],
+)
+def test_a_text_that_does_not_load_raises_on_every_call(monkeypatch, text, problem):
+    """A refusal is never remembered as an answer, and is never remembered at all."""
+    text = unique(text)
+    parses = counted(monkeypatch)
+
+    for _ in range(3):
+        with pytest.raises(TaxonomyError) as caught:
+            load_taxonomy(text)
+        if problem is not None:
+            assert problem in caught.value.problems[0]
+
+    assert parses.of(text) == 3
+
+
+def test_the_three_texts_an_upgrade_reads_are_each_parsed_once(monkeypatch):
+    """The active copy, the shipped template and the upgraded text, asked in turn.
+
+    The fewest texts one verb asks for side by side, so a memo too small to hold
+    them would parse each one again on every round of an interleaved run.
+    """
+    texts = [unique(_shipped_text()) for _ in range(3)]
+    parses = counted(monkeypatch)
+
+    for _ in range(3):
+        for text in texts:
+            load_taxonomy(text)
+
+    assert [parses.of(text) for text in texts] == [1, 1, 1]
+
+
+def test_the_memo_holds_eight_texts_and_parses_the_first_again_after_a_ninth(monkeypatch):
+    """Bounded, and the bound is a handful: nine texts push the first one out.
+
+    THE NINE IS WRITTEN HERE rather than read off the module, so a bound raised
+    to hold every text a long process ever saw fails this test instead of
+    passing it by its own number.
+    """
+    texts = [unique(_shipped_text()) for _ in range(9)]
+    parses = counted(monkeypatch)
+
+    for text in texts:
+        load_taxonomy(text)
+    load_taxonomy(texts[-1])
+    load_taxonomy(texts[0])
+
+    assert parses.of(texts[-1]) == 1, "the text asked last was not kept"
+    assert parses.of(texts[0]) == 2, "the memo kept more texts than its bound"
