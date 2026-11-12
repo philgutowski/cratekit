@@ -1,0 +1,205 @@
+# U255, the held playlist an add goes through. Author's rows, measured on Linux
+# with the base's machine bound failures subtracted. Each row names its subset,
+# the test files that drive the adapter's adds; a zero there is promoted to a
+# full run by the driver before it is reported.
+
+name = "u255"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_playlist_keeps_the_hold"
+description = "_playlist: drop nothing, so a member that opens and writes through its own object leaves the held one stale"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''        self._opened.pop(playlist_id, None)
+        found = self._call('''
+new = '''        found = self._call('''
+
+[[rows]]
+id = "M2_membership_reads_the_held_object"
+description = "_membership: read the tracks through the opened object itself, so the client's tracks read overwrites its tag and leaves its length, round one's BLOCKING"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            tracks = self._listed(playlist_id, copy.copy(opened))'''
+new = '''            tracks = self._listed(playlist_id, opened)'''
+
+[[rows]]
+id = "M3_membership_holds_nothing"
+description = "_membership: never hold the opened object, so the first add opens again, K + 4 GETs"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            ]
+            self._opened[playlist_id] = opened
+'''
+new = '''            ]
+'''
+
+[[rows]]
+id = "M4_membership_holds_before_its_read"
+description = "_membership: hold the object before its tracks read, so a failed read leaves an object held for the rest of the adapter's life"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            opened = self._playlist(playlist_id)
+'''
+new = '''            opened = self._playlist(playlist_id)
+            self._opened[playlist_id] = opened
+'''
+
+[[rows]]
+id = "M5_membership_reuses_the_hold"
+description = "_membership: read through a held object when one is held, so the read back of an answer without the track reads a held object, not a fresh open"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            opened = self._playlist(playlist_id)
+'''
+new = '''            opened = self._opened.get(playlist_id) or self._playlist(playlist_id)
+'''
+
+[[rows]]
+id = "M6_held_never_stores"
+description = "_held: open without holding, so the retry's fresh object is not kept and the next add opens again"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            self._opened[playlist_id] = held
+'''
+new = ''''''
+
+[[rows]]
+id = "M7_held_always_opens"
+description = "_held: ignore what is held and open every time"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''        held = self._opened.get(playlist_id)
+'''
+new = '''        held = None
+'''
+
+[[rows]]
+id = "M8_no_open_before_the_attempts"
+description = "add_to_playlist: no open before the add's attempts, so the first open rides inside the add's retry and a failed open is tried four times"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''        self._held(playlist_id)
+        doing = f"add the track'''
+new = '''        doing = f"add the track'''
+
+[[rows]]
+id = "M9_every_attempt_opens"
+description = "add_to_playlist attempt: open afresh for every add, today's four requests a track"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            playlist = self._opened.get(playlist_id)
+            if playlist is None:
+                playlist = self._held(playlist_id)'''
+new = '''            playlist = self._playlist(playlist_id)
+            if playlist is None:
+                playlist = self._held(playlist_id)'''
+
+[[rows]]
+id = "M10_failed_attempt_keeps_the_hold"
+description = "add_to_playlist attempt: keep the held object after a failed add, so the retry resends the refused tag"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            except Exception:
+                self._opened.pop(playlist_id, None)
+                raise'''
+new = '''            except Exception:
+                raise'''
+
+[[rows]]
+id = "M11_retry_opens_raw"
+description = "add_to_playlist attempt: the retry opens through the session with no retry of its own and no hold, round one's finding three"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''                playlist = self._held(playlist_id)
+            try:'''
+new = '''                playlist = self._session.playlist(playlist_id)
+            try:'''
+
+[[rows]]
+id = "M12_add_never_retried"
+description = "add_to_playlist: no retry at all, so a 412 on a stale held tag fails the item"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''        added = self._call(doing, attempt)'''
+new = '''        added = self._call(doing, attempt, retries=0)'''
+
+[[rows]]
+id = "M13_add_retried_twice"
+description = "add_to_playlist: two retries, more than the policy allows a write"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''        added = self._call(doing, attempt)'''
+new = '''        added = self._call(doing, attempt, retries=2)'''
+
+[[rows]]
+id = "M14_no_copy_of_the_tag_reader"
+description = "_membership: read the tracks through a shallow copy that is then held, the copy and not the open"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            self._opened[playlist_id] = opened
+'''
+new = '''            self._opened[playlist_id] = copy.copy(opened)
+'''
+
+[[rows]]
+id = "S1_member_already_on"
+description = "add_to_playlist: send the add for a track the membership already holds, an existing guard"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''        if identifier in members:
+            return
+        self._held'''
+new = '''        if False:
+            return
+        self._held'''
+
+[[rows]]
+id = "S2_read_back_trusts_the_cache"
+description = "add_to_playlist: an answer without the track is checked against the cached membership, not read back, an existing guard"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            del self._members[playlist_id]
+            if identifier not in self._membership(playlist_id):'''
+new = '''            if identifier not in self._membership(playlist_id):'''
+
+[[rows]]
+id = "S3_answer_absent_passes"
+description = "add_to_playlist: a playlist gone mid add is not refused, an existing guard"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''        if added is _ABSENT:
+            raise account.provider_failure(
+                LookupError(f"the provider no longer has the playlist {playlist_id!r}"),'''
+new = '''        if False:
+            raise account.provider_failure(
+                LookupError(f"the provider no longer has the playlist {playlist_id!r}"),'''
+
+[[rows]]
+id = "S4_added_not_remembered"
+description = "add_to_playlist: a landed add is not appended to the membership, an existing guard"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py", "tests/test_outbound_order.py", "tests/test_adapter_listing.py", "tests/modules/test_outbound.py"]
+old = '''            return
+        members.append(identifier)
+'''
+new = '''            return
+'''
