@@ -12,9 +12,9 @@ The adapter now holds the object its membership read opened, per playlist,
 and adds through it. These tests drive the REAL client over a transport that
 keeps the account's playlists, moves each one's version tag on every write,
 answers a write carrying a tag that is not the current one with 412, as the
-provider answers a move (Sitting 62; whether it holds an add to the tag the
-same way is owed to an attended sitting), and counts every request by method
-and path. The request count is the assertion, never a wall clock.
+provider answers a move (Sitting 62; one live add was answered 412 too, the
+U147 mirror build, and whether every add on a stale tag is refused is owed to
+an attended sitting), and counts every request by method and path. The request count is the assertion, never a wall clock.
 
 Round one's review drove three things the first transport could not serve,
 and the transport serves them now: a write by another writer between the
