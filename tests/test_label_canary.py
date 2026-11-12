@@ -834,6 +834,8 @@ def test_two_withdrawn_held_releases_refuse_and_no_third_is_read(installed, monk
     assert envelope["cause"]["reason"] == "label-sync-unlisted"
     reverified = check(envelope, f"reverified.{SLUG}")["detail"]
     assert "release a2, answered gone" in reverified
+    # BOTH answers are said: a2's own, and that it was read in a1's place.
+    assert "read in place of release a1, which the provider no longer has" in reverified
     assert session.reads == ["m0", "m1", "m2", "a1", "a2"]
 
 
@@ -898,3 +900,23 @@ def test_a_source_handed_a_bare_verifier_beside_a_catalogue_forces_no_read(insta
     assert listing.canary.basis == sweep.READ_NONE
     assert listing.held_unconfirmed == 4
     assert fake._session.reads == ["m0"]
+
+
+def test_a_withdrawn_held_release_is_never_replaced_by_another_acts(installed, monkeypatch):
+    """The only other held release is another act's: no second read, and the gone answer refuses.
+
+    Read, it would answer ``mismatch`` however healthy the provider is, and the
+    refusal would name that act's credit as the needle to set (round two of
+    R-1634's review).
+    """
+    session = PartlyGone({}, {"a1"})
+    held = [release("a1", "2025", "Rawax"), release("p0", "2024", "2024 Planet Radio")]
+    bind(monkeypatch, [lineless("m0"), *held, *others(3)], session=session)
+    asked(installed, *(one.id for one in held))
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unlisted"
+    assert "release a1, answered gone" in check(envelope, f"reverified.{SLUG}")["detail"]
+    assert session.reads == ["m0", "a1"]

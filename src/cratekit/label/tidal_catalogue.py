@@ -738,7 +738,7 @@ class TidalCatalogue:
                 "verdict": RELEASE_GONE,
                 "resolved_label": "",
                 "source": SOURCE,
-                "notes": f"not read again: {exc}",
+                "notes": str(exc),
             }
         return {"resolved_label": _copyright_label(album), "source": SOURCE}
 

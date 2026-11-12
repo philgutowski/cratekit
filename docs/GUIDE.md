@@ -520,9 +520,11 @@ whose copyright line names the label where one does, judged from that line,
 which shows the needle still matches. If any came back with no label credit,
 the provider is read again for it whatever line it carries, one call, since
 only the provider's answer shows it is answering: one with no line first,
-then one whose line names the label, then another act's; one the provider
-no longer has is passed over for the next, one more call. Confirmed, the label has nothing new;
-`unconfirmed` (no label credit) or `mismatch` (credited to another name), its
+then one whose line names the label, then another act's. One the provider no
+longer has is passed over, one more call, for the next whose line is the
+label's or absent. Confirmed, the label has nothing new; `unconfirmed` (no label
+credit), `mismatch` (credited to another name) or `gone` (the provider no
+longer has it, and no other held release could be read in its place), its
 line fails as a listing that confirmed nothing. A label's
 listing is kept seven days, so a second ask makes no listing calls; deleting
 the file its `listing` line names lists it afresh.

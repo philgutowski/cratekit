@@ -76,8 +76,10 @@ class Canary:
     holds one, chosen as :func:`_canary_of` says. Carried on the listing so the
     run can say which release it was and what it answered: ``unconfirmed`` is
     a release the verifier found no label credit for, the answer a provider
-    that is not answering gives, and ``mismatch`` one credited to a name the
-    needle does not match, with the name in ``notes``.
+    that is not answering gives, ``mismatch`` one credited to a name the
+    needle does not match, with the name in ``notes``, and ``gone`` one the
+    provider no longer has (R-1634), which refuses only when no other held
+    release could be read in its place.
 
     ``basis`` IS WHAT THE ANSWER RESTED ON (R-1634): :data:`READ_PROVIDER`, the
     provider was read for the release; :data:`READ_LINE`, it was judged from
@@ -912,10 +914,28 @@ def list_for_label(
             # refused a healthy label on every ask until the keep aged out
             # (round one of R-1634's review). So the next held release is read
             # in its place, ONE more read and only after a gone answer; a
-            # second gone answer, or none to ask, stands and refuses.
-            if answered.get("verdict") == RELEASE_GONE and len(order) > 1:
-                chosen = order[1]
-                answered = label_verify.verify_release(claimed, chosen, search=reread)
+            # second gone answer, or none to ask, stands and refuses. ONLY ONE
+            # THE LABEL CAN STILL CONFIRM: a held release whose line names
+            # another act answers mismatch however healthy the provider is, and
+            # its refusal would name that act's credit as the needle to set
+            # (round two of R-1634's review).
+            following = [
+                one for one in order[1:] if line_reading(one, claimed) != LINE_NAMES_OTHER
+            ]
+            if answered.get("verdict") == RELEASE_GONE and following:
+                first = str(getattr(chosen, "id", "") or "")
+                chosen = following[0]
+                answered = dict(
+                    label_verify.verify_release(claimed, chosen, search=reread)
+                )
+                answered["notes"] = "; ".join(
+                    part
+                    for part in (
+                        str(answered.get("notes") or ""),
+                        f"read in place of release {first}, which the provider no longer has",
+                    )
+                    if part
+                )
         elif not lined:
             answered = label_verify.verify_release(claimed, chosen, search=verify)
             basis = READ_PROVIDER
