@@ -3,13 +3,14 @@ pass_kind = "light"
 
 # U253 adds no source. Its guard is the one decoder sweep in
 # tests/test_locations.py, lifted into _location_codec_offenders(root) so the
-# relative path is computed once per file, and five tests that drive the sweep
-# over planted source. A test only change to a static guard, so the table is
-# sized as a static registry's, about eight rows: each layer of the sweep
-# reverted or widened alone, and the U253 change itself put back to its per
-# node shape, and the guard function itself narrowed or emptied (round
-# one's review found the second surviving every test). Every row runs tests/test_locations.py; a zero on it is promoted
-# to the full suite by the driver.
+# relative path is computed once per file, and the tests that drive the sweep
+# and the guard over planted source. A test only change to a static guard, so
+# the table is sized as a static registry's, about a dozen rows: each layer of
+# the sweep reverted or widened alone, the U253 change put back to its per node
+# shape, and the guard function itself narrowed or emptied (round one's review
+# found the emptied guard surviving every test at the head it read). Every row
+# runs tests/test_locations.py; a zero on it is promoted to the full suite by
+# the driver.
 
 [[rows]]
 id = "L1_relative_per_node"
