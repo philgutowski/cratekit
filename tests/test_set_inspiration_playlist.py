@@ -1442,7 +1442,7 @@ def _freeze_name(job_id: str, name: str) -> None:
             )
 
 
-def test_a_landing_archives_the_account_playlist_with_prefix_and_year_folder(
+def test_a_landing_archives_the_account_playlist_as_taken_in_its_year_folder(
     account_on_native, silence
 ):
     cfg, _root_id, held = account_on_native
@@ -1455,9 +1455,11 @@ def test_a_landing_archives_the_account_playlist_with_prefix_and_year_folder(
     code, acted, _refused = _two_acts(_land("--set", job_id, *WORDS))
 
     assert code == int(ExitCode.OK), acted
-    assert any(
-        pid == remote_id and title.startswith("DOWNLOADED ") for pid, title in held.renamed
-    ), held.renamed
+    # U242: held as taken under the pass, no title written.
+    from cratekit.sync import mark_record
+
+    assert held.renamed == [], held.renamed
+    assert remote_id in mark_record.MarkRecord(cfg).taken_ids()
     # U142: the set's folder is Downloaded Sets <year>, never the plain year.
     assert "Downloaded Sets 2026" in held.folders_created or any(
         name == "Downloaded Sets 2026" for name in held.folder_names.values()
@@ -1651,14 +1653,43 @@ def test_export_set_rename_follows_the_live_inspiration_row_on_the_disposable_da
     assert held.created == [NAME]
 
 
-def test_export_set_rename_refuses_a_playlist_the_landing_archived(account_on_native, silence):
-    """A landing that archived the set marked its title; the rename leaves the mark alone."""
+def test_export_set_rename_renames_a_set_the_landing_archived_and_it_stays_taken(
+    account_on_native, silence
+):
+    """U242: the archive wrote no title, so the rename has no mark to take off,
+    and the record holds the set by its id whatever it is now called."""
     from cratekit.export import set_cli
-    from cratekit.modules.outbound import ledger
+    from cratekit.sync import mark_record
 
     cfg, _root_id, held = account_on_native
     job_id, remote_id = _landed_and_renamed(cfg, held, silence, record_first=True)
-    assert any(pid == remote_id for pid, _title in held.renamed), held.renamed
+    assert held.renamed == [] and remote_id in mark_record.MarkRecord(cfg).taken_ids()
+    argv = ["export", "set", "--rename", job_id]
+    code, refused = drive(argv)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    run_id = refused["run_id"]
+    decided, envelope = drive(
+        ["run", "decide", run_id, set_cli.RENAME_GATE, "apply", "--actor", "a-person"]
+    )
+    assert decided == int(ExitCode.OK), envelope
+    code, acted = drive(["--run", run_id, *argv])
+    assert code == int(ExitCode.OK), acted
+    assert held.renamed == [(remote_id, POSTED_NAME)]
+    assert remote_id in mark_record.MarkRecord(cfg).taken_ids()
+
+
+def test_export_set_rename_refuses_a_playlist_a_legacy_archive_prefixed(account_on_native, silence):
+    """An archive before U242 marked the set's title; the rename leaves that mark alone."""
+    from cratekit.export import set_cli
+    from cratekit.modules.outbound import ledger
+    from cratekit.sync import mark_record
+
+    cfg, _root_id, held = account_on_native
+    job_id, remote_id = _landed_and_renamed(cfg, held, silence, record_first=True)
+    mark_record.MarkRecord(cfg).record_marked(
+        "2026-10-09 Set", {remote_id: (NAME, f"DOWNLOADED {NAME}")}
+    )
+    held.titles[remote_id] = f"DOWNLOADED {NAME}"
     before = list(held.renamed)
 
     code, refused = drive(["export", "set", "--rename", job_id])

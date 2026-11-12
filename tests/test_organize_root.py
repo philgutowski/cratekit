@@ -73,6 +73,7 @@ class World:
             labels=tuple(name for _id, name in followed),
             marks=mark_record.MarkRecord(cfg).all(),
             working=placeholders.is_placeholder,
+            taken=tuple(mark_record.MarkRecord(cfg).taken().values()),
         )
         return filed, root.plan(
             cfg, listed=self.listed, remote=self.account, filed=filed, followed=followed
@@ -162,7 +163,59 @@ def test_a_label_folder_with_no_downloaded_playlist_proves_nothing(installed):
 
     # The folder's own reason, not the missing track list a folder with no
     # DOWNLOADED playlist would also produce: the u143 table's R4 zero.
-    assert row.action == root.LEFT and "folder holds no DOWNLOADED playlist" in row.why
+    assert row.action == root.LEFT and "folder holds no downloaded playlist" in row.why
+
+
+def test_a_year_playlist_held_as_taken_with_no_prefix_proves_its_tracks_downloaded(installed):
+    """U242: ``label mark`` takes a year playlist and writes no title, and the
+    strip takes an old prefix off; either way the record is what says so."""
+    world = World()
+    folder = world.folder(LABEL)
+    world.playlist("year-1", f"{LABEL} {YEAR}", CATALOGUE, folder=folder)
+    world.playlist("debris-1", DEBRIS, CATALOGUE[:2])
+    assert _rows(world.kept(installed))["debris-1"].action == root.LEFT
+
+    mark_record.MarkRecord(installed).take(
+        [mark_record.Taken("year-1", f"{LABEL} {YEAR}", "a-pass", mark_record.BY_LABEL, "2026-11-12T00:00:00Z")]
+    )
+
+    row = _rows(world.kept(installed))["debris-1"]
+    assert (row.action, row.why) == (root.REMOVE, root.EVERY_TRACK_FILED)
+
+
+def _found(cfg, playlist_id: str, name: str) -> None:
+    mark_record.MarkRecord(cfg).take(
+        [mark_record.Taken(playlist_id, name, mark_record.MIGRATION, mark_record.FOUND_PREFIXED, "2026-11-12T00:00:00Z")]
+    )
+
+
+def test_filing_reads_a_stripped_hand_mark_as_it_read_the_prefixed_one(installed):
+    """A prefix no sync dated, found by the migration and taken off by the
+    strip, is still the undated downloaded playlist it was: filed in Mine."""
+    world = World()
+    world.playlist("hand-p", "DOWNLOADED By Hand", ("t1",))
+    world.playlist("hand-s", "Stripped By Hand", ("t2",))
+    world.playlist("plain", "Working On It", ("t3",))
+    _found(installed, "hand-s", "Stripped By Hand")
+
+    rows = {row.playlist_id: row for row in world.plans(installed)[0].rows}
+
+    for identity in ("hand-p", "hand-s"):
+        assert (rows[identity].action, rows[identity].why) == (filing.MOVE, filing.PREFIXED_UNMARKED)
+        assert rows[identity].kind == kinds.MINE
+    assert (rows["plain"].action, rows["plain"].why) == (filing.LEFT, filing.WORKING_CUSTOM)
+
+
+def test_filing_files_a_playlist_a_pass_took_by_the_year_it_was_taken(installed):
+    world = World()
+    world.playlist("pass-s", "Warmup", ("t1",))
+    mark_record.MarkRecord(installed).take(
+        [mark_record.Taken("pass-s", "Warmup", "a-pass", mark_record.BY_PASS, "2025-06-01T12:00:00+00:00")]
+    )
+
+    (row,) = [row for row in world.plans(installed)[0].rows if row.playlist_id == "pass-s"]
+
+    assert (row.action, row.year) == (filing.MOVE, "2025")
 
 
 def test_a_followed_labels_recorded_folder_is_read_whatever_it_is_called_now(installed):

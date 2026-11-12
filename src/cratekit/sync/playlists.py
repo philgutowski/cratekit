@@ -9,8 +9,9 @@ later finds the jobs it queued. A separate playlists worker with its own item
 shape was rejected for the reason U61 rejected a fourth worker: it would rebuild
 the intake path one layer down.
 
-**WHAT IS NEW, IN THE ORDER IT IS DECIDED.** A playlist is excluded when its
-name carries the swept prefix the source system applies after a sweep, when its
+**WHAT IS NEW, IN THE ORDER IT IS DECIDED.** A playlist is excluded when the
+record holds it as taken, or its name still carries the retired swept prefix
+(U242, :func:`is_taken`), when its
 name ends with the suffix the source system's label batch leaves on its run
 debris (R-361), when its identifier is in this source's cursor, when its name
 is a quarterly favourites placeholder, which is the favourites source's to
@@ -62,10 +63,10 @@ block carries :data:`SWEPT_MEANS`, and :func:`said` gives the check a person
 reads by default the same fact in words.
 
 **THE MARK IS ITS OWN VERB, AND THE PASS STILL MARKS NOTHING (U82).**
-``sync/marks.py`` states the rule: a remote playlist is renamed only after the
-importable file exists and a recheck holds. The account seam,
-``modules.outbound.service.RemoteAccount``, declares ``rename_playlist``, and
-:func:`mark_swept` is the application. The file arrives three verbs after the
+``sync/marks.py`` states the rule: a playlist is marked only after the
+importable file exists and a recheck holds. Since U242 the mark is a taken
+entry in Cratekit's own record and no title changes, decided by Phillip on
+2026-11-11, and :func:`mark_swept` is the application. The file arrives three verbs after the
 pass, once its missing tracks were listed, downloaded and landed, so the caller
 is the gated verb in ``sync/mark_cli.py`` and never the pass. A pass therefore
 still reports the mark as :data:`MARK_UNBOUND`, which is true of the pass: it
@@ -88,12 +89,12 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from enum import StrEnum
 from pathlib import Path
 from types import MappingProxyType
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError, Scope, refuse
@@ -108,19 +109,13 @@ from cratekit.label.catalogue import playlist_id as typed_playlist_id
 from cratekit.sync import marks
 from cratekit.sync.watermarks import WatermarkStore
 
-if TYPE_CHECKING:  # pragma: no cover - the seam's type, never imported at runtime
-    # Behind the guard because this source is CORE, the slim profile runs it
-    # alone, and the outbound package is a feature module. The annotation is the
-    # honest one, and a slim install still imports nothing extra to read it.
-    from cratekit.modules.outbound.service import RemoteAccount
-
 #: This source's identifier, as ``sync.sources`` declares it and as the jobs it
 #: queues carry it.
 SOURCE_ID = "playlists"
 
-#: The prefix the source system puts on a playlist it has swept. The same
-#: convention its analysis pass skips a prefixed name by, kept rather than
-#: reinvented, because the live account already carries it.
+#: The prefix the source system put on a playlist it had swept, RETIRED by
+#: U242 (Phillip, 2026-11-11). No verb writes it any more; a title still
+#: carrying it reads as taken until ``crate sync strip`` takes it off.
 SWEPT_PREFIX = "DOWNLOADED "
 
 #: The suffix the source system's label batch leaves on the throwaway playlist
@@ -157,8 +152,8 @@ MARK_UNBOUND = "unbound"
 MARK_APPLIED = "applied"
 
 #: The kind every mark this source defers carries. One kind, because the only
-#: remote side effect a sweep leaves is the swept prefix on a title.
-MARK_KIND = "prefix"
+#: side effect a mark leaves is a taken entry in the record (U242).
+MARK_KIND = "taken"
 
 #: The two refusals one playlist's listing may end in that are about THAT
 #: playlist. Any other refusal, a credential or an unbound adapter, is about the
@@ -196,8 +191,46 @@ class Excluded(StrEnum):
 
 
 def is_swept_name(name: str) -> bool:
-    """Whether the name carries the swept prefix."""
+    """Whether the name carries the legacy swept prefix.
+
+    Since U242 a title alone never says a playlist is taken to a reader:
+    :func:`is_taken` asks this AND the record. This stays for what reads the
+    prefix itself, the migration and the strip that take it off.
+    """
     return str(name or "").startswith(SWEPT_PREFIX)
+
+
+def untaken_name(name: str) -> str:
+    """The title less every copy of the legacy prefix and the spaces around what is left."""
+    text = str(name or "")
+    while text.startswith(SWEPT_PREFIX):
+        text = text[len(SWEPT_PREFIX) :]
+    return text.strip()
+
+
+def is_taken(
+    playlist_id: str, name: str, taken: frozenset[str] | set[str] | Mapping[str, Any]
+) -> bool:
+    """Whether Cratekit holds this playlist as taken, finished with (U242). Pure.
+
+    THE ONE QUESTION EVERY READER ASKS. ``taken`` is the record's taken ledger,
+    :func:`taken_ids`, and a playlist it holds is taken whatever its title.
+    A title still carrying the legacy prefix is taken too, until ``crate sync
+    strip`` takes it off, so a playlist taken before the record knew it is
+    never read as new in between.
+    """
+    return str(playlist_id or "") in taken or is_swept_name(name)
+
+
+def taken_ids(cfg: config.Config) -> frozenset[str]:
+    """Every playlist the record holds as taken, or the record's own refusal.
+
+    UNREAD IS NOT NONE. A record that cannot be read refuses rather than
+    answering empty, since empty offers every taken playlist as new.
+    """
+    from cratekit.sync import mark_record
+
+    return mark_record.MarkRecord(cfg).taken_ids()
 
 
 def is_library_debris(name: str) -> bool:
@@ -214,14 +247,19 @@ def exclusion(
     set_built: frozenset[str] | set[str] = frozenset(),
     paired: frozenset[str] | set[str] = frozenset(),
     mirrored: frozenset[str] | set[str] = frozenset(),
+    taken: frozenset[str] | set[str] = frozenset(),
 ) -> Excluded | None:
     """Why this playlist is not new, or ``None`` when it is. Pure.
 
     The ORDER is the report's, not a precedence any one playlist depends on: a
     playlist can meet several rules, and the first one named is the one a person
     is told.
+
+    ``taken`` is the record's taken ledger (U242): a playlist it holds is
+    :attr:`Excluded.SWEPT` whatever its title, so one stripped of the legacy
+    prefix is excluded exactly as it was while it carried it.
     """
-    if is_swept_name(playlist.name):
+    if is_taken(playlist.playlist_id, playlist.name, taken):
         return Excluded.SWEPT
     if is_library_debris(playlist.name):
         return Excluded.LABEL_DEBRIS
@@ -374,6 +412,9 @@ class Sweep:
     #: gives: the cursor moves whether or not the mark lands, so a mark set
     #: taken from :attr:`recorded_now` is a set nothing can offer a second time.
     recorded: frozenset[str] = frozenset()
+    #: Every playlist the record holds as taken (U242), read once with the
+    #: listing. A taken playlist is never offered and never taken again.
+    taken: frozenset[str] = frozenset()
 
     def names(self) -> dict[str, str]:
         return {playlist.playlist_id: playlist.name for playlist in self.listed}
@@ -434,11 +475,13 @@ def plan(
     existing = WatermarkStore(cfg).read(SOURCE_ID)
     recorded = frozenset(existing.swept) if existing is not None else frozenset()
     in_flight = open_playlists(playlist_jobs(store, cfg, handler_key=handler_key))
+    taken = taken_ids(cfg)
 
     sweep = Sweep(
         listed=_listed_or_refuse(found),
         recorded_now=recorded_now,
         recorded=recorded,
+        taken=taken,
     )
     for playlist in sweep.listed:
         reason = exclusion(
@@ -449,6 +492,7 @@ def plan(
             set_built=set_built,
             paired=paired,
             mirrored=mirrored,
+            taken=taken,
         )
         if reason is not None:
             sweep.excluded[playlist.playlist_id] = reason
@@ -546,18 +590,20 @@ def marking_sweep(store, cfg: config.Config, found: Catalogue, *, handler_key: s
     existing = WatermarkStore(cfg).read(SOURCE_ID)
     held = set(existing.swept) if existing is not None else set()
     held.update(completed(playlist_jobs(store, cfg, handler_key=handler_key)))
-    return Sweep(listed=_listed_or_refuse(found), recorded=frozenset(held))
+    return Sweep(
+        listed=_listed_or_refuse(found), recorded=frozenset(held), taken=taken_ids(cfg)
+    )
 
 
 def pending_marks(
     sweep: Sweep, *, only: frozenset[str] | None = None
 ) -> tuple[marks.PendingMark, ...]:
-    """Every recorded playlist the account still lists under an unprefixed name.
+    """Every recorded playlist the account still lists and the record does not hold as taken.
 
     ``only`` NARROWS AND NEVER WIDENS. A caller that knows which playlists a
     landed file completes passes them, and the set is what was already pending
     AND is named there, so an identifier that is not recorded, not listed or
-    already prefixed is not marked because somebody named it. ``None`` is every
+    already taken is not marked because somebody named it. ``None`` is every
     pending playlist, and an empty set is none of them: the two are different
     answers and ``if only`` would have read them as one.
 
@@ -566,34 +612,32 @@ def pending_marks(
     anything could have marked anything, and it moves whether the mark then
     lands, refuses or finds a stale recheck. So a set taken from what this pass
     ADDED is a set no later pass can offer again: the playlist is recorded, it
-    is excluded as :attr:`Excluded.RECORDED` forever after, and it never carries
-    the prefix. Taking the set from what the cursor HOLDS makes a mark that did
-    not land this pass an ordinary candidate on the next one.
+    is excluded as :attr:`Excluded.RECORDED` forever after, and it is never
+    taken. Taking the set from what the cursor HOLDS makes a mark that did not
+    land this pass an ordinary candidate on the next one.
 
-    What ends the retrying is the mark itself. A playlist the prefix reached is
-    listed under a swept name, and a swept name is skipped here, so the set
-    shrinks by exactly what landed. That is also why a name already carrying the
-    prefix is skipped rather than marked again: the prefix goes on the title, so
-    a second pass over one would build ``DOWNLOADED DOWNLOADED Warmup``.
+    What ends the retrying is the mark itself. A playlist the mark reached is
+    held as taken (U242), or before U242 carried the prefix, and a taken one
+    is skipped here, so the set shrinks by exactly what landed.
 
-    A recorded playlist the account no longer lists has no name to prefix and is
-    not pending. Nothing is owed to a playlist that is gone.
+    A recorded playlist the account no longer lists has no name to record and
+    is not pending. Nothing is owed to a playlist that is gone.
 
     **THE LABEL BATCH'S DEBRIS IS NEVER MARKED (R-361).** A pass no longer
     queues a ` LIBRARY` name, and a job for one can still reach the cursor: the
     eleven the fourth sitting left queued, resumed, or one a person ran through
     ``crate intake playlist``, which R-382 records. Its name is the source
     system's throwaway and the source system's own sweep never prefixes it, so
-    neither does this one. Asked here and not only in :func:`exclusion`, because
-    the exclusion decides what is OFFERED and this decides what is RENAMED, and
-    a rule on the offering path leaves the renaming path open.
+    nothing here takes it. Asked here and not only in :func:`exclusion`,
+    because the exclusion decides what is OFFERED and this decides what is
+    TAKEN, and a rule on the offering path leaves the taking path open.
     """
     listed = sweep.names()
     return tuple(
         marks.PendingMark(target_id=identity, kind=MARK_KIND)
         for identity in sorted(sweep.recorded)
         if listed.get(identity)
-        and not is_swept_name(listed[identity])
+        and not is_taken(identity, listed[identity], sweep.taken)
         and not is_library_debris(listed[identity])
         and (only is None or identity in only)
     )
@@ -602,13 +646,18 @@ def pending_marks(
 def mark_swept(
     sweep: Sweep,
     found: Catalogue,
-    account: RemoteAccount,
+    take: Callable[[str, str], None],
     *,
     local_output: Path | marks.NativeLanding,
     applied: list[str] | None = None,
     only: frozenset[str] | None = None,
 ) -> tuple[str, ...]:
-    """Prefix the recorded playlists on the account. Returns the marked ids.
+    """Hold the recorded playlists as taken. Returns the taken ids.
+
+    **NO TITLE CHANGES (U242).** The account is read, to recheck each title,
+    and never written: ``take`` is handed each playlist's identifier and the
+    title the plan listed, and records it in the taken ledger, raising when it
+    cannot. Before U242 this prefixed the title instead.
 
     ``only`` is :func:`pending_marks`'s, handed straight through.
 
@@ -618,12 +667,10 @@ def mark_swept(
     pending and no file still refuses, because a caller that has no file is
     wrong about the run whether or not this pass happened to record anything.
 
-    ``applied`` is APPENDED TO AS EACH RENAME LANDS, on :func:`queue`'s pattern
-    and for its reason. Each rename is its own remote write, a failure on the
-    third playlist leaves the first two renamed on the account, and the return
-    value is gone when this raises. A caller that wants to name what landed
-    passes a list; a caller that does not is relying on the next pass to see the
-    prefix, which :func:`pending_marks` makes true.
+    ``applied`` is APPENDED TO AS EACH TAKE LANDS, on :func:`queue`'s pattern
+    and for its reason: a failure on the third playlist leaves the first two
+    taken, and the return value is gone when this raises. A caller that wants
+    to name what landed passes a list.
 
     **THE ONE PRODUCTION CALLER IS** ``sync/mark_cli.py`` (U82), which hands it
     the intake file a landing wrote and the playlists that file completes, or,
@@ -650,7 +697,7 @@ def mark_swept(
         return bool(name) and current().get(mark.target_id) == name
 
     def apply(mark: marks.PendingMark) -> None:
-        account.rename_playlist(mark.target_id, SWEPT_PREFIX + listed[mark.target_id])
+        take(mark.target_id, listed[mark.target_id])
         landed.append(mark.target_id)
 
     return marks.apply_deferred(
@@ -730,6 +777,7 @@ __all__ = [
     "exclusion",
     "is_library_debris",
     "is_swept_name",
+    "is_taken",
     "mark_swept",
     "marking_sweep",
     "open_playlists",
@@ -743,4 +791,6 @@ __all__ = [
     "report",
     "said",
     "source_jobs",
+    "taken_ids",
+    "untaken_name",
 ]

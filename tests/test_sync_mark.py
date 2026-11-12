@@ -35,8 +35,7 @@ from cratekit.core.cause import Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
 from cratekit.intake import land_cli, missing_cli, native
-from cratekit.modules.outbound import account as account_module
-from cratekit.sync import mark_cli, marks, playlists, watermarks
+from cratekit.sync import mark_cli, mark_record, marks, playlists, watermarks
 from tests import outbound_fakes
 from tests.cli_drive import drive
 from tests.intake.test_workers import Track
@@ -129,6 +128,12 @@ def _land(
     return xml
 
 
+def _took(cfg: config.Config, account) -> list[str]:
+    """What the mark holds as taken, having renamed nothing (U242)."""
+    assert account.renamed == [], "no verb writes the DOWNLOADED prefix since U242"
+    return sorted(mark_record.MarkRecord(cfg).taken_ids())
+
+
 def _mark(xml: Path, *extra: str) -> tuple[int, dict]:
     return drive(["sync", "mark", "--xml", str(xml), *extra])
 
@@ -159,9 +164,10 @@ TWO = (
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_verb_declares_one_remote_write_behind_an_explicit_gate():
+def test_the_verb_declares_no_write_surface_behind_an_explicit_gate():
+    """U242: the mark is a taken entry in Cratekit's own record, no retitle."""
     entry = registry.entry("sync.mark")
-    assert entry.writes == frozenset({"remote"}) and entry.destructive
+    assert entry.writes == frozenset() and not entry.destructive
     (gate,) = entry.gates
     assert (gate.name, gate.options, gate.explicit) == (CONFIRM, ("apply", "abort"), True)
     assert gate.digest_source == "plan"
@@ -245,7 +251,7 @@ def test_a_missing_intake_file_refuses_the_verb_before_anything_is_listed(slim, 
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     assert fake.account_listings == listings, "the account was listed before the file check"
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -261,14 +267,11 @@ def test_a_landed_pass_marks_its_playlists_only_after_the_answer(slim, monkeypat
 
     code, refused = _mark(xml)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert account.renamed == [], "a rename landed before the gate was answered"
+    assert _took(slim, account) == [], "a rename landed before the gate was answered"
 
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == [
-        ("pl-a", "DOWNLOADED Warmup"),
-        ("pl-b", "DOWNLOADED Peak"),
-    ]
+    assert _took(slim, account) == ["pl-a", "pl-b"]
     items = _by_id(done)
     assert {key: item["action"] for key, item in items.items()} == {
         "pl-a": "marked",
@@ -288,7 +291,7 @@ def test_a_playlist_with_one_row_not_landed_is_not_marked(slim, monkeypatch):
 
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     held_back = _by_id(done)["pl-a"]
     assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
     assert [row["id"] for row in held_back["outstanding"]] == ["102"]
@@ -347,9 +350,9 @@ def test_a_track_two_playlists_share_holds_both_back_until_it_lands(slim, monkey
     code, shown = _mark(xml)
     assert code == int(ExitCode.DECISION_REQUIRED), shown
     context = shown["cause"]["detail"]["shown"]
-    assert context["renamed on the account"] == []
+    assert context["recorded as taken"] == []
     assert len(context["left alone"]) == 2
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_an_already_prefixed_playlist_is_skipped(slim, monkeypatch):
@@ -363,7 +366,7 @@ def test_an_already_prefixed_playlist_is_skipped(slim, monkeypatch):
 
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     skipped = _by_id(done)["pl-a"]
     assert (skipped["action"], skipped["reason"]) == ("skip", "already-marked")
 
@@ -390,10 +393,10 @@ def test_the_label_batch_debris_is_said_and_never_renamed(slim, monkeypatch):
     code, shown = _mark(xml)
     assert code == int(ExitCode.DECISION_REQUIRED), shown
     context = shown["cause"]["detail"]["shown"]
-    assert context["renamed on the account"] == ["Peak -> DOWNLOADED Peak"]
+    assert context["recorded as taken"] == ["Peak"]
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     debris = _by_id(done)["pl-a"]
     assert (debris["action"], debris["reason"]) == ("skip", "label-debris")
     assert "label run debris" in debris["why"]
@@ -414,12 +417,12 @@ def test_a_playlist_the_account_no_longer_lists_is_said_and_not_planned(slim, mo
     code, shown = _mark(xml)
     assert code == int(ExitCode.DECISION_REQUIRED), shown
     context = shown["cause"]["detail"]["shown"]
-    assert context["renamed on the account"] == ["Peak -> DOWNLOADED Peak"]
+    assert context["recorded as taken"] == ["Peak"]
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
     gone = _by_id(done)["pl-a"]
     assert (gone["action"], gone["reason"]) == ("skip", "not-listed")
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
 
 
 def test_a_playlist_whose_job_failed_is_said_and_not_planned(slim, monkeypatch):
@@ -431,7 +434,7 @@ def test_a_playlist_whose_job_failed_is_said_and_not_planned(slim, monkeypatch):
     assert code == int(ExitCode.OK), done
     failed = _by_id(done)["pl-a"]
     assert (failed["action"], failed["reason"]) == ("skip", "job-unfinished")
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
 
 
 def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
@@ -444,8 +447,8 @@ def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
     xml = _land(slim, name, "101", "201")
     code, refused = _mark(xml)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert refused["cause"]["detail"]["shown"]["renamed on the account"] == [
-        "Peak -> DOWNLOADED Peak"
+    assert refused["cause"]["detail"]["shown"]["recorded as taken"] == [
+        "Peak"
     ]
     run_id = refused["run_id"]
     code, _ = drive(["run", "decide", run_id, CONFIRM, "apply", "--actor", "a-person"])
@@ -455,7 +458,7 @@ def test_an_answer_to_one_plan_does_not_carry_out_another(slim, monkeypatch):
     (music / "Artist 102 - Title 102.flac").write_bytes(b"")
     code, stale = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
     assert code != int(ExitCode.OK), stale
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_a_playlist_renamed_after_the_plan_was_shown_is_skipped_and_said(slim, monkeypatch):
@@ -478,11 +481,17 @@ def test_a_playlist_renamed_after_the_plan_was_shown_is_skipped_and_said(slim, m
             store, slim, fake, handler_key=registry.entry("intake.playlist").handler_key
         )
     fake.account = [_playlist("pl-a", "Warmup (edited)"), _playlist("pl-b", "Peak")]
+    took: list[tuple[str, str]] = []
     marked = playlists.mark_swept(
-        sweep, fake, account, local_output=xml, only=frozenset({"pl-a", "pl-b"})
+        sweep,
+        fake,
+        lambda identity, name: took.append((identity, name)),
+        local_output=xml,
+        only=frozenset({"pl-a", "pl-b"}),
     )
     assert marked == ("pl-b",)
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert took == [("pl-b", "Peak")]
+    assert _took(slim, account) == []
 
 
 def test_only_narrows_the_pending_set_and_an_empty_set_is_nothing(slim, monkeypatch):
@@ -498,8 +507,14 @@ def test_only_narrows_the_pending_set_and_an_empty_set_is_nothing(slim, monkeypa
     assert [mark.target_id for mark in only_a] == ["pl-a"]
     assert playlists.pending_marks(sweep, only=frozenset()) == ()
     account = outbound_fakes.FakeAccount()
-    assert playlists.mark_swept(sweep, fake, account, local_output=xml, only=frozenset()) == ()
-    assert account.renamed == []
+    took: list[str] = []
+    assert (
+        playlists.mark_swept(
+            sweep, fake, lambda identity, _n: took.append(identity), local_output=xml, only=frozenset()
+        )
+        == ()
+    )
+    assert took == [] and _took(slim, account) == []
 
 
 def test_the_mark_reads_the_cursor_and_never_writes_it(slim, monkeypatch):
@@ -518,67 +533,76 @@ def test_the_mark_reads_the_cursor_and_never_writes_it(slim, monkeypatch):
 # ═══════════════════════════════════════════════════════════════════════════
 
 
+def _record_refusing(monkeypatch, playlist_id: str, raised: Exception) -> None:
+    """The record refuses to hold ``playlist_id`` as taken, and holds every other."""
+    take = mark_record.MarkRecord.take
+
+    def refusing(self, entries):
+        if any(entry.playlist_id == playlist_id for entry in entries):
+            raise raised
+        return take(self, entries)
+
+    monkeypatch.setattr(mark_record.MarkRecord, "take", refusing)
+
+
 def test_a_partial_failure_names_what_was_marked(slim, monkeypatch):
-    """The brief's third scenario. ``pl-a`` is renamed, ``pl-b``'s rename raises,
+    """The brief's third scenario. ``pl-a`` is taken, ``pl-b``'s take raises,
     and the refusal says which is which rather than losing the first."""
-    _fake, name = _swept_pass(monkeypatch, *TWO)
-    account = outbound_fakes.FakeAccount(fail_on={"pl-b"})
-    bind_account(monkeypatch, account)
-    xml = _land(slim, name, "101", "102", "201")
-
-    code, failed = _answered(xml)
-    assert code == int(ExitCode.INTERNAL), failed
-    cause = failed["cause"]
-    # THE FAKE RAISES A BARE RuntimeError, which no adapter should, so it is
-    # reported as this build's defect and not as a provider to wait out.
-    assert cause["reason"] == "internal-error"
-    assert cause["detail"]["marked"] == ["pl-a"]
-    assert cause["detail"]["unmarked"] == ["pl-b"]
-    assert "Warmup" in cause["message"] and "stay marked" in cause["message"]
-    assert account.renamed == [("pl-a", "DOWNLOADED Warmup")]
-
-    # The next run sees the prefix the first one left and offers only the rest.
-    _fake.account = [_playlist("pl-a", "DOWNLOADED Warmup"), _playlist("pl-b", "Peak")]
-    account.fail_on = frozenset()
-    code, done = _answered(xml)
-    assert code == int(ExitCode.OK), done
-    assert account.renamed[-1] == ("pl-b", "DOWNLOADED Peak")
-    assert len(account.renamed) == 2
-
-
-def test_a_refusal_the_account_raised_keeps_its_reason_and_names_what_was_marked(
-    slim, monkeypatch
-):
-    """What the real adapter raises: its provider's failure, already a cause."""
     _fake, name = _swept_pass(monkeypatch, *TWO)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
     xml = _land(slim, name, "101", "102", "201")
-    rename = account.rename_playlist
+    with monkeypatch.context() as broken:
+        _record_refusing(broken, "pl-b", RuntimeError("disk gone"))
+        code, failed = _answered(xml)
+    assert code == int(ExitCode.INTERNAL), failed
+    cause = failed["cause"]
+    # A BARE RuntimeError is reported as this build's defect and not as a
+    # provider to wait out.
+    assert cause["reason"] == "internal-error"
+    assert cause["detail"]["marked"] == ["pl-a"]
+    assert cause["detail"]["unmarked"] == ["pl-b"]
+    assert "Warmup" in cause["message"] and "stay taken" in cause["message"]
+    assert _took(slim, account) == ["pl-a"]
 
-    def refusing(playlist_id: str, title: str) -> None:
-        if playlist_id == "pl-b":
-            raise account_module.provider_failure(TimeoutError("slow"), "rename a playlist")
-        rename(playlist_id, title)
+    # The next run finds the first one taken and offers only the rest.
+    code, done = _answered(xml)
+    assert code == int(ExitCode.OK), done
+    assert _by_id(done)["pl-a"]["reason"] == "already-marked"
+    assert _took(slim, account) == ["pl-a", "pl-b"]
 
-    monkeypatch.setattr(account, "rename_playlist", refusing)
-    code, failed = _answered(xml)
+
+def test_a_refusal_the_record_raised_keeps_its_reason_and_names_what_was_marked(
+    slim, monkeypatch
+):
+    """What the real record raises: its own refusal, already a cause."""
+    _fake, name = _swept_pass(monkeypatch, *TWO)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    xml = _land(slim, name, "101", "102", "201")
+    with monkeypatch.context() as broken:
+        _record_refusing(
+            broken, "pl-b", mark_record.MarkRecord(slim)._unusable("the disk filled")
+        )
+        code, failed = _answered(xml)
     assert code != int(ExitCode.OK), failed
     cause = failed["cause"]
-    assert cause["reason"] == "unavailable-transient"
+    assert cause["reason"] == "sync-mark-record-unusable"
     assert cause["detail"]["marked"] == ["pl-a"] and cause["detail"]["unmarked"] == ["pl-b"]
     assert "Warmup" in cause["message"]
 
 
 def test_a_failure_before_any_rename_says_nothing_was_marked(slim, monkeypatch):
     _fake, name = _swept_pass(monkeypatch, *TWO)
-    account = outbound_fakes.FakeAccount(fail_on={"pl-a"})
+    account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
     xml = _land(slim, name, "101", "102", "201")
-    code, failed = _answered(xml)
+    with monkeypatch.context() as broken:
+        _record_refusing(broken, "pl-a", RuntimeError("disk gone"))
+        code, failed = _answered(xml)
     assert code != int(ExitCode.OK), failed
     assert failed["cause"]["detail"]["marked"] == []
-    assert "no playlist was marked" in failed["cause"]["message"]
+    assert "no playlist was recorded as taken" in failed["cause"]["message"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -614,7 +638,7 @@ def test_an_intake_file_of_no_pass_is_a_gated_plan_of_nothing(slim, monkeypatch)
     assert done["data"]["items"] == []
     assert [warning["code"] for warning in done["warnings"]] == ["sync-mark-no-pass"]
     assert fake.account_listings == listings, "the account was listed for a file of no pass"
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_a_track_the_pass_offered_for_review_holds_its_playlist_back(slim, monkeypatch):
@@ -632,7 +656,7 @@ def test_a_track_the_pass_offered_for_review_holds_its_playlist_back(slim, monke
 
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     held_back = _by_id(done)["pl-a"]
     assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
     assert [row["id"] for row in held_back["outstanding"]] == ["102"]
@@ -648,7 +672,7 @@ def test_the_pass_is_decided_without_its_manifest(slim, monkeypatch):
     (Path(slim.paths.download_staging) / missing_cli.LISTS_DIR / f"{name}.manifest.json").unlink()
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     assert _by_id(done)["pl-a"]["reason"] == "rows-outstanding"
 
 
@@ -693,7 +717,7 @@ def test_a_playlist_whose_reports_cannot_be_read_is_left_alone(slim, monkeypatch
 
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     assert _by_id(done)["pl-a"]["reason"] == "reports-unreadable"
 
 
@@ -727,7 +751,7 @@ def test_a_location_on_another_host_is_passed_over_and_never_a_traceback(slim, m
     xml.write_bytes(body)
     code, done = _answered(xml)
     assert code == int(ExitCode.OK), done
-    assert len(account.renamed) == 2
+    assert _took(slim, account) == ["pl-a", "pl-b"]
 
 
 def test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said(slim, monkeypatch):
@@ -757,7 +781,7 @@ def test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said(slim, m
     monkeypatch.setattr(type(fake), "account_playlists", moving)
     code, done = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     skipped = _by_id(done)["pl-a"]
     assert (skipped["action"], skipped["reason"]) == ("skip", "changed-since-plan")
     assert [w["code"] for w in done["warnings"]] == ["sync-mark-changed-since-plan"]
@@ -772,7 +796,7 @@ def test_an_abort_renames_nothing(slim, monkeypatch):
     code, done = _answered(xml, option="abort")
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "no_op"
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_an_answer_is_stale_once_the_intake_file_is_rewritten(slim, monkeypatch):
@@ -788,7 +812,7 @@ def test_an_answer_is_stale_once_the_intake_file_is_rewritten(slim, monkeypatch)
     xml.write_bytes(xml.read_bytes() + b"\r\n<!-- landed again -->\r\n")
     code, stale = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
     assert code != int(ExitCode.OK), stale
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -871,17 +895,14 @@ def test_a_native_pass_whose_tracks_the_library_holds_is_marked_after_the_answer
 
     code, refused = _mark_pass(name)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    assert account.renamed == [], "a rename landed before the gate was answered"
+    assert _took(slim, account) == [], "a rename landed before the gate was answered"
     shown = refused["cause"]["detail"]["shown"]
     assert shown["pass"] == f"{name}, landed on the database native {tree!r} tree"
     assert "intake file" not in shown
 
     code, done = _answered_pass(name)
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == [
-        ("pl-a", "DOWNLOADED Warmup"),
-        ("pl-b", "DOWNLOADED Peak"),
-    ]
+    assert _took(slim, account) == ["pl-a", "pl-b"]
     item = _by_id(done)["pl-a"]
     # NO FILE SAYS WHICH LANDING BROUGHT A TRACK, so each one held is owned.
     assert (item["action"], item["landed"], item["owned"]) == ("marked", 0, 2)
@@ -897,7 +918,7 @@ def test_a_native_pass_with_one_track_not_held_leaves_that_playlist_alone(slim, 
 
     code, done = _answered_pass(name)
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     held_back = _by_id(done)["pl-a"]
     assert (held_back["action"], held_back["reason"]) == ("skip", "rows-outstanding")
     assert [row["id"] for row in held_back["outstanding"]] == ["102"]
@@ -915,7 +936,7 @@ def test_a_pass_named_on_a_tree_still_on_the_bridge_is_refused_naming_the_file(
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     assert "--xml" in " ".join(refused["cause"]["remediation"]["steps"])
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_the_file_and_the_pass_are_one_or_the_other(slim, tmp_path):
@@ -967,7 +988,7 @@ def test_a_tree_put_back_on_the_bridge_after_the_plan_renames_nothing(slim, monk
     with pytest.raises(CratekitError) as refused_late:
         mark_cli.apply_pass(slim, planned)
     assert refused_late.value.cause.reason == "sync-marks-blocked"
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_a_native_answer_is_stale_once_another_playlist_becomes_whole(slim, monkeypatch):
@@ -985,7 +1006,7 @@ def test_a_native_answer_is_stale_once_another_playlist_becomes_whole(slim, monk
     _hold(slim, "102")
     code, stale = drive(["--run", run_id, "sync", "mark", "--pass", name])
     assert code == int(ExitCode.DECISION_STALE), stale
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_the_engine_refuses_a_mark_with_neither_proof():
@@ -1040,7 +1061,7 @@ def test_a_native_pass_no_closed_committed_landing_names_is_refused(
     assert code == int(ExitCode.PRECONDITION), refused
     assert refused["cause"]["reason"] == "sync-marks-blocked"
     assert "no landing" in refused["cause"]["message"]
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_landing(slim, monkeypatch):
@@ -1065,7 +1086,7 @@ def test_a_session_log_that_cannot_be_listed_is_never_read_as_no_landing(slim, m
     assert code not in (int(ExitCode.OK), int(ExitCode.DECISION_REQUIRED)), refused
     assert "cannot be listed by this account" in refused["cause"]["message"]
     assert "no landing" not in refused["cause"]["message"]
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_an_unreachable_library_is_named_and_never_called_the_bridge(slim, monkeypatch):
@@ -1098,7 +1119,7 @@ def test_a_second_landing_of_the_pass_since_the_plan_makes_the_answer_stale(
     _record_landing(slim, name, stamp="130000")
     code, stale = drive(["--run", run_id, "sync", "mark", "--pass", name])
     assert code == int(ExitCode.DECISION_STALE), stale
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_a_landing_recorded_between_the_plan_and_the_apply_renames_nothing(slim, monkeypatch):
@@ -1114,7 +1135,7 @@ def test_a_landing_recorded_between_the_plan_and_the_apply_renames_nothing(slim,
     with pytest.raises(CratekitError) as refused:
         mark_cli.apply_pass(slim, planned)
     assert "changed since the plan" in refused.value.cause.message
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_a_plan_given_both_proofs_or_neither_is_refused(slim, tmp_path):
@@ -1139,7 +1160,7 @@ def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(sli
     code, refused = _mark(xml, "--playlist", "pl-b")
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     shown = refused["cause"]["detail"]["shown"]
-    assert shown["renamed on the account"] == ["Peak -> DOWNLOADED Peak"]
+    assert shown["recorded as taken"] == ["Peak"]
     assert shown["left alone"] == []
     assert shown[mark_cli.ONLY_SAID] == ["pl-b"]
     run_id = refused["run_id"]
@@ -1148,7 +1169,7 @@ def test_playlist_narrows_the_plan_the_gate_and_the_renames_to_the_one_named(sli
     code, done = drive(["--run", run_id, "sync", "mark", "--xml", str(xml), "--playlist", "pl-b"])
 
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-b"]
     assert list(_by_id(done)) == ["pl-b"]
     assert done["data"]["totals"] == {"count": 1, "marked": 1, "skip": 0}
 
@@ -1168,7 +1189,7 @@ def test_an_answer_to_the_narrowed_plan_does_not_carry_out_the_whole_pass(slim, 
     code, whole = drive(["--run", run_id, "sync", "mark", "--xml", str(xml)])
 
     assert code != int(ExitCode.OK), whole
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_playlist_repeated_takes_each_named_and_no_playlist_is_the_whole_pass(slim, monkeypatch):
@@ -1202,7 +1223,7 @@ def test_a_playlist_of_no_pass_of_this_name_is_refused_before_the_account_is_lis
     assert "pl-elsewhere" in cause["message"] and "pl-b" not in cause["detail"]["not_of_pass"]
     assert cause["detail"]["not_of_pass"] == ["pl-elsewhere"]
     assert fake.account_listings == listings, "the account was listed for a playlist of no pass"
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_a_named_playlist_the_pass_did_not_complete_is_refused_by_name(slim, monkeypatch):
@@ -1221,12 +1242,12 @@ def test_a_named_playlist_the_pass_did_not_complete_is_refused_by_name(slim, mon
     assert cause["detail"]["not_complete"] == ["pl-a"]
     assert cause["detail"]["reasons"] == {"pl-a": mark_cli.ROWS_OUTSTANDING}
     assert "Warmup" in cause["message"] and "Artist 102 - Title 102" in cause["message"]
-    assert account.renamed == []
+    assert _took(slim, account) == []
     # The whole pass still plans its finished playlist, and leaves pl-a as a skip.
     code, whole = _mark(xml)
     assert code == int(ExitCode.DECISION_REQUIRED), whole
-    assert whole["cause"]["detail"]["shown"]["renamed on the account"] == [
-        "Peak -> DOWNLOADED Peak"
+    assert whole["cause"]["detail"]["shown"]["recorded as taken"] == [
+        "Peak"
     ]
 
 
@@ -1255,7 +1276,7 @@ def test_a_named_playlist_already_marked_is_a_skip_and_not_a_refusal(slim, monke
         mark_cli.SKIP,
         mark_cli.ALREADY_MARKED,
     )
-    assert account.renamed == []
+    assert _took(slim, account) == []
 
 
 def test_the_library_is_walked_only_for_the_named_playlist(slim, monkeypatch):
@@ -1287,7 +1308,7 @@ def test_a_native_pass_takes_playlist_as_the_file_does(slim, monkeypatch):
     assert planned.planned == ["pl-a"]
     data, _warnings, landed = mark_cli.apply_pass(slim, planned)
     assert landed == ["pl-a"]
-    assert account.renamed == [("pl-a", "DOWNLOADED Warmup")]
+    assert _took(slim, account) == ["pl-a"]
     assert [item["id"] for item in data["items"]] == ["pl-a"]
 
 
@@ -1347,7 +1368,7 @@ def test_organize_marks_a_native_pass_through_its_gate(slim, monkeypatch):
     applied = step.apply()
 
     assert applied["marked"] == 2
-    assert sorted(account.renamed) == [("pl-a", "DOWNLOADED Warmup"), ("pl-b", "DOWNLOADED Peak")]
+    assert _took(slim, account) == ["pl-a", "pl-b"]
 
 
 def test_a_native_landing_of_no_sync_pass_is_counted_and_is_no_step(slim, monkeypatch):

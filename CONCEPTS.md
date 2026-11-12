@@ -365,7 +365,7 @@ legacy `<year> Custom Playlists` folders.
 
 ### Working custom playlist
 A playlist at the account root the product did not make, no ledger claims, that
-holds tracks and has not been marked `DOWNLOADED `. It stays at the root and is
+holds tracks and is not taken. It stays at the root and is
 never deleted; `yours` lists it. A listing with no track count counts as one.
 
 ### Fresh Export
@@ -685,20 +685,33 @@ playlist ids, excluded from the next pass.
 *Avoid:* the deletion watermark, or a date floor.
 
 ### Swept playlist
-An account playlist the playlists source will not queue again: titled with the
-`DOWNLOADED ` prefix, or its id in `swept` because its job succeeded. Swept means
-resolved, not acquired (`swept_means: resolved-not-acquired`).
+An account playlist the playlists source will not queue again: taken, or its
+id in `swept` because its job succeeded. Swept means resolved, not acquired
+(`swept_means: resolved-not-acquired`).
+
+### Taken playlist
+An account playlist Cratekit has finished with (U242): its id is held in the
+mark record's taken ledger, by a pass's `sync mark`, `label mark` or the set
+archive, or by `sync taken` for one found with the old `DOWNLOADED ` prefix; or
+its title still carries that prefix, until `sync strip` takes it off.
+`playlists.is_taken` is the one test. The prefix itself is retired: no verb
+writes it, save `sync unmark --pass prefix-strip`, which puts back the old
+titles the strip took it off.
+
+*Avoid:* reading a title for it; the record is what says so.
 
 ### Mark record
-The library's record of every account playlist a pass renamed with the swept
-prefix (pass, id, old and new title), stamped when `sync unmark` restores it.
-The only proof a pass wrote a prefix.
+The library's `sync_marks.json`: the taken ledger (id, title, who took it, how,
+when, released when `sync unmark` lets it go), and every title a pass's mark or
+`sync strip` rewrote (pass, id, old and new title), stamped when `sync unmark`
+puts it back, or lets the playlist go with no title of the mark's left to put
+back. The only proof Cratekit wrote a title.
 
 ### Label folder
 A followed label on the account: a root folder named for the label with one
 private `<Label> <year>` playlist per release year, built add only by
 `crate label playlists` and recorded in the ledger's `labels` map. Excluded from
-sync as `label-folder`. `crate label mark` marks landed years;
+sync as `label-folder`. `crate label mark` records landed years as taken;
 `crate label prune` takes tracks off.
 
 ### Appended tree
@@ -713,7 +726,7 @@ with no year is named and filed nowhere.
 The private account playlist an identified set becomes (`crate export set`, or
 `intake set` on its own gate), recorded in the ledger's `sets` map by name.
 Excluded from sync as `set-playlist`. Once downloaded, filed under
-`Downloaded Sets <year>` and marked `DOWNLOADED ` (set landing or
+`Downloaded Sets <year>` and recorded as taken (set landing or
 `crate export archive`).
 
 ### Inspiration playlist
@@ -733,7 +746,7 @@ playlist pair.
 ### Prune
 `crate label prune` or `crate export prune`: takes ledger-added tracks off a
 product made playlist on evidence (a hold, another label's release, a row that
-left), behind an explicit gate. Moves them to `pruned`. Never removes a
+left, a tombstone over the track), behind an explicit gate. Moves them to `pruned`. Never removes a
 playlist, folder or heart.
 
 ### Heard
@@ -879,7 +892,7 @@ kept under `mirror_plans`, so the answering run applies the approved plan.
 
 ### Custom playlist twin
 The rekordbox copy of a downloaded custom playlist (`sync/twins.py`,
-`crate sync twins`): named as on the account less `DOWNLOADED `, in
+`crate sync twins`): named as on the account less any old `DOWNLOADED `, in
 `Custom Playlists <year>` beside INBOX, paired with the account playlist. Never
 rotated.
 

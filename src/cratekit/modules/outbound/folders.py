@@ -6,7 +6,8 @@ year, each holding that year's tracks from the label's catalogue. This module is
 that shape, planned and then applied, against the account seam.
 
 ADD ONLY. Nothing here takes a track, a playlist or a folder away. A track that
-has left the label's catalogue, or that the genre gate now holds, is taken off
+has left the label's catalogue, that the genre gate now holds, or that the
+library removed through ``crate delete review`` (U243), is taken off
 a year playlist this product made by ``label prune`` (R-836), in
 :mod:`cratekit.modules.outbound.prune`, behind its own gate.
 
@@ -20,7 +21,8 @@ first and by exact name under the folder second, and never made twice:
   which one is the label's is not something a name decides.
 * a year: the playlist recorded for it, or the one playlist in the folder named
   ``<Label> <year>`` or ``DOWNLOADED <Label> <year>``, the second being what the
-  label mark leaves. Two such playlists leave that year alone, said in the plan.
+  label mark left before U242 retired the prefix, and the first what ``sync
+  strip`` leaves. Two such playlists leave that year alone, said in the plan.
 
 THE APPLY RECORDS EACH WRITE AS IT LANDS, so a refusal part way leaves every
 folder, playlist and track already written recorded, and the next plan reads
@@ -44,8 +46,8 @@ from cratekit.modules.outbound.service import RemoteAccount
 
 _ORIGIN = ("outbound", "folders")
 
-#: The prefix the label mark puts on a year playlist, spelled as the sweep
-#: spells it. Repeated here rather than imported, since ``sync.playlists`` is a
+#: The prefix the label mark put on a year playlist before U242 retired it,
+#: spelled as the sweep spells it. Still read, never written. Repeated here rather than imported, since ``sync.playlists`` is a
 #: core module that imports the label catalogue, and a test pins the two equal.
 MARK_PREFIX = "DOWNLOADED "
 
@@ -94,6 +96,10 @@ class LabelCatalogue:
     #: Releases the verifier answered ``mismatch``, credited to another label,
     #: which is what the prune reads as the catalogue no longer confirming one.
     mismatched: tuple[str, ...] = ()
+    #: Tracks of a release the read reached that the library removed on purpose,
+    #: a tombstone standing over their artist and title (U243). Already left out
+    #: of ``years``, so no build adds one; the prune takes them off.
+    tombstoned: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

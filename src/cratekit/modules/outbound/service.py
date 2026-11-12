@@ -47,14 +47,15 @@ vouch for. It changes no membership, so nothing is lost by it, and it is still
 refused for any other playlist, since a person's order is theirs.
 
 **RETITLING IS NOT A REMOVAL, AND IT IS THE ONE WRITE THAT TOUCHES SOMETHING
-THE PRODUCT DID NOT MAKE.** It exists because a title is how the source system
-records what it has already taken: ``sync.playlists.SWEPT_PREFIX`` is a
-convention the live account already carries, and a playlist Cratekit swept is
-new to that system's next pass until the prefix is on it (R-358). Nothing is
-lost by a retitle, no membership changes, and the name a playlist had is
-recoverable from the name it now has. It is still irreversible enough that
-``sync.marks`` makes it wait for the importable file and a recheck rather than
-applying it when the run merely started.
+THE PRODUCT DID NOT MAKE.** It existed because a title was how the source
+system recorded what it had already taken, the ``DOWNLOADED `` prefix
+(R-358). Since U242 that prefix is retired and Cratekit records what it took
+in its own record, so no mark retitles anything: the callers left are ``sync
+strip``, which takes the old prefix off once the record holds the playlist,
+``sync unmark``, which puts a title a mark or the strip wrote back, and ``export
+set --rename``, which follows a rename in the library (U140). Nothing is lost
+by a retitle, no membership changes, and each of those records the title
+before it writes the new one.
 """
 
 from __future__ import annotations

@@ -2,9 +2,10 @@
 
 The backfill, run once and safe to run again. It lists every root folder on the
 account titled as a year, and in each every playlist the account lists as the
-author's own whose name carries ``DOWNLOADED ``, leaving out a label's, a set's,
+author's own that is taken, held in Cratekit's record or titled with the old
+``DOWNLOADED `` prefix (U242), leaving out a label's, a set's,
 a mirrored one and any already paired. For each it plans the twin,
-``Custom Playlists <year> / <name less the prefix>``, matches every account
+``Custom Playlists <year> / <name less any old prefix>``, matches every account
 track to a library row (``sync/twins.py`` says how), and names each track the
 twin will not hold. One explicit gate shows every twin and every miss; the
 approved write makes the folders and twins in one guarded commit, reads them

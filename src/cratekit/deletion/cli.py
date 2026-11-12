@@ -118,11 +118,18 @@ def _shown(found: run.Plan) -> dict[str, Any]:
     first run's recorded decision is not stale on the resume that no longer
     baselines.
     """
-    return {
+    shown: dict[str, Any] = {
         "baselined": found.baselined,
         "accepted_as_history": found.baselined_over,
         "offered": len(found.deletable),
     }
+    # THE ROWS THE PROOF EXCUSED ARE SAID WHEN THERE ARE ANY (U243): streaming
+    # rows and other locations that name no local file. "None of these could
+    # reference a file" is a claim, and the person approving sees its size.
+    ignored = found.references.ignored if found.references is not None else 0
+    if ignored:
+        shown["ignored, not local files"] = ignored
+    return shown
 
 
 def review_removals(ctx) -> Envelope:

@@ -58,6 +58,14 @@ PASS = "LABEL_RUN_synced"
 #: Every year the followed label's build makes, by the fake account's id.
 BUILT = {"pl-1": "Kompakt 2021", "pl-2": "Kompakt 2022", "pl-3": "Kompakt 2023"}
 
+def _took(account) -> list[str]:
+    """What the mark holds as taken, having renamed nothing (U242)."""
+    from cratekit.core import config as _config
+
+    assert account.renamed == [], "no verb writes the DOWNLOADED prefix since U242"
+    return sorted(mark_record.MarkRecord(_config.load()).taken_ids())
+
+
 
 def _filed(year: int, *, label: str = LABEL, tracks: int = 1) -> dict:
     """One entry as ``label_filing.record_commit`` writes it."""
@@ -124,16 +132,13 @@ def test_a_native_pass_marks_exactly_the_years_its_landing_filed(native_followed
     code, done = _mark()
 
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == [
-        ("pl-1", "DOWNLOADED Kompakt 2021"),
-        ("pl-3", "DOWNLOADED Kompakt 2023"),
-    ]
+    assert _took(account) == ["pl-1", "pl-3"]
     reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
     assert reasons["pl-2"] == label_mark_cli.NOT_IN_BATCH
-    held = mark_record.MarkRecord(cfg).of_pass(PASS)
-    assert sorted((e.playlist_id, e.name, e.to) for e in held) == [
-        ("pl-1", "Kompakt 2021", "DOWNLOADED Kompakt 2021"),
-        ("pl-3", "Kompakt 2023", "DOWNLOADED Kompakt 2023"),
+    held = mark_record.MarkRecord(cfg).taken()
+    assert sorted((e.playlist_id, e.name, e.by) for e in held.values()) == [
+        ("pl-1", "Kompakt 2021", PASS),
+        ("pl-3", "Kompakt 2023", PASS),
     ]
     assert done["warnings"] == []
 
@@ -150,10 +155,7 @@ def test_every_committed_landing_of_the_pass_counts_and_no_other_does(native_fol
     code, done = _mark()
 
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == [
-        ("pl-1", "DOWNLOADED Kompakt 2021"),
-        ("pl-2", "DOWNLOADED Kompakt 2022"),
-    ]
+    assert _took(account) == ["pl-1", "pl-2"]
 
 
 def test_a_year_filed_under_another_label_or_holding_no_track_is_not_marked(native_followed):
@@ -165,7 +167,7 @@ def test_a_year_filed_under_another_label_or_holding_no_track_is_not_marked(nati
     code, done = _mark()
 
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-3", "DOWNLOADED Kompakt 2023")]
+    assert _took(account) == ["pl-3"]
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -251,7 +253,7 @@ def test_a_label_named_by_its_registry_identifier_is_compared_under_its_name(
     code, done = _two_acts(["label", "mark", entry.label_id, "--pass", PASS], MARK)
 
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-1", "DOWNLOADED Kompakt 2021")]
+    assert _took(account) == ["pl-1"]
 
 
 def test_pass_on_an_intake_tree_on_the_bridge_is_refused_naming_xml(followed):
@@ -376,7 +378,7 @@ def test_a_landing_between_the_plan_and_the_first_rename_renames_nothing(
     assert "changed since the plan" in refused["cause"]["message"]
     assert seen == ["crate label mark"] * 3
     assert account.renamed == []
-    assert not mark_record.MarkRecord(cfg).of_pass(PASS)
+    assert not mark_record.MarkRecord(cfg).taken()
 
 
 def test_sync_unmark_takes_a_native_label_mark_off_again(native_followed):
@@ -392,7 +394,8 @@ def test_sync_unmark_takes_a_native_label_mark_off_again(native_followed):
     code, done = _two_acts(["sync", "unmark", "--pass", PASS], "sync.unmark.confirm")
 
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == sorted(BUILT.items())
+    assert account.renamed == [], "a release writes nothing on the account (U242)"
+    assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -478,10 +481,7 @@ def test_a_label_batch_landed_natively_with_label_is_marked_by_its_pass(
     code, done = _mark()
 
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == [
-        ("pl-1", "DOWNLOADED Kompakt 2021"),
-        ("pl-3", "DOWNLOADED Kompakt 2023"),
-    ]
+    assert _took(account) == ["pl-1", "pl-3"]
     reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
     assert reasons["pl-2"] == label_mark_cli.NOT_IN_BATCH
 
@@ -503,7 +503,7 @@ def test_a_label_batch_landed_natively_with_a_manifest_is_marked_by_its_pass(
     code, done = _mark()
 
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-2", "DOWNLOADED Kompakt 2022")]
+    assert _took(account) == ["pl-2"]
 
 
 def test_the_gate_digest_names_the_landings(native_followed):

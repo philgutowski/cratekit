@@ -1879,7 +1879,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-mark-record-unusable',
         'sync-marks-blocked',
     ],
-    'sync/mark_record.py': ['sync-mark-record-unusable', 'utf-8'],
+    # 2026-11-12, U242: the taken ledger's found prefix joined.
+    'sync/mark_record.py': ['found-prefixed', 'sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined. 2026-11-04, U198: the
     # not discovered and released warnings joined. 2026-11-04, U202: the
@@ -1973,6 +1974,19 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-committed-unverified',
         'whitelist-violation',
     ],
+    # 2026-11-12, U242: the strip verb joined.
+    'sync/strip_cli.py': [
+        'changed-since-plan',
+        'internal-error',
+        'nothing-left',
+        'prefix-strip',
+        'sync-marks-blocked',
+        'sync-strip',
+        'sync-strip-changed-since-plan',
+        'sync-strip-nothing',
+    ],
+    # 2026-11-12, U242: the migration verb joined.
+    'sync/taken_cli.py': ['sync-taken'],
     'sync/twins_cli.py': [
         'sync-twins-left',
         'sync-twins-listing-short',
@@ -3210,6 +3224,8 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     'sync/run.py': ['sync-source-lookups-failed'],
+    # 2026-11-12, U242: the strip verb joined.
+    'sync/strip_cli.py': ['internal-error', 'sync-marks-blocked'],
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
     'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
