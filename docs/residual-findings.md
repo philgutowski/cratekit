@@ -48651,3 +48651,229 @@ strip only by its title, with no test to say so.
 
 **Closes when:** a test drives each verb over a stripped playlist through the
 dispatcher. Ledger only.
+
+---
+
+## R-1523. A removed rekordbox streaming row holds the deletion watermark below it on every run
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** A row the person removed in rekordbox whose location is the
+streaming spelling resolves unmapped in `candidates.categorize`, which U243 did
+not change, so it is never handled and the watermark stays below its sequence.
+Every later run walks the removals above it again.
+
+**Measured cost.** Driven by the round one review: one removed streaming row at
+sequence 45 over a baseline of 40, a completed run, the watermark still 40,
+`unresolved: 0`, and no warning. Nothing is trashed wrongly; the cost is a
+re-walk and a watermark that never moves past a streamed removal.
+
+**Closes when:** a removed row that names no local file is handled as settled
+absence, with a test over the watermark. Ledger only.
+
+---
+
+## R-1524. Revoking a tombstone after a prune never returns the track to its year playlist
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `label prune` moves a tombstoned track from `added` to
+`pruned` in the outbound ledger, and `folders.plan` never adds a track the
+ledger records as pruned. Revoking the tombstone makes the version
+acquirable again and leaves the track off its year for good.
+
+**Measured cost.** Driven end to end by the round one review: tombstone,
+prune, revoke, full build, and the year stayed without the track. One track to
+add by hand on the account.
+
+**Closes when:** a prune records why a track left, and a build adds back a
+track whose reason no longer stands. Ledger only.
+
+---
+
+## R-1525. A tombstone can stand over a version an active row still holds, so the label verbs take a held track off its year
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `crate delete review` tombstones the version of a row it
+trashes even when another active row records the same artist and title under
+a different file. Since U243 the label verbs read that tombstone track by
+track, so the version comes off its label year playlist although the library
+still holds a copy of it.
+
+**Measured cost.** The round one review drove the deletion half end to end
+(row 1 removed, row 2 active, one title, two files, a tombstone written while
+row 2 stayed) and the prune half is the branch's own test; the two were not
+joined in one run. A person who keeps a second copy loses the track from one
+account playlist, and can put it back by hand.
+
+**Closes when:** the label side, or the recorder, declines a tombstone whose
+version an active row still holds, with a test over both halves in one run.
+Ledger only.
+
+---
+
+## R-1526. A full build of a label every track of which was removed creates an empty folder under its name
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** ``label playlists`` leaves out a year every playable track
+of which was removed, and a full build of a label with no year left still
+plans the folder: driven, the gate showed ``folder: Kompakt: create it`` and no
+year, and the apply made an empty folder. A releases build already guards
+against this and makes nothing.
+
+**Measured cost.** An empty folder under the label's name on the account. The
+input, a label whose every track was removed, was not produced by anything
+driven beyond the fixture.
+
+**Closes when:** a full build with no year to make makes no folder, as a
+releases build does. Ledger only.
+
+---
+
+## R-1527. Dated label playlists are outside the removal, so one can be made empty or keep a removed track until it is heard
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** U243 keeps a removed track off a label's YEAR playlists.
+The dated playlists ``label.dated`` makes, ``<Label> <year> new <date>``, are
+planned from the years and never pruned. Two shapes follow, both driven by the
+reviews: when every track of a release a go took on a day was removed, the
+dated plan makes the dated playlist with no tracks (driven through organize's
+label steps; on the base the same input made it holding the track); and a
+removed track already on a dated playlist stays there through a prune, an
+organize and a full build, until ``label heard`` removes the playlist.
+
+**Measured cost.** An empty private playlist on the account, or a removed track
+left on a dated playlist for a while. The card's requirement and every screen
+name year playlists only, so nothing false is said. ``label heard`` never puts
+the track in the year (round one's and round two's fixes).
+
+**Closes when:** the dated plan makes no playlist with nothing to put in it,
+and the prune, or the dated plan, takes a removed track off a dated playlist
+this product made. Ledger only.
+
+---
+
+## R-1528. The heard gate's counts for tracks left out and four guards of the fix rounds kill no test
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** Round two's mutation of the round one fix found seven
+guards that killed nothing; round two's fix pinned the kept read's artist half
+and the heard early return's year row. Still unpinned: the two subtractions
+that give the heard screen's "already there" count, the exclusion of a track
+the year already holds from ``HeardPlan.tombstoned``, the item's "removed from
+the library" count, and the prune note's clause naming removed tracks. When a
+removed track is still on the year, heard counts it "already there", which it
+is, while the early return counts every merged track as left out.
+
+**Measured cost.** None on any write: each is a count or a sentence on a gate.
+
+**Closes when:** each count is pinned by a test, or the screen's counts are
+drawn from one place. Ledger only.
+
+---
+
+## R-1529. The metadata refusal's step spells a whole location_prefix_map assignment, which a configuration holding a rule refuses to load
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** ``write/metadata_cli.py`` tells a person to add
+``library.location_prefix_map = [{ from = ..., to = ... }]`` to the
+configuration by hand. Setup always writes the key, so following the step
+literally assigns it twice, and ``config.load`` refuses with ``ConfigCorrupt``
+(driven by round two). U243 corrected the same wording in the deletion pass's
+refusal; this one predates it.
+
+**Measured cost.** A person who follows the step gets a configuration that
+will not load, until they merge the two lists by hand.
+
+**Closes when:** the step names one entry to add to the existing list, as the
+deletion refusal now does. Ledger only.
+
+---
+
+## R-1530. The label verbs ask the tombstone store under one spelling where the acquisition consult asks thirteen
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `label.tombstoned.Tombstoned` asks under the provider
+track's artists and full title, the version kind first and the uncredited
+companion second. The acquisition consult, `acquire.match.standing_tombstone`,
+asks under every spelling `Wanted.suppression_spellings` gives, thirteen for a
+title with a mix name. A tombstone written as `Track (Original Mix)` over a
+provider row titled `Track` suppresses acquisition and is not read as removed
+by the label, so the track stays on its year playlist.
+
+**Measured cost.** Driven by the round one review: acquisition suppressed,
+the label answered not removed. Whether a live library row carries a spelling
+the provider's full title does not is unmeasured, and is what the attended
+check filed with this unit reads.
+
+**Closes when:** the label question is asked under the spellings the
+acquisition consult asks, from one shared reader in the domain layer, or the
+attended check shows the provider spelling and the row spelling agree. Ledger
+only.
+
+---
+
+## R-1531. The deletion pass excuses the streaming spelling without its trailing slash, a form the live library was not measured to carry
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `deletion.candidates._STREAMING_LOCATION` accepts
+`/v4/catalog/tracks/<id>` as well as `/v4/catalog/tracks/<id>/`. The card
+measured 137 live rows in the slashed form; whether every one of them matches
+the pattern, and whether rekordbox ever writes the unslashed one, was not
+measured from a cloud container.
+
+**Measured cost.** None found. The unslashed form is still excused only when
+nothing exists at it, and a miss lands in the refusal named under
+`/v4/catalog`, the safe direction.
+
+**Closes when:** the attended run of `crate delete review` on the live library
+reads every streaming row as excused, or the pattern is narrowed to what it
+counts. Ledger only.
+
+---
+
+## R-1532. The label tombstone question's judgement of undated releases and the unmapped prefix fallback kill no test
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** Two guards the round one review mutated killed nothing and
+were not pinned in the fix round: `playlists_cli._group` judges a removed
+track on every release, dated or not, and judged on dated releases only the
+suite stays green, since an undated release is never planned into a year; and
+`candidates.reference_set` names an unmapped row with no prefix as "an
+unreadable prefix", a branch the resolver cannot reach, since it answers
+`UNMAPPED` only for an absolute path.
+
+**Measured cost.** None today. The undated judgement matters only for a track
+recorded on a year before its release lost its date.
+
+**Closes when:** each is pinned by a test or taken out. Ledger only.
+
+---
+
+## R-1533. Two label tracks with one artist and one title both leave their year playlists on one removal
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `label.tombstoned.Tombstoned` asks the tombstone store by the
+version identity, the folded artist and title, which is the identity the
+deletion pass writes and acquisition consults. A label catalogue holding two
+different tracks under one artist and one title, two releases each carrying
+`Label Act - Untitled`, answers both as removed when one was, so `label prune`
+takes both off and no build adds either.
+
+**Measured cost.** Driven by the round one review on a fixture: the gate said
+two tracks were removed and took both off. A real catalogue holding such a
+pair was not driven. The gate names every track it takes off by artist and
+title, so the person approving sees both.
+
+**Closes when:** the tombstone carries an identity unique to the recording,
+such as the provider track id of a track this product acquired, and the label
+side asks by it. Ledger only.
