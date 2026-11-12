@@ -891,7 +891,10 @@ crate metadata mytags-vocals [--apply]
   sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
 - The analysis reads every file the installed librosa reads exactly as it
-  always did. A file libsndfile cannot open, an M4A (AAC or ALAC) on
+  always did. A stereo track is mixed to mono with one add rather than
+  librosa's mean, the same samples bit for bit and about a quarter of a
+  second sooner each time a track is decoded; on a librosa release Cratekit
+  has not measured, librosa's own mix is used. A file libsndfile cannot open, an M4A (AAC or ALAC) on
   librosa 1.0, is decoded through `ffmpeg` instead, into memory, writing
   nothing. On librosa 1.0 an M4A whose audio ffmpeg reports an error in is
   `skipped-undecodable`, as a damaged FLAC is; a cover image it cannot read
