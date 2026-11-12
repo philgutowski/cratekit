@@ -849,11 +849,11 @@ def test_a_settle_the_filesystem_refuses_leaves_a_cooldown_a_cooldown(paths, clo
 
     # A minute past the hour wants settling, the write is refused, and the
     # refusal is still the cooldown's park and never an OSError.
-    monkeypatch.setattr(config, "atomic_write_bytes", refuse_writes)
-    with provider_gate.command():
-        cooling, sent = refused(gate)
+    with monkeypatch.context() as patched:
+        patched.setattr(config, "atomic_write_bytes", refuse_writes)
+        with provider_gate.command():
+            cooling, sent = refused(gate)
     assert cooling.cause.reason == provider_gate.COOLDOWN and sent == []
-    monkeypatch.undo()
 
     data["lifts_at"] = None
     data["window"] = {ACCOUNT: {str(provider_gate._bucket(clock.now - 2 * provider_gate.WINDOW_S)): 1}}
