@@ -281,7 +281,10 @@ def _awkward_stereo(frames: int, seed: int) -> np.ndarray:
     out[frames // 4 + 128 : frames // 4 + 192] = [3 * _TINY, -0.0]
     out[frames // 3 : frames // 3 + 999] = [1.0, -1.0]  # clipped
     patterns = np.frombuffer(rng.integers(0, 2**32, 2 * 4096, dtype=np.uint32).tobytes(), "<f4")
-    patterns = np.where(np.isfinite(patterns), patterns, np.float32(0.25)).reshape(-1, 2)
+    # Finite and under 1e38, so no frame's sum overflows: an overflow is
+    # refused by the resampler, which the not finite tests below drive.
+    keep = np.isfinite(patterns) & (np.abs(patterns) < 1e38)
+    patterns = np.where(keep, patterns, np.float32(0.25)).reshape(-1, 2)
     out[frames // 2 : frames // 2 + 4096] = patterns
     return out
 
@@ -338,8 +341,11 @@ def test_the_installed_release_takes_the_one_add(monkeypatch):
         np.zeros((3, 9), dtype=np.float32),
         np.zeros((2, 9), dtype=np.float64),
         np.zeros((1, 9), dtype=np.float32),
+        np.zeros((2, 9), dtype=np.float16),
+        np.zeros((2, 9), dtype=">f4"),
+        np.zeros((2, 2, 9), dtype=np.float32),
     ],
-    ids=["mono", "three-channels", "float64", "one-row"],
+    ids=["mono", "three-channels", "float64", "one-row", "float16", "big-endian", "three-d"],
 )
 def test_anything_but_two_float32_channels_is_to_monos(samples, monkeypatch):
     calls = []
@@ -430,6 +436,20 @@ def test_the_head_is_what_it_was_with_librosas_own_load(keyed, name, monkeypatch
     before = detect.analyse_file(keyed[name])
     assert now.get("terminal") is None, now
     assert now == before
+
+
+@pytest.mark.parametrize("rate", [detect.MEASURE_RATE, vocal.MODEL_SAMPLE_RATE, NATIVE_RATE])
+def test_the_ffmpeg_path_mixes_minus_zero_frames_as_to_mono_does(keyed, rate, monkeypatch, no_fallback):
+    """The M4As made here come from 16 bit PCM and hold no minus zero, so the
+    ffmpeg path's mix is driven here on samples that do, in the layout
+    ``_ffmpeg_samples`` hands over, against U263's ``to_mono`` and resampler."""
+    native = np.ascontiguousarray(_awkward_stereo(30_001, seed=11)).T
+    monkeypatch.setattr(decode, "_ffmpeg_samples", lambda _path: (native, NATIVE_RATE))
+    samples, got = decode.load(keyed["aac"], rate)
+    expected = librosa.resample(
+        librosa.to_mono(native), orig_sr=NATIVE_RATE, target_sr=rate, res_type="soxr_hq"
+    )
+    assert got == rate and _same_bits(samples, expected)
 
 
 def test_the_ffmpeg_path_mixes_an_m4a_to_its_wavs_bits(keyed):
