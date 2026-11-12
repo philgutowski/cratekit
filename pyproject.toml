@@ -29,7 +29,12 @@ authors = [{ name = "Cratekit contributors" }]
 # machine-learning stack. Those live in extras named one-to-one with the module
 # that needs them (KTD7), so a friend who never enables analysis never downloads
 # torch. Adding a heavy dependency here is a regression, and
-# tests/test_slim_core.py fails the build if one appears.
+# tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency
+# fails the build if one appears. Every line here is also imported somewhere
+# under src/cratekit, which
+# tests/test_packaging.py::test_every_core_dependency_is_imported_by_the_package
+# holds (U269: lxml sat here for months with nothing importing it, since every
+# reader of a rekordbox export scans bytes in cratekit.write.rbxml).
 # ---------------------------------------------------------------------------
 dependencies = [
     "platformdirs>=4.0",   # cross-platform config/state directory resolution (KTD6)
@@ -37,7 +42,6 @@ dependencies = [
     "keyring>=24.0",       # OS keychain for service credentials, never the plain config (R4)
     "psutil>=5.9",         # process liveness for lock holders, memory probe for worker sizing (KTD10)
     "mutagen>=1.47,<2",    # container-correct audio tag read/write (R18); also vendored-tree
-    "lxml>=5.0",           # rekordbox XML parsing; writes go out as raw bytes, never a tree serialize
     "rapidfuzz>=3.0",      # three-state match scoring (R11)
     "requests>=2.32.5",    # service HTTP; floor raised by the vendored tree, see below
     "Pillow>=10.0",        # album art normalization for tagging (Core, feature 8)
