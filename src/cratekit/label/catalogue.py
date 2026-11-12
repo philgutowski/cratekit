@@ -185,6 +185,14 @@ class ReleaseUnresolvable(LookupError):
     """
 
 
+#: The verdict :meth:`Catalogue.reread_release` answers for a release the
+#: provider no longer has (R-1634). Not ``unconfirmed``: the provider answered,
+#: so it is not a provider that is not answering, and not ``confirmed``: a
+#: missing album says nothing of whether the provider's reads carry a credit.
+#: The sweep asks the next held release rather than refusing on it.
+RELEASE_GONE = "gone"
+
+
 def artist_name(release: Any) -> str:
     """The name of a release's artist, never a provider object's repr.
 
@@ -460,6 +468,20 @@ class Catalogue(Protocol):
         The callable ``verify.verify_release`` takes as its ``search`` argument,
         with that signature. Discovery finds a candidate by copyright text; this
         is the question that decides whether it is kept.
+        """
+
+    def reread_release(self, claimed: str, release: Any) -> Mapping[str, Any]:
+        """Ask the provider again who is credited on one release, READ BY ITS IDENTIFIER (R-1634).
+
+        The same answer :meth:`search_release` gives, for
+        ``verify.verify_release`` to judge, except that it is never answered
+        from the copyright line the listed object already carries: the provider
+        is read for the release whatever the listing holds. The sweep's
+        re-verification of one held release is its one call site, because the
+        question there is whether the provider is answering, and a line read
+        off the listing says nothing about that. A release the provider no
+        longer has answers the verdict :data:`RELEASE_GONE`, and one with no
+        identifier is never read and answers ``unconfirmed``.
         """
 
     def check_label(self, name: str) -> dict:

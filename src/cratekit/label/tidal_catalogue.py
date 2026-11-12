@@ -24,7 +24,8 @@ other read here stays on the account session, and these are they:
   are the account's business and which no app credential can see.
 * The label crawl, :meth:`TidalCatalogue.artist_for` and its discovery,
   :meth:`TidalCatalogue.release_tracks`, :meth:`TidalCatalogue.release_artist`,
-  :meth:`TidalCatalogue.search_release`, :meth:`TidalCatalogue.check_label` and
+  :meth:`TidalCatalogue.search_release`, :meth:`TidalCatalogue.reread_release`,
+  :meth:`TidalCatalogue.check_label` and
   :meth:`TidalCatalogue.search_tracks`. The official catalogue API has reads for
   most of these, but its listings page by cursor, and every listing this module
   makes pages through ``acquire.listing`` by limit and offset and stops on a
@@ -64,6 +65,7 @@ from cratekit.label import harvest, kept_listing, registry
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
     PLAYLIST_HOSTS,
+    RELEASE_GONE,
     SHORT_LINK_HOST,
     TRACK_SEARCH_PAGE,
     AccountPlaylist,
@@ -317,7 +319,7 @@ def _credited_ids(release: Any) -> tuple[str, ...]:
 
 
 class TidalCatalogue:
-    """The seven provider reads the ``Catalogue`` seam declares, over one logged in client."""
+    """Every provider read the ``Catalogue`` seam declares, over one logged in client."""
 
     def __init__(
         self, session: Any, *, catalogue: Any = None, cache: isrc_cache.Cache | None = None
@@ -708,6 +710,37 @@ class TidalCatalogue:
         if not resolved and identity:
             resolved = _copyright_label(self._session.album(identity))
         return {"resolved_label": resolved, "source": SOURCE}
+
+    def reread_release(self, claimed: str, release: Any) -> Mapping[str, Any]:
+        """Who the provider credits on the release, ONE ALBUM READ whatever line it carries (R-1634).
+
+        :meth:`search_release` judges a release carrying a line from that line
+        with no call, which is right for the window and wrong for the sweep's
+        re-verification, whose question is whether the provider is answering.
+        Read on the retry ladder :meth:`_album` shares. A release the provider
+        no longer has answers :data:`RELEASE_GONE`, which the sweep reads as
+        neither confirmed nor unanswered; one with no identifier is never read
+        and answers ``unconfirmed``, so it cannot make a listing look answered.
+        """
+        del claimed  # the judgement is verify_release's, not this read's
+        identity = str(getattr(release, "id", "") or "").strip()
+        if not identity:
+            return {
+                "verdict": "unconfirmed",
+                "resolved_label": "",
+                "source": SOURCE,
+                "notes": "no release identifier to read again",
+            }
+        try:
+            album = self._album(identity)
+        except ReleaseUnresolvable as exc:
+            return {
+                "verdict": RELEASE_GONE,
+                "resolved_label": "",
+                "source": SOURCE,
+                "notes": str(exc),
+            }
+        return {"resolved_label": _copyright_label(album), "source": SOURCE}
 
     def check_label(self, name: str) -> dict:
         """Whether any release the provider finds for ``name`` credits it.

@@ -51230,6 +51230,13 @@ than nothing new, and the `reverified` line says when an answer was read from
 the release's own line. Earns an issue: a clean report over state the tool
 could not read (board bar b).
 
+**Closed 2026-11-12, R-1634 (#777).** When any release a sweep turned down
+was not a mismatch, the held release verified again is read from the
+provider through the catalogue's new `reread_release`, whatever line it
+carries, and the `reverified` line and the worker's refusal say whether an
+answer was read from the provider or from the release's own line. The record
+is `docs/restart/r1634.md`.
+
 ---
 
 ## R-1635. A listing with a release the verifier gave no label credit still re-verifies the newest held release when none lacks a line, so an old hold of another act's release still refuses the label
@@ -51258,6 +51265,12 @@ live only when a label's new releases come back with no copyright line at all.
 holds of another act's release (R-1462), or a later unit asks the provider
 about a held release that carries a line (a forced album read) when no held
 release lacks one. Ledger only.
+
+**Closed 2026-11-12, R-1634 (#777).** The forced read asks a held release
+whose line names the label before another act's when no held release lacks
+a line, so a healthy provider read confirms it and the label answers nothing
+new (`test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing_new`).
+The record is `docs/restart/r1634.md`.
 
 ---
 
