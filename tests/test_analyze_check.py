@@ -937,15 +937,46 @@ def _empty_analyze(cfg: config.Config, root_id: str) -> None:
 def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
     native_library, silence, monkeypatch, scope
 ):
-    """The first row that cannot say whether it was removed refuses, the same row and words."""
+    """The first row that cannot say whether it was removed refuses, the same row and words.
+
+    Two such rows, so the test pins WHICH refuses: the first in the scope's
+    order, Bravo, as when each row was read by itself.
+    """
     cfg, root_id = native_library
     _land(cfg, silence, "2026-10-31_five", FIVE)
     if scope == rc.SCOPE_UNANALYSED:
         _empty_analyze(cfg, root_id)
+    bravo, delta = _content_id(cfg, "Bravo"), _content_id(cfg, "Delta")
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        for content_id in (bravo, delta):
+            conn.execute("UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (content_id,))
+    conn.close()
+
+    batched, per_row = _both(monkeypatch, VERB)
+
+    assert batched == per_row
+    assert batched["cause"]["reason"] == "soft-delete-marker-unreadable"
+    assert batched["cause"]["detail"]["content_id"] == bravo
+
+
+def test_a_row_the_binding_cannot_load_after_one_that_refuses_still_refuses_as_it_did(
+    native_library, silence, monkeypatch
+):
+    """Review round one: a batch read loads every row before any is judged, so a
+    row whose date the binding cannot parse would fail the read ahead of an
+    earlier row's refusal. The check then reads the rows one at a time, as it
+    did, and the earlier row's refusal is the answer again.
+    """
+    cfg, _root = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
     conn = sqlite3.connect(cfg.library.db_path)
     with conn:
         conn.execute(
-            "UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (_content_id(cfg, "Charlie"),)
+            "UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (_content_id(cfg, "Alpha"),)
+        )
+        conn.execute(
+            "UPDATE djmdContent SET created_at = 'garbage' WHERE ID = ?", (_content_id(cfg, "Delta"),)
         )
     conn.close()
 
@@ -953,6 +984,53 @@ def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
 
     assert batched == per_row
     assert batched["cause"]["reason"] == "soft-delete-marker-unreadable"
+
+
+def test_a_row_whose_id_is_not_text_stays_out_of_every_row_as_it_did(
+    native_library, silence, monkeypatch
+):
+    """Review round one: a collection row whose ID is stored as bytes was never
+    found by a read of its ID, so it was never in the scope of every row not
+    analysed. Judged in hand it would be, so the check leaves it out as before.
+    """
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    _empty_analyze(cfg, root_id)
+    delta = _content_id(cfg, "Delta")
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute("UPDATE djmdContent SET ID = CAST(ID AS BLOB) WHERE ID = ?", (delta,))
+        (kind,) = conn.execute(
+            "SELECT typeof(ID) FROM djmdContent WHERE Title LIKE '% - Delta'"
+        ).fetchone()
+    conn.close()
+    assert kind == "blob"
+
+    batched, per_row = _both(monkeypatch, VERB)
+
+    assert batched == per_row
+    assert "Delta" not in _items(batched)
+
+
+def test_read_row_handed_no_row_reads_it_and_answers_as_handed_one(native_library, silence):
+    """The one read by ID left in read_row, for a caller holding no row, answers alike."""
+    cfg, root_id = native_library
+    _mixed(cfg, silence)
+    analyze = _analyze_id(cfg, root_id)
+    template = check_cli.template_of(cfg)
+    with rb_writer.read_only_copy(cfg.library.db_path, cfg=cfg) as db:
+        keys = {str(key.ID): key.ScaleName for key in db.get_key()}
+        dyn = rc.dyn_marked(db)
+        members = analyzed.live_members(db, analyze)
+        held = rc._content_rows(db, members)
+        handed = [
+            rc.read_row(cfg, db, one, keys=keys, dyn=dyn, template=template, content=held.get(one))
+            for one in members
+        ]
+        read = [rc.read_row(cfg, db, one, keys=keys, dyn=dyn, template=template) for one in members]
+    assert len(members) == len(MIXED)
+    assert [row.as_dict() for row in read] == [row.as_dict() for row in handed]
+    assert {row.state for row in read} == {rc.ANALYSED, rc.NOT_ANALYSED, rc.GONE}
 
 
 def _clone(
@@ -1037,12 +1115,38 @@ def test_the_check_reads_the_collection_in_statements_that_do_not_grow_with_it(
     large, large_rows = _statements(monkeypatch, scope=scope)
 
     assert large_rows == small_rows + 110
-    assert large == small, (small, large)
-    assert large <= _FEW, large
+    assert (small, large) == (_HANDFUL, _HANDFUL)
 
 
-#: What a handful is: the statements one check issues whatever the library's
-#: size, measured at 6 in both scopes on 2026-11-12, with room for two more.
-#: A scope of playlist members past 500 rows adds one statement a 500, the
-#: chunk the rows are read in, which neither size here reaches.
-_FEW = 8
+#: The statements one check issues whatever the library's size, measured at 6
+#: in both scopes on 2026-11-12. Pinned exactly, since one more is a read the
+#: check did not make before (review round one: a bound of 8 let the
+#: unanalysed rows be read a second time). A check that needs another
+#: statement for a reason of its own raises this with the reason.
+_HANDFUL = 6
+
+
+def test_a_scope_past_one_chunk_is_read_a_statement_a_500_and_answers_as_the_per_row_reads(
+    native_library, silence, monkeypatch
+):
+    """1,015 rows in INBOX / Analyze, three chunks of 500, with a row removed, a row
+    deleted and a row analysed past the first chunk: the answer is the per row
+    reads' and the statements are two more than one chunk's."""
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    _clone(cfg, "Alpha", 1010, analyze=_analyze_id(cfg, root_id))
+    _visit(cfg, "C900")
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (_content_id(cfg, "C700"),))
+        conn.execute("DELETE FROM djmdContent WHERE ID = ?", (_content_id(cfg, "C800"),))
+    conn.close()
+
+    count, rows = _statements(monkeypatch, scope=rc.SCOPE_ANALYZE)
+    batched, per_row = _both(monkeypatch, VERB)
+
+    assert rows == 1015
+    assert count == _HANDFUL + 2
+    assert batched == per_row
+    summary = batched["data"]["summary"]
+    assert (summary["analysed"], summary["gone"]) == (1, 2)

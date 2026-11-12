@@ -375,10 +375,18 @@ def _unanalysed(db: Any) -> dict[str, Any]:
     the judgment the clear reads by ID, so no row is asked for again; the check
     reads a private copy, so nothing changes a row between the read and the
     judgment.
+
+    A ROW WHOSE ID IS NOT TEXT IS LEFT OUT, as the read by ID always left it
+    (review round one): an ID stored as bytes is never found by the text of
+    its ID, so it was never in this scope, and judging it in hand would add
+    it. Whether it belongs in the scope is a question of its own, not one
+    this saving answers.
     """
     waiting: dict[str, Any] = {}
     for content in db.get_content():
-        content_id = str(content.ID)
+        if not isinstance(content.ID, str):
+            continue
+        content_id = content.ID
         one = analyzed.judge(content_id, content)
         if one.why == analyzed.NOT_ANALYSED or one.why == analyzed.NO_ANALYSIS_PATH:
             waiting[one.content_id] = content
@@ -662,13 +670,25 @@ def check_rows(
     statement, and each row is then judged in the scope's order, so the first
     row that cannot say whether it was removed refuses as it did when each
     row was read by itself.
+
+    A BATCH THE BINDING CANNOT LOAD IS READ A ROW AT A TIME (review round
+    one). A batch loads every row before any is judged, so a later row the
+    binding cannot load, a date it cannot parse, would fail the read ahead of
+    an earlier row's refusal. The rows are then read one by one by ID, as
+    they were before U259, and the first failure in the scope's order is the
+    answer: the same refusal, or the same error, nothing swallowed.
     """
     keys = {str(key.ID): key.ScaleName for key in db.get_key()}
     dyn = dyn_marked(db)
-    held = dict(scope.read)
-    held.update(
-        _content_rows(db, [content_id for content_id in scope.content_ids if content_id not in held])
-    )
+    held: dict[str, Any] | None = dict(scope.read)
+    try:
+        held.update(
+            _content_rows(
+                db, [content_id for content_id in scope.content_ids if content_id not in held]
+            )
+        )
+    except Exception:  # noqa: BLE001 - every failure is met again, in order, below
+        held = None
     rows = tuple(
         read_row(
             cfg,
@@ -677,7 +697,7 @@ def check_rows(
             keys=keys,
             dyn=dyn,
             template=template,
-            content=held.get(content_id),
+            content=_UNREAD if held is None else held.get(content_id),
         )
         for content_id in scope.content_ids
     )
