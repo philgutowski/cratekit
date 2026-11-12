@@ -18,7 +18,7 @@ import pytest
 from cratekit.core import jobs, rb_writer, session, taxonomy
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
-from cratekit.label import catalogue
+from cratekit.label import catalogue, harvest
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.modules.outbound import account as account_module
 from cratekit.modules.outbound import pairs
@@ -40,6 +40,9 @@ YEAR_FOLDER = "fold-2026"
 VERB = ["sync", "twins"]
 #: Content rows one through nine, each carrying the ISRC its account track has.
 ROWS = tuple(str(index) for index in range(1, 10))
+#: The seconds one reading of a playlist the provider cannot list waits, rung by
+#: rung, before the listing's retry ladder re-raises the provider's failure (U252).
+LADDER = [1, 2, 4, 8, 16]
 
 
 def isrc(index: str) -> str:
@@ -283,6 +286,32 @@ def db(cfg, monkeypatch):
 @pytest.fixture
 def world(cfg, gates_pass, db, monkeypatch) -> World:
     return World(cfg, monkeypatch)
+
+
+@pytest.fixture
+def ladder_waits(monkeypatch) -> list[float]:
+    """The listing's real retry ladder, every rung climbed, none of it slept (U252).
+
+    A provider failure the product takes for transient climbs
+    ``listing.fetch_with_retry``'s ladder, which sleeps 1, 2, 4, 8 and 16 real
+    seconds before re-raising, 31 per reading, and its ``sleep`` is a keyword
+    default, so patching ``time.sleep`` does not reach it. The verb reads each
+    playlist through ``harvest.playlist_tracks``, which hands its keywords down
+    to the ladder, so only the sleep is bound here, the way
+    ``_ladder_without_waiting`` binds it for the label crawl in
+    tests/test_label_workers.py: the retry count, the pagination and the
+    re-raise all run as shipped. Returns every wait asked for, in order, so a
+    test proves the ladder was climbed rather than trusting that it was.
+    """
+    real = harvest.playlist_tracks
+    waits: list[float] = []
+
+    def patient(playlist, **kwargs):
+        kwargs.setdefault("sleep", waits.append)
+        return real(playlist, **kwargs)
+
+    monkeypatch.setattr(harvest, "playlist_tracks", patient)
+    return waits
 
 
 def _codes(envelope) -> set[str]:
@@ -645,12 +674,16 @@ def test_an_untitled_track_two_library_rows_carry_is_ambiguous_not_unreadable(wo
     ]
 
 
-def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made(world, cfg):
+def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made(
+    world, cfg, ladder_waits
+):
     _phil(world)
     world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
     world.broken[BROKEN] = RuntimeError("the provider timed out")
     code, refused = drive(VERB)
     assert code == int(ExitCode.DECISION_REQUIRED), refused
+    # A timeout may answer next time, so the plan's one reading climbs the ladder.
+    assert ladder_waits == LADDER, ladder_waits
     left = refused["cause"]["detail"]["shown"]["left"]
     assert left.startswith(f"{BROKEN_NAME}: the account playlist could not be read: "), left
     assert "the provider timed out" in left
@@ -662,11 +695,14 @@ def test_a_playlist_the_provider_cannot_list_is_left_named_and_the_other_is_made
     assert items[PHIL]["action"] == twins.CREATE
     assert twins_cli.LEFT in _codes(envelope)
     assert pairs.PairStore(cfg).get(BROKEN) is None
+    # The backfill read it twice, at the plan and again at the continuation.
+    assert ladder_waits == LADDER * 3, ladder_waits
     # THE NEXT RUN READS IT AGAIN, and makes its twin once it lists.
     del world.broken[BROKEN]
     code, envelope = backfill()
     assert code == int(ExitCode.OK), envelope
     assert world.held(world.twin("Broken 10-1-26")) == ["4", "5"]
+    assert ladder_waits == LADDER * 3, ladder_waits
 
 
 class Flaky(RuntimeError):
@@ -681,13 +717,16 @@ class Flaky(RuntimeError):
         return f"the provider timed out, request {self.calls}"
 
 
-def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(world, cfg):
+def test_a_left_playlists_digest_holds_its_refusal_not_the_providers_words(
+    world, cfg, ladder_waits
+):
     """From the review: the provider's own words varied between the gate and the write."""
     _phil(world)
     world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
     world.broken[BROKEN] = Flaky()
     code, envelope = backfill()
     assert code == int(ExitCode.OK), envelope
+    assert ladder_waits == LADDER * 2, ladder_waits
     assert world.held(world.twin("Phil 9-30-26")) == ["3", "1", "2"]
     (left,) = [one for one in envelope["data"]["items"] if one.get("account_id") == BROKEN]
     assert left["action"] == twins.LEFT and "request" in left["why"]
@@ -703,11 +742,12 @@ def test_a_playlist_whose_row_carries_no_id_is_left_and_the_other_is_planned(wor
     assert "carry no provider identifier" in shown["left"], shown
 
 
-def test_every_playlist_left_writes_nothing_and_opens_no_gate(world, cfg):
+def test_every_playlist_left_writes_nothing_and_opens_no_gate(world, cfg, ladder_waits):
     world.playlist(BROKEN, BROKEN_NAME, ["t4", "t5"])
     world.broken[BROKEN] = RuntimeError("the provider timed out")
     code, envelope = drive(VERB)
     assert code == int(ExitCode.OK), envelope
+    assert ladder_waits == LADDER, ladder_waits
     assert envelope["outcome"] == "no_op", envelope
     assert {twins_cli.LEFT, twins_cli.NOTHING} <= _codes(envelope)
     assert not world.folder()

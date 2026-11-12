@@ -49564,3 +49564,165 @@ Mac, whose APFS hands out inodes from one counter.
 **Closes when:** the test makes its premise rather than reading it from the
 filesystem, by giving the row an id known to be the file's identity above
 the bound. Ledger only.
+
+---
+
+## R-1564. An active taxonomy copy whose tables have the wrong shape escapes the loader as an AttributeError, not a config-unusable refusal
+
+**Found:** at the review of #676, U247, 2026-11-12.
+
+**The mechanism.** `active_taxonomy.load` turns a `TaxonomyError` into the
+`config-unusable` refusal with the setup remedy. A copy that is valid TOML but
+gives a table the wrong type, `tree = "x"` where a table belongs, reaches
+`build_taxonomy`, which calls `.get` on the string and raises
+`AttributeError: 'str' object has no attribute 'get'`. The review drove it
+twice through `active_taxonomy.load` on a disposable library, and the same
+copy raises the same on `main` without U247's memo, so it predates this unit.
+The memo did not change it: a raise is never remembered, so it raises on
+every call as before.
+
+**Measured cost.** Driven on a disposable copy only. A person who hand edits
+their active copy into this shape is shown a traceback, reported as an
+internal defect, where the refusal would name the copy and tell them to run
+setup. The other shape checks in `build_taxonomy` were not swept.
+
+**Closes when:** `build_taxonomy` checks that each top level key it reads is
+the type it reads it as, and reports a wrong type as one of its problems, with
+a test that `tree = "x"` refuses `config-unusable` through
+`active_taxonomy.load`. Ledger only.
+
+---
+
+## R-1565. One remembered taxonomy is shared by every caller of the same text, and its ten index fields are plain dicts a caller could write through
+
+**Found:** at the review of #676, U247, 2026-11-12.
+
+**The mechanism.** Since U247, `taxonomy.load_taxonomy` hands every caller
+that passes the same text the one `Taxonomy` the first parse built. The
+dataclass is frozen, but ten of its fields are plain dicts: the seven indexes
+(`_by_id`, `_by_display`, `_routing_alias`, `_tagging_alias`,
+`_former_places`, `_split_places`, `_vocabulary`), `BucketEnergy.band_display`,
+`SubBySource.map` and `FamilyAffinity.supergroup`. A caller that wrote into
+one would change what every later caller of that text is answered, for the
+rest of the process. Before U247 each load built its own object, so a write
+like that reached only the caller that made it. The review drove the shape:
+after `first._routing_alias[genre] = "deep_house"`, the next load of the same
+text answered `deep_house` where a fresh parse answers `None`.
+
+**Measured cost.** None reached. Three candidates were driven and none
+produces it: an AST sweep of `src`, `tests` and `scripts` for writes through
+those fields (none), a sweep of `src` for writes through a local name bound to
+one of them (two such names, no write), and the whole suite under an oracle
+that compared every remembered answer with a fresh parse at the end of the
+test that received it (18,320 tests, 12,048 loads, no answer changed).
+
+**Closes when:** the ten fields are read only by construction, as
+`MappingProxyType` over each, as `sync/pair_merge.py` already does, with a
+test that a write through one raises. Not done here because a `Taxonomy` might
+cross a process boundary through `core/pool.py`, which pickles its work, and
+a mapping proxy does not pickle; that path was not measured. Ledger only.
+
+---
+
+## R-1566. The index reader's memory trusts the volume's change time, which a FAT or exFAT volume may not keep, so a same size rewrite that puts the old time back while a pass runs is answered from memory
+
+**Found:** at the review of #678, U249, 2026-11-12.
+
+**The mechanism.** `match._read_from_disk` answers an unchanged file from
+memory for the rest of the process when its path, name template, size,
+modification time, change time, inode and device are all as they were and its
+modification time is at least two seconds older than the entry. On APFS and on
+Linux every write and every `os.utime` moves the change time, so a rewrite is
+always read again. Where a volume reports no change time of its own (FAT and
+exFAT under some drivers report the modification time or the creation time in
+its place), a tool outside Cratekit that rewrites a library file to the same
+size and puts its old modification time back, while one sync pass is running,
+would be answered with the file's old tags until the process ends. The window
+also reads the volume's clock against the machine's, which a network volume
+need not share.
+
+**Measured cost.** Not driven: no producer inside Cratekit restores a time
+(round one found no `os.utime` in `src`, and every `copy2` lands where the
+change time moves), and the live library is recorded on APFS
+(`docs/cutover.md`). The window and every stamp field are pinned by
+`tests/test_library_reads_remembered.py`.
+
+**Closes when:** the change time on the volume the live library uses is read
+on the Mac, or the reader keys on a content digest of the tag block. Ledger
+only.
+
+---
+
+## R-1567. U249's two review rounds ran on Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #678, U249, 2026-11-12.
+
+**The mechanism.** Both review rounds of U249, the library index reader that
+remembers each unchanged file for the process, were refused by Fable on its
+usage limit and run by Opus 5.5 at high effort under the same reviewer
+definition and merge bar, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None measured. The review a card is meant to have is
+Fable's, and it has not been run on this range.
+
+**Closes when:** Fable at high effort reviews U249's merged range against the
+merge bar and its findings are filed. Ledger only.
+
+---
+
+## R-1568. The U252 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #681, U252, 2026-11-12.
+
+**The mechanism.** Fable's review of #681 was refused on its usage limit, so
+by Phillip's rule of 2026-11-08 Opus 5.5 at high effort ran the
+`fable-reviewer` definition on the branch under the same merge bar and round
+cap. Its one round found nothing BLOCKING, and the fixes touched only docs,
+so there was no second round. The merged range has not had the reviewer the
+cloud lane names.
+
+**Measured cost.** None driven. The range changes tests and docs only; the
+round ran the full suite with a recorder on the ladder's default sleep and
+found no test in the suite still sleeping it.
+
+**Closes when:** Fable reviews the merged range of U252 at high effort and its
+findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1569. crate sync twins waits a whole retry ladder on a playlist the provider cannot list, at the plan and again at the continuation
+
+**Found:** at the build of #681, U252, 2026-11-12.
+
+**The mechanism.** `crate sync twins` reads each downloaded account playlist
+through `label.cli._listed`, whose window read pages through
+`listing.fetch_with_retry`. A provider failure that is not a Cratekit
+refusal declaring itself not retryable, a timeout or a server error, climbs
+the whole ladder, 1, 2, 4, 8 and 16 seconds, before the playlist is left and
+named. The plan reads every playlist, and the continuation after the
+approval gate plans again to hold the write to the approved digest, so a
+playlist the provider cannot list costs one ladder at the plan and another
+at the continuation. The ladder is correct for what it is given: a timeout
+can succeed on the next attempt, and a refusal that cannot
+(`ListingNotPaginated`, an expired session refused `credential-missing`)
+already leaves it at once, which
+`tests/test_adapter_listing.py::test_a_refusal_that_says_waiting_cannot_help_is_not_slept_on`
+pins. The twins test that hands the verb an expired session asserts the
+refusal and not the ladder, so it passes with that exclusion reverted. What is open is a product question, not a defect:
+whether a backfill that already leaves a playlist it could not read and
+reads it again next run should climb the ladder for it, and whether the
+continuation should read again a playlist the plan already left.
+
+**Measured cost.** On the tree, before U252 faked the sleep in the tests,
+`tests/test_sync_twins.py` measured 31 seconds per reading of one broken
+playlist (31.18, 62.33 and 93.55 seconds for one, two and three readings).
+A DJ whose provider times out on one playlist waits about 31 seconds at the
+plan and 31 more after approving, per broken playlist; nothing is written
+wrongly and the other playlists' twins are made. Not driven against the live
+provider.
+
+**Closes when:** Phillip decides whether the twins backfill should read a
+playlist once without the ladder, or the continuation reuse the plan's
+refusal for a playlist it left, and a card builds the answer. Ledger only:
+it costs time, not data, truth or a finishing workflow, so it meets none of
+the board bar's four costs. U252's card left this question out of scope.
