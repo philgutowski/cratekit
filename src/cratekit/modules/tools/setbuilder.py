@@ -260,16 +260,24 @@ FileLister = Callable[[Path], Iterable[Path]]
 
 
 def read_index_tags(path: Path) -> dict[str, str | None]:
-    """Read the index fields from one file through the shared tag reader.
+    """Read the index fields from one file through ONE container open.
 
-    Every field goes through ``core.tags.read_tag``, which classifies the
-    container once and reads the dialect's own key. A single unreadable file
-    yields all-None rather than aborting the scan, which is safe here only
-    because the caller asserts the mount precondition first: with the volume
-    absent every file reads as untagged, and a whole library of untagged tracks
-    is a perfectly valid input that produces a silently wrong answer.
+    All of :data:`INDEX_FIELDS` go through one ``core.tags.read_tags`` call,
+    which opens the file once and reads each field under the dialect's own
+    key. Each field answers exactly what ``core.tags.read_tag`` answers for it,
+    because that reader is one field of this one: an absent field, an
+    undecodable one (its neighbours still read), a container the tag module
+    does not handle (nothing is opened) and a file that cannot be opened all
+    read as None. Until U266 this asked ``read_tag`` once per field, and the
+    first walk of a library opened every file seven times.
+
+    A single unreadable file yields all-None rather than aborting the scan,
+    which is safe here only because the caller asserts the mount precondition
+    first: with the volume absent every file reads as untagged, and a whole
+    library of untagged tracks is a perfectly valid input that produces a
+    silently wrong answer.
     """
-    return {name: tags.read_tag(path, name) for name in INDEX_FIELDS}
+    return tags.read_tags(path, INDEX_FIELDS)
 
 
 def iter_audio(root: Path) -> Iterator[Path]:
