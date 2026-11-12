@@ -190,7 +190,7 @@ jobs:
           /tmp/cold/bin/crate --help
           # Since U248 crate --help imports no verb module, so the eager parser
           # is what proves every landed verb's module imports on a cold install.
-          /tmp/cold/bin/python -c "from cratekit import cli; cli.build_parser(eager=True)"
+          /tmp/cold/bin/python -c "from cratekit import cli; from cratekit.core import profiles; cli.build_parser(membership=profiles.resolve('full'), eager=True)"
       # The vendored downloader is the half of the install that no index can
       # supply (KTD4), so it is the half most likely to be missing from a wheel
       # and least likely to be noticed: nothing fails until a user tries to

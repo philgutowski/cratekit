@@ -255,6 +255,13 @@ class _Unbuilt:
         An import that fails for any reason but a missing extra propagates, as
         it did from the eager loop, so a defect of our own fails loudly. It
         fails for its own verb only now, and that is the change U248 makes.
+
+        A BUILDER'S OWN ``ArgumentError`` LEAVES AS A ``RuntimeError``. This
+        runs inside argparse's parse, which reads an ``ArgumentError`` as the
+        user's mistake and exits 2 with a usage line; the eager loop raised it
+        as the defect it is, and so does this. And the verb counts as built
+        only once its builder returned, so a builder that failed part way is
+        never handed on as a verb with half its arguments.
         """
         if self.built:
             return
@@ -265,9 +272,14 @@ class _Unbuilt:
                 raise
             self._stub(exc)
             return
-        self.built = True
         self.parser.set_defaults(_entry=self.entry, _stub=None)
-        getattr(module, self.entry.builder)(self.parser, self.entry)
+        try:
+            getattr(module, self.entry.builder)(self.parser, self.entry)
+        except argparse.ArgumentError as exc:
+            raise RuntimeError(
+                f"the builder of {self.entry.name} in {self.entry.module} is defective: {exc}"
+            ) from exc
+        self.built = True
 
     def ask_for_listing(self) -> None:
         """Settle the listing line, importing only when the line could differ.

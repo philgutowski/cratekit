@@ -116,6 +116,7 @@ def test_the_version_and_the_top_level_help_load_no_verb_module(argv):
     assert result["code"] == 0
     assert result["walked"] > 50, "the registry walked too few verbs to measure anything"
     assert result["verbs"] == [], f"crate {' '.join(argv)} loaded {result['verbs']}"
+    assert result["leaked"] == [], result["leaked"]
 
 
 def test_doctor_help_loads_the_doctor_and_only_what_the_doctor_itself_imports():
@@ -131,6 +132,7 @@ def test_doctor_help_loads_the_doctor_and_only_what_the_doctor_itself_imports():
     own = _closure(registry.entry("doctor").module)["verbs"]
     assert registry.entry("doctor").module in result["verbs"]
     assert result["verbs"] == own, f"loaded beyond the doctor's own imports: {result['verbs']}"
+    assert result["leaked"] == own, "the run itself, not the probe's setup, loaded the doctor"
     for name in NOT_DOCTORS:
         assert name not in result["verbs"], f"crate doctor --help loaded {name}"
     assert result["cratekit"] < DOCTOR_HELP_CEILING, result["cratekit"]
@@ -326,6 +328,41 @@ def test_a_broken_module_fails_its_own_verb_and_leaves_every_other_one_working()
     with pytest.raises(ImportError) as raised:
         cli.build_parser(entries, membership=membership).parse_args(["analyze", "broken"])
     assert raised.value.name == "cratekit.this_module_does_not_exist"
+
+
+def test_a_module_that_raises_anything_at_import_is_listed_plainly_and_raises_for_its_verb():
+    """The listing's swallow is not only for ImportError: any failure keeps the plain line."""
+    entries = [
+        _with_extra("analyze.odd", "tests.cli_fixtures.raises_at_import"),
+        _fake("analyze.fine", "tests.cli_fixtures.plain"),
+    ]
+    membership = profiles.resolve("full")
+    listed = _help(cli.build_parser(entries, membership=membership), ["analyze", "--help"])
+    assert "the analyze.odd verb" in listed and "requires" not in listed
+    assert "the analyze.fine verb" in listed
+    with pytest.raises(ValueError, match="a defect of our own"):
+        cli.build_parser(entries, membership=membership).parse_args(["analyze", "odd"])
+
+
+def test_a_defective_builder_is_a_defect_and_never_a_usage_error():
+    """argparse reads an ArgumentError inside its parse as the user's mistake.
+
+    The eager loop raised a builder's own ArgumentError as a traceback, so the
+    lazy one must too, rather than exit 2 with a usage line that blames the
+    person who typed a correct command.
+    """
+    entries = [_fake("status", "tests.cli_fixtures.conflicting_builder")]
+    membership = profiles.resolve("full")
+    parser = cli.build_parser(entries, membership=membership)
+    with pytest.raises(RuntimeError, match="builder of status") as raised:
+        parser.parse_args(["status"])
+    assert isinstance(raised.value.__cause__, argparse.ArgumentError)
+    # Built only once the builder returned, so asking again fails the same
+    # way rather than handing on a verb with half its arguments.
+    with pytest.raises(RuntimeError, match="builder of status"):
+        parser.parse_args(["status"])
+    with pytest.raises(argparse.ArgumentError):
+        cli.build_parser(entries, membership=membership, eager=True)
 
 
 def test_the_eager_parser_still_raises_a_broken_module_at_construction():
