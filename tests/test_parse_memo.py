@@ -318,8 +318,9 @@ def test_shared_trees_answer_alike_in_either_order_and_as_trees_of_their_own():
 # so: the test stops at its first pin, the kebab literals, so it proves that
 # helper reads what it was handed and no other. A helper further down reading
 # the package again for itself sees the same files on the real tree and passes
-# here; the parse count above is what catches that one, since a second reading
-# is a second set of parses.
+# here. The parse count above catches that for the helpers it sweeps: it hands
+# them a slice of the package, so one reading the whole package for itself
+# parses more files than it was handed.
 
 
 def test_the_at_risk_population_names_a_planted_module(monkeypatch):
