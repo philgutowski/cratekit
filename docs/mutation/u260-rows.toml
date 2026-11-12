@@ -1,0 +1,249 @@
+name = "u260"
+pass_kind = "light"
+
+[[rows]]
+id = "F1_fetch_never_answers_from_memory"
+description = "remembering: never look the address up, so every file asks the host again, the behaviour before the unit"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''            data = held.get(url)
+            if data is not None:
+                held.move_to_end(url)
+                return data
+        data = fetch_image(url)'''
+new = '''            data = None
+            if data is not None:
+                held.move_to_end(url)
+                return data
+        data = fetch_image(url)'''
+
+[[rows]]
+id = "F2_empty_answer_remembered"
+description = "remembering: drop the empty answer check, so an empty answer is kept and handed to the next file without a request"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''        if not data or (admit is not None and not admit(data)):'''
+new = '''        if data is None or (admit is not None and not admit(data)):'''
+
+[[rows]]
+id = "F3_admission_ignored"
+description = "remembering: drop the admission, so bytes that are not a picture are remembered and never asked for again"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''        if not data or (admit is not None and not admit(data)):'''
+new = '''        if not data:'''
+
+[[rows]]
+id = "F4_binder_admits_everything"
+description = "for_images: build the shared fetch with no admission, so the shipped worker remembers undecodable bytes"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''        _images.append(remembering(default_image_fetch(), admit=art.decodes))'''
+new = '''        _images.append(remembering(default_image_fetch()))'''
+
+[[rows]]
+id = "F5_binder_builds_per_call"
+description = "for_images: build a fresh remembering fetch on every call, so the worker's per item binder call forgets every picture"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''    if not _images:
+        _images.append(remembering(default_image_fetch(), admit=art.decodes))
+    return _images[0]'''
+new = '''    return remembering(default_image_fetch(), admit=art.decodes)'''
+
+[[rows]]
+id = "F6_fetch_bound_off_by_one"
+description = "remembering: keep one entry more than the bound"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''            while len(held) > bound:'''
+new = '''            while len(held) > bound + 1:'''
+
+[[rows]]
+id = "F7_fetch_evicts_newest"
+description = "remembering: evict the newest entry instead of the least recently used"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''                held.popitem(last=False)'''
+new = '''                held.popitem(last=True)'''
+
+[[rows]]
+id = "F8_fetch_hit_not_refreshed"
+description = "remembering: a hit no longer refreshes its entry, so the memory is first in first out"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''            if data is not None:
+                held.move_to_end(url)
+                return data'''
+new = '''            if data is not None:
+                return data'''
+
+[[rows]]
+id = "F9_fetch_memory_unbounded"
+description = "IMAGE_MEMORY: a hundred entries, near enough unbounded for a sweep"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''IMAGE_MEMORY = 4'''
+new = '''IMAGE_MEMORY = 100'''
+
+[[rows]]
+id = "F10_fetch_memory_one"
+description = "IMAGE_MEMORY: one entry, so two interleaved albums ask on every file"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''IMAGE_MEMORY = 4'''
+new = '''IMAGE_MEMORY = 1'''
+
+[[rows]]
+id = "D1_decodes_always"
+description = "decodes: answer True for any bytes, so the shipped admission admits what is not a picture"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''    return _measure(data) is not None'''
+new = '''    return True'''
+
+[[rows]]
+id = "E1_engine_encodes_per_file"
+description = "_art_embedded: call the plain encoder again, so every file encodes the same bytes"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py"]
+old = '''        cdj = art.to_cdj_jpeg_remembered(data)'''
+new = '''        cdj = art.to_cdj_jpeg(data)'''
+
+[[rows]]
+id = "E2_key_drops_size"
+description = "to_cdj_jpeg_remembered: key without the edge, so a picture asked for at another size is the first size's"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''    key = (hashlib.sha256(data).digest(), len(data), size, max_bytes)'''
+new = '''    key = (hashlib.sha256(data).digest(), len(data), None, max_bytes)'''
+
+[[rows]]
+id = "E3_key_drops_cap"
+description = "to_cdj_jpeg_remembered: key without the byte cap"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''    key = (hashlib.sha256(data).digest(), len(data), size, max_bytes)'''
+new = '''    key = (hashlib.sha256(data).digest(), len(data), size, 0)'''
+
+[[rows]]
+id = "E4_key_by_length_only"
+description = "to_cdj_jpeg_remembered: key on the length without the digest, so two pictures of one length share an encode"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''    key = (hashlib.sha256(data).digest(), len(data), size, max_bytes)'''
+new = '''    key = (b"", len(data), size, max_bytes)'''
+
+[[rows]]
+id = "E5_key_digest_of_a_prefix"
+description = "to_cdj_jpeg_remembered: digest only the first kilobyte, so two pictures sharing a header share an encode"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''    key = (hashlib.sha256(data).digest(), len(data), size, max_bytes)'''
+new = '''    key = (hashlib.sha256(data[:1024]).digest(), len(data), size, max_bytes)'''
+
+[[rows]]
+id = "E6_encode_never_remembered"
+description = "to_cdj_jpeg_remembered: never answer from memory"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''        made = _remembered.get(key)
+        if made is not None:'''
+new = '''        made = None
+        if made is not None:'''
+
+[[rows]]
+id = "E7_encode_bound_off_by_one"
+description = "to_cdj_jpeg_remembered: keep one entry more than the bound"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''        while len(_remembered) > COVER_MEMORY:'''
+new = '''        while len(_remembered) > COVER_MEMORY + 1:'''
+
+[[rows]]
+id = "E8_encode_hit_not_refreshed"
+description = "to_cdj_jpeg_remembered: a hit no longer refreshes its entry, so the memory is first in first out"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''        if made is not None:
+            _remembered.move_to_end(key)
+            return made'''
+new = '''        if made is not None:
+            return made'''
+
+[[rows]]
+id = "E9_encode_evicts_newest"
+description = "to_cdj_jpeg_remembered: evict the newest entry instead of the least recently used"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''            _remembered.popitem(last=False)'''
+new = '''            _remembered.popitem(last=True)'''
+
+[[rows]]
+id = "E10_encode_memory_unbounded"
+description = "COVER_MEMORY: a hundred entries"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''COVER_MEMORY = 4'''
+new = '''COVER_MEMORY = 100'''
+
+[[rows]]
+id = "E11_reset_forgets_nothing"
+description = "reset_cache: clear nothing, so one test's encode answers the next test's"
+file = "src/cratekit/core/art.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''    with _remembered_lock:
+        _remembered.clear()'''
+new = '''    with _remembered_lock:
+        pass'''
+
+[[rows]]
+id = "F11_reset_images_forgets_nothing"
+description = "reset_images: drop nothing, so a shared fetch built in one test outlives it"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_catalogue_searcher.py", "tests/test_tagging_engine.py"]
+old = '''    """Forget the shared image fetch and every picture it remembered."""
+    _images.clear()'''
+new = '''    """Forget the shared image fetch and every picture it remembered."""'''
+
+[[rows]]
+id = "E12_key_digest_of_64_kb"
+description = "to_cdj_jpeg_remembered: digest only the first 64 KB, the prefix round two found surviving the first header test"
+file = "src/cratekit/core/art.py"
+surface = "user"
+tests = ["tests/test_album_cover_once.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_art.py"]
+old = '''    key = (hashlib.sha256(data).digest(), len(data), size, max_bytes)'''
+new = '''    key = (hashlib.sha256(data[:65536]).digest(), len(data), size, max_bytes)'''
+
+[[dropped]]
+id = "E13_key_drops_length"
+description = "to_cdj_jpeg_remembered: key without the length"
+reason = "an equivalent mutant: the length is redundant beside a SHA 256 digest of every byte, measured as zero in review round one"
+
+[[dropped]]
+id = "C1_conftest_reset_before"
+description = "the autouse fixture's reset before each test"
+reason = "a test fixture, not source; review round one measured it covered by the reset after each test"
