@@ -505,3 +505,35 @@ def test_a_degraded_provider_refuses_though_the_newest_held_release_names_the_la
     assert envelope["cause"]["reason"] == "label-sync-unlisted"
     assert "release n0, answered unconfirmed" in check(envelope, f"reverified.{SLUG}")["detail"]
     assert session.reads == ["m0", "n0"]
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. R-1634: the release re-verified is read from the provider, never its line
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def every_line_shape(cfg: config.Config, monkeypatch, session: Session, *, also: list | None = None):
+    """Three new releases with no line over four held ``Rawax`` ones, and no held one lineless."""
+    held = [*(also or []), *rawax()]
+    new = [lineless(f"m{n}") for n in range(3)]
+    fake = bind(monkeypatch, [*new, *held, *others(112)], session=session)
+    asked(cfg, *(one.id for one in held))
+    return fake
+
+
+def test_a_degraded_provider_refuses_though_every_held_line_names_the_label(
+    installed, monkeypatch
+):
+    """The defect: on ``main`` the held ``a1`` was judged from its line and the label said nothing new."""
+    session = Session({"a1": "2025 Rawax"}, degraded=True)
+    every_line_shape(installed, monkeypatch, session)
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unlisted"
+    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
+    assert "release a1, answered unconfirmed (no label credit)" in reverified
+    assert "read again from the provider" in reverified
+    # THE PROVIDER WAS READ FOR THE HELD RELEASE, though its line names the label.
+    assert session.reads == ["m0", "m1", "m2", "a1"]
