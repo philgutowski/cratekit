@@ -19,9 +19,9 @@ WHAT IS KEPT is what the plan reads off a release and nothing else: each
 track's identifier, whether the provider will play it, and its artist and
 title, and the year the provider dates the release by. The artist and title
 are what a removed track is recognised by (U243), so a read kept before they
-were kept is read again rather than judged without them. A release the provider no longer has is the
-provider answering, and is kept as gone. A read that failed is not an answer
-and is never kept.
+were kept is read again rather than judged without them. A release the
+provider no longer has is the provider answering, and is kept as gone. A read
+that failed is not an answer and is never kept.
 
 WRITTEN AS IT GOES. :meth:`KeptReads.flush` writes the document whole and
 atomically, and the reader calls it every :data:`FLUSH_EVERY` new reads and on
