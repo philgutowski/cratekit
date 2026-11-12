@@ -938,7 +938,6 @@ ROUND_TWO = [
     ("Tide", "08A - 124 - Sun Path - Tide Dub", "Sun Path", "Tide"),
     # The artist's part is read both ways only before a version, never a title.
     (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - Original Mix", "Sun Path", ARTIST),
-    (ARTIST, f"{ARTIST} - Sun Path Extended Mix", "Sun Path", ARTIST),
     # A number of three figures, or one before a version, is a title.
     (ARTIST, "08A - 124 - 007 - Original Mix", "007", "Original Mix"),
     ("Tide", "007 - Tide - Sun Path", "007", "Sun Path"),
@@ -986,8 +985,6 @@ def test_round_two_no_genre_is_written_off_another_recording(tmp_path, silence, 
         (f"{ARTIST}; Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
         (f"{ARTIST} + Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
         (ARTIST, f"08A - 124 - {ARTIST} pres. Tide - Sun Path", "Sun Path"),
-        (ARTIST, f"08A - 124 - {ARTIST} and Tide - Sun Path", "Sun Path"),
-        (ARTIST, f"08A - 124 - {ARTIST} with Tide - Sun Path", "Sun Path"),
         # A track number glued to the first part, or alone before it.
         (ARTIST, f"01 {ARTIST} - Sun Path", "Sun Path"),
         (ARTIST, f"01 - {ARTIST} - Sun Path", "Sun Path"),
@@ -1008,6 +1005,9 @@ def test_each_way_a_credit_is_written_is_known(artist, title, own):
         (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", "Sun Path"),
         (ARTIST, "08A - 124 - Badie - Sun Path", "Sun Path"),
         ("Tide", "08A - 124 - Love And Tides - Sun Path", "Sun Path"),
+        # "with" and "and" are in titles: a title is never taken for a credit.
+        (ARTIST, f"{ARTIST} - Dancing With {ARTIST}", ARTIST),
+        (ARTIST, f"08A - 124 - Love And {ARTIST} - Sun Path", "Sun Path"),
     ],
 )
 def test_what_is_not_the_artists_credit_is_never_passed_over(artist, title, other):

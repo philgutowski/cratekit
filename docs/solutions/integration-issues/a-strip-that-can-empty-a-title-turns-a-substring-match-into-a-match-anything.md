@@ -82,13 +82,18 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   as a name writes it, not as the tag does: round one of the review drove a
   collaboration ("Artist & Tide"), "The", an accent, the naming verb's
   "[MP3]" marker and a track number before the artist, each losing the
-  file's own row once the artist test was word for word; one of the artist's
-  names as a run of the part's words, accents folded, is the test. And some
+  file's own row once the artist test was word for word. But a part merely
+  holding the artist's name is a title, "Riding The Tide" by Tide or
+  "Bernard Badie Theme": round two drove that looser test to wrong genres.
+  The test is a credit, the part's names split on the joins a credit is
+  written with ("&", ",", "x", "feat"), one of them the artist's name, accents
+  folded; "and" and "with" join nothing, since titles hold them. And some
   shapes no rule tells apart without a list: "Artist - Vocal Mix" is a title
   "Vocal Mix" or a self titled track's version, so it is read both ways, as
   before, rather than either way alone, which lost a row on page order. A
   differential that wraps titles only in the exact artist string is a
-  measurement on a fixture: wrap them in the artist as names write it. Bound the head
+  measurement on a fixture: wrap them in the artist as names write it, and
+  put the artist's name inside titles too. Bound the head
   to the shapes the naming verb writes (a key, a tempo, or one of each,
   `_head_end`): an unbounded run of numbers ate "909" of "08A - 124 - 909 -
   Artist - Album" and moved the title onto the album. And the artist is the

@@ -325,7 +325,8 @@ crate route pending
   recording word for word, once the version, a featured artist and the
   `KEY - BPM` head are set aside; a file's title is read from where it
   starts, after the head and after a part crediting the file's artist (alone,
-  with others, or with "The" or an accent written otherwise), so the album
+  with others joined by "&", "," or "x", or with "The" or an accent written
+  otherwise; a title that merely holds the artist's name is a title), so the album
   or the artist written after it in a title tag or in the name of a file with
   no title tag is never read as its title, and neither is a version, save
   that "Artist - X" with X ending in a version is read both as a title X and

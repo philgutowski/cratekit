@@ -844,7 +844,9 @@ _CREDIT_JOIN = re.compile(r"[,&/;+]")
 
 #: The words that join two names in one credit as a name or a tag writes it:
 #: "Aurora Bloom x Tide", "vs", "pres", and a feature credit's words. "with"
-#: and "and" are not here: they are in titles and names, "Stay With Me".
+#: and "and" are not here: a name holds them, "Above and Beyond", and so does
+#: a title, "Dancing With Aurora Bloom", which read as a credit would pass its
+#: title over for the artist's (round two of R-1636's review).
 _CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents"}) | _FEATURING
 
 
@@ -884,10 +886,15 @@ def _artist_names(artist: str) -> frozenset[tuple[str, ...]]:
     return frozenset(names)
 
 
+#: A track number written as a dash part of its own: "01" to "09". A part of
+#: three figures, "007", is a title.
+_LONE_TRACK_NUMBER = re.compile(r"0[0-9]")
+
+
 def _a_track_number(part: str) -> bool:
     """Whether a dash part is a track number alone, "01" of "01 - Artist -
-    Title": zero padded, as :data:`_TRACK_NUMBER`."""
-    return _TRACK_NUMBER.fullmatch(part.strip()) is not None
+    Title"."""
+    return _LONE_TRACK_NUMBER.fullmatch(part.strip()) is not None
 
 
 def _runs_in(inner: tuple[str, ...], outer: tuple[str, ...], *, initials: bool = False) -> bool:
@@ -906,29 +913,31 @@ def _runs_in(inner: tuple[str, ...], outer: tuple[str, ...], *, initials: bool =
 
 
 def _names_the_artist(part: str, names: frozenset[tuple[str, ...]], *, first: bool) -> bool:
-    """Whether a dash part of the file's title credits the searched artist.
+    """Whether a dash part of the file's title is the searched artist's credit.
 
-    It does when one of the artist's names (:func:`_artist_names`) is a run of
-    its words, or its words a run of one of them, accents aside: "[MP3]
-    Bernard Badie", "Bernard Badie and Tide" and "The Black Madonna" credit
-    "Bernard Badie" and "Black Madonna", and "Ame" credits "Âme". Whole words,
-    never characters, and only together, so "Bernard Smith" is not "Bernard
-    Badie", and a part of one word inside a longer name is a title, "Badie".
-    A part of two words or more may write a name's word by its initial, "B.
-    Badie".
-    The first part of the title's body may open with a track number, "01
-    Bernard Badie - Title"; any later part that does is a title, never the
-    artist.
+    It is when it reads as a credit naming the artist: one of the names it
+    joins (:func:`_credited_names`) is one of the artist's names
+    (:func:`_artist_names`) word for word, accents aside, once a marker the
+    naming verb writes before it ("[MP3] ") is taken off: "Bernard Badie &
+    Tide", "[MP3] Bernard Badie", "The Black Madonna" and "Ame" credit
+    "Bernard Badie", "Black Madonna" and "Âme". Or its words,
+    two or more, are a run of one of the artist's names, an initial standing
+    for a word: "B. Badie". A title that holds the name is not its credit,
+    "Riding The Tide" or "Bernard Badie Theme" (round two of R-1636's review),
+    and a word of a name alone is a title, "Badie". The first part of the
+    title's body may open with a track number, "01 Bernard Badie - Title"; a
+    later part that does is a title, never the artist.
     """
-    words = tuple(_folded(word) for word in _words(part))
+    text = _LEADING_GROUPS.sub("", part)
+    words = _words(text)
     if first and len(words) > 1 and _TRACK_NUMBER.fullmatch(words[0]):
-        words = words[1:]
+        text = text.split(words[0], 1)[1]
     elif _numbered(words):
         return False
-    return bool(words) and any(
-        _runs_in(name, words) or (len(words) > 1 and _runs_in(words, name, initials=True))
-        for name in names
-    )
+    folded = tuple(_folded(word) for word in _words(text))
+    if names & _credited_names(text):
+        return True
+    return len(folded) > 1 and any(_runs_in(folded, name, initials=True) for name in names)
 
 
 #: The tempos a head carries before any key, as the naming verb writes them: a
@@ -996,7 +1005,11 @@ def _title_starts(
     head = _head_end(parts)
     _, tail_start = _head_parts(parts)
     end = max(tail_start, head + 1)
-    while head < end - 1 and _a_track_number(parts[head]):
+    while (
+        head < end - 1
+        and _a_track_number(parts[head])
+        and _names_a_title(_words(_title_core(parts[head + 1])[0]), tail=True, head=False)
+    ):
         head += 1
     names = _artist_names(artist)
     numbers = frozenset(index for index in range(head, end - 1) if _a_track_number(parts[index]))
@@ -1027,8 +1040,10 @@ def _title_starts(
     # Two parts crediting the artist are "Title - Artist" for a self titled
     # track, or "Artist - Title" for one titled as a credit writes the artist,
     # "Tide & Aurora Bloom - Aurora Bloom": the second is read too.
-    either = (head,) if title > head and head in artists else ()
-    if title == head and head + 1 in artists:
+    either = ()
+    if title > head and head in artists and _a_tail_to_shed(parts[title], searched=False):
+        either = (head,)
+    elif title == head and head in artists and head + 1 in artists:
         either = (head + 1,)
     return head, title, artists - {title}, numbers | frozenset(numbered), (title, *numbered, *either)
 
@@ -1090,7 +1105,7 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
                 continue
             core, exact = _title_core(part)
             found = {_words(core)} if exact else _shed(_words(core)) | _shed(_words(part))
-            if searched and not exact and _numbered(_words(core)):
+            if searched and not exact and _numbered(_words(parts[first])):
                 found |= _shed(_words(core)[1:])
             lead = None if exact else _LEADING_GROUPS.match(core)
             bare = core[lead.end() :] if lead is not None else ""
