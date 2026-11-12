@@ -50644,3 +50644,51 @@ Six copies of one counter can drift apart in what they count.
 
 **Closes when:** one shared open counting fixture lives beside the container
 helpers and the six suites use it. Ledger only.
+
+---
+
+## R-1609. U265 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass over its merged range is owed
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** Round one of U265's review was refused on Fable's usage limit, so the same reviewer definition ran on Opus 5.5 at high effort, as the cloud lane's Models section allows. It found nothing blocking and five residuals, two closed in the branch and three filed beside this one.
+
+**Measured cost.** None driven. The review that ran was the one the bar names, on a different model.
+
+**Closes when:** Fable reviews the merged range of U265 (the commits under `merge(u265)` on `main`) against METHOD's merge bar, and anything it finds is fixed or filed. Ledger only.
+
+---
+
+## R-1610. rapidfuzz's pure Python fallback splits a narrow string on U+0085 and U+00A0, so the sorted word pass disagrees with it on a raw unfolded token
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `match._sorted_words` splits a string whose characters are all below U+0100 on Python's whitespace minus U+0085 and U+00A0, which is what rapidfuzz's compiled scorer does. Under `RAPIDFUZZ_IMPLEMENTATION=python` the fallback splits on both, so for the query `a\xa0b\x1fc` against the choice `b a\x1fc` the shipped `token_sort_ratio` call offers the candidate and the new pass offers nothing. Two of U265's whitespace tests fail under the fallback.
+
+**Measured cost.** None reachable: `fold` leaves neither character in any recording token, which the review drove over every code point, and the shipped scorer equality test passes on every seed under the fallback. A cost needs a raw token and the fallback build together, and no producer of either was found.
+
+**Closes when:** the split asks which implementation rapidfuzz loaded, or the matcher refuses to run on the fallback, or the fallback's own split is measured equal. Ledger only.
+
+---
+
+## R-1611. LibraryIndex keeps its sorted recordings from the first approximate call, so a by_recording dict changed afterwards is scored stale
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `LibraryIndex.sorted_recordings` builds the recordings and their sorted words the first time the approximate pass asks and keeps them for the life of the index. The class is frozen, but `by_recording` is typed `Mapping` and a caller holding the dict it passed in could still add to it; the review added a recording to the dict after a first call and the pass did not offer it, where the shipped call did.
+
+**Measured cost.** None reachable: the one constructor in `src`, `index_paths`, builds a fresh dict and hands it over, and no code in `src` writes to `by_recording` afterwards (zero producers found by grep).
+
+**Closes when:** the index wraps its mappings read only at construction, or the cache checks the mapping's length before use. Ledger only.
+
+---
+
+## R-1612. The dependency allows any rapidfuzz from 3.0, and the width dependent whitespace the sorted word pass copies was measured on 3.14 only
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `pyproject.toml` asks for `rapidfuzz>=3.0`. U265's `_sorted_words` copies the compiled scorer's word split, which differs by string width, and that split was measured over every code point on 3.14.6, the version this tree installs. An older or newer release that splits differently, and above all one that did not split on U+001F, which joins every recording token, would move approximate answers.
+
+**Measured cost.** Unmeasured: no other version was installed and none was downloaded. U265's whitespace and whole matrix tests would fail on such an install, so a difference would be loud in the suite rather than silent in a run.
+
+**Closes when:** the floor is raised to the measured release, or the split is measured on the floor release too. Ledger only.
