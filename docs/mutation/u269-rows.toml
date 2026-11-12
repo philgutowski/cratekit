@@ -1,0 +1,91 @@
+name = "u269"
+pass_kind = "light"
+
+# U269 removes lxml from the slim core and adds two guards in
+# tests/test_packaging.py. A small card with no path that writes or deletes, so
+# the table is the static registry size: the two new guards, each driven by the
+# regression it names, and a sample of the existing slim core and export reader
+# guards the brief says stay as they are.
+
+[[rows]]
+id = "M1_lxml_declared_again"
+description = "pyproject.toml: declare lxml in the slim core again, which nothing under src imports"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+'''
+new = '''    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+    "lxml>=5.0",           # rekordbox XML parsing
+'''
+
+[[rows]]
+id = "M2_unused_dependency_by_another_import_name"
+description = "pyproject.toml: declare python-dateutil in the core, installed here and imported as dateutil, which nothing under src imports"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+'''
+new = '''    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+    "python-dateutil>=2.8",
+'''
+
+[[rows]]
+id = "M3_only_import_hidden_from_the_tree"
+description = "acquire/bandcamp.py: the one import of curl_cffi becomes a computed name, so no import under src names it"
+file = "src/cratekit/acquire/bandcamp.py"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''        from curl_cffi import requests as curl_requests  # noqa: PLC0415 - the network seam
+'''
+new = '''        curl_requests = __import__("".join(["curl", "_cffi.requests"])).requests
+'''
+
+[[rows]]
+id = "M4_comment_names_the_missing_file"
+description = "pyproject.toml: the slim core comment names tests/test_slim_core.py again, a file that does not exist"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''# tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency
+# fails the build'''
+new = '''# tests/test_slim_core.py
+# fails the build'''
+
+[[rows]]
+id = "M5_comment_names_a_missing_function"
+description = "pyproject.toml: the slim core comment names a test function test_packaging.py does not define"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''# tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency
+# fails the build'''
+new = '''# tests/test_packaging.py::test_slim_core_is_slim
+# fails the build'''
+
+[[rows]]
+id = "M6_heavy_dependency_in_the_core"
+description = "pyproject.toml: declare numpy in the slim core, the existing slim core guard's case"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+'''
+new = '''    "rapidfuzz>=3.0",      # three-state match scoring (R11)
+    "numpy>=1.24",
+'''
+
+[[rows]]
+id = "M7_match_engine_binds_lxml"
+description = "acquire/match.py: bind lxml.etree under a branch that never runs, the export reader guard's lxml case, which stays as it is"
+file = "src/cratekit/acquire/match.py"
+surface = "maintainer"
+tests = ["tests/test_match_states.py"]
+old = '''import hashlib
+'''
+new = '''import hashlib
+
+if False:
+    import lxml.etree  # noqa: F401
+'''
