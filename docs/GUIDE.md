@@ -968,7 +968,10 @@ crate master /path/to/REC001.wav /path/to/REC002.wav --lufs -16 --output-dir /pa
 ```
 
 `setbuild` ranks owned tracks compatible with the anchor in key and energy,
-offline. `master` joins a split recording's parts in the order given (named
+offline. It reads the library itself and never Cratekit's own state folder or
+the download staging folder, so a rehearsal's working copy or a download not
+yet filed is never an anchor or a pick; an anchor given inside either is
+refused, saying which. `master` joins a split recording's parts in the order given (named
 for the first part plus `_set`), levels it to `--lufs` (-14 by default) and
 writes `<name>_mastered.flac` beside it or in `--output-dir`. It never touches
 the source and refuses to replace a master without `--overwrite`.

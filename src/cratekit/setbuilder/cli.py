@@ -345,8 +345,9 @@ def named_anchor(text: str, index: Sequence[setbuilder.Track]) -> setbuilder.Tra
             "setbuild-anchor-not-indexed",
             f"no track named {text} is in the library index, so nothing can be "
             f"ranked against it. A file is indexed when it is audio under the "
-            f"library root and carries a Camelot key, from its own tag or from "
-            f"its name",
+            f"library root, outside Cratekit's own state folder and the download "
+            f"staging folder, and carries a Camelot key, from its own tag or "
+            f"from its name",
             steps=(
                 "check the artist and title, or pass the track's path instead",
                 "or, for a track you do not own, pass --unowned LABEL --key CODE",
@@ -585,7 +586,8 @@ def set_build(ctx) -> Envelope:
             "setbuild-anchor-not-indexed",
             f"{candidate} is not in the library index, so nothing can be ranked "
             f"against it. A file is indexed when it is audio under the library "
-            f"root and carries a Camelot key, from its own tag or from its name",
+            f"root, outside Cratekit's own state folder and the download staging "
+            f"folder, and carries a Camelot key, from its own tag or from its name",
             steps=(
                 "check the path names an audio file under the library root",
                 "analyze the track so it carries a Camelot key",
@@ -606,7 +608,10 @@ def excluded_folders(cfg: config.Config) -> tuple[Path, Path]:
     folder that happens to share either name is still the library's. A folder
     that does not sit under the root excludes nothing, which the walk decides.
     """
-    return (config.library_state_dir(cfg), Path(cfg.paths.download_staging))
+    # ``~`` EXPANDED, as every other reader of the staging path does: an
+    # unexpanded one names no folder, so it would exclude nothing and the
+    # staging copies would take the library files' places again.
+    return (config.library_state_dir(cfg), Path(cfg.paths.download_staging).expanduser())
 
 
 def _refuse_if_excluded(candidate: Path, cfg: config.Config, root: Path) -> None:
@@ -622,19 +627,24 @@ def _refuse_if_excluded(candidate: Path, cfg: config.Config, root: Path) -> None
     holder = setbuilder.Exclusion.under(root, folders).holder(candidate)
     if holder is None:
         return
-    state = holder == folders[0]
-    where = (
-        f"Cratekit's own state folder {holder}"
-        if state
-        else f"the download staging folder {holder}"
-    )
+    if holder == folders[0]:
+        where = (
+            f"Cratekit's own state folder {holder}, which holds Cratekit's "
+            f"working copies rather than the library's music"
+        )
+    else:
+        where = (
+            f"the download staging folder {holder}, which holds downloads "
+            f"not yet filed into the library"
+        )
     raise refuse(
         "setbuild-anchor-not-indexed",
-        f"{candidate} sits in {where}, which holds copies the library does not "
-        f"own, so it is never indexed and a set is not built around it",
+        f"{candidate} sits in {where}, so it is never indexed and a set is not "
+        f"built around it",
         steps=(
-            "pass the path of the same track where the library itself keeps it",
-            "or name it with --named TEXT",
+            "if the library holds the same track, pass its path there",
+            "if it does not yet, pass --unowned LABEL --key CODE to rank the "
+            "library against it",
         ),
         origin=("setbuilder", "cli"),
         detail={"anchor": str(candidate), "excluded_by": str(holder)},

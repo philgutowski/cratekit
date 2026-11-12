@@ -112,7 +112,12 @@ def test_the_excluded_walk_is_todays_walk_less_the_excluded_folders(tmp_path):
     for name in names:
         touch(root / name)
     elsewhere = touch(tmp_path / "outside" / "L.flac").parent
+    # A symlinked folder in a subtree rglob takes whole, and two in the
+    # folders walked by hand (the root, and Downloads, which holds an excluded
+    # folder): today's walk descends into none of them.
     (root / "Music" / "linked").symlink_to(elsewhere, target_is_directory=True)
+    (root / "linked-at-root").symlink_to(elsewhere, target_is_directory=True)
+    (root / "Downloads" / "linked").symlink_to(elsewhere, target_is_directory=True)
 
     today = list(setbuilder.iter_audio(root))
     expected = [p for p in today if not (under(p, state) or under(p, staging))]
@@ -125,6 +130,31 @@ def test_the_excluded_walk_is_todays_walk_less_the_excluded_folders(tmp_path):
     assert root / "Music" / "Downloads" / "incoming" / "H.flac" in walked
     assert root / ".cratekit-old" / "kept.flac" in walked
     assert root / "Downloads" / "incoming-other" / "E.flac" in walked
+    assert not [p for p in walked if "linked" in p.parts], "a symlinked folder was walked"
+
+
+def test_a_folder_the_walk_cannot_list_is_passed_over_as_today(tmp_path, monkeypatch):
+    """An unreadable folder on the hand walked path, as rglob passes one over.
+
+    The container reads every folder as root, so the refusal to list is
+    planted on ``os.scandir``, which today's walk and the hand walk both call.
+    """
+    root = tmp_path / "library"
+    touch(root / "Music" / "A.flac")
+    touch(root / "Downloads" / "B.flac")
+    touch(root / "Downloads" / "incoming" / "C.flac")
+    shut = root / "Downloads"
+    real_scandir = os.scandir
+
+    def scandir(path="."):
+        if Path(path) == shut:
+            raise PermissionError(13, "Permission denied", str(path))
+        return real_scandir(path)
+
+    monkeypatch.setattr(os, "scandir", scandir)
+    today = list(setbuilder.iter_audio(root))
+    assert today == [root / "Music" / "A.flac"], "the planted refusal did not reach rglob"
+    assert list(setbuilder.iter_audio(root, (shut / "incoming",))) == today
 
 
 def test_an_excluded_folder_is_matched_by_location_whatever_its_spelling(tmp_path):
@@ -134,8 +164,13 @@ def test_an_excluded_folder_is_matched_by_location_whatever_its_spelling(tmp_pat
     real = touch(root / "Music" / "A.flac")
     alias = tmp_path / "alias"
     alias.symlink_to(root, target_is_directory=True)
+    # A link outside the root straight to the staging folder: its own parents
+    # are not the root's, so only the resolved folder's are.
+    direct = tmp_path / "home-staging"
+    direct.symlink_to(root / "Downloads", target_is_directory=True)
 
     for spelling in (
+        direct,
         alias / "Downloads",
         root / "Music" / ".." / "Downloads",
         Path(str(root / "Downloads") + os.sep),
@@ -298,18 +333,26 @@ def assert_nothing_from(document: dict, folder: Path) -> None:
         (None, "state"),
         ("Cratekit State", "state"),
         (None, "staging"),
+        (None, "tilde-staging"),
     ],
-    ids=["state-folder", "renamed-state-folder", "download-staging"],
+    ids=["state-folder", "renamed-state-folder", "download-staging", "tilde-staging"],
 )
 def test_setbuild_ranks_around_the_library_file_and_names_no_copy(
-    configure, library, place, state_dirname, where
+    configure, library, place, monkeypatch, state_dirname, where
 ):
-    cfg = configure(state_dirname=state_dirname)
+    staging = None
+    if where == "tilde-staging":
+        # The staging path as a person may write it, under their home.
+        monkeypatch.setenv("HOME", str(library.parent))
+        staging = Path("~") / library.name / "Downloads"
+    cfg = configure(state_dirname=state_dirname, staging=staging)
     folder = (
         config.library_state_dir(cfg) / "local" / "rehearsals" / "X" / "staging"
         if where == "state"
-        else Path(cfg.paths.download_staging)
+        else Path(cfg.paths.download_staging).expanduser()
     )
+    if where == "tilde-staging":
+        assert str(cfg.paths.download_staging).startswith("~"), "the fixture lost its tilde"
     excluded = config.library_state_dir(cfg) if where == "state" else folder
     held = a_library_with_staging_copies(place, folder.relative_to(library))
 
@@ -366,6 +409,8 @@ def test_an_anchor_inside_an_excluded_folder_is_refused_naming_the_folder(
     assert words in cause["message"], cause["message"]
     assert named in cause["message"]
     assert "is not in the library index" not in cause["message"]
+    steps = " ".join(cause["remediation"]["steps"])
+    assert "--unowned" in steps, "a download not yet filed has no library path to pass"
 
 
 def test_an_unindexed_anchor_outside_every_excluded_folder_keeps_its_wording(
@@ -378,4 +423,17 @@ def test_an_unindexed_anchor_outside_every_excluded_folder_keeps_its_wording(
     cause = document["cause"]
     assert cause["reason"] == "setbuild-anchor-not-indexed"
     assert "is not in the library index" in cause["message"]
+    assert "outside Cratekit's own state folder and the download staging" in cause["message"]
     assert "excluded_by" not in cause["detail"]
+
+
+def test_a_name_held_only_in_staging_is_not_indexed_and_says_what_is(configure, library, place):
+    """``--named`` reaches the index only, and its refusal says what the index leaves out."""
+    cfg = configure()
+    place(Path("Music"), "Alder", "Anchor Work", "08A", 124)
+    place(Path(cfg.paths.download_staging).relative_to(library), "Deodar", "Only Staged", "08A", 124)
+    code, document = envelope_of(["setbuild", "--named", "Deodar - Only Staged"])
+    assert code == int(ExitCode.PRECONDITION)
+    cause = document["cause"]
+    assert cause["reason"] == "setbuild-anchor-not-indexed"
+    assert "outside Cratekit's own state folder and the download staging" in cause["message"]
