@@ -109,17 +109,21 @@ _TEMPLATES: dict[tuple[bool, str], bytes] = {}
 #: having a copy written over it or beside it.
 _DATABASE_FILES = ("", "-wal", "-shm", "-journal")
 
+#: The mode SQLite creates a database file with, before the umask, its default
+#: ``SQLITE_DEFAULT_FILE_PERMISSIONS``.
+_SQLITE_FILE_MODE = 0o644
+
 
 def _build_disposable_database(db_path: Path, *, with_tag_category: bool = True) -> None:
     """Create a database carrying the minimum the safety chain reads.
 
     Built from nothing once per process for each variant and schema pin, then
     copied, because building it took about 120 ms and was asked for 2,694 times
-    in one run of the suite, where a copy takes a fraction of a millisecond
-    (U256). Every call gets a file of its own. The one thing a copy carries that
-    a fresh build would not is the time its rows were stamped: the first build
-    of the variant in this process, not this call. No test reads those stamps
-    as fresh; U256's record says how that was driven.
+    in one run of the suite on the Linux container, where a copy takes a
+    fraction of a millisecond (U256). Every call gets a file of its own. The one
+    thing a copy carries that a fresh build would not is the time its rows were
+    stamped: the first build of the variant in this process, not this call. No
+    test reads those stamps as fresh; U256's record says how that was driven.
     """
     db_path.parent.mkdir(parents=True, exist_ok=True)
     db_version = W.pinned_db_version()
@@ -131,7 +135,10 @@ def _build_disposable_database(db_path: Path, *, with_tag_category: bool = True)
     if template is None:
         template = _template(with_tag_category=with_tag_category, db_version=db_version)
         _TEMPLATES[key] = template
-    with open(db_path, "xb") as handle:
+    # Created exclusively, and with the mode SQLite gives a database it creates,
+    # so a copy is the same file a build would leave under any umask.
+    descriptor = os.open(db_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SQLITE_FILE_MODE)
+    with os.fdopen(descriptor, "wb") as handle:
         handle.write(template)
 
 

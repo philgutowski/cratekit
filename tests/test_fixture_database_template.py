@@ -1,18 +1,20 @@
 """The suite's disposable database is built once per worker and copied (U256).
 
 ``tests/test_rb_writer_db.py::_build_disposable_database`` used to create the
-whole schema and insert the same rows from nothing on every call, 2,680 times in
-one run of the suite. It now builds each variant once per process, keeps the
-result as bytes, and writes a private copy for every call. These tests hold the
-two promises that change makes: every caller still gets a file of its own that
-no other caller can see or change, and the file is the same database a build
-from nothing would have made, its timestamps aside.
+whole schema and insert the same rows from nothing on every call, 2,694 times
+in one run of the suite on the Linux container. It now builds each variant once
+per process, keeps the result as bytes, and writes a private copy for every
+call. These tests hold the two promises that change makes: every caller still
+gets a file of its own that no other caller can see or change, and the file is
+the same database a build from nothing would have made, its timestamps aside.
 """
 
 from __future__ import annotations
 
 import hashlib
+import os
 import sqlite3
+import stat
 from pathlib import Path
 
 import pytest
@@ -219,3 +221,64 @@ def test_a_second_build_over_the_same_database_still_refuses(tmp_path, cold):
     fixture._build_disposable_database(path)
     with pytest.raises(IntegrityError):
         fixture._build_disposable_database(path)
+
+
+@pytest.mark.parametrize("with_tag_category", [True, False], ids=["tagged", "untagged"])
+def test_a_copy_carries_the_rows_the_safety_chain_reads(tmp_path, cold, with_tag_category):
+    """The rows named here, not read back from the builder that wrote them.
+
+    The comparison above holds that a copy loses nothing a build made; this holds
+    what the build has to make, so a row dropped from both is still caught.
+    """
+    path = tmp_path / "db" / "master.db"
+    fixture._build_disposable_database(path, with_tag_category=with_tag_category)
+
+    conn = sqlite3.connect(path)
+    try:
+        registry = conn.execute(
+            "SELECT registry_id, int_1 FROM agentRegistry ORDER BY registry_id"
+        ).fetchall()
+        property_rows = conn.execute("SELECT DBID, DBVersion FROM djmdProperty").fetchall()
+        content = conn.execute(
+            "SELECT ID, Title, rb_local_deleted FROM djmdContent ORDER BY ID"
+        ).fetchall()
+        tags = conn.execute(
+            "SELECT ID, Name, Attribute, ParentID, Seq, UUID FROM djmdMyTag"
+        ).fetchall()
+        unstamped = [
+            (table, column)
+            for table, columns in _stamp_columns().items()
+            if table in ("agentRegistry", "djmdProperty", "djmdContent", "djmdMyTag")
+            for column in sorted(columns)
+            if column in ("created_at", "updated_at")
+            and conn.execute(f'SELECT COUNT(*) FROM "{table}" WHERE "{column}" IS NULL').fetchone()[0]
+        ]
+    finally:
+        conn.close()
+
+    assert registry == [("localUpdateCount", 100)]
+    assert property_rows == [("1", W.pinned_db_version())]
+    assert content == [("1", "a track", 0), ("2", "another track", 0)]
+    assert tags == ([("10", "a category", 0, "0", 0, "category-uuid")] if with_tag_category else [])
+    assert unstamped == []
+
+
+def test_a_copy_has_the_mode_a_build_from_nothing_has_under_a_loose_umask(tmp_path, cold):
+    """SQLite creates a database at 0644 before the umask; a plain create is 0666.
+
+    Under the usual umask of 022 the two agree, so only a looser one tells them
+    apart. The umask is the process's own, set and put back inside this test.
+    """
+    copied = tmp_path / "copied" / "master.db"
+    built = tmp_path / "built" / "master.db"
+    built.parent.mkdir()
+    previous = os.umask(0o002)
+    try:
+        fixture._build_disposable_database(copied)
+        fixture._build_from_nothing(
+            built, with_tag_category=True, db_version=W.pinned_db_version()
+        )
+    finally:
+        os.umask(previous)
+
+    assert stat.S_IMODE(copied.stat().st_mode) == stat.S_IMODE(built.stat().st_mode) == 0o644
