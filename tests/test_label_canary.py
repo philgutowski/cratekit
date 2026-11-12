@@ -483,3 +483,25 @@ def test_with_a_drop_the_verifier_gave_no_answer_for_a_held_release_with_no_line
     assert (found.canary.identity, found.canary.verdict) == ("n1", "unconfirmed")
     assert found.held_unconfirmed == 5
     assert fake._session.reads == ["m1", "n1"]
+
+
+def test_a_degraded_provider_refuses_though_the_newest_held_release_names_the_label(
+    installed, monkeypatch
+):
+    """The newest held line names the label and an older held release has none.
+
+    The read the new release failed on is the provider's, so the held release
+    the provider is read for is asked, not the newest, which its own line
+    would confirm with no provider call (round two of U277's review, P8).
+    """
+    held = [*rawax(), lineless("n0", "2024")]
+    session = Session({"n0": "2024 Rawax"}, degraded=True)
+    bind(monkeypatch, [lineless("m0"), *held, *others(3)], session=session)
+    asked(installed, *(one.id for one in held))
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unlisted"
+    assert "release n0, answered unconfirmed" in check(envelope, f"reverified.{SLUG}")["detail"]
+    assert session.reads == ["m0", "n0"]

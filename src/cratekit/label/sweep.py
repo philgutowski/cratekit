@@ -607,8 +607,13 @@ def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) ->
     provider call (round one of U277's review drove a degraded provider to
     "nothing new" over a held Rawax line). So a held release with no line is
     asked first, the one the provider is read for, and otherwise the newest,
-    as before U277. Never looser than before: it differs only by preferring
-    the read the drops failed on.
+    as before U277. Where no held release lacks a line, that newest one is
+    judged from its own line too, as it was before U277, and says nothing of
+    the provider either (the residual U277 filed). It can answer differently
+    from before: a lineless held release the provider answers for clears the
+    label where an older newest held release of another act would have
+    refused it, and a degraded provider refuses where a newest held label line
+    would have let it pass.
 
     ALWAYS ASKED OF THE VERIFIER, never answered here from the line.
     """

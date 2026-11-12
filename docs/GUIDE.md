@@ -515,11 +515,12 @@ where no label could be read ends refused, `label-sync-unlisted`. When a
 listing turns down every release it asked about, one release already asked
 about is verified again, and a `reverified` line names it and the answer. If
 every release turned down was credited to another label, it is one whose
-copyright line names the label, which shows the needle still matches. If any
-came back with no label credit, it is one with no line, which makes the
-provider read it again. Confirmed, the label has nothing new; `unconfirmed`
-(no label credit) or `mismatch` (credited to another name), its line fails
-as a listing that confirmed nothing. A label's
+copyright line names the label where one does, which shows the needle still
+matches. If any came back with no label credit, it is one with no line where
+one has none, which makes the provider read it again, and otherwise the
+newest, judged from its own line. Confirmed, the label has nothing new;
+`unconfirmed` (no label credit) or `mismatch` (credited to another name), its
+line fails as a listing that confirmed nothing. A label's
 listing is kept seven days, so a second ask makes no listing calls; deleting
 the file its `listing` line names lists it afresh.
 
