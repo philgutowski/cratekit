@@ -1,0 +1,139 @@
+name = "u279"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_walk_ignores_exclude"
+description = "iter_audio: walk the whole root again, sorted(root.rglob), so the excluded folders are indexed (the defect itself)"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''    for candidate in sorted(Exclusion.under(root, exclude).walk(root)):'''
+new = '''    for candidate in sorted(root.rglob("*")):'''
+
+[[rows]]
+id = "M2_excluded_folder_walked"
+description = "Exclusion.walk: drop the skip of an excluded folder, so the hand walk yields it and its contents"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''            if identity in self.folders:
+                continue
+            yield child'''
+new = '''            yield child'''
+
+[[rows]]
+id = "M3_ancestor_taken_whole"
+description = "Exclusion.walk: hand an ancestor of an excluded folder to rglob whole, so a nested excluded folder is walked"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''            if identity in self.ancestors:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M4_symlink_followed"
+description = "Exclusion.walk: read a symlinked folder on the hand walked path as a directory, so it is descended where rglob does not"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''                if entry.is_dir(follow_symlinks=False):'''
+new = '''                if entry.is_dir():'''
+
+[[rows]]
+id = "M5_unlistable_raises"
+description = "Exclusion.walk: catch only a missing folder, so one the walk cannot list stops the index where rglob passes it over"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''                entries = list(listing)
+        except OSError:
+            return'''
+new = '''                entries = list(listing)
+        except FileNotFoundError:
+            return'''
+
+[[rows]]
+id = "M6_chain_unresolved"
+description = "_chain_to: read the configured folder as spelled, so a staging folder configured through a link outside the root excludes nothing"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''        current = folder.resolve()'''
+new = '''        current = folder.absolute()'''
+
+[[rows]]
+id = "M7_outermost_folder_excluded"
+description = "Exclusion.under: exclude the outermost folder above a configured one rather than the folder itself, so its library siblings are dropped"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''                folders.setdefault(chain[0], Path(folder))'''
+new = '''                folders.setdefault(chain[-1], Path(folder))'''
+
+[[rows]]
+id = "M8_index_call_unexcluded"
+description = "setbuild _index: drop exclude, so the verb's index walks the state and staging folders again"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''        exclude=excluded_folders(cfg),
+'''
+new = ""
+
+[[rows]]
+id = "M9_staging_not_excluded"
+description = "excluded_folders: leave download staging out of the exclusion, the state folder only"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''    return (config.library_state_dir(cfg), Path(cfg.paths.download_staging).expanduser())'''
+new = '''    return (config.library_state_dir(cfg), config.library_state_dir(cfg))'''
+
+[[rows]]
+id = "M10_tilde_not_expanded"
+description = "excluded_folders: read the staging path without expanding a tilde, round one's finding"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''Path(cfg.paths.download_staging).expanduser())'''
+new = '''Path(cfg.paths.download_staging))'''
+
+[[rows]]
+id = "M11_excluded_anchor_not_refused"
+description = "set_build: drop the excluded anchor refusal, so an anchor in staging gets the generic not indexed wording"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''    _refuse_if_excluded(candidate, cfg, root)
+'''
+new = ""
+
+[[rows]]
+id = "M12_holder_never_found"
+description = "Exclusion.holder: answer None for every path, so no anchor is placed in an excluded folder"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''            if identity in self.folders:
+                return self.folders[identity]'''
+new = '''            if False:
+                return self.folders[identity]'''
+
+[[rows]]
+id = "M13_wrong_folder_named"
+description = "_refuse_if_excluded: say the state folder whichever folder holds the anchor"
+file = "src/cratekit/setbuilder/cli.py"
+surface = "user"
+tests = ["tests/test_setbuilder_excluded.py", "tests/test_setbuilder_cli.py", "tests/test_setbuilder_one_open.py", "tests/modules/test_tools.py"]
+old = '''    if holder == folders[0]:'''
+new = '''    if True:'''
+
+[[dropped]]
+id = "D1_holder_stops_at_root"
+description = "Exclusion.holder: drop the stop at the root"
+reason = "equivalent: an excluded folder is only ever strictly under the root and anchor_path refuses an anchor outside it first, so no input separates it (round one drove it, 154 of 154 passed)"
+
+[[dropped]]
+id = "D2_chain_is_dir"
+description = "_chain_to: drop the is_dir check"
+reason = "equivalent: the walk takes identities from directories only, so a file's identity can never match an entry it compares (round one drove it, 154 of 154 passed)"

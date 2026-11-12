@@ -1584,10 +1584,12 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # else", and that one is "the file is here and the index cannot use it".
         "setbuild-anchor-outside-library": ExitCode.PRECONDITION,
         # The anchor is inside the library and the index does not hold it: it is
-        # absent, it is not audio, or it carries no Camelot key from either its
-        # tag or its name. One slug for the three, because the index is what
-        # decides ownership and a track it does not hold cannot be ranked
-        # against, whichever of the three reasons put it outside.
+        # absent, it is not audio, it carries no Camelot key from either its
+        # tag or its name, or it sits in Cratekit's own state folder or the
+        # download staging folder, which the index leaves out (U279). One slug
+        # for the four, because the index is what decides ownership and a track
+        # it does not hold cannot be ranked against, whichever reason put it
+        # outside; the message says which.
         "setbuild-anchor-not-indexed": ExitCode.PRECONDITION,
         # R-187's one, beside its siblings. A name given with ``--named``
         # reached owned tracks and could not choose between them, or named a

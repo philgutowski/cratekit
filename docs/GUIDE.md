@@ -527,13 +527,18 @@ crate label sync --answer pick --label "Some Label" --release RELEASE_ID
 A label whose listing fails is a `[FAIL]` line, never "nothing new"; a run
 where no label could be read ends refused, `label-sync-unlisted`. When a
 listing turns down every release it asked about, one release already asked
-about is verified again, and a `reverified` line names it and the answer. If
-every release turned down was credited to another label, it is one whose
-copyright line names the label where one does, which shows the needle still
-matches. If any came back with no label credit, it is one with no line where
-one has none, which makes the provider read it again, and otherwise the
-newest, judged from its own line. Confirmed, the label has nothing new;
-`unconfirmed` (no label credit) or `mismatch` (credited to another name), its
+about is verified again, and a `reverified` line names it, the answer, and
+whether it was read again from the provider or judged from its own copyright
+line. If every release turned down was credited to another label, it is one
+whose copyright line names the label where one does, judged from that line,
+which shows the needle still matches. If any came back with no label credit,
+the provider is read again for it whatever line it carries, one call, since
+only the provider's answer shows it is answering: one with no line first,
+then one whose line names the label, then another act's. One the provider no
+longer has is passed over, one more call, for the next whose line is the
+label's or absent. Confirmed, the label has nothing new; `unconfirmed` (no label
+credit), `mismatch` (credited to another name) or `gone` (the provider no
+longer has it, and no other held release could be read in its place), its
 line fails as a listing that confirmed nothing. A label's
 listing is kept seven days, so a second ask makes no listing calls; deleting
 the file its `listing` line names lists it afresh.
@@ -982,7 +987,10 @@ crate master /path/to/REC001.wav /path/to/REC002.wav --lufs -16 --output-dir /pa
 ```
 
 `setbuild` ranks owned tracks compatible with the anchor in key and energy,
-offline. `master` joins a split recording's parts in the order given (named
+offline. It reads the library itself and never Cratekit's own state folder or
+the download staging folder, so a rehearsal's working copy or a download not
+yet filed is never an anchor or a pick; an anchor given inside either, where
+it sits under the library, is refused saying which. `master` joins a split recording's parts in the order given (named
 for the first part plus `_set`), levels it to `--lufs` (-14 by default) and
 writes `<name>_mastered.flac` beside it or in `--output-dir`. It never touches
 the source and refuses to replace a master without `--overwrite`.

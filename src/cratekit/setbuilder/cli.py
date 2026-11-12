@@ -345,8 +345,9 @@ def named_anchor(text: str, index: Sequence[setbuilder.Track]) -> setbuilder.Tra
             "setbuild-anchor-not-indexed",
             f"no track named {text} is in the library index, so nothing can be "
             f"ranked against it. A file is indexed when it is audio under the "
-            f"library root and carries a Camelot key, from its own tag or from "
-            f"its name",
+            f"library root, outside Cratekit's own state folder and the download "
+            f"staging folder, and carries a Camelot key, from its own tag or "
+            f"from its name",
             steps=(
                 "check the artist and title, or pass the track's path instead",
                 "or, for a track you do not own, pass --unowned LABEL --key CODE",
@@ -577,6 +578,7 @@ def set_build(ctx) -> Envelope:
         index = _index(cfg, root) if names_something(ctx.args.named) else ()
         return _emit(ctx, declared, named_anchor(ctx.args.named, index), index)
     candidate = anchor_path(str(ctx.args.anchor or ""), root)
+    _refuse_if_excluded(candidate, cfg, root)
     index = _index(cfg, root)
     track = anchor_in_index(candidate, index)
     if track is None:
@@ -584,7 +586,8 @@ def set_build(ctx) -> Envelope:
             "setbuild-anchor-not-indexed",
             f"{candidate} is not in the library index, so nothing can be ranked "
             f"against it. A file is indexed when it is audio under the library "
-            f"root and carries a Camelot key, from its own tag or from its name",
+            f"root, outside Cratekit's own state folder and the download staging "
+            f"folder, and carries a Camelot key, from its own tag or from its name",
             steps=(
                 "check the path names an audio file under the library root",
                 "analyze the track so it carries a Camelot key",
@@ -595,16 +598,72 @@ def set_build(ctx) -> Envelope:
     return _emit(ctx, declared, track, index)
 
 
+def excluded_folders(cfg: config.Config) -> tuple[Path, Path]:
+    """The folders under the library that hold copies, not the library's music (U279).
+
+    Cratekit's own library state folder, wherever ``library.state_dirname``
+    puts it, whose rehearsals keep staged copies of real tracks, and the
+    download staging folder, which setup puts at ``<root>/Downloads`` by
+    default. Read from the configuration and never from a name, so a library
+    folder that happens to share either name is still the library's. A folder
+    that does not sit under the root excludes nothing, which the walk decides.
+    """
+    # ``~`` EXPANDED, as the landing and sync readers of the staging path do:
+    # an unexpanded one names no folder, so it would exclude nothing and the
+    # staging copies would take the library files' places again.
+    return (config.library_state_dir(cfg), Path(cfg.paths.download_staging).expanduser())
+
+
+def _refuse_if_excluded(candidate: Path, cfg: config.Config, root: Path) -> None:
+    """Refuse an anchor inside an excluded folder, saying so, before the walk.
+
+    The same slug as any anchor the index does not hold, because the index is
+    what decides ownership; a different message, because "is not in the
+    library index" over a file the person can see is the false statement this
+    unit removes. The file is a copy the library does not own, and the remedy
+    is the library's own file.
+    """
+    folders = excluded_folders(cfg)
+    holder = setbuilder.Exclusion.under(root, folders).holder(candidate)
+    if holder is None:
+        return
+    if holder == folders[0]:
+        where = (
+            f"Cratekit's own state folder {holder}, which holds Cratekit's "
+            f"working copies rather than the library's music"
+        )
+    else:
+        where = (
+            f"the download staging folder {holder}, which holds downloads "
+            f"not yet filed into the library"
+        )
+    raise refuse(
+        "setbuild-anchor-not-indexed",
+        f"{candidate} sits in {where}, so it is never indexed and a set is not "
+        f"built around it",
+        steps=(
+            "if the library holds the same track, pass its path there",
+            "if it does not yet, pass --unowned LABEL --key CODE to rank the "
+            "library against it",
+        ),
+        origin=("setbuilder", "cli"),
+        detail={"anchor": str(candidate), "excluded_by": str(holder)},
+    )
+
+
 def _index(cfg: config.Config, root: Path) -> tuple[setbuilder.Track, ...]:
     """The library index, through the declared cache. ONE call site for three forms.
 
     The cache path comes from the state inventory and never from a path composed
-    here, so the file is one the inventory can find, snapshot and clear.
+    here, so the file is one the inventory can find, snapshot and clear. The
+    walk leaves out :func:`excluded_folders` (U279): a rehearsal's staged copy
+    sorted ahead of ``Music`` took the real file's place in the index.
     """
     return setbuilder.build_index(
         root,
         template=_template(cfg),
         cache_path=config.state_path("setbuilder_index_cache", cfg),
+        exclude=excluded_folders(cfg),
     )
 
 
@@ -628,6 +687,7 @@ __all__ = [
     "anchor_path",
     "build",
     "camelot_key",
+    "excluded_folders",
     "named_anchor",
     "names_something",
     "owned_anchor",

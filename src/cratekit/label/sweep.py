@@ -29,6 +29,7 @@ from cratekit.label import gate as genre_gate
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
     READS_FAILED_IN_A_ROW,
+    RELEASE_GONE,
     Catalogue,
     ReleaseTracks,
     Unread,
@@ -75,8 +76,16 @@ class Canary:
     holds one, chosen as :func:`_canary_of` says. Carried on the listing so the
     run can say which release it was and what it answered: ``unconfirmed`` is
     a release the verifier found no label credit for, the answer a provider
-    that is not answering gives, and ``mismatch`` one credited to a name the
-    needle does not match, with the name in ``notes``.
+    that is not answering gives, ``mismatch`` one credited to a name the
+    needle does not match, with the name in ``notes``, and ``gone`` one the
+    provider no longer has (R-1634), which refuses only when no other held
+    release could be read in its place.
+
+    ``basis`` IS WHAT THE ANSWER RESTED ON (R-1634): :data:`READ_PROVIDER`, the
+    provider was read for the release; :data:`READ_LINE`, it was judged from
+    its own copyright line with no provider call, which says the needle is
+    right and nothing of the provider; :data:`READ_NONE`, no provider read was
+    to hand, so it was not asked and counts as not confirmed.
     """
 
     identity: str
@@ -84,10 +93,15 @@ class Canary:
     title: str
     verdict: str
     notes: str = ""
+    basis: str = ""
 
     @property
     def confirmed(self) -> bool:
         return self.verdict == "confirmed"
+
+    def how(self) -> str:
+        """How the release was verified again, in words a person reads before :meth:`said`."""
+        return _BASIS_SAID.get(self.basis, "")
 
     def said(self) -> str:
         """The release and its answer, in words a refusal or a check can carry."""
@@ -104,7 +118,20 @@ class Canary:
             "title": self.title,
             "verdict": self.verdict,
             "notes": self.notes,
+            "basis": self.basis,
         }
+
+
+#: What a re-verified release's answer rested on (R-1634), :attr:`Canary.basis`.
+READ_PROVIDER = "provider"
+READ_LINE = "line"
+READ_NONE = "none"
+
+_BASIS_SAID = {
+    READ_PROVIDER: "read again from the provider",
+    READ_LINE: "from its own copyright line, with no provider read",
+    READ_NONE: "not asked, since no provider read was to hand for it",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -585,8 +612,23 @@ def line_reading(release: Any, claimed: str) -> int:
 MISMATCH = "mismatch"
 
 
+def _answered_by_name(dropped: Sequence[Dropped]) -> bool:
+    """Whether every release the sweep turned down was credited to another label's name."""
+    return all(one.reason == MISMATCH for one in dropped)
+
+
 def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) -> Any:
-    """The held release to verify again, chosen by what the sweep's drops say.
+    """The held release to verify again, the first of :func:`_canary_order`."""
+    return _canary_order(held, claimed, dropped)[0]
+
+
+def _canary_order(
+    held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]
+) -> list[Any]:
+    """The held releases in the order they are verified again, chosen by what the sweep's drops say.
+
+    Only the first is asked, except where a forced read answers that the
+    provider no longer has it (R-1634), when the second is asked in its place.
 
     THE NEWEST HELD RELEASE WAS THE CANARY BEFORE U277, and a held release can
     be another act's: a sync that asked about releases a looser needle once
@@ -601,25 +643,30 @@ def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) ->
     release whose own line names the label shows it does, so it is asked
     first, then one with no line, then one whose line names another label.
 
-    ANY DROP THE VERIFIER GAVE NO ANSWER FOR: the question is whether it is
-    answering at all, and a release carrying a line answers nothing about
-    that, because the catalogue judges such a release from its line with no
-    provider call (round one of U277's review drove a degraded provider to
-    "nothing new" over a held Rawax line). So a held release with no line is
-    asked first, the one the provider is read for, and otherwise the newest,
-    as before U277. Where no held release lacks a line, that newest one is
-    judged from its own line too, as it was before U277, and says nothing of
-    the provider either (the residual U277 filed). It can answer differently
-    from before: a lineless held release the provider answers for clears the
-    label where an older newest held release of another act would have
-    refused it, and a degraded provider refuses where a newest held label line
-    would have let it pass.
+    ANY DROP THE VERIFIER GAVE NO ANSWER FOR: the question is whether the
+    provider is answering at all, so the release chosen is READ AGAIN FROM THE
+    PROVIDER whatever line it carries (R-1634), :func:`list_for_label` says
+    how. Before R-1634 the catalogue judged a held release carrying a line
+    from that line with no call, so a held label line answered confirmed
+    whatever the provider was doing and the label said nothing new over
+    releases nobody confirmed. The order is a held release with no line first,
+    as U277 chose it, then one whose line names the label, then another
+    act's, newest first within each: a healthy provider's read confirms the
+    first two, since each was confirmed when it was filed, and answers another
+    act's held release ``mismatch`` however healthy it is. So an old hold of
+    another act's release no longer refuses the label while a held release of
+    its own is there to ask (R-1635).
 
-    ALWAYS ASKED OF THE VERIFIER, never answered here from the line.
+    ALWAYS ASKED OF A VERIFIER, never answered here from the line.
     """
-    if all(one.reason == MISMATCH for one in dropped):
-        return min(held, key=lambda release: line_reading(release, claimed))
-    return min(held, key=lambda release: line_reading(release, claimed) != LINE_ABSENT)
+    if _answered_by_name(dropped):
+        return sorted(held, key=lambda release: line_reading(release, claimed))
+
+    def read_first(release: Any) -> tuple[bool, int]:
+        reading = line_reading(release, claimed)
+        return reading != LINE_ABSENT, reading
+
+    return sorted(held, key=read_first)
 
 
 def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
@@ -650,6 +697,7 @@ def list_for_label(
     *,
     artist: Any,
     verify: Callable[[str, Any], Mapping[str, Any]],
+    reread: Callable[[str, Any], Mapping[str, Any]] | None = None,
     last_pulled: str | None = None,
     owned: Container[str] | None = None,
     offered: Container[str] | None = None,
@@ -657,6 +705,14 @@ def list_for_label(
     gate: genre_gate.SweepGate | None = None,
 ) -> LabelListing:
     """Crawl, verify, drop unconfirmed, report tombstones. Ignore ``last_pulled``.
+
+    ``reread`` IS THE FORCED PROVIDER READ (R-1634), a catalogue's
+    ``reread_release``: who the provider credits on a release, read again by
+    its identifier rather than judged from the line the listing carries. Asked
+    only for the one held release re-verified when a drop was not a mismatch.
+    ``None``, from a source built with a bare verifier, leaves a held release
+    that carries a line unasked and counted as not confirmed, never judged
+    from that line.
 
     ``last_pulled`` is accepted so a caller that still thinks in date floors
     cannot accidentally get a different function. It is not read.
@@ -827,21 +883,72 @@ def list_for_label(
     # IT ASKED ABOUT. It was confirmed when it was filed, so it is the one
     # release whose answer is known: confirmed again means the endpoint is up
     # and what failed really is unconfirmed, and unconfirmed means nothing this
-    # sweep asked could have been confirmed. One provider call, on the path
-    # where the worker is deciding whether to refuse. Which held release is
-    # chosen by what the drops say and by each held release's own line
-    # (U277), :func:`_canary_of`.
+    # sweep asked could have been confirmed. Which held release is chosen by
+    # what the drops say and by each held release's own line (U277),
+    # :func:`_canary_of`.
+    #
+    # EVERY DROP A MISMATCH: the verifier answered each with another label's
+    # name, or the release's own line named one, so nothing turned down waits
+    # on the provider, and the ordinary verifier is asked, which judges a held
+    # label line from that line with no call. ANY OTHER DROP: the provider is
+    # READ for the release chosen through ``reread``, whatever line it carries
+    # (R-1634), one provider call on the path where the worker is deciding
+    # whether to refuse. Without ``reread`` a release with no line is still
+    # asked of the verifier, which reads the provider for it, and one carrying
+    # a line is not asked and counts as not confirmed.
     held_unconfirmed = 0
     canary: Canary | None = None
     if held_releases and dropped and not candidates:
-        chosen = _canary_of(held_releases, claimed, dropped)
-        answered = label_verify.verify_release(claimed, chosen, search=verify)
+        order = _canary_order(held_releases, claimed, dropped)
+        chosen = order[0]
+        lined = line_reading(chosen, claimed) != LINE_ABSENT
+        if _answered_by_name(dropped):
+            answered = label_verify.verify_release(claimed, chosen, search=verify)
+            basis = READ_LINE if lined else READ_PROVIDER
+        elif reread is not None:
+            answered = label_verify.verify_release(claimed, chosen, search=reread)
+            basis = READ_PROVIDER
+            # A HELD RELEASE THE PROVIDER HAS WITHDRAWN is still listed by a
+            # kept listing for up to its seven days, and a 404 says nothing of
+            # whether the provider's reads carry a credit. Refusing on it
+            # refused a healthy label on every ask until the keep aged out
+            # (round one of R-1634's review). So the next held release is read
+            # in its place, ONE more read and only after a gone answer; a
+            # second gone answer, or none to ask, stands and refuses. ONLY ONE
+            # THE LABEL CAN STILL CONFIRM: a held release whose line names
+            # another act answers mismatch however healthy the provider is, and
+            # its refusal would name that act's credit as the needle to set
+            # (round two of R-1634's review).
+            following = [
+                one for one in order[1:] if line_reading(one, claimed) != LINE_NAMES_OTHER
+            ]
+            if answered.get("verdict") == RELEASE_GONE and following:
+                first = str(getattr(chosen, "id", "") or "")
+                chosen = following[0]
+                answered = dict(
+                    label_verify.verify_release(claimed, chosen, search=reread)
+                )
+                answered["notes"] = "; ".join(
+                    part
+                    for part in (
+                        str(answered.get("notes") or ""),
+                        f"read in place of release {first}, which the provider no longer has",
+                    )
+                    if part
+                )
+        elif not lined:
+            answered = label_verify.verify_release(claimed, chosen, search=verify)
+            basis = READ_PROVIDER
+        else:
+            answered = {"verdict": "unconfirmed", "notes": "no provider read"}
+            basis = READ_NONE
         canary = Canary(
             identity=str(getattr(chosen, "id", "") or ""),
             artist=artist_name(chosen),
             title=_title_of(chosen),
             verdict=str(answered.get("verdict") or "unconfirmed"),
             notes=str(answered.get("notes") or ""),
+            basis=basis,
         )
         if not canary.confirmed:
             held_unconfirmed = held + sum(1 for one in gated if one.standing)
@@ -907,6 +1014,31 @@ def offer_release(
         payload=payload,
         handler_key=handler_key,
     )
+
+
+def _guarded(read: Callable[[str, Any], Mapping[str, Any]]) -> Callable[[str, Any], Mapping[str, Any]]:
+    """A catalogue's verifying read, with a provider failure turned into a lookup failure.
+
+    See :meth:`LabelSource._verifier` for why: a ``CratekitError`` passes
+    through unchanged, and anything else the read raises is
+    ``run.LookupFailure``, never an internal error.
+    """
+
+    def verified(claimed: str, release: Any) -> Mapping[str, Any]:
+        try:
+            return read(claimed, release)
+        except CratekitError:
+            raise
+        except Exception as exc:
+            raise _lookup_failure(
+                f"the catalogue could not confirm who is credited on a "
+                f"release ({type(exc).__name__}: {exc}); the releases "
+                f"this sweep listed were never verified, and an "
+                f"unverified release is not a release with no match",
+                exc,
+            ) from exc
+
+    return verified
 
 
 class LabelSource:
@@ -1118,27 +1250,28 @@ class LabelSource:
         if self.verify is not None:
             return self.verify
         if self.catalogue is not None:
-            catalogue = self.catalogue
-
-            def verified(claimed: str, release: Any) -> Mapping[str, Any]:
-                try:
-                    return catalogue.search_release(claimed, release)
-                except CratekitError:
-                    raise
-                except Exception as exc:
-                    raise _lookup_failure(
-                        f"the catalogue could not confirm who is credited on a "
-                        f"release ({type(exc).__name__}: {exc}); the releases "
-                        f"this sweep listed were never verified, and an "
-                        f"unverified release is not a release with no match",
-                        exc,
-                    ) from exc
-
-            return verified
+            return _guarded(self.catalogue.search_release)
         raise run.LookupFailure(
             "this labels source was built with neither a verification callable "
             "nor a catalogue, so no release it listed could be confirmed"
         )
+
+    def _rereader(self) -> Callable[[str, Any], Mapping[str, Any]] | None:
+        """The forced provider read for the one held release re-verified (R-1634), or ``None``.
+
+        The catalogue's ``reread_release``, wrapped as :meth:`_verifier` wraps
+        its read, so a provider failure on it is a lookup failure and never an
+        internal error. Taken only when the verifier is the catalogue's own: a
+        source handed a bare verifier has no read to force, and
+        :func:`list_for_label` then counts a held release carrying a line as
+        not confirmed rather than judging it from that line.
+        """
+        if self.verify is not None or self.catalogue is None:
+            return None
+        catalogue = self.catalogue
+        # LOOKED UP WHEN ASKED, so a pass that never re-verifies a release
+        # never names the method.
+        return _guarded(lambda claimed, release: catalogue.reread_release(claimed, release))
 
     def list_recent(self, n: int) -> list[run.Candidate]:
         """The newest N candidates, and a record of what was thrown away getting them.
@@ -1160,6 +1293,7 @@ class LabelSource:
         # no-op into "retry when the provider is reachable" for a source that
         # never needed a provider.
         verify = self._verifier() if self.registry.labels else None
+        reread = self._rereader()
         found: list[run.Candidate] = []
         discarded: list[Dropped] = []
         unread: list[Unread] = []
@@ -1173,6 +1307,7 @@ class LabelSource:
                     entry,
                     artist=self._artist_for(entry),
                     verify=verify,
+                    reread=reread,
                     owned=self.owned,
                     offered=offered,
                     gate=self.gate,

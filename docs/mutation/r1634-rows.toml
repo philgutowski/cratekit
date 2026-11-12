@@ -1,0 +1,190 @@
+name = "r1634"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_mismatch_mode_always"
+description = "list_for_label: read every listing as all mismatches, so a drop with no credit asks the ordinary verifier, which judges a held label line from its line (the defect)"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        if _answered_by_name(dropped):
+            answered = label_verify.verify_release(claimed, chosen, search=verify)'''
+new = '''        if True:
+            answered = label_verify.verify_release(claimed, chosen, search=verify)'''
+
+[[rows]]
+id = "M2_mismatch_mode_never"
+description = "list_for_label: never take the ordinary verifier, so every drop a mismatch forces a provider read it did not need"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        if _answered_by_name(dropped):
+            answered = label_verify.verify_release(claimed, chosen, search=verify)'''
+new = '''        if False:
+            answered = label_verify.verify_release(claimed, chosen, search=verify)'''
+
+[[rows]]
+id = "M3_forced_read_dropped"
+description = "list_for_label: never take the forced read, so a lined held release counts as unverified and a real nothing new refuses"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        elif reread is not None:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M4_no_read_confirms"
+description = "list_for_label, no forced read to hand: count a lined held release confirmed rather than unverified"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''            answered = {"verdict": "unconfirmed", "notes": "no provider read"}'''
+new = '''            answered = {"verdict": "confirmed", "notes": "no provider read"}'''
+
+[[rows]]
+id = "M5_no_read_asks_the_line"
+description = "list_for_label, no forced read to hand: ask the ordinary verifier for a lined held release, which judges it from its line"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        elif not lined:'''
+new = '''        elif True:'''
+
+[[rows]]
+id = "M6_gone_not_passed_over"
+description = "list_for_label: a gone answer stands, so a withdrawn held release a kept listing still lists refuses a healthy label"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''            if answered.get("verdict") == RELEASE_GONE and following:'''
+new = '''            if False and following:'''
+
+[[rows]]
+id = "M7_any_answer_passed_over"
+description = "list_for_label: pass over any answer that is not confirmed, so a degraded provider gets a second read and the cap is spent on every refusal"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''            if answered.get("verdict") == RELEASE_GONE and following:'''
+new = '''            if answered.get("verdict") != "confirmed" and following:'''
+
+[[rows]]
+id = "M8_order_label_line_first"
+description = "_canary_order, a drop with no credit: rank a held label line ahead of a lineless one (U277's lineless preference lost)"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        return reading != LINE_ABSENT, reading'''
+new = '''        return False, reading'''
+
+[[rows]]
+id = "M9_order_other_act_before_label"
+description = "_canary_order, a drop with no credit: rank another act's held line ahead of the label's, so a healthy read of a RAWAXXX hold refuses (R-1635)"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''        return reading != LINE_ABSENT, reading'''
+new = '''        return reading != LINE_ABSENT, -reading'''
+
+[[rows]]
+id = "M10_basis_always_line"
+description = "list_for_label, every drop a mismatch: say the answer came from the release's own line even for a lineless one the provider read"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_sync.py", "tests/test_label_workers.py"]
+old = '''            basis = READ_LINE if lined else READ_PROVIDER'''
+new = '''            basis = READ_LINE'''
+
+[[rows]]
+id = "M11_reread_reads_the_line"
+description = "TidalCatalogue.reread_release: judge the listed object's own line instead of reading the album"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''            album = self._album(identity)
+        except ReleaseUnresolvable as exc:'''
+new = '''            album = release
+        except ReleaseUnresolvable as exc:'''
+
+[[rows]]
+id = "M12_gone_confirms"
+description = "TidalCatalogue.reread_release: answer a withdrawn release confirmed"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_tidal_catalogue.py", "tests/test_label_workers.py"]
+old = '''                "verdict": RELEASE_GONE,'''
+new = '''                "verdict": "confirmed",'''
+
+[[rows]]
+id = "M13_rereader_unguarded"
+description = "LabelSource._rereader: hand the forced read over bare, so a provider failure on it ends internal-error"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_workers.py", "tests/test_label_sync.py"]
+old = '''        return _guarded(lambda claimed, release: catalogue.reread_release(claimed, release))'''
+new = '''        return lambda claimed, release: catalogue.reread_release(claimed, release)'''
+
+[[rows]]
+id = "M14_rereader_beside_a_bare_verifier"
+description = "LabelSource._rereader: take the catalogue's forced read though a bare verifier was handed in"
+file = "src/cratekit/label/sweep.py"
+surface = "maintainer"
+tests = ["tests/test_label_canary.py", "tests/test_label_workers.py"]
+old = '''        if self.verify is not None or self.catalogue is None:
+            return None'''
+new = '''        if self.catalogue is None:
+            return None'''
+
+[[rows]]
+id = "M15_how_reworded"
+description = "Canary.how: the provider basis no longer says the provider was read"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_sync.py", "tests/test_label_workers.py"]
+old = '''    READ_PROVIDER: "read again from the provider",'''
+new = '''    READ_PROVIDER: "verified once more",'''
+
+[[rows]]
+id = "M16_worker_drops_how"
+description = "label-sweep-incomplete: the worker's message no longer says how the release was asked"
+file = "src/cratekit/label/cli.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_workers.py"]
+old = '''            f"{one.how()}: {one.said()}."'''
+new = '''            f": {one.said()}."'''
+
+[[rows]]
+id = "M17_check_drops_how"
+description = "label sync --next: the reverified line no longer says how the release was asked"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_sync.py"]
+old = '''                f"{listing.canary.how()}: {listing.canary.said()}",'''
+new = '''                f": {listing.canary.said()}",'''
+
+[[rows]]
+id = "M18_basis_not_in_detail"
+description = "Canary.to_json: the worker's detail no longer carries the basis"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_workers.py"]
+old = '''            "basis": self.basis,'''
+new = '''            "basis": "",'''
+
+[[rows]]
+id = "M19_another_act_replaces_a_gone_one"
+description = "list_for_label: a gone answer's second read may go to a held release whose line names another act, which answers mismatch and names that act as the needle"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_offer_window.py", "tests/test_label_sync.py", "tests/test_label_genre_gate.py", "tests/test_label_workers.py"]
+old = '''                one for one in order[1:] if line_reading(one, claimed) != LINE_NAMES_OTHER'''
+new = '''                one for one in order[1:] if True'''
+
+[[rows]]
+id = "M20_in_place_note_dropped"
+description = "list_for_label: a release read in a gone one's place no longer says so, so a refusal tells two reads as one"
+file = "src/cratekit/label/sweep.py"
+surface = "user"
+tests = ["tests/test_label_canary.py", "tests/test_label_sync.py", "tests/test_label_workers.py"]
+old = '''                        f"read in place of release {first}, which the provider no longer has",'''
+new = '''                        "",'''

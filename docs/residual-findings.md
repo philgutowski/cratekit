@@ -51230,6 +51230,13 @@ than nothing new, and the `reverified` line says when an answer was read from
 the release's own line. Earns an issue: a clean report over state the tool
 could not read (board bar b).
 
+**Closed 2026-11-12, R-1634 (#777).** When any release a sweep turned down
+was not a mismatch, the held release verified again is read from the
+provider through the catalogue's new `reread_release`, whatever line it
+carries, and the `reverified` line and the worker's refusal say whether an
+answer was read from the provider or from the release's own line. The record
+is `docs/restart/r1634.md`.
+
 ---
 
 ## R-1635. A listing with a release the verifier gave no label credit still re-verifies the newest held release when none lacks a line, so an old hold of another act's release still refuses the label
@@ -51258,6 +51265,12 @@ live only when a label's new releases come back with no copyright line at all.
 holds of another act's release (R-1462), or a later unit asks the provider
 about a held release that carries a line (a forced album read) when no held
 release lacks one. Ledger only.
+
+**Closed 2026-11-12, R-1634 (#777).** The forced read asks a held release
+whose line names the label before another act's when no held release lacks
+a line, so a healthy provider read confirms it and the label answers nothing
+new (`test_a_provider_that_answers_with_no_credit_for_the_new_ones_answers_nothing_new`).
+The record is `docs/restart/r1634.md`.
 
 ---
 
@@ -51389,3 +51402,117 @@ Is", which no table holds.
 
 **Closes when:** a test drives a pair the flag decides, or the flag is
 removed. Ledger only.
+
+---
+
+## R-1641. The window's verifier reads a lineless release's album off the retry ladder with no gone answer, so a withdrawn release a kept listing still lists fails the whole label
+
+**Found:** at the review of #777, R-1634, 2026-11-12.
+
+**The mechanism.** `TidalCatalogue.search_release`
+(`src/cratekit/label/tidal_catalogue.py`) reads the album of a release whose
+listed object carries no copyright line with a bare `self._session.album`,
+off the retry ladder `_album` shares and with no answer for a release the
+provider no longer has. A label's listing is kept seven days (U217), so a
+release withdrawn inside that time is still listed; a lineless one is read,
+the client raises its not found error, `LabelSource._verifier` turns it into
+`run.LookupFailure`, and the label fails as one whose listing could not be
+read. R-1634 gave the forced read, `reread_release`, a `gone` answer and a
+next held release to read in its place; the window's own read has neither.
+
+**Measured cost.** Driven by round two of R-1634's review (probes p4 and p5)
+with the real client's not found error over a fake session: a new lineless
+release withdrawn while the kept listing lists it, and in mismatch mode a
+lineless withdrawn held release, each refuse the label as unlisted on
+`label sync --next`, on the branch and on `main` alike, until the keep ages
+out or its file is deleted. A live withdrawal inside a keep was not driven.
+
+**Closes when:** `search_release` reads on the ladder and answers a release
+the provider no longer has as dropped (`gone`) rather than raising, so one
+withdrawn release costs that release and not the label. Ledger only: the
+guide's remedy, deleting the kept listing, lists the label afresh.
+
+---
+
+## R-1642. The sweep's call estimate does not count the release a sweep re-verifies, one provider read a label and two after a gone answer
+
+**Found:** at the build of #777, R-1634, 2026-11-12.
+
+**The mechanism.** Since R-1634 the one held release a sweep verifies again,
+when a release it turned down came back with no label credit, is always read
+from the provider (`reread_release`), one call a label, and a second when
+the first answers that the provider no longer has it. U278's estimate before
+`label sync --next` without `--label` counts a kept listing's answers and
+not this read.
+
+**Measured cost.** Not driven against a budget. At most two calls a label
+on the refusal path, against a read line of 1,125 and an estimate U278
+already records as counting answers and not pages.
+
+**Closes when:** the estimate counts one call a label whose listing turned
+everything down, or the estimate is replaced by a measured spend. Ledger
+only.
+
+---
+
+## R-1643. The excluded anchor refusal's pass over a folder it cannot read is a guard no test reaches
+
+**Found:** at the review of #779, U279, 2026-11-12.
+
+**The mechanism.** `Exclusion.holder` in `modules/tools/setbuilder.py` reads
+each folder above an anchor by its identity and passes over one it cannot
+`stat` (`except OSError: continue`), so an anchor under a missing folder
+inside download staging is still placed in staging. Changing the pass to
+`return None` kills no test: the anchor then takes the general not indexed
+wording rather than the one naming the staging folder.
+
+**Measured cost.** Wording only, driven at round two of the review with an
+anchor at `<root>/Downloads/gone/x.flac`: the slug and the exit code are the
+same either way, and the general wording also says the index leaves the
+staging folder out. Nothing is lost.
+
+**Closes when:** a test plants an anchor under a folder that does not exist
+inside an excluded folder and asserts the refusal names the folder. Ledger
+only.
+
+---
+
+## R-1644. Three verbs that rename or retag walk the whole library root with no root given, the state folder and download staging included
+
+**Found:** at the build of #779, U279, 2026-11-12.
+
+**The mechanism.** U279 left Cratekit's library state folder and the
+download staging folder out of `crate setbuild`'s index, matched by
+location through `setbuilder.Exclusion`. Three verbs that write walk the
+same whole root with `sorted(root.rglob("*"))` when no folder is named, and
+leave out neither: `name apply` and `repair paths` with no `--root`
+(`write/naming_cli.py` `_plan_for`, `intake/repair.py` `scan`, both rooted by
+`naming_cli.root_path`, which answers the library root for an omitted
+`--root`), and `taxonomy alias` with no `--folder`
+(`cli/verbs/taxonomy_word.py` `_root`, through `tagging/tag.py`
+`audio_files`, whose `SKIPPED_DIRNAMES` skip only the per item acquire
+staging trees). So a rehearsal's staged copies under
+`<root>/.cratekit/local/rehearsals/<id>/staging`, and setup's default
+staging folder `<root>/Downloads`, are inside what each of them plans to
+rename or retag. Two walks are partly covered: `core/discovery.scan_audio`
+(the vocal reader and `analyze calibrate`/`restamp`) prunes every dot
+folder by name, so it skips `.cratekit` while `state_dirname` starts with a
+dot and reads `<root>/Downloads` when pointed at the root recursively.
+Converge, `acquire match` and `acquire audit` walk `<root>/<music_dir>`
+only, and adoption reads database rows.
+
+**Measured cost.** Not driven to a write. One drive of `repair paths` and
+`name apply` over a disposable library holding a misnamed tagged copy under
+the state folder planned nothing for it, and planned nothing for a control
+file under `Music` either, so the fixture never reached their planning and
+the reachability is unmeasured. Excluding `Downloads` from `name apply`
+is not obviously right either: sitting 47 ran `name apply --root
+Downloads` on purpose (U169), so whether an omitted root should mean the
+library less staging is a product decision.
+
+**Closes when:** each of the three is driven with a fixture its planning
+accepts, a staged copy under the state folder is shown planned or not, and
+where it is, the walk takes `setbuilder.Exclusion` (or a shared home for
+it) with the state folder at least; whether download staging is left out of
+an omitted root is decided with Phillip. Ledger only until a drive shows a
+planned write.
