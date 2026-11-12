@@ -12,7 +12,7 @@
   "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
   "reused_rows": 0,
   "known_failures": 162,
-  "known_source": "/tmp/claude-0/-home-user-cratekit/3358557d-c5b5-5e0b-925a-4bfee1ecba4d/scratchpad/known-u256.txt",
+  "known_source": "scratch copy of .cloud-battery/baseline.txt, see u256-notes.md",
   "control": {
     "id": "NULL_CONTROL",
     "description": "Automatic control: append a comment line to tests/test_rb_writer_db.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
