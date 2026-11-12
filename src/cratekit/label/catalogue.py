@@ -653,6 +653,13 @@ def resolve(cfg: config.Config) -> Catalogue:
     credential is missing would record the one they already have. An adapter
     that does not import is this build's own gap, and authenticating again would
     not move it.
+
+    A FRESH CATALOGUE OVER ONE LOGIN PER PROCESS (U261). Every resolve builds a
+    new catalogue, as before, over the client
+    ``provider_session.session_for`` holds, so a verb that resolves it twice,
+    or resolves it and the outbound account, validates the session once. The
+    presence check below still runs first on every resolve, so a session the
+    index stopped recording is refused rather than reused.
     """
     # The credential is installation scoped and the library does not pick it;
     # the configuration is still handed on, because the pacing gate reads its

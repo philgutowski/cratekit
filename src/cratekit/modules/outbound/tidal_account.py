@@ -82,7 +82,6 @@ from cratekit.acquire import (
     provider_session,
 )
 from cratekit.acquire.adapter import TrackOutcome, classify_unavailable
-from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import account, kinds, ledger, pairs
 from cratekit.modules.outbound.service import (
@@ -2144,19 +2143,18 @@ class TidalAccount:
 
 
 def open_account(cfg: Any = None) -> TidalAccount:
-    """An account over a freshly logged in client, from the stored session.
+    """A fresh account over the process's logged in client, from the stored session.
+
+    The client is the one :func:`provider_session.session_for` holds for the
+    process (U261), shared with the label catalogue, so a verb that opens both
+    logs in once.
 
     The configuration is what the pacing gate reads its interval and cooldown
     off (R-705), the FROZEN one a job carries rather than a fresh load. None
     means the gate's own defaults, which are still a gate.
     """
-    gate = provider_gate.Gate(
-        provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
-    )
-    client = provider_session.client_session(gate=gate)
-    return TidalAccount(
-        client, cfg=cfg, catalogue=provider_session.catalogue_client(client, gate=gate)
-    )
+    held = provider_session.session_for(cfg)
+    return TidalAccount(held.client, cfg=cfg, catalogue=held.app)
 
 
 __all__ = [

@@ -29,6 +29,16 @@ So the first successful resolve is held and handed to every later call in the
 process; :func:`forget` drops it. A detached ``crate job resume`` is its own
 process and resolves its own.
 
+**ONE LOGIN PER PROCESS, SHARED WITH THE CATALOGUE (U261).** The adapter is
+built over the session ``provider_session.session_for`` holds, which the label
+catalogue's opener takes too, so a verb that opens both logs in once. The held
+adapter is handed out only while that session is still the held one: a session
+the catalogue saw refused, or one the keychain no longer holds, is dropped
+there and the next resolve opens a new adapter. And :func:`forget`, which a
+refused session reaches through :func:`provider_failure`, drops the shared
+session as well as the adapter, so the catalogue's next resolve logs in again
+rather than reuse the client the provider refused.
+
 Layer: modules.
 """
 
@@ -36,6 +46,7 @@ from __future__ import annotations
 
 import importlib
 
+from cratekit.acquire import provider_session
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
 from cratekit.acquire.provider_session import (
     ProviderUnavailable,
@@ -54,6 +65,11 @@ ADAPTER_MODULE = "cratekit.modules.outbound.tidal_account"
 
 #: The adapter this process already opened, if any. See the module docstring.
 _OPENED: RemoteAccount | None = None
+
+#: The shared session :data:`_OPENED` was built over, read off
+#: ``provider_session.held`` when it was opened. None for an adapter that holds
+#: no shared session, which then stays valid while none is held.
+_OPENED_OVER: provider_session.HeldSession | None = None
 
 #: The session module's remedy, carried into the product's vocabulary, as
 #: ``label.catalogue`` carries it.
@@ -83,16 +99,20 @@ def bound() -> bool:
 
 
 def forget() -> None:
-    """Drop the adapter this process holds, so the next resolve opens a new one."""
-    global _OPENED
+    """Drop the adapter this process holds and the session it shares with the
+    catalogue, so the next resolve of either logs in again."""
+    global _OPENED, _OPENED_OVER
     _OPENED = None
+    _OPENED_OVER = None
+    provider_session.forget()
 
 
 #: Statuses that judge the SESSION on a call made after login. Narrower than
 #: ``provider_session.REJECTED_STATUSES``, which includes 400 because a login's
 #: bad request is a bad token; a heart or a playlist add answered 400 is a bad
 #: request about that item, and telling that person to log in again is wrong.
-SESSION_REFUSED_STATUSES = frozenset({401, 403})
+#: The session module's own set, which its watch on the shared client reads.
+SESSION_REFUSED_STATUSES = provider_session.SESSION_REFUSED_STATUSES
 
 
 def _session_refused(exc: BaseException) -> bool:
@@ -164,7 +184,7 @@ def resolve(cfg: config.Config) -> RemoteAccount:
     slug with the remedy the session module chose. An adapter that does not
     import is this build's own gap, and authenticating again would not move it.
     """
-    global _OPENED
+    global _OPENED, _OPENED_OVER
     # The credential is installation scoped and the library does not pick it;
     # the configuration is still handed on, because the pacing gate reads its
     # interval and cooldown off the FROZEN one a job carries (R-705).
@@ -178,8 +198,9 @@ def resolve(cfg: config.Config) -> RemoteAccount:
             origin=("outbound", "account"),
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         )
-    if _OPENED is not None:
+    if _OPENED is not None and _OPENED_OVER is provider_session.held():
         return _OPENED
+    _OPENED = _OPENED_OVER = None
     try:
         adapter = importlib.import_module(ADAPTER_MODULE)
     except ImportError as exc:
@@ -218,6 +239,7 @@ def resolve(cfg: config.Config) -> RemoteAccount:
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         ) from exc
     _OPENED = opened
+    _OPENED_OVER = provider_session.held()
     return opened
 
 
