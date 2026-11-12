@@ -1010,8 +1010,14 @@ def test_six_mac_tracks_plan_no_more_workers_than_memory_holds(monkeypatch, avai
     assert planned.worker_bytes == light.worker_bytes(729.0) >= 2346 * MIB
     assert planned.workers <= max(1, available_gib * GIB // planned.worker_bytes)
     if planned.workers > 1:
-        # Every worker at the largest peak the Mac measured still fits.
-        assert planned.workers * 2346 * MIB <= available_gib * GIB
+        # Every worker at the largest peak the Mac measured still fits in what
+        # the planner keeps for workers: the reading less the reserve, under
+        # the headroom. The figures before U275 planned 3 at 8 GB and 5 at 12,
+        # which this refuses.
+        budget = (available_gib * GIB - pool.DEFAULT_MEMORY_RESERVE_BYTES) * (
+            pool.DEFAULT_HEADROOM_PERCENT
+        ) // 100
+        assert planned.workers * 2346 * MIB <= budget
 
 
 def test_eight_gigabytes_free_over_the_six_mac_tracks_is_one_worker(monkeypatch):

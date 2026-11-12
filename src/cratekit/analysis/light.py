@@ -52,9 +52,9 @@ from cratekit.core import cores, pool, tags
 #: 320, an eighth above. On the Mac (arm64, Python 3.12.5, librosa 1.0.0,
 #: 2026-11-12, A121 at sitting 94, U275) the line through six library tracks
 #: from 236 to 729 seconds meets the axis at 336 megabytes through its ends
-#: and 299 by least squares; declared an eighth above the higher, as on Linux,
-#: and one figure on every platform, the larger, so no machine is planned
-#: wider than its peaks.
+#: and 299 by least squares; declared at least an eighth above the higher, as
+#: on Linux, and one figure on every platform, the larger, so no machine is
+#: planned wider than its peaks.
 LIGHT_BASE_BYTES = 384 * 1024 * 1024
 #: What each second of the longest track adds at the peak. On Linux measured
 #: at 1.35 megabytes a second (345 megabytes at 45 seconds, 1175 at 660). On
@@ -63,7 +63,7 @@ LIGHT_BASE_BYTES = 384 * 1024 * 1024
 #: 729, every one over the 1.5 then declared, a line of 2.76 megabytes a
 #: second through its ends and 2.72 by least squares. Declared a ninth above
 #: the steeper, the margin the Linux figure had, and rounded up to three and an
-#: eighth, so each of the six is declared about 13 percent over its peak.
+#: eighth, so each of the six is declared 13 to 22 percent over its peak.
 LIGHT_BYTES_PER_SECOND = 25 * 1024 * 1024 // 8
 #: What the decode holds for each sample frame of the file at its own rate:
 #: four bytes for each channel as it is read, four for the mono mix, and
