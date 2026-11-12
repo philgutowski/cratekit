@@ -74,8 +74,8 @@ description = "check_rows: ignore the rows the scope already read, so the unanal
 file = "src/cratekit/analysis/rekordbox_check.py"
 surface = "user"
 tests = ["tests/test_analyze_check.py"]
-old = '''    held = dict(scope.read)'''
-new = '''    held = {}'''
+old = '''    held: dict[str, Any] | None = dict(scope.read)'''
+new = '''    held: dict[str, Any] | None = {}'''
 
 [[rows]]
 id = "M9_read_row_per_row"
@@ -83,10 +83,8 @@ description = "check_rows: hand read_row no row, so each row in scope is read by
 file = "src/cratekit/analysis/rekordbox_check.py"
 surface = "user"
 tests = ["tests/test_analyze_check.py"]
-old = '''            content=held.get(content_id),
-'''
-new = '''
-'''
+old = '''            content=_UNREAD if held is None else held.get(content_id),'''
+new = '''            content=_UNREAD,'''
 
 [[rows]]
 id = "M10_chunk_size"
@@ -115,3 +113,34 @@ surface = "maintainer"
 tests = ["tests/test_analyze_check.py"]
 old = '''    return Check(scope=replace(scope, read={}), rows=rows)'''
 new = '''    return Check(scope=scope, rows=rows)'''
+
+[[rows]]
+id = "M13_batch_failure_not_met_again"
+description = "check_rows: a batch the binding cannot load fails the check, ahead of an earlier row's refusal"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    except Exception:  # noqa: BLE001 - every failure is met again, in order, below
+        held = None'''
+new = '''    except Exception:  # noqa: BLE001 - every failure is met again, in order, below
+        raise'''
+
+[[rows]]
+id = "M14_batch_failure_reads_nothing"
+description = "check_rows: after a batch the binding cannot load, judge every row as missing rather than read it"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''            content=_UNREAD if held is None else held.get(content_id),'''
+new = '''            content=None if held is None else held.get(content_id),'''
+
+[[rows]]
+id = "M15_id_not_text_judged"
+description = "_unanalysed: judge a row whose ID is not text, so it joins a scope the read by ID never put it in"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if not isinstance(content.ID, str):
+            continue'''
+new = '''        if False:
+            continue'''
