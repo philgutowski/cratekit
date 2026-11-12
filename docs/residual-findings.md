@@ -51516,3 +51516,93 @@ where it is, the walk takes `setbuilder.Exclusion` (or a shared home for
 it) with the state folder at least; whether download staging is left out of
 an omitted root is decided with Phillip. Ledger only until a drive shows a
 planned write.
+
+---
+
+## R-1645. A name crediting the artist in a way the matcher does not read loses the title after it
+
+**Found:** at the build and review of #781, R-1636, 2026-11-12.
+
+**The mechanism.** R-1636 reads a file's title from the first dash part after
+the head that does not credit the searched artist (`_names_the_artist` in
+`tagging/searchers.py`): one of the names the part joins on "&", ",", "/",
+";", "+", "x", "vs", "pres" or a feature word must be one of the artist's
+names, accents folded and "The" aside, or the part of two words or more a run
+of a name with initials. Where the name credits the artist otherwise, the
+first part is read as the title and the title after it is not, so each shape
+below misses its own row, where `main`, which read every dash part, found it:
+- One word of the artist's name, "Badie - Sun Path" for "Bernard Badie", kept
+  a title on purpose, since "Badie" is as likely a title.
+- A collaboration joined by "and" or "with", "Bernard Badie and Tide - Sun
+  Path": both words are in titles, and reading them as joins took "Dancing
+  With Bernard Badie" for a credit at round two.
+- A file with no artist tag at all, "Bernard Badie - Sun Path".
+- A track number glued to the artist after the first part, "Title - 01
+  Bernard Badie - Album", which no name writes.
+- A title of a number before a name with no key, "1998 - Sun Path"
+  (round one's R2; the naming verb never leads with a number).
+
+**Measured cost.** Misses, never a wrong genre: the next source is asked and
+the file stays askable. The file with no artist tag is unreachable on the
+default walk, `searchers.WALK`, Beatport then Discogs, which both refuse a
+file with no artist. The others were found by the build's differential and the
+review's drivers; how many files carry such a name was not measured.
+
+**Closes when:** a shape is shown common in a real library, and is then read
+by a rule that cannot also take a title for the artist's credit. Ledger only.
+
+---
+
+## R-1646. A name crediting the artist before a part ending in a version is read both ways, so a self titled row or a version word row can still write its genre
+
+**Found:** at the review of #781, R-1636, rounds one and two, 2026-11-12.
+
+**The mechanism.** Since R-1636 the file's title in `tagging/searchers.py`
+(`_title_starts`) starts at the first part after the head that does not
+credit the searched artist, and no later part is read alone. One shape is left
+that only a list of version words could tell apart: a part crediting the
+artist followed by a part ending in a version word. "08A - 124 - Aurora Bloom
+- Vocal Mix" is a title "Vocal Mix" by Aurora Bloom, or a self titled track
+"Aurora Bloom" and its version; "Aurora Bloom - Sunrise Mood Extended Mix" is
+the same shape. Round one of the review drove reading only the second part to
+a self titled track losing its own row on page order, so the shape is read
+both ways (the artist's part up to that tail, and the tail), as `main` read
+it. So the tail is still read as a title where "vocal" is not in
+`VERSION_WORDS` (a row "Vocal" writes its genre), and the artist's part is
+read where the title merely ends in a version (a self titled row "Aurora
+Bloom" writes its genre onto "Aurora Bloom - Sunrise Mood Extended Mix").
+Read the same way: "Artist - Artist & Tide", two parts that both credit the
+artist, reads the first as a self titled title.
+
+**Measured cost.** Driven through `tag.tag_one` at round one: "08A - 124 -
+Bernard Badie - Vocal Mix" took a Beatport "Vocal" row's and a Discogs "Vocal
+Mix" track's genre, on `main` and on the branch alike; the file's own row
+listed first wins, as on `main`. Not worse than `main` on any input driven,
+and narrower: the artist's part is read only before a part that itself ends in
+a version (round two). Not measured: how many files carry a title or a name of
+this shape.
+
+**Closes when:** the shape is told apart without a list that fails open, or
+Phillip decides which reading wins. A wrong genre written onto a file is the
+board bar's damaged data.
+
+---
+
+## R-1647. The title start rules are pinned by hand listed rows, and two reviewers found guards no test killed
+
+**Found:** at the review of #781, R-1636, rounds one and two, 2026-11-12.
+
+**The mechanism.** `tests/test_title_matcher.py` pins each rule of the title
+start (`_title_starts`, `_head_end`, `_names_the_artist`) with hand listed
+rows, `test_each_rule_of_the_title_start_holds` and the credit tables that
+followed. Round one found six guards that killed no test, round two nineteen
+of the fix round's; the rows that pin them were added in each fix round, but
+a hand list names the cases its author thought of (seam rule P3) and covers
+no rule a later change adds.
+
+**Measured cost.** None to a user: a maintainer facing gap. The mutation
+table, `docs/mutation/r1636.md`, reads what the rows kill.
+
+**Closes when:** the title start rules are pinned by a generated table, every
+name shape the naming verb renders crossed with the artist written each way a
+credit is, checked against what the plain title matches. Ledger only.
