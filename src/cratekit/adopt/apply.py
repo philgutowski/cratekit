@@ -54,6 +54,11 @@ because "idempotent" asserted in a docstring is what a green suite cannot check:
   revert record is NOT refreshed, which is the property that makes this safe: a
   refresh would record the value adoption just wrote as the original, and the
   revert would then restore the thing it was supposed to undo.
+* Crash DURING the applied record, since U254 an append to the ledger rather
+  than a rewrite of it. The last line is torn, and :func:`read` takes a torn
+  last line as the mark that did not finish, so this is the case above: the
+  re-run applies the entry again, and the next mark cuts the torn bytes away
+  before it appends. Every whole record before it stands.
 * Crash BETWEEN the applied record and the end of the run. Nothing is
   outstanding for that entry, so the re-run skips it. Correct.
 
@@ -77,6 +82,7 @@ Layer: modules.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -97,8 +103,17 @@ STATE_KEY = "adoption_ledger"
 #: The declared lock directory, shared with the revert ledger.
 LOCK_KEY = "adoption_locks"
 
-#: Bumped only when the on-disk shape changes incompatibly.
-SCHEMA_VERSION = 1
+#: Bumped only when the on-disk shape changes incompatibly. 2 since U254: a
+#: journal, a header line and one record appended per mark. A ledger at 1, the
+#: whole document every earlier build wrote, still reads and becomes a journal
+#: at its next mark.
+SCHEMA_VERSION = 2
+
+#: The schema of the whole document every build before U254 wrote on every mark.
+DOCUMENT_SCHEMA_VERSION = 1
+
+#: What a journal's header line says it is, which no document's first line says.
+JOURNAL_FORMAT = "journal"
 
 #: The tag field adoption writes when it writes one at all. Named once, because
 #: it is also the field the revert ledger keys its records on and the two must
@@ -212,133 +227,323 @@ def lock_path(cfg: config.Config) -> Path:
 
 
 def read(cfg: config.Config) -> AppliedLedger:
-    """The effective ledger for this library. An absent file is the empty one."""
-    path = path_for(cfg)
+    """The effective ledger for this library. An absent file is the empty one.
+
+    Two shapes are read. A journal (schema 2, U254) is a header line and one
+    record per line, appended a mark at a time. A document (schema 1) is the
+    single JSON object every build before U254 wrote whole on every mark, read by
+    exactly the rules it always was, so a ledger already on a library reads the
+    same and is rewritten as a journal at its next mark rather than here: a read
+    never writes.
+    """
+    return _load(path_for(cfg))[0]
+
+
+def _load(path: Path) -> tuple[AppliedLedger, bool]:
+    """The ledger at ``path``, and whether a mark may append to the file as it is.
+
+    Appendable means a journal of this build's schema whose last line is whole.
+    A document, an absent file, and a journal ending in a torn record are read
+    and then rewritten whole by the next mark instead: the first two because
+    there is nothing to append to, the last because a record appended after torn
+    bytes would bury them mid file, where they refuse.
+    """
     try:
         raw = path.read_bytes()
     except FileNotFoundError:
-        return EMPTY
+        return EMPTY, False
     except OSError as exc:
         raise AppliedLedgerUnreadable(
             f"{path} exists and could not be read: {exc}",
             path=path,
             remedy=Remedy.RUN_DOCTOR,
         ) from exc
+    if _is_journal(raw):
+        return _read_journal(raw, path)
+    return _read_document(raw, path), False
 
+
+def _refused(
+    path: Path, message: str, remedy: Remedy = Remedy.RUN_DOCTOR
+) -> AppliedLedgerUnreadable:
+    return AppliedLedgerUnreadable(f"{path} {message}", path=path, remedy=remedy)
+
+
+def _record_from(entry: object, *, path: Path, where: str) -> AppliedEntry:
+    """One record, recognised field by field, or the refusal that names it.
+
+    The ONE set of rules for a record, shared by both shapes on disk and by the
+    mark that writes one, so a record this module writes is a record it reads.
+    """
+    if not isinstance(entry, dict):
+        raise _refused(
+            path,
+            f"{where} that is a {type(entry).__name__} rather than an object",
+        )
+    for name in ("entry", "tree", "content", "actor"):
+        if not isinstance(entry.get(name), str) or not entry[name]:
+            raise _refused(
+                path,
+                f"{where} with no {name}; a record that cannot say what it "
+                f"applied, or who approved it, is worse than no record because it "
+                f"still suppresses the work",
+            )
+    return AppliedEntry(
+        entry_id=str(entry["entry"]),
+        tree=str(entry["tree"]),
+        content_id=str(entry["content"]),
+        bucket=str(entry.get("bucket") or ""),
+        sub=str(entry.get("sub") or ""),
+        actor=str(entry["actor"]),
+        digest=str(entry.get("digest") or ""),
+        applied=str(entry.get("applied") or ""),
+    )
+
+
+def _read_document(raw: bytes, path: Path) -> AppliedLedger:
+    """A schema 1 ledger, the whole document every build before U254 wrote."""
     try:
         data = json.loads(raw.decode("utf-8"))
     except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-        raise AppliedLedgerUnreadable(
-            f"{path} is not readable as JSON: {exc}", path=path, remedy=Remedy.RUN_DOCTOR
-        ) from exc
+        raise _refused(path, f"is not readable as JSON: {exc}") from exc
     if not isinstance(data, dict):
-        raise AppliedLedgerUnreadable(
-            f"{path} holds a {type(data).__name__} at its top level rather than an "
+        raise _refused(
+            path,
+            f"holds a {type(data).__name__} at its top level rather than an "
             f"adoption ledger",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
         )
     version = data.get("schema_version")
     if not isinstance(version, int):
-        raise AppliedLedgerUnreadable(
-            f"{path} carries no integer schema_version, so nothing can be said "
-            f"about the shape of what follows it",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
+        raise _refused(
+            path,
+            "carries no integer schema_version, so nothing can be said about the "
+            "shape of what follows it",
         )
     if version > SCHEMA_VERSION:
-        raise AppliedLedgerUnreadable(
-            f"{path} was written at schema version {version}; this build "
-            f"understands {SCHEMA_VERSION}",
-            path=path,
-            remedy=Remedy.UPGRADE_CRATEKIT,
+        raise _refused(
+            path,
+            f"was written at schema version {version}; this build understands "
+            f"{SCHEMA_VERSION}",
+            Remedy.UPGRADE_CRATEKIT,
+        )
+    if version > DOCUMENT_SCHEMA_VERSION:
+        raise _refused(
+            path,
+            f"is a whole document at schema version {version}, and from version "
+            f"{SCHEMA_VERSION} on no build wrote the ledger as one",
         )
     entries = data.get("applied")
     if not isinstance(entries, list):
-        raise AppliedLedgerUnreadable(
-            f"{path} has no applied array; its records are a "
-            f"{type(entries).__name__}",
-            path=path,
-            remedy=Remedy.RUN_DOCTOR,
+        raise _refused(
+            path, f"has no applied array; its records are a {type(entries).__name__}"
         )
 
     records: list[AppliedEntry] = []
     seen: set[str] = set()
     for position, entry in enumerate(entries):
-        if not isinstance(entry, dict):
-            raise AppliedLedgerUnreadable(
-                f"{path} holds a record at position {position} that is a "
-                f"{type(entry).__name__} rather than an object",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
-            )
-        for name in ("entry", "tree", "content", "actor"):
-            if not isinstance(entry.get(name), str) or not entry[name]:
-                raise AppliedLedgerUnreadable(
-                    f"{path} holds a record at position {position} with no "
-                    f"{name}; a record that cannot say what it applied, or who "
-                    f"approved it, is worse than no record because it still "
-                    f"suppresses the work",
-                    path=path,
-                    remedy=Remedy.RUN_DOCTOR,
-                )
-        record = AppliedEntry(
-            entry_id=str(entry["entry"]),
-            tree=str(entry["tree"]),
-            content_id=str(entry["content"]),
-            bucket=str(entry.get("bucket") or ""),
-            sub=str(entry.get("sub") or ""),
-            actor=str(entry["actor"]),
-            digest=str(entry.get("digest") or ""),
-            applied=str(entry.get("applied") or ""),
+        record = _record_from(
+            entry, path=path, where=f"holds a record at position {position}"
         )
         if record.entry_id in seen:
-            raise AppliedLedgerUnreadable(
-                f"{path} holds two records for the entry {record.entry_id!r}; a "
-                f"ledger that gives two answers for one piece of work cannot say "
-                f"who applied it, and resolving that by line order picks an actor",
-                path=path,
-                remedy=Remedy.RUN_DOCTOR,
+            raise _refused(
+                path,
+                f"holds two records for the entry {record.entry_id!r}; a ledger "
+                f"that gives two answers for one piece of work cannot say who "
+                f"applied it, and resolving that by line order picks an actor",
             )
         seen.add(record.entry_id)
         records.append(record)
     return AppliedLedger(tuple(sorted(records, key=lambda held: held.entry_id)))
 
 
+def _first_line_object(raw: bytes) -> object:
+    first = raw.split(b"\n", 1)[0]
+    try:
+        return json.loads(first.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError):
+        return None
+
+
+def _is_journal(raw: bytes) -> bool:
+    """A journal says so on its first line; a document never has that line.
+
+    A document's first line is ``{`` alone (the indented writer) or the whole
+    document (a compact one), and neither carries ``format``. A journal whose
+    header is damaged is therefore read as a document, which refuses it as not
+    JSON: refused either way, never read as empty.
+    """
+    header = _first_line_object(raw)
+    return isinstance(header, dict) and header.get("format") == JOURNAL_FORMAT
+
+
+def _read_journal(raw: bytes, path: Path) -> tuple[AppliedLedger, bool]:
+    """A schema 2 ledger: a header line, then one record per line.
+
+    ONLY THE LAST LINE MAY BE TORN, and a torn last line is the mark that did not
+    finish. A mark is appended and synced whole before the loop touches the next
+    entry, under the lock, so no line but the last can ever have been in flight
+    when a process died; damage anywhere else is damage, and refuses. The torn
+    line is read as NOT APPLIED rather than refused, because the mark is the
+    last act of an entry and a mark that did not land is the crash the module
+    docstring already answers: the resume applies that entry again, the
+    membership writer's dedup makes the placement a no-op, and the revert record
+    is not refreshed. Torn means unterminated, or not JSON at all; a last line
+    that IS a JSON object and fails the record rules was written whole, so it
+    refuses like any other bad record.
+
+    A RE-MARK REPLACES. Two records for one entry are a mark made twice, and the
+    later one stands, which is what the document's writer did to a record with
+    the same id. Nothing the loop does marks an entry twice.
+    """
+    lines = raw.split(b"\n")
+    if len(lines) < 2:
+        raise _refused(path, "holds a journal header with no line ending after it")
+    header = json.loads(lines[0].decode("utf-8"))
+    version = header.get("schema_version")
+    if not isinstance(version, int):
+        raise _refused(
+            path,
+            "carries no integer schema_version in its journal header, so nothing "
+            "can be said about the shape of what follows it",
+        )
+    if version > SCHEMA_VERSION:
+        raise _refused(
+            path,
+            f"was written at schema version {version}; this build understands "
+            f"{SCHEMA_VERSION}",
+            Remedy.UPGRADE_CRATEKIT,
+        )
+    if version != SCHEMA_VERSION:
+        raise _refused(
+            path,
+            f"carries a journal header at schema version {version}, and no build "
+            f"ever wrote a journal before version {SCHEMA_VERSION}",
+        )
+
+    body, tail = lines[1:-1], lines[-1]
+    whole = not tail
+    folded: dict[str, AppliedEntry] = {}
+    for index, line in enumerate(body):
+        position = index + 1
+        try:
+            parsed = json.loads(line.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+            if index == len(body) - 1 and whole:
+                whole = False
+                break
+            raise _refused(
+                path,
+                f"holds a line, line {position + 1}, that is not readable as "
+                f"JSON, and only the last line of a journal can be torn: {exc}",
+            ) from exc
+        record = _record_from(
+            parsed, path=path, where=f"holds a record on line {position + 1}"
+        )
+        folded[record.entry_id] = record
+    ledger = AppliedLedger(tuple(sorted(folded.values(), key=lambda held: held.entry_id)))
+    return ledger, whole
+
+
+def _line(payload: Mapping[str, Any]) -> bytes:
+    """One JSON object on one line. ``json.dumps`` escapes every newline inside it."""
+    return json.dumps(payload, sort_keys=True).encode("utf-8") + b"\n"
+
+
+def _header() -> bytes:
+    return _line({"format": JOURNAL_FORMAT, "schema_version": SCHEMA_VERSION})
+
+
 def write(cfg: config.Config, ledger: AppliedLedger) -> Path:
-    """Persist ``ledger`` atomically and owner only, through the shared writer."""
-    payload = {
-        "schema_version": SCHEMA_VERSION,
-        "applied": [
-            entry.to_json()
-            for entry in sorted(ledger.applied, key=lambda held: held.entry_id)
-        ],
-    }
+    """Persist ``ledger`` whole as a journal, atomically and owner only.
+
+    The rewrite a mark makes only when it must: creating the file, turning a
+    document into a journal, and cutting a torn last record away. Every other
+    mark appends.
+    """
     path = path_for(cfg)
     config.atomic_write_bytes(
-        json.dumps(payload, indent=2, sort_keys=True).encode("utf-8") + b"\n", path
+        _header()
+        + b"".join(
+            _line(entry.to_json())
+            for entry in sorted(ledger.applied, key=lambda held: held.entry_id)
+        ),
+        path,
     )
     return path
 
 
-def mark_applied(cfg: config.Config, entry: AppliedEntry) -> AppliedLedger:
-    """Record that one entry landed. Read, modify, write, UNDER THE LOCK.
+#: What this process last left at each ledger path, as ``os.stat`` reports it.
+#:
+#: THE WHOLE READ A MARK SKIPS IS SKIPPED ONLY HERE. Every mark used to read and
+#: validate the whole ledger, which is the square in the CPU as the rewrite was
+#: in the bytes. A file still exactly as this process left it, same device,
+#: inode, size and modification time, holds what this process validated and
+#: then appended, under the lock, so it needs no second reading. Anything else,
+#: another process's mark, a restore, an edit, a first mark, is read whole and
+#: validated before a byte is appended, as every mark was before U254.
+_LEFT: dict[str, tuple[int, int, int, int]] = {}
 
-    Read, modify, write rather than a whole-file overwrite, because more than one
-    plan accumulates in one ledger and a writer that replaced the file would
-    erase every other plan's record on each call.
 
-    UNDER AN EXCLUSIVE LOCK, because a read-modify-write is not atomic and the
-    atomic rename around it protects only the rename. Two processes interleaving
-    drop a record that was fully written, and a dropped record here re-applies a
-    membership write and re-writes a tag: the second write then sees the value
-    adoption already wrote, and the revert ledger's first-write-wins rule is the
-    only thing standing between that and a lost original.
+def _as_left(path: Path) -> tuple[int, int, int, int] | None:
+    try:
+        found = os.stat(path)
+    except OSError:
+        return None
+    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)
+
+
+def mark_applied(cfg: config.Config, entry: AppliedEntry) -> Path:
+    """Record that one entry landed: one synced line appended, UNDER THE LOCK.
+
+    APPENDED rather than rewritten, decided by U254. Every mark used to read the
+    whole ledger and write the whole of it back, so N marks wrote about N squared
+    records: half a gigabyte for two thousand entries, a synced write each, on
+    the library's own drive. A mark now appends one record and syncs it before
+    returning, so the bytes grow with the entries. The file is rewritten whole
+    only to create it, to turn a ledger written before U254 into a journal, and
+    to cut a torn last record away, each through the shared atomic writer.
+
+    Never a whole-file overwrite from memory, because more than one plan
+    accumulates in one ledger and a writer that replaced the file would erase
+    every other plan's record. The rewrites above start from the file as read
+    under the lock.
+
+    UNDER AN EXCLUSIVE LOCK, because the read, the choice between appending and
+    rewriting, and the write are not atomic together. Two processes interleaving
+    would drop a record or append onto a file the other is replacing, and a
+    dropped record here re-applies a membership write and re-writes a tag: the
+    second write then sees the value adoption already wrote, and the revert
+    ledger's first-write-wins rule is the only thing standing between that and a
+    lost original.
+
+    THE RECORD IS VALIDATED BY THE READER'S RULES BEFORE IT IS WRITTEN, so the
+    ledger is never handed a record that would make every later read refuse.
+
+    Returns the ledger's path. It used to return the whole updated ledger, which
+    meant reading it on every mark; nothing used the answer.
     """
+    path = path_for(cfg)
+    line = _line(entry.to_json())
+    _record_from(
+        entry.to_json(),
+        path=path,
+        where=f"was refused a record for the entry {entry.entry_id!r}, one",
+    )
+    key = str(path)
     with config._exclusive_lock(lock_path(cfg)):
-        updated = read(cfg).with_applied(entry)
-        write(cfg, updated)
-    return updated
+        known = _LEFT.pop(key, None)
+        if known is not None and known == _as_left(path):
+            config.append_durable_bytes(line, path)
+        else:
+            ledger, appendable = _load(path)
+            if appendable:
+                config.append_durable_bytes(line, path)
+            else:
+                write(cfg, ledger.with_applied(entry))
+        left = _as_left(path)
+        if left is not None:
+            _LEFT[key] = left
+    return path
 
 
 def outstanding(plan: AdoptionPlan, ledger: AppliedLedger) -> tuple[PlanEntry, ...]:
@@ -478,8 +683,9 @@ def apply_plan(
     granted = require_approval(plan, approval)
     ledger = read(cfg)
     pending = outstanding(plan, ledger)
+    done = ledger.entry_ids()
     already = tuple(
-        entry.entry_id for entry in plan.applicable() if ledger.has(entry.entry_id)
+        entry.entry_id for entry in plan.applicable() if entry.entry_id in done
     )
     report_resumed = pending[0].ordinal if pending else None
 
@@ -563,7 +769,7 @@ def apply_plan(
         # work on the next run while the library never received it, which is the
         # order U19 established for exactly this shape and the one direction that
         # is not recoverable by re-running.
-        ledger = mark_applied(
+        mark_applied(
             cfg,
             AppliedEntry(
                 entry_id=entry.entry_id,
@@ -591,9 +797,11 @@ def apply_plan(
 __all__ = [
     "ADOPTED_TAG_FIELD",
     "EMPTY",
+    "JOURNAL_FORMAT",
     "LOCK_KEY",
     "SCHEMA_VERSION",
     "STATE_KEY",
+    "DOCUMENT_SCHEMA_VERSION",
     "AppliedEntry",
     "AppliedLedger",
     "AppliedLedgerUnreadable",

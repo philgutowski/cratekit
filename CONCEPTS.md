@@ -516,6 +516,14 @@ rehearsal flag, mirror or archive root). `backup run` warns
 **fast** mirror's one recursive listing; both compare size and mtime. Doctor
 reports its age as `backup.full_comparison`.
 
+### Journal ledger
+A state file kept as a header line and one record per line: each write appends
+one record and syncs it under the file's lock (`config.append_durable_bytes`),
+and the file is rewritten whole only to create it, to turn an older whole
+document into a journal, or to cut a torn last line away. Only the last line
+can be torn, and a torn last line reads as the write that did not finish. The
+applied adoption ledger is one since U254.
+
 ## Verification
 
 ### Guard
