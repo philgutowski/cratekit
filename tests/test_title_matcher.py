@@ -913,3 +913,102 @@ def test_a_self_titled_tracks_dash_version_the_list_lacks_still_finds_its_own_ro
 def test_each_rule_of_the_title_start_holds(artist, title, own, other):
     assert searchers._title_matches(title, own, artist=artist)
     assert not searchers._title_matches(title, other, artist=artist)
+
+
+# ---------------------------------------------------------------------------
+# H. R-1636, review round two: a title holding the artist's name, and where
+#    the both ways reading stops
+# ---------------------------------------------------------------------------
+
+#: (artist tag, file title, its own row, another recording by the artist).
+ROUND_TWO = [
+    # A title holding the artist's name is a title, never the artist's credit.
+    (ARTIST, f"08A - 124 - {ARTIST} Theme - Pt. 2", f"{ARTIST} Theme (Pt. 2)", "Pt. 2"),
+    ("Tide", "08A - 124 - Riding The Tide - Part 2", "Riding The Tide (Part 2)", "Part 2"),
+    ("Tide", "08A - 124 - Riding The Tide - Intro", "Riding The Tide (Intro)", "Intro"),
+    (ARTIST, f"{ARTIST} - {ARTIST} Theme", f"{ARTIST} Theme", ARTIST),
+    ("Tide", "Tide - Riding The Tide", "Riding The Tide", "Tide"),
+    ("Tide", "08A - 124 - Riding The Tide - Vocal Mix", "Riding The Tide", "Vocal Mix"),
+    (ARTIST, f"08A - 124 - {ARTIST} Theme - Vocal Mix", f"{ARTIST} Theme", "Vocal Mix"),
+    # The artist after the title, or in its version, is never read alone.
+    ("Tide", "08A - 124 - Sun Path - Tide - Fabric Live", "Sun Path", "Tide"),
+    ("Tide", "08A - 124 - Sun Path - Tide", "Sun Path", "Tide"),
+    ("Tide", "Sun Path - Tide", "Sun Path", "Tide"),
+    (ARTIST, f"08A - 124 - Sun Path - {ARTIST} Remix", "Sun Path", ARTIST),
+    ("Tide", "08A - 124 - Sun Path - Tide Dub", "Sun Path", "Tide"),
+    # The artist's part is read both ways only before a version, never a title.
+    (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - Original Mix", "Sun Path", ARTIST),
+    (ARTIST, f"{ARTIST} - Sun Path Extended Mix", "Sun Path", ARTIST),
+    # A number of three figures, or one before a version, is a title.
+    (ARTIST, "08A - 124 - 007 - Original Mix", "007", "Original Mix"),
+    ("Tide", "007 - Tide - Sun Path", "007", "Sun Path"),
+    (ARTIST, "08A - 124 - 05 - Original Mix", "05", "Original Mix"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "own", "other"), ROUND_TWO)
+def test_round_two_a_title_keeps_its_own_row_and_takes_no_other(artist, title, own, other):
+    assert searchers._title_matches(title, own, artist=artist)
+    assert not searchers._title_matches(title, other, artist=artist)
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "other"),
+    [
+        (ARTIST, f"08A - 124 - Sun Path - {ARTIST} Remix", ARTIST),
+        ("Tide", "08A - 124 - Sun Path - Tide - Fabric Live", "Tide"),
+        (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - Original Mix", ARTIST),
+        ("Tide", "08A - 124 - Riding The Tide - Vocal Mix", "Vocal Mix"),
+    ],
+)
+def test_round_two_no_genre_is_written_off_another_recording(tmp_path, silence, artist, title, other):
+    path = _file(tmp_path, silence, "a", {"artist": artist, "title": title})
+    beatport = searchers.Fetched(
+        text=_beatport_page([_beatport_track(artist, other, BUCKET_GENRE, mix="Original Mix")]), status=200
+    )
+    tracks = [{"position": "A1", "type_": "track", "title": other}]
+    fetch = routed(search=results(50), releases={50: release(50, tracks=tracks)}, beatport=beatport)
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "own"),
+    [
+        # An initial stands for a word of a name of two words or more.
+        (ARTIST, "08A - 124 - B. Badie - Sun Path", "Sun Path"),
+        # "The" opens a name on either side.
+        ("The Black Madonna", "08A - 124 - Black Madonna - Sun Path", "Sun Path"),
+        # Every join a credit is written with.
+        (f"{ARTIST}; Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
+        (f"{ARTIST} + Tide", "08A - 124 - Tide - Sun Path", "Sun Path"),
+        (ARTIST, f"08A - 124 - {ARTIST} pres. Tide - Sun Path", "Sun Path"),
+        (ARTIST, f"08A - 124 - {ARTIST} and Tide - Sun Path", "Sun Path"),
+        (ARTIST, f"08A - 124 - {ARTIST} with Tide - Sun Path", "Sun Path"),
+        # A track number glued to the first part, or alone before it.
+        (ARTIST, f"01 {ARTIST} - Sun Path", "Sun Path"),
+        (ARTIST, f"01 - {ARTIST} - Sun Path", "Sun Path"),
+        # A part after a lone track number is the title, even the artist's name.
+        (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", ARTIST),
+        # Two parts crediting the artist read the second too.
+        (ARTIST, f"08A - 124 - Tide & {ARTIST} - {ARTIST}", ARTIST),
+    ],
+)
+def test_each_way_a_credit_is_written_is_known(artist, title, own):
+    assert searchers._title_matches(title, own, artist=artist)
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "other"),
+    [
+        (ARTIST, "08A - 124 - B. Badie - Sun Path", "B Badie"),
+        (ARTIST, f"{ARTIST} - Sun Path - 02 - {ARTIST}", "Sun Path"),
+        (ARTIST, "08A - 124 - Badie - Sun Path", "Sun Path"),
+        ("Tide", "08A - 124 - Love And Tides - Sun Path", "Sun Path"),
+    ],
+)
+def test_what_is_not_the_artists_credit_is_never_passed_over(artist, title, other):
+    assert not searchers._title_matches(title, other, artist=artist)
