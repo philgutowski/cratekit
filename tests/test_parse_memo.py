@@ -318,9 +318,12 @@ def test_shared_trees_answer_alike_in_either_order_and_as_trees_of_their_own():
 # so: the test stops at its first pin, the kebab literals, so it proves that
 # helper reads what it was handed and no other. A helper further down reading
 # the package again for itself sees the same files on the real tree and passes
-# here. The parse count above catches that for the helpers it sweeps: it hands
-# them a slice of the package, so one reading the whole package for itself
-# parses more files than it was handed.
+# here. The parse count above catches that for two of the helpers it sweeps,
+# kebab_literals_by_module and modules_holding_a_cause_literal: it hands them a
+# slice of the package, so either reading the whole package for itself parses
+# more files than it was handed. It does not reach modules_holding_a_named_cause,
+# which it does not sweep, or holds_an_in_range_integer, which is handed one text
+# at a time; the review of 2026-11-12 drove both and found them unreached.
 
 
 def test_the_at_risk_population_names_a_planted_module(monkeypatch):
