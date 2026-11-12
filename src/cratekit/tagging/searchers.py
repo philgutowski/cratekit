@@ -837,33 +837,98 @@ def _a_tail_to_shed(tail: str, *, searched: bool) -> bool:
     return bool(named) and named[-1] in VERSION_WORDS
 
 
-#: What joins two names in one artist credit, "Aurora Bloom & Tide" or
-#: "Aurora Bloom, Tide". "and", "x" and "vs" are not here: they are in names.
-_CREDIT_JOIN = re.compile(r"[,&/]")
+#: What joins two names in one credit, "Aurora Bloom & Tide", "Aurora Bloom,
+#: Tide" or "Aurora Bloom; Tide". "and" is not here: it is in names, "Above and
+#: Beyond".
+_CREDIT_JOIN = re.compile(r"[,&/;+]")
+
+#: The words that join two names in one credit as a name or a tag writes it:
+#: "Aurora Bloom x Tide", "vs", "pres", and a feature credit's words. "with"
+#: and "and" are not here: they are in titles and names, "Stay With Me".
+_CREDIT_WORDS = frozenset({"x", "vs", "pres", "presents"}) | _FEATURING
+
+
+def _folded(word: str) -> str:
+    """A word with its accents taken off, so "Âme" and "Ame" are one name."""
+    return "".join(c for c in unicodedata.normalize("NFKD", word) if not unicodedata.combining(c))
+
+
+def _credited_names(text: str) -> set[tuple[str, ...]]:
+    """The names a credit carries, each as its folded words with a leading
+    "the" taken off: "The Black Madonna & Tide x Sun" is "black madonna",
+    "tide" and "sun"."""
+    names: set[tuple[str, ...]] = set()
+    for chunk in _CREDIT_JOIN.split(text):
+        name: list[str] = []
+        for word in (*_words(chunk), "x"):
+            if word not in _CREDIT_WORDS:
+                name.append(_folded(word))
+                continue
+            if len(name) > 1 and name[0] == "the":
+                name = name[1:]
+            if name:
+                names.add(tuple(name))
+            name = []
+    return names
 
 
 def _artist_names(artist: str) -> frozenset[tuple[str, ...]]:
-    """The searched artist's names, each as its words: the whole credit, the
-    credit before a feature, and each name a comma, an ampersand or a slash
-    joins in it. None for no artist."""
+    """The searched artist's names, each as its folded words: the whole credit
+    and every name it joins, "Bernard Badie & Tide" is also "bernard badie" and
+    "tide". None for no artist."""
     text = _normalized(artist)
-    names: set[tuple[str, ...]] = set()
-    for name in (text, *_CREDIT_JOIN.split(text)):
-        words = _words(name)
-        names.add(words)
-        credited = _without_featuring(words)
-        if credited:
-            names.add(credited)
-    names.discard(())
+    names = _credited_names(text)
+    whole = tuple(_folded(word) for word in _words(text))
+    if whole:
+        names.add(whole)
     return frozenset(names)
 
 
-def _names_the_artist(part: str, names: frozenset[tuple[str, ...]]) -> bool:
-    """Whether a dash part of the file's title is the searched artist's name,
-    word for word, a feature credit after it aside. Never by characters, so a
-    title "Bloom" is not the artist "Aurora Bloom"."""
-    words = _words(part)
-    return words in names or _without_featuring(words) in names
+def _a_track_number(part: str) -> bool:
+    """Whether a dash part is a track number alone, "01" of "01 - Artist -
+    Title": zero padded, as :data:`_TRACK_NUMBER`."""
+    return _TRACK_NUMBER.fullmatch(part.strip()) is not None
+
+
+def _runs_in(inner: tuple[str, ...], outer: tuple[str, ...], *, initials: bool = False) -> bool:
+    """Whether ``inner`` is a run of ``outer``'s words, in order and together;
+    with ``initials``, a word of one letter in ``inner`` stands for a word it
+    opens, "B Badie" in "Bernard Badie"."""
+    size = len(inner)
+
+    def same(mine: str, theirs: str) -> bool:
+        return mine == theirs or (initials and len(mine) == 1 and theirs.startswith(mine))
+
+    return any(
+        all(same(mine, theirs) for mine, theirs in zip(inner, outer[start : start + size], strict=True))
+        for start in range(len(outer) - size + 1)
+    )
+
+
+def _names_the_artist(part: str, names: frozenset[tuple[str, ...]], *, first: bool) -> bool:
+    """Whether a dash part of the file's title credits the searched artist.
+
+    It does when one of the artist's names (:func:`_artist_names`) is a run of
+    its words, or its words a run of one of them, accents aside: "[MP3]
+    Bernard Badie", "Bernard Badie and Tide" and "The Black Madonna" credit
+    "Bernard Badie" and "Black Madonna", and "Ame" credits "Âme". Whole words,
+    never characters, and only together, so "Bernard Smith" is not "Bernard
+    Badie", and a part of one word inside a longer name is a title, "Badie".
+    A part of two words or more may write a name's word by its initial, "B.
+    Badie".
+    The first part of the title's body may open with a track number, "01
+    Bernard Badie - Title"; any later part that does is a title, never the
+    artist.
+    """
+    words = tuple(_folded(word) for word in _words(part))
+    if first and len(words) > 1 and _TRACK_NUMBER.fullmatch(words[0]):
+        words = words[1:]
+    elif _numbered(words):
+        return False
+    return bool(words) and any(
+        _runs_in(name, words) or (len(words) > 1 and _runs_in(words, name, initials=True))
+        for name in names
+    )
 
 
 #: The tempos a head carries before any key, as the naming verb writes them: a
@@ -902,10 +967,12 @@ def _head_end(parts: list[str]) -> int:
     return end
 
 
-def _title_starts(parts: list[str], artist: str) -> tuple[int, int, frozenset[int], tuple[int, ...]]:
+def _title_starts(
+    parts: list[str], artist: str
+) -> tuple[int, int, frozenset[int], frozenset[int], tuple[int, ...]]:
     """Where a file's head ends and its title starts among its dash parts, the
-    other parts that name the searched artist, and every start a reading may
-    take (R-1636).
+    other parts that name the searched artist, the parts a later title starts
+    at or after, and every start a reading may take (R-1636).
 
     The title is the first part after the head that is not the artist's name: a
     file's title tag is "KEY - BPM - Title", maybe with a dash version after
@@ -918,20 +985,31 @@ def _title_starts(parts: list[str], artist: str) -> tuple[int, int, frozenset[in
     else can be: "Aurora Bloom" is the title of "08A - 124 - Aurora Bloom", of
     "Aurora Bloom - Original Mix", whose other part is version words alone, and
     of "Aurora Bloom - Aurora Bloom - Sun Path", whose next part is the artist.
-    The one later start is a part that opens with a zero padded track number,
-    the "01 Title" of "Artist - Album - 01 Title", and the part before it is
-    never read alone, whatever version its title ends with.
+    The one later start is a part that opens with a zero padded track number
+    or follows one written alone, the "01 Title" of "Artist - Album - 01 Title"
+    or "Artist - Album - 01 - Title", and the part before it is never read
+    alone, whatever version its title ends with. A track number alone before
+    the title is passed over as the head is, "01 - Artist - Title". And when
+    the title follows the artist's part and ends in a version, the artist's
+    part is read too, up to it (round one of R-1636's review).
     """
     head = _head_end(parts)
     _, tail_start = _head_parts(parts)
     end = max(tail_start, head + 1)
+    while head < end - 1 and _a_track_number(parts[head]):
+        head += 1
     names = _artist_names(artist)
+    numbers = frozenset(index for index in range(head, end - 1) if _a_track_number(parts[index]))
     artists = (
-        frozenset(index for index in range(head, end) if _names_the_artist(parts[index], names))
+        frozenset(
+            index
+            for index in range(head, end)
+            if index - 1 not in numbers and _names_the_artist(parts[index], names, first=index == head)
+        )
         if end - head > 1
         else frozenset()
     )
-    title = next((index for index in range(head, end) if index not in artists), head)
+    title = next((index for index in range(head, end) if index not in artists | numbers), head)
     if title > head and (
         head + 1 in artists
         or not _names_a_title(_words(_title_core(parts[title])[0]), tail=True, head=False)
@@ -940,9 +1018,19 @@ def _title_starts(parts: list[str], artist: str) -> tuple[int, int, frozenset[in
     numbered = tuple(
         index
         for index in range(title + 1, end)
-        if index not in artists and _numbered(_words(_title_core(parts[index])[0]))
+        if index not in artists
+        and (index - 1 in numbers or _numbered(_words(_title_core(parts[index])[0])))
     )
-    return head, title, artists - {title}, (title, *numbered)
+    # "Artist - X" with X ending in a version is a title X, or a self titled
+    # track and its version, "Aurora Bloom - Vocal Mix"; only a list could tell,
+    # so the artist's part is read too, up to such a tail only, as on main.
+    # Two parts crediting the artist are "Title - Artist" for a self titled
+    # track, or "Artist - Title" for one titled as a credit writes the artist,
+    # "Tide & Aurora Bloom - Aurora Bloom": the second is read too.
+    either = (head,) if title > head and head in artists else ()
+    if title == head and head + 1 in artists:
+        either = (head + 1,)
+    return head, title, artists - {title}, numbers | frozenset(numbered), (title, *numbered, *either)
 
 
 def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
@@ -979,21 +1067,21 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
     whole = (0, len(parts))
     if searched:
         _, tail_start = _head_parts(parts)
-        head, title, artists, firsts = _title_starts(parts, artist)
+        head, title, artists, later, firsts = _title_starts(parts, artist)
     else:
         tail_start = len(parts)
-        head, title, artists, firsts = 0, 0, frozenset(), (0,)
+        head, title, artists, later, firsts = 0, 0, frozenset(), frozenset(), (0,)
     readings: set[tuple[str, ...]] = set()
     shed: set[tuple[str, ...]] = set()
     for first in dict.fromkeys((*firsts, 0)):
         after_title = first > head
         after_head = first == title == head > 0
         for last in range(first + 1, len(parts) + 1):
-            if first not in firsts and (first, last) != whole:
+            if (first, last) != whole and (first not in firsts or first < title != last):
                 continue
             after = _DASH.join(parts[last:])
             if last < len(parts) and (
-                last in firsts
+                last in later
                 or not (after_head or last in artists or _a_tail_to_shed(after, searched=searched))
             ):
                 continue
