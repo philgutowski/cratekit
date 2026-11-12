@@ -110,6 +110,8 @@ SAME = [
     ("Original", "Original (Extended Mix)"),
     ("Club!", "Club (Original Mix)"),
     ("Vocal Mix", "Vocal Mix"),
+    ("Sun Path", "Sun Path [Nightwave Remix]"),
+    ("Sunrise Mood Kerri Chandler Remix", "Sunrise Mood (Kerri Chandler Remix)"),
 ]
 
 #: (searched, found) pairs that name different recordings and must not match.
@@ -153,6 +155,8 @@ DIFFERENT = [
     ("Dub", "Dub Siren"),
     ("Remix", f"{OTHER} Remix"),
     ("Love", "Love Is The Message"),
+    ("Track 2", "Track"),
+    ("(Hate) Is The Message", "(Love) Is The Message"),
 ]
 
 #: (file title, catalogue row) pairs that name the same recording, read one way
@@ -172,6 +176,19 @@ HEADED = [
     ("Bernard Badie - Sun Path - 02 Sunrise Mood", "Sunrise Mood"),
     ("08A - 124 - [MP3] Sunrise Mood", "Sunrise Mood"),
     ("08A - 124 - Make Luv - Room 5", "Make Luv"),
+    ("Sun Path - 08A - 124", "Sun Path"),
+]
+
+#: (file title, catalogue row) pairs that name different recordings, read one
+#: way round: what the file's head is, a key, a tempo or an artist's name, is
+#: never its title, and a row that is the artist's name and another title is
+#: never the file's.
+HEADED_NOT = [
+    ("04A - 126 - Burning (Extended Mix)", "126"),
+    ("04A - 126 - Burning (Extended Mix)", "04A"),
+    ("Bernard Badie - Sunrise Mood", "Bernard Badie"),
+    ("Bernard Badie - Sunrise Mood", "Bernard Badie - Tide"),
+    ("Bernard Badie - Corner Talk (Club Mix)", "Bernard Badie - Glass Hour (Extended Mix)"),
 ]
 
 
@@ -190,6 +207,15 @@ def test_a_title_matches_no_other_recording_either_way_round(searched, found):
 @pytest.mark.parametrize(("searched", "found"), HEADED)
 def test_a_headed_file_title_matches_its_own_row(searched, found):
     assert searchers._title_matches(searched, found)
+
+
+@pytest.mark.parametrize(("searched", "found"), HEADED_NOT)
+def test_a_files_head_is_never_its_title(searched, found):
+    assert not searchers._title_matches(searched, found)
+    assert _traxsource_hit(searched, found).genre is None
+    assert _bandcamp_hit(searched, found).genre is None
+    assert discogs_answer(_discogs_hit(searched, found)).answer == "miss"
+    assert _beatport_answer(_beatport_hit(searched, [_beatport_track(ARTIST, found, BUCKET_GENRE)])) == "miss"
 
 
 @pytest.mark.parametrize(
@@ -218,6 +244,7 @@ def test_a_catalogue_rows_dash_tail_is_never_its_title():
     assert not searchers._title_matches(f"{OTHER} - Original Mix", "Original Mix")
     assert searchers._title_matches(f"{OTHER} - Original Mix", OTHER)
     assert searchers._title_matches(OTHER, f"{OTHER} - Original Mix")
+    assert not searchers._title_matches("Hate", "Love - Hate")
 
 
 @pytest.mark.parametrize("noise", NOISE)
