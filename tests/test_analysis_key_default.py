@@ -97,12 +97,24 @@ def _detector_uses(tree: ast.AST) -> list[tuple[int, set[str]]]:
         if not isinstance(node, ast.Call):
             continue
         target = node.func
-        if isinstance(target, ast.Attribute) and target.attr == "partial" and node.args:
+        if _name_of(target) == "partial" and node.args:
+            # ``functools.partial`` and a bare ``partial`` alike.
             target = node.args[0]
-        name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", None)
-        if name in ("analyse_file", "key_profile"):
-            found.append((node.lineno, {keyword.arg for keyword in node.keywords if keyword.arg}))
+        if _name_of(target) in ("analyse_file", "key_profile"):
+            # An expansion, ``**options``, could carry a method unseen, so it
+            # is read as naming one.
+            found.append(
+                (node.lineno, {keyword.arg or "**" for keyword in node.keywords})
+            )
     return found
+
+
+def _name_of(node: ast.AST) -> str | None:
+    if isinstance(node, ast.Attribute):
+        return node.attr
+    if isinstance(node, ast.Name):
+        return node.id
+    return None
 
 
 def test_no_shipped_caller_of_the_detector_names_a_key_method():
@@ -121,7 +133,7 @@ def test_no_shipped_caller_of_the_detector_names_a_key_method():
             seen += 1
             if path.name == "detect.py" and path.parent.name == "analysis":
                 continue
-            if {"key", "method"} & keywords:
+            if {"key", "method", "**"} & keywords:
                 named.append(f"{path.relative_to(package)}:{line}")
     assert seen >= 4, "the walk found too few detector calls to have read the package"
     assert named == []
@@ -350,7 +362,7 @@ def test_the_default_profile_is_the_plain_chroma_bit_for_bit():
     assert np.array_equal(found, expected)
 
 
-def test_only_the_key_can_move_between_the_whole_and_the_default_method(tmp_path):
+def test_nothing_but_the_key_moves_for_a_track_both_methods_key(tmp_path):
     """For a track both methods key, tempo, drift, its verdict, energy and its status agree.
 
     Whether a track is keyed at all can move too, which the record says: a

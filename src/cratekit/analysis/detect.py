@@ -403,7 +403,9 @@ def drift_from_tempogram(
 #: file of clicks with no tone, which the whole track's chroma read as keyless
 #: (``skipped-no-key``) and the plain chroma keys, so ``analyze run`` now
 #: writes it a key and a head. Four drum tools, noise and the 23 track
-#: synthetic set were keyed under both. ``KEY_WHOLE`` and ``KEY_WINDOWS`` stay
+#: synthetic set were keyed under both, the drum tools to keys far apart
+#: under the two, since a chroma with no tone in it names no key worth the
+#: name. ``KEY_WHOLE`` and ``KEY_WINDOWS`` stay
 #: selectable by name so a later sitting can read all three again.
 KEY_WHOLE = "whole"
 KEY_WINDOWS = "windows"

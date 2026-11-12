@@ -916,10 +916,12 @@ crate metadata mytags-vocals [--apply]
   the time of the one it replaced, and over 300 library tracks rekordbox
   analysed itself it agreed with rekordbox's key 161 times against the old
   reading's 159. A track analysed before U276 keeps the key it was given;
-  analysed again, its key can differ (on generated audio, every key that
-  moved moved one Camelot step, toward the key the track was written in). A
-  file with no tone in it, clicks alone, which the old reading settled
-  `skipped-no-key`, can now be given a key and renamed. The answer's
+  analysed again, its key can differ (on generated tonal audio, every key
+  that moved moved one Camelot step, toward the key the track was written
+  in). A file with little or no tone in it, a drum tool, can take an
+  unrelated key under either reading and often a different one under each,
+  and one of clicks alone, which the old reading settled `skipped-no-key`,
+  can now be given a key and renamed. The answer's
   `head_agreement` names the method the run reads with (`key_method`), the
   method its `key` counts were read with (`key_read_with`), and each
   method's reading over one sample (`key_by_method`).
