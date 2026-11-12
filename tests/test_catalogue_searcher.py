@@ -236,16 +236,24 @@ def _no_hit(hit) -> bool:
         and hit.genre is None
         and hit.source == ""
         and hit.unread == ()
-        and len(hit.answers) == len(searchers.SOURCES)
+        and len(hit.answers) == len(searchers.SCRAPED_WALK)
     )
 
 
 def _searcher(fetch, *, naps: list[float] | None = None, pacing=None):
+    """The searcher over the walk before U244, which this suite was written for.
+
+    THE TWO SCRAPED PARSERS STAY DRIVEN HERE. They are off the default walk
+    since U244 and still in the tree, so a record of what they answered reads
+    and a walk naming them still works; the default walk, Beatport then
+    Discogs, is ``tests/test_discogs_searcher.py``'s.
+    """
     return searchers.catalogue_searcher(
         TAXONOMY,
         fetch=fetch,
         sleep=(naps.append if naps is not None else lambda _seconds: None),
         pacing=pacing,
+        walk=searchers.SCRAPED_WALK,
     )
 
 
@@ -387,7 +395,7 @@ def test_a_source_that_never_answered_raises_rather_than_declining():
     cause = raised.value.cause
     assert cause.reason == searchers.UNREACHABLE_REASON
     assert cause.remediation.remedy is Remedy.RETRY_LATER
-    assert sorted(cause.detail["sources"]) == sorted(searchers.SOURCES)
+    assert sorted(cause.detail["sources"]) == sorted(searchers.SCRAPED_WALK)
 
 
 def test_one_source_that_answered_holds_back_the_refusal():
@@ -594,7 +602,7 @@ def test_an_unknown_source_genre_a_taxonomy_calls_too_coarse_is_a_plain_decline(
         bandcamp="",
     )
     hit = searchers.catalogue_searcher(
-        other, fetch=fetch, sleep=lambda _seconds: None
+        other, fetch=fetch, sleep=lambda _seconds: None, walk=searchers.SCRAPED_WALK
     )(ARTIST, TITLE)
     assert hit is not None
     assert hit.genre is None

@@ -916,7 +916,11 @@ def _catalogues(per_title: dict[str, dict[str, searchers.Fetched]]):
                     return page
         return searchers.Fetched(note=f"no route for {url}")
 
-    return searchers.catalogue_searcher(TAXONOMY, fetch=fetch, sleep=lambda _s: None)
+    # THE WALK BEFORE U244, which R-791's sweeps were measured on and these
+    # tests describe; the default walk's sweep is test_discogs_searcher's.
+    return searchers.catalogue_searcher(
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, walk=searchers.SCRAPED_WALK
+    )
 
 
 EMPTY_BEATPORT = searchers.Fetched(text=beatport_page([]), status=200)
@@ -1183,6 +1187,7 @@ def test_a_published_genre_reaches_the_file_the_artifact_and_the_summary(
     assert tagging["tagged"] == 1
     assert tagging["tagged_by"] == {
         searchers.BEATPORT: 0,
+        searchers.DISCOGS: 0,
         searchers.TRAXSOURCE: 0,
         searchers.BANDCAMP: 0,
         published.SOURCE: 1,

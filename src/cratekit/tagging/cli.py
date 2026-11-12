@@ -83,8 +83,9 @@ from cratekit.tagging import tag as tag_engine
 OFF_TAXONOMY = "tag-folder-off-taxonomy"
 
 #: The warning a sweep carries when some files were left untagged because a
-#: catalogue could not be read for them, rather than because none carried them
-#: (R-791). A warning and not a cause, on the same rule: the sweep did what it
+#: catalogue went unread for them, rather than because none carried them
+#: (R-791): it could not be read, or since U244 it was not asked for want of a
+#: token. A warning and not a cause, on the same rule: the sweep did what it
 #: could and the files are askable again on the next run.
 SOURCES_UNREAD = "tag-folder-sources-unread"
 
@@ -107,6 +108,12 @@ PUBLISHED_UNREAD = "tag-folder-published-unread"
 #: hand. Named apart from the engine's ``NO_ISRC``, which is the skip reason
 #: and the answer word, so one name does not mean two strings in two modules.
 NO_ISRC_FILES = "tag-folder-no-isrc"
+
+#: The warning that counts the files Discogs was not asked about because no
+#: Discogs token is recorded, or the keychain no longer holds the one that is
+#: (U244). Apart from the unread count because the remedy is one command, and
+#: a person who never recorded a token needs to hear that Discogs exists.
+DISCOGS_NO_TOKEN_FILES = "tag-folder-discogs-no-token"
 
 
 #: The warning a sweep queued with ``--label`` carries when that label is
@@ -295,6 +302,7 @@ def _summary(
     unresolved: dict[str, int] = {}
     off_taxonomy: dict[str, int] = {}
     tagged = 0
+    discogs_without_token = 0
     for report in artifacts.committed(cfg, job_id):
         reason = str(report.get("skipped") or "")
         source_genre = str(report.get("source_genre") or "")
@@ -341,6 +349,12 @@ def _summary(
             word = str(said.get("answer") or "")
             if counted is not None and word in counted:
                 counted[word] += 1
+            if (
+                said.get("source") == searchers.DISCOGS
+                and word == searchers.NOT_ASKED
+                and said.get("note") in searchers.DISCOGS_UNASKED_NOTES
+            ):
+                discogs_without_token += 1
     reported = {row["item"] for row in files}
     for item_id, cause in (causes or {}).items():
         if item_id in reported:
@@ -369,6 +383,7 @@ def _summary(
         "unresolved": unresolved,
         "off_taxonomy": off_taxonomy,
         "answers": answers,
+        "discogs_without_token": discogs_without_token,
         "art_repair": art_repair,
         "art_fetch": art_fetch,
     }
@@ -463,7 +478,7 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
                 "code": SOURCES_UNREAD,
                 "message": (
                     f"{_files(unread)} left untagged because at least one "
-                    f"catalogue could not be read for them, so whether any "
+                    f"catalogue went unread for them, so whether any "
                     f"catalogue carries them is unknown. They are not reported as "
                     f"no-hit, and the next run over this folder asks again; each "
                     f"file's record says what every catalogue answered. Across "
@@ -477,7 +492,7 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
                 ),
             }
         )
-    # THE THREE RECORD SHOPS ONLY. The general catalogue's refusal is said by
+    # THE RECORD SHOPS ONLY, Discogs among them. The general catalogue's refusal is said by
     # its own warning, over every unread answer rather than only this one, and
     # naming it under this code as well would say one fact in two wordings.
     for source in searchers.SOURCES:
@@ -498,6 +513,29 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
                 }
             )
     return tuple(warnings)
+
+
+def _discogs_warnings(summary: dict) -> tuple[dict[str, str], ...]:
+    """Count the files Discogs was not asked about for want of a token (U244).
+
+    THOSE FILES ARE NOT NO-HIT. Each rides ``sources-unread`` unless another
+    catalogue settled it, and the next run asks again; this says what would let
+    it ask Discogs, once, however many files it was.
+    """
+    count = int(summary.get("discogs_without_token") or 0)
+    if not count:
+        return ()
+    return (
+        {
+            "code": DISCOGS_NO_TOKEN_FILES,
+            "message": (
+                f"Discogs was not asked about {count} file(s) because no Discogs "
+                f"token is recorded, or the keychain no longer holds the recorded "
+                f"one; those files were not reported as no-hit. To ask it: "
+                f"{searchers.DISCOGS_LOGIN_STEPS}"
+            ),
+        },
+    )
 
 
 def _files(count: int) -> str:
@@ -1112,6 +1150,7 @@ def _resume(
             + _ambiguous_warnings(summary)
             + _off_taxonomy_warning(summary, _declared(cfg) if summary.get("off_taxonomy") else None)
             + _unread_warnings(summary)
+            + _discogs_warnings(summary)
             + _published_warnings(summary),
         )
 

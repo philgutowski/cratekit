@@ -108,7 +108,6 @@ from typing import Any
 
 from cratekit import __version__
 from cratekit.acquire.match import isrc_token
-from cratekit.core import routing
 from cratekit.core.taxonomy import Taxonomy
 from cratekit.tagging import searchers
 from cratekit.tagging.searchers import Answer, Fetch, Pacer
@@ -464,21 +463,20 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     Alternative was filed. So such an answer is passed over, by the test the
     loader holds a row's tag to. A copy that declares no table has not taken
     the rule and answers exactly as it did before that unit.
+
+    ONE CHOOSER WITH DISCOGS (U244). The tests above are
+    :func:`cratekit.tagging.searchers.choose_word`'s, which Discogs' styles are
+    chosen by too, so the two sources that answer several words cannot come to
+    mean two things by "maps to a folder". It also passes over a word that
+    resolves to the fallback bucket, which the too coarse test already refused
+    on the shipped template.
     """
-    names_a_folder = declared.vocabulary(SOURCE) is not None
-    for word in genres:
-        suggestion = routing.suggest_tag(declared, word, source=SOURCE)
-        tag = suggestion.tag
-        if suggestion.declined or not tag:
-            continue
-        if suggestion.bucket_id is None and declared.bucket_for_display(tag) is None:
-            continue
-        if declared.is_too_coarse_as_source(tag):
-            continue
-        if names_a_folder and declared.named_folder(tag) is None:
-            continue
-        return word, tag
-    return None
+    return searchers.choose_word(
+        declared,
+        genres,
+        source=SOURCE,
+        named_only=declared.vocabulary(SOURCE) is not None,
+    )
 
 
 # ---------------------------------------------------------------------------
