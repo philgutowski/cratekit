@@ -969,7 +969,8 @@ def _search_bandcamp(
 # A SEARCH, THEN THE RELEASES IT NAMES. The database search names releases and
 # carries no tracklist, so the first few releases it names are read, each by
 # its own number, and one is accepted only when one of its tracks, or its own
-# title for a single, matches the searched title through ``_title_matches`` and
+# title for a single, matches the searched title through ``_discogs_title_matches``
+# (the shared ``_title_matches`` with its empty title refused) and
 # an artist matches through ``_artist_matches``. A wrong release is worse than a
 # miss: its style would be written onto the file for good.
 #
@@ -1199,8 +1200,9 @@ def _release_matches(release: _Release, artist: str, title: str) -> bool:
 
     A TRACK of the release whose title matches, credited to a matching artist,
     the track's own credit when it names one and the release's otherwise. Or, for
-    a single, the release's own title and artist. Empty text matches nothing:
-    ``_title_matches`` reads an empty string as a substring of every title.
+    a single, the release's own title and artist, both through
+    :func:`_discogs_title_matches`, which refuses the empty titles the shared
+    matcher reads as a substring of every title.
     """
     for track_title, track_artists in release.tracks:
         credited = track_artists or release.artists
@@ -1254,9 +1256,7 @@ class DiscogsAsker:
         if self.token is None:
             return NotAsked(DISCOGS, self.unasked)
         if self.rejected is not None:
-            raise _rejected(
-                f"{self.rejected}, earlier in this run, so the token was not sent again"
-            )
+            raise _rejected(f"{self.rejected}, earlier in this run, so Discogs was not asked")
         if not _TOKEN_SHAPE.fullmatch(self.token):
             self.rejected = "the recorded Discogs token is not one printable word"
             raise _rejected(f"{self.rejected}, so it was not sent")
@@ -1391,6 +1391,11 @@ class DiscogsAsker:
                 styleless = styleless or matched
                 continue
             return matched
+        # AN UNREAD PRESSING OUTRANKS A STYLELESS MATCH (round two): what it held
+        # is unknown, and the match alone would let the general catalogue write
+        # its album word over a style Discogs may have had.
+        if held is not None:
+            return held
         if styleless is not None:
             return styleless
         # A RELEASE THAT COULD NOT BE READ IS NOT A MISS: it may have been the

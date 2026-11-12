@@ -581,6 +581,53 @@ def test_a_kept_answer_keeps_what_it_passed_over(machine):
     assert again == passed and len(lookup.asked) == 1
 
 
+def test_a_kept_row_that_passed_over_discogs_is_asked_again_once_a_token_is_recorded(machine):
+    """U244's round two, B2. The morning's run had no token; a token is then
+    recorded, and the same day's run asks again rather than keeping the answer
+    that said none is recorded."""
+    today = date(2026, 11, 12)
+    passed = suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))
+    lookup = _Lookup({"t": passed})
+    with suggest.KeptCatalogue(machine, lookup, today=today, unasked=frozenset({"discogs"})) as kept:
+        kept.answer("1", "a", "t", "")
+    with suggest.KeptCatalogue(machine, lookup, today=today, unasked=frozenset({"discogs"})) as kept:
+        kept.answer("1", "a", "t", "")
+    assert len(lookup.asked) == 1, "still no token: the day's answer is kept"
+    lookup.answers["t"] = suggest.Asked(suggest.MATCHED, genre=DEEP)
+    with suggest.KeptCatalogue(machine, lookup, today=today, unasked=frozenset()) as kept:
+        again = kept.answer("1", "a", "t", "")
+    assert len(lookup.asked) == 2 and again.said == suggest.MATCHED
+
+
+def test_a_row_passed_over_is_said_as_not_asked_and_not_as_unreadable():
+    """U244's round two, D1: the verb's warning tells rows a catalogue refused
+    from rows only passed over for want of a token, and names the login step."""
+    from collections import defaultdict
+
+    from cratekit.tagging import searchers
+
+    def item(content_id: str, asked: suggest.Asked) -> suggest.Item:
+        return suggest.Item(
+            content_id=content_id, path="", artist="a", title="t", genre="", band="",
+            options=(), votes=(), catalogue=asked, action="leave",
+        )
+
+    plan = suggest.SuggestPlan(
+        items=(
+            item("1", suggest.Asked(suggest.UNREAD, note="unread: beatport")),
+            item("2", suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))),
+        ),
+        counts=defaultdict(int),
+        changes=None,
+        band="",
+        catalogue=True,
+    )
+    (warning,) = [w for w in suggest_cli._advisories(plan) if w["code"] == suggest_cli.CATALOGUE_UNREAD]
+    assert "could not be read for 1 row(s), 1," in warning["message"]
+    assert "Discogs was not asked about 1 row(s), 2," in warning["message"]
+    assert searchers.DISCOGS_LOGIN_STEPS in warning["message"]
+
+
 def test_the_general_catalogue_is_asked_only_when_the_shops_gave_no_genre():
     asked: list[str | None] = []
 

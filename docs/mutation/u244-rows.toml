@@ -22,13 +22,13 @@ old = '''        if self.rejected is not None:'''
 new = '''        if False:'''
 
 [[rows]]
-id = "M03_token_shape"
-description = "DiscogsAsker.ask: send a token that is not one printable word"
-file = "src/cratekit/tagging/searchers.py"
+id = "M03_kept_passed_over_reasked"
+description = "KeptCatalogue.answer: keep the day's answer that passed over Discogs after a token is recorded, round two's B2"
+file = "src/cratekit/tagging/suggest.py"
 surface = "user"
-tests = ["tests/test_discogs_searcher.py"]
-old = '''        if not _TOKEN_SHAPE.fullmatch(self.token):'''
-new = '''        if False:'''
+tests = ["tests/test_tag_suggest.py"]
+old = '''        if kept is not None and not self._askable_now(kept):'''
+new = '''        if kept is not None:'''
 
 [[rows]]
 id = "M04_refusal_remembered"
@@ -87,13 +87,15 @@ old = '''            return self._said(
 new = '''            return self._said(Answer.MISS)'''
 
 [[rows]]
-id = "M10_results_none_numbered"
-description = "DiscogsAsker._search: read results that name no release by number as an empty result set"
+id = "M10_unread_outranks_styleless"
+description = "DiscogsAsker._search: return a styleless match ahead of a pressing that could not be read, round two's R1"
 file = "src/cratekit/tagging/searchers.py"
 surface = "user"
 tests = ["tests/test_discogs_searcher.py"]
-old = '''        if results and not numbers:'''
-new = '''        if False:'''
+old = '''        if held is not None:
+            return held
+        if styleless is not None:'''
+new = '''        if styleless is not None:'''
 
 [[rows]]
 id = "M11_block_ends_release_walk"

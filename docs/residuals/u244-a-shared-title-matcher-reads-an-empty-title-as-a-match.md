@@ -9,9 +9,10 @@ strips a trailing bracket with `_without_trailing_bracket`, whose group runs
 from the first "(" to the last ")". A title that starts and ends with a
 bracket, "(Not Just) Knee Deep (Part 1)" or an "(Intro)", strips to the empty
 string, and the empty string is a substring of every title, so any row by the
-artist matches. U244 closed this for Discogs alone with
-`_discogs_title_matches`; Beatport and the two scraped parsers still read the
-shared matcher.
+artist matches. U244 closed this for Discogs alone, and only for a title the
+strip empties, with `_discogs_title_matches`; one it cuts to a single letter
+is the residual on Discogs' titles. Beatport and the two scraped parsers still
+read the shared matcher.
 
 **Measured cost.** Driven at U244's review through `tag.tag_one` on the
 shipped Beatport parser: a file titled "(Intro)" took Deep House off a

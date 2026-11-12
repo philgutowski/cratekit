@@ -96,7 +96,8 @@ comes from the same row as its genre.
 ### General catalogue
 The source `crate tag folder` asks after the searcher: Deezer, keyless, by the
 file's ISRC only (`tagging/published.py`). Asked only when the file needs a
-genre and Beatport answered without a usable match. Its **published genre** is
+genre and Beatport answered without a usable match, and, since U244, not while
+Discogs was asked and went unread. Its **published genre** is
 the album's genre word, written only when it maps to a folder that is not too
 coarse (first mapping word wins); it is never off taxonomy and carries no
 inferred mark. Answers are the searcher's five or `no-isrc`. After one
@@ -104,7 +105,8 @@ inferred mark. Answers are the searcher's five or `no-isrc`. After one
 
 ### Vocabulary
 A source's own word table in the taxonomy, `[vocabulary.NAME]` with
-`words = [{ word, tag }]`; only `deezer` (the general catalogue) is accepted. It
+`words = [{ word, tag }]`; `deezer` (the general catalogue) and, since U244,
+`discogs` are accepted. It
 is asked first; a word with no row falls through to the buckets' aliases. Every
 `tag` must name a folder (exact declaration, routing alias or bucket name, not
 too coarse, and a row of its own in a source genre bucket), so a bare bucket

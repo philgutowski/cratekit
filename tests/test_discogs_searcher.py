@@ -848,8 +848,7 @@ def test_every_listed_style_names_a_folder_in_the_default_taxonomy(style):
 
 def test_the_discogs_table_holds_only_words_the_aliases_did_not_file():
     """A row for a word the aliases already file would be a second answer to one
-    question; the measured nine are the rows, and six the substring rules filed
-    in the wrong folder (round one)."""
+    question; the measured nine are the rows, and four more from round one."""
     (table,) = [one for one in TAXONOMY.vocabularies if one.source == searchers.DISCOGS]
     rows = {row.word for row in table.words}
     assert rows == {
@@ -862,13 +861,14 @@ def test_the_discogs_table_holds_only_words_the_aliases_did_not_file():
         "Techno",
         "Garage House",
         "Soulful House",
-        # The review's six, which the substring rules filed in the wrong folder.
+        # Round one's: three the substring rules filed as Progressive House,
+        # and Heavy Metal beside them. No row writes Jazz: a copy made before
+        # the Jazz folder would not load with one once its hold's edits are
+        # made (round two).
         "Progressive Trance",
         "Progressive Rock",
         "Progressive Metal",
         "Heavy Metal",
-        "Afro-Cuban Jazz",
-        "Latin Jazz",
     }
     plain = TAXONOMY.vocabulary(searchers.DISCOGS)
     assert plain is not None and set(plain) == {word.lower() for word in rows}
@@ -1163,3 +1163,15 @@ def test_discogs_chooses_only_a_named_folder_even_on_a_copy_with_no_table():
     assert searchers.choose_word(TAXONOMY, [word], source=searchers.DISCOGS, named_only=True) is None
     fetch = routed(search=results(39), releases={39: release(39, styles=(word,))})
     assert searcher(fetch)(ARTIST, TITLE).genre is None
+
+
+def test_a_styleless_match_beside_an_unread_pressing_is_unread_not_a_match():
+    """Round two: what the unread pressing held is unknown, and a match with no
+    style would let the general catalogue write over it."""
+    fetch = routed(
+        search=results(40, 41),
+        releases={40: release(40, styles=()), 41: searchers.Fetched(note="HTTP 503", status=503)},
+    )
+    hit = searcher(fetch)(ARTIST, TITLE)
+    assert discogs_answer(hit).answer == "unreachable"
+    assert hit.unread == (searchers.DISCOGS,)

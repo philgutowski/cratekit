@@ -268,19 +268,8 @@ def _swap(text: str, old: str, new: str) -> str:
 
 
 def before_jazz() -> str:
-    """The shipped text as it stood before U133: Jazz a style of NonElectronic.
-
-    Without the two rows of U244's Discogs table that write Jazz, which came
-    later and do not load where Jazz is a sub; the upgrade never adds rows to a
-    table the copy holds, so the plan here is about the bucket alone.
-    """
-    text = _shipped()
-    for row in (
-        '  { word = "Afro-Cuban Jazz", tag = "Jazz" },\n',
-        '  { word = "Latin Jazz", tag = "Jazz" },\n',
-    ):
-        text = _swap(text, row, "")
-    text = _without(text, JAZZ_START, JAZZ_END)
+    """The shipped text as it stood before U133: Jazz a style of NonElectronic."""
+    text = _without(_shipped(), JAZZ_START, JAZZ_END)
     text = _swap(text, '  "Indie Rock",\n  "Latin",', JAZZ_ALIAS)
     text = _swap(text, '[[bucket.sub]]\nid = "classical"', JAZZ_SUB + '[[bucket.sub]]\nid = "classical"')
     text = _swap(
@@ -923,3 +912,18 @@ def test_the_verb_asks_then_adds_the_discogs_table(configured):
     assert acted["data"]["totals"]["vocabularies"] == 1
     assert path.read_text(encoding="utf-8") == _plan(copy).after
     assert "[vocabulary.discogs]" in acted["warnings"][0]["message"]
+
+
+def test_a_copy_made_before_u133_takes_the_discogs_table_and_loads_after_the_holds_edits():
+    """U244's round two. A copy made before the Jazz folder and before Discogs
+    gains the Discogs table in the run that holds Jazz; the hand edits the hold
+    names must then leave a copy that loads and takes Jazz, so no row of the
+    Discogs table may write Jazz, which that copy files only as a sub."""
+    first = _plan(without_discogs(before_jazz()))
+    assert first.vocabularies == ("discogs",)
+    assert [held.id for held in first.held] == ["jazz"]
+    by_hand = _swap(_without_jazz_words(first.after), JAZZ_VOCABULARY_ROW, "")
+    taxonomy.load_taxonomy(by_hand)
+    second = _plan(by_hand)
+    assert second.buckets == ("jazz",) and second.held == ()
+    assert taxonomy.load_taxonomy(second.after).vocabulary("discogs") is not None

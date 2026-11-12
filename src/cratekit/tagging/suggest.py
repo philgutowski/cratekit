@@ -470,9 +470,22 @@ class KeptCatalogue:
     however the walk ends.
     """
 
-    def __init__(self, cfg: config.Config, lookup: Lookup, *, today: date | None = None):
+    def __init__(
+        self,
+        cfg: config.Config,
+        lookup: Lookup,
+        *,
+        today: date | None = None,
+        unasked: frozenset[str] | None = None,
+    ):
+        """``unasked`` is the catalogues this run cannot ask, Discogs with no
+        token, or None when the caller does not know. A kept answer that passed
+        over a catalogue this run CAN ask is asked again, whatever its day
+        (U244's review, round two): a person who recorded a token after the
+        morning's run is not told for the rest of the day that none is."""
         self._path = catalogue_path(cfg)
         self._lookup = lookup
+        self._unasked = unasked
         self._today = today or date.today()
         self._kept = _read_kept(self._path)
         self._unsaved = 0
@@ -487,6 +500,12 @@ class KeptCatalogue:
     def __exit__(self, *exc: object) -> None:
         self.save()
 
+    def _askable_now(self, kept: Asked) -> bool:
+        """Whether a kept answer passed over a catalogue this run can ask."""
+        if self._unasked is None or not kept.passed_over:
+            return False
+        return not set(kept.passed_over) <= self._unasked
+
     def save(self) -> None:
         if self._unsaved:
             _save_kept(self._path, self._kept)
@@ -495,7 +514,7 @@ class KeptCatalogue:
     def answer(self, content_id: str, artist: str, title: str, isrc: str) -> Asked:
         asked_for = {"artist": artist, "title": title, "isrc": isrc}
         kept = _kept_answer(self._kept.get(content_id), asked_for, self._today)
-        if kept is not None:
+        if kept is not None and not self._askable_now(kept):
             return kept
         if self.stopped:
             answer = Asked(
