@@ -145,8 +145,11 @@ class Truth:
     voxlevel: int | None = None
 
 
+_TRUTH_FIELDS = ("genre", "energylevel", "voxlevel")
+
+
 def read_truth(path: Path) -> Truth:
-    """The three tag readings for one file, through the one container-correct reader.
+    """The three tag readings for one file, through ONE container open (U250).
 
     Through :mod:`cratekit.core.tags` rather than mutagen directly, because that
     module is the only place that knows which container takes which dialect, and
@@ -154,12 +157,23 @@ def read_truth(path: Path) -> Truth:
     under. It never raises for an unreadable file: an absent reading routes to
     the declared fallback, which is visible in the result, while an exception
     would abandon the rebuild over one stray file.
+
+    ONE :func:`~cratekit.core.tags.read_tags` CALL FOR ALL THREE FIELDS, not the
+    three single field readers, which opened the file once each, so every
+    derivation walk, preview and resort read each library file three times. The
+    answer is the one those readers give, field for field: the lenient body
+    reads an unopenable file, an unrecognised container, an unsupported suffix
+    and an undecodable field as None, which is exactly what the energy reader's
+    strict read folds each of its failures into, and both numbers go through the
+    vocal reader's own conversion, :func:`~cratekit.core.tags.whole_number`.
+    ``tests/test_rebuild_one_open.py`` holds the count and the equality.
     """
+    values = tags.read_tags(path, _TRUTH_FIELDS)
     return Truth(
         location=str(path),
-        genre=tags.read_genre_from_file(path),
-        energy=tags.read_energy_from_file(path),
-        voxlevel=tags.read_vox_from_file(path),
+        genre=values["genre"],
+        energy=tags.whole_number(values["energylevel"], field="energylevel", path=path),
+        voxlevel=tags.whole_number(values["voxlevel"], field="voxlevel", path=path),
     )
 
 
@@ -167,7 +181,7 @@ def library_truth(
     root: Path | str,
     *,
     suffixes: Sequence[str] = tags.SUPPORTED_SUFFIXES,
-    reader: Callable[[Path], Truth] = read_truth,
+    reader: Callable[[Path], Truth] | None = None,
 ) -> Iterator[Truth]:
     """Every taggable file under ``root``, in a stable order, with its readings.
 
@@ -193,6 +207,11 @@ def library_truth(
     destinations, which it read as zero differences, which it read as CONVERGED.
     An empty read is not evidence that a tree is right; it is evidence that
     nothing could be read.
+
+    THE DEFAULT READER IS :func:`read_truth` AS IT STANDS WHEN THE WALK RUNS,
+    looked up then rather than bound when this function was defined, so a test
+    that serves a derivation fake readings by replacing ``read_truth`` reaches
+    this walk as well as every caller that names it (U250).
     """
     wanted = {suffix.lower() for suffix in suffixes}
     base = Path(root)
@@ -212,9 +231,10 @@ def library_truth(
             origin=("tree_rebuild",),
             detail={"music_dir": str(base)},
         )
+    read = read_truth if reader is None else reader
     for path in sorted(base.rglob("*")):
         if path.is_file() and path.suffix.lower() in wanted:
-            yield reader(path)
+            yield read(path)
 
 
 def derive_from_taxonomy(

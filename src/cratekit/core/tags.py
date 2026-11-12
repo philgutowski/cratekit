@@ -837,7 +837,18 @@ def write_tag_values(path: Path, field: str, values: Sequence[str]) -> bool:
 
 
 def _read_int(path: Path, field: str) -> int | None:
-    value = read_tag(path, field)
+    return whole_number(read_tag(path, field), field=field, path=path)
+
+
+def whole_number(value: str | None, *, field: str, path: Path) -> int | None:
+    """A field's text as a whole number, or None when absent or not a number.
+
+    THE ONE CONVERSION a numeric reading takes, so a reader that takes several
+    fields through one :func:`read_tags` open (``rebuild.read_truth``, U250)
+    answers what the single field readers answer for each, rather than a second
+    opinion about what a stored level reads as. ``field`` and ``path`` only name
+    the reading in the debug line.
+    """
     if value is None:
         return None
     try:
