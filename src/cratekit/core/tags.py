@@ -866,7 +866,20 @@ def write_tag_values(path: Path, field: str, values: Sequence[str]) -> bool:
 
 
 def _read_int(path: Path, field: str) -> int | None:
-    value = read_tag(path, field)
+    return whole_number(read_tag(path, field), field=field, path=path)
+
+
+def whole_number(value: str | None, *, field: str, path: Path) -> int | None:
+    """A field's text as a whole number, or None when absent or not a number.
+
+    THE ONE CONVERSION the energy and vocal readers here take, so a reader that
+    takes several fields through one :func:`read_tags` open
+    (``rebuild.read_truth``, U250) answers what the single field readers answer
+    for each, rather than a second opinion about what a stored level reads as.
+    :func:`read_energy_checked` raises where this answers None, for a value that
+    is present and not a number. ``field`` and ``path`` only name the reading in
+    the debug line.
+    """
     if value is None:
         return None
     try:
@@ -896,10 +909,10 @@ def read_energy_checked(path: Path) -> int | None:
     value = read_tags_checked(path, ("energylevel",))["energylevel"]
     if value is None:
         return None
-    try:
-        return int(value)
-    except ValueError as exc:
-        raise TagReadFailed(f"energylevel is not a number: {value!r}") from exc
+    number = whole_number(value, field="energylevel", path=path)
+    if number is None:
+        raise TagReadFailed(f"energylevel is not a number: {value!r}")
+    return number
 
 
 def read_genre_from_file(path: Path) -> str | None:
