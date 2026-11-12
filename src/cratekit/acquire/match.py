@@ -2009,6 +2009,11 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     owned, whole = _read_fresh(path, template)
     if stamp is not None and whole:
         _REMEMBERED[key] = _Remembered(stamp=stamp, made_ns=made_ns, owned=owned)
+    else:
+        # A read that was not whole, or a file with no stamp, forgets what an
+        # earlier whole read left: the file has been seen changing, and a stamp
+        # that came back later must not bring the older answer back with it.
+        _REMEMBERED.pop(key, None)
     return owned
 
 

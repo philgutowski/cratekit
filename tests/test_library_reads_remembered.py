@@ -464,6 +464,47 @@ def test_a_read_that_is_not_whole_is_indexed_as_read_and_not_remembered(
     assert _titles(match.index_library(music)) == {"Again"}, "the failed read was remembered"
 
 
+def test_a_read_that_is_not_whole_forgets_what_an_earlier_whole_read_left(
+    tmp_path, monkeypatch, template_flac
+):
+    """Read whole at one stamp, then not whole at another (a copy half written),
+    then the first stamp back over new bytes: the third walk reads the disk,
+    because the file was seen changing in between."""
+    music = tmp_path / "Music"
+    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    first = match._stamp_of(path)
+    assert first is not None
+    other = (first[0] + 1,) + first[1:]
+    stamps = iter([first, other, first])
+    monkeypatch.setattr(match, "_stamp_of", lambda _where: next(stamps))
+    reads = iter([("First", True), ("Half", False), ("Restored", True)])
+
+    def noting(_path, _fields):
+        title, whole = next(reads)
+        return {"artist": "A", "title": title, "initialkey": None, "isrc": None}, whole
+
+    monkeypatch.setattr(tags, "read_tags_noting", noting)
+
+    assert _titles(match.index_library(music)) == {"First"}
+    assert _titles(match.index_library(music)) == {"Half"}
+    assert match.remembered() == 0
+    assert _titles(match.index_library(music)) == {"Restored"}
+
+
+@pytest.mark.parametrize("name", ["empty.m4a", "empty.ogg", "zeros.opus", "short.aac"])
+def test_a_container_the_reader_cannot_take_is_absent_and_not_whole(tmp_path, name):
+    """A container mutagen does not recognise answers no handle, and one this
+    module does not read is refused before any open; both read as absent, as
+    :func:`tags.read_tags` answers them, and neither is whole."""
+    fields = ("artist", "title", "initialkey", "isrc")
+    path = tmp_path / name
+    path.write_bytes(b"\0" * 4 if name.startswith("zeros") else b"")
+    assert tags.read_tags(path, fields) == dict.fromkeys(fields)
+    assert tags.read_tags_noting(path, fields) == (dict.fromkeys(fields), False)
+    with pytest.raises(tags.TagReadFailed):
+        tags.read_tags_checked(path, fields)
+
+
 def test_the_noting_reader_answers_what_the_lenient_reader_answers_and_says_what_failed(
     tmp_path, monkeypatch, template_flac
 ):
@@ -505,6 +546,7 @@ def test_a_file_that_cannot_be_stated_is_read_as_before_and_never_remembered(
     assert _titles(match.index_library(music)) == {"B"}
     assert _titles(match.index_library(music)) == {"B"}
     assert opens.of(path) == 2
+    assert match.remembered() == 0
 
 
 def test_the_stamp_is_the_files_stat_and_none_for_a_file_that_is_gone(tmp_path):
