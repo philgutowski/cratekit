@@ -1307,8 +1307,10 @@ class SharedRead:
     :meth:`release` empties the session's identity map, so the next reader
     reads the database afresh, as it did on a handle of its own, and never
     takes a row an earlier reader loaded as the row the database holds now.
-    It holds no transaction either: the binding begins none for a read, so a
-    released handle locks nothing while the report waits on a provider.
+    It locks nothing either: the session keeps its own transaction object,
+    and with it the pooled connection, but the driver begins no database
+    transaction for a read, so a released handle holds no lock while the
+    report waits on a provider.
 
     NEVER A WRITE HANDLE. It is opened with read intent and is made only by a
     caller that writes nothing; every gated write opens its own handle with
