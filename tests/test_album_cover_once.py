@@ -369,6 +369,47 @@ def test_an_answer_the_admission_refuses_is_handed_on_and_not_remembered():
     assert calls == [ALBUM, ALBUM]
 
 
+def test_an_empty_answer_handed_straight_in_is_not_remembered():
+    """The shipped fetch turns an empty body into None; a seam that answers the
+    empty bytes themselves must not have them kept as an answer either."""
+    calls: list[str] = []
+
+    def fetch(url: str) -> bytes | None:
+        calls.append(url)
+        return b"" if len(calls) == 1 else cover()
+
+    remembered = searchers.remembering(fetch)
+    assert remembered(ALBUM) == b""
+    assert remembered(ALBUM) == cover()
+    assert remembered(ALBUM) == cover()
+    assert calls == [ALBUM, ALBUM]
+
+
+def test_two_pictures_of_one_length_are_encoded_apart(encodes):
+    """The digest is what tells two pictures apart, never their length alone.
+    A JPEG decodes with bytes after its end marker, so the shorter of two
+    covers is padded to the longer one's length."""
+    one, two = cover(), other_cover()
+    longer = max(len(one), len(two))
+    one, two = (picture + b"\0" * (longer - len(picture)) for picture in (one, two))
+    assert len(one) == len(two) and one != two
+
+    first = art.to_cdj_jpeg_remembered(one)
+    second = art.to_cdj_jpeg_remembered(two)
+
+    assert encodes == [one, two]
+    assert first.data != second.data
+
+
+def test_the_encode_memory_drops_the_least_recently_used(monkeypatch, encodes):
+    monkeypatch.setattr(art, "COVER_MEMORY", 2)
+    third = _jpeg(600, 500)
+    for picture in (cover(), other_cover(), cover(), third, cover()):
+        art.to_cdj_jpeg_remembered(picture)
+    # cover was used again before third arrived, so other_cover is the one dropped.
+    assert encodes == [cover(), other_cover(), third]
+
+
 def test_the_fetch_memory_keeps_a_few_addresses_and_forgets_the_oldest():
     calls: list[str] = []
 
