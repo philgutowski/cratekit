@@ -349,8 +349,11 @@ def _summary(
             word = str(said.get("answer") or "")
             if counted is not None and word in counted:
                 counted[word] += 1
+            # A FILE SEARCHED ONLY FOR ITS PICTURE is not one Discogs' genre was
+            # owed to, so it is not counted (U244's review): it already has one.
             if (
-                said.get("source") == searchers.DISCOGS
+                reason != tag_engine.HAS_GENRE
+                and said.get("source") == searchers.DISCOGS
                 and word == searchers.NOT_ASKED
                 and said.get("note") in searchers.DISCOGS_UNASKED_NOTES
             ):
@@ -469,6 +472,15 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
             for word in searchers.UNREAD_ANSWERS
             if counted.get(word)
         )
+        # A CATALOGUE NOBODY ASKED IS IN THE TALLY TOO (U244's review), or a
+        # sweep with no Discogs token ends its sentence on an empty list.
+        passed = int(summary.get("discogs_without_token") or 0)
+        if passed:
+            seen = "; ".join(
+                part
+                for part in (seen, f"{searchers.DISCOGS} not asked for want of a token on {passed}")
+                if part
+            )
         broken = any(
             (answers.get(source) or {}).get(searchers.Answer.PARSE_BREAK.value)
             for source in searchers.SOURCES
@@ -482,7 +494,7 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
                     f"catalogue carries them is unknown. They are not reported as "
                     f"no-hit, and the next run over this folder asks again; each "
                     f"file's record says what every catalogue answered. Across "
-                    f"the sweep: {seen}"
+                    f"the sweep: {seen or 'nothing counted'}"
                     + (
                         ". A parse break is a defect in this software that "
                         "another run will not move; report it"

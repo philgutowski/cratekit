@@ -519,6 +519,68 @@ def test_an_unread_answer_between_two_reads_does_not_stop_the_walk(machine):
     assert not kept.stopped and len(lookup.asked) == 5
 
 
+def test_rows_unread_only_by_a_catalogue_nobody_asked_do_not_stop_the_walk(machine):
+    """U244's review, round one, B2. With no Discogs token every row Beatport
+    misses rides ``unread``, and three of them in a row stopped the walk asking
+    Beatport too, telling the person the catalogues could not be read. A row
+    left unread only by a catalogue nobody asked is not a refusal."""
+    from urllib.parse import quote_plus
+
+    from cratekit.tagging import searchers
+    from tests.test_catalogue_searcher import _beatport_page, _beatport_track
+
+    carried = {"Song Four", "Song Five"}
+    titles = ["Song One", "Song Two", "Song Three", "Song Four", "Song Five"]
+    searched: list[str] = []
+
+    def fetch(url: str) -> searchers.Fetched:
+        searched.append(url)
+        hits = [
+            _beatport_track("Bernard Badie", title, "Deep House")
+            for title in carried
+            if quote_plus(title) in url
+        ]
+        return searchers.Fetched(text=_beatport_page(hits), status=200)
+
+    search = searchers.catalogue_searcher(DECLARED, fetch=fetch, sleep=lambda _s: None)
+    with suggest.KeptCatalogue(machine, suggest.catalogue_lookup(search)) as kept:
+        answers = [kept.answer(str(n), "Bernard Badie", t, "") for n, t in enumerate(titles)]
+
+    assert not kept.stopped
+    assert len({url for url in searched if url.startswith(searchers.BEATPORT_SEARCH)}) == 5
+    assert [a.said for a in answers] == [suggest.UNREAD] * 3 + [suggest.MATCHED] * 2
+    assert answers[0].passed_over == (searchers.DISCOGS,)
+    assert searchers.DISCOGS_NO_TOKEN in answers[0].note
+    assert "could not be read" not in answers[2].note
+
+
+def test_a_row_a_catalogue_refused_beside_one_nobody_asked_still_counts():
+    from cratekit.tagging import searchers
+    from cratekit.tagging.tag import SourceAnswer
+
+    hit = SearchHit(
+        answers=(
+            SourceAnswer("beatport", "blocked"),
+            SourceAnswer("discogs", searchers.NOT_ASKED, note=searchers.DISCOGS_NO_TOKEN),
+        ),
+        unread=("beatport", "discogs"),
+    )
+    asked = suggest._asked_from(hit)
+    assert asked.said == suggest.UNREAD and asked.passed_over == ()
+    assert asked.note == "unread: beatport"
+
+
+def test_a_kept_answer_keeps_what_it_passed_over(machine):
+    today = date(2026, 11, 12)
+    passed = suggest.Asked(suggest.UNREAD, note="unread: discogs", passed_over=("discogs",))
+    lookup = _Lookup({"t": passed})
+    with suggest.KeptCatalogue(machine, lookup, today=today) as kept:
+        kept.answer("1", "a", "t", "")
+    with suggest.KeptCatalogue(machine, lookup, today=today) as kept:
+        again = kept.answer("1", "a", "t", "")
+    assert again == passed and len(lookup.asked) == 1
+
+
 def test_the_general_catalogue_is_asked_only_when_the_shops_gave_no_genre():
     asked: list[str | None] = []
 

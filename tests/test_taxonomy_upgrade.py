@@ -268,8 +268,19 @@ def _swap(text: str, old: str, new: str) -> str:
 
 
 def before_jazz() -> str:
-    """The shipped text as it stood before U133: Jazz a style of NonElectronic."""
-    text = _without(_shipped(), JAZZ_START, JAZZ_END)
+    """The shipped text as it stood before U133: Jazz a style of NonElectronic.
+
+    Without the two rows of U244's Discogs table that write Jazz, which came
+    later and do not load where Jazz is a sub; the upgrade never adds rows to a
+    table the copy holds, so the plan here is about the bucket alone.
+    """
+    text = _shipped()
+    for row in (
+        '  { word = "Afro-Cuban Jazz", tag = "Jazz" },\n',
+        '  { word = "Latin Jazz", tag = "Jazz" },\n',
+    ):
+        text = _swap(text, row, "")
+    text = _without(text, JAZZ_START, JAZZ_END)
     text = _swap(text, '  "Indie Rock",\n  "Latin",', JAZZ_ALIAS)
     text = _swap(text, '[[bucket.sub]]\nid = "classical"', JAZZ_SUB + '[[bucket.sub]]\nid = "classical"')
     text = _swap(

@@ -76,10 +76,13 @@ BEATPORT MUST HAVE ANSWERED BEFORE THIS CATALOGUE IS ASKED. A genre is written
 once, fill if empty, so an album level answer written while Beatport was
 unreachable would stand in for Beatport's for good. When Beatport's answer is
 anything but a match or a miss, this catalogue is recorded as not asked and the
-file stays askable. Nothing after Beatport holds it back: the two scraped
-fallbacks refused this machine on every search, and Discogs, asked after
-Beatport since U244, is a decline or an unread source by the time this
-catalogue is weighed, never a write it could stand in for.
+file stays askable. DISCOGS IS WAITED FOR THE SAME WAY (U244's review): asked
+after Beatport and unread, blocked, unreachable or unparsable, this catalogue
+is recorded as not asked, since its album word written then would stand in for
+Discogs' style for good. Discogs not asked at all, for want of a token, does
+not hold it back, or a library with no token would never be asked here; nor do
+the two scraped fallbacks, off the walk and refusing this machine on every
+search when they were on it.
 
 A WORD NOTHING DECLARES IS A DECLINE HERE AND A WRITE FOR BEATPORT, on purpose.
 The resolver's last tier passes an unknown word through so a new dance genre
@@ -504,6 +507,7 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
       record shops did;
     * a hit whose Beatport answer is not a match or a miss is recorded
       ``not-asked`` with the reason, and the file stays as the searcher left it;
+      so is one whose Discogs was asked and went unread (U244);
     * otherwise the catalogue is asked. A genre that maps to a folder becomes
       the hit's genre, with no flag saying it was inferred, because it was not.
       Anything else leaves the hit a decline that says what was answered.
@@ -552,6 +556,17 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
                     searchers.NOT_ASKED,
                     note=f"{searchers.BEATPORT} was not read for this track, and the "
                     f"general catalogue is asked only once it has answered",
+                )
+            )
+        discogs = next((said for said in hit.answers if said.source == searchers.DISCOGS), None)
+        if discogs is not None and discogs.answer in UNREAD:
+            return recorded(
+                SourceAnswer(
+                    SOURCE,
+                    searchers.NOT_ASKED,
+                    note=f"{searchers.DISCOGS} was asked and not read for this track "
+                    f"({discogs.answer}), and the general catalogue is asked only once "
+                    f"it has answered",
                 )
             )
 

@@ -1313,8 +1313,16 @@ words = [
 # row. The nine below did not. Techno has a row because the aliases refuse the
 # bare word on purpose, a record shop's catch-all, where on Discogs it is a
 # style of its own. Electro has a row because the aliases send it to the
-# fallback bucket, too coarse to write. Edit a row's tag to file a style
-# elsewhere in your copy; the upgrade never changes a row you hold.
+# fallback bucket, too coarse to write.
+#
+# THE SUBSTRING RULES ABOVE WERE WRITTEN FOR THE RECORD SHOPS' COMBINED NAMES,
+# and they read a Discogs style by any word it contains: Progressive Trance,
+# Progressive Rock and Progressive Metal as Progressive House, Afro-Cuban Jazz as
+# Afro House. Those six have rows of their own, below the nine. Afro-Cuban and
+# Electro House have no folder that names them and still file by those rules.
+#
+# Edit a row's tag to file a style elsewhere in your copy; the upgrade never
+# changes a row you hold.
 [vocabulary.discogs]
 words = [
   { word = "Nu-Disco", tag = "Nu Disco / Indie Dance" },
@@ -1326,4 +1334,10 @@ words = [
   { word = "Techno", tag = "Techno" },
   { word = "Garage House", tag = "Deep House" },
   { word = "Soulful House", tag = "Deep House" },
+  { word = "Progressive Trance", tag = "Trance" },
+  { word = "Progressive Rock", tag = "Rock" },
+  { word = "Progressive Metal", tag = "Rock" },
+  { word = "Heavy Metal", tag = "Rock" },
+  { word = "Afro-Cuban Jazz", tag = "Jazz" },
+  { word = "Latin Jazz", tag = "Jazz" },
 ]

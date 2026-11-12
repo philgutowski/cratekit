@@ -303,7 +303,9 @@ crate route pending
   carry it and a `discogs-token` is recorded, then of the general catalogue
   by ISRC. Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
-  folder is a decline. Traxsource and Bandcamp, which answer every search
+  folder is a decline. A library set up before that table shipped gets it
+  with `crate taxonomy upgrade`, which doctor names; until then nine of the
+  common dance styles, Nu-Disco and Techno among them, are declined. Traxsource and Bandcamp, which answer every search
   with a bot check, are no longer asked. A file no catalogue knows keeps no
   genre. A file's label is its label
   tag, else `--label`, else the one registered label whose whole `--match`
@@ -809,7 +811,7 @@ writes their genre tags.
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
 | `taxonomy folder WORD [--like GENRE]` | Makes the word a genre folder of its own with energy bands, copying family, tempo window and rating. |
-| `taxonomy upgrade` | Adds the classes and buckets the shipped template has and your copy lacks. |
+| `taxonomy upgrade` | Adds the classes, buckets and source vocabulary tables (`[vocabulary.discogs]`, `[vocabulary.deezer]`) the shipped template has and your copy lacks, never changing one your copy holds. |
 
 `taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
 dated name and refuse a word too coarse to be a genre (such as `Electronic`),

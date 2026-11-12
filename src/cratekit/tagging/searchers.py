@@ -1089,12 +1089,81 @@ def _words_of(value: object) -> tuple[str, ...] | None:
     return tuple(word.strip() for word in value if isinstance(word, str) and word.strip())
 
 
+#: Discogs' numeral for a second artist of the same name, "Moodymann (2)".
+_DISAMBIGUATION = re.compile(r"\s*\(\d+\)$")
+
+#: Discogs files an article last, "Prodigy, The", which the comma split of
+#: ``_artist_matches`` would read as two artists, one of them "the".
+_ARTICLE_LAST = re.compile(r"^(?P<name>.+?),\s*(?P<article>the|a|an)$", re.IGNORECASE)
+
+
+def _discogs_name(name: str) -> str:
+    """One Discogs artist name in the form a file's tag spells it.
+
+    The disambiguating numeral and the variation mark are Discogs' own and are
+    dropped, and an article filed last is put back first, so "Prodigy, The" is
+    one artist, "The Prodigy", and not a second one called "the" that every
+    artist named The anything matches.
+    """
+    bare = _DISAMBIGUATION.sub("", name.strip().rstrip("*").strip())
+    moved = _ARTICLE_LAST.match(bare)
+    return f"{moved['article']} {moved['name']}" if moved else bare
+
+
 def _credited(value: object) -> str:
     """The names of a Discogs artist list, joined as ``_artist_matches`` reads them."""
     if not isinstance(value, list):
         return ""
     names = (entry.get("name") for entry in value if isinstance(entry, dict))
-    return ", ".join(name.strip() for name in names if isinstance(name, str) and name.strip())
+    return ", ".join(
+        _discogs_name(name) for name in names if isinstance(name, str) and name.strip()
+    )
+
+
+def _tracks_of(rows: object) -> list[dict[str, Any]]:
+    """Every track of a tracklist, the sub tracks under an index row included."""
+    if not isinstance(rows, list):
+        return []
+    found: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("type_", "track") == "track":
+            found.append(row)
+        found.extend(_tracks_of(row.get("sub_tracks")))
+    return found
+
+
+#: The last bracketed group of a title, alone: "(Part 1)" of
+#: "(Not Just) Knee Deep (Part 1)", where the shared strip takes the whole
+#: title, since its group runs from the first bracket to the last.
+_LAST_GROUP = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+def _last_group_stripped(value: str) -> str:
+    return _LAST_GROUP.sub("", value).strip()
+
+
+def _discogs_title_matches(searched: str, found: str) -> bool:
+    """``_title_matches``, refused where it would read an empty title as a match.
+
+    THE SHARED MATCHER STRIPS A TRAILING BRACKET FROM THE FIRST "(" TO THE LAST
+    ")", so a title that starts and ends with a bracket, "(Not Just) Knee Deep
+    (Part 1)" or a skit row "(Skit)", strips to nothing, and nothing is a
+    substring of every title. A release by the artist with no such track was
+    accepted that way and its style written (U244's review, round one). So an
+    empty side matches nothing, and a side the shared strip empties is compared
+    whole and with only its last bracketed group stripped. The shared matcher
+    is left as it is: Beatport and both scraped parsers read it, and a fix
+    there is a change to three sources this unit does not own.
+    """
+    left, right = _normalized(searched), _normalized(found)
+    if not left or not right:
+        return False
+    if _without_trailing_bracket(left) and _without_trailing_bracket(right):
+        return _title_matches(searched, found)
+    bare_left, bare_right = _last_group_stripped(left), _last_group_stripped(right)
+    return left == right or bool(bare_left and bare_left == bare_right)
 
 
 def _discogs_release(payload: dict[str, Any], release_id: int) -> _Release | None:
@@ -1113,8 +1182,7 @@ def _discogs_release(payload: dict[str, Any], release_id: int) -> _Release | Non
     title = payload.get("title")
     tracks = tuple(
         (str(row.get("title") or "").strip(), _credited(row.get("artists")))
-        for row in tracklist
-        if isinstance(row, dict) and row.get("type_", "track") == "track"
+        for row in _tracks_of(tracklist)
     )
     return _Release(
         release_id=release_id,
@@ -1136,13 +1204,12 @@ def _release_matches(release: _Release, artist: str, title: str) -> bool:
     """
     for track_title, track_artists in release.tracks:
         credited = track_artists or release.artists
-        if track_title and credited and _title_matches(title, track_title):
+        if credited and _discogs_title_matches(title, track_title):
             if _artist_matches(artist, credited):
                 return True
     return bool(
-        release.title
-        and release.artists
-        and _title_matches(title, release.title)
+        release.artists
+        and _discogs_title_matches(title, release.title)
         and _artist_matches(artist, release.artists)
     )
 
@@ -1164,27 +1231,35 @@ class DiscogsAsker:
     ``token`` is None when none is recorded, and ``unasked`` is then the note
     every file is recorded ``not-asked`` with. ``remaining`` is the last count
     Discogs said was left, and ``refused`` the first refusal it answered, after
-    which nothing more is asked in this process.
+    which nothing more is asked in this process. ``rejected`` is why the token
+    was refused, after which it is never sent again in this process: every
+    later file is refused the same way without a request.
+
+    The token is left out of the ``repr``, so a debugging print of an asker, or
+    of anything holding one, does not carry it.
 
     Built by :func:`discogs_asker`, and by :func:`for_discogs` for a worker.
     """
 
-    token: str | None
+    token: str | None = field(repr=False)
     fetch: Fetch
     pacer: Pacer
     unasked: str = DISCOGS_NO_TOKEN
     remaining: int | None = None
     refused: SourceOutcome | None = None
+    rejected: str | None = None
 
     def ask(self, artist: str, title: str) -> SourceOutcome | NotAsked:
         """Discogs' answer about one track, or why it was not asked."""
         if self.token is None:
             return NotAsked(DISCOGS, self.unasked)
-        if not _TOKEN_SHAPE.fullmatch(self.token):
+        if self.rejected is not None:
             raise _rejected(
-                "the recorded Discogs token is not one printable word, so it was "
-                "not sent"
+                f"{self.rejected}, earlier in this run, so the token was not sent again"
             )
+        if not _TOKEN_SHAPE.fullmatch(self.token):
+            self.rejected = "the recorded Discogs token is not one printable word"
+            raise _rejected(f"{self.rejected}, so it was not sent")
         if self.refused is not None:
             return SourceOutcome(
                 DISCOGS,
@@ -1222,7 +1297,8 @@ class DiscogsAsker:
         if page.text is not None:
             self.remaining = _remaining(page.headers)
         if page.status == 401:
-            raise _rejected("Discogs answered 401 to the token this installation records")
+            self.rejected = "Discogs answered 401 to the token this installation records"
+            raise _rejected(self.rejected)
         if release and page.status in _GONE_STATUSES:
             return _GONE
         refused = unread_outcome(DISCOGS, page)
@@ -1242,11 +1318,15 @@ class DiscogsAsker:
         return payload
 
     def _search(self, artist: str, title: str) -> SourceOutcome:
+        # THE MIX IS LEFT OUT OF THE QUESTION, its last bracketed group only, and
+        # a title that is nothing but brackets is asked whole: an empty track
+        # field asks Discogs for every release by the artist.
+        bare = _last_group_stripped(title.strip()) or title.strip()
         query = urlencode(
             {
                 "type": "release",
                 "artist": artist.strip(),
-                "track": _without_trailing_bracket(title.strip()),
+                "track": bare,
                 "per_page": DISCOGS_RESULTS_PER_PAGE,
             }
         )
@@ -1274,6 +1354,7 @@ class DiscogsAsker:
                 "the search answered results and none names a release by number",
             )
         held: SourceOutcome | None = None
+        styleless: SourceOutcome | None = None
         for number in numbers[:DISCOGS_RELEASES_READ]:
             read = self._read(f"{DISCOGS_RELEASE}{number}", release=True)
             if read is _GONE:
@@ -1296,13 +1377,22 @@ class DiscogsAsker:
                 continue
             if not _release_matches(release, artist, title):
                 continue
-            return SourceOutcome(
+            matched = SourceOutcome(
                 DISCOGS,
                 Answer.MATCHED,
                 source_genre=release.styles[0] if release.styles else "",
                 note=_release_note(release),
                 words=release.styles,
             )
+            if not release.styles:
+                # A PRESSING WITH NO STYLE IS KEPT, NOT RETURNED. Another pressing
+                # of the same recording may carry the styles, and a match that
+                # can name no style would decline the file where it need not.
+                styleless = styleless or matched
+                continue
+            return matched
+        if styleless is not None:
+            return styleless
         # A RELEASE THAT COULD NOT BE READ IS NOT A MISS: it may have been the
         # one carrying the track.
         return held if held is not None else self._said(Answer.MISS)
@@ -1311,7 +1401,9 @@ class DiscogsAsker:
 def _remaining(headers: Mapping[str, str]) -> int | None:
     """The request count Discogs said is left, or None when it said none."""
     raw = headers.get(DISCOGS_REMAINING_HEADER, "").strip()
-    return int(raw) if raw.isdigit() else None
+    # ASCII DIGITS ONLY: ``isdigit`` is true of a superscript two, which ``int``
+    # refuses, and a header is text somebody else chose.
+    return int(raw) if raw.isascii() and raw.isdigit() else None
 
 
 def _rejected(why: str) -> CratekitError:

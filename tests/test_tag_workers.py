@@ -3069,3 +3069,35 @@ def test_the_sweep_names_a_folders_own_name_with_its_one_answer_and_falls_back_w
     assert code == int(ExitCode.OK), again
     plain = {w["code"]: w["message"] for w in again["warnings"]}[tag_cli.OFF_TAXONOMY]
     assert "takes one answer only" not in plain and "breaks / d&b / dubstep" in plain
+
+
+def test_a_sweep_with_no_discogs_token_says_so_and_reads_no_file_as_no_hit(
+    cfg, folder, silence, monkeypatch
+):
+    """U244, through the verb: the default walk, Beatport missing both files and
+    no Discogs token recorded. Both are ``sources-unread``, the warning names
+    the login step, and the unread tally names Discogs rather than nothing."""
+    for name in ("a", "b"):
+        place(folder, silence, name)
+
+    def fetch(url: str) -> searchers.Fetched:
+        return EMPTY_BEATPORT if url.startswith(searchers.BEATPORT_SEARCH) else searchers.Fetched(
+            note=f"no route for {url}"
+        )
+
+    bound(monkeypatch, searchers.catalogue_searcher(TAXONOMY, fetch=fetch, sleep=lambda _s: None))
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    for report in artifacts.committed(cfg, job.job_id):
+        assert report["skipped"] == tag.SOURCES_UNREAD
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["skipped"][tag.NO_HIT] == 0
+    assert tagging["discogs_without_token"] == 2
+    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    assert "crate login discogs-token" in warnings[tag_cli.DISCOGS_NO_TOKEN_FILES]
+    unread = warnings[tag_cli.SOURCES_UNREAD]
+    assert "discogs not asked for want of a token on 2" in unread
+    assert not unread.rstrip().endswith("the sweep:")

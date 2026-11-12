@@ -848,7 +848,8 @@ def test_every_listed_style_names_a_folder_in_the_default_taxonomy(style):
 
 def test_the_discogs_table_holds_only_words_the_aliases_did_not_file():
     """A row for a word the aliases already file would be a second answer to one
-    question; the measured nine are the rows."""
+    question; the measured nine are the rows, and six the substring rules filed
+    in the wrong folder (round one)."""
     (table,) = [one for one in TAXONOMY.vocabularies if one.source == searchers.DISCOGS]
     rows = {row.word for row in table.words}
     assert rows == {
@@ -861,6 +862,13 @@ def test_the_discogs_table_holds_only_words_the_aliases_did_not_file():
         "Techno",
         "Garage House",
         "Soulful House",
+        # The review's six, which the substring rules filed in the wrong folder.
+        "Progressive Trance",
+        "Progressive Rock",
+        "Progressive Metal",
+        "Heavy Metal",
+        "Afro-Cuban Jazz",
+        "Latin Jazz",
     }
     plain = TAXONOMY.vocabulary(searchers.DISCOGS)
     assert plain is not None and set(plain) == {word.lower() for word in rows}
@@ -970,3 +978,188 @@ def test_a_discogs_blocked_on_every_search_is_named_like_any_shop():
     assert tag_cli.SOURCE_BLOCKED in codes
     blocked = [w for w in tag_cli._unread_warnings(summary) if w["code"] == tag_cli.SOURCE_BLOCKED]
     assert searchers.DISCOGS in blocked[0]["message"]
+
+
+# ---------------------------------------------------------------------------
+# H. Round one's fixes
+# ---------------------------------------------------------------------------
+
+
+BRACKETED = "(Not Just) Knee Deep (Part 1)"
+
+
+def test_a_title_of_brackets_is_searched_whole_and_matches_no_other_track():
+    """B1. The shared strip empties this title, which asked Discogs for every
+    release by the artist and read the empty remainder as a match."""
+    seen: list[str] = []
+    other = [{"position": "A1", "type_": "track", "title": "Maggot Brain"}]
+    fetch = routed(
+        search=results(31), releases={31: release(31, title="Maggot Brain", tracks=other)}, seen=seen
+    )
+    hit = searcher(fetch)("Funkadelic", BRACKETED)
+    assert discogs_answer(hit).answer == "miss"
+    assert hit.genre is None
+    (asked,) = [url for url in seen if url.startswith(searchers.DISCOGS_SEARCH)]
+    assert "track=%28Not+Just%29+Knee+Deep&" in asked
+
+
+def test_a_title_of_brackets_still_matches_its_own_track():
+    tracks = [{"position": "A1", "type_": "track", "title": "(Not Just) Knee Deep"}]
+    fetch = routed(search=results(32), releases={32: release(32, artist="Funkadelic", tracks=tracks)})
+    assert discogs_answer(searcher(fetch)("Funkadelic", BRACKETED)).answer == "matched"
+
+
+def test_a_skit_row_matches_no_searched_title():
+    tracks = [{"position": "A1", "type_": "track", "title": "(Skit)"}]
+    fetch = routed(search=results(33), releases={33: release(33, tracks=tracks)})
+    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "miss"
+
+
+def test_an_empty_title_on_either_side_matches_nothing():
+    assert not searchers._discogs_title_matches("", TITLE)
+    assert not searchers._discogs_title_matches(TITLE, "")
+    assert searchers._discogs_title_matches(f"{TITLE} (Extended Mix)", TITLE)
+
+
+def test_a_rejected_token_is_not_sent_again_in_the_run():
+    """R1. After the first 401 every later file is refused the same way with
+    no request, so the rejected token is not resent per file."""
+    sent: list = []
+    discogs = over_the_wire({searchers.DISCOGS_SEARCH: Reply(401)}, sent=sent)
+    for _ in range(3):
+        with pytest.raises(CratekitError) as raised:
+            discogs.ask(ARTIST, TITLE)
+        assert isinstance(raised.value.__cause__, secrets.CredentialRejected)
+    assert len(sent) == 1
+    assert "earlier in this run" in raised.value.cause.message
+
+
+def test_the_general_catalogue_waits_for_a_discogs_that_was_asked_and_unread():
+    """R2. An album word written while Discogs could not be read would stand in
+    for its style for good."""
+    asked: list[object] = []
+
+    def lookup(isrc):
+        asked.append(isrc)
+        return published.Published(published.SOURCE, "matched", genres=("Rock",))
+
+    hit = searcher(routed(search=searchers.Fetched(note="HTTP 503", status=503)))(ARTIST, TITLE)
+    decided = published.second_opinion(TAXONOMY, lookup=lookup)(hit, "GBAYE0000001")
+    assert asked == []
+    assert decided.genre is None
+    assert decided.answers[-1].answer == searchers.NOT_ASKED
+    assert "discogs was asked and not read" in decided.answers[-1].note
+    unasked = searcher(routed(search=results()), token=None)(ARTIST, TITLE)
+    published.second_opinion(TAXONOMY, lookup=lookup)(unasked, "GBAYE0000001")
+    assert asked == ["GBAYE0000001"], "a Discogs nobody asked does not hold it back"
+
+
+def test_discogs_names_are_read_as_a_tag_spells_them():
+    """R4. "Prodigy, The" is one artist, so The Orb does not match it."""
+    assert searchers._discogs_name("Prodigy, The") == "The Prodigy"
+    assert searchers._discogs_name("Moodymann (2)") == "Moodymann"
+    assert searchers._discogs_name("Theo Parrish*") == "Theo Parrish"
+    tracks = [{"position": "1", "type_": "track", "title": "Higher", "artists": [{"name": "Prodigy, The"}]}]
+    fetch = routed(search=results(34), releases={34: release(34, artist="Various", tracks=tracks)})
+    assert discogs_answer(searcher(fetch)("The Orb", "Higher")).answer == "miss"
+    fetch = routed(search=results(35), releases={35: release(35, artist="Moodymann (2)")})
+    assert discogs_answer(searcher(fetch)("Moodymann", TITLE)).answer == "matched"
+
+
+def test_a_pressing_with_no_style_gives_way_to_one_with_styles():
+    """R5. The styleless match is kept only when no later pressing has styles."""
+    fetch = routed(
+        search=results(36, 37),
+        releases={36: release(36, styles=()), 37: release(37, styles=("Deep House",))},
+    )
+    hit = searcher(fetch)(ARTIST, TITLE)
+    assert hit.source_genre == "Deep House" and hit.genre is not None
+
+
+def test_a_track_under_an_index_row_is_read():
+    tracks = [
+        {
+            "position": "A",
+            "type_": "index",
+            "title": "Suite",
+            "sub_tracks": [{"position": "A.1", "type_": "track", "title": TITLE}],
+        }
+    ]
+    fetch = routed(search=results(38), releases={38: release(38, tracks=tracks)})
+    assert discogs_answer(searcher(fetch)(ARTIST, TITLE)).answer == "matched"
+
+
+def test_a_file_searched_only_for_its_picture_is_not_counted_as_owed_discogs(monkeypatch):
+    """R6. It already has a genre, so Discogs was owed it nothing."""
+    summary = _summarised(
+        monkeypatch,
+        [
+            {
+                "item": "a.flac",
+                "skipped": tag.HAS_GENRE,
+                "answers": [
+                    {"source": "beatport", "answer": "miss"},
+                    {"source": "discogs", "answer": searchers.NOT_ASKED, "note": searchers.DISCOGS_NO_TOKEN},
+                ],
+            }
+        ],
+    )
+    assert summary["discogs_without_token"] == 0
+
+
+def test_the_token_is_not_in_the_askers_repr():
+    """R9."""
+    assert SENT not in repr(searchers.discogs_asker(token=SENT, fetch=routed(search=results())))
+
+
+def test_a_remaining_count_that_is_not_ascii_digits_is_no_count():
+    assert searchers._remaining({searchers.DISCOGS_REMAINING_HEADER: "²"}) is None
+    assert searchers._remaining({searchers.DISCOGS_REMAINING_HEADER: " 7 "}) == 7
+    assert searchers._remaining({}) is None
+
+
+def test_a_search_answering_404_is_unreachable_not_a_miss():
+    hit = searcher(routed(search=searchers.Fetched(note="HTTP 404", status=404)))(ARTIST, TITLE)
+    assert discogs_answer(hit).answer == "unreachable"
+
+
+def test_the_shipped_asker_sends_the_token_to_discogs_only(monkeypatch):
+    """The default fetch's wiring, through the one getter that names requests:
+    the token and the agent go to Discogs, and Beatport is asked as a browser."""
+    sent: list[tuple[str, dict]] = []
+
+    def get(url, *, headers, timeout):
+        sent.append((url, dict(headers)))
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            return Reply(200, _beatport_page([]))
+        if url.startswith(searchers.DISCOGS_SEARCH):
+            return Reply(200, results())
+        raise OSError(url)
+
+    monkeypatch.setattr(searchers, "_requests_get", get)
+    discogs = searchers.discogs_asker(token=SENT, sleep=lambda _s: None)
+    searchers.catalogue_searcher(TAXONOMY, sleep=lambda _s: None, discogs=discogs)(ARTIST, TITLE)
+    by_host = {url.split("?")[0]: headers for url, headers in sent}
+    assert by_host[searchers.DISCOGS_SEARCH]["Authorization"] == f"Discogs token={SENT}"
+    assert by_host[searchers.DISCOGS_SEARCH]["User-Agent"] == f"Cratekit/{__version__}"
+    assert "Authorization" not in by_host[searchers.BEATPORT_SEARCH]
+    assert by_host[searchers.BEATPORT_SEARCH] == searchers.HEADERS
+
+
+def test_the_numbers_this_source_spends_are_the_ones_stated():
+    """Pinned as numbers, so a change to one is a decision a reviewer reads:
+    three releases a miss, ten results a page, a ten second wait at five left."""
+    assert searchers.DISCOGS_RELEASES_READ == 3
+    assert searchers.DISCOGS_RESULTS_PER_PAGE == 10
+    assert searchers.DISCOGS_REMAINING_FLOOR == 5
+    assert searchers.DISCOGS_SLOWDOWN_S == 10.0
+
+
+def test_discogs_chooses_only_a_named_folder_even_on_a_copy_with_no_table():
+    """``named_only`` is always on for Discogs: a word the aliases file by a
+    bucket's bare name, with no exact declaration, is not written."""
+    word = "NonElectronic"
+    assert TAXONOMY.named_folder(word) is None
+    assert searchers.choose_word(TAXONOMY, [word], source=searchers.DISCOGS, named_only=True) is None
+    fetch = routed(search=results(39), releases={39: release(39, styles=(word,))})
+    assert searcher(fetch)(ARTIST, TITLE).genre is None

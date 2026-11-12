@@ -1636,7 +1636,8 @@ def _origin_verdict(cfg: config.Config, active_text: str, named: str) -> tuple[S
         f"the copy is the one setup made from the shipped {record.template!r}, "
         f"unedited, and that template has changed since: {change}. Every verb "
         f"reads the copy, so nothing the shipped template changed applies to this "
-        f"library until it is copied in, by hand or, for a class or a bucket, by "
+        f"library until it is copied in, by hand or, for a class, a bucket or a "
+        f"vocabulary table, by "
         f"{taxonomy_upgrade.VERB}; doctor does not rewrite the copy"
     )
 
