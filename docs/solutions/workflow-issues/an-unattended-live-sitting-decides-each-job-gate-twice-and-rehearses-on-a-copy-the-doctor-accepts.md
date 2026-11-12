@@ -37,13 +37,13 @@ Sitting 39 (2026-10-13, merge 62ead9c, `docs/cutover.md` "Sitting 39") was run b
 **2. A copy rehearsal needs three things before the doctor accepts its config.**
 - `db_path` names a database copy that sits under `library.root`, as a scratch copy on the volume (removed when the sitting ends, or the next backup mirrors it).
 - The volume's `.cratekit` is cloned to a scratch name (`.cratekit-copyrun`) and `library.state_dirname` is pointed at it, so no ledger the live run reads is marked done by the copy.
-- The installation state is copied under the redirected `CRATEKIT_STATE_DIR`, including the backup acknowledgment, which is state too.
+- The installation state is copied under the redirected `CRATEKIT_STATE_DIR`, including the backup acknowledgment, which is state too. The provider gate is the one thing that stays live whatever is copied (U278): the copy's provider calls count against the live hour, so read doctor's `provider.budget` line before a sweep on the copy, and leave the reserve to the live go.
 
 Leave one of these out and `crate doctor` refuses the copy's config, or worse, accepts a config whose state paths are the live ones. Read the doctor's `tree.registry` line and each gate's reads and writes lines for the scratch name before answering any gate on the copy. This extends the rule in `docs/solutions/workflow-issues/a-disposable-database-copy-does-not-make-library-state-disposable.md`, which says why library state must be redirected; this adds the one setting the doctor insists on when the database copy is not at its live path (`db_outside_root_acknowledged_on`, `src/cratekit/core/config.py:2449`).
 
 **3. The mutation driver's state guard trips on three sources a live night produces.** `check_state_guard` (`scripts/mutate.py:896`) fingerprints the real installation state at the start of a batch and stops the batch when it moves, and by its own docstring it cannot tell a child's write from a concurrent one. During sitting 39 the movers were:
 - the watcher's own `crate doctor`, which writes a run record;
-- any account read, which writes `provider_gate.json` (`src/cratekit/core/config.py:791`), including a read only check of the Tidal account;
+- any account read, which writes `provider_gate.json` (`src/cratekit/core/config.py`, the `provider_gate` entry), including a read only check of the Tidal account, and since U278 from a copy run too, whose gate is the live one;
 - a job journal under the state root, written by another lane's verb.
 
 The driver exits 6 and prints `STATE LEAK`. A table measures only while no live verb, doctor, or account read runs from the same machine. Run the live steps in the gaps between tables, take the rows that stopped as unmeasured with their rerun command, and `pgrep` for a live crate before suspecting the child. See `docs/solutions/workflow-issues/a-state-leak-halt-during-the-null-control-can-be-another-process-polling-the-installed-copy-so-read-the-newest-run-record-before-blaming-a-child.md` for reading the newest run record.

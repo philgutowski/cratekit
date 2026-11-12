@@ -149,6 +149,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'path-permission-denied',
     'path-read-only',
     'provider-blocked',
+    'provider-budget',  # 2026-11-12, U278: the hour's line and its reserve joined.
     'provider-call-ceiling',  # 2026-11-02, U193: the call ceiling's stop joined.
     'provider-cooldown',
     'provider-gate-held',
@@ -873,6 +874,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'path-permission-denied',
         'path-read-only',
         'provider-blocked',
+        'provider-budget',  # 2026-11-12, U278
          'provider-call-ceiling',  # 2026-11-02, U193
         'provider-cooldown',
         'provider-gate-held',
@@ -1068,7 +1070,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],  # 2026-11-12, U278
     # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
     'core/rb_writer.py': [
         'app-version-pin-drift',
@@ -2348,7 +2350,7 @@ PINNED_NAMED_WITHOUT_OWN = {
     'core/config.py': ['upgrade-cratekit'],
     'core/jobs.py': ['cancelled'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],  # 2026-11-12, U278
     'core/session.py': ['awaiting-import'],
     # 2026-10-13, U140: the set rename's refusal, held in a named constant.
     'export/set_cli.py': ['export-set-rename-unresolved'],
@@ -2514,7 +2516,7 @@ PINNED_NAMED_WITH_OWN = {
     'core/jobs.py': ['cancelled'],
     'core/preflight.py': ['if-root-can-be-created', 'if-root-exists'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],  # 2026-11-12, U278
     'core/reconcile.py': ['in-flight-restore', 'unconverged-tree'],
     'core/restore.py': [
         'bare-metal-recovery',
@@ -2839,7 +2841,7 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-11-05, U211: the scan's refusal for a process it could not read.
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
-    'core/provider_gate.py': ['provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],
+    'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],  # 2026-11-12, U278
     # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
     'core/rb_writer.py': [
         'app-version-pin-drift',

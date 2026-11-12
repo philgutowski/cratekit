@@ -6379,3 +6379,221 @@ def test_no_residual_is_cited_by_number_anywhere_in_this_unit():
     for path in UNIT_FILES:
         found = _BY_NUMBER.findall(path.read_text(encoding="utf-8"))
         assert found == [], f"{path.name} cites a residual by number: {found}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U265: the approximate pass sorts each name's words once, and answers as before
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``_approximate`` handed ``rapidfuzz`` the scorer ``token_sort_ratio``, which
+# splits and sorts both strings' words again for every pair, so each library
+# name was sorted once per wanted row. It now sorts each name once for the life
+# of the index and scores the sorted forms with ``fuzz.ratio``, which is what
+# ``token_sort_ratio`` computes after its own sort. The matcher decides what is
+# acquired and what is a duplicate, so the shipped call is kept below as the
+# reference and the new pass is held EQUAL to it, every candidate, score and
+# order, rather than close to it.
+
+
+def _shipped_approximate(wanted, index):
+    """THE SCORER AS SHIPPED BEFORE U265, kept as the reference it is held to."""
+    from rapidfuzz import fuzz, process
+
+    if not index.by_recording:
+        return ()
+    found = process.extract(
+        wanted.recording,
+        tuple(index.by_recording),
+        scorer=fuzz.token_sort_ratio,
+        score_cutoff=match.APPROXIMATE_FLOOR,
+        limit=match.APPROXIMATE_LIMIT,
+    )
+    return tuple(held for token, _score, _position in found for held in index.versions(token))
+
+
+#: Words for generated names: plain, accented, fullwidth, ligatures, other
+#: scripts, a repeated word, and the halves that fold to nothing.
+_U265_WORDS = (
+    "sun", "path", "aurora", "bloom", "night", "drive", "deep", "echo", "you", "me",
+    "Beyoncé", "Sigur Rós", "Röyksopp", "Ｓｕｎ", "Ｐａｔｈ", "naïve", "straße", "ﬁne",
+    "東京", "Привет", "écho", "dup dup dup", "Ⅻ", "", "!!!", "01",
+)
+
+
+def _u265_library(seed: int) -> tuple[match.LibraryIndex, list[match.Wanted]]:
+    """A generated library and list, tie dense on purpose.
+
+    Three families: names drawn from the word pool above, including empty
+    halves; the fixtures' own ``Sun Path`` naming with one and two letter edits,
+    which puts many recordings over the floor for one row and many equal scores
+    inside the five returned; and every artist and title swapped, which the
+    word sort scores as one string.
+    """
+    import random
+
+    rng = random.Random(seed)
+
+    def name(most: int) -> str:
+        return " ".join(rng.choice(_U265_WORDS) for _ in range(rng.randint(0, most)))
+
+    pairs: set[tuple[str, str]] = set()
+    for _ in range(140):
+        pairs.add((name(3), name(4)))
+    for stem in ("Sun Path", "Sun Pathway", "Night Drive", "Deep Echo"):
+        for tail in ("", "x", "s", "y", " Alt", " Mix", " 2", " Ways", "ss"):
+            for artist in ("Aurora Bloom", "Aurora Blooms", "Bloom Aurora"):
+                pairs.add((artist, stem + tail))
+    pairs |= {(title, artist) for artist, title in list(pairs)[:40]}
+    held = [
+        match.Owned(path=Path(f"{n:04d}.flac"), artist=a, title=t, version=v, key=None)
+        for n, (a, t) in enumerate(sorted(pairs))
+        for v in ("",) * (1 + n % 2)
+    ]
+    grouped: dict[str, list[match.Owned]] = {}
+    for owned in held:
+        grouped.setdefault(owned.recording, []).append(owned)
+    index = match.LibraryIndex(by_recording={k: tuple(v) for k, v in grouped.items()})
+
+    rows = [one(artist=name(3), title=name(4)) for _ in range(60)]
+    rows += [
+        one(artist=artist, title=stem + tail)
+        for stem in ("Sun Path", "Night Drive", "Sun Pathwayss")
+        for tail in ("", "x", "ss", " Alt")
+        for artist in ("Aurora Bloom", "Aurora Bloomz", "")
+    ]
+    rows += [one(artist="", title=""), one(artist="Path Sun", title="Bloom Aurora")]
+    return index, rows
+
+
+@pytest.mark.parametrize("seed", [265, 2650, 26500])
+def test_the_approximate_pass_answers_exactly_as_the_shipped_scorer(seed):
+    """Every row's candidates, in their order, equal the shipped scorer's.
+
+    The comparison is on the whole ``Owned`` tuple, so a different candidate, a
+    different order among equal scores, or a different cut at the floor or the
+    limit all fail it. And the fixture is asserted to carry the cases that make
+    equality mean something: rows with more than five recordings over the floor,
+    equal scores inside a returned five, and rows with nothing over the floor.
+    """
+    from rapidfuzz import fuzz, process
+
+    index, rows = _u265_library(seed)
+    over_the_limit = tied_inside = nothing = 0
+    for wanted in rows:
+        assert match._approximate(wanted, index) == _shipped_approximate(wanted, index), (
+            wanted.recording
+        )
+        every = process.extract(
+            wanted.recording,
+            tuple(index.by_recording),
+            scorer=fuzz.token_sort_ratio,
+            score_cutoff=match.APPROXIMATE_FLOOR,
+            limit=None,
+        )
+        over_the_limit += len(every) > match.APPROXIMATE_LIMIT
+        kept = [score for _token, score, _position in every[: match.APPROXIMATE_LIMIT]]
+        tied_inside += len(kept) != len(set(kept))
+        nothing += not every
+    assert over_the_limit and tied_inside and nothing, (
+        "the generated library no longer carries more than five hits, ties inside "
+        "the five and empty answers, so equality is not being tested where it can fail"
+    )
+
+
+def test_every_pair_scores_the_same_through_the_sorted_form():
+    """THE WHOLE MATRIX, no cutoff: ``ratio`` over the sorted forms equals
+    ``token_sort_ratio`` over the tokens for every pair, as a float, with ``==``.
+
+    The candidate test above sees only what clears the floor; this sees every
+    score, so a pair the sort disagreed about under the floor cannot hide.
+    """
+    from rapidfuzz import fuzz
+
+    index, rows = _u265_library(7)
+    # Raw tokens too, never folded, at every width and with the two characters
+    # the scorer splits on in a wide string and not in a narrow one.
+    raw = [
+        "a\x85b\x1fc", "a\xa0b\x1fc d", "x\xa0y\x1fПривет", "a\x85b body\x1fﬁne",
+        "\x1f", "", " ", "\x1f\x1f", "tab\there\x1f  spaced  ", "😀\x1fz a\xa0b",
+    ]
+    choices = list(index.by_recording) + raw
+    asked = [wanted.recording for wanted in rows] + choices[:50] + raw
+    for query in asked:
+        sorted_query = match._sorted_words(query)
+        for choice in choices:
+            assert fuzz.ratio(sorted_query, match._sorted_words(choice)) == (
+                fuzz.token_sort_ratio(query, choice)
+            ), (query, choice)
+
+
+def test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on():
+    """Python's whitespace is not always ``rapidfuzz``'s, and which it is
+    depends on the string's WIDTH, measured over every code point when U265 was
+    built: in a string whose characters are all below U+0100 the scorer does not
+    split on U+0085 or U+00A0, and in any wider string it splits on exactly
+    Python's whitespace.
+
+    ``fold`` leaves neither in a token, but the sort is held to the scorer on
+    any text, so a token from anywhere scores as it did. Every code point Python
+    calls whitespace, both exceptions, and every code point below U+3100, in
+    three shapes (inside a word, alone, and doubled between two words) at each
+    of Python's three string widths, the wide ones made by a word beside it.
+    """
+    from rapidfuzz import fuzz
+
+    points = {cp for cp in range(0x110000) if chr(cp).isspace()}
+    points |= {0x85, 0xA0, 0x1F} | set(range(0x3100))
+    points -= set(range(0xD800, 0xE000))
+    for widen in ("", " \xe9", " Ā", " \U0001f600"):
+        for cp in sorted(points):
+            c = chr(cp)
+            for token, other in (
+                (f"zz{c}aa{widen}", f"aa zz{widen}"),
+                (f"{c}{widen}", ""),
+                (f"b{c}{c}a{widen}", f"a b{widen}"),
+                (f"b{c}a{widen}", "a b"),
+            ):
+                assert fuzz.ratio(match._sorted_words(token), match._sorted_words(other)) == (
+                    fuzz.token_sort_ratio(token, other)
+                ), (hex(cp), widen)
+    assert match._sorted_words("b\xa0a") == "b\xa0a", "a narrow string keeps its no-break space"
+    assert match._sorted_words("b\xa0a Ā") == "a b Ā", "a wide one splits on it"
+    # THE BOUNDARY: U+00FF is the widest narrow character and U+0100 the
+    # narrowest wide one, so a width test one off either way is caught here.
+    for edge in ("\xff", "Ā"):
+        for c in ("\x85", "\xa0"):
+            token, other = f"z{c}a{edge}", f"a{edge} z"
+            assert fuzz.ratio(match._sorted_words(token), match._sorted_words(other)) == (
+                fuzz.token_sort_ratio(token, other)
+            ), (hex(ord(edge)), hex(ord(c)))
+
+
+def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeypatch):
+    """R recordings and W rows cost R + W sorts, and a new index pays its own R.
+
+    The sort was paid once per PAIR, inside the scorer, so a library name was
+    sorted again for every wanted row; the count is the proof the saving is
+    there, since no wall clock threshold is asserted.
+    """
+    calls: list[str] = []
+    real = match._sorted_words
+
+    def counted(token: str) -> str:
+        calls.append(token)
+        return real(token)
+
+    monkeypatch.setattr(match, "_sorted_words", counted)
+    index, rows = _u265_library(11)
+    recordings = len(index.by_recording)
+    for wanted in rows:
+        match._approximate(wanted, index)
+    assert len(calls) == recordings + len(rows)
+
+    calls.clear()
+    again, _rows = _u265_library(12)
+    match._approximate(rows[0], again)
+    assert len(calls) == len(again.by_recording) + 1
+
+    calls.clear()
+    assert match._approximate(rows[0], match.LibraryIndex(by_recording={})) == ()
+    assert calls == [], "an empty index sorts nothing and asks the scorer nothing"

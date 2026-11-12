@@ -78,6 +78,27 @@ account, since until then every call was the account's. A version before U205
 that rewrites the file keeps the totals and drops the entry, so the history it
 held is read as the account's again; the totals stay true either way.
 
+ONE ALLOWANCE PER ACCOUNT, AND A RESERVE (U278). On 2026-11-12 a disposable
+copy whose installation state was redirected to scratch got a gate of its own:
+fifty three small commands on it, each under its own ceiling, spent about
+7,800 catalogue calls in twenty minutes, and the live breaker, which had seen
+none of them, then refused the label go they had cost. Three things answer it.
+The state file and its lock resolve under ``config.provider_gate_dir``, which
+a redirected ``CRATEKIT_STATE_DIR`` does not move, so every installation state
+pointed at the account reads one gate. Every call is counted in that file for
+the minute it falls in, per identity, and a call that would take an
+identity's last sixty minutes past its line is not sent: it parks as
+:data:`BUDGET`, naming the spend, the line and the minute it frees, which no
+number of separate commands can step around. And the line depends on the
+command: one whose verb writes the account or downloads may spend the whole
+of ``[provider] calls_per_hour``, and any other stops ``reserve_share`` of it
+short, so a day of reads cannot use up what a go needs. The line holds
+whatever ``--calls`` says, so a raised ceiling never spends the reserve, and a
+``--calls`` past the whole budget is refused before a call is made. The window is checked before the ceiling, since a
+continue with a higher ceiling cannot help a run the hour has stopped, and
+after the cooldown, which keeps its own meaning: the budget never trips the
+breaker, and a refusal of either is a park and never a retry.
+
 WHAT IT DOES NOT COVER. The vendored downloader fetches media segments through
 its own session against a content delivery host. Those are not calls to the
 provider's API and are not paced here.
@@ -86,6 +107,7 @@ provider's API and are not paced here.
 from __future__ import annotations
 
 import json
+import math
 import os
 import time
 from collections.abc import Callable, Iterator, Mapping
@@ -138,6 +160,21 @@ CEILING = "provider-call-ceiling"
 #: is open and restored when it closes, so the next run reads the configuration.
 CALLS_ENV = "CRATEKIT_PROVIDER_CALLS"
 
+#: The reason a call past its identity's line for the hour stops with, and the
+#: reason a ``--calls`` above the hour's whole budget is refused with (U278),
+#: declared in ``cause.REASONS``.
+BUDGET = "provider-budget"
+
+#: How an hour's budget raised for one run reaches a job's detached child, on
+#: :data:`CALLS_ENV`'s rule.
+BUDGET_ENV = "CRATEKIT_PROVIDER_CALLS_PER_HOUR"
+
+#: The window the budget is counted over, and the size of one count in it. A
+#: minute's calls leave the window an hour after the minute ENDS, so the count
+#: can only hold a call for longer than an hour, never for less.
+WINDOW_S = 3600
+BUCKET_S = 60
+
 #: The two identities a call is made under (U205): the person's account
 #: session, and Cratekit's own app credentials, which only the catalogue
 #: client holds.
@@ -182,6 +219,12 @@ class GateSettings:
     calls_per_command: int = field(
         default_factory=lambda: int(config.DEFAULT_PROVIDER_CALLS_PER_COMMAND)
     )
+    calls_per_hour: int = field(
+        default_factory=lambda: int(config.DEFAULT_PROVIDER_CALLS_PER_HOUR)
+    )
+    reserve_share: float = field(
+        default_factory=lambda: float(config.DEFAULT_PROVIDER_RESERVE_SHARE)
+    )
 
     @classmethod
     def from_config(cls, cfg: Any) -> GateSettings:
@@ -197,6 +240,8 @@ class GateSettings:
             min_interval_s=float(provider.min_interval_s),
             cooldown_s=float(provider.cooldown_s),
             calls_per_command=int(provider.calls_per_command),
+            calls_per_hour=int(provider.calls_per_hour),
+            reserve_share=float(provider.reserve_share),
         )
 
 
@@ -249,9 +294,40 @@ class _State:
     #: The share of ``calls`` and ``rate_limited`` the app credentials made.
     app_calls: int = 0
     app_rate_limited: int = 0
+    #: Each identity's calls by the minute they were made in, the minutes the
+    #: window no longer holds pruned on every write (U278).
+    window: dict[str, dict[int, int]] = field(
+        default_factory=lambda: {identity: {} for identity in IDENTITIES}
+    )
 
     def cooling(self, now: float) -> bool:
         return self.lifts_at is not None and now < self.lifts_at
+
+    def spent(self, identity: str, now: float) -> int:
+        """The identity's calls in the window at ``now``."""
+        return sum(_live(self.window.get(identity, {}), now).values())
+
+    def settle(self, now: float) -> bool:
+        """The window as :func:`_live` reads it at ``now``, kept: minutes past
+        the hour dropped and a minute stamped ahead of the clock brought to the
+        current one. True when anything moved, so the caller writes it and a
+        minute from the future is placed once rather than read as now again
+        at every later reading, which would hold it until the clock caught up."""
+        moved = False
+        for identity in IDENTITIES:
+            held = self.window.get(identity, {})
+            live = _live(held, now)
+            if live != held:
+                self.window[identity] = live
+                moved = True
+        return moved
+
+    def count(self, identity: str, now: float) -> None:
+        """One more call by ``identity`` at ``now``, and the window pruned."""
+        minutes = _live(self.window.get(identity, {}), now)
+        bucket = _bucket(now)
+        minutes[bucket] = minutes.get(bucket, 0) + 1
+        self.window[identity] = minutes
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -269,6 +345,10 @@ class _State:
                     "rate_limited": max(0, self.rate_limited - self.app_rate_limited),
                 },
                 APP: {"calls": self.app_calls, "rate_limited": self.app_rate_limited},
+            },
+            "window": {
+                identity: {str(bucket): n for bucket, n in sorted(minutes.items())}
+                for identity, minutes in self.window.items()
             },
         }
 
@@ -293,6 +373,9 @@ class _State:
         if isinstance(app, dict):
             state.app_calls = min(_as_int(app.get("calls")), state.calls)
             state.app_rate_limited = min(_as_int(app.get("rate_limited")), state.rate_limited)
+        # NO ``window`` IS A FILE WRITTEN BEFORE U278, read as nothing spent in
+        # the hour: the window starts counting at the first call this build makes.
+        state.window = _window_from_json(data.get("window"))
         return state
 
 
@@ -312,6 +395,15 @@ class Command:
     started: int
     raised: int | None = None
     stopped: Cause | None = None
+    #: Whether this command may spend the hour's reserve (U278): set by the
+    #: dispatcher from the verb's declared writes, and only ever narrowed by
+    #: :func:`reading` for a mode that only reads.
+    reserve: bool = False
+    #: The hour's budget raised for this run, or None for the configured one.
+    hourly: int | None = None
+    #: The class the dispatcher opened the scope with, which :func:`spending`
+    #: returns to and never goes past.
+    declared: bool = False
 
     def spent(self) -> int:
         return max(0, _PROCESS_CALLS - self.started)
@@ -336,35 +428,79 @@ def _raised_from_env() -> int | None:
     return value if value > 0 else None
 
 
+def _hour_from_env() -> int | None:
+    """The hour's budget a parent run raised, read off :data:`BUDGET_ENV`, on
+    :func:`_raised_from_env`'s rule: a value that cannot be read is ignored,
+    so the configured budget holds."""
+    text = os.environ.get(BUDGET_ENV, "").strip()
+    if not (text.isascii() and text.isdigit()):
+        return None
+    value = int(text)
+    return value if value > 0 else None
+
+
 @contextmanager
-def command(calls: int | None = None) -> Iterator[Command]:
+def _exported(name: str, value: int | None) -> Iterator[None]:
+    """``name`` set to ``value`` for the body, and put back as it was after."""
+    if value is None:
+        yield
+        return
+    previous = os.environ.get(name)
+    os.environ[name] = str(value)
+    try:
+        yield
+    finally:
+        if previous is None:
+            os.environ.pop(name, None)
+        else:
+            os.environ[name] = previous
+
+
+@contextmanager
+def command(
+    calls: int | None = None, *, calls_per_hour: int | None = None, reserve: bool = False
+) -> Iterator[Command]:
     """Open one command's ceiling scope for the length of a verb.
 
-    ``calls`` is the ceiling raised for this run alone. A scope opened inside
-    an open one, which ``run decide --continue`` does when it dispatches the
-    verb again in the same process, yields the OUTER scope unchanged, so one
-    command cannot spend its ceiling twice by nesting.
+    ``calls`` is the ceiling raised for this run alone, and ``calls_per_hour``
+    the hour's budget raised for it (U278); both reach a detached child through
+    the environment while the scope is open. ``reserve`` says whether the
+    command may spend the hour's reserve, which the dispatcher reads off the
+    verb's declared writes. A scope opened inside an open one, which ``run
+    decide --continue`` does when it dispatches the verb again in the same
+    process, yields the OUTER scope, so one command cannot spend its ceiling
+    twice by nesting. Its class is the inner verb's for the body and the
+    outer's again after it: a go continued from ``run decide`` spends the
+    reserve its own verb declares, and a read dispatched inside a write is
+    held to the read line. Only the dispatcher passes ``reserve``, off the
+    registry, so nesting reaches no further than the verb that runs.
     """
     global _COMMAND
     if _COMMAND is not None:
-        yield _COMMAND
+        outer = _COMMAND
+        before = (outer.reserve, outer.declared)
+        outer.reserve = outer.declared = bool(reserve)
+        try:
+            yield outer
+        finally:
+            outer.reserve, outer.declared = before
         return
     raised = calls if calls is not None else _raised_from_env()
+    hourly_raised = calls_per_hour if calls_per_hour is not None else _hour_from_env()
     _APP_LOST.clear()
-    previous = os.environ.get(CALLS_ENV)
-    if calls is not None:
-        os.environ[CALLS_ENV] = str(calls)
-    scope = Command(started=_PROCESS_CALLS, raised=raised)
-    _COMMAND = scope
-    try:
-        yield scope
-    finally:
-        _COMMAND = None
-        if calls is not None:
-            if previous is None:
-                os.environ.pop(CALLS_ENV, None)
-            else:
-                os.environ[CALLS_ENV] = previous
+    scope = Command(
+        started=_PROCESS_CALLS,
+        raised=raised,
+        reserve=bool(reserve),
+        hourly=hourly_raised,
+        declared=bool(reserve),
+    )
+    with _exported(CALLS_ENV, calls), _exported(BUDGET_ENV, calls_per_hour):
+        _COMMAND = scope
+        try:
+            yield scope
+        finally:
+            _COMMAND = None
 
 
 def command_spent() -> int:
@@ -379,6 +515,241 @@ def ceiling(settings: GateSettings | None = None) -> int:
     if scope is not None and scope.raised is not None:
         return scope.raised
     return (settings or GateSettings()).calls_per_command
+
+
+# ---------------------------------------------------------------------------
+# The hour's budget (U278)
+# ---------------------------------------------------------------------------
+
+
+def _bucket(epoch: float) -> int:
+    """The minute a call falls in, as the epoch second it starts at."""
+    return int(epoch // BUCKET_S) * BUCKET_S
+
+
+def _expires(bucket: int) -> float:
+    """When a minute's calls leave the window: an hour after the minute ENDS.
+
+    Every call in the minute is read as made at its last second, so the
+    window can only count a call for longer than an hour, never for less, and
+    a line read off it is never crossed by a call the window forgot early.
+    """
+    return float(bucket + BUCKET_S + WINDOW_S)
+
+
+def _live(window: Mapping[int, int], now: float) -> dict[int, int]:
+    """The minutes still inside the window at ``now``.
+
+    A MINUTE STAMPED IN THE FUTURE, which only a clock set back writes, is
+    read as made in the current minute and counted. Dropped, it would hand the
+    account a fresh hour for as long as the clock is wrong; kept where it was,
+    it would hold the line until the clock reached it, days away, which is the
+    corrupt counter locking the provider out that this module refuses to be.
+    """
+    current = _bucket(now)
+    live: dict[int, int] = {}
+    for bucket, n in window.items():
+        if n <= 0:
+            continue
+        at = min(bucket, current)
+        if _expires(at) > now:
+            live[at] = live.get(at, 0) + n
+    return live
+
+
+def _frees_at(window: Mapping[int, int], now: float, line: int) -> float:
+    """The first moment the window holds fewer calls than ``line``.
+
+    ``now`` when it already does. Otherwise the oldest minutes age out one by
+    one until enough have gone; a line of zero never frees, and is answered
+    with the moment the last minute leaves, since nothing sooner is true.
+    """
+    live = _live(window, now)
+    spent = sum(live.values())
+    if spent < line:
+        return now
+    over = spent - line + 1
+    gone = 0
+    last = now
+    for bucket in sorted(live):
+        gone += live[bucket]
+        last = _expires(bucket)
+        if gone >= over:
+            return last
+    return last
+
+
+def _window_from_json(raw: Any) -> dict[str, dict[int, int]]:
+    """Each identity's minutes off the file. An entry that cannot be read is
+    dropped rather than refused, on the rule the module keeps for its whole
+    file: a corrupt counter must not lock the provider out, and the breaker
+    still stands behind it."""
+    window: dict[str, dict[int, int]] = {identity: {} for identity in IDENTITIES}
+    if not isinstance(raw, dict):
+        return window
+    for identity in IDENTITIES:
+        minutes = raw.get(identity)
+        if not isinstance(minutes, dict):
+            continue
+        for key, value in minutes.items():
+            try:
+                bucket = int(key)
+            except (TypeError, ValueError):
+                continue
+            count = _as_int(value)
+            if count:
+                window[identity][bucket] = window[identity].get(bucket, 0) + count
+    return window
+
+
+def hourly(settings: GateSettings | None = None) -> int:
+    """The hour's budget for each identity: raised for this run, else the configured."""
+    scope = _COMMAND
+    if scope is not None and scope.hourly is not None:
+        return scope.hourly
+    raised = _hour_from_env() if scope is None else None
+    if raised is not None:
+        return raised
+    return (settings or GateSettings()).calls_per_hour
+
+
+def reserve_of(budget: int, share: float) -> int:
+    """The calls of ``budget`` kept for writes and downloads, rounded UP, so a
+    share never keeps less than it says."""
+    return min(budget, max(0, math.ceil(round(budget * share, 6))))
+
+
+def line_for(settings: GateSettings | None = None, *, reserve: bool | None = None) -> int:
+    """How many calls an identity may have in the window before the next is refused.
+
+    The whole budget for a command that spends the reserve, the budget less the
+    reserve for any other. ``reserve`` None asks the open command; outside a
+    scope a call is held to the read line, the stricter of the two, since only
+    a library caller or a test makes one there.
+    """
+    settings = settings or GateSettings()
+    budget = hourly(settings)
+    if reserve is None:
+        scope = _COMMAND
+        reserve = scope.reserve if scope is not None else False
+    if reserve:
+        return budget
+    return budget - reserve_of(budget, settings.reserve_share)
+
+
+@contextmanager
+def spending() -> Iterator[None]:
+    """Let the body spend the reserve, if the verb declared it may (U278).
+
+    For the one part of a read mode that is a go: ``label sync``'s walk ends
+    at the go's gate, and a download behind it is what the reserve is kept
+    for. Never past the class the dispatcher opened the command with, so a
+    verb that declares no write cannot reach the reserve through it, and
+    narrowed again on the way out.
+    """
+    scope = _COMMAND
+    if scope is None:
+        yield
+        return
+    before = scope.reserve
+    scope.reserve = scope.declared
+    try:
+        yield
+    finally:
+        scope.reserve = before
+
+
+def reading(settings: GateSettings | None = None) -> None:
+    """Hold the open command to the read line from here on (U278).
+
+    For a verb that writes the account or downloads in one mode and only reads
+    in another: ``label sync`` spends the reserve under ``--go`` alone. It only
+    ever narrows: a read scope stays a read scope. Given ``settings``, a ceiling
+    ``--calls`` raised past the hour's budget is refused at once, before the
+    verb makes a call, rather than at the first one.
+    """
+    scope = _COMMAND
+    if scope is None:
+        return
+    scope.reserve = False
+    if settings is not None:
+        refused = over_the_line(settings)
+        if refused is not None:
+            raise CratekitError(refused)
+
+
+def _who(identity: str) -> str:
+    return "the account" if identity == ACCOUNT else "Cratekit's app credentials"
+
+
+def _class_words(reserve: bool, budget: int, line: int) -> str:
+    if reserve:
+        return f"the whole of the hour's budget of {budget}"
+    return (
+        f"the line a command that only reads may reach, {line} of the hour's {budget}, "
+        f"the other {budget - line} being kept for writes and downloads"
+    )
+
+
+def hour_to_name(calls: int, settings: GateSettings | None = None) -> int | None:
+    """The ``--calls-per-hour`` a printed command naming ``--calls calls`` must
+    carry, or None when the configured hour already holds it (U278).
+
+    A continue or a forecast that names a ``--calls`` above the configured
+    budget is refused as printed unless it raises the hour with it, and a run
+    whose hour was raised continues with that hour: so the larger of the two,
+    named whenever it passes ``[provider] calls_per_hour``. Round two's
+    review found both shapes printed without it.
+    """
+    settings = settings or GateSettings()
+    wanted = max(int(calls), hourly(settings))
+    return wanted if wanted > settings.calls_per_hour else None
+
+
+def hour_args(calls: int, settings: GateSettings | None = None) -> list[str]:
+    """:func:`hour_to_name` as command line words, empty when none is needed."""
+    hour = hour_to_name(calls, settings)
+    return ["--calls-per-hour", str(hour)] if hour is not None else []
+
+
+def over_the_line(settings: GateSettings | None = None) -> Cause | None:
+    """The refusal for a ``--calls`` raised past the hour's budget, or None.
+
+    Never a silent cap: a ceiling no hour can hold is a command line that says
+    one thing and runs another. Against the WHOLE budget and not the line this
+    command may reach, the brief's words, since the line is held call by call
+    whatever ``--calls`` says: a read raised to the budget still stops at the
+    reserve. And because a wrapper verb, ``job resume`` or ``run decide``,
+    runs another verb whose line may be higher, which a check against the
+    wrapper's own line refused (round one's blocker).
+    """
+    scope = _COMMAND
+    if scope is None or scope.raised is None:
+        return None
+    settings = settings or GateSettings()
+    budget = hourly(settings)
+    if scope.raised <= budget:
+        return None
+    return Cause(
+        reason=BUDGET,
+        message=(
+            f"--calls {scope.raised} asks for more calls than any command may make in "
+            f"an hour, the hour's budget of {budget} for each identity, so nothing was "
+            f"asked of the streaming provider"
+        ),
+        remediation=Remediation(
+            remedy=Remedy.FIX_COMMAND_LINE,
+            steps=(
+                f"run it again with --calls {budget} or lower",
+                "or raise the hour's budget for one run with --calls-per-hour, or "
+                "[provider] calls_per_hour for every run",
+            ),
+        ),
+        scope=Scope.RUN,
+        retryable=False,
+        origin=("provider_gate",),
+        detail={"raised": scope.raised, "budget": budget, "reserve": scope.reserve},
+    )
 
 
 def _as_float(value: Any, fallback: Any) -> Any:
@@ -397,6 +768,11 @@ def _as_int(value: Any) -> int:
 
 def _iso(epoch: float) -> str:
     return datetime.fromtimestamp(epoch, tz=timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def iso(epoch: float) -> str:
+    """An epoch second as the gate's refusals print it, for a report beside them."""
+    return _iso(epoch)
 
 
 # ---------------------------------------------------------------------------
@@ -529,6 +905,10 @@ class Gate:
         payload = json.dumps(state.to_json(), indent=2, sort_keys=True) + "\n"
         config.atomic_write_bytes(payload.encode("utf-8"), self.path)
 
+    def window_spend(self, identity: str = ACCOUNT) -> int:
+        """The identity's calls in the last hour, off the state file (U278)."""
+        return self._read().spent(identity, self._clock())
+
     def spend(self) -> Spend:
         """The running totals across every process, off the state file."""
         state = self._read()
@@ -646,7 +1026,14 @@ class Gate:
             if scope.raised is not None
             else "the ceiling for one command, [provider] calls_per_command"
         )
-        higher = line * 2
+        # NEVER A CONTINUE THE HOUR WOULD REFUSE (U278). Doubled as before, but
+        # held to the hour's budget, since a ``--calls`` past it is refused
+        # before a call; at the budget already, doubled anyway, and the refusal
+        # it meets names --calls-per-hour.
+        reach = hourly(self.settings)
+        higher = min(line * 2, reach) if reach > line else line * 2
+        hour = hour_to_name(higher, self.settings)
+        raise_hour = f" --calls-per-hour {hour}" if hour is not None else ""
         # NEVER "WHAT IT DID IS KEPT" (U217). Said by every command, it was
         # false for each that read and did not keep, and a label listing paid
         # its whole cost again on every continue under those words. What a
@@ -668,8 +1055,9 @@ class Gate:
                     # continued by its id and never by queueing it again. The
                     # dispatcher replaces it with the one exact command.
                     f"continue with a higher ceiling for one run: a parked job with "
-                    f"crate --calls {higher} job resume JOB_ID, any other command by "
-                    f"running it again with --calls {higher} before it",
+                    f"crate --calls {higher}{raise_hour} job resume JOB_ID, any other "
+                    f"command by running it again with --calls {higher}{raise_hour} "
+                    f"before it",
                     "or raise [provider] calls_per_command in the configuration for every run",
                 ),
             ),
@@ -681,6 +1069,50 @@ class Gate:
                 "ceiling": line,
                 "raised": scope.raised is not None,
                 "higher": higher,
+                "calls_per_hour": hour,
+            },
+        )
+
+    def _budget_cause(
+        self, state: _State, identity: str, now: float, line: int, spent: int
+    ) -> Cause:
+        """The hour's line reached for one identity (U278): a fact about the
+        ACCOUNT, parked like a trip, so an item in flight goes back to pending,
+        and never retryable, since asking again inside the hour is the harm."""
+        scope = _COMMAND
+        reserve = scope.reserve if scope is not None else False
+        budget = hourly(self.settings)
+        frees = _frees_at(state.window.get(identity, {}), now, line)
+        who = _who(identity)
+        calls = "call" if spent == 1 else "calls"
+        return Cause(
+            reason=BUDGET,
+            message=(
+                f"{who} has made {spent} {calls} to the streaming provider in the last "
+                f"hour, from every command and copy that reads this gate, and "
+                f"{_class_words(reserve, budget, line)}, so this run stopped before the "
+                f"next call and the remaining items stay queued; the line frees at "
+                f"{_iso(frees)}"
+            ),
+            remediation=Remediation(
+                remedy=Remedy.RETRY_LATER,
+                steps=(
+                    f"wait until {_iso(frees)}, then resume the job, or run the verb again",
+                    f"or raise the hour's budget for one run with crate --calls-per-hour "
+                    f"{budget * 2} before the verb, or [provider] calls_per_hour for every run",
+                ),
+            ),
+            scope=Scope.RUN,
+            retryable=False,
+            origin=("provider_gate",),
+            detail={
+                "identity": identity,
+                "spent": spent,
+                "line": line,
+                "budget": budget,
+                "reserve": reserve,
+                "frees_at": _iso(frees),
+                "window_s": WINDOW_S,
             },
         )
 
@@ -753,7 +1185,33 @@ class Gate:
                 now = self._clock()
                 if state.cooling(now):
                     raise self._stopped(self._cooldown_cause(state, now, tripped_now=False))
+                # AFTER THE COOLDOWN, AND NEVER IN ITS PLACE (round two): the
+                # window is settled here, and a write the filesystem refuses
+                # leaves it to the next one rather than turning a refusal
+                # into an OSError; the count written before the send below
+                # still reaches the file or raises as it always has.
+                if state.settle(now):
+                    try:
+                        self._write(state)
+                    except OSError:
+                        pass
                 scope = _COMMAND
+                # THE HOUR, BEFORE THE CEILING (U278), and both before the send.
+                # A ``--calls`` above the hour's whole budget is refused
+                # outright, and a window at its line stops the call whoever
+                # spent it, so no number of commands or copies steps around it.
+                over = over_the_line(self.settings)
+                if over is not None:
+                    if scope is not None:
+                        scope.stopped = over
+                    raise self._stopped(over)
+                hour_line = line_for(self.settings)
+                spent = state.spent(identity, now)
+                if spent >= hour_line:
+                    cause = self._budget_cause(state, identity, now, hour_line, spent)
+                    if scope is not None:
+                        scope.stopped = cause
+                    raise self._stopped(cause)
                 if scope is not None:
                     line = ceiling(self.settings)
                     if scope.spent() >= line:
@@ -781,6 +1239,7 @@ class Gate:
             now = max(self._clock(), due)
         state.last_call = now
         state.calls += 1
+        state.count(identity, now)
         self.calls += 1
         _PROCESS_CALLS += 1
         if app:
@@ -908,9 +1367,66 @@ def read_spend(path: Path | None = None) -> Spend | None:
     )
 
 
+@dataclass(frozen=True, slots=True)
+class Standing:
+    """Where the account stands in the hour, off the one gate, for a report (U278).
+
+    ``window`` is each identity's calls by minute as the file holds them, and
+    ``now`` the moment the report reads them at, so every figure below is one
+    reading and not several.
+    """
+
+    window: Mapping[str, Mapping[int, int]]
+    now: float
+    path: Path
+    tripped_at: float | None = None
+    lifts_at: float | None = None
+
+    def spent(self, identity: str) -> int:
+        return sum(_live(self.window.get(identity, {}), self.now).values())
+
+    def frees_at(self, identity: str, line: int) -> float:
+        return _frees_at(self.window.get(identity, {}), self.now, line)
+
+    def cooling(self) -> bool:
+        return self.lifts_at is not None and self.now < self.lifts_at
+
+
+def read_standing(now: float | None = None, *, path: Path | None = None) -> Standing | None:
+    """The hour's spend and any cooldown off the one gate, or None when its file
+    cannot be read, on :func:`read_spend`'s rule: the gate reads such a file as
+    fresh, and a report that did would show an open hour over a file it never
+    read. A file that does not exist yet is an hour with nothing spent."""
+    target = path if path is not None else config.state_path(STATE_KEY)
+    moment = time.time() if now is None else now
+    try:
+        text = target.read_text(encoding="utf-8")
+    except FileNotFoundError:
+        return Standing(window={}, now=moment, path=target)
+    except OSError:
+        return None
+    try:
+        data = json.loads(text)
+    except ValueError:
+        return None
+    if not isinstance(data, dict):
+        return None
+    state = _State.from_json(data)
+    return Standing(
+        window=state.window,
+        now=moment,
+        path=target,
+        tripped_at=state.tripped_at,
+        lifts_at=state.lifts_at,
+    )
+
+
 __all__ = [
     "ACCOUNT",
     "APP",
+    "BUCKET_S",
+    "BUDGET",
+    "BUDGET_ENV",
     "CALLS_ENV",
     "CEILING",
     "COOLDOWN",
@@ -927,13 +1443,25 @@ __all__ = [
     "Gate",
     "GateSettings",
     "Spend",
+    "Standing",
+    "WINDOW_S",
     "ceiling",
     "command",
     "command_spent",
     "header_value",
+    "hour_args",
+    "hour_to_name",
+    "hourly",
+    "iso",
+    "line_for",
     "note_app_lost",
+    "over_the_line",
     "process_spend",
     "read_spend",
+    "read_standing",
+    "reading",
+    "spending",
+    "reserve_of",
     "retry_after_seconds",
     "spend",
 ]
