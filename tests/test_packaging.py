@@ -2,7 +2,10 @@
 
 These assertions run against ``pyproject.toml`` as data rather than against an
 installed distribution, so they fail in the pull request that introduces the
-regression instead of on the first friend's machine.
+regression instead of on the first friend's machine. One reads the installed
+distributions as well: the import guard (U269) asks the environment's own
+metadata which modules each core dependency provides, so it needs the core
+dependencies installed, as the battery's environment has them.
 
 The end-to-end proof that a clean environment installs and imports lives in
 CI's ``cold-install`` job and in the manual rehearsal recorded for U1. A unit
@@ -176,7 +179,7 @@ def test_slim_core_carries_no_dsp_web_or_ml_dependency(pyproject):
 # U269: every core dependency earns its place, and the comments name real files.
 #
 # lxml sat in the core list for months "for rekordbox XML parsing" while every
-# reader of an export scanned bytes and nothing imported it, so each install
+# reader of an export under src scanned bytes and nothing imported it, so each install
 # downloaded and unpacked a compiled library that no line of Cratekit used. No
 # test could see that: the slim core test above asks whether a dependency is
 # heavy, never whether anything needs it.
@@ -238,8 +241,13 @@ def test_every_core_dependency_is_imported_by_the_package(pyproject):
     imported = _imported_top_level_names(REPO_ROOT / "src" / "cratekit")
     not_installed, unused = [], []
     for spec in pyproject["project"]["dependencies"]:
-        name = canonicalize_name(Requirement(spec).name)
+        requirement = Requirement(spec)
+        name = canonicalize_name(requirement.name)
         if name in DECLARED_WITHOUT_AN_IMPORT:
+            continue
+        if requirement.marker is not None and not requirement.marker.evaluate():
+            # Declared for another platform or interpreter, so not installed
+            # here by design; the battery on that platform judges it.
             continue
         if name not in provides:
             not_installed.append(name)
@@ -256,9 +264,15 @@ def test_every_core_dependency_is_imported_by_the_package(pyproject):
     )
 
 
-#: A repository path a comment in ``pyproject.toml`` names, with an optional
-#: ``::test_name`` after a test file.
-_NAMED_PATH = re.compile(r"\b((?:tests|scripts|src)/[\w./-]*[\w/])(?:::(\w+))?")
+#: A repository path ``pyproject.toml`` names under one of the repository's own
+#: top level directories, with an optional ``::test_name`` after a test file.
+#: Not preceded by a path or address character, so the tail of a URL is not
+#: read as a path, and not followed by one, so a glob such as ``tests/test_*.py``
+#: is skipped whole rather than read as the prefix before its star; a full stop
+#: that ends a sentence after a path is not part of it.
+_NAMED_PATH = re.compile(
+    r"(?<![\w./:-])((?:tests|scripts|src|docs|vendor)/[\w./-]*[\w/])(?![\w*/-]|\.[\w*])(?:::(\w+))?"
+)
 
 
 def test_every_path_pyproject_names_exists():

@@ -34,7 +34,7 @@ authors = [{ name = "Cratekit contributors" }]
 # under src/cratekit, which
 # tests/test_packaging.py::test_every_core_dependency_is_imported_by_the_package
 # holds (U269: lxml sat here for months with nothing importing it, since every
-# reader of a rekordbox export scans bytes in cratekit.write.rbxml).
+# reader of a rekordbox export under src scans bytes in cratekit.write.rbxml).
 # ---------------------------------------------------------------------------
 dependencies = [
     "platformdirs>=4.0",   # cross-platform config/state directory resolution (KTD6)

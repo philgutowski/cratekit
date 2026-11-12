@@ -89,3 +89,14 @@ new = '''import hashlib
 if False:
     import lxml.etree  # noqa: F401
 '''
+
+[[rows]]
+id = "M8_comment_names_a_missing_doc"
+description = "pyproject.toml: the slim core comment names docs/dependencies.md, which does not exist, the round one widening of the path guard to docs and vendor"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_packaging.py"]
+old = '''# fails the build if one appears. Every line here is also imported somewhere
+# under src/cratekit, which'''
+new = '''# fails the build if one appears (docs/dependencies.md). Every line here is
+# also imported somewhere under src/cratekit, which'''
