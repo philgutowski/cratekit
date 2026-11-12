@@ -24,6 +24,15 @@ new = '''    if True:
         words = token.split()'''
 
 [[rows]]
+id = "M2b_width_off_by_one"
+description = "_sorted_words: read a string as wide from U+00FF rather than U+0100, so a narrow name ending in y with a diaeresis splits on U+00A0 where the scorer does not (review round one's finding)"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py"]
+old = '''    if token and max(token) > "\xff":'''
+new = '''    if token and max(token) >= "\xff":'''
+
+[[rows]]
 id = "M3_words_not_sorted"
 description = "_sorted_words: join the words in their own order, so the pass scores plain ratio and an artist and title swap no longer matches"
 file = "src/cratekit/acquire/match.py"

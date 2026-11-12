@@ -6329,7 +6329,7 @@ def test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on():
     points = {cp for cp in range(0x110000) if chr(cp).isspace()}
     points |= {0x85, 0xA0, 0x1F} | set(range(0x3100))
     points -= set(range(0xD800, 0xE000))
-    for widen in ("", " é", " Ā", " \U0001f600"):
+    for widen in ("", " \xe9", " Ā", " \U0001f600"):
         for cp in sorted(points):
             c = chr(cp)
             for token, other in (
@@ -6343,6 +6343,14 @@ def test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on():
                 ), (hex(cp), widen)
     assert match._sorted_words("b\xa0a") == "b\xa0a", "a narrow string keeps its no-break space"
     assert match._sorted_words("b\xa0a Ā") == "a b Ā", "a wide one splits on it"
+    # THE BOUNDARY: U+00FF is the widest narrow character and U+0100 the
+    # narrowest wide one, so a width test one off either way is caught here.
+    for edge in ("\xff", "Ā"):
+        for c in ("\x85", "\xa0"):
+            token, other = f"z{c}a{edge}", f"a{edge} z"
+            assert fuzz.ratio(match._sorted_words(token), match._sorted_words(other)) == (
+                fuzz.token_sort_ratio(token, other)
+            ), (hex(ord(edge)), hex(ord(c)))
 
 
 def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeypatch):

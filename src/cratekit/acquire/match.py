@@ -793,7 +793,9 @@ def recording_token(artist: str, title: str) -> str:
 #: except NEL (U+0085) and the no-break space (U+00A0). A wider string, one
 #: holding any character from U+0100 up, is split on exactly Python's
 #: whitespace. Measured over every code point at all three of Python's string
-#: widths when U265 was built, and held by
+#: widths, on rapidfuzz 3.14's compiled scorer, when U265 was built, and held
+#: for every whitespace code point, every code point below U+3100 and both
+#: sides of the U+00FF boundary by
 #: ``test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on``.
 #: :func:`fold` leaves neither character in a token, so this matters only for a
 #: token that did not come through it, and then it is what keeps the score the
