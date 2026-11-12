@@ -49793,3 +49793,77 @@ identically to main; only `__cause__` differs, and nothing reads it.
 
 **Closes when:** the side patches are dropped or a test reads one, and the raise
 chains its cause again. Ledger only.
+
+---
+
+## R-1573. U251's review was Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #680, U251, 2026-11-12.
+
+**The mechanism.** The Fable reviewer was refused on its usage limit at round
+one, and the same reviewer definition ran on Opus 5.5 at high effort in its
+place, as the cloud-unit skill's Models section allows. Nothing BLOCKING was
+found, four residual points and four docs points; the docs and three of the
+residual points were fixed in the round.
+
+**Measured cost.** None known. The merged range has had one reviewer of a
+different model from the one METHOD names.
+
+**Closes when:** a Fable pass at high effort reads the range U251 merged
+(the `feat(u251)`, `fix(u251)` and `docs(u251)` commits) and finds nothing
+BLOCKING, or its findings are filed. Ledger only.
+
+---
+
+## R-1574. The mutation driver's controller only write guard kills no test, because every worker write is followed by one of the controller's
+
+**Found:** at the review of #680, U251, 2026-11-12, and measured as row W4 of its mutation table.
+
+**The mechanism.** The reporting plugin that `scripts/mutate.py` writes into
+each child run returns from `_flush` in an xdist worker (`if _IS_WORKER: return`),
+so only the controller writes the report. With the guard gone, a worker writes
+only when it finishes collecting and when one of its own tests fails; it
+collects the whole suite, so its count is right, and the controller writes
+again after every report a worker forwards, so the controller's write is the
+last one. Row W4 of `docs/mutation/u251.md` removed the guard: zero kills on
+`tests/test_mutation_driver.py`, and zero on the promoted full run of 18,551.
+The review drove the same in memory: 8 of 8 stealing runs and every parallel
+driver test passed.
+
+**Measured cost.** None found. No run was produced in which a worker's write
+lands after the controller's last, so the guard holds against a race nothing
+here provokes.
+
+**Closes when:** a fixture makes a worker write after the controller's last
+write (a worker failure in its teardown after the controller has written,
+for instance) and a test fails without the guard, or the guard is shown to be
+unneeded and removed with its docstring. Ledger only.
+
+---
+
+## R-1575. The stealing suite's real runs pass under xdist's default distribution most of the time, so only the two pins catch work stealing being dropped
+
+**Found:** at the review of #680, U251, 2026-11-12.
+
+**The mechanism.** `tests/_stealing_suite.py` writes a suite in which, under
+`--dist worksteal`, a queued test must move to the idle worker, and the
+moved test's failure is what the driver and the battery are each asked to
+report. Under `--dist load` a queued test usually moves too, because the
+default distribution hands the holding worker only a short first chunk. So
+the three tests that run the suite (`tests/test_suite_distribution.py`,
+`tests/test_mutation_driver.py` and `tests/test_cloud_battery.py`) pass under
+either distribution on most runs. The review drove it: under `--dist load`
+the moved assertion failed in 4 of 22 runs, under `--dist loadgroup` in 5 of
+12, and the holding test never timed out.
+
+**Measured cost.** None while the two pins stand: dropping `--dist worksteal`
+from `pyproject.toml`, or the driver stripping it, fails
+`test_the_suite_runs_on_every_core_and_steals_queued_work` or
+`test_the_mutation_driver_passes_the_distribution_on` every time (the
+mutation table's W1 to W3). Without them it would read as an intermittent
+failure rather than a red one.
+
+**Closes when:** the suite holds a property only work stealing produces on
+every run, for instance a holding worker given its whole half up front whose
+tail is read back from xdist's own scheduling log, or the pins are accepted
+as the guard and this is closed as such. Ledger only.
