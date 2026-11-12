@@ -64,6 +64,12 @@ DECODER = "ffmpeg"
 #: still running after this is stuck, and its file is undecodable.
 DECODE_TIMEOUT_SECONDS = 600
 
+#: The decoders ffmpeg's MP4 reader gives a cover image, whatever bytes the
+#: cover holds: JPEG, PNG and BMP are the three it maps ``covr`` to. ffmpeg
+#: probes every stream before it decodes the one mapped, so a cover it cannot
+#: read is reported on these and says nothing about the audio (U263).
+_COVER_DECODERS = ("mjpeg", "png", "bmp")
+
 #: The two format tags a 32 bit float WAV header carries: plain IEEE float,
 #: and the extensible form ffmpeg writes for more than two channels, whose sub
 #: format begins with the same tag.
@@ -163,8 +169,10 @@ def _ffmpeg_samples(path: Any) -> tuple[Any, int]:
     Nothing touches the disk: ffmpeg writes a WAV to a pipe, and the rate and
     channels come from the header it wrote, which describes the samples it
     emitted. ``-xerror`` stops it at the first decode error, and any error it
-    reports fails the decode, so a damaged file fails rather than yielding the
-    part before the damage.
+    reports about the audio fails the decode, so a file damaged inside its
+    audio fails rather than yielding the part before the damage. A file cut
+    exactly on a packet boundary, with its index first, gives ffmpeg nothing
+    to report and decodes short; the record of U263 files it.
     """
     import numpy as np
 
@@ -198,13 +206,15 @@ def _ffmpeg_samples(path: Any) -> tuple[Any, int]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise DecodeFailed(f"{DECODER} did not finish decoding: {exc}") from exc
-    # ANY ERROR IS A FAILED DECODE, whatever the exit code. Measured on ffmpeg
-    # 6.1 in the review of U263: ``-xerror`` stops at a decoder error in the
-    # middle of an M4A and exits 0 with the part before it on the pipe, so the
-    # exit code alone measured the first half of a damaged track and wrote its
-    # key. At ``-v error`` a clean decode says nothing, so anything said is a
-    # fault, and the file is undecodable as the same damage in a FLAC is.
-    said = proc.stderr.decode("utf-8", "replace").strip()
+    # ANY ERROR ABOUT THE AUDIO IS A FAILED DECODE, whatever the exit code.
+    # Measured on ffmpeg 6.1 in the review of U263: ``-xerror`` stops at a
+    # decoder error in the middle of an M4A and exits 0 with the part before
+    # it on the pipe, so the exit code alone measured the first half of a
+    # damaged track and wrote its key. At ``-v error`` a clean decode says
+    # nothing, so what it says is a fault, except a complaint about a cover
+    # image it cannot read, which round two found on a playable track with a
+    # WebP cover and which leaves the audio whole.
+    said = _audio_faults(proc.stderr.decode("utf-8", "replace"))
     if proc.returncode != 0 or said:
         raise DecodeFailed(f"{DECODER} could not decode the file: {said[-400:]}")
     channels, native_rate, data = _parse_float_wav(proc.stdout)
@@ -217,6 +227,21 @@ def _ffmpeg_samples(path: Any) -> tuple[Any, int]:
     if channels == 1:
         native = native[0]
     return native.astype(np.float32, copy=False), native_rate
+
+
+def _audio_faults(stderr: str) -> str:
+    """What ffmpeg said, less the lines its cover image decoders said.
+
+    A line ffmpeg logs carries its source as ``[name @ 0x...]``. The lines a
+    cover decoder writes are dropped; every other line, the audio decoder's,
+    the reader's and ffmpeg's own, is kept as a fault.
+    """
+    kept = [
+        line
+        for line in stderr.strip().splitlines()
+        if line.strip() and not line.startswith(tuple(f"[{name} @ " for name in _COVER_DECODERS))
+    ]
+    return "\n".join(kept)
 
 
 def _parse_float_wav(blob: bytes) -> tuple[int, int, memoryview]:
