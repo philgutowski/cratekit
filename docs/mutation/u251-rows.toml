@@ -1,0 +1,62 @@
+name = "u251"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_drop_worksteal"
+description = "pyproject addopts: drop --dist worksteal, so the suite runs under xdist's default distribution again"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_suite_distribution.py", "tests/test_mutation_driver.py", "tests/test_cloud_battery.py"]
+old = '''addopts = "-q -n auto --dist worksteal"'''
+new = '''addopts = "-q -n auto"'''
+
+[[rows]]
+id = "W2_dist_load"
+description = "pyproject addopts: name --dist load in its place, the default written out"
+file = "pyproject.toml"
+surface = "maintainer"
+tests = ["tests/test_suite_distribution.py", "tests/test_mutation_driver.py", "tests/test_cloud_battery.py"]
+old = '''addopts = "-q -n auto --dist worksteal"'''
+new = '''addopts = "-q -n auto --dist load"'''
+
+[[rows]]
+id = "W3_driver_strips_the_distribution"
+description = "mutate.pytest_addopts: strip --dist and worksteal as well as -q, so the driver's children run under the default distribution"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_suite_distribution.py", "tests/test_mutation_driver.py"]
+old = '''    return " ".join(token for token in tokens if token not in {"-q", "-qq", "--quiet"})'''
+new = '''    return " ".join(
+        token for token in tokens if token not in {"-q", "-qq", "--quiet", "--dist", "worksteal"}
+    )'''
+
+[[rows]]
+id = "W4_every_process_writes_the_report"
+description = "mutate plugin: let every xdist worker write the report, so whichever share flushed last is the result"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''def _flush():
+    if _IS_WORKER:
+        return'''
+new = '''def _flush():
+    if False:
+        return'''
+
+[[rows]]
+id = "W5_count_summed_over_workers"
+description = "mutate plugin: add each worker's collection to the count rather than take one, so a parallel run reports every worker's copy"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    _STATE["collected"] = len(ids)'''
+new = '''    _STATE["collected"] += len(ids)'''
+
+[[rows]]
+id = "W6_battery_forces_one_process"
+description = "cloud_battery.failing_ids: pass -n 0, overriding addopts, so the battery measures a run nobody else gets"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_suite_distribution.py"]
+old = '''    result = run([str(PYTHON), "-m", "pytest", "--tb=no", "-rfE", "-p", "no:cacheprovider"])'''
+new = '''    result = run([str(PYTHON), "-m", "pytest", "--tb=no", "-rfE", "-p", "no:cacheprovider", "-n", "0"])'''
