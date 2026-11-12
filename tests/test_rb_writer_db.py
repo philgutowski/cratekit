@@ -33,6 +33,7 @@ import hashlib
 import os
 import shutil
 import sqlite3
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -95,8 +96,65 @@ def _row(model, **values):
     return obj
 
 
+#: Each worker's built databases, as bytes, keyed by what a build reads: whether
+#: it carries the tag category, and the schema version the pin compares against.
+#: The version is read at every call, as a build always read it, so a test that
+#: configures another pin before it builds still finds that pin in its file.
+#: Bytes rather than a file, so no test can open, write, encrypt or delete the
+#: template: every call writes a private copy of its own (U256).
+_TEMPLATES: dict[tuple[bool, str], bytes] = {}
+
+#: The files SQLite keeps for a database. A path where any of them is already
+#: present is built from nothing, as every path was before U256, rather than
+#: having a copy written over it or beside it.
+_DATABASE_FILES = ("", "-wal", "-shm", "-journal")
+
+
 def _build_disposable_database(db_path: Path, *, with_tag_category: bool = True) -> None:
-    """Create a database carrying the minimum the safety chain reads."""
+    """Create a database carrying the minimum the safety chain reads.
+
+    Built from nothing once per process for each variant and schema pin, then
+    copied, because building it took about 120 ms and was asked for 2,694 times
+    in one run of the suite, where a copy takes a fraction of a millisecond
+    (U256). Every call gets a file of its own. The one thing a copy carries that
+    a fresh build would not is the time its rows were stamped: the first build
+    of the variant in this process, not this call. No test reads those stamps
+    as fresh; U256's record says how that was driven.
+    """
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    db_version = W.pinned_db_version()
+    if any(os.path.lexists(f"{db_path}{suffix}") for suffix in _DATABASE_FILES):
+        _build_from_nothing(db_path, with_tag_category=with_tag_category, db_version=db_version)
+        return
+    key = (with_tag_category, db_version)
+    template = _TEMPLATES.get(key)
+    if template is None:
+        template = _template(with_tag_category=with_tag_category, db_version=db_version)
+        _TEMPLATES[key] = template
+    with open(db_path, "xb") as handle:
+        handle.write(template)
+
+
+def _template(*, with_tag_category: bool, db_version: str) -> bytes:
+    """One database built from nothing in a directory of its own, read as bytes.
+
+    The directory is removed before this returns, so the template exists only
+    in memory. Closing the build's last connection folds the WAL into the main
+    file; anything left beside it would be a part of the database a copy of the
+    one file lost, so that refuses rather than copying half a database.
+    """
+    with tempfile.TemporaryDirectory(prefix="cratekit-fixture-db-") as folder:
+        path = Path(folder) / "master.db"
+        _build_from_nothing(path, with_tag_category=with_tag_category, db_version=db_version)
+        left = sorted(os.listdir(folder))
+        if left != ["master.db"]:
+            raise AssertionError(f"the fixture database build left {left}, not one file")
+        with open(path, "rb") as handle:
+            return handle.read()
+
+
+def _build_from_nothing(db_path: Path, *, with_tag_category: bool, db_version: str) -> None:
+    """Create the schema and insert the rows, from nothing, at ``db_path``."""
     from pyrekordbox.db6 import tables
     from sqlalchemy import create_engine
     from sqlalchemy.orm import Session
@@ -108,7 +166,7 @@ def _build_disposable_database(db_path: Path, *, with_tag_category: bool = True)
         # The local update counter: what the canary's first read resolves.
         session.add(_row(tables.AgentRegistry, registry_id="localUpdateCount", int_1=100))
         # The schema version the pin compares against.
-        session.add(_row(tables.DjmdProperty, DBID="1", DBVersion=W.pinned_db_version()))
+        session.add(_row(tables.DjmdProperty, DBID="1", DBVersion=db_version))
         session.add(_row(tables.DjmdContent, ID="1", Title="a track", rb_local_deleted=0))
         session.add(_row(tables.DjmdContent, ID="2", Title="another track", rb_local_deleted=0))
         if with_tag_category:
