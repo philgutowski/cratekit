@@ -61,6 +61,7 @@ Layer: modules.
 
 from __future__ import annotations
 
+import copy
 import re
 import time
 from collections.abc import Callable, Iterable
@@ -459,6 +460,10 @@ class TidalAccount:
         self._cache = cache if cache is not None else isrc_cache.Cache.from_config(cfg)
         self._hearts: set[str] | None = None
         self._members: dict[str, list[str]] = {}
+        #: U255. The client object each playlist's membership was read
+        #: through, held so the adds after it send no open of their own; see
+        #: :meth:`_held`.
+        self._opened: dict[str, Any] = {}
         self._reasons: dict[str, str] = {}
         #: U208. The identities whose last match took one of a tie.
         self._ties: set[str] = set()
@@ -812,6 +817,16 @@ class TidalAccount:
     # ── playlists ───────────────────────────────────────────────────────────
 
     def _playlist(self, playlist_id: str) -> Any:
+        """The client's object for one playlist, opened now: two requests.
+
+        THE HOLD IS DROPPED FIRST (U255). Every open goes through here, and a
+        member that writes through the object it opened moves the playlist's
+        version tag on, so the held one would carry a tag the provider
+        refuses. Dropping it here covers every such member, a later one
+        included, rather than a list of them that can go stale; only
+        :meth:`_membership` and :meth:`_held` hold what they open, after it.
+        """
+        self._opened.pop(playlist_id, None)
         found = self._call(
             f"open the playlist {playlist_id}",
             lambda: self._session.playlist(playlist_id),
@@ -830,12 +845,54 @@ class TidalAccount:
             lambda: listing.playlist_tracks(playlist),
         )
 
+    def _held(self, playlist_id: str) -> Any:
+        """The playlist's held object, opened through :meth:`_playlist` only if none is held.
+
+        ONE OPEN FOR A RUN OF ADDS, NOT ONE PER ADD (U255). Opening a playlist
+        the account owns is two GETs, since the client fetches it as a
+        ``Playlist`` and then again as the ``UserPlaylist`` its factory builds,
+        and the client's own add reads the playlist once more after its POST
+        for the next version tag. An add that opened afresh therefore cost four
+        requests a track, three of them the same GET; measured at the adapter
+        as 4,003 requests for 1,000 adds. Adding through the held object costs
+        the POST and the client's read after it.
+
+        THE TAG AND THE POSITION COME FROM ONE ANSWER. The client's add sends
+        the object's version tag and puts the track at the object's length,
+        and the client sets both from one read: its open, or its own read of
+        the playlist after each write. A held object is only ever one whose
+        last read was one of those, which is why :meth:`_membership` reads the
+        tracks through a copy: the client's track read overwrites the tag and
+        leaves the length, so an add after it would send a tag from one answer
+        and a position from another, and a write landing between the two was
+        driven placing the add before it (round one's review). Nothing is held
+        until the read it was opened for has succeeded.
+
+        A held object the provider has moved on from sends a stale tag; the
+        provider refuses a move on a stale tag with 412 and changes nothing
+        (Sitting 62), the client sends the same header on an add, and
+        :meth:`add_to_playlist` meets a refusal by opening afresh.
+
+        Held per identifier for the life of the adapter, which ``account.forget``
+        drops; :meth:`_playlist` drops it first whenever another member opens
+        the playlist for itself.
+        """
+        held = self._opened.get(playlist_id)
+        if held is None:
+            held = self._playlist(playlist_id)
+            self._opened[playlist_id] = held
+        return held
+
     def _membership(self, playlist_id: str) -> list[str]:
         if playlist_id not in self._members:
-            tracks = self._listed(playlist_id, self._playlist(playlist_id))
+            opened = self._playlist(playlist_id)
+            # THROUGH A COPY, so the opened object keeps the tag and the length
+            # its own open read together (U255, see :meth:`_held`).
+            tracks = self._listed(playlist_id, copy.copy(opened))
             self._members[playlist_id] = [
                 str(getattr(track, "id", "") or "") for track in tracks
             ]
+            self._opened[playlist_id] = opened
         return self._members[playlist_id]
 
     def create_playlist(self, name: str) -> str:
@@ -906,13 +963,36 @@ class TidalAccount:
             return
 
     def add_to_playlist(self, playlist_id: str, remote_id: str) -> None:
+        """Add one track, through the playlist's held object (U255).
+
+        A FAILED ATTEMPT DROPS THE HOLD, AND THE RETRY OPENS AFRESH. The retry
+        is the one the policy already allows a write, and no more. The first
+        open, when nothing is held, is made before the add's attempts on its
+        own retry, as it always was; the retry's open is made inside the
+        retried attempt, on its own retry too, so a failed open is never sent
+        an add. A 412 for a stale tag changed nothing, so the add sent again
+        on the fresh object is the first to land; an add that landed before
+        its answer was lost is skipped by the provider as a duplicate and read
+        back below.
+        """
         identifier = str(remote_id)
         members = self._membership(playlist_id)
         if identifier in members:
             return
-        playlist = self._playlist(playlist_id)
+        self._held(playlist_id)
         doing = f"add the track {identifier} to the playlist {playlist_id}"
-        added = self._call(doing, lambda: playlist.add([identifier]))
+
+        def attempt() -> Any:
+            playlist = self._opened.get(playlist_id)
+            if playlist is None:
+                playlist = self._held(playlist_id)
+            try:
+                return playlist.add([identifier])
+            except Exception:
+                self._opened.pop(playlist_id, None)
+                raise
+
+        added = self._call(doing, attempt)
         if added is _ABSENT:
             raise account.provider_failure(
                 LookupError(f"the provider no longer has the playlist {playlist_id!r}"),
@@ -924,6 +1004,9 @@ class TidalAccount:
         # track may have been added elsewhere since the membership was read, and
         # recording one the playlist does not hold would make a resume skip it.
         if identifier not in {str(item) for item in added or ()}:
+            # READ ON A FRESH OPEN, as before U255, since ``_membership`` opens
+            # through ``_playlist``, which drops the hold: whether this track
+            # counts as on the playlist is never decided by a held object.
             del self._members[playlist_id]
             if identifier not in self._membership(playlist_id):
                 raise account.provider_failure(
