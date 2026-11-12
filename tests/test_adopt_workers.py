@@ -33,6 +33,7 @@ from cratekit.core import config, jobs, preflight, rb_writer, session, taxonomy,
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from tests import adopt_fixtures
+from tests._taxonomy_parses import counted, unique
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_adoption import _bucket_and_genre
 from tests.test_config import valid_data
@@ -1829,3 +1830,73 @@ def test_a_renamed_vocal_playlist_gains_no_second_one_beside_it(voxed):
     after = _filed(voxed)
     assert all(vocal not in places for places in after.values())
     assert (vocal[0], "Singers") in after["p-vox-only"]
+
+
+# ---------------------------------------------------------------------------
+# The active taxonomy, parsed once a run (U247)
+# ---------------------------------------------------------------------------
+
+
+def _active_copy(cfg: config.Config, text: str) -> Path:
+    path = config.state_path("taxonomy_active", cfg)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(text, encoding="utf-8")
+    return path
+
+
+def test_a_scan_parses_the_active_taxonomy_once_however_many_rows_it_drives(
+    machine, monkeypatch
+):
+    """The speed survey's count: the handler asked for it once a row, and parsed it each time.
+
+    THE ITEM COUNT IS READ, not assumed, so a census that shrank to one row could
+    not pass this by having only one row to parse for.
+    """
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    _active_copy(machine, text)
+    parses = counted(monkeypatch)
+
+    code, queued = drive(["adopt", "scan"])
+    assert code == int(ExitCode.OK), queued
+    job = _job(registry.entry("adopt.scan").handler_key)
+    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    with jobs.open_store() as store:
+        assert jobs.get(store, job.job_id).state is jobs.JobState.SUCCEEDED
+        driven = [item for item in jobs.items(store, job.job_id)]
+    assert len(driven) >= 3 and all(item.state is jobs.ItemState.DONE for item in driven)
+    assert parses.of(text) == 1, (
+        f"{len(driven)} rows parsed the active copy {parses.of(text)} times"
+    )
+
+
+def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, monkeypatch):
+    """R-690's question is left where it was: the read stays per item, so an edit counts."""
+    before = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    bucket = DECLARED.buckets[0]
+    after = before.replace(f'display = "{bucket.display}"', 'display = "Edited Mid Run"', 1)
+    assert after != before
+    path = _active_copy(machine, before)
+    judged_by: list[taxonomy.Taxonomy] = []
+    real = adopt_scan.scan_rows
+
+    def watching(rows, declared, **kwargs):
+        judged_by.append(declared)
+        if len(judged_by) == 1:
+            path.write_text(after, encoding="utf-8")
+        return real(rows, declared, **kwargs)
+
+    monkeypatch.setattr(adopt_scan, "scan_rows", watching)
+
+    code, queued = drive(["adopt", "scan"])
+    assert code == int(ExitCode.OK), queued
+    job = _job(registry.entry("adopt.scan").handler_key)
+    code, resumed = drive(["adopt", "scan", "--job", job.job_id])
+    assert code == int(ExitCode.OK), resumed
+
+    assert len(judged_by) >= 3
+    assert judged_by[0] == taxonomy.load_taxonomy(before)
+    assert judged_by[0].buckets[0].display == bucket.display
+    assert all(declared == taxonomy.load_taxonomy(after) for declared in judged_by[1:])
+    assert judged_by[1].buckets[0].display == "Edited Mid Run"

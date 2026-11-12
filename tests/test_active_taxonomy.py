@@ -7,6 +7,8 @@ The routing plan that reads an edited active copy is in
 from __future__ import annotations
 
 import ast
+import shutil
+import tomllib
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ import pytest
 from cratekit.core import active_taxonomy, config, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
+from tests._taxonomy_parses import counted, unique
 from tests.test_config import valid_data
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
@@ -258,3 +261,92 @@ def test_an_active_copy_this_account_cannot_read_refuses_with_the_access_remedy(
         path.chmod(0o644)
     assert caught.value.cause.reason == "config-unusable"
     assert caught.value.cause.remediation.remedy is not Remedy.REPORT_DEFECT
+
+
+# ---------------------------------------------------------------------------
+# Parsed once per text, read on every call (U247)
+# ---------------------------------------------------------------------------
+
+
+def test_a_copy_read_again_with_the_same_text_is_not_parsed_again(cfg, monkeypatch):
+    text = unique(_shipped_text())
+    write_active(cfg, text)
+    parses = counted(monkeypatch)
+
+    first, second = active_taxonomy.load(cfg), active_taxonomy.load(cfg)
+
+    assert parses.of(text) == 1
+    assert first == second == taxonomy.build_taxonomy(tomllib.loads(text))
+
+
+def test_a_copy_rewritten_between_two_loads_is_read_and_judged_again(cfg, monkeypatch):
+    """A person's edit between two items is what the second item is judged by."""
+    bucket = taxonomy.load_taxonomy(_shipped_text()).buckets[0]
+    before = unique(_shipped_text())
+    after = before.replace(f'display = "{bucket.display}"', 'display = "Edited Between"', 1)
+    path = write_active(cfg, before)
+    parses = counted(monkeypatch)
+
+    assert active_taxonomy.load(cfg).buckets[0].display == bucket.display
+    path.write_text(after, encoding="utf-8")
+    assert active_taxonomy.load(cfg).buckets[0].display == "Edited Between"
+    path.write_text(before, encoding="utf-8")
+    assert active_taxonomy.load(cfg).buckets[0].display == bucket.display
+
+    assert (parses.of(before), parses.of(after)) == (1, 1)
+
+
+def test_two_libraries_each_answer_their_own_copy(tmp_path, monkeypatch):
+    """Two copies at two paths are two declarations, whichever was read first."""
+    monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
+    texts, cfgs = [], []
+    for name in ("one", "two"):
+        root = tmp_path / name
+        root.mkdir()
+        monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+        cfgs.append(config.from_dict(valid_data(root)))
+        assert cfgs[-1].library.root == root
+        text = unique(_shipped_text()).replace(
+            f'display = "{taxonomy.load_taxonomy(_shipped_text()).buckets[0].display}"',
+            f'display = "Library {name}"',
+            1,
+        )
+        write_active(cfgs[-1], text)
+        texts.append(text)
+
+    assert _active(cfgs[0]) != _active(cfgs[1])
+    assert active_taxonomy.load(cfgs[0]).buckets[0].display == "Library one"
+    assert active_taxonomy.load(cfgs[1]).buckets[0].display == "Library two"
+    assert active_taxonomy.load(cfgs[0]).buckets[0].display == "Library one"
+
+
+def test_a_library_unmounted_after_a_good_load_still_refuses(cfg):
+    """The memo answers a text, never a library: a copy nobody could read refuses."""
+    write_active(cfg, _shipped_text())
+    active_taxonomy.load(cfg)
+    shutil.rmtree(cfg.library.root)
+    for _ in range(2):
+        with pytest.raises(CratekitError) as caught:
+            active_taxonomy.load(cfg)
+        assert caught.value.cause.reason == "library-volume-unmounted"
+
+
+def test_a_copy_that_does_not_parse_refuses_on_every_load(cfg, monkeypatch):
+    text = unique("this is = = not toml")
+    write_active(cfg, text)
+    parses = counted(monkeypatch)
+    for _ in range(2):
+        with pytest.raises(CratekitError) as caught:
+            active_taxonomy.load(cfg)
+        assert caught.value.cause.reason == "config-unusable"
+    assert parses.of(text) == 2
+
+
+def test_a_copy_that_breaks_after_a_good_load_refuses(cfg):
+    """A good text's memo is never the answer for the broken text that replaced it."""
+    path = write_active(cfg, _shipped_text())
+    active_taxonomy.load(cfg)
+    path.write_text("this is = = not toml", encoding="utf-8")
+    with pytest.raises(CratekitError) as caught:
+        active_taxonomy.load(cfg)
+    assert caught.value.cause.reason == "config-unusable"
