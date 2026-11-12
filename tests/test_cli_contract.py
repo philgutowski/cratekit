@@ -1276,8 +1276,16 @@ def test_a_defect_in_our_own_module_does_not_masquerade_as_a_missing_extra():
         extras="analysis",
         extras_modules=("a_third_party_analysis_library",),
     )
+    # SINCE U248 THE DEFECT RAISES WHEN ITS VERB IS CHOSEN, not while the
+    # parser is built, so one broken module no longer stops every command. It
+    # still raises as itself, never as the stub, and the eager parser still
+    # raises it at construction as every parser did before.
+    parser = cli.build_parser([entry], membership=profiles.resolve("full"))
+    with pytest.raises(ImportError) as raised:
+        parser.parse_args(["analyze", "broken"])
+    assert raised.value.name == "cratekit.this_module_does_not_exist"
     with pytest.raises(ImportError):
-        cli.build_parser([entry], membership=profiles.resolve("full"))
+        cli.build_parser([entry], membership=profiles.resolve("full"), eager=True)
 
 
 def test_a_profile_that_switches_a_module_off_removes_its_verbs(configured):

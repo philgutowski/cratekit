@@ -768,9 +768,22 @@ def requires_check(key: str, membership: profiles.Membership) -> bool:
     units land, and "doctor said this was optional last month" is exactly the
     kind of moving target a precondition must not be.
     """
-    return any(
-        key in entry.doctor_checks and entry.available_to(membership)
-        for entry in registry.entries()
+    return bool(verbs_requiring(key, membership))
+
+
+def verbs_requiring(key: str, membership: profiles.Membership) -> tuple[str, ...]:
+    """The verbs this profile switches on that declare ``key``, as a person types them.
+
+    So a failing row says what it stops, rather than that something does: a
+    missing ffmpeg names ``analyze run``, whose decode of an M4A goes through
+    it (U263), beside the download verbs that extract through it.
+    """
+    return tuple(
+        sorted(
+            entry.name.replace(".", " ")
+            for entry in registry.entries()
+            if key in entry.doctor_checks and entry.available_to(membership)
+        )
     )
 
 
@@ -814,6 +827,10 @@ class _Inputs:
     def required(self, key: str) -> bool:
         """Whether some verb this profile switches on depends on ``key``."""
         return requires_check(key, self.membership)
+
+    def requiring(self, key: str) -> tuple[str, ...]:
+        """The verbs this profile switches on that depend on ``key``."""
+        return verbs_requiring(key, self.membership)
 
 
 def _unchecked(key: str, title: str) -> Finding:
@@ -2235,8 +2252,8 @@ def _check_binary(key: str, inputs: _Inputs) -> Finding:
         status=Status.FAIL,
         detail=(
             f"not found on PATH or in the launcher fallback directories, and this "
-            f"profile switches on a verb that shells out to it ({source}; override "
-            f"with {override})"
+            f"profile switches on verbs that shell out to it, "
+            f"{', '.join(inputs.requiring(key))} ({source}; override with {override})"
         ),
         remedy=(
             Remedy.INSTALL_BINARY if hint is not None

@@ -8,12 +8,14 @@ where a remediation token becomes something a person reads.
 Four properties, each answering a defect in the source system:
 
 1. **A parser is built without importing a feature module.** The registry is
-   plain data; a module is imported only when its subcommand is being built, and
-   an import that fails because an EXTRA is missing becomes a stub subcommand
-   rather than an exception. So ``crate --help`` works with every heavy extra
-   uninstalled (KTD7). An import that fails for any other reason propagates,
-   because telling a user to install an extra when the real problem is a defect
-   in our own module is both wrong and unfixable by them.
+   plain data; a verb's module is imported only when argparse selects that verb
+   (U248), so a command imports the one verb it runs, and an import that fails
+   because an EXTRA is missing becomes a stub subcommand rather than an
+   exception. So ``crate --help`` works with every heavy extra uninstalled
+   (KTD7). An import that fails for any other reason propagates, because
+   telling a user to install an extra when the real problem is a defect in our
+   own module is both wrong and unfixable by them. It propagates for its own
+   verb only: every other command still builds and runs.
 
 2. **Every verb returns an envelope, and the envelope's exit code is the process
    status.** In the source, the two largest entry points always exit zero
@@ -216,15 +218,141 @@ def _positive_calls(text: str) -> int:
     return value
 
 
+def _stub_help(entry: Entry) -> str:
+    """The listing line of a verb whose extra is missing."""
+    return f"{entry.summary}  (requires the {entry.extras!r} extra)"
+
+
+class _Unbuilt:
+    """One verb's subparser, made from registry data, whose module is not imported yet (U248).
+
+    ``build`` is what the eager loop below does for every verb before it reads
+    a word, done for the one verb argparse selected, on the subparser that was
+    already listed under its name, so the verb's own parser is the same object
+    either way. ``listed`` is the pseudo action argparse keeps the listing line
+    on, which the stub's line replaces.
+    """
+
+    __slots__ = ("entry", "parser", "listed", "importer", "built", "asked")
+
+    def __init__(
+        self,
+        entry: Entry,
+        parser: argparse.ArgumentParser,
+        listed: argparse.Action,
+        importer: Callable[[str], Any],
+    ) -> None:
+        self.entry = entry
+        self.parser = parser
+        self.listed = listed
+        self.importer = importer
+        self.built = False
+        self.asked = False
+
+    def build(self) -> None:
+        """Import the verb's module and run its builder, or make it the stub.
+
+        An import that fails for any reason but a missing extra propagates, as
+        it did from the eager loop, so a defect of our own fails loudly. It
+        fails for its own verb only now, and that is the change U248 makes.
+
+        AN ``ArgumentError`` FROM THE IMPORT OR THE BUILDER LEAVES AS A
+        ``RuntimeError``. This runs inside argparse's parse, which reads an
+        ``ArgumentError`` as the user's mistake and exits 2 with a usage line;
+        the eager loop raised it as the defect it is, and so does this. And the
+        verb counts as built only once its builder returned, so a builder that
+        failed part way is never handed on as a verb with half its arguments.
+        """
+        if self.built:
+            return
+        try:
+            try:
+                module = self.importer(self.entry.module)
+            except ImportError as exc:
+                if not _is_missing_extra(exc, self.entry):
+                    raise
+                self._stub(exc)
+                return
+            self.parser.set_defaults(_entry=self.entry, _stub=None)
+            getattr(module, self.entry.builder)(self.parser, self.entry)
+        except argparse.ArgumentError as exc:
+            raise RuntimeError(
+                f"building {self.entry.name} from {self.entry.module} is a defect: {exc}"
+            ) from exc
+        self.built = True
+
+    def ask_for_listing(self) -> None:
+        """Settle the listing line, importing only when the line could differ.
+
+        Only a verb that declares extras can be a stub, since any other import
+        failure propagates, so only such a verb is asked, and only when a help
+        screen lists it. The five real ones import their extras inside
+        functions, so on the real registry this import never makes a stub; it
+        is asked anyway because that is a fact about each module today, not a
+        promise, and a ``find_spec`` over the extras would print five stub
+        lines that the eager parser does not.
+
+        A module that fails here for any other reason keeps its plain line: the
+        listing is not its verb, and its verb fails loudly when run. Asked once,
+        since argparse walks the listing twice for one help screen.
+        """
+        if self.built or self.asked or not self.entry.extras_modules:
+            return
+        self.asked = True
+        try:
+            self.importer(self.entry.module)
+        except ImportError as exc:
+            if _is_missing_extra(exc, self.entry):
+                self._stub(exc)
+        except Exception:  # noqa: BLE001 - see the docstring, the verb itself raises
+            pass
+
+    def _stub(self, exc: ImportError) -> None:
+        self.built = True
+        self.listed.help = _stub_help(self.entry)
+        self.parser.set_defaults(_entry=self.entry, _stub=exc, _handler=None)
+
+
+class _LazyChoices(argparse._SubParsersAction):
+    """argparse's own subcommand action, building a verb only when it is chosen (U248).
+
+    argparse still decides which word is the verb, so the global options and
+    their values, ``--option=value``, abbreviations and ``--`` are read exactly
+    as before, and nothing here reads the command line itself. ``__call__`` is
+    reached only after argparse has checked the word against the choices, and
+    ``_get_subactions`` only when a help screen lists them.
+    """
+
+    def __init__(self, *args: Any, **kwargs: Any) -> None:
+        super().__init__(*args, **kwargs)
+        self.unbuilt: dict[str, _Unbuilt] = {}
+
+    def __call__(self, parser, namespace, values, option_string=None):  # noqa: ANN001
+        waiting = self.unbuilt.get(values[0])
+        if waiting is not None:
+            waiting.build()
+        super().__call__(parser, namespace, values, option_string)
+
+    def _get_subactions(self):  # noqa: ANN202 - argparse's own private hook
+        for waiting in self.unbuilt.values():
+            waiting.ask_for_listing()
+        return super()._get_subactions()
+
+
 def _group_parser(
-    root: Any, groups: dict[tuple[str, ...], Any], path: tuple[str, ...]
+    root: Any,
+    groups: dict[tuple[str, ...], Any],
+    path: tuple[str, ...],
+    choices: type[argparse.Action] = argparse._SubParsersAction,
 ) -> Any:
     """Return the subparser collection for a dotted path, creating it as needed."""
     if path in groups:
         return groups[path]
-    parent = root if len(path) == 1 else _group_parser(root, groups, path[:-1])
+    parent = root if len(path) == 1 else _group_parser(root, groups, path[:-1], choices)
     parser = parent.add_parser(path[-1], help=f"{path[-1]} commands")
-    groups[path] = parser.add_subparsers(dest=f"_group_{'_'.join(path)}", metavar="<command>")
+    groups[path] = parser.add_subparsers(
+        dest=f"_group_{'_'.join(path)}", metavar="<command>", action=choices
+    )
     return groups[path]
 
 
@@ -233,12 +361,20 @@ def build_parser(
     *,
     membership: profiles.Membership | None = None,
     importer: Callable[[str], Any] = importlib.import_module,
+    eager: bool = False,
 ) -> argparse.ArgumentParser:
     """Assemble the whole command tree without importing a disabled module.
 
     ``importer`` is injected so the conformance suite can drive the missing-extra
     path without uninstalling anything, and so a fake registry can be exercised
     against the real construction logic rather than against a copy of it.
+
+    LAZY BY DEFAULT (U248). Every verb's subparser is made from registry data
+    alone, its name and its summary, and its module is imported when argparse
+    selects it, so a command imports the one verb it runs and ``--version``
+    and the top level ``--help`` import none. ``eager=True`` is the
+    construction as it stood before, kept for a caller that walks every verb's
+    own arguments, and as the parity the suite holds the lazy tree to.
     """
     parser = argparse.ArgumentParser(
         prog="crate",
@@ -274,7 +410,8 @@ def build_parser(
             "[provider] calls_per_command for this run only"
         ),
     )
-    root = parser.add_subparsers(dest="_verb", metavar="<command>")
+    choices = argparse._SubParsersAction if eager else _LazyChoices
+    root = parser.add_subparsers(dest="_verb", metavar="<command>", action=choices)
 
     groups: dict[tuple[str, ...], Any] = {}
     resolved = membership if membership is not None else _membership()
@@ -283,16 +420,17 @@ def build_parser(
         if not entry.available_to(resolved):
             continue
         path = entry.path
-        target = root if len(path) == 1 else _group_parser(root, groups, path[:-1])
+        target = root if len(path) == 1 else _group_parser(root, groups, path[:-1], choices)
+        if not eager:
+            sub = target.add_parser(path[-1], help=entry.summary)
+            target.unbuilt[path[-1]] = _Unbuilt(entry, sub, target._choices_actions[-1], importer)
+            continue
         try:
             module = importer(entry.module)
         except ImportError as exc:
             if not _is_missing_extra(exc, entry):
                 raise
-            stub = target.add_parser(
-                path[-1],
-                help=f"{entry.summary}  (requires the {entry.extras!r} extra)",
-            )
+            stub = target.add_parser(path[-1], help=_stub_help(entry))
             stub.set_defaults(_entry=entry, _stub=exc, _handler=None)
             continue
         sub = target.add_parser(path[-1], help=entry.summary)

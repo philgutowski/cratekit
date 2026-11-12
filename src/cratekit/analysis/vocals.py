@@ -90,6 +90,8 @@ REASON_AUDIO_UNDECODABLE = "vocal-audio-undecodable"
 REASON_AUDIO_TOO_LARGE = "vocal-audio-too-large"
 REASON_HEAD_TERMINAL = "vocal-head-terminal"
 REASON_INFERENCE_FAILED = "vocal-inference-failed"
+#: A file only ffmpeg could decode, on a machine without it (U263).
+REASON_NO_DECODER = "vocal-no-decoder"
 
 _VOCAL_LOADER: Callable[[], Any] | None = None
 _VOCAL_MODEL: Any = None
@@ -225,11 +227,13 @@ def unscored_warning(summary: Mapping[str, Any], *, verb: str) -> dict[str, str]
     installed (R-370). Shared, because two copies of one message had already
     drifted apart.
 
-    IT COUNTS ONE REASON AND NOT THE OTHER FOUR. This message tells the person
-    to install the extra, which is the remedy for exactly one of the five
+    IT COUNTS ONE REASON AND NOT THE OTHER FIVE. This message tells the person
+    to install the extra, which is the remedy for exactly one of the six
     absences. A track refused for its size, an undecodable file, a terminal
     head and a model that rejected the clip are all reported per item and in
-    ``by_vocal_reason``, and none of them is fixed by an install.
+    ``by_vocal_reason``, and none of them is fixed by an install. The sixth,
+    ``vocal-no-decoder`` (U263), is fixed by installing ffmpeg, not the
+    extra, and doctor's ``binary.ffmpeg`` row says so.
     """
     count = int(summary.get("by_vocal_reason", {}).get(REASON_MODEL_UNAVAILABLE, 0))
     if not count:
@@ -363,8 +367,13 @@ def analyse(
     model = _load()
     if model is None:
         return _inactive(result, REASON_MODEL_UNAVAILABLE)
-    with timed(timings, "vocal_decode"):
-        samples = _decode(result.get("path"))
+    from cratekit.analysis.decode import DecoderMissing
+
+    try:
+        with timed(timings, "vocal_decode"):
+            samples = _decode(result.get("path"))
+    except DecoderMissing:
+        return _inactive(result, REASON_NO_DECODER)
     if samples is None:
         return _inactive(result, REASON_AUDIO_UNDECODABLE)
     from cratekit.analysis.vocal import class_indices, infer_frames, reduce_frames
