@@ -1180,19 +1180,20 @@ def _estimate(
 ) -> tuple[int, int]:
     """The calls a walk over ``entries`` may make, and how many labels it may list (U278).
 
-    A label with a saved question is printed again without a call and costs
-    nothing. Any other costs its kept listing's aged answers, nothing when
-    every answer is still young, and a label no kept listing answers for costs
-    the mean of the kept listings' sizes, or :data:`UNLISTED_ESTIMATE` when
-    there are none. The walk may stop at the first label with something to
-    ask, so this is what it costs at most, as far as the kept answers say.
+    A label with a saved question is printed again without a call, and
+    ``--next`` stops there, so the count ends at it and nothing after it is
+    counted. Any other label costs its kept listing's aged answers, nothing
+    when every answer is still young, and a label no kept listing answers for
+    costs the mean of the kept listings' sizes, or :data:`UNLISTED_ESTIMATE`
+    when there are none. The walk may stop at the first label with something
+    new, so this is what it costs at most, as far as the kept answers say.
     """
     costs: list[kept_listing.Cost | None] = []
     for entry in entries:
         held = document["labels"].get(entry.label_id) or {}
         pending = held.get("pending")
         if isinstance(pending, Mapping) and pending.get("releases"):
-            continue
+            break
         costs.append(kept_listing.cost(entry))
     known = [one for one in costs if one is not None]
     unknown = len(costs) - len(known)

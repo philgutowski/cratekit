@@ -453,12 +453,22 @@ def command(
     command may spend the hour's reserve, which the dispatcher reads off the
     verb's declared writes. A scope opened inside an open one, which ``run
     decide --continue`` does when it dispatches the verb again in the same
-    process, yields the OUTER scope unchanged, so one command cannot spend its
-    ceiling twice by nesting, nor widen its class.
+    process, yields the OUTER scope, so one command cannot spend its ceiling
+    twice by nesting. Its class is the inner verb's for the body and the
+    outer's again after it: a go continued from ``run decide`` spends the
+    reserve its own verb declares, and a read dispatched inside a write is
+    held to the read line. Only the dispatcher passes ``reserve``, off the
+    registry, so nesting reaches no further than the verb that runs.
     """
     global _COMMAND
     if _COMMAND is not None:
-        yield _COMMAND
+        outer = _COMMAND
+        before = (outer.reserve, outer.declared)
+        outer.reserve = outer.declared = bool(reserve)
+        try:
+            yield outer
+        finally:
+            outer.reserve, outer.declared = before
         return
     raised = calls if calls is not None else _raised_from_env()
     hourly_raised = calls_per_hour if calls_per_hour is not None else _hour_from_env()

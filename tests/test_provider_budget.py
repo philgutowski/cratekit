@@ -595,3 +595,62 @@ def test_one_label_named_is_not_held_to_the_sweeps_estimate(two_followed):
     _spent_on_the_account(150)
     code, envelope = ls.sync("--next", "--label", "Tide Works")
     assert code == int(ExitCode.OK), envelope
+
+
+def test_a_verb_dispatched_again_inside_a_scope_runs_under_its_own_class(paths, clock):
+    """``run decide --continue`` dispatches the run's verb again in its own
+    process: a go continued that way spends the reserve its verb declares, and
+    the outer command's class comes back after it."""
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    with provider_gate.command() as outer:
+        spend_calls(gate, 6)
+        with provider_gate.command(reserve=True) as inner:
+            assert inner is outer
+            assert len(spend_calls(gate, 2)) == 2
+        assert outer.reserve is False
+        error, _ = refused(gate)
+    assert error.cause.detail["line"] == 6
+
+
+def test_a_read_dispatched_inside_a_write_runs_under_the_read_line(paths, clock):
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    with provider_gate.command(reserve=True) as outer:
+        spend_calls(gate, 6)
+        with provider_gate.command():
+            error, _ = refused(gate)
+        assert outer.reserve is True
+    assert error.cause.detail["line"] == 6
+
+
+def test_spending_never_reaches_past_the_class_the_verb_declared(paths, clock):
+    gate = make_gate(paths, clock, per_hour=8, share=0.25)
+    with provider_gate.command():
+        spend_calls(gate, 6)
+        with provider_gate.spending():
+            error, _ = refused(gate)
+    assert error.cause.detail["line"] == 6
+    with provider_gate.command(reserve=True) as scope:
+        provider_gate.reading()
+        with provider_gate.spending():
+            assert len(spend_calls(gate, 2)) == 2
+        assert scope.reserve is False
+
+
+def test_next_counts_no_label_past_the_first_saved_question(two_followed):
+    """``--next`` prints the first label's saved question again with no call,
+    so the labels after it cost nothing and cannot refuse it."""
+    from tests import test_label_sync as ls  # noqa: PLC0415
+
+    code, first = ls.sync("--next")
+    assert code == int(ExitCode.OK), first
+    assert first["data"]["summary"]["question"]["label_id"] == "tide-works"
+    asked = list(two_followed.asked_for)
+
+    _spent_on_the_account(250)  # 50 of 300 left; Deep Current alone is 100
+    code, again = ls.sync("--next")
+
+    assert code == int(ExitCode.OK), again
+    assert again["data"]["summary"]["question"]["label_id"] == "tide-works"
+    assert two_followed.asked_for == asked, "a label was listed for a saved question"
+    (said,) = [c for c in again["data"]["checks"] if c["key"] == "label.sync.estimate"]
+    assert "about 0 calls" in said["detail"]
