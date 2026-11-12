@@ -912,12 +912,14 @@ crate metadata mytags-vocals [--apply]
   sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
 - `analyze run` reads a track's key from the whole track's chroma without
-  the harmonic separation, since U276: about half the time of the reading it
-  replaced, and over 300 library tracks rekordbox analysed itself it agreed
-  with rekordbox's key 161 times against the old reading's 159. A track
-  analysed before U276 keeps the key it was given; analysed again, its key
-  can differ (on generated audio, every key that moved moved one Camelot
-  step, toward the key the track was written in). The answer's
+  the harmonic separation, since U276: the key's reading takes about half
+  the time of the one it replaced, and over 300 library tracks rekordbox
+  analysed itself it agreed with rekordbox's key 161 times against the old
+  reading's 159. A track analysed before U276 keeps the key it was given;
+  analysed again, its key can differ (on generated audio, every key that
+  moved moved one Camelot step, toward the key the track was written in). A
+  file with no tone in it, clicks alone, which the old reading settled
+  `skipped-no-key`, can now be given a key and renamed. The answer's
   `head_agreement` names the method the run reads with (`key_method`), the
   method its `key` counts were read with (`key_read_with`), and each
   method's reading over one sample (`key_by_method`).

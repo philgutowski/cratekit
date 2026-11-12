@@ -90,6 +90,43 @@ def test_the_runs_shipped_bindings_name_no_method_so_they_take_the_default(modul
         assert "key" not in keywords, keywords
 
 
+def _detector_uses(tree: ast.AST) -> list[tuple[int, set[str]]]:
+    """Every call of ``analyse_file`` or ``key_profile``, direct or bound in a partial."""
+    found: list[tuple[int, set[str]]] = []
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        target = node.func
+        if isinstance(target, ast.Attribute) and target.attr == "partial" and node.args:
+            target = node.args[0]
+        name = target.attr if isinstance(target, ast.Attribute) else getattr(target, "id", None)
+        if name in ("analyse_file", "key_profile"):
+            found.append((node.lineno, {keyword.arg for keyword in node.keywords if keyword.arg}))
+    return found
+
+
+def test_no_shipped_caller_of_the_detector_names_a_key_method():
+    """Every module of the package, the warm up included, reads the key the default's way.
+
+    Read from the source rather than listed by hand, so a caller added later
+    is held too. The only reader that names a method is the detector itself,
+    passing its own argument on, and the measuring scripts, which take it
+    from their ``--key``.
+    """
+    package = REPO_ROOT / "src" / "cratekit"
+    named: list[str] = []
+    seen = 0
+    for path in sorted(package.rglob("*.py")):
+        for line, keywords in _detector_uses(ast.parse(path.read_text(encoding="utf-8"))):
+            seen += 1
+            if path.name == "detect.py" and path.parent.name == "analysis":
+                continue
+            if {"key", "method"} & keywords:
+                named.append(f"{path.relative_to(package)}:{line}")
+    assert seen >= 4, "the walk found too few detector calls to have read the package"
+    assert named == []
+
+
 def test_the_agreement_script_reads_the_default_method_when_none_is_named():
     script = _script("head_agreement")
     assert script.build_parser().parse_args([]).key == detect.KEY_DEFAULT
@@ -103,6 +140,41 @@ def test_the_stage_script_times_the_default_method_when_none_is_named(tmp_path):
     for method in detect.KEY_METHODS:
         parsed = script.build_parser().parse_args(["stages", str(tmp_path), "--key", method])
         assert parsed.key == method
+
+
+# ---------------------------------------------------------------------------
+# The recorded agreement the run answers with
+# ---------------------------------------------------------------------------
+
+
+def test_the_record_names_the_runs_method_and_the_method_its_key_was_read_with():
+    recorded = detect.head_agreement()
+    assert recorded["key_method"] == detect.KEY_PLAIN
+    assert recorded["key_read_with"] == detect.KEY_WHOLE, (
+        "the 2026-09-30 key buckets were read with the whole track method"
+    )
+    assert recorded["key_read_with"] in detect.KEY_METHODS
+
+
+def test_the_record_carries_a121s_reading_of_every_method_over_one_sample():
+    """The sitting's figures as the card and docs/cutover.md record them, and only those."""
+    reading = detect.head_agreement()["key_by_method"]
+    assert reading == {
+        "measured_on": "2026-11-12",
+        "files": 300,
+        "equal": {"whole": 159, "windows": 157, "plain": 161},
+        "seconds": {"whole": 663, "windows": 453, "plain": 341},
+    }
+    assert set(reading["equal"]) == set(reading["seconds"]) == set(detect.KEY_METHODS)
+    assert all(0 <= equal <= reading["files"] for equal in reading["equal"].values())
+
+
+def test_the_run_reads_the_method_that_agreed_the_most_in_the_least_time():
+    """Why plain is the default, held against the record so a later reading that undoes it fails here."""
+    reading = detect.head_agreement()["key_by_method"]
+    plain, whole = reading["equal"][detect.KEY_DEFAULT], reading["equal"][detect.KEY_WHOLE]
+    assert 100 * (whole - plain) / reading["files"] <= 1.0, "outside U241's one point bar"
+    assert reading["seconds"][detect.KEY_DEFAULT] == min(reading["seconds"].values())
 
 
 # ---------------------------------------------------------------------------
@@ -136,6 +208,16 @@ def test_the_stage_report_under_a_separating_method_keeps_the_separation(method)
     totals = {"decode": 1.0, "tempo_drift": 1.0, "harmonic": 2.0, "chroma_key": 1.0, "energy": 1.0}
     table = script.stage_table(_result(method, totals))
     assert "| harmonic separation | 2.0 |" in table, table
+
+
+def test_the_stage_totals_under_plain_carry_no_separation_in_the_json_either():
+    script = _script("analyze_stages")
+    rows = [{"stages": {"decode": 1.0, "chroma_key": 2.0}}, {"stages": {"decode": 0.5}}]
+    plain = script.stage_totals(rows, detect.KEY_PLAIN)
+    assert "harmonic" not in plain
+    assert plain["decode"] == 1.5 and plain["chroma_key"] == 2.0
+    assert {"vocal_decode", "vocal_model"} <= set(plain), "the vocal pass's stages are not the key's"
+    assert script.stage_totals(rows, detect.KEY_WHOLE)["harmonic"] == 0.0
 
 
 def test_the_stages_a_run_times_are_the_methods_own():
@@ -269,7 +351,11 @@ def test_the_default_profile_is_the_plain_chroma_bit_for_bit():
 
 
 def test_only_the_key_can_move_between_the_whole_and_the_default_method(tmp_path):
-    """Tempo, drift, its verdict, energy and its status are read the same way under both."""
+    """For a track both methods key, tempo, drift, its verdict, energy and its status agree.
+
+    Whether a track is keyed at all can move too, which the record says: a
+    file of clicks with no tone was keyless under whole and is keyed now.
+    """
     np, soundfile = _extra()
     from cratekit.analysis import energy
 

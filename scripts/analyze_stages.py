@@ -354,7 +354,7 @@ def stages(args: argparse.Namespace) -> int:
         )
         if not args.json:
             print(f"  {path.name}: {rows[-1]['wall']:.1f} s", file=sys.stderr, flush=True)
-    totals = {key: sum(row["stages"].get(key, 0.0) for row in rows) for key, _ in STAGE_WORDS}
+    totals = stage_totals(rows, args.key)
     result = {
         "tracks": len(rows),
         "audio_seconds": sum(row["seconds"] for row in rows),
@@ -370,6 +370,22 @@ def stages(args: argparse.Namespace) -> int:
         return 0
     print(stage_table(result))
     return 0
+
+
+def stage_totals(rows: list[dict[str, Any]], method: str) -> dict[str, float]:
+    """Each stage's seconds over the rows, leaving out a detector stage the method never meets.
+
+    The plain chroma does no separation (U276), so its totals carry no
+    ``harmonic``, in the JSON as in the table.
+    """
+    from cratekit.analysis import detect
+
+    met = set(detect.stages_of(method))
+    return {
+        key: sum(row["stages"].get(key, 0.0) for row in rows)
+        for key, _ in STAGE_WORDS
+        if key not in detect.STAGES or key in met
+    }
 
 
 def stage_table(result: dict[str, Any]) -> str:

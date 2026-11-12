@@ -398,9 +398,13 @@ def drift_from_tempogram(
 #: equal (53.0%) in 663 seconds, windows 157 (52.3%) in 453, plain 161 (53.7%)
 #: in 341. Both cheaper methods met the bar; plain agreed the most and cost the
 #: least, about half of whole's time, because the separation is what it skips.
-#: The tempo, the drift and the energy do not read the key's chroma, so only
-#: the key can move. ``KEY_WHOLE`` and ``KEY_WINDOWS`` stay selectable by name
-#: so a later sitting can read all three again.
+#: The tempo, the drift and the energy do not read the key's chroma, so what
+#: can move is the key and whether there is one: the review of U276 drove a
+#: file of clicks with no tone, which the whole track's chroma read as keyless
+#: (``skipped-no-key``) and the plain chroma keys, so ``analyze run`` now
+#: writes it a key and a head. Four drum tools, noise and the 23 track
+#: synthetic set were keyed under both. ``KEY_WHOLE`` and ``KEY_WINDOWS`` stay
+#: selectable by name so a later sitting can read all three again.
 KEY_WHOLE = "whole"
 KEY_WINDOWS = "windows"
 KEY_PLAIN = "plain"

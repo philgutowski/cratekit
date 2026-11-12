@@ -151,3 +151,24 @@ surface = "user"
 tests = ["tests/test_analysis_key_default.py", "tests/test_head_agreement.py"]
 old = '''    "key_read_with": "whole",'''
 new = '''    "key_read_with": "plain",'''
+
+[[rows]]
+id = "K15_warm_up_names_whole"
+description = "analysis/warm.py: the warm up's detector call names the whole method, so every process runs a separation no real head runs"
+file = "src/cratekit/analysis/warm.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''            path, tempo_window=(DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING)
+        )'''
+new = '''            path, tempo_window=(DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING), key="whole"
+        )'''
+
+[[rows]]
+id = "K16_json_totals_keep_harmonic"
+description = "stage_totals: total every stage whatever the method, so the JSON of a plain run carries a harmonic separation of naught seconds"
+file = "scripts/analyze_stages.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_key_default.py"]
+old = '''        if key not in detect.STAGES or key in met
+    }'''
+new = '''    }'''
