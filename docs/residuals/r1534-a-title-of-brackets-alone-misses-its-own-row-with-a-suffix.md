@@ -11,6 +11,9 @@ word out of a bracket is contained in too many titles. So it matches "(Intro)",
 "Intro feat. X", "Intro - Original Mix", "Intro." or "[Intro]". A title that
 opens with punctuation and a bracket, "- (Intro)", misses "Intro", and square
 brackets are not read as brackets at all ("[Not Just] Knee Deep (Part 1)").
+A title that opens with bracket groups keeps them in its core, so "(Not Just)
+Knee Deep (Part 1)" misses "Not Just Knee Deep feat. X" while it finds "(Not
+Just) Knee Deep feat. X" (round two).
 Before R-1534 these matched, but only because such a title matched every row
 by the artist, so the right row was taken by its order in the page.
 
