@@ -50964,3 +50964,49 @@ on opens.
 only up to the gate, with every write still opening its own, or a measurement
 on the Mac shows the cost is not worth a card. Ledger only; the brief put the
 gated runs out of scope.
+
+---
+
+## R-1626. The cloud battery reads an interrupted suite run from its partial counts and never reads pytest's exit code
+
+**Found:** at the review of #697, U268, 2026-11-12.
+
+**The mechanism.** `scripts/cloud_battery.py failing_ids` reads the ids and
+the summary line of the run and ignores its exit code, so a run that stopped
+early (`pytest.exit` or a `KeyboardInterrupt` inside a test, or a collection
+error, which interrupts the whole run) is read as if it were complete: the
+tests that never ran cannot fail. The review drove both readers, before and
+after U268, and they behave the same, so this predates the card and is out of
+its scope.
+
+**Measured cost.** Not driven to a hidden failure. In every shape the review
+drove, the test that stopped the run is itself a failing id the base does not
+hold, so `compare` exits 1; a collection error is read by its file and does
+the same. A stop the base also holds would hide every test after it.
+
+**Closes when:** `compare` refuses a run whose exit code says it was
+interrupted, or reports the collected and run counts beside the base's. Ledger
+only.
+
+---
+
+## R-1627. The cloud battery's reporting plugin writes on the xdist controller only, and nothing tests that guard
+
+**Found:** at the review of #697, U268, 2026-11-12.
+
+**The mechanism.** `PLUGIN_SOURCE` in `scripts/cloud_battery.py` returns early
+on an xdist worker (`hasattr(config, "workerinput")`), so only the controller
+writes the run's report. Removing the guard leaves every test green: xdist
+workers call `pytest_terminal_summary` inside their own session finish, before
+they report themselves finished, so the controller always writes last and
+overwrites any worker's partial report. The review drove it with a probe
+plugin (each worker wrote first, the controller last) and removed the guard
+against both test files (all passed).
+
+**Measured cost.** None today: the mutant reaches no wrong result, and if a
+worker's partial report were ever the one left, its counts would disagree with
+the summary line and the run would be refused, never read. It is the same
+shape as the mutation driver's own controller only write guard, R-1574.
+
+**Closes when:** a test runs a suite where the controller's write could come
+before a worker's, or the guard is accepted as equivalent. Ledger only.
