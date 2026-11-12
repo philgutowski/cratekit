@@ -1,0 +1,101 @@
+name = "u250"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_three_opens_again"
+description = "read_truth: go back to the three single field readers, three opens a file, the regression the card removes"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_rebuild.py", "tests/test_tags.py"]
+old = '''    values = tags.read_tags(path, _TRUTH_FIELDS)
+    return Truth(
+        location=str(path),
+        genre=values["genre"],
+        energy=tags.whole_number(values["energylevel"], field="energylevel", path=path),
+        voxlevel=tags.whole_number(values["voxlevel"], field="voxlevel", path=path),
+    )'''
+new = '''    return Truth(
+        location=str(path),
+        genre=tags.read_genre_from_file(path),
+        energy=tags.read_energy_from_file(path),
+        voxlevel=tags.read_vox_from_file(path),
+    )'''
+
+[[rows]]
+id = "M2_genre_dropped"
+description = "read_truth: read no genre, so every file routes to the fallback bucket"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_rebuild.py", "tests/test_tags.py"]
+old = '''        genre=values["genre"],'''
+new = '''        genre=None,'''
+
+[[rows]]
+id = "M3_energy_unconverted"
+description = "read_truth: hand the energy on as text, skipping the whole number conversion"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_rebuild.py", "tests/test_tags.py"]
+old = '''        energy=tags.whole_number(values["energylevel"], field="energylevel", path=path),'''
+new = '''        energy=values["energylevel"],'''
+
+[[rows]]
+id = "M4_vox_reads_energy"
+description = "read_truth: read the vocal level from the energy field, a crossed key"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_rebuild.py", "tests/test_tags.py"]
+old = '''        voxlevel=tags.whole_number(values["voxlevel"], field="voxlevel", path=path),'''
+new = '''        voxlevel=tags.whole_number(values["energylevel"], field="voxlevel", path=path),'''
+
+[[rows]]
+id = "M5_word_reads_zero"
+description = "whole_number: read a stored value that is not a number as 0 rather than None, so a word files in the lowest band"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_tags.py", "tests/test_rebuild.py"]
+old = '''    except ValueError:
+        log.debug("non-numeric %s tag on %s: %r", field, path, value)
+        return None'''
+new = '''    except ValueError:
+        log.debug("non-numeric %s tag on %s: %r", field, path, value)
+        return 0'''
+
+[[rows]]
+id = "M6_absent_raises"
+description = "whole_number: drop the absent check, so an untagged file raises out of read_truth and abandons the derivation"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_tags.py", "tests/test_rebuild.py"]
+old = '''    if value is None:
+        return None
+    try:
+        return int(value)'''
+new = '''    try:
+        return int(value)'''
+
+[[rows]]
+id = "M7_energy_word_reads_absent"
+description = "read_energy_checked: answer None for a stored energy that is not a number instead of raising, so a damaged file reads as untagged"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_adopt_energy.py", "tests/test_tags.py", "tests/test_rebuild_one_open.py", "tests/test_organize_mirror_edits_u227.py"]
+old = '''    if number is None:
+        raise TagReadFailed(f"energylevel is not a number: {value!r}")'''
+new = '''    if number is None:
+        return None'''
+
+[[rows]]
+id = "M8_conversion_learns_decimals"
+description = "whole_number: read a decimal as its whole part, so 7.0 files at energy 7 where today it reads None"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_rebuild_one_open.py", "tests/test_tags.py", "tests/test_rebuild.py"]
+old = '''    try:
+        return int(value)
+    except ValueError:
+        log.debug("non-numeric %s tag on %s: %r", field, path, value)'''
+new = '''    try:
+        return int(float(value))
+    except ValueError:
+        log.debug("non-numeric %s tag on %s: %r", field, path, value)'''

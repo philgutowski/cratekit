@@ -49667,3 +49667,129 @@ Fable's, and it has not been run on this range.
 
 **Closes when:** Fable at high effort reviews U249's merged range against the
 merge bar and its findings are filed. Ledger only.
+
+---
+
+## R-1568. The U252 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #681, U252, 2026-11-12.
+
+**The mechanism.** Fable's review of #681 was refused on its usage limit, so
+by Phillip's rule of 2026-11-08 Opus 5.5 at high effort ran the
+`fable-reviewer` definition on the branch under the same merge bar and round
+cap. Its one round found nothing BLOCKING, and the fixes touched only docs,
+so there was no second round. The merged range has not had the reviewer the
+cloud lane names.
+
+**Measured cost.** None driven. The range changes tests and docs only; the
+round ran the full suite with a recorder on the ladder's default sleep and
+found no test in the suite still sleeping it.
+
+**Closes when:** Fable reviews the merged range of U252 at high effort and its
+findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1569. crate sync twins waits a whole retry ladder on a playlist the provider cannot list, at the plan and again at the continuation
+
+**Found:** at the build of #681, U252, 2026-11-12.
+
+**The mechanism.** `crate sync twins` reads each downloaded account playlist
+through `label.cli._listed`, whose window read pages through
+`listing.fetch_with_retry`. A provider failure that is not a Cratekit
+refusal declaring itself not retryable, a timeout or a server error, climbs
+the whole ladder, 1, 2, 4, 8 and 16 seconds, before the playlist is left and
+named. The plan reads every playlist, and the continuation after the
+approval gate plans again to hold the write to the approved digest, so a
+playlist the provider cannot list costs one ladder at the plan and another
+at the continuation. The ladder is correct for what it is given: a timeout
+can succeed on the next attempt, and a refusal that cannot
+(`ListingNotPaginated`, an expired session refused `credential-missing`)
+already leaves it at once, which
+`tests/test_adapter_listing.py::test_a_refusal_that_says_waiting_cannot_help_is_not_slept_on`
+pins. The twins test that hands the verb an expired session asserts the
+refusal and not the ladder, so it passes with that exclusion reverted. What is open is a product question, not a defect:
+whether a backfill that already leaves a playlist it could not read and
+reads it again next run should climb the ladder for it, and whether the
+continuation should read again a playlist the plan already left.
+
+**Measured cost.** On the tree, before U252 faked the sleep in the tests,
+`tests/test_sync_twins.py` measured 31 seconds per reading of one broken
+playlist (31.18, 62.33 and 93.55 seconds for one, two and three readings).
+A DJ whose provider times out on one playlist waits about 31 seconds at the
+plan and 31 more after approving, per broken playlist; nothing is written
+wrongly and the other playlists' twins are made. Not driven against the live
+provider.
+
+**Closes when:** Phillip decides whether the twins backfill should read a
+playlist once without the ladder, or the continuation reuse the plan's
+refusal for a playlist it left, and a card builds the answer. Ledger only:
+it costs time, not data, truth or a finishing workflow, so it meets none of
+the board bar's four costs. U252's card left this question out of scope.
+
+---
+
+## R-1570. Three verbs convert a stored level by their own copies of the tag reader's rule
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** U250 made `tags.whole_number` the one conversion the energy
+and vocal readers and `rebuild.read_truth` take from a stored level's text to a
+number. Three copies of the same rule stand outside it, each written before it:
+`_as_level` in `src/cratekit/analysis/cli.py` (`crate analyze restamp`),
+`_as_level` in `src/cratekit/vocals/cli.py`, and `_as_int` in
+`src/cratekit/modules/tools/setbuilder.py`, which strips the text first. Round
+two of the review drove all three against `whole_number` over 17 values (None,
+padded, decimal, underscore, non ASCII digits, NUL, hex) and all four agree
+today.
+
+**Measured cost.** None today. A change to `whole_number` (a decimal read as its
+whole part, say) would leave those verbs reading a stored level the old way
+while routing reads it the new way, and no test compares them.
+
+**Closes when:** each copy calls `tags.whole_number`, or is deleted for it.
+Ledger only: out of U250's scope, which named the derivation's three readers.
+
+---
+
+## R-1571. The U250 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** Fable's review of #679 was refused on its usage limit in both
+rounds, so by Phillip's rule of 2026-11-08 Opus 5.5 at high effort ran the
+`fable-reviewer` definition on the branch under the same merge bar and round
+cap. Neither round found a BLOCKING finding. The merged range has not had the
+reviewer the cloud lane names.
+
+**Measured cost.** None driven. The range changes `rebuild.read_truth`, which
+every derivation, preview and resort reads the library through; round one read
+469 files over every supported suffix three ways (the branch, the three single
+field readers, main's `read_truth`) and found no difference.
+
+**Closes when:** Fable reviews the merged range of U250 at high effort and its
+findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1572. U250's test helper patches single readers no routing test reads, and its energy failure no longer chains its cause
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** Two small things round two of the review measured and the
+two round cap left. `serve_readings` in `tests/_readings.py` serves each field
+at `tags.read_tags` and also patches the matching single field reader, "so a
+path that reads one field alone sees the same fake"; removing those side
+patches kills no test in `tests/test_routing_workers.py` or
+`tests/test_export_collection.py`, since every served read there comes through
+`read_truth` (272 of 272 calls). And `tags.read_energy_checked` now raises
+`TagReadFailed` for a stored energy that is not a number without
+`from exc`, so the exception carries no `ValueError` as its `__cause__`; its
+three callers discard it, and its message, which only a debug line shows, is
+identical to main's and pinned by no test.
+
+**Measured cost.** None: 98 inputs over five containers read, raise and word
+identically to main; only `__cause__` differs, and nothing reads it.
+
+**Closes when:** the side patches are dropped or a test reads one, and the raise
+chains its cause again. Ledger only.
