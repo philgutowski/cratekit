@@ -877,3 +877,21 @@ def test_a_crawl_forecast_above_the_hour_names_the_hour():
         ceiling=50, spent=0, budget=1500,
     )
     assert "--calls-per-hour" not in small.shown()["call ceiling"]
+
+
+def test_a_ceilings_continue_is_held_to_the_hour_when_doubling_would_pass_it(paths, clock):
+    """Doubled, the ceiling of six would name twelve, above an hour of eight:
+    the continue names eight, which the hour holds, and so no hour at all."""
+    gate = Gate(
+        GateSettings(min_interval_s=1.0, calls_per_command=6, calls_per_hour=8, reserve_share=0.25),
+        path=paths[0],
+        lock_path=paths[1],
+        clock=clock,
+        sleep=clock.sleep,
+    )
+    with provider_gate.command(reserve=True):
+        spend_calls(gate, 6)
+        error, _ = refused(gate)
+    assert error.cause.reason == provider_gate.CEILING
+    assert error.cause.detail["higher"] == 8
+    assert error.cause.detail["calls_per_hour"] is None

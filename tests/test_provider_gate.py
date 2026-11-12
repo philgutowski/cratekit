@@ -2066,3 +2066,27 @@ def test_the_continue_command_of_a_run_that_cannot_be_continued_starts_a_new_one
     assert continue_command(["--run=run-7", "sync", "pair"], entry, cause) == (
         "crate --calls 10000 sync pair"
     )
+
+
+def test_a_verb_at_the_hours_line_is_blocked_and_keeps_what_it_did(installed, tmp_path, monkeypatch):
+    """U278: the hour's line is a park, as the ceiling is: the run is blocked,
+    never failed, and the call past the line is not sent."""
+    built = config.from_dict(
+        _config_data(
+            tmp_path,
+            provider={"min_interval_s": 0.01, "calls_per_hour": 2, "reserve_share": 0.5},
+        )
+    )
+    config.save(built)
+    config.reset_cache()
+    client = _LoginClient()
+    monkeypatch.setattr(provider_session, "CLIENT_FACTORY", lambda: client)
+    _record_session()
+    _two_more_calls(monkeypatch, client)
+
+    code, envelope = drive(HARVEST)
+
+    assert code == int(ExitCode.REFUSED_BY_POLICY), envelope
+    assert envelope["cause"]["reason"] == provider_gate.BUDGET
+    assert envelope["outcome"] == "blocked"
+    assert len(client.request_session.calls) == 1, "a call past the hour's line was sent"
