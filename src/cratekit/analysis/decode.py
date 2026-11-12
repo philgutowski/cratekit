@@ -24,10 +24,13 @@ THE ORDER IS THE GUARANTEE THAT NOTHING ANALYSED TODAY CHANGES.
    then take the two calls ``librosa.load`` makes after its own read,
    ``to_mono`` and ``resample`` with ``soxr_hq``, so the arithmetic after the
    decode is librosa's on every path.
-4. No ffmpeg, for a file only ffmpeg could read, raises
-   :class:`DecoderMissing`, which the head reports as ``skipped-no-decoder``
-   and the vocal pass as ``vocal-no-decoder``: the decoder is named as the
-   fault, not the file. ``crate doctor`` reports the missing binary on the
+4. No ffmpeg, for a file librosa did not read and libsndfile cannot open,
+   raises :class:`DecoderMissing`, which the head reports as
+   ``skipped-no-decoder`` and the vocal pass as ``vocal-no-decoder``: the
+   decoder that was never tried is named as the fault, not the file. That is
+   an M4A, and also any file too damaged for libsndfile to open, which only
+   ffmpeg could have judged. The energy measure of restamp and calibrate
+   reports it as ``features-unavailable``, as it reports every failure. ``crate doctor`` reports the missing binary on the
    ``binary.ffmpeg`` row, which every analysis verb that decodes declares.
 
 WHY FFMPEG AND NOT A BOUND ON LIBROSA. The downloader already needs the
@@ -159,8 +162,9 @@ def _ffmpeg_samples(path: Any) -> tuple[Any, int]:
 
     Nothing touches the disk: ffmpeg writes a WAV to a pipe, and the rate and
     channels come from the header it wrote, which describes the samples it
-    emitted. ``-xerror`` stops it at the first decode error, so a damaged file
-    fails rather than yielding the part before the damage.
+    emitted. ``-xerror`` stops it at the first decode error, and any error it
+    reports fails the decode, so a damaged file fails rather than yielding the
+    part before the damage.
     """
     import numpy as np
 
@@ -194,9 +198,15 @@ def _ffmpeg_samples(path: Any) -> tuple[Any, int]:
         )
     except (OSError, subprocess.TimeoutExpired) as exc:
         raise DecodeFailed(f"{DECODER} did not finish decoding: {exc}") from exc
-    if proc.returncode != 0:
-        said = proc.stderr.decode("utf-8", "replace").strip()[-400:]
-        raise DecodeFailed(f"{DECODER} could not decode the file: {said}")
+    # ANY ERROR IS A FAILED DECODE, whatever the exit code. Measured on ffmpeg
+    # 6.1 in the review of U263: ``-xerror`` stops at a decoder error in the
+    # middle of an M4A and exits 0 with the part before it on the pipe, so the
+    # exit code alone measured the first half of a damaged track and wrote its
+    # key. At ``-v error`` a clean decode says nothing, so anything said is a
+    # fault, and the file is undecodable as the same damage in a FLAC is.
+    said = proc.stderr.decode("utf-8", "replace").strip()
+    if proc.returncode != 0 or said:
+        raise DecodeFailed(f"{DECODER} could not decode the file: {said[-400:]}")
     channels, native_rate, data = _parse_float_wav(proc.stdout)
     frames = np.frombuffer(data, dtype="<f4", count=len(data) // 4)
     if frames.size == 0:

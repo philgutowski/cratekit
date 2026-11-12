@@ -168,6 +168,50 @@ def test_a_truncated_m4a_fails_rather_than_yielding_the_part_before_the_damage(t
         decode._ffmpeg_samples(cut)
 
 
+@pytest.mark.parametrize("codec", ["aac", "alac"])
+def test_an_m4a_damaged_in_the_middle_fails_rather_than_yielding_its_first_half(
+    tmp_path, codec
+):
+    """Driven by the review of U263: with the index first and the damage in
+    the middle of the audio, ffmpeg 6.1 under ``-xerror`` stops at the error
+    and exits 0 with the part before it on the pipe. The error it reports is
+    what fails the decode."""
+    source = _write_wav(tmp_path / "source.wav", _pcm16(12.0))
+    whole = tmp_path / f"whole-{codec}.m4a"
+    extra = ["-b:a", "192k"] if codec == "aac" else []
+    _ffmpeg("-i", str(source), "-c:a", codec, *extra, "-movflags", "+faststart", str(whole))
+    data = bytearray(whole.read_bytes())
+    middle = len(data) // 2
+    data[middle : middle + 2000] = bytes(2000)
+    damaged = tmp_path / f"damaged-{codec}.m4a"
+    damaged.write_bytes(bytes(data))
+    with pytest.raises(decode.DecodeFailed):
+        decode._ffmpeg_samples(damaged)
+
+
+def test_an_m4a_with_its_index_first_cut_short_fails(tmp_path):
+    """The other truncation: the index is whole and promises audio the file
+    no longer holds, so ffmpeg has decoded most of it before it fails."""
+    source = _write_wav(tmp_path / "source.wav", _pcm16(12.0))
+    whole = tmp_path / "whole.m4a"
+    _ffmpeg("-i", str(source), "-c:a", "aac", "-movflags", "+faststart", str(whole))
+    cut = tmp_path / "cut.m4a"
+    cut.write_bytes(whole.read_bytes()[: int(whole.stat().st_size * 0.95)])
+    with pytest.raises(decode.DecodeFailed):
+        decode._ffmpeg_samples(cut)
+
+
+def test_the_first_audio_stream_is_the_one_decoded(tmp_path):
+    first = _pcm16(1.0, seed=1)
+    second = _pcm16(1.0, seed=2)
+    a = _write_wav(tmp_path / "a.wav", first)
+    b = _write_wav(tmp_path / "b.wav", second)
+    both = tmp_path / "both.m4a"
+    _ffmpeg("-i", str(a), "-i", str(b), "-map", "0:a", "-map", "1:a", "-c:a", "alac", str(both))
+    native, _rate = decode._ffmpeg_samples(both)
+    assert np.array_equal(native, (first.astype(np.float32) / np.float32(32768)).T)
+
+
 def test_a_file_that_is_not_audio_fails(tmp_path):
     junk = tmp_path / "junk.m4a"
     junk.write_bytes(b"not an audio file at all" * 40)
@@ -347,6 +391,34 @@ def test_the_energy_segment_of_an_alac_m4a_is_its_wavs(keyed):
     samples, _ = decode.load(keyed["alac"], energy.MEASURE_RATE, offset=7.3, duration=11.1)
     assert np.array_equal(samples, expected)
     assert energy.features_from_path(keyed["alac"]) == energy.features_from_path(keyed["wav"])
+
+
+@librosa_needed
+def test_an_offset_and_a_duration_between_frames_cut_as_libsndfile_cuts(keyed):
+    """Seconds that land between two native frames, past the half, so
+    ``int`` and ``round`` disagree: the cut is libsndfile's ``int``."""
+    import librosa
+
+    offset = 7.3 + 0.6 / NATIVE_RATE
+    duration = 11.1 + 0.7 / NATIVE_RATE
+    assert round(offset * NATIVE_RATE) != int(offset * NATIVE_RATE)
+    assert round(duration * NATIVE_RATE) != int(duration * NATIVE_RATE)
+    expected, _ = librosa.load(
+        str(keyed["wav"]), sr=energy.MEASURE_RATE, mono=True, offset=offset, duration=duration
+    )
+    samples, _ = decode.load(keyed["alac"], energy.MEASURE_RATE, offset=offset, duration=duration)
+    assert np.array_equal(samples, expected)
+
+
+@librosa_needed
+def test_the_energy_measure_takes_the_centre_of_an_m4a(keyed, monkeypatch, no_fallback):
+    """The segment is centred on the length ``decode.duration`` reads, which
+    for an M4A on librosa 1.0 only the ffmpeg decode can give. Shortened so
+    the 30 second fixture is longer than it."""
+    monkeypatch.setattr(energy, "SEGMENT_SECONDS", 10.0)
+    centred = energy.features_from_path(keyed["wav"])
+    assert centred is not None
+    assert energy.features_from_path(keyed["alac"]) == centred
 
 
 @librosa_needed

@@ -27,9 +27,11 @@ TERMINAL_UNDECODABLE = "skipped-undecodable"
 #: Kept apart from keyless, which is a track the analyser READ and found
 #: atonal, for the reason ``TERMINAL_UNDECODABLE`` is kept apart from it.
 TERMINAL_UNANALYSABLE = "skipped-unanalysable"
-#: The terminal status for a file only ffmpeg could decode, on a machine with
-#: no ffmpeg (U263). The decoder is the fault, not the file, so it is kept apart
-#: from ``TERMINAL_UNDECODABLE``, which reads as a damaged file.
+#: The terminal status for a file librosa did not read and libsndfile cannot
+#: open, on a machine with no ffmpeg to try it (U263): an M4A, or a file too
+#: damaged to open, which only ffmpeg could have judged. The decoder that was
+#: never tried is named, so it is kept apart from ``TERMINAL_UNDECODABLE``,
+#: which every decoder that could read the file has refused.
 TERMINAL_NO_DECODER = "skipped-no-decoder"
 
 _PITCHES = ("C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B")

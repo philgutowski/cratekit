@@ -227,11 +227,13 @@ def unscored_warning(summary: Mapping[str, Any], *, verb: str) -> dict[str, str]
     installed (R-370). Shared, because two copies of one message had already
     drifted apart.
 
-    IT COUNTS ONE REASON AND NOT THE OTHER FOUR. This message tells the person
-    to install the extra, which is the remedy for exactly one of the five
+    IT COUNTS ONE REASON AND NOT THE OTHER FIVE. This message tells the person
+    to install the extra, which is the remedy for exactly one of the six
     absences. A track refused for its size, an undecodable file, a terminal
     head and a model that rejected the clip are all reported per item and in
-    ``by_vocal_reason``, and none of them is fixed by an install.
+    ``by_vocal_reason``, and none of them is fixed by an install. The sixth,
+    ``vocal-no-decoder`` (U263), is fixed by installing ffmpeg, not the
+    extra, and doctor's ``binary.ffmpeg`` row says so.
     """
     count = int(summary.get("by_vocal_reason", {}).get(REASON_MODEL_UNAVAILABLE, 0))
     if not count:

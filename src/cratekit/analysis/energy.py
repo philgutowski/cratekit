@@ -264,9 +264,12 @@ def features_from_path(path: Path) -> dict[str, float] | None:
     """Decode the central slice of ``path`` and measure it.
 
     The restamp and calibrate path, which has no head pass to share samples
-    with. ONLY THE SLICE IS DECODED: the duration is read off the header and
-    the decode is asked for the central :data:`SEGMENT_SECONDS`, so a ten
-    minute file costs a fifth of itself rather than all of it and then a cut.
+    with. ONLY THE SLICE IS DECODED for a file librosa reads: the duration is
+    read off the header and the decode is asked for the central
+    :data:`SEGMENT_SECONDS`, so a ten minute file costs a fifth of itself
+    rather than all of it and then a cut. A file decoded through ffmpeg, an
+    M4A on librosa 1.0, has no such seek: it is decoded whole for its
+    duration and whole again for the slice (U263).
     """
     try:
         import librosa  # noqa: F401 - asked for so its absence is the extra's absence
