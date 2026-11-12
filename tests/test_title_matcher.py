@@ -807,3 +807,109 @@ def test_an_untagged_file_still_takes_its_own_rows_genre_by_its_name(tmp_path, s
 
     assert result.genre_written == BUCKET_GENRE
     assert tags.read_genre_from_file(path) == BUCKET_GENRE
+
+
+# ---------------------------------------------------------------------------
+# G. R-1636, review round one: the artist's part as a name writes it
+# ---------------------------------------------------------------------------
+
+#: (artist tag, file title, its own row): the artist's part of the title is
+#: the tag's artist written as a name writes it, a collaboration, "The", an
+#: accent, the naming verb's "[MP3]" marker, a track number before it, or a
+#: track number written as its own part. Each found its own row on main and
+#: lost it at round one's head.
+ARTIST_AS_WRITTEN = [
+    (ARTIST, f"08A - 124 - [MP3] {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST} & Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - Tide & {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST}, Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST} x Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - {ARTIST} vs Tide - Sun Path", "Sun Path"),
+    (ARTIST, f"01 - {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"08A - 124 - 01 - {ARTIST} - Sun Path", "Sun Path"),
+    (ARTIST, f"{ARTIST} - Sun Path - 02 - Tide", "Tide"),
+    (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - 02 - Tide", "Tide"),
+    ("Black Madonna", "The Black Madonna - Sun Path", "Sun Path"),
+    ("The Black Madonna", "08A - 124 - Black Madonna - Sun Path", "Sun Path"),
+    ("Âme", "08A - 124 - Ame - Sun Path", "Sun Path"),
+    ("Ame", "08A - 124 - Âme - Sun Path", "Sun Path"),
+    (f"{ARTIST}; Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+    (f"{ARTIST} & Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+    (f"{ARTIST} feat. Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+    (f"{ARTIST} x Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "own"), ARTIST_AS_WRITTEN)
+def test_the_artists_part_is_known_as_a_name_writes_it(artist, title, own):
+    assert searchers._title_matches(title, own, artist=artist)
+    if not artist.startswith(ARTIST):
+        return
+    assert not searchers._title_matches(title, ARTIST, artist=artist)
+    hit = _beatport_hit(title, [_beatport_track(ARTIST, own, BUCKET_GENRE)])
+    assert hit.genre == BUCKET_GENRE
+    assert discogs_answer(_discogs_hit(title, own)).answer == "matched"
+
+
+@pytest.mark.parametrize(
+    ("name", "own"),
+    [
+        (f"08A - 124 - [MP3] {ARTIST} - Sun Path", "Sun Path"),
+        (f"08A - 124 - {ARTIST} & Tide - Sun Path", "Sun Path"),
+        (f"01 - {ARTIST} - Sun Path", "Sun Path"),
+        (f"{ARTIST} - Sun Path - 02 - Tide", "Tide"),
+    ],
+)
+def test_an_untagged_file_named_with_its_artist_as_written_takes_its_own_genre(
+    tmp_path, silence, name, own
+):
+    path = _file(tmp_path, silence, name, {"artist": ARTIST})
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(own, 49)))
+
+    assert result.genre_written == BUCKET_GENRE
+    assert tags.read_genre_from_file(path) == BUCKET_GENRE
+
+
+def test_a_self_titled_tracks_dash_version_the_list_lacks_still_finds_its_own_row(tmp_path, silence):
+    """Round one's B1: "Artist - Vocal Mix" is either a title "Vocal Mix" or a
+    self titled track and its version, and nothing but a list tells them
+    apart, so both are read, as on main. The file's own row listed first wins,
+    as it did on main, and the self titled reading is never taken when the
+    other part does not end in a version."""
+    title = f"08A - 124 - {ARTIST} - Vocal Mix"
+    assert _matches(title, ARTIST)
+    assert _matches(title, f"{ARTIST} (Extended Mix)")
+    assert not _matches(f"08A - 124 - {ARTIST} - Sun Path", ARTIST)
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
+    rows = [
+        _beatport_track(ARTIST, ARTIST, BUCKET_GENRE, mix="Extended Mix"),
+        _beatport_track(ARTIST, "Vocal", "Techno"),
+    ]
+    fetch = routed(search=results(), beatport=searchers.Fetched(text=_beatport_page(rows), status=200))
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("artist", "title", "own", "other"),
+    [
+        # The next part naming the artist keeps a self titled first part the title.
+        (ARTIST, f"08A - 124 - {ARTIST} - {ARTIST} - Sun Path", ARTIST, "Sun Path"),
+        # A tag crediting two names, or a feature, knows the name alone.
+        (f"{ARTIST} & Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
+        (f"{ARTIST} feat. Tide", f"08A - 124 - {ARTIST} - Sun Path", "Sun Path", ARTIST),
+        # A number outside a tempo's range before anything else is a title.
+        (ARTIST, f"909 - {ARTIST} - Sun Path", "909", "Sun Path"),
+        # A number after a key is its tempo whatever its value.
+        (ARTIST, "08A - 300 - Sun Path - Tide", "Sun Path", "Tide"),
+        # The part before a track numbered title is its album, never read alone.
+        (ARTIST, "08A - 124 - Sun Path - 02 Tide", "Tide", "Sun Path"),
+        (ARTIST, f"{ARTIST} - Sun Path - 02 Tide Extended Mix", "Tide", "Sun Path"),
+    ],
+)
+def test_each_rule_of_the_title_start_holds(artist, title, own, other):
+    assert searchers._title_matches(title, own, artist=artist)
+    assert not searchers._title_matches(title, other, artist=artist)
