@@ -1,0 +1,255 @@
+name = "u278"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_gate_follows_state"
+description = "state_path: drop the gate's own resolution, so the gate follows a redirected CRATEKIT_STATE_DIR and a copy gets a fresh hour"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_config.py", "tests/test_isrc_cache.py"]
+old = '''        if key in _PROVIDER_GATE_KEYS:
+            return provider_gate_dir() / entry.relative
+'''
+new = ''''''
+
+[[rows]]
+id = "M2_future_minute_not_settled"
+description = "Gate.call: never write the settled window, so a minute stamped ahead slides with the clock and holds the line"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''                if state.settle(now):
+                    try:'''
+new = '''                if False:
+                    try:'''
+
+[[rows]]
+id = "M3_pointer_reads_state_dir"
+description = "provider_gate_dir: fall back to installation_state_dir, which honours CRATEKIT_STATE_DIR"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_config.py"]
+old = '''        return Path(override)
+    return Path(platformdirs.user_state_dir(_APP_NAME))
+
+
+#: The state entries resolved'''
+new = '''        return Path(override)
+    return installation_state_dir()
+
+
+#: The state entries resolved'''
+
+[[rows]]
+id = "M4_no_budget_check"
+description = "Gate.call: drop the hour's line, so a call past it is sent"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py"]
+old = '''                if spent >= hour_line:'''
+new = '''                if False:'''
+
+[[rows]]
+id = "M5_budget_off_by_one"
+description = "Gate.call: let one call past the line"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''                if spent >= hour_line:'''
+new = '''                if spent > hour_line:'''
+
+[[rows]]
+id = "M6_count_not_written"
+description = "_send_now: stop counting calls in the window"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''        state.count(identity, now)
+'''
+new = ''''''
+
+[[rows]]
+id = "M7_identities_merged"
+description = "Gate.call: read the account's window for every identity"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''                spent = state.spent(identity, now)'''
+new = '''                spent = state.spent(ACCOUNT, now)'''
+
+[[rows]]
+id = "M8_no_reserve"
+description = "line_for: a read reaches the whole budget"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py"]
+old = '''    return budget - reserve_of(budget, settings.reserve_share)'''
+new = '''    return budget'''
+
+[[rows]]
+id = "M9_continue_names_no_hour"
+description = "hour_to_name: never name the hour, so a continue above the budget is refused as printed"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_sync_pair_resume.py", "tests/test_label_playlists.py"]
+old = '''    return wanted if wanted > settings.calls_per_hour else None'''
+new = '''    return None'''
+
+[[rows]]
+id = "M10_window_short"
+description = "_expires: a minute leaves the window an hour after it STARTS, sixty seconds early"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''    return float(bucket + BUCKET_S + WINDOW_S)'''
+new = '''    return float(bucket + WINDOW_S)'''
+
+[[rows]]
+id = "M11_window_dropped_on_read"
+description = "_State.from_json: drop the window on read, so every reader sees an empty hour"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''        state.window = _window_from_json(data.get("window"))
+'''
+new = ''''''
+
+[[rows]]
+id = "M12_no_over_the_line_in_call"
+description = "Gate.call: drop the --calls past the line refusal"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''                over = over_the_line(self.settings)
+                if over is not None:'''
+new = '''                over = over_the_line(self.settings)
+                if False:'''
+
+[[rows]]
+id = "M13_over_the_line_loosened"
+description = "over_the_line: let a --calls up to twice the hour's budget through"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''    if scope.raised <= budget:'''
+new = '''    if scope.raised <= budget * 2:'''
+
+[[rows]]
+id = "M14_hour_raise_ignored"
+description = "hourly: ignore the hour raised for this run"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''    if scope is not None and scope.hourly is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M15_hour_not_exported"
+description = "command: the raised hour never reaches a detached child"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''_exported(BUDGET_ENV, calls_per_hour)'''
+new = '''_exported(BUDGET_ENV, None)'''
+
+[[rows]]
+id = "M16_nested_class_kept"
+description = "command: a nested dispatch keeps the outer class"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''        outer.reserve = outer.declared = bool(reserve)
+'''
+new = ''''''
+
+[[rows]]
+id = "M17_spending_widens"
+description = "spending: widen to the reserve whatever the verb declared"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync_go.py"]
+old = '''    scope.reserve = scope.declared
+'''
+new = '''    scope.reserve = True
+'''
+
+[[rows]]
+id = "M18_reading_noop"
+description = "reading: never narrow the command"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py"]
+old = '''    scope.reserve = False
+    if settings is not None:'''
+new = '''    if settings is not None:'''
+
+[[rows]]
+id = "M19_ceiling_continue_uncapped"
+description = "_ceiling_cause: name a continue ceiling past the hour's line"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''        higher = min(line * 2, reach) if reach > line else line * 2'''
+new = '''        higher = line * 2'''
+
+[[rows]]
+id = "M20_report_spends_reserve"
+description = "spends_reserve: a --report run spends the reserve"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_cli_contract.py"]
+old = '''    if getattr(args, "report", False):
+        return False
+'''
+new = ''''''
+
+[[rows]]
+id = "M21_downloads_not_reserve"
+description = "spends_reserve: only an account write spends the reserve, a download does not"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_cli_contract.py"]
+old = '''    return bool(entry.writes & RESERVE_WRITES)'''
+new = '''    return bool(entry.writes & frozenset({"remote"}))'''
+
+[[rows]]
+id = "M22_no_upfront_refusal"
+description = "dispatcher: drop the --calls refusal before the verb runs"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''                over = provider_gate.over_the_line(settings)
+                if over is not None:
+                    raise CratekitError(over)'''
+new = '''                over = provider_gate.over_the_line(settings)
+                if False:
+                    raise CratekitError(over)'''
+
+[[rows]]
+id = "M23_budget_stop_not_parked"
+description = "dispatcher: a budget park is reported failed, not blocked"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py"]
+old = '''        budget_stop = cause.reason == provider_gate.BUDGET and isinstance(exc, Parked)'''
+new = '''        budget_stop = False'''
+
+[[rows]]
+id = "M24_label_sync_not_narrowed"
+description = "label sync: ask and walk spend the reserve"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    if not args.go:
+        provider_gate.reading('''
+new = '''    if False:
+        provider_gate.reading('''
+
+[[rows]]
+id = "M25_sweep_never_refuses"
+description = "label sync: the estimate never refuses"
+file = "src/cratekit/label/sync_cli.py"
+surface = "user"
+tests = ["tests/test_provider_budget.py", "tests/test_provider_gate.py", "tests/test_label_sync.py", "tests/test_label_sync_go.py"]
+old = '''    if calls > left:'''
+new = '''    if False:'''

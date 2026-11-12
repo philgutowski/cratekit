@@ -1752,7 +1752,11 @@ def test_next_over_two_labels_both_listed_with_nothing_new_is_unchanged(installe
     assert envelope["outcome"] == "no_op"
     (said,) = checks(envelope, "question")
     assert said["detail"] == "no label has anything new to ask about"
-    assert [one["status"] for one in envelope["data"]["checks"]] == ["ok", "ok", "ok"]
+    # U278: a walk over every label says its estimate first, as a note.
+    (estimate,) = checks(envelope, "estimate")
+    assert estimate["status"] == "info"
+    others = [one for one in envelope["data"]["checks"] if one is not estimate]
+    assert [one["status"] for one in others] == ["ok", "ok", "ok"]
 
 
 def test_next_with_one_label_skipped_and_the_next_asked_still_asks(installed, monkeypatch):

@@ -747,6 +747,11 @@ class Probes:
     #: file, or None when the file could not be read (U205). A seam so a test
     #: describes an installation's history without writing the real file.
     provider_spend: Callable[[], provider_gate.Spend | None] = provider_gate.read_spend
+    #: The hour's spend per identity and any cooldown, off the one gate, at the
+    #: moment given, or None when its file could not be read (U278).
+    provider_standing: Callable[[float], provider_gate.Standing | None] = (
+        provider_gate.read_standing
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -3791,6 +3796,9 @@ OPEN_GATES_CHECK = "runs.open-gates"
 
 #: The key of doctor's note on the ISRC cache (U206).
 ISRC_CACHE_CHECK = "provider.isrc-cache"
+
+#: The key of doctor's note on the hour's budget (U278).
+BUDGET_CHECK = "provider.budget"
 OPEN_GATE_NOTE_AGE = timedelta(days=1)
 
 
@@ -3895,6 +3903,67 @@ def _check_isrc_cache(inputs: _Inputs) -> Finding:
     return Finding(key=ISRC_CACHE_CHECK, title="ISRC answers kept", status=Status.INFO, detail=detail)
 
 
+def _check_provider_budget(inputs: _Inputs) -> Finding:
+    """Where the account stands in the hour, off the one gate (U278).
+
+    Each identity's calls in the last sixty minutes against the hour's budget,
+    the line a read stops at and what is kept for writes and downloads, an
+    identity at its read line with the time it frees, and any cooldown with the
+    time it lifts. Read from the gate every installation state pointed at the
+    account shares, and its file named, so a copy run's doctor shows the live
+    hour. A NOTE AND NEVER A FAILURE: the gate itself refuses each call past a
+    line, and doctor's job is to say so before a person starts one. A file
+    that could not be read is said, never shown as an hour with nothing spent.
+    """
+    settings = (
+        provider_gate.GateSettings.from_config(inputs.cfg)
+        if inputs.cfg is not None
+        else provider_gate.GateSettings()
+    )
+    budget = settings.calls_per_hour
+    read = provider_gate.line_for(settings, reserve=False)
+    kept = budget - read
+    lines = f"reads stop at {read} and {kept} kept for writes and downloads"
+    standing = inputs.probes.provider_standing(inputs.probes.now.timestamp())
+    if standing is None:
+        detail = (
+            f"the provider gate's state file could not be read, so what each identity "
+            f"spent in the last hour is not known; each may make {budget} calls an "
+            f"hour, {lines}"
+        )
+        return Finding(key=BUDGET_CHECK, title="the hour's provider budget", status=Status.INFO,
+                       detail=detail)
+    account = standing.spent(provider_gate.ACCOUNT)
+    app = standing.spent(provider_gate.APP)
+    said = [
+        f"in the last hour {account} of {budget} calls on the account and {app} of "
+        f"{budget} under Cratekit's app credentials; {lines}"
+    ]
+    for identity, spent in ((provider_gate.ACCOUNT, account), (provider_gate.APP, app)):
+        if spent >= read:
+            who = "the account" if identity == provider_gate.ACCOUNT else "the app credentials"
+            frees = provider_gate.iso(standing.frees_at(identity, read))
+            said.append(f"{who} is at its read line until {frees}")
+    if standing.cooling():
+        said.append(
+            f"cooling down until {provider_gate.iso(float(standing.lifts_at or 0))}, every "
+            f"provider call refused until then"
+        )
+    else:
+        said.append("no cooldown")
+    pointer = os.environ.get(config.ENV_PROVIDER_GATE_DIR)
+    where = f"read from {standing.path}"
+    if pointer:
+        where += f", where {config.ENV_PROVIDER_GATE_DIR} points"
+    said.append(where)
+    return Finding(
+        key=BUDGET_CHECK,
+        title="the hour's provider budget",
+        status=Status.INFO,
+        detail="; ".join(said),
+    )
+
+
 @dataclass(frozen=True, slots=True)
 class Check:
     """One named question and the function that answers it."""
@@ -3952,6 +4021,9 @@ CHECKS: tuple[Check, ...] = (
     # U206. Beside the open gates, another note about this installation's own
     # state that never fails the report.
     Check(ISRC_CACHE_CHECK, _check_isrc_cache),
+    # U278. Beside the ISRC note, the other note about the provider, and like
+    # it never a failure.
+    Check(BUDGET_CHECK, _check_provider_budget),
     # R-235. Beside the session check because both report this product's own
     # library state, and after the taxonomy check, which it lists trees from.
     Check("tree.registry", _check_tree_registry),
@@ -4409,6 +4481,7 @@ __all__ = [
     "OFFERED_WHEN_SPENT",
     "Check",
     "Finding",
+    "BUDGET_CHECK",
     "ISRC_CACHE_CHECK",
     "OPEN_GATES_CHECK",
     "Probes",

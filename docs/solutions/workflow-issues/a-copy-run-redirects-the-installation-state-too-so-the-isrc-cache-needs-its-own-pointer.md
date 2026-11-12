@@ -12,11 +12,13 @@ applies_when:
   - "A verb that looks ISRCs up is rehearsed on a disposable copy before its live run"
   - "A rehearsal redirects CRATEKIT_STATE_DIR, by hand or through core.rehearsal.redirected"
   - "Something installation scoped is meant to be shared between a copy run and the live run"
+  - "A copy run makes calls to the streaming provider, which the live gate must count"
 symptoms:
   - "The live run's isrc-lookups line says every lookup was asked of the provider, after a rehearsal that asked the same ones"
   - "An isrc_cache.json appears in the copy run's scratch state directory"
 tags:
   - disposable-copy
+  - provider-gate
   - isrc-cache
   - installation-state
   - rehearsal
@@ -48,6 +50,22 @@ to the live installation state directory, the folder doctor's
 `CRATEKIT_STATE_DIR`. Sharing is safe because the cache holds only
 what the provider said about its catalogue and marks nothing done; the copy run
 still keeps every ledger, lock and run record of its own.
+
+## The provider gate went the other way (U278)
+
+The gate's `provider_gate.json` sat beside the cache and followed
+`CRATEKIT_STATE_DIR` the same way, so every copy run got a gate, and an
+allowance, of its own. On 2026-11-12 fifty three small commands on a copy
+spent about 7,800 catalogue calls in twenty minutes, unseen by the live gate,
+whose breaker then refused the label go they had cost. The cache's answer, a
+pointer the copy must remember to set, was the wrong shape for a guard: a copy
+that forgot it would spend a fresh hour. So the gate resolves under
+`config.provider_gate_dir`, which reads the platform's state directory and
+never `CRATEKIT_STATE_DIR`. A copy run by hand needs no export for it, and its
+calls are paced, counted and refused by the live gate. Only
+`CRATEKIT_PROVIDER_GATE_DIR` moves it, and the suite is what sets that.
+`crate doctor`'s `provider.budget` line names the file it read, so a copy's
+doctor showing a scratch path there is a copy that set the pointer.
 
 ## How to apply
 
