@@ -9,8 +9,9 @@ runs the same worker and paid the same.
 
 The proof here is a call count, never a wall clock: the worker is driven on a
 disposable database at two sizes, the second twice the first, and the hash
-calls it makes are counted. Work that grows with the placements doubles; the
-old shape quadrupled. Every expected membership is spelled from the brief, a
+and equality calls it makes on placements are counted. Work that grows with
+the placements doubles; the old shape quadrupled, and so would a scan of the
+derived tuple per placement, which hashes nothing. Every expected membership is spelled from the brief, a
 track in its band playlist and, being a favourite, in its folder's Favorites,
 and read straight from the file, never from the worker's own report.
 
@@ -23,7 +24,7 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
-from cratekit.core import config, preflight, rb_writer, routing, session, taxonomy, tree_registry
+from cratekit.core import config, preflight, rb_writer, session, taxonomy, tree_registry
 from cratekit.write import rebuild, trees
 from cratekit.write.tree_read import DeclaredPlacement
 from tests.test_config import valid_data
@@ -35,14 +36,22 @@ DECLARED = taxonomy.default_taxonomy()
 TREE = DECLARED.tree.id
 FAVORITES = DECLARED.sub_class("favorites")
 #: The genres the tracks are tagged with, so the placements spread over several
-#: folders rather than one, as a real library's do.
+#: folders rather than one, as a real library's do. Each genre's folder in the
+#: shipped template is named as the genre is, and every track is at the top of
+#: the energy scale, so each lands in its folder's "High" band.
 GENRES = ("Deep House", "Tech House", "Afro House", "Organic House")
+TOP_BAND = "High"
+FAVOURITES_PLAYLIST = "Favorites"
 #: The smaller library, in tracks; the larger one holds twice as many.
 SMALL = 24
 
 
 def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, str], set[str]]]:
-    """Rebuild a library of ``tracks`` favourites; the hash calls and what was written.
+    """Rebuild a library of ``tracks`` favourites; the placement comparisons and what was written.
+
+    A comparison is a call of ``DeclaredPlacement.__hash__`` or ``__eq__``, so a
+    set rebuilt per placement is counted and so is a scan of a tuple per
+    placement, which hashes nothing and compares every pair.
 
     Each size is its own library, configuration and state, under its own
     directory, so the second rebuild reads nothing the first one recorded.
@@ -53,8 +62,6 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
         (root / "Music").mkdir(parents=True)
         for name, sub in (("CRATEKIT_CONFIG_DIR", "config"), ("CRATEKIT_STATE_DIR", "state")):
             patch.setenv(name, str(base / f"{sub}-{tracks}"))
-        patch.setattr(config, "CONFIG_DIR", base / f"config-{tracks}", raising=False)
-        patch.setattr(config, "STATE_DIR", base / f"state-{tracks}", raising=False)
         patch.setenv(config.ENV_LIBRARY_ROOT, str(root))
         cfg = config.from_dict(
             valid_data(
@@ -133,13 +140,20 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
 
             calls = 0
             real_hash = DeclaredPlacement.__hash__
+            real_eq = DeclaredPlacement.__eq__
 
-            def counted(self):
+            def hashed(self):
                 nonlocal calls
                 calls += 1
                 return real_hash(self)
 
-            patch.setattr(DeclaredPlacement, "__hash__", counted)
+            def compared(self, other):
+                nonlocal calls
+                calls += 1
+                return real_eq(self, other)
+
+            patch.setattr(DeclaredPlacement, "__hash__", hashed)
+            patch.setattr(DeclaredPlacement, "__eq__", compared)
             report = rebuild.rebuild_tree(
                 cfg,
                 db,
@@ -153,6 +167,7 @@ def _drive(base: Path, monkeypatch, tracks: int) -> tuple[int, dict[tuple[str, s
                 truth=truth,
             )
             patch.setattr(DeclaredPlacement, "__hash__", real_hash)
+            patch.setattr(DeclaredPlacement, "__eq__", real_eq)
             assert report.after.converged, report.after.summaries()
             tree_root_id = str(tree_root.ID)
         finally:
@@ -192,20 +207,18 @@ def _written(path: Path, root_id: str) -> dict[tuple[str, str], set[str]]:
 
 
 def _expected(tracks: int) -> dict[tuple[str, str], set[str]]:
-    """From the brief: each track in its genre's top energy band, and in its Favorites."""
+    """From the brief: each track in its genre folder's High band, and in its Favorites."""
     held: dict[tuple[str, str], set[str]] = {}
     for index in range(tracks):
         one = str(index + 1)
-        bucket = DECLARED.bucket(routing.resolve_bucket(DECLARED, GENRES[index % len(GENRES)]).bucket_id)
-        band = routing.energy_sub(DECLARED, bucket.id, DECLARED.energy.scale_max)
-        assert band is not None, "the shipped template declares no top band for a genre"
-        held.setdefault((bucket.display, band.display), set()).add(one)
-        held.setdefault((bucket.display, FAVORITES.display), set()).add(one)
+        folder = GENRES[index % len(GENRES)]
+        held.setdefault((folder, TOP_BAND), set()).add(one)
+        held.setdefault((folder, FAVOURITES_PLAYLIST), set()).add(one)
     return held
 
 
-def test_a_rebuilds_hash_calls_double_when_its_favourites_double(tmp_path, monkeypatch):
-    """Twice the tracks, under three times the hashing: the placements, not their square."""
+def test_a_rebuilds_placement_comparisons_double_when_its_favourites_double(tmp_path, monkeypatch):
+    """Twice the tracks, under three times the comparisons: the placements, not their square."""
     small, small_written = _drive(tmp_path, monkeypatch, SMALL)
     large, large_written = _drive(tmp_path, monkeypatch, 2 * SMALL)
 
@@ -213,7 +226,7 @@ def test_a_rebuilds_hash_calls_double_when_its_favourites_double(tmp_path, monke
     assert large_written == _expected(2 * SMALL)
     assert small > 0
     assert large < 3 * small, (
-        f"{SMALL} favourites cost {small} placement hashes and {2 * SMALL} cost {large}, "
+        f"{SMALL} favourites cost {small} placement comparisons and {2 * SMALL} cost {large}, "
         f"{large / small:.1f} times as many for twice the tracks: the rebuild grows "
         f"with the square of its placements"
     )

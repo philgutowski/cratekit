@@ -247,6 +247,16 @@ def test_playlist_narrows_to_the_marks_named(slim, monkeypatch):
     assert stamped == {"pl-a": False, "pl-b": True, "pl-c": False}
 
 
+def test_playlist_given_twice_narrows_to_both_marks_named(slim, monkeypatch):
+    """U246: every playlist named is kept, not the first alone."""
+    _fake, account, name, _xml = _marked(slim, monkeypatch)
+    code, done = _answered(name, "--playlist", "pl-a", "--playlist", "pl-c")
+    assert code == int(ExitCode.OK), done
+    assert sorted(account.renamed) == [("pl-a", "Warmup"), ("pl-c", "Closing")]
+    assert sorted(_by_id(done)) == ["pl-a", "pl-c"]
+    stamped = {e.playlist_id: bool(e.unmarked) for e in mark_record.MarkRecord(slim).of_pass(name)}
+    assert stamped == {"pl-a": True, "pl-b": False, "pl-c": True}
+
 def test_an_abort_renames_nothing_and_stamps_nothing(slim, monkeypatch):
     _fake, account, name, _xml = _marked(slim, monkeypatch)
     code, done = _answered(name, option="abort")

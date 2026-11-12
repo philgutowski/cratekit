@@ -241,3 +241,29 @@ def test_the_named_calls_carry_a_margin_round_up_and_never_fall_below_the_line()
     assert pair_calls.named(800, 5000) == 5000
     assert pair_calls.named(4100, 5000) == 5200
     assert pair_calls.named(0, 10) == 10
+
+
+@pytest.mark.parametrize(
+    ("removes", "adds"),
+    [
+        # U246: an add the playlist already holds sends nothing, so it costs no add.
+        ((), ("1",)),
+        # U246: a track taken off and added back is lacking once the removal ran,
+        # so the add is counted against what the removals left, not what was held.
+        (("1",), ("1",)),
+    ],
+)
+def test_an_add_is_counted_against_what_the_playlist_holds_after_its_removals(
+    client, removes, adds
+):
+    before = ["1", "2"]
+    client.members["acc"] = list(before)
+    account = adapter(client)
+    if removes:
+        account.remove_tracks("acc", removes)
+    lacking = tuple(one for one in adds if one not in client.members["acc"])
+    if lacking:
+        account.add_tracks("acc", lacking)
+    account.playlist_tracks("acc")
+    expected = pair_calls.account_write(before, adds=adds, removes=removes, listed=False)
+    assert client.counter.requests == expected

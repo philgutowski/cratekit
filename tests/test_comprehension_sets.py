@@ -7,15 +7,20 @@ those sets was the same set, and a rebuild of ten thousand tracks spent 17 of
 its 28 seconds building it (the speed survey of 2026-11-12, card U246). Ten
 comprehensions elsewhere carried the same shape over one playlist's length.
 
-The guard walks every module under ``src/cratekit`` and refuses a
-comprehension whose condition calls ``set``, ``frozenset`` or ``dict.fromkeys``
-on a value that names none of the comprehension's own variables, since that
-value is the same on every element. The fix is the one U246 made eleven times:
-build the set once, above the comprehension, and test against the name.
+The guard walks every module under ``src/cratekit``, the vendored downloader
+aside, and refuses a set (``set``, ``frozenset``, ``dict.fromkeys``, or a set or
+dict comprehension) built anew per element from names that do not change per
+element: anywhere in a comprehension's condition, or as the set a membership
+test in its element tests against. A name varies when the comprehension binds
+it, or a comprehension or lambda between it and the set does. The fix is the
+one U246 made eleven times: build the set once, above the comprehension, and
+test against the name.
 
 A call with no argument is not the shape (an empty set costs nothing to make and
 reads as a default), and neither is a call over the element itself
-(``set(row.tags)``), which is a different set for each element.
+(``set(row.tags)``), which is a different set for each element. A ``for``
+statement and a later ``for`` clause's iterable are not read; the record names
+them.
 """
 
 from __future__ import annotations
@@ -29,55 +34,119 @@ SOURCE_ROOT = Path(__file__).resolve().parent.parent / "src" / "cratekit"
 
 COMPREHENSIONS = (ast.ListComp, ast.SetComp, ast.GeneratorExp, ast.DictComp)
 
+#: The vendored downloader is not this project's code, and ruff skips it too.
+VENDORED = SOURCE_ROOT / "_vendor"
 
-def _bound(comprehension: ast.AST) -> set[str]:
-    """Every name the comprehension's own ``for`` clauses bind."""
-    return {
-        node.id
-        for generator in comprehension.generators
-        for node in ast.walk(generator.target)
-        if isinstance(node, ast.Name)
-    }
+#: The two set constructors, by their bare name or as ``builtins.set``.
+SET_CALLS = frozenset({"set", "frozenset"})
 
 
-def _builds_a_set(call: ast.Call) -> bool:
-    """``set(x)``, ``frozenset(x)`` or ``dict.fromkeys(x)``, over an argument."""
-    if not call.args:
+def _binds(node: ast.AST) -> set[str]:
+    """The names a comprehension's ``for`` clauses or a lambda's parameters bind."""
+    if isinstance(node, COMPREHENSIONS):
+        return {
+            name.id
+            for generator in node.generators
+            for name in ast.walk(generator.target)
+            if isinstance(name, ast.Name)
+        }
+    if isinstance(node, ast.Lambda):
+        arguments = node.args
+        every = [*arguments.posonlyargs, *arguments.args, *arguments.kwonlyargs]
+        every += [one for one in (arguments.vararg, arguments.kwarg) if one is not None]
+        return {one.arg for one in every}
+    return set()
+
+
+def _builds_a_set(node: ast.AST) -> bool:
+    """``set(x)``, ``frozenset(x)``, ``dict.fromkeys(x)`` or a set or dict comprehension."""
+    if isinstance(node, ast.SetComp | ast.DictComp):
+        return True
+    if not isinstance(node, ast.Call) or not node.args:
         return False
-    func = call.func
+    func = node.func
     if isinstance(func, ast.Name):
-        return func.id in {"set", "frozenset"}
-    return (
-        isinstance(func, ast.Attribute)
-        and func.attr == "fromkeys"
-        and isinstance(func.value, ast.Name)
-        and func.value.id == "dict"
-    )
+        return func.id in SET_CALLS
+    if isinstance(func, ast.Attribute) and isinstance(func.value, ast.Name):
+        if func.value.id == "builtins":
+            return func.attr in SET_CALLS
+        return func.value.id == "dict" and func.attr == "fromkeys"
+    return False
+
+
+def _free(node: ast.AST) -> set[str]:
+    """The names an expression reads that nothing inside it binds."""
+    read = {name.id for name in ast.walk(node) if isinstance(name, ast.Name)}
+    bound = set().union(*(_binds(inner) for inner in ast.walk(node)))
+    return read - bound
+
+
+def _membership_operands(expression: ast.AST):
+    """Each right hand side of an ``in`` or ``not in`` written in the expression."""
+    for node in ast.walk(expression):
+        if isinstance(node, ast.Compare):
+            for operator, right in zip(node.ops, node.comparators, strict=True):
+                if isinstance(operator, ast.In | ast.NotIn):
+                    yield right
+
+
+def _invariant_sets(expression: ast.AST, varying: set[str], *, anywhere: bool):
+    """Each set built in ``expression`` that reads none of the ``varying`` names.
+
+    ``varying`` grows by what every comprehension or lambda between the
+    comprehension and the set binds, since those change per element too.
+    ``anywhere`` reads every set the expression builds; otherwise only a set
+    that is the right hand side of a membership test.
+    """
+    found = []
+    pending = [(expression, varying)]
+    while pending:
+        node, names = pending.pop()
+        if _builds_a_set(node) and not (_free(node) & names):
+            if anywhere or any(node is right for right in _membership_operands(expression)):
+                found.append(node)
+                continue
+        inner = names | _binds(node)
+        pending.extend((child, inner) for child in ast.iter_child_nodes(node))
+    return found
 
 
 def rebuilt_per_element(source: str) -> list[str]:
-    """Each set a comprehension's condition builds anew from a value it does not vary.
+    """Each set a comprehension builds anew, per element, from a value it does not vary.
 
-    As ``line: expression``, in source order.
+    Read in two places: anywhere in a condition (an ``if`` clause), and as the
+    set a membership test in the element (or a dict comprehension's key or
+    value) tests against. As ``line: expression``, in source order.
     """
-    found: list[tuple[int, str]] = []
+    found: dict[int, tuple[int, str]] = {}
     for comprehension in ast.walk(ast.parse(source)):
         if not isinstance(comprehension, COMPREHENSIONS):
             continue
-        bound = _bound(comprehension)
-        for generator in comprehension.generators:
-            for condition in generator.ifs:
-                for call in ast.walk(condition):
-                    if not (isinstance(call, ast.Call) and _builds_a_set(call)):
-                        continue
-                    named = {node.id for node in ast.walk(call) if isinstance(node, ast.Name)}
-                    if not named & bound:
-                        found.append((call.lineno, ast.unparse(call)))
-    return [f"{line}: {text}" for line, text in sorted(found)]
+        varying = _binds(comprehension)
+        places = [
+            (condition, True)
+            for generator in comprehension.generators
+            for condition in generator.ifs
+        ]
+        places += [
+            (part, False)
+            for part in (
+                getattr(comprehension, "elt", None),
+                getattr(comprehension, "key", None),
+                getattr(comprehension, "value", None),
+            )
+            if part is not None
+        ]
+        for place, anywhere in places:
+            for built in _invariant_sets(place, varying, anywhere=anywhere):
+                found[id(built)] = (built.lineno, ast.unparse(built))
+    return [f"{line}: {text}" for line, text in sorted(found.values())]
 
 
 def test_no_comprehension_in_the_package_rebuilds_an_invariant_set_per_element():
-    modules = sorted(SOURCE_ROOT.rglob("*.py"))
+    modules = [
+        path for path in sorted(SOURCE_ROOT.rglob("*.py")) if VENDORED not in path.parents
+    ]
     assert len(modules) > 100, f"the walk found {len(modules)} modules under {SOURCE_ROOT}"
     offenders = [
         f"{path.relative_to(SOURCE_ROOT.parent)}:{hit}"
@@ -100,6 +169,14 @@ def test_no_comprehension_in_the_package_rebuilds_an_invariant_set_per_element()
         "kept = {k: v for k, v in pairs if k in dict.fromkeys(wanted)}",
         "kept = [e for e in xs if e and (e.id in set(ids) or e.name)]",
         "kept = [e for row in rows for e in row if e in set(other)]",
+        # The inner ``one`` is the set's own variable, not the comprehension's.
+        "kept = [one for one in removes if one in set(str(one) for one in now)]",
+        "kept = [e for e in xs if e in {o.id for o in options}]",
+        "kept = [e for e in xs if e in builtins.set(ys)]",
+        "kept = {k: v for k, v in pairs if k in {o: 1 for o in ys}}",
+        "found = any(x in set(ys) for x in xs)",
+        "kept = [a if a in set(ys) else b for a in xs]",
+        "kept = {k: k in frozenset(ys) for k in xs}",
     ],
 )
 def test_the_guard_finds_the_shape_in_every_comprehension(source):
@@ -116,6 +193,12 @@ def test_the_guard_finds_the_shape_in_every_comprehension(source):
         "kept = [e for row in rows for e in row if e in set(row.extra)]",
         "kept = [e for e in set(derived) if e]",
         "kept = set(derived) - set(placements)",
+        # A set that varies with an inner comprehension's or a lambda's variable.
+        "kept = [e for e in xs if any(1 for g in e.groups if 'house' in set(g.tags))]",
+        "kept = [e for e in xs if any(filter(lambda g: 'house' in set(g.tags), e.groups))]",
+        "kept = [e for e in xs if any(1 for o in set(e.options) if o)]",
+        # Built in the element but not tested against: a value, not a lookup.
+        "kept = [frozenset(ys) for x in xs]",
     ],
 )
 def test_the_guard_passes_a_set_built_once_or_built_from_the_element(source):
