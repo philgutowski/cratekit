@@ -446,7 +446,7 @@ def test_a_decline_beside_an_unread_catalogue_is_sources_unread_and_not_no_hit(
     assert result.unread == ("traxsource", "bandcamp")
     assert tags.read_genre_from_file(path) is None
     assert result.art_fetch == tag.ART_UNAVAILABLE
-    assert "traxsource, bandcamp could not be read" in result.art_fetch_detail
+    assert "traxsource, bandcamp went unread" in result.art_fetch_detail
 
 
 def test_a_decline_with_every_answer_a_miss_is_still_no_hit(folder, silence):

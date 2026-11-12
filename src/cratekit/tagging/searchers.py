@@ -1,4 +1,12 @@
-"""Ask three record catalogues what a track's genre is, or say why nobody answered.
+"""Ask the record catalogues what a track's genre is, or say why nobody answered.
+
+BEATPORT, THEN DISCOGS (U244). Beatport is asked first and carries the cover.
+When it does not match, Discogs is asked through its documented API with a
+person's own token, because the two record shop pages that used to follow,
+Traxsource and Bandcamp, answer this machine with bot challenges on every
+search (R-791). Their parsers stay in the tree and off the walk, so a record
+of what they answered still reads, and a walk that names them still drives
+them. See the Discogs section below for what that source answers and why.
 
 WHY THE OUTCOME OF ONE SOURCE HAS FOUR VALUES AND NOT TWO. The obvious shape is
 a genre or nothing, and it is the shape that quietly ruins a library. A source
@@ -99,7 +107,8 @@ as a residual rather than hidden.
 
 THE PICTURE RIDES THE GENRE'S ROW. A match carries the cover URL off the same
 row that supplied its genre, Beatport's release image or Bandcamp's listing or
-page image, and Traxsource names none, which is parity. The image is fetched
+page image, and Traxsource names none, which is parity. Discogs names none
+either: its covers are out of U244's scope, and Beatport stays the art source. The image is fetched
 later, and only for a file with no picture, by :func:`default_image_fetch`,
 which shares this module's pacer shape and rate limit policy.
 
@@ -118,14 +127,16 @@ import random
 import re
 import time
 import unicodedata
-from collections.abc import Callable, Iterable, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from types import MappingProxyType
 from typing import Any
-from urllib.parse import quote_plus
+from urllib.parse import quote_plus, urlencode
 
-from cratekit.core import routing
-from cratekit.core.cause import Scope, refuse
+from cratekit import __version__
+from cratekit.core import routing, secrets
+from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy
 from cratekit.tagging.tag import FetchImage, Searcher, SearchHit, SourceAnswer
@@ -170,13 +181,25 @@ HEADERS = {
 }
 
 BEATPORT = "beatport"
+DISCOGS = "discogs"
 TRAXSOURCE = "traxsource"
 BANDCAMP = "bandcamp"
 
-#: The fallback order. Beatport carries the richest genre field, Traxsource
-#: covers the house and soul catalogue Beatport thins out, and Bandcamp catches
-#: the self released records neither of the first two stocks.
-SOURCES: tuple[str, ...] = (BEATPORT, TRAXSOURCE, BANDCAMP)
+#: Every source a file's record can name, in the order a record lists them.
+#: Readers of records count over this, so a record written before U244, when
+#: the walk was Beatport, Traxsource and Bandcamp, still summarises.
+SOURCES: tuple[str, ...] = (BEATPORT, DISCOGS, TRAXSOURCE, BANDCAMP)
+
+#: The sources asked, in order, unless a caller names another walk (U244).
+#: Beatport carries the richest per track genre field and the cover; Discogs
+#: answers per release, with styles collectors and DJs tagged, and fills the
+#: tracks Beatport does not carry.
+WALK: tuple[str, ...] = (BEATPORT, DISCOGS)
+
+#: The walk before U244, kept so the two scraped parsers stay driven by the
+#: suite and a person can still name it. Never the default: both shops refuse
+#: this machine with a bot check on every search.
+SCRAPED_WALK: tuple[str, ...] = (BEATPORT, TRAXSOURCE, BANDCAMP)
 
 BEATPORT_SEARCH = "https://www.beatport.com/search"
 TRAXSOURCE_SEARCH = "https://www.traxsource.com/search/tracks"
@@ -264,6 +287,11 @@ class SourceOutcome:
 
     ``art_url`` is the picture on the row that answered, the same row as
     ``source_genre``, or empty when that row named none.
+
+    ``words`` is every word a source answered when it answers several, in its
+    own order, Discogs' styles (U244). Empty for a source that answers one, and
+    then ``source_genre`` is the word. When it is not empty the tag is chosen
+    among them by :func:`choose_word`, never by ``source_genre`` alone.
     """
 
     source: str
@@ -271,6 +299,7 @@ class SourceOutcome:
     source_genre: str = ""
     note: str = ""
     art_url: str = ""
+    words: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -290,6 +319,12 @@ class Fetched:
     text: str | None = None
     note: str = ""
     status: int | None = None
+    #: The answer's headers, names lowercased, on a 200 only (U244). Empty for
+    #: every other answer and for a fetch that reads none. Discogs reads its
+    #: remaining request count here; nothing else does.
+    headers: Mapping[str, str] = field(
+        default_factory=lambda: MappingProxyType({}), compare=False
+    )
 
 
 #: The one seam every network touch goes through. Given a URL, it answers with
@@ -351,9 +386,10 @@ def default_fetch(
     """The shipped fetch seam: one GET, one timeout, one rate limit policy.
 
     ``headers`` is what the request says about itself, :data:`HEADERS` unless a
-    caller names its own. The three record catalogues are asked as a browser
+    caller names its own. The three record shop pages are asked as a browser
     because they serve pages; :mod:`cratekit.tagging.published` asks a public
-    API and says what it is.
+    API and says what it is, and Discogs is asked with
+    :func:`discogs_headers` for the same reason.
 
     R22's classification lives here and nowhere else, so there is one answer to
     "was that source unreachable" rather than three that drift. A transport
@@ -371,9 +407,21 @@ def default_fetch(
         response, note, status = _answered(getter, sleep, url, sent)
         if response is None:
             return Fetched(note=note, status=status)
-        return Fetched(text=response.text, status=status)
+        return Fetched(text=response.text, status=status, headers=_headers_of(response))
 
     return fetch
+
+
+def _headers_of(response: Any) -> Mapping[str, str]:
+    """The answer's headers with lowercased names, or none when it carries none.
+
+    Lowercased because a header name is case blind on the wire and a reader
+    that asked for one spelling would miss the other.
+    """
+    raw = getattr(response, "headers", None)
+    if not isinstance(raw, Mapping):
+        return MappingProxyType({})
+    return MappingProxyType({str(name).lower(): str(value) for name, value in raw.items()})
 
 
 def _answered(
@@ -445,7 +493,7 @@ def default_image_fetch(
 
 
 # ---------------------------------------------------------------------------
-# Matching, shared by all three sources
+# Matching, shared by every source asked by artist and title
 # ---------------------------------------------------------------------------
 
 
@@ -498,7 +546,7 @@ def _title_matches(searched: str, found: str) -> bool:
 
 
 def _query(artist: str, title: str) -> str:
-    """One escaped query string for all three catalogues.
+    """One escaped query string for the three record shop pages.
 
     Escaping is not cosmetic here: an unescaped ampersand truncates the query at
     the first delimiter, which returns a page for a different search and reports
@@ -909,20 +957,616 @@ def _search_bandcamp(
 
 
 # ---------------------------------------------------------------------------
+# Discogs, asked through its documented API with a person's own token (U244)
+# ---------------------------------------------------------------------------
+#
+# WHY DISCOGS. Its releases carry a coarse genre and a finer style ("Disco",
+# "Nu-Disco", "Deep House"), mostly tagged by DJs and collectors, so the dance
+# records Beatport does not sell are covered well, and it is an API a person
+# signs up to rather than a page that answers a bot check. Signed in, it allows
+# about sixty requests a minute.
+#
+# A SEARCH, THEN THE RELEASES IT NAMES. The database search names releases and
+# carries no tracklist, so the first few releases it names are read, each by
+# its own number, and one is accepted only when one of its tracks, or its own
+# title for a single, matches the searched title through ``_discogs_title_matches``
+# (the shared ``_title_matches`` with its empty title refused) and
+# an artist matches through ``_artist_matches``. A wrong release is worse than a
+# miss: its style would be written onto the file for good.
+#
+# THE STYLES RIDE THE HIT AND THE GENRES RIDE THE NOTE. Styles are the field a
+# folder can be chosen from, so all of them ride the outcome in Discogs' order
+# and :func:`_resolved` takes the first that names a folder. Genres ("Electronic",
+# "Funk / Soul") are too coarse to choose by and are kept as context.
+#
+# THE TOKEN IS A CREDENTIAL AND GOES IN ONE PLACE. It is read from the keychain
+# through ``core.secrets``, sent only in the ``Authorization`` header, and never
+# put in a URL, a note, a record, a log line or a refusal. Every note the asker
+# writes is scrubbed of it as well, because a transport failure's message is a
+# client library's text and not this module's to bound.
+#
+# NO TOKEN IS NOT A MISS. With none recorded Discogs is ``not-asked``, its note
+# says how to record one, and the walk names it among the unread sources, so a
+# folder swept without a token is never recorded as tracks no catalogue
+# carries. A token the API rejects is a run's refusal naming the remedy, never
+# an outage: every later file would be refused the same way.
+#
+# A REFUSAL IS REMEMBERED FOR THE PROCESS, as the general catalogue's is. A 429
+# that outlasted the shared backoff is BLOCKED, and the next file is answered
+# BLOCKED from memory rather than waiting out the backoff again. The asker is
+# one per process for that reason and for its pacer: one interval across the
+# run, never one per file.
+
+#: The API's root and the two reads this source makes.
+DISCOGS_API = "https://api.discogs.com"
+DISCOGS_SEARCH = f"{DISCOGS_API}/database/search"
+DISCOGS_RELEASE = f"{DISCOGS_API}/releases/"
+
+#: How many search results are asked for, and how many of the releases they
+#: name are read. Each release is a paced request, so three is the cost a miss
+#: may spend, about five seconds a track at the pacer's interval.
+DISCOGS_RESULTS_PER_PAGE = 10
+DISCOGS_RELEASES_READ = 3
+
+#: The remaining request count at or under which the next request waits
+#: :data:`DISCOGS_SLOWDOWN_S` first. Discogs counts requests over a moving
+#: minute and says how many are left on every answer, so slowing down there is
+#: cheaper than meeting a 429 and the thirty second ladder behind it.
+DISCOGS_REMAINING_FLOOR = 5
+DISCOGS_SLOWDOWN_S = 10.0
+
+#: The header Discogs counts down in.
+DISCOGS_REMAINING_HEADER = "x-discogs-ratelimit-remaining"
+
+#: The credential, by the name ``crate login`` records it under.
+DISCOGS_CREDENTIAL = secrets.Credential.DISCOGS_TOKEN
+
+#: How a person records the token, said wherever its absence is.
+DISCOGS_LOGIN_STEPS = (
+    "make a personal access token in your Discogs account's developer settings, "
+    "put it in a file, and record it with crate login discogs-token --from-file PATH"
+)
+
+#: The ``not-asked`` notes for a walk with no token to send. Two, because a
+#: token never recorded and one recorded whose value the keychain no longer
+#: holds are two facts. The tag summary counts both as "no token".
+DISCOGS_NO_TOKEN = f"not asked: no Discogs token is recorded; {DISCOGS_LOGIN_STEPS}"
+DISCOGS_TOKEN_LOST = (
+    f"not asked: a Discogs token is recorded and the keychain no longer holds it; "
+    f"{DISCOGS_LOGIN_STEPS}"
+)
+DISCOGS_UNASKED_NOTES: tuple[str, ...] = (DISCOGS_NO_TOKEN, DISCOGS_TOKEN_LOST)
+
+#: A personal token is one printable word. Anything else would make the header
+#: invalid, and a client library that refuses an invalid header names its value
+#: in the error, so a malformed token is refused before it is sent.
+_TOKEN_SHAPE = re.compile(r"[!-~]+")
+
+#: What stands in for the token in any text that might have carried it.
+_SCRUBBED = "[token]"
+
+#: Why a credential refusal is raised with this slug: the product's one slug for
+#: a credential the run cannot use, as the catalogue app's rejection uses it.
+_CREDENTIAL_REASON = "credential-missing"
+
+
+def discogs_headers(token: str) -> dict[str, str]:
+    """What every Discogs request says about itself, the token in its one place.
+
+    Discogs asks every client for a User-Agent that names it, so this tool names
+    itself and its version and nothing about the person running it.
+    """
+    return {
+        "User-Agent": f"Cratekit/{__version__}",
+        "Accept": "application/json",
+        "Authorization": f"Discogs token={token}",
+    }
+
+
+@dataclass(frozen=True, slots=True)
+class NotAsked:
+    """A source the walk passed over with a reason, recorded ``not-asked``."""
+
+    source: str
+    note: str
+
+
+@dataclass(frozen=True, slots=True)
+class _Release:
+    """The parts of one Discogs release this reader uses."""
+
+    release_id: int
+    title: str
+    artists: str
+    tracks: tuple[tuple[str, str], ...]
+    styles: tuple[str, ...]
+    genres: tuple[str, ...]
+
+
+def _words_of(value: object) -> tuple[str, ...] | None:
+    """The non empty strings of a list, or None when the field is not a list."""
+    if not isinstance(value, list):
+        return None
+    return tuple(word.strip() for word in value if isinstance(word, str) and word.strip())
+
+
+#: Discogs' numeral for a second artist of the same name, "Moodymann (2)".
+_DISAMBIGUATION = re.compile(r"\s*\(\d+\)$")
+
+#: Discogs files an article last, "Prodigy, The", which the comma split of
+#: ``_artist_matches`` would read as two artists, one of them "the".
+_ARTICLE_LAST = re.compile(r"^(?P<name>.+?),\s*(?P<article>the|a|an)$", re.IGNORECASE)
+
+
+def _discogs_name(name: str) -> str:
+    """One Discogs artist name in the form a file's tag spells it.
+
+    The disambiguating numeral and the variation mark are Discogs' own and are
+    dropped, and an article filed last is put back first, so "Prodigy, The" is
+    one artist, "The Prodigy", and not a second one called "the" that every
+    artist named The anything matches.
+    """
+    bare = _DISAMBIGUATION.sub("", name.strip().rstrip("*").strip())
+    moved = _ARTICLE_LAST.match(bare)
+    return f"{moved['article']} {moved['name']}" if moved else bare
+
+
+def _credited(value: object) -> str:
+    """The names of a Discogs artist list, joined as ``_artist_matches`` reads them."""
+    if not isinstance(value, list):
+        return ""
+    names = (entry.get("name") for entry in value if isinstance(entry, dict))
+    return ", ".join(
+        _discogs_name(name) for name in names if isinstance(name, str) and name.strip()
+    )
+
+
+def _tracks_of(rows: object) -> list[dict[str, Any]]:
+    """Every track of a tracklist, the sub tracks under an index row included."""
+    if not isinstance(rows, list):
+        return []
+    found: list[dict[str, Any]] = []
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if row.get("type_", "track") == "track":
+            found.append(row)
+        found.extend(_tracks_of(row.get("sub_tracks")))
+    return found
+
+
+#: The last bracketed group of a title, alone: "(Part 1)" of
+#: "(Not Just) Knee Deep (Part 1)", where the shared strip takes the whole
+#: title, since its group runs from the first bracket to the last.
+_LAST_GROUP = re.compile(r"\s*\([^()]*\)\s*$")
+
+
+def _last_group_stripped(value: str) -> str:
+    return _LAST_GROUP.sub("", value).strip()
+
+
+def _discogs_title_matches(searched: str, found: str) -> bool:
+    """``_title_matches``, refused where it would read an empty title as a match.
+
+    THE SHARED MATCHER STRIPS A TRAILING BRACKET FROM THE FIRST "(" TO THE LAST
+    ")", so a title that starts and ends with a bracket, "(Not Just) Knee Deep
+    (Part 1)" or a skit row "(Skit)", strips to nothing, and nothing is a
+    substring of every title. A release by the artist with no such track was
+    accepted that way and its style written (U244's review, round one). So an
+    empty side matches nothing, and a side the shared strip empties is compared
+    whole and with only its last bracketed group stripped. The shared matcher
+    is left as it is: Beatport and both scraped parsers read it, and a fix
+    there is a change to three sources this unit does not own.
+    """
+    left, right = _normalized(searched), _normalized(found)
+    if not left or not right:
+        return False
+    if _without_trailing_bracket(left) and _without_trailing_bracket(right):
+        return _title_matches(searched, found)
+    bare_left, bare_right = _last_group_stripped(left), _last_group_stripped(right)
+    return left == right or bool(bare_left and bare_left == bare_right)
+
+
+def _discogs_release(payload: dict[str, Any], release_id: int) -> _Release | None:
+    """The release, or None when the answer is not a release this reader knows.
+
+    A TRACKLIST IS WHAT MAKES IT ONE. Every release Discogs serves carries one,
+    so an answer without a list there is a shape this reader was never written
+    against. Styles and genres are optional on Discogs, and a field that is
+    absent is no words; a field that is present and not a list is not.
+    """
+    tracklist = payload.get("tracklist")
+    styles = _words_of(payload.get("styles", []))
+    genres = _words_of(payload.get("genres", []))
+    if not isinstance(tracklist, list) or styles is None or genres is None:
+        return None
+    title = payload.get("title")
+    tracks = tuple(
+        (str(row.get("title") or "").strip(), _credited(row.get("artists")))
+        for row in _tracks_of(tracklist)
+    )
+    return _Release(
+        release_id=release_id,
+        title=title.strip() if isinstance(title, str) else "",
+        artists=_credited(payload.get("artists")),
+        tracks=tracks,
+        styles=styles,
+        genres=genres,
+    )
+
+
+def _release_matches(release: _Release, artist: str, title: str) -> bool:
+    """Whether a release carries the searched recording.
+
+    A TRACK of the release whose title matches, credited to a matching artist,
+    the track's own credit when it names one and the release's otherwise. Or, for
+    a single, the release's own title and artist, both through
+    :func:`_discogs_title_matches`, which refuses the empty titles the shared
+    matcher reads as a substring of every title.
+    """
+    for track_title, track_artists in release.tracks:
+        credited = track_artists or release.artists
+        if credited and _discogs_title_matches(title, track_title):
+            if _artist_matches(artist, credited):
+                return True
+    return bool(
+        release.artists
+        and _discogs_title_matches(title, release.title)
+        and _artist_matches(artist, release.artists)
+    )
+
+
+def _release_note(release: _Release) -> str:
+    styles = ", ".join(release.styles) or "none"
+    genres = ", ".join(release.genres) or "none"
+    return f"release {release.release_id} lists styles {styles} and genres {genres}"
+
+
+#: What a read answered when the release it asked for is gone.
+_GONE = object()
+
+
+@dataclass
+class DiscogsAsker:
+    """One process's way of asking Discogs, with what it has learned on the way.
+
+    ``token`` is None when none is recorded, and ``unasked`` is then the note
+    every file is recorded ``not-asked`` with. ``remaining`` is the last count
+    Discogs said was left, and ``refused`` the first refusal it answered, after
+    which nothing more is asked in this process. ``rejected`` is why the token
+    was refused, after which it is never sent again in this process: every
+    later file is refused the same way without a request.
+
+    The token is left out of the ``repr``, so a debugging print of an asker, or
+    of anything holding one, does not carry it.
+
+    Built by :func:`discogs_asker`, and by :func:`for_discogs` for a worker.
+    """
+
+    token: str | None = field(repr=False)
+    fetch: Fetch
+    pacer: Pacer
+    unasked: str = DISCOGS_NO_TOKEN
+    remaining: int | None = None
+    refused: SourceOutcome | None = None
+    rejected: str | None = None
+
+    def ask(self, artist: str, title: str) -> SourceOutcome | NotAsked:
+        """Discogs' answer about one track, or why it was not asked."""
+        if self.token is None:
+            return NotAsked(DISCOGS, self.unasked)
+        if self.rejected is not None:
+            raise _rejected(f"{self.rejected}, earlier in this run, so Discogs was not asked")
+        if not _TOKEN_SHAPE.fullmatch(self.token):
+            self.rejected = "the recorded Discogs token is not one printable word"
+            raise _rejected(f"{self.rejected}, so it was not sent")
+        if self.refused is not None:
+            return SourceOutcome(
+                DISCOGS,
+                Answer.BLOCKED,
+                note=(
+                    f"not asked: Discogs refused this client earlier in this run and "
+                    f"is not asked again in it. Then, {self.refused.note}"
+                ),
+            )
+        said = self._search(artist, title)
+        if said.answer is Answer.BLOCKED:
+            self.refused = said
+        return said
+
+    def _scrub(self, text: str) -> str:
+        return text.replace(self.token, _SCRUBBED) if self.token else text
+
+    def _said(self, answer: Answer, note: str = "") -> SourceOutcome:
+        return SourceOutcome(DISCOGS, answer, note=self._scrub(note))
+
+    def _read(self, url: str, *, release: bool) -> dict[str, Any] | SourceOutcome | object:
+        """One paced touch: the JSON object, the answer its absence is, or gone.
+
+        THE COUNT DISCOGS SENT LAST DECIDES WHETHER TO WAIT FIRST, so a run
+        slows down before a 429 rather than after one. A RELEASE THAT IS GONE,
+        404 or 410, is a dead result and no answer about the track, and is
+        passed over as Bandcamp's dead listings are; a search answering one is
+        an API that moved, and is unreachable.
+        """
+        if self.remaining is not None and self.remaining <= DISCOGS_REMAINING_FLOOR:
+            self.pacer.sleep(DISCOGS_SLOWDOWN_S)
+            self.remaining = None
+        self.pacer.wait()
+        page = self.fetch(url)
+        if page.text is not None:
+            self.remaining = _remaining(page.headers)
+        if page.status == 401:
+            self.rejected = "Discogs answered 401 to the token this installation records"
+            raise _rejected(self.rejected)
+        if release and page.status in _GONE_STATUSES:
+            return _GONE
+        refused = unread_outcome(DISCOGS, page)
+        if refused is not None:
+            return self._said(refused.answer, refused.note)
+        try:
+            payload = json.loads(page.text or "")
+        except ValueError:
+            return self._said(
+                Answer.UNREACHABLE,
+                "the answer was not JSON, so it did not come from the Discogs API",
+            )
+        if not isinstance(payload, dict):
+            return self._said(
+                Answer.PARSE_BREAK, "the answer was JSON and not an object"
+            )
+        return payload
+
+    def _search(self, artist: str, title: str) -> SourceOutcome:
+        # THE MIX IS LEFT OUT OF THE QUESTION, its last bracketed group only, and
+        # a title that is nothing but brackets is asked whole: an empty track
+        # field asks Discogs for every release by the artist.
+        bare = _last_group_stripped(title.strip()) or title.strip()
+        query = urlencode(
+            {
+                "type": "release",
+                "artist": artist.strip(),
+                "track": bare,
+                "per_page": DISCOGS_RESULTS_PER_PAGE,
+            }
+        )
+        found = self._read(f"{DISCOGS_SEARCH}?{query}", release=False)
+        if isinstance(found, SourceOutcome):
+            return found
+        assert isinstance(found, dict)
+        results = found.get("results")
+        if not isinstance(results, list):
+            return self._said(
+                Answer.PARSE_BREAK, "the search answer carries no list of results"
+            )
+        numbers = [
+            entry["id"]
+            for entry in results
+            if isinstance(entry, dict)
+            and type(entry.get("id")) is int
+            and entry.get("type", "release") == "release"
+        ]
+        if results and not numbers:
+            # Results are present and none names a release by number, which is
+            # the only evidence that tells a reshaped answer from an empty one.
+            return self._said(
+                Answer.PARSE_BREAK,
+                "the search answered results and none names a release by number",
+            )
+        held: SourceOutcome | None = None
+        styleless: SourceOutcome | None = None
+        for number in numbers[:DISCOGS_RELEASES_READ]:
+            read = self._read(f"{DISCOGS_RELEASE}{number}", release=True)
+            if read is _GONE:
+                continue
+            if isinstance(read, SourceOutcome):
+                # A BLOCK ENDS THE WALK OVER RELEASES: every further read is a
+                # paced request to an API that has just refused this client.
+                # Anything else unread is held, since a later release may answer.
+                if read.answer is Answer.BLOCKED:
+                    return read
+                held = held or read
+                continue
+            assert isinstance(read, dict)
+            release = _discogs_release(read, number)
+            if release is None:
+                held = held or self._said(
+                    Answer.PARSE_BREAK,
+                    f"release {number} answered without a tracklist this reader knows",
+                )
+                continue
+            if not _release_matches(release, artist, title):
+                continue
+            matched = SourceOutcome(
+                DISCOGS,
+                Answer.MATCHED,
+                source_genre=release.styles[0] if release.styles else "",
+                note=_release_note(release),
+                words=release.styles,
+            )
+            if not release.styles:
+                # A PRESSING WITH NO STYLE IS KEPT, NOT RETURNED. Another pressing
+                # of the same recording may carry the styles, and a match that
+                # can name no style would decline the file where it need not.
+                styleless = styleless or matched
+                continue
+            return matched
+        # AN UNREAD PRESSING OUTRANKS A STYLELESS MATCH (round two): what it held
+        # is unknown, and the match alone would let the general catalogue write
+        # its album word over a style Discogs may have had.
+        if held is not None:
+            return held
+        if styleless is not None:
+            return styleless
+        # A RELEASE THAT COULD NOT BE READ IS NOT A MISS: it may have been the
+        # one carrying the track.
+        return held if held is not None else self._said(Answer.MISS)
+
+
+def _remaining(headers: Mapping[str, str]) -> int | None:
+    """The request count Discogs said is left, or None when it said none."""
+    raw = headers.get(DISCOGS_REMAINING_HEADER, "").strip()
+    # ASCII DIGITS ONLY: ``isdigit`` is true of a superscript two, which ``int``
+    # refuses, and a header is text somebody else chose.
+    return int(raw) if raw.isascii() and raw.isdigit() else None
+
+
+def _rejected(why: str) -> CratekitError:
+    """A token Discogs cannot use, as the run's refusal, typed as a rejection.
+
+    BUILT FROM ``secrets.CredentialRejected``, so the remedy is the one the
+    credential store declares for a credential that IS set and was refused:
+    record a new one. RUN SCOPE, because every later file would be refused the
+    same way. The token is never in the sentence.
+    """
+    typed = secrets.CredentialRejected(why, name=str(DISCOGS_CREDENTIAL))
+    error = refuse(
+        _CREDENTIAL_REASON,
+        f"{why}. Discogs was not read and nothing was recorded as a miss",
+        remedy=Remedy(str(typed.remedy)),
+        steps=(DISCOGS_LOGIN_STEPS,),
+        scope=Scope.RUN,
+        retryable=False,
+        origin=("tagging", "searchers"),
+        detail={"credential": str(DISCOGS_CREDENTIAL), "source": DISCOGS},
+    )
+    error.__cause__ = typed
+    return error
+
+
+def discogs_asker(
+    *,
+    token: str | None,
+    fetch: Fetch | None = None,
+    sleep: Callable[[float], None] | None = None,
+    pacing: Pacer | None = None,
+    unasked: str = DISCOGS_NO_TOKEN,
+) -> DiscogsAsker:
+    """Build the asker. With no token it asks nothing, and needs no fetch.
+
+    The default fetch sends :func:`discogs_headers` and nothing else, under the
+    shared timeout and rate limit ladder. An explicit ``pacing`` keeps its own
+    sleep, as :func:`catalogue_searcher`'s does.
+    """
+    naps = time.sleep if sleep is None else sleep
+    pacer = Pacer(sleep=naps) if pacing is None else pacing
+    if fetch is None:
+        sent = discogs_headers(token) if token is not None else {}
+        fetch = default_fetch(sleep=naps, headers=sent)
+    return DiscogsAsker(token=token, fetch=fetch, pacer=pacer, unasked=unasked)
+
+
+def _recorded_token() -> tuple[str | None, str]:
+    """The token the keychain holds, or None and the note saying why not.
+
+    THE PRESENCE INDEX FIRST, so an installation that never recorded a token
+    never touches the keychain. A recorded token the keychain no longer holds is
+    an absence, said as such. A keychain that cannot be read at all is a broken
+    machine and is refused, never read as no token: a person who recorded one
+    would otherwise watch Discogs go unasked with no word of why.
+    """
+    name = str(DISCOGS_CREDENTIAL)
+    if not secrets.exists(name):
+        return None, DISCOGS_NO_TOKEN
+    try:
+        return secrets.get(name), ""
+    except secrets.CredentialMissing:
+        return None, DISCOGS_TOKEN_LOST
+    except secrets.CredentialError as exc:
+        raise refuse(
+            _CREDENTIAL_REASON,
+            f"the Discogs token is recorded and the keychain could not be read for it "
+            f"({type(exc).__name__}), so Discogs was not asked and nothing was "
+            f"recorded as a miss",
+            remedy=Remedy(str(exc.remedy)),
+            scope=Scope.RUN,
+            origin=("tagging", "searchers"),
+            detail={"credential": name},
+        ) from exc
+
+
+#: The one asker this process asks Discogs through, built on first use.
+_shared_discogs: list[DiscogsAsker] = []
+
+
+def for_discogs() -> DiscogsAsker:
+    """The asker a worker should use, one per process, looked up at call time.
+
+    ONE PER PROCESS, so the pacer, the remaining count and a refusal are the
+    run's and not a file's: a worker builds its searcher per file, and an asker
+    per file would open every file with a fresh interval and ask an API that
+    refused the file before. A test replaces this attribute, as it does
+    :func:`for_taxonomy`. Building one reads the keychain and touches no network.
+    """
+    if not _shared_discogs:
+        token, note = _recorded_token()
+        _shared_discogs.append(discogs_asker(token=token, unasked=note or DISCOGS_NO_TOKEN))
+    return _shared_discogs[0]
+
+
+def choose_word(
+    declared: Taxonomy, words: Sequence[str], *, source: str, named_only: bool
+) -> tuple[str, str] | None:
+    """The first of a source's words that maps to a folder, with the tag to write.
+
+    The one chooser for a source that answers several words, shared by Discogs'
+    styles and the general catalogue's album genres. "Maps to a folder" is the
+    shipped resolver answering, as ``source``'s word, with a bucket or a word
+    that is a bucket's own name, not declining, not a name the taxonomy calls
+    too coarse to be a final tag, and not the fallback bucket. With
+    ``named_only`` the tag must also name a folder by an exact declaration,
+    :meth:`Taxonomy.named_folder`, the test a vocabulary row passes to load.
+
+    IN THE SOURCE'S ORDER, because that order is the only ranking it publishes,
+    and nothing here forms an opinion about music. The tag is the resolver's
+    answer and nothing here adjusts it.
+    """
+    fallback = declared.fallback.bucket
+    for word in words:
+        suggestion = routing.suggest_tag(declared, word, source=source)
+        tag = suggestion.tag
+        if suggestion.declined or not tag:
+            continue
+        bucket = suggestion.bucket_id or declared.bucket_for_display(tag)
+        if bucket is None or bucket == fallback:
+            continue
+        if declared.is_too_coarse_as_source(tag):
+            continue
+        if named_only and declared.named_folder(tag) is None:
+            continue
+        return word, tag
+    return None
+
+
+# ---------------------------------------------------------------------------
 # The walk, and what it does when nobody answered
 # ---------------------------------------------------------------------------
 
-_SEARCHES = (_search_beatport, _search_traxsource, _search_bandcamp)
+#: The record shops asked by artist and title through the shared fetch seam.
+#: Discogs is not here: it is asked through its asker, which holds a token.
+_SEARCHES: Mapping[str, Callable[..., SourceOutcome]] = MappingProxyType(
+    {
+        BEATPORT: _search_beatport,
+        TRAXSOURCE: _search_traxsource,
+        BANDCAMP: _search_bandcamp,
+    }
+)
 
 
-def _answers(outcomes: Sequence[SourceOutcome]) -> tuple[SourceAnswer, ...]:
-    """Every source's answer, in :data:`SOURCES` order, ``not-asked`` for the rest.
+def _answers(
+    walk: Sequence[str],
+    outcomes: Sequence[SourceOutcome],
+    passed: Sequence[NotAsked] = (),
+) -> tuple[SourceAnswer, ...]:
+    """Every source of the walk's answer, in the walk's order, ``not-asked`` for the rest.
 
-    ALL THREE, ALWAYS, so a reader of one file's record never has to work out
-    from a missing entry whether a catalogue was skipped or forgotten. A source
-    the walk never reached because an earlier one matched says so.
+    EVERY SOURCE OF THE WALK, ALWAYS, so a reader of one file's record never has
+    to work out from a missing entry whether a catalogue was skipped or
+    forgotten. A source the walk never reached because an earlier one matched
+    says so, and one it passed over says why in its note.
     """
     said = {outcome.source: outcome for outcome in outcomes}
+    why = {skipped.source: skipped.note for skipped in passed}
     return tuple(
         SourceAnswer(
             source=source,
@@ -931,23 +1575,28 @@ def _answers(outcomes: Sequence[SourceOutcome]) -> tuple[SourceAnswer, ...]:
             note=said[source].note,
         )
         if source in said
-        else SourceAnswer(source=source, answer=NOT_ASKED)
-        for source in SOURCES
+        else SourceAnswer(source=source, answer=NOT_ASKED, note=why.get(source, ""))
+        for source in walk
     )
 
 
-def _unread_sources(outcomes: Sequence[SourceOutcome]) -> tuple[str, ...]:
-    """The sources asked whose answer said nothing about the track.
+def _unread_sources(
+    outcomes: Sequence[SourceOutcome], passed: Sequence[NotAsked] = ()
+) -> tuple[str, ...]:
+    """The sources whose answer said nothing about the track.
 
-    On a match too, not only on a decline, so a record whose answers show an
-    unreachable Beatport before a Traxsource match says so in ``unread`` as
-    well, and the two fields of one record cannot disagree.
+    The ones asked that answered blocked, unreachable or unparsable, and the
+    ones passed over for want of a credential, since whether those carry the
+    track is just as unknown (U244). On a match too, not only on a decline, so
+    a record whose answers show an unreachable Beatport before a Discogs match
+    says so in ``unread`` as well, and the two fields of one record cannot
+    disagree.
     """
     return tuple(
         outcome.source
         for outcome in outcomes
         if outcome.answer not in (Answer.MISS, Answer.MATCHED)
-    )
+    ) + tuple(skipped.source for skipped in passed)
 
 
 def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
@@ -961,6 +1610,18 @@ def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
     pass through string this taxonomy calls too coarse to be a final tag is a
     plain decline and carries no flag: a file gets one disposition, never two.
     """
+    if outcome.words:
+        # SEVERAL WORDS, AND THE FIRST THAT NAMES A FOLDER IS THE ONE (U244).
+        # None that does is a decline naming the source's first word, never the
+        # resolver's pass through of it: a style written raw would put a word
+        # on the file that no folder holds.
+        picked = choose_word(declared, outcome.words, source=outcome.source, named_only=True)
+        return SearchHit(
+            genre=picked[1] if picked else None,
+            source=outcome.source,
+            source_genre=picked[0] if picked else outcome.source_genre,
+            art_url=outcome.art_url,
+        )
     suggestion = routing.suggest_tag(declared, outcome.source_genre)
     tag = suggestion.tag
     if suggestion.declined or not tag or declared.is_too_coarse_as_source(tag):
@@ -974,7 +1635,13 @@ def _resolved(declared: Taxonomy, outcome: SourceOutcome) -> SearchHit:
     )
 
 
-def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> SearchHit:
+def _decide(
+    walk: Sequence[str],
+    outcomes: Sequence[SourceOutcome],
+    passed: Sequence[NotAsked],
+    artist: str,
+    title: str,
+) -> SearchHit:
     """Refuse, or return the decline, once every source has been asked.
 
     The precedence is the point of the whole module. A decline needs at least
@@ -984,14 +1651,22 @@ def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> Searc
     file is not reported as one no catalogue carries (R-791). Only when nobody
     answered at all does the question become which refusal, and a parse break
     beats an unreachable there because a broken parser is actionable today and a
-    network is not. A blocked source is not an answer about the track, so three
+    network is not. A blocked source is not an answer about the track, so
     refusals of this client raise the unreachable refusal and say so.
 
     The decline is a :class:`SearchHit` with no genre rather than None, because
-    None cannot carry the three answers the item's record owes.
+    None cannot carry the answers the item's record owes.
+
+    A SOURCE PASSED OVER FOR WANT OF A TOKEN IS NOT AN ANSWER EITHER (U244). It
+    rides ``unread`` beside a MISS, so the file is not ``no-hit``, and beside
+    refusals it is named in the refusal's steps. A walk that asked nothing at
+    all is a decline naming what it passed over, never an outage.
     """
-    if any(outcome.answer is Answer.MISS for outcome in outcomes):
-        return SearchHit(answers=_answers(outcomes), unread=_unread_sources(outcomes))
+    if not outcomes or any(outcome.answer is Answer.MISS for outcome in outcomes):
+        return SearchHit(
+            answers=_answers(walk, outcomes, passed),
+            unread=_unread_sources(outcomes, passed),
+        )
 
     broken = [outcome for outcome in outcomes if outcome.answer is Answer.PARSE_BREAK]
     if broken:
@@ -1028,9 +1703,11 @@ def _decide(outcomes: Sequence[SourceOutcome], artist: str, title: str) -> Searc
             f"result; this tool does not try to get past one, so those catalogues "
             f"stay unread until they answer this machine again"
         )
+    steps.extend(f"{skipped.source} was {skipped.note}" for skipped in passed)
+    asked = ", ".join(outcome.source for outcome in outcomes)
     raise refuse(
         UNREACHABLE_REASON,
-        f"none of {', '.join(SOURCES)} could be read, so nothing is known about "
+        f"none of {asked} could be read, so nothing is known about "
         f"{artist!r} {title!r}. This is not the same as the catalogues not "
         f"carrying it, and it is not recorded as one",
         remedy=Remedy.RETRY_LATER,
@@ -1052,8 +1729,16 @@ def catalogue_searcher(
     fetch: Fetch | None = None,
     sleep: Callable[[float], None] | None = None,
     pacing: Pacer | None = None,
+    walk: Sequence[str] = WALK,
+    discogs: DiscogsAsker | None = None,
 ) -> Searcher:
-    """Build the searcher that asks the three catalogues, in order.
+    """Build the searcher that asks the walk's catalogues, in order.
+
+    ``walk`` is :data:`WALK` unless a caller names another, each a source of
+    :data:`SOURCES` named once. ``discogs`` is the asker Discogs is asked
+    through; with none given, Discogs is a source with no token and is recorded
+    ``not-asked``, so a direct caller never reaches the keychain. A worker hands
+    in :func:`for_discogs` through :func:`for_taxonomy`.
 
     A factory rather than a module level function because
     :data:`cratekit.tagging.tag.Searcher` is ``(artist, title) -> SearchHit |
@@ -1064,22 +1749,39 @@ def catalogue_searcher(
     two different things about one schedule, and the more specific object is the
     one that meant it.
     """
+    order = tuple(walk)
+    unknown = [source for source in order if source not in SOURCES]
+    if unknown or len(set(order)) != len(order):
+        raise ValueError(
+            f"a walk names each of {', '.join(SOURCES)} at most once, not {order!r}"
+        )
     naps = time.sleep if sleep is None else sleep
     pacer = Pacer(sleep=naps) if pacing is None else pacing
     touch = default_fetch(sleep=naps) if fetch is None else fetch
+    asker = discogs_asker(token=None, sleep=naps) if discogs is None else discogs
 
     def search(artist: str, title: str) -> SearchHit | None:
         outcomes: list[SourceOutcome] = []
-        for ask in _SEARCHES:
-            outcome = ask(artist, title, fetch=touch, pacer=pacer, declared=declared)
+        passed: list[NotAsked] = []
+        for source in order:
+            if source == DISCOGS:
+                said = asker.ask(artist, title)
+                if isinstance(said, NotAsked):
+                    passed.append(said)
+                    continue
+                outcome = said
+            else:
+                outcome = _SEARCHES[source](
+                    artist, title, fetch=touch, pacer=pacer, declared=declared
+                )
             outcomes.append(outcome)
             if outcome.answer is Answer.MATCHED:
                 return replace(
                     _resolved(declared, outcome),
-                    answers=_answers(outcomes),
-                    unread=_unread_sources(outcomes),
+                    answers=_answers(order, outcomes, passed),
+                    unread=_unread_sources(outcomes, passed),
                 )
-        return _decide(outcomes, artist, title)
+        return _decide(order, outcomes, passed, artist, title)
 
     return search
 
@@ -1101,7 +1803,7 @@ def for_taxonomy(declared: Taxonomy) -> Searcher:
     shipped default reached for here tagged by a declaration the library does
     not hold.
     """
-    return catalogue_searcher(declared)
+    return catalogue_searcher(declared, discogs=for_discogs())
 
 
 def for_images() -> FetchImage:
@@ -1121,11 +1823,26 @@ __all__ = [
     "BEATPORT",
     "BEATPORT_IMAGE_EDGE",
     "BEATPORT_SEARCH",
+    "DISCOGS",
+    "DISCOGS_API",
+    "DISCOGS_CREDENTIAL",
+    "DISCOGS_LOGIN_STEPS",
+    "DISCOGS_NO_TOKEN",
+    "DISCOGS_RELEASE",
+    "DISCOGS_RELEASES_READ",
+    "DISCOGS_REMAINING_FLOOR",
+    "DISCOGS_REMAINING_HEADER",
+    "DISCOGS_RESULTS_PER_PAGE",
+    "DISCOGS_SEARCH",
+    "DISCOGS_SLOWDOWN_S",
+    "DISCOGS_TOKEN_LOST",
+    "DISCOGS_UNASKED_NOTES",
     "HEADERS",
     "JITTER_FRACTION",
     "MIN_INTERVAL_S",
     "NOT_ASKED",
     "PARSE_BREAK_REASON",
+    "SCRAPED_WALK",
     "RATE_LIMIT_ATTEMPTS",
     "RATE_LIMIT_BASE_WAIT_S",
     "REQUEST_TIMEOUT_S",
@@ -1134,14 +1851,21 @@ __all__ = [
     "TRAXSOURCE_SEARCH",
     "UNREACHABLE_REASON",
     "UNREAD_ANSWERS",
+    "WALK",
     "Answer",
+    "DiscogsAsker",
     "Fetch",
     "Fetched",
+    "NotAsked",
     "Pacer",
     "SourceOutcome",
     "catalogue_searcher",
+    "choose_word",
     "default_fetch",
     "default_image_fetch",
+    "discogs_asker",
+    "discogs_headers",
+    "for_discogs",
     "for_images",
     "for_taxonomy",
     "unread_outcome",

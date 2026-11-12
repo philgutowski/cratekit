@@ -48877,3 +48877,269 @@ title, so the person approving sees both.
 **Closes when:** the tombstone carries an identity unique to the recording,
 such as the provider track id of a track this product acquired, and the label
 side asks by it. Ledger only.
+
+---
+
+## R-1534. The shared title matcher reads a title that strips to nothing as a match, so Beatport can write another track's genre
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** `_title_matches` in `src/cratekit/tagging/searchers.py`
+strips a trailing bracket with `_without_trailing_bracket`, whose group runs
+from the first "(" to the last ")". A title that starts and ends with a
+bracket, "(Not Just) Knee Deep (Part 1)" or an "(Intro)", strips to the empty
+string, and the empty string is a substring of every title, so any row by the
+artist matches. U244 closed this for Discogs alone, and only for a title the
+strip empties, with `_discogs_title_matches`; one it cuts to a single letter
+is the residual on Discogs' titles. Beatport and the two scraped parsers still
+read the shared matcher.
+
+**Measured cost.** Driven at U244's review through `tag.tag_one` on the
+shipped Beatport parser: a file titled "(Intro)" took Deep House off a
+different track by the same artist, written for good, since a genre is fill if
+empty. Not measured: how many files in a real library carry such a title.
+
+**Closes when:** the shared matcher refuses an empty side and compares a
+title its strip empties whole or by its last group, as Discogs' does, with the
+Beatport and scraped suites driven over it. A wrong genre written onto a file
+is the board bar's damaged data.
+
+---
+
+## R-1535. A Discogs token the API rejects fails every file Beatport misses instead of stopping the run once
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** A 401 from Discogs raises a run scoped refusal built from
+`secrets.CredentialRejected`, as the brief prescribes. The job engine stops a
+run only on a parked item, never on a refusal's scope, so each file Beatport
+misses fails its own item with the login step inside it, and the verb's own
+cause is the generic one. Since U244's fix round the asker remembers the
+rejection and sends the token once a process, so the cost is failed items, not
+requests. Those files are not offered to the general catalogue either.
+
+**Measured cost.** Driven at the review over four files: four failed items,
+no genre written, where the same folder with no token recorded had all four
+tagged by the general catalogue. A person re-records the token and resumes.
+
+**Closes when:** Phillip decides whether a rejected optional token should
+stop the run once with one sentence, or degrade to not asked as a missing one
+does; then the engine or the asker carries it. Ledger only: the workflow
+finishes once the token is recorded again.
+
+---
+
+## R-1536. Discogs reads the first three releases its search names, so a track on a later one, or a better styled later pressing, is not seen
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** `DiscogsAsker._search` reads at most
+`DISCOGS_RELEASES_READ` releases in the search's order. A track carried only
+by the fourth result is a MISS; three gone results before a live fourth are a
+MISS; the first matching release whose first style names no folder declines
+the file even when a later pressing's style would. A styleless match does give
+way to a later styled one since the fix round.
+
+**Measured cost.** Driven at the review on recorded JSON only. Whether the
+live search ever orders results this way was not measured, since the live API
+is off limits in the cloud.
+
+**Closes when:** the attended Discogs trial reads how often the match sits
+past the third result, and the cap or the gone count is changed if it does.
+Ledger only until then.
+
+---
+
+## R-1537. A file searched only for its picture spends up to four Discogs requests, which name no picture
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** A file that already has a genre and no picture is still
+searched, so Beatport's row can name a cover. When Beatport misses, the walk
+goes on to Discogs, which is never asked for a picture, and its answer is
+discarded. The searcher's signature carries no "picture only" question.
+
+**Measured cost.** Driven at the review: four paced requests a run for each
+such file, about five seconds and four of the sixty a minute. Since the fix
+round such a file is not counted in the no token warning.
+
+**Closes when:** the searcher is told when only a picture is wanted and stops
+at the sources that name pictures. Ledger only: a rate budget, not a wrong
+answer.
+
+---
+
+## R-1538. The taxonomy upgrade puts back a vocabulary table a person deleted, as it puts back a deleted bucket
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** `crate taxonomy upgrade` adds every shipped
+`[vocabulary.SOURCE]` table a copy lacks, so a copy whose `[vocabulary.deezer]`
+was deleted, as that table's comment invited before U244, gains it back beside
+Discogs' under one gate, and the general catalogue's Pop, Alternative and
+Country then file differently. A deleted table and one that was never there
+cannot be told apart, the same limit the upgrade states for buckets. The
+template's comment now says the upgrade adds a missing table back.
+
+**Measured cost.** Driven at the review on a constructed copy. Of nineteen
+historical template revisions none lacked the table by deletion; nobody was
+shown to have deleted it. The gate lists the table before anything is written.
+
+**Closes when:** a copy can say it declines a table, or the gate names the
+consequence. Ledger only.
+
+---
+
+## R-1539. Four Discogs styles file by substring rules written for the record shops, Afro-Cuban and Afro-Cuban Jazz as Afro House among them
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** A Discogs style with no row in `[vocabulary.discogs]` goes
+on to the taxonomy's `[[suggest]]` substring rules, which were written for the
+record shops' combined names and read a style by any word it contains. The fix
+rounds gave rows to four such styles. Afro-Cuban and Afro-Cuban Jazz (to Afro
+House), Electro House (to Tech House) and Progressive Breaks (to Progressive
+House) still file this way, and the full Discogs style list was not read. The
+two Afro-Cuban styles belong in Jazz, and a row writing Jazz was taken out in
+round two: a copy made before the Jazz folder gains the Discogs table in the
+run that holds Jazz, and after the hold's own hand edits it would not load.
+
+**Measured cost.** Driven at the review through `tag.tag_one` with recorded
+styles. The style names were the reviewer's, not read from the live API, so
+how many files carry them is not measured.
+
+**Closes when:** the attended Discogs trial reads the styles a real folder
+answers, and each misfiled one gains a row (the Jazz ones once the upgrade can
+add a row only where its tag names a folder in the copy), or Discogs' words
+skip the substring pass. Ledger only until measured.
+
+---
+
+## R-1540. Discogs asks with only the last bracket group stripped, and a title cut to one letter still matches any track
+
+**Found:** at the review of #673, U244, round two, 2026-11-12.
+
+**The mechanism.** Round one's fix asks Discogs with the title's last bracketed
+group stripped, so "Foo (feat. X) (Extended Mix)" is asked as "Foo (feat. X)"
+where it was "Foo", and "Foo (Bar (Baz) Remix)" is asked whole. And
+`_discogs_title_matches` refuses only a title the shared strip empties: "A
+(Warm Summer Night)" or a bare "I" strips to one letter, which is a substring
+of most titles, so a release by the artist without the track matches. The
+other way, "(Foo) Bar (feat. X) (Extended Mix)" misses its own track "(Foo)
+Bar".
+
+**Measured cost.** Driven at round two on recorded JSON over twenty titles.
+Whether the live search answers such a track field with nothing, which would
+make a Beatport miss read `no-hit`, or with releases lacking the track, was not
+measured.
+
+**Closes when:** the search asks with the shared strip wherever it leaves
+something, and the matcher refuses a stripped title under a few letters, both
+driven on the attended Discogs trial. Ledger only until measured.
+
+---
+
+## R-1541. tag suggest asks Beatport again every day about rows Discogs was not asked about, and keeps a general catalogue decline from Discogs for a week
+
+**Found:** at the review of #673, U244, round two, 2026-11-12.
+
+**The mechanism.** A row unread only because Discogs had no token is kept for
+the day and is no longer a reason to stop the walk, so with no token every
+unresolved row is asked of Beatport on every day `tag suggest` runs, where
+before U244 the walk stopped after three. And a row the general catalogue
+declined with no token recorded is kept `declined` for seven days, so a token
+recorded the next day is not asked about it until the eighth. Since round two
+a row kept as passed over is asked again once a token is recorded.
+
+**Measured cost.** Driven at round two: 40 rows with no token sent 40 paced
+Beatport searches on each of four days; the declined row was asked of Discogs
+on day seven. No false statement either way.
+
+**Closes when:** a kept answer records whether Discogs could be asked, and the
+walk keeps a per day budget for rows only passed over. Ledger only.
+
+---
+
+## R-1542. The no token count includes a file its label tagged that was searched for its picture, and the blocked sentence counts searches never sent
+
+**Found:** at the review of #673, U244, round two, 2026-11-12.
+
+**The mechanism.** `discogs_without_token` leaves out files with the
+`has-genre` skip reason, and a file its registered label tagged in the same
+run, then searched only for its picture, carries no skip reason and is
+counted. And after Discogs is remembered as blocked, the later files answer
+BLOCKED from memory with no request, and the summary's "refused every one of
+the N searches it was sent" counts them as sent.
+
+**Measured cost.** Driven at round two through `tag_one` and the summary: the
+count one file high; three files and one 429 read "the 3 searches it was
+sent" where one was sent.
+
+**Closes when:** the count reads whether a genre was owed, and a remembered
+refusal is counted apart from a sent one. Ledger only: a count in a warning.
+
+---
+
+## R-1543. A ceiling stop between an add and the client's read after it leaves a landed track the outbound ledger never records
+
+**Found:** at the review of #684, U255, 2026-11-12.
+
+**The mechanism.** The client's add is a POST and then its own GET of the
+playlist for the next tag. When the provider gate's per command ceiling
+refuses that GET, the add has landed and `export.apply` raises before
+`ledger.record_playlist_track`. The resumed item finds the track on the
+playlist and reports it as already there, and the ledger's `added` never
+names it, so `export prune` reads it as a track a person put there.
+
+**Measured cost.** Driven by round one's review with a real gate over the
+counting transport, a ceiling of 6 on main and 4 on the branch: the resume
+reports `already` for the track and the ledger records `added: []`, on main
+and on the branch alike. No track is lost or added twice. U255 makes the cut
+position one in two requests of an add where it was one in four, the same
+share per request.
+
+**Closes when:** a track a resumed export finds on the playlist and the
+ledger does not name is recorded when the plan matched it to that row, or the
+ceiling refusal is raised only between whole adds. Ledger only: the cost is a
+prune that leaves a track, not a loss.
+
+---
+
+## R-1544. An add through a held playlist rests on the provider refusing a stale tag, which is measured for moves and not for adds
+
+**Found:** at the review of #684, U255, 2026-11-12.
+
+**The mechanism.** Since U255 `TidalAccount.add_to_playlist` adds through the
+object its membership read opened, so a run of adds sends no open of its own:
+each add carries the version tag and the length the client's read after the
+previous write set. Before U255 each add opened the playlist afresh, so the
+tag and the length were at most one gate interval old; now they are as old as
+the gap between two adds, or between two items of one job. The provider
+answers a move on a stale tag with 412 and changes nothing (Sitting 62;
+24 of 359 moves in Sitting 86), and one live add was answered 412 too (the
+U147 mirror build in `docs/cutover.md`), but no sitting has measured that an
+add on a stale tag is ALWAYS refused rather than accepted at the stale
+length. Round one's review drove a transport that does not hold an add to its
+tag: with a write by another writer between two adds, the held path put the
+add one place early where main put it at the end.
+
+Three costs ride on the same unmeasured behaviour, each driven on the suite's
+transport only. A read after a write served one write behind makes the next
+add refused 412 and sent again on a fresh open: 50 requests for 10 adds where
+main makes 43, no track lost (round two). A folder move that moves a
+playlist's tag would cost the next add the same refusal, now that the move no
+longer drops the hold (round two; whether a folder move moves the tag is
+unmeasured). And R-450 reaches the new retry: on a playlist identifier that
+carries "404", a 412 worded with its URL is read as not found and not sent
+again, the item failing as a playlist the provider no longer has; main does
+the same at its own open, about 0.86 percent of random identifiers carry it.
+
+**Measured cost.** None driven on the provider. On the transport, a misplaced
+add only when adds are not held to their tag, and extra requests otherwise.
+
+**Closes when:** the attended card U255 filed reads, on the next live
+`export set`, the call count, the number of adds answered 412 and of failed
+items, and that the playlist holds the set in order; an add on a stale tag
+always refused is then measured by a sitting that edits a product made
+playlist by hand between two adds. Ledger only: it closes at an attended
+sitting.

@@ -1,5 +1,13 @@
 """What the shipped template declares that a library's active copy lacks, and the copy with it added (U132).
 
+A THIRD KIND, A SOURCE'S VOCABULARY TABLE (U244). A ``[vocabulary.SOURCE]``
+table the shipped template declares and the copy lacks is appended whole, its
+comments with it, on the same terms as an entry: held when the copy does not
+load with it or when anything else the copy holds would move, and never added
+over a table of that source the copy already declares, edited or not. Discogs'
+styles reach a library's copy this way, and so does the general catalogue's
+table for a copy made before R-799.
+
 WHY THIS MODULE EXISTS. Setup copies the shipped template beside the database
 once, and every verb reads that copy (R-685). A class or a bucket the shipped
 template gains afterwards therefore reaches no library on its own: the live
@@ -49,6 +57,9 @@ _ORIGIN = ("core", "taxonomy_upgrade")
 SUB_CLASS = "sub_class"
 BUCKET = "bucket"
 
+#: The third kind: a source's own vocabulary table, ``[vocabulary.SOURCE]``.
+VOCABULARY = "vocabulary"
+
 #: The verb a person runs, named in every sentence that tells them to.
 VERB = "crate taxonomy upgrade"
 
@@ -90,6 +101,8 @@ class Plan:
     #: this adds that the copy points elsewhere or lacks. Never changed: a
     #: keyword rule is an entry the copy holds.
     keywords: tuple[str, ...] = ()
+    #: The vocabulary tables appended, by source, in the shipped order (U244).
+    vocabularies: tuple[str, ...] = ()
 
     @property
     def writes(self) -> bool:
@@ -106,12 +119,18 @@ class Plan:
         return (*self.buckets, *(h.id for h in self.held if h.kind == BUCKET))
 
     @property
+    def missing_vocabularies(self) -> tuple[str, ...]:
+        """Every shipped vocabulary table the copy lacks, added or held, by source."""
+        return (*self.vocabularies, *(h.id for h in self.held if h.kind == VOCABULARY))
+
+    @property
     def behind(self) -> bool:
         """True when the copy states an older schema or lacks any shipped entry."""
         return (
             self.from_version < self.shipped_version
             or bool(self.missing_classes)
             or bool(self.missing_buckets)
+            or bool(self.missing_vocabularies)
         )
 
 
@@ -172,6 +191,61 @@ def cut(shipped_text: str, kind: str, entry_id: str) -> str:
                 )
             return text.rstrip("\n") + "\n"
     raise ValueError(f"the shipped [[{kind}]] {entry_id!r} has no header of its own to cut at")
+
+
+def cut_table(shipped_text: str, source: str) -> str:
+    """The text of the shipped ``[vocabulary.SOURCE]`` table, its comments included.
+
+    From the comment paragraph directly above its header to the next header.
+    Raises ``ValueError`` when what was cut does not parse back to the shipped
+    table, as :func:`cut` does for an entry.
+    """
+    shipped = (tomllib.loads(shipped_text).get(VOCABULARY) or {}).get(source)
+    if not isinstance(shipped, dict):
+        raise ValueError(f"the shipped template declares no [{VOCABULARY}.{source}] table")
+    lines = shipped_text.splitlines(keepends=True)
+    blocks = _blocks(shipped_text)
+    for position, (name, start, _header) in enumerate(blocks):
+        if name != f"{VOCABULARY}.{source}":
+            continue
+        end = blocks[position + 1][1] if position + 1 < len(blocks) else len(lines)
+        text = "".join(lines[start:end])
+        if (tomllib.loads(text).get(VOCABULARY) or {}).get(source) != shipped:
+            raise ValueError(
+                f"the shipped [{VOCABULARY}.{source}] table could not be cut from its "
+                f"text whole; what was cut parses to something else"
+            )
+        return text.rstrip("\n") + "\n"
+    raise ValueError(f"the shipped [{VOCABULARY}.{source}] table has no header of its own to cut at")
+
+
+def _table_appended(
+    text: str, source: str, table: Mapping[str, Any], block: str, marker: str
+) -> str | None:
+    """``text`` with the table appended at its end, or None when that moves anything.
+
+    AT THE END, because a table's place in the file is not behaviour the way a
+    bucket's declared order is. Parsed back and refused unless the copy's every
+    other key is exactly as it was and its vocabulary gained this one source's
+    table and nothing else: a copy that declares its vocabulary inline cannot
+    take a table header after it, and that is a hold for the person's hand.
+    """
+    head = text if text.endswith("\n") or not text else text + "\n"
+    gap = "" if not head or head.endswith("\n\n") else "\n"
+    joined = head + gap + marker + "\n" + block
+    old = tomllib.loads(text)
+    try:
+        new = tomllib.loads(joined)
+    except tomllib.TOMLDecodeError:
+        return None
+    if {k: v for k, v in old.items() if k != VOCABULARY} != {
+        k: v for k, v in new.items() if k != VOCABULARY
+    }:
+        return None
+    before = old.get(VOCABULARY) or {}
+    if not isinstance(before, dict) or new.get(VOCABULARY) != {**before, source: table}:
+        return None
+    return joined
 
 
 # ---------------------------------------------------------------------------
@@ -432,6 +506,8 @@ def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
             text = placed
             added[kind].append(entry_id)
             current = loaded
+    tables = _vocabularies(text, shipped_text, shipped_data, marker, held)
+    text = tables[0]
     return Plan(
         template=template,
         from_version=active.schema_version,
@@ -443,7 +519,65 @@ def plan(active_text: str, shipped_text: str, *, template: str) -> Plan:
         before=active_text,
         after=text,
         keywords=_keyword_rules(tuple(added[BUCKET]), active, shipped),
+        vocabularies=tables[1],
     )
+
+
+def _vocabularies(
+    text: str,
+    shipped_text: str,
+    shipped_data: Mapping[str, Any],
+    marker: str,
+    held: list[Held],
+) -> tuple[str, tuple[str, ...]]:
+    """``text`` with every shipped vocabulary table it lacks appended, and their sources.
+
+    A TABLE THE COPY DECLARES FOR THAT SOURCE IS NEVER TOUCHED, whatever rows
+    it holds, since a row a person edited and a row that fell behind cannot be
+    told apart. A table the copy cannot take is held with the loader's words,
+    so the person reads which row names a folder their copy does not hold.
+    """
+    shipped_tables = shipped_data.get(VOCABULARY) or {}
+    added: list[str] = []
+    for source, table in shipped_tables.items():
+        present = tomllib.loads(text).get(VOCABULARY)
+        if isinstance(present, dict) and source in present:
+            continue
+        if present is not None and not isinstance(present, dict):
+            held.append(
+                Held(
+                    kind=VOCABULARY,
+                    id=source,
+                    reasons=(
+                        f"the copy's {VOCABULARY} is not a table of sources, so "
+                        f"[{VOCABULARY}.{source}] cannot be added; add it by hand from "
+                        f"the shipped template",
+                    ),
+                )
+            )
+            continue
+        block = cut_table(shipped_text, source)
+        placed = _table_appended(text, source, table, block, marker)
+        if placed is None:
+            held.append(
+                Held(
+                    kind=VOCABULARY,
+                    id=source,
+                    reasons=(
+                        f"the copy's text could not take [{VOCABULARY}.{source}] without "
+                        f"moving something it holds; add it by hand from the shipped "
+                        f"template",
+                    ),
+                )
+            )
+            continue
+        loaded = _loads(placed)
+        if isinstance(loaded, list):
+            held.append(Held(kind=VOCABULARY, id=source, reasons=tuple(loaded)))
+            continue
+        text = placed
+        added.append(source)
+    return text, tuple(added)
 
 
 def _keyword_rules(
@@ -497,13 +631,21 @@ def gap(found: Plan) -> str:
         parts.append(f"it lacks the class(es) {_named(found.missing_classes)}")
     if found.missing_buckets:
         parts.append(f"it lacks the bucket(s) {_named(found.missing_buckets)}")
+    if found.missing_vocabularies:
+        parts.append(
+            f"it lacks the vocabulary table(s) {_named(_tables(found.missing_vocabularies))}"
+        )
     return "; ".join(parts)
+
+
+def _tables(sources: tuple[str, ...]) -> tuple[str, ...]:
+    return tuple(f"[{VOCABULARY}.{source}]" for source in sources)
 
 
 def remedy(found: Plan) -> str:
     """What the upgrade would do about the gap, and the hand edit for what it holds."""
     parts = []
-    taken = [*found.classes, *found.buckets]
+    taken = [*found.classes, *found.buckets, *_tables(found.vocabularies)]
     if found.writes:
         what = []
         if found.to_version != found.from_version:
@@ -512,7 +654,8 @@ def remedy(found: Plan) -> str:
             what.append(f"adds {_named(tuple(taken))}")
         parts.append(f"{VERB} {' and '.join(what)}, never changing an entry the copy holds")
     for one in found.held:
-        parts.append(f"{one.id} is held: {'; '.join(one.reasons)}")
+        named = _tables((one.id,))[0] if one.kind == VOCABULARY else one.id
+        parts.append(f"{named} is held: {'; '.join(one.reasons)}")
     if found.held:
         parts.append(f"then run {VERB} again")
     parts.extend(found.keywords)
@@ -615,12 +758,14 @@ __all__ = [
     "MARKER",
     "SUB_CLASS",
     "VERB",
+    "VOCABULARY",
     "Held",
     "NoCopy",
     "Plan",
     "ShippedUnreadable",
     "blocks",
     "cut",
+    "cut_table",
     "gap",
     "loads",
     "placed",

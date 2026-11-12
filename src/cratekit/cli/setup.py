@@ -1421,7 +1421,7 @@ def _propose_prefix_map(wizard: _Wizard, document: dict[str, Any], cfg: config.C
 
 
 def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
-    """Offer to record each credential this profile's verbs will spend.
+    """Offer to record each credential this profile's verbs will or may spend.
 
     Read through ``cli/prompt``'s secret reader, so the value is never echoed,
     never reaches a command line, and never reaches a shell history. What is
@@ -1440,7 +1440,10 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
     """
     membership = profiles.resolve(cfg.profile.name, dict(cfg.modules.explicit))
     for key in sorted(doctor.CREDENTIALS_BY_CHECK):
-        if not doctor.requires_check(key, membership):
+        # OFFERED, NOT ONLY REQUIRED (U244): a credential a switched on verb
+        # spends when there is one, Discogs' token, is offered too, and a no
+        # here is a note, as for any other.
+        if not doctor.offered(key, membership):
             continue
         # Keyed by the CREDENTIAL rather than by the check that groups it. One
         # check covers two credentials, so a note keyed on the check would emit

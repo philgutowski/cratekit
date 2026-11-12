@@ -1,9 +1,9 @@
 """Ask a general music catalogue what genre a track was published under, by its ISRC.
 
-WHY A SECOND KIND OF SOURCE (R-796). The three record shops in
+WHY A SECOND KIND OF SOURCE (R-796). The record shops in
 :mod:`cratekit.tagging.searchers` sell dance music and are asked by artist and
-title. They do not carry funk, rock or soul, and two of them refuse this machine
-with bot checks, so every such file waited for a genre by hand while the
+title. They do not carry funk, rock or soul, and two of them refused this machine
+with bot checks (both off the default walk since U244, which asks Discogs), so every such file waited for a genre by hand while the
 taxonomy already had folders for it. A general catalogue knows those records,
 and it can be asked by the one identifier a download already carries, so no
 search result needs interpreting and nothing here is a guess.
@@ -76,8 +76,13 @@ BEATPORT MUST HAVE ANSWERED BEFORE THIS CATALOGUE IS ASKED. A genre is written
 once, fill if empty, so an album level answer written while Beatport was
 unreachable would stand in for Beatport's for good. When Beatport's answer is
 anything but a match or a miss, this catalogue is recorded as not asked and the
-file stays askable. The two fallbacks do not hold it back: they refuse this
-machine on every search, and waiting on them would mean never asking.
+file stays askable. DISCOGS IS WAITED FOR THE SAME WAY (U244's review): asked
+after Beatport and unread, blocked, unreachable or unparsable, this catalogue
+is recorded as not asked, since its album word written then would stand in for
+Discogs' style for good. Discogs not asked at all, for want of a token, does
+not hold it back, or a library with no token would never be asked here; nor do
+the two scraped fallbacks, off the walk and refusing this machine on every
+search when they were on it.
 
 A WORD NOTHING DECLARES IS A DECLINE HERE AND A WRITE FOR BEATPORT, on purpose.
 The resolver's last tier passes an unknown word through so a new dance genre
@@ -108,7 +113,6 @@ from typing import Any
 
 from cratekit import __version__
 from cratekit.acquire.match import isrc_token
-from cratekit.core import routing
 from cratekit.core.taxonomy import Taxonomy
 from cratekit.tagging import searchers
 from cratekit.tagging.searchers import Answer, Fetch, Pacer
@@ -464,21 +468,20 @@ def choose(declared: Taxonomy, genres: Sequence[str]) -> tuple[str, str] | None:
     Alternative was filed. So such an answer is passed over, by the test the
     loader holds a row's tag to. A copy that declares no table has not taken
     the rule and answers exactly as it did before that unit.
+
+    ONE CHOOSER WITH DISCOGS (U244). The tests above are
+    :func:`cratekit.tagging.searchers.choose_word`'s, which Discogs' styles are
+    chosen by too, so the two sources that answer several words cannot come to
+    mean two things by "maps to a folder". It also passes over a word that
+    resolves to the fallback bucket, which the too coarse test already refused
+    on the shipped template.
     """
-    names_a_folder = declared.vocabulary(SOURCE) is not None
-    for word in genres:
-        suggestion = routing.suggest_tag(declared, word, source=SOURCE)
-        tag = suggestion.tag
-        if suggestion.declined or not tag:
-            continue
-        if suggestion.bucket_id is None and declared.bucket_for_display(tag) is None:
-            continue
-        if declared.is_too_coarse_as_source(tag):
-            continue
-        if names_a_folder and declared.named_folder(tag) is None:
-            continue
-        return word, tag
-    return None
+    return searchers.choose_word(
+        declared,
+        genres,
+        source=SOURCE,
+        named_only=declared.vocabulary(SOURCE) is not None,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -504,6 +507,7 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
       record shops did;
     * a hit whose Beatport answer is not a match or a miss is recorded
       ``not-asked`` with the reason, and the file stays as the searcher left it;
+      so is one whose Discogs was asked and went unread (U244);
     * otherwise the catalogue is asked. A genre that maps to a folder becomes
       the hit's genre, with no flag saying it was inferred, because it was not.
       Anything else leaves the hit a decline that says what was answered.
@@ -552,6 +556,17 @@ def second_opinion(declared: Taxonomy, *, lookup: Lookup | None = None) -> Publi
                     searchers.NOT_ASKED,
                     note=f"{searchers.BEATPORT} was not read for this track, and the "
                     f"general catalogue is asked only once it has answered",
+                )
+            )
+        discogs = next((said for said in hit.answers if said.source == searchers.DISCOGS), None)
+        if discogs is not None and discogs.answer in UNREAD:
+            return recorded(
+                SourceAnswer(
+                    SOURCE,
+                    searchers.NOT_ASKED,
+                    note=f"{searchers.DISCOGS} was asked and not read for this track "
+                    f"({discogs.answer}), and the general catalogue is asked only once "
+                    f"it has answered",
                 )
             )
 
