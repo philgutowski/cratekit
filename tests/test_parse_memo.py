@@ -313,11 +313,13 @@ def test_shared_trees_answer_alike_in_either_order_and_as_trees_of_their_own():
 # ═══════════════════════════════════════════════════════════════════════════
 #
 # It was rewritten to read the package once and hand that reading to every
-# helper. On the real tree every pin holds, so a helper that stopped looking at
-# what it was handed would pass there as long as the pins agreed. It is run here
-# over the real package plus one planted module holding a second table, and has
-# to fail naming it. The pinned populations test reads the same helpers, and
-# its exact per module pins already fail on any module a helper stops seeing.
+# helper. It is run here over the real package plus one planted module holding a
+# second table, and has to fail naming it. What this catches is narrow and said
+# so: the test stops at its first pin, the kebab literals, so it proves that
+# helper reads what it was handed and no other. A helper further down reading
+# the package again for itself sees the same files on the real tree and passes
+# here; the parse count above is what catches that one, since a second reading
+# is a second set of parses.
 
 
 def test_the_at_risk_population_names_a_planted_module(monkeypatch):

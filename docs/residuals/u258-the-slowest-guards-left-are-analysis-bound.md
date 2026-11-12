@@ -14,8 +14,9 @@ time elsewhere, so a parse memo cannot reach them:
   `SoftDeleteNames` and `_soft_delete_reads` over 681 files; the parse is about
   5 s of each. Measured outside pytest, the analysis of one sweep takes 10.3 s
   on trees already parsed. It makes about six passes over each tree, and
-  `_laundered_reads` calls `_soft_delete_reads` once per `If` it walks, 69,064
-  calls for 683 files. An iterative `_own_nodes` in the same order was tried
+  `_laundered_reads` calls `_soft_delete_reads` once per `If` it walks, about
+  69,000 calls for 683 files (69,064 and 69,052 in two measurements a few
+  commits apart). An iterative `_own_nodes` in the same order was tried
   and measured no faster, 16.0 s against 15.4 s for the recursive one over the
   same analysis, with identical output.
 - `tests/test_pool_sizing.py::test_no_module_outside_the_sizing_module_builds_a_process_pool`,

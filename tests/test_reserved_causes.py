@@ -4589,12 +4589,14 @@ def test_the_package_scan_reaches_the_modules_it_claims_to():
 def population_under_measurement(
     sources: list[tuple[str, str]],
 ) -> list[tuple[str, str]]:
-    """The 49 non-owner files every count in this section is taken over.
+    """The non-owner files every count in this section is taken over.
 
-    ``sources`` is what ``package_sources()`` returned, read once by the test
-    asking, so every count one test takes is over one reading of the package
-    (U258). The tests here used to read it again inside each helper and inside
-    each comprehension, 246 readings in two tests by the profile of 2026-11-12.
+    314 of the package's 316 on 2026-11-12; the 49 this line used to say had
+    long gone stale. ``sources`` is what ``package_sources()`` returned, read
+    once by the test asking, so every count one test takes is over one reading
+    of the package (U258). The two population tests used to read it again
+    inside each helper and inside each comprehension, 242 and 5 readings on
+    ``main`` when U258 measured them.
     """
     return [
         (relative, source)
