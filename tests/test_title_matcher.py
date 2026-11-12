@@ -14,10 +14,13 @@ after them, or for a title of brackets alone, the groups' words, compared
 exactly. A title made only of version words ("Original Mix", "Dub") is never
 read as contained in another title's bracketed suffix, and still finds its own
 row ("Original" in "Original feat. Someone"). A title that matched its own
-row before still does, which the tables below drive on every source; the one
-kind known lost is a title of brackets alone against a row that differs by
-more than its brackets ("(Intro)" against "Intro feat. X"), which the base
-matched only because it matched every row, and which is a residual.
+row before still does, which the tables below drive on every source. The kind
+known lost is a title of brackets alone, or one opening with bracket groups,
+against a row that differs by more than its brackets ("(Intro)" against
+"Intro feat. X"), which the base matched only because it matched every row,
+and which is a residual. Two ordinary titles still match by raw substring
+between their cores ("Club" in "Nightclub"), as they did before; that is a
+residual too, and pinned below as known so a change to it is seen.
 
 NOTHING HERE OPENS A SOCKET. Pages are synthetic text in the shapes the
 parsers read, handed to the injected fetch seam.
@@ -201,6 +204,58 @@ def test_beatport_prefers_its_own_row_over_another_by_the_artist():
         _beatport_track(ARTIST, "Intro", BUCKET_GENRE, mix="Original Mix"),
     ]
     assert _beatport_hit("(Intro)", rows).genre == BUCKET_GENRE
+
+
+def test_beatport_never_lets_a_short_row_name_outscore_the_files_own_row():
+    """Round two's BLOCKING: a row named "Love (feat. X)" has the core "love",
+    and a middle tier on cores scored it level with the file's own row, so page
+    order wrote the first row's genre."""
+    rows = [
+        _beatport_track(ARTIST, "Love (feat. X)", "Techno"),
+        _beatport_track(ARTIST, "Love Is The Message", BUCKET_GENRE),
+    ]
+    assert _beatport_hit("Love Is The Message - Original Mix", rows).genre == BUCKET_GENRE
+    shout = [
+        _beatport_track(ARTIST, "Shout (Part 1)", "Techno"),
+        _beatport_track(ARTIST, "Shout It Out", BUCKET_GENRE),
+    ]
+    assert _beatport_hit("Shout It Out feat. Y", shout).genre == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("searched", "name"),
+    [
+        ("Love Me Again", "Love (feat. X)"),
+        ("Track Two", "Track (Interlude)"),
+        ("Intro Music", "(Intro)"),
+        ("Mood", "(Sunrise Mood)"),
+        ("Mix", f"{OTHER} (Original Mix)"),
+    ],
+)
+def test_beatport_scores_no_row_by_a_part_of_its_name(searched, name):
+    assert _beatport_answer(_beatport_hit(searched, [_beatport_track(ARTIST, name, BUCKET_GENRE)])) == "miss"
+
+
+@pytest.mark.parametrize(
+    ("searched", "name"),
+    [
+        ("Knee Deep", "(Not Just) Knee Deep"),
+        ("How Does It Feel", "Untitled (How Does It Feel)"),
+        ("Dub", "Dub (Original Mix)"),
+    ],
+)
+def test_beatport_still_finds_a_title_inside_its_rows_name(searched, name):
+    assert _beatport_hit(searched, [_beatport_track(ARTIST, name, BUCKET_GENRE)]).genre == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("searched", "found"),
+    [("Club", "Nightclub"), ("Dub", "Dub Siren"), ("Remix", f"{OTHER} Remix")],
+)
+def test_two_cores_still_match_by_raw_substring_as_before_a_known_residual(searched, found):
+    """Not a property to keep: the looseness the base had between two ordinary
+    titles, filed as a residual at R-1534. Pinned so a fix to it is seen."""
+    assert searchers._title_matches(searched, found)
 
 
 def test_beatport_reads_no_artist_from_a_row_crediting_an_empty_name():

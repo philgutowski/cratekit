@@ -826,10 +826,13 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
 
     THE TITLE IS READ BY ITS CORE, as the shared matcher reads it (R-1534). A
     title of no letter or digit scores no row, a row whose name carries none is
-    passed over, a title or a name of brackets alone scores only a row it
-    equals, the two cores may contain one another, and a name read inside the
-    whole title, suffix and all, must name more than a version. A credit with
-    no name is no credit: the empty string is in every searched artist.
+    passed over, and a title of brackets alone scores only a row it equals.
+    The middle tier reads the whole row name inside the title's core, as it
+    always did, so a row "Love (feat. X)" never outscores the file's own "Love
+    Is The Message" by its core "love"; the title's core inside the name's
+    core; or, reaching into the name's suffix, a title that names more than a
+    version. A credit with no name is no credit: the empty string is in every
+    searched artist.
     """
     title_normalized = _normalized(title)
     if not _identifies(title_normalized):
@@ -863,7 +866,11 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
             title_score = 3
         elif exact_only:
             continue
-        elif not exact_name and (name_core in bare_title or bare_title in name_core):
+        elif (
+            name in bare_title
+            or (not exact_name and bare_title in name_core)
+            or _contains(name, bare_title)
+        ):
             title_score = 2
         elif _contains(title_normalized, name):
             title_score = 1

@@ -40,13 +40,17 @@ and Beatport's own scoring, which strips separately from the shared matcher.
 - **A containment that reaches into a bracketed suffix needs a contained
   side that names more than a version.** Version words alone ("Original Mix",
   "Dub") are in the suffix of half a catalogue; `_contains` refuses them there.
-  Between two cores, where the suffix is gone, they compare as any title does,
+  Between two cores, where the bracketed suffix is gone (a dash suffix such
+  as " - Original Mix" is not stripped and stays), they compare as any title does,
   or a track called "Original" loses "Original feat. Someone" (round one of
   R-1534 drove that loss through `tag_one`). A differential that filters out
   the pairs the new rule is about measures nothing: run it unfiltered.
 - **Every scorer that strips on its own needs the same care.** Beatport's
   `_beatport_best` never called the shared matcher; fixing the matcher alone
-  would have left it open. Grep for `in name`, `in right` and the strip's
+  would have left it open. And a scorer ranks, so a change that only widens
+  one row's tier can lose the file's own row on page order: round two of
+  R-1534 drove a row "Love (feat. X)", read by its core "love", tying with and
+  beating "Love Is The Message". Drive two rows on one page, not one. Grep for `in name`, `in right` and the strip's
   callers, not only the matcher's.
 - **The same empty substring hides on the artist side.** A credit with no
   name was contained in every searched artist in `_beatport_best`.
