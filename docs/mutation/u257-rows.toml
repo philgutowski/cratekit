@@ -1,0 +1,99 @@
+name = "u257"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_skip_after_match"
+description = "_matches_at_literal: try every literal position, even one inside the last match, so a literal inside a reported secret is reported again"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''        if position >= end:
+            match = pattern.match(text, position)'''
+new = '''        if True:
+            match = pattern.match(text, position)'''
+
+[[rows]]
+id = "M2_gate_never_passes"
+description = "_keyword_gate_passes: return False always, so the two alternations never scan and every keyword credential is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''    for run in _SEPARATOR_RUN.finditer(text):
+        separator = run.start()'''
+new = '''    for run in ():
+        separator = run.start()'''
+
+[[rows]]
+id = "M3_gate_always_passes"
+description = "_keyword_gate_passes: return True always, exact but every text is scanned by both alternations again, the whole saving lost"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''def _keyword_gate_passes(gate: _KeywordGate, text: str) -> bool:'''
+new = '''def _keyword_gate_passes(gate: _KeywordGate, text: str) -> bool:
+    return True'''
+
+[[rows]]
+id = "M4_no_quote_landing"
+description = "_keyword_gate_passes: do not step back over a quote after the keyword, so the JSON form \"key\": \"value\" is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''        ends = (end, end - 1) if end > 0 and text[end - 1] in _QUOTES else (end,)'''
+new = '''        ends = (end,)'''
+
+[[rows]]
+id = "M5_no_whitespace_walk"
+description = "_keyword_gate_passes: do not walk back over whitespace, so key = \"value\" with a space before the separator is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''        while end > 0 and _SPACE.match(text, end - 1):'''
+new = '''        while False:'''
+
+[[rows]]
+id = "M6_ascii_whitespace_only"
+description = "_SPACE: only the ASCII space, so a keyword separated from its colon by a tab, a newline or a Unicode space is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''_SPACE = re.compile(r"\s")'''
+new = '''_SPACE = re.compile(r" ")'''
+
+[[rows]]
+id = "M7_window_one_short"
+description = "_keyword_gate_passes: search a window one character narrower than the longest keyword, so consumer_secret is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''            if gate.keyword_end.search(text, max(0, keyword_end - gate.width), keyword_end):'''
+new = '''            if gate.keyword_end.search(text, max(0, keyword_end - gate.width + 1), keyword_end):'''
+
+[[rows]]
+id = "M8_no_source_check"
+description = "_keyword_gate: build the gate whatever the pattern's source, so a widened alternation is gated on the old keywords and its new keyword is missed"
+file = "scripts/scan_repo.py"
+surface = "user"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''    if pattern.pattern != opening + keywords + _KEY_CLOSE + value:
+        return None'''
+new = '''    pass'''
+
+[[rows]]
+id = "M9_lead_ignores_ignorecase"
+description = "_literal_lead: give a case insensitive pattern a literal lead, so a lower case spelling of its literal is never tried"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''    if parsed is None or (pattern.flags | parsed.state.flags) & re.IGNORECASE:'''
+new = '''    if parsed is None:'''
+
+[[rows]]
+id = "M10_no_value_check"
+description = "_keyword_gate_passes: skip the value check at the separator, exact but more texts handed to the alternations"
+file = "scripts/scan_repo.py"
+surface = "maintainer"
+tests = ["tests/test_scan_secret_equality.py", "tests/test_portability.py"]
+old = '''        if gate.value.match(text, separator) is None:
+            continue'''
+new = '''        pass'''
