@@ -185,6 +185,14 @@ class ReleaseUnresolvable(LookupError):
     """
 
 
+#: The verdict :meth:`Catalogue.reread_release` answers for a release the
+#: provider no longer has (R-1634). Not ``unconfirmed``: the provider answered,
+#: so it is not a provider that is not answering, and not ``confirmed``: a
+#: missing album says nothing of whether the provider's reads carry a credit.
+#: The sweep asks the next held release rather than refusing on it.
+RELEASE_GONE = "gone"
+
+
 def artist_name(release: Any) -> str:
     """The name of a release's artist, never a provider object's repr.
 
@@ -472,7 +480,8 @@ class Catalogue(Protocol):
         re-verification of one held release is its one call site, because the
         question there is whether the provider is answering, and a line read
         off the listing says nothing about that. A release the provider no
-        longer has, or one with no identifier, answers with no label credit.
+        longer has answers the verdict :data:`RELEASE_GONE`, and one with no
+        identifier is never read and answers ``unconfirmed``.
         """
 
     def check_label(self, name: str) -> dict:

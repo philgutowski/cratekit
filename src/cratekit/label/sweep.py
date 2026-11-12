@@ -29,6 +29,7 @@ from cratekit.label import gate as genre_gate
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
     READS_FAILED_IN_A_ROW,
+    RELEASE_GONE,
     Catalogue,
     ReleaseTracks,
     Unread,
@@ -615,7 +616,17 @@ def _answered_by_name(dropped: Sequence[Dropped]) -> bool:
 
 
 def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) -> Any:
-    """The held release to verify again, chosen by what the sweep's drops say.
+    """The held release to verify again, the first of :func:`_canary_order`."""
+    return _canary_order(held, claimed, dropped)[0]
+
+
+def _canary_order(
+    held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]
+) -> list[Any]:
+    """The held releases in the order they are verified again, chosen by what the sweep's drops say.
+
+    Only the first is asked, except where a forced read answers that the
+    provider no longer has it (R-1634), when the second is asked in its place.
 
     THE NEWEST HELD RELEASE WAS THE CANARY BEFORE U277, and a held release can
     be another act's: a sync that asked about releases a looser needle once
@@ -647,13 +658,13 @@ def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) ->
     ALWAYS ASKED OF A VERIFIER, never answered here from the line.
     """
     if _answered_by_name(dropped):
-        return min(held, key=lambda release: line_reading(release, claimed))
+        return sorted(held, key=lambda release: line_reading(release, claimed))
 
     def read_first(release: Any) -> tuple[bool, int]:
         reading = line_reading(release, claimed)
         return reading != LINE_ABSENT, reading
 
-    return min(held, key=read_first)
+    return sorted(held, key=read_first)
 
 
 def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
@@ -886,7 +897,8 @@ def list_for_label(
     held_unconfirmed = 0
     canary: Canary | None = None
     if held_releases and dropped and not candidates:
-        chosen = _canary_of(held_releases, claimed, dropped)
+        order = _canary_order(held_releases, claimed, dropped)
+        chosen = order[0]
         lined = line_reading(chosen, claimed) != LINE_ABSENT
         if _answered_by_name(dropped):
             answered = label_verify.verify_release(claimed, chosen, search=verify)
@@ -894,6 +906,16 @@ def list_for_label(
         elif reread is not None:
             answered = label_verify.verify_release(claimed, chosen, search=reread)
             basis = READ_PROVIDER
+            # A HELD RELEASE THE PROVIDER HAS WITHDRAWN is still listed by a
+            # kept listing for up to its seven days, and a 404 says nothing of
+            # whether the provider's reads carry a credit. Refusing on it
+            # refused a healthy label on every ask until the keep aged out
+            # (round one of R-1634's review). So the next held release is read
+            # in its place, ONE more read and only after a gone answer; a
+            # second gone answer, or none to ask, stands and refuses.
+            if answered.get("verdict") == RELEASE_GONE and len(order) > 1:
+                chosen = order[1]
+                answered = label_verify.verify_release(claimed, chosen, search=reread)
         elif not lined:
             answered = label_verify.verify_release(claimed, chosen, search=verify)
             basis = READ_PROVIDER

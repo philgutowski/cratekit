@@ -24,7 +24,8 @@ other read here stays on the account session, and these are they:
   are the account's business and which no app credential can see.
 * The label crawl, :meth:`TidalCatalogue.artist_for` and its discovery,
   :meth:`TidalCatalogue.release_tracks`, :meth:`TidalCatalogue.release_artist`,
-  :meth:`TidalCatalogue.search_release`, :meth:`TidalCatalogue.check_label` and
+  :meth:`TidalCatalogue.search_release`, :meth:`TidalCatalogue.reread_release`,
+  :meth:`TidalCatalogue.check_label` and
   :meth:`TidalCatalogue.search_tracks`. The official catalogue API has reads for
   most of these, but its listings page by cursor, and every listing this module
   makes pages through ``acquire.listing`` by limit and offset and stops on a
@@ -64,6 +65,7 @@ from cratekit.label import harvest, kept_listing, registry
 from cratekit.label import verify as label_verify
 from cratekit.label.catalogue import (
     PLAYLIST_HOSTS,
+    RELEASE_GONE,
     SHORT_LINK_HOST,
     TRACK_SEARCH_PAGE,
     AccountPlaylist,
@@ -716,8 +718,9 @@ class TidalCatalogue:
         with no call, which is right for the window and wrong for the sweep's
         re-verification, whose question is whether the provider is answering.
         Read on the retry ladder :meth:`_album` shares. A release the provider
-        no longer has answers unconfirmed, as does one with no identifier, which
-        is never read, so neither can make a listing look answered.
+        no longer has answers :data:`RELEASE_GONE`, which the sweep reads as
+        neither confirmed nor unanswered; one with no identifier is never read
+        and answers ``unconfirmed``, so it cannot make a listing look answered.
         """
         del claimed  # the judgement is verify_release's, not this read's
         identity = str(getattr(release, "id", "") or "").strip()
@@ -732,7 +735,7 @@ class TidalCatalogue:
             album = self._album(identity)
         except ReleaseUnresolvable as exc:
             return {
-                "verdict": "unconfirmed",
+                "verdict": RELEASE_GONE,
                 "resolved_label": "",
                 "source": SOURCE,
                 "notes": f"not read again: {exc}",

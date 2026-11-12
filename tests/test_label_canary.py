@@ -732,7 +732,7 @@ def test_the_shipped_reread_of_a_release_the_provider_no_longer_has_is_no_credit
     session = Withdrawn()
     answer = tidal_catalogue.TidalCatalogue(session).reread_release(LABEL, release("a1", "2025", "Rawax"))
 
-    assert answer["verdict"] == "unconfirmed"
+    assert answer["verdict"] == catalogue.RELEASE_GONE
     assert answer["resolved_label"] == ""
     assert session.reads == ["a1"]
 
@@ -743,3 +743,158 @@ def test_the_shipped_reread_of_a_release_with_no_identifier_reads_nothing(instal
 
     assert answer["verdict"] == "unconfirmed"
     assert session.reads == []
+
+
+class ReadFails(LineCatalogue):
+    """A provider whose forced read raises, as ``listing.fetch_with_retry`` does once its ladder is spent."""
+
+    def reread_release(self, claimed: str, release: Any) -> dict:
+        raise RuntimeError("the provider stopped answering album reads")
+
+
+def test_a_forced_read_that_raises_fails_the_item_in_the_lookup_vocabulary(
+    installed, monkeypatch
+):
+    """The forced read is wrapped as the verifier is, so a provider failure is never an internal error."""
+    held = rawax()
+    fake = ReadFails(
+        artists={SLUG: FakePagedArtist([lineless("m0"), *held, *others(3)])},
+        session=Session(),
+    )
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    asked(installed, *(one.id for one in held))
+
+    code, job_id = sweep_job()
+
+    assert code != int(ExitCode.OK)
+    assert item_cause(job_id).reason == "sync-source-lookups-failed"
+    assert filed(installed) == []
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. A held release the provider has withdrawn (round one of R-1634's review)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class PartlyGone(Session):
+    """A healthy provider that no longer has the releases named in ``gone``."""
+
+    def __init__(self, lines: dict[str, str], gone: set[str]) -> None:
+        super().__init__(lines)
+        self.gone = set(gone)
+
+    def album(self, identity: str) -> FakeRelease:
+        if identity in self.gone:
+            self.reads.append(identity)
+            raise GoneNotFound(identity)
+        return super().album(identity)
+
+
+def withdrawn_shape(cfg, monkeypatch, *, gone: set[str]) -> PartlyGone:
+    """The new releases genuinely uncredited, the held ones credited ``Rawax`` unless withdrawn."""
+    session = PartlyGone({one.id: "2025 Rawax" for one in rawax()}, gone)
+    every_line_shape(cfg, monkeypatch, session)
+    return session
+
+
+def test_a_withdrawn_held_release_is_passed_over_for_the_next_and_the_label_has_nothing_new(
+    installed, monkeypatch
+):
+    """A kept listing still lists ``a1`` after the provider withdrew it: ``a2`` is read in its place."""
+    session = withdrawn_shape(installed, monkeypatch, gone={"a1"})
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.OK), envelope
+    assert envelope["outcome"] == "no_op"
+    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
+    assert "release a2, answered confirmed" in reverified
+    assert "read again from the provider" in reverified
+    # ONE more read, and only because the first answered gone.
+    assert session.reads == ["m0", "m1", "m2", "a1", "a2"]
+
+
+def test_the_worker_passes_over_a_withdrawn_held_release_too(installed, monkeypatch):
+    session = withdrawn_shape(installed, monkeypatch, gone={"a1"})
+
+    code, job_id = sweep_job()
+
+    assert code == int(ExitCode.OK)
+    assert item_cause(job_id) is None
+    assert filed(installed) == []
+    assert session.reads[-2:] == ["a1", "a2"]
+
+
+def test_two_withdrawn_held_releases_refuse_and_no_third_is_read(installed, monkeypatch):
+    session = withdrawn_shape(installed, monkeypatch, gone={"a1", "a2"})
+
+    code, envelope = next_rawax()
+
+    assert code == int(ExitCode.PRECONDITION), envelope
+    assert envelope["cause"]["reason"] == "label-sync-unlisted"
+    reverified = check(envelope, f"reverified.{SLUG}")["detail"]
+    assert "release a2, answered gone" in reverified
+    assert session.reads == ["m0", "m1", "m2", "a1", "a2"]
+
+
+def test_a_lone_withdrawn_held_release_refuses(installed, entry):
+    releases = [lineless("m1"), release("a1", "2025", "Rawax"), *others(3)]
+    fake = LineCatalogue(session=PartlyGone({}, {"a1"}))
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(releases),
+        verify=fake.search_release,
+        reread=fake.reread_release,
+        offered=frozenset({"a1"}),
+    )
+
+    assert (found.canary.identity, found.canary.verdict) == ("a1", catalogue.RELEASE_GONE)
+    assert found.held_unconfirmed == 1
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. What the answer rested on, and where the forced read comes from
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_every_drop_a_mismatch_over_a_held_release_with_no_line_says_the_provider_was_read(
+    installed, entry
+):
+    """No held line names the label, so the lineless one is asked, and the catalogue reads it."""
+    releases = [*rawaxxx(), lineless("n1"), *others(3)]
+    fake = LineCatalogue(session=Session({"n1": "2025 Rawax"}))
+    found = sweep.list_for_label(
+        installed,
+        entry,
+        artist=FakePagedArtist(releases),
+        verify=fake.search_release,
+        offered=frozenset({"x0", "n1"}),
+    )
+
+    assert {one.reason for one in found.dropped} == {"mismatch"}
+    assert (found.canary.identity, found.canary.verdict) == ("n1", "confirmed")
+    assert found.canary.basis == sweep.READ_PROVIDER
+
+
+def test_a_source_handed_a_bare_verifier_beside_a_catalogue_forces_no_read(installed, entry):
+    """The verifier handed in is the one asked, so the catalogue's forced read is not taken."""
+    held = rawax()
+    fake = LineCatalogue(
+        artists={SLUG: FakePagedArtist([lineless("m0"), *held, *others(3)])},
+        session=Session({"a1": "2025 Rawax"}),
+    )
+    source = sweep.LabelSource(
+        installed,
+        registry=labels.Registry(labels={SLUG: entry}),
+        catalogue=fake,
+        verify=fake.search_release,
+        offered=frozenset(one.id for one in held),
+    )
+
+    source.list_recent(10)
+
+    ((_, listing),) = source.listings
+    assert listing.canary.basis == sweep.READ_NONE
+    assert listing.held_unconfirmed == 4
+    assert fake._session.reads == ["m0"]
