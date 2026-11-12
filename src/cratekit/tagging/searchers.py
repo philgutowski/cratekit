@@ -566,6 +566,101 @@ def _without_trailing_bracket(value: str) -> str:
     return re.sub(r"\s*\(.*?\)\s*$", "", value).strip()
 
 
+#: The last bracketed group of a title, alone: "(Part 1)" of
+#: "(Not Just) Knee Deep (Part 1)", where the shared strip takes the whole
+#: title, since its group runs from the first bracket to the last.
+_LAST_GROUP = re.compile(r"\s*\([^()]*\)\s*$")
+
+#: The bracketed groups a title opens with: "(Not Just) " of
+#: "(Not Just) Knee Deep (Part 1)".
+_LEADING_GROUPS = re.compile(r"^(?:\s*\([^()]*\))+\s*")
+
+#: A run of letters or digits, in any script. The underscore ``\w`` admits is
+#: punctuation here.
+_WORD = re.compile(r"[^\W_]+")
+
+#: Words that name a version of a recording rather than the recording. A title
+#: of these alone, "Original Mix" or "Dub", is contained in half a catalogue,
+#: so it may match an identical title and is never read as contained in another.
+_VERSION_WORDS = frozenset(
+    {
+        "bootleg",
+        "club",
+        "dub",
+        "edit",
+        "extended",
+        "instrumental",
+        "mix",
+        "original",
+        "radio",
+        "re",
+        "remaster",
+        "remastered",
+        "remix",
+        "rework",
+        "version",
+        "vip",
+    }
+)
+
+
+def _last_group_stripped(value: str) -> str:
+    return _LAST_GROUP.sub("", value).strip()
+
+
+def _identifies(value: str) -> bool:
+    """Whether a title carries a letter or a digit at all.
+
+    One that carries neither, empty, blank, punctuation or empty brackets, names
+    no recording, and the empty string is contained in every title.
+    """
+    return _WORD.search(value) is not None
+
+
+def _unbracketed(value: str) -> str:
+    """The title with its round brackets taken out and its spaces collapsed, so
+    "(Not Just) Knee Deep" and "Not Just Knee Deep" compare equal."""
+    return " ".join(value.replace("(", " ").replace(")", " ").split())
+
+
+def _title_core(value: str) -> tuple[str, bool]:
+    """A normalized title's core, and whether it may be compared exactly only.
+
+    THE SHARED STRIP takes a trailing bracket from the FIRST "(" to the last
+    ")", so a title that opens with a bracket strips to nothing, and nothing is
+    a substring of every title: any row by the artist matched (R-1534). So the
+    strip is taken only where it leaves a letter or a digit. A title that opens
+    with bracket groups keeps them and the text after them, stripped the same
+    way, "(Not Just) Knee Deep" of "(Not Just) Knee Deep (Part 1)". A title of
+    bracket groups alone, "(Intro)" or "(Intro) (Extended Mix)", is its first
+    groups' words, "intro", and is compared exactly, never by containment,
+    since a word out of a bracket is contained in too many titles.
+    """
+    bare = _without_trailing_bracket(value)
+    if _identifies(bare):
+        return bare, False
+    leading = _LEADING_GROUPS.match(value)
+    if leading is not None:
+        rest = _without_trailing_bracket(value[leading.end() :])
+        if _identifies(rest):
+            return value[: leading.end()] + rest, False
+    current = value
+    shorter = _last_group_stripped(current)
+    while shorter != current and _identifies(shorter):
+        current, shorter = shorter, _last_group_stripped(shorter)
+    return _unbracketed(current), True
+
+
+def _contains(outer: str, inner: str) -> bool:
+    """Whether ``inner`` is in ``outer``, for an ``inner`` that names a recording.
+
+    An inner of version words alone is refused: "original mix" is in every
+    title a catalogue lists as an original mix.
+    """
+    words = _WORD.findall(inner)
+    return any(word not in _VERSION_WORDS for word in words) and inner in outer
+
+
 def _artist_parts(value: str, separators: str) -> list[str]:
     parts = [_normalized(part) for part in re.split(separators, value)]
     # Two characters and under are initials and conjunctions, and they match
@@ -596,12 +691,30 @@ def _title_matches(searched: str, found: str) -> bool:
     The bracketed suffix is stripped from both sides first, because a catalogue
     calls it an extended mix and a file calls it nothing at all, and that suffix
     is the single commonest reason an exact comparison misses.
+
+    NOTHING IS NO MATCH (R-1534). A side with no letter or digit matches
+    nothing, on either side. Each side is read by :func:`_title_core`, so a
+    title the strip would empty is never the empty string contained in every
+    title, and a containment test needs a contained side that names more than
+    a version (:func:`_contains`). Every reader of a title by artist and title
+    asks this, Discogs included since R-1534, and Beatport's scoring reads the
+    same core.
     """
     left, right = _normalized(searched), _normalized(found)
-    bare_left, bare_right = _without_trailing_bracket(left), _without_trailing_bracket(right)
-    if bare_left == bare_right or bare_left in bare_right or bare_right in bare_left:
+    if not (_identifies(left) and _identifies(right)):
+        return False
+    core_left, exact_left = _title_core(left)
+    core_right, exact_right = _title_core(right)
+    if _unbracketed(core_left) == _unbracketed(core_right):
         return True
-    return left in right or right in left
+    if exact_left or exact_right:
+        return False
+    return (
+        _contains(core_right, core_left)
+        or _contains(core_left, core_right)
+        or _contains(right, left)
+        or _contains(left, right)
+    )
 
 
 def _query(artist: str, title: str) -> str:
@@ -704,9 +817,18 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
     BOTH FIELDS COME OFF THE ONE WINNING ROW. A picture taken from a different
     row than the genre is how a file ends up wearing another record's cover, so
     the artist and title gate that picks the genre picks the picture too.
+
+    THE TITLE IS READ BY ITS CORE, as the shared matcher reads it (R-1534). A
+    title of no letter or digit scores no row, a row whose name carries none is
+    passed over, a title of brackets alone scores only a row it equals, and a
+    containment needs a contained side that names more than a version. A credit
+    with no name is no credit: the empty string is in every searched artist.
     """
     title_normalized = _normalized(title)
-    bare_title = _without_trailing_bracket(title_normalized)
+    if not _identifies(title_normalized):
+        return None
+    bare_title, exact_only = _title_core(title_normalized)
+    loose_title = _unbracketed(bare_title)
     searched = _artist_parts(artist, r"[,&]")
 
     best_score = 0
@@ -716,8 +838,11 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         if not genre:
             continue
         name = _normalized(track.get("track_name", ""))
+        if not _identifies(name):
+            continue
         mix = _normalized(track.get("mix_name", ""))
         credited = [_normalized(entry.get("artist_name", "")) for entry in track.get("artists", [])]
+        credited = [other for other in credited if other]
 
         artist_score = 0
         for part in searched:
@@ -726,11 +851,13 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
         if artist_score == 0:
             continue
 
-        if bare_title == name or title_normalized == f"{name} ({mix})":
+        if loose_title == _unbracketed(name) or title_normalized == f"{name} ({mix})":
             title_score = 3
-        elif name and (bare_title in name or name in bare_title):
+        elif exact_only:
+            continue
+        elif _contains(name, bare_title) or _contains(bare_title, name):
             title_score = 2
-        elif name and name in title_normalized:
+        elif _contains(title_normalized, name):
             title_score = 1
         else:
             continue
@@ -1028,8 +1155,8 @@ def _search_bandcamp(
 # A SEARCH, THEN THE RELEASES IT NAMES. The database search names releases and
 # carries no tracklist, so the first few releases it names are read, each by
 # its own number, and one is accepted only when one of its tracks, or its own
-# title for a single, matches the searched title through ``_discogs_title_matches``
-# (the shared ``_title_matches`` with its empty title refused) and
+# title for a single, matches the searched title through the shared
+# ``_title_matches``, which refuses a title that strips to nothing, and
 # an artist matches through ``_artist_matches``. A wrong release is worse than a
 # miss: its style would be written onto the file for good.
 #
@@ -1194,38 +1321,6 @@ def _tracks_of(rows: object) -> list[dict[str, Any]]:
     return found
 
 
-#: The last bracketed group of a title, alone: "(Part 1)" of
-#: "(Not Just) Knee Deep (Part 1)", where the shared strip takes the whole
-#: title, since its group runs from the first bracket to the last.
-_LAST_GROUP = re.compile(r"\s*\([^()]*\)\s*$")
-
-
-def _last_group_stripped(value: str) -> str:
-    return _LAST_GROUP.sub("", value).strip()
-
-
-def _discogs_title_matches(searched: str, found: str) -> bool:
-    """``_title_matches``, refused where it would read an empty title as a match.
-
-    THE SHARED MATCHER STRIPS A TRAILING BRACKET FROM THE FIRST "(" TO THE LAST
-    ")", so a title that starts and ends with a bracket, "(Not Just) Knee Deep
-    (Part 1)" or a skit row "(Skit)", strips to nothing, and nothing is a
-    substring of every title. A release by the artist with no such track was
-    accepted that way and its style written (U244's review, round one). So an
-    empty side matches nothing, and a side the shared strip empties is compared
-    whole and with only its last bracketed group stripped. The shared matcher
-    is left as it is: Beatport and both scraped parsers read it, and a fix
-    there is a change to three sources this unit does not own.
-    """
-    left, right = _normalized(searched), _normalized(found)
-    if not left or not right:
-        return False
-    if _without_trailing_bracket(left) and _without_trailing_bracket(right):
-        return _title_matches(searched, found)
-    bare_left, bare_right = _last_group_stripped(left), _last_group_stripped(right)
-    return left == right or bool(bare_left and bare_left == bare_right)
-
-
 def _discogs_release(payload: dict[str, Any], release_id: int) -> _Release | None:
     """The release, or None when the answer is not a release this reader knows.
 
@@ -1259,18 +1354,18 @@ def _release_matches(release: _Release, artist: str, title: str) -> bool:
 
     A TRACK of the release whose title matches, credited to a matching artist,
     the track's own credit when it names one and the release's otherwise. Or, for
-    a single, the release's own title and artist, both through
-    :func:`_discogs_title_matches`, which refuses the empty titles the shared
-    matcher reads as a substring of every title.
+    a single, the release's own title and artist, both through the shared
+    :func:`_title_matches`, which refuses a title that strips to nothing rather
+    than reading it as a substring of every title (R-1534).
     """
     for track_title, track_artists in release.tracks:
         credited = track_artists or release.artists
-        if credited and _discogs_title_matches(title, track_title):
+        if credited and _title_matches(title, track_title):
             if _artist_matches(artist, credited):
                 return True
     return bool(
         release.artists
-        and _discogs_title_matches(title, release.title)
+        and _title_matches(title, release.title)
         and _artist_matches(artist, release.artists)
     )
 

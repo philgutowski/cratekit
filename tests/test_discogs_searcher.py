@@ -1016,9 +1016,9 @@ def test_a_skit_row_matches_no_searched_title():
 
 
 def test_an_empty_title_on_either_side_matches_nothing():
-    assert not searchers._discogs_title_matches("", TITLE)
-    assert not searchers._discogs_title_matches(TITLE, "")
-    assert searchers._discogs_title_matches(f"{TITLE} (Extended Mix)", TITLE)
+    assert not searchers._title_matches("", TITLE)
+    assert not searchers._title_matches(TITLE, "")
+    assert searchers._title_matches(f"{TITLE} (Extended Mix)", TITLE)
 
 
 def test_a_rejected_token_is_not_sent_again_in_the_run():
