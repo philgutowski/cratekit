@@ -788,6 +788,36 @@ def recording_token(artist: str, title: str) -> str:
     return f"{fold(artist)}\x1f{fold(title)}"
 
 
+#: The whitespace ``rapidfuzz``'s token scorers split a NARROW string on, one
+#: whose every character is below U+0100: everything Python calls whitespace
+#: except NEL (U+0085) and the no-break space (U+00A0). A wider string, one
+#: holding any character from U+0100 up, is split on exactly Python's
+#: whitespace. Measured over every code point at all three of Python's string
+#: widths when U265 was built, and held by
+#: ``test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on``.
+#: :func:`fold` leaves neither character in a token, so this matters only for a
+#: token that did not come through it, and then it is what keeps the score the
+#: same.
+_NARROW_SPACE = re.compile(r"[^\S\x85\xa0]+")
+
+
+def _sorted_words(token: str) -> str:
+    """A token's words sorted and joined by one space, which is the string
+    ``fuzz.token_sort_ratio`` builds from it before it scores (U265).
+
+    Split where the scorer splits, which depends on the string's width (see
+    :data:`_NARROW_SPACE`), and sorted by code point, as the scorer sorts. The
+    unit separator :func:`recording_token` joins artist and title with is
+    whitespace to both this and the scorer at every width, so the artist's and
+    the title's words sort together, exactly as they did inside the scorer.
+    """
+    if token and max(token) > "\xff":
+        words = token.split()
+    else:
+        words = [word for word in _NARROW_SPACE.split(token) if word]
+    return " ".join(sorted(words))
+
+
 def version_token(version: str) -> str:
     """The folded identity of a VERSION, with the no-op qualifiers folded away."""
     folded = fold(version)
@@ -1856,10 +1886,32 @@ class LibraryIndex:
     #: is indexed once however many artists its tag credits and ``__len__``
     #: still counts files.
     by_title: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
+    #: The recordings beside their words sorted, built the first time the
+    #: approximate pass asks and kept for the life of the index (U265), so a
+    #: library name is sorted once and not once for every wanted row. Built
+    #: lazily because a landing or a set build that never reaches the
+    #: approximate pass should not pay for it; read it through
+    #: :meth:`sorted_recordings`.
+    _sorted: tuple[tuple[str, ...], tuple[str, ...]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def recordings(self) -> tuple[str, ...]:
         return tuple(self.by_recording)
+
+    def sorted_recordings(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """The recordings, and each one's words sorted, position for position.
+
+        The two tuples are taken together so a position the scorer returns in
+        the second names the recording at the same position in the first.
+        """
+        cached = self._sorted
+        if cached is None:
+            recordings = self.recordings
+            cached = (recordings, tuple(_sorted_words(token) for token in recordings))
+            object.__setattr__(self, "_sorted", cached)
+        return cached
 
     def versions(self, recording: str) -> tuple[Owned, ...]:
         return self.by_recording.get(recording, ())
@@ -2531,22 +2583,36 @@ def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     included, and this is the only function in the unit that needs it. A cheap
     help screen is a property U5 states about the dispatcher, and paying for a
     scoring library to print one would take it away.
+
+    THE SCORE IS ``token_sort_ratio``, computed as ``ratio`` over words sorted
+    once (U265). The shipped call handed ``token_sort_ratio`` the raw tokens,
+    and it split and sorted both strings again for every pair, so each library
+    name was sorted once per wanted row. ``token_sort_ratio`` is ``ratio`` over
+    the two sorted strings, so sorting each library name once for the index,
+    and the wanted token once here, gives the same float for every pair, and
+    the same ``extract`` over the same positions gives the same candidates in
+    the same order with the same ties, floor and limit. The suite keeps the
+    shipped call as the reference and holds this one equal to it.
     """
     if not index.by_recording:
         return ()
     from rapidfuzz import fuzz, process
 
+    recordings, sorted_choices = index.sorted_recordings()
     found = process.extract(
-        wanted.recording,
-        index.recordings,
-        scorer=fuzz.token_sort_ratio,
+        _sorted_words(wanted.recording),
+        sorted_choices,
+        scorer=fuzz.ratio,
         score_cutoff=APPROXIMATE_FLOOR,
         limit=APPROXIMATE_LIMIT,
     )
     # BEST SCORE FIRST, and the order is load-bearing from here on. ``extract``
-    # returns descending, and everything downstream preserves it so that the
-    # offer limit drops the worst answers rather than whichever sorted last.
-    return tuple(held for token, _score, _position in found for held in index.versions(token))
+    # returns descending, ties in position order, and everything downstream
+    # preserves it so that the offer limit drops the worst answers rather than
+    # whichever sorted last. The position names the unsorted recording.
+    return tuple(
+        held for _sorted, _score, position in found for held in index.versions(recordings[position])
+    )
 
 
 def standing_tombstone(

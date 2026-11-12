@@ -6295,8 +6295,14 @@ def test_every_pair_scores_the_same_through_the_sorted_form():
     from rapidfuzz import fuzz
 
     index, rows = _u265_library(7)
-    choices = list(index.by_recording)
-    asked = [wanted.recording for wanted in rows] + choices[:50]
+    # Raw tokens too, never folded, at every width and with the two characters
+    # the scorer splits on in a wide string and not in a narrow one.
+    raw = [
+        "a\x85b\x1fc", "a\xa0b\x1fc d", "x\xa0y\x1fПривет", "a\x85b body\x1fﬁne",
+        "\x1f", "", " ", "\x1f\x1f", "tab\there\x1f  spaced  ", "😀\x1fz a\xa0b",
+    ]
+    choices = list(index.by_recording) + raw
+    asked = [wanted.recording for wanted in rows] + choices[:50] + raw
     for query in asked:
         sorted_query = match._sorted_words(query)
         for choice in choices:
@@ -6306,25 +6312,37 @@ def test_every_pair_scores_the_same_through_the_sorted_form():
 
 
 def test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on():
-    """Python's whitespace is not ``rapidfuzz``'s: U+0085 and U+00A0 split one
-    and not the other, measured over every code point when U265 was built.
+    """Python's whitespace is not always ``rapidfuzz``'s, and which it is
+    depends on the string's WIDTH, measured over every code point when U265 was
+    built: in a string whose characters are all below U+0100 the scorer does not
+    split on U+0085 or U+00A0, and in any wider string it splits on exactly
+    Python's whitespace.
 
     ``fold`` leaves neither in a token, but the sort is held to the scorer on
     any text, so a token from anywhere scores as it did. Every code point Python
     calls whitespace, both exceptions, and every code point below U+3100, in
-    three shapes: inside a word, alone, and doubled between two words.
+    three shapes (inside a word, alone, and doubled between two words) at each
+    of Python's three string widths, the wide ones made by a word beside it.
     """
     from rapidfuzz import fuzz
 
     points = {cp for cp in range(0x110000) if chr(cp).isspace()}
     points |= {0x85, 0xA0, 0x1F} | set(range(0x3100))
     points -= set(range(0xD800, 0xE000))
-    for cp in sorted(points):
-        c = chr(cp)
-        for token, other in ((f"zz{c}aa", "aa zz"), (c, ""), (f"b{c}{c}a", "a b")):
-            assert fuzz.ratio(match._sorted_words(token), match._sorted_words(other)) == (
-                fuzz.token_sort_ratio(token, other)
-            ), hex(cp)
+    for widen in ("", " é", " Ā", " \U0001f600"):
+        for cp in sorted(points):
+            c = chr(cp)
+            for token, other in (
+                (f"zz{c}aa{widen}", f"aa zz{widen}"),
+                (f"{c}{widen}", ""),
+                (f"b{c}{c}a{widen}", f"a b{widen}"),
+                (f"b{c}a{widen}", "a b"),
+            ):
+                assert fuzz.ratio(match._sorted_words(token), match._sorted_words(other)) == (
+                    fuzz.token_sort_ratio(token, other)
+                ), (hex(cp), widen)
+    assert match._sorted_words("b\xa0a") == "b\xa0a", "a narrow string keeps its no-break space"
+    assert match._sorted_words("b\xa0a Ā") == "a b Ā", "a wide one splits on it"
 
 
 def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeypatch):
