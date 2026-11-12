@@ -1,0 +1,99 @@
+name = "u268"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_id_cut_at_space"
+description = "read_report: keep each id up to its first space, as the summary line reader did, so a sibling's failure reads as the machine's"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''            ids.add(nodeid)'''
+new = '''            ids.add(nodeid.split(" ")[0])'''
+
+[[rows]]
+id = "W2_errors_not_read"
+description = "PLUGIN_SOURCE: read only the failed category, so an erroring test is never listed"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    for category in ("failed", "error"):
+        reports = terminalreporter.stats.get(category, [])'''
+new = '''    for category in ("failed",):
+        reports = terminalreporter.stats.get(category, [])'''
+
+[[rows]]
+id = "W3_no_report_read_as_clean"
+description = "failing_ids: drop the refusal of a run that wrote no report"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        if not report_path.is_file():
+            print(result.stdout[-3000:])'''
+new = '''        if False:
+            print(result.stdout[-3000:])'''
+
+[[rows]]
+id = "W4_counts_not_checked"
+description = "read_report: drop the check of the report's counts against the summary line"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        if not isinstance(entry, dict) or entry.get("counted") != count:'''
+new = '''        if not isinstance(entry, dict):'''
+
+[[rows]]
+id = "W5_listed_not_checked"
+description = "read_report: drop the check that the report lists as many ids as it counts"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        if not isinstance(listed, list) or len(listed) < count:'''
+new = '''        if not isinstance(listed, list):'''
+
+[[rows]]
+id = "W6_id_with_line_break_stored"
+description = "read_report: store an id holding a line break, which the file would split in two"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''                or "\n" in nodeid
+'''
+new = ''''''
+
+[[rows]]
+id = "W7_worker_writes"
+description = "PLUGIN_SOURCE: let an xdist worker write its partial report over the controller's"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    if hasattr(config, "workerinput"):
+        return
+    out = os.environ.get("CLOUD_BATTERY_REPORT_PATH")'''
+new = '''    out = os.environ.get("CLOUD_BATTERY_REPORT_PATH")'''
+
+[[rows]]
+id = "W8_header_unmarked"
+description = "cmd_baseline: write the header without the ids whole field"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        f"# commit {head()} host {socket.gethostname()} {FULL_HISTORY} {WHOLE_IDS}\n"'''
+new = '''        f"# commit {head()} host {socket.gethostname()} {FULL_HISTORY}\n"'''
+
+[[rows]]
+id = "W9_compare_reads_cut_baseline"
+description = "read_baseline: read a baseline written before U268, whose ids were cut at their first space"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    if match.group(4) != WHOLE_IDS:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "W10_driver_reads_cut_baseline"
+description = "read_known_failures: accept a header that ends history full, a baseline written before U268"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    whole = f" {KNOWN_FAILURES_FULL_HISTORY} {KNOWN_FAILURES_WHOLE_IDS}"'''
+new = '''    whole = f" {KNOWN_FAILURES_FULL_HISTORY}"'''

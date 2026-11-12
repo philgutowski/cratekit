@@ -27,7 +27,7 @@ own git and `gh` credentials permit both.
 
 On a cloud container:
 
-    .venv/bin/python scripts/cloud_battery.py baseline    # only if none was measured on this machine
+    .venv/bin/python scripts/cloud_battery.py baseline    # only if compare finds none it can read on this machine
     .venv/bin/python scripts/cloud_battery.py compare
 
 `compare` records its verdict for the commit it measured, and `cut` reads it.
