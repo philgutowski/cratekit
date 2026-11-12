@@ -1,26 +1,30 @@
-"""R-1534: a title that strips to nothing never matches, in every source.
+"""R-1534 and R-1631: a title matches only its own recording, in every source.
 
-THE DEFECT. The shared matcher strips a trailing bracket from the first "(" to
-the last ")", so a title that starts and ends with a bracket, "(Intro)" or
-"(Not Just) Knee Deep (Part 1)", strips to the empty string, which is a
-substring of every title. Any row by the artist then matched, and its genre was
-written onto the file for good, since a genre is fill if empty. Beatport scored
-its rows on the same strip, the two scraped parsers read the shared matcher,
-and Discogs carried its own guard since U244.
+THE DEFECTS. The shared matcher stripped a trailing bracket from the first "("
+to the last ")" and then compared the two titles by raw substring. A title that
+starts and ends with a bracket stripped to the empty string, which is in every
+title (R-1534). A title with a bracket in mid title was cut at it, so "Knee
+(Not Just) Deep (Part 1)" read as "knee", in "Knee Slapper"; a containment
+between whole titles read a word inside one title's brackets as the other
+title ("Intro" in "Sunrise Mood (Intro)"), refused only for a hand list of
+version words that missed "vocal", "acapella", "reprise" and more; and two
+titles compared by characters, so "Club" was in "Nightclub" and "Original Mix"
+in "Sunrise Mood - Original Mix" (R-1631). Each wrote another recording's genre
+onto the file for good, since a genre is fill if empty.
 
-WHAT HOLDS NOW. A side with no letter or digit matches nothing. A title the
-strip empties is read by its core: the leading bracket groups and the text
-after them, or for a title of brackets alone, the groups' words, compared
-exactly. A title made only of version words ("Original Mix", "Dub") is never
-read as contained in another title's bracketed suffix, and still finds its own
-row ("Original" in "Original feat. Someone"). A title that matched its own
-row before still does, which the tables below drive on every source. The kind
-known lost is a title of brackets alone, or one opening with bracket groups,
-against a row that differs by more than its brackets ("(Intro)" against
-"Intro feat. X"), which the base matched only because it matched every row,
-and which is a residual. Two ordinary titles still match by raw substring
-between their cores ("Club" in "Nightclub"), as they did before; that is a
-residual too, and pinned below as known so a change to it is seen.
+WHAT HOLDS NOW. Two titles match when they name the same words once each has
+shed what is not its title: its trailing bracket groups, read as balanced
+groups from the end; a catalogue row's dash tail, or any run of the file's dash
+segments, since the live library writes its ``KEY - BPM - `` head into the
+title tag; a feature credit; a trailing run of the domain's version words; its
+leading bracket groups. Nothing is compared by characters, and a word read only
+inside the other title's brackets is never its title. A side with no letter or
+digit matches nothing. A title that matched its own row before still does,
+which the tables below drive on every source, the headed title included. The
+one kind known lost is a title written only inside the other's trailing
+brackets ("How Does It Feel" against "Untitled (How Does It Feel)"), whose
+evidence is the same as the wrong shape "Intro" against "Sunrise Mood
+(Intro)", pinned below as a known cost.
 
 NOTHING HERE OPENS A SOCKET. Pages are synthetic text in the shapes the
 parsers read, handed to the injected fetch seam.
@@ -94,6 +98,18 @@ SAME = [
     ("Dub", "Dub - 2014 Remaster"),
     ("VIP", "VIP."),
     ("Version feat. Someone", "Version"),
+    # R-1631: a mid title bracket is kept, and what a title sheds is its own.
+    ("Knee (Not Just) Deep (Part 1)", "Knee (Not Just) Deep"),
+    ("Knee (Not Just) Deep (Part 1)", "Knee Not Just Deep (Extended Mix)"),
+    ("Sunrise Mood Extended Mix", "Sunrise Mood"),
+    ("Sunrise Mood ft. Someone", "Sunrise Mood (Original Mix)"),
+    ("Sunrise Mood (feat. Someone) - Original Mix", "Sunrise Mood"),
+    ("Sunrise Mood (Kerri Chandler Remix)", "Sunrise Mood - Kerri Chandler Remix"),
+    ("Sunrise Mood - 2014 Remaster", "Sunrise Mood (Extended Mix)"),
+    ("Sunrise Mood (Mike's (Dub) Mix)", "Sunrise Mood"),
+    ("Original", "Original (Extended Mix)"),
+    ("Club!", "Club (Original Mix)"),
+    ("Vocal Mix", "Vocal Mix"),
 ]
 
 #: (searched, found) pairs that name different recordings and must not match.
@@ -112,6 +128,44 @@ DIFFERENT = [
     ("(Intro)", f"{OTHER} (Intro)"),
     (f"{OTHER} (Dub)", "Dub"),
     ("- (Intro)", "- (Outro)"),
+    # R-1631: a mid title bracket cut the title at its first bracket.
+    ("Knee (Not Just) Deep (Part 1)", "Knee Slapper"),
+    ("Knee (Not Just) Deep (Part 1)", "Knee"),
+    ("Not Just", "Knee (Not Just) Deep (Part 1)"),
+    # A word inside one title's brackets was read as the other title.
+    (f"{OTHER} (Intro)", "Intro"),
+    (f"{OTHER} (Intro)", "(Intro)"),
+    ("Mood", "(Sunrise Mood)"),
+    ("Kerri Chandler Remix", f"{OTHER} (Kerri Chandler Remix)"),
+    ("Part 1", "Shout (Part 1)"),
+    # Version words the hand list missed.
+    ("Vocal Mix", "Other Song (Vocal Mix)"),
+    ("Acapella", "Other Song (Acapella)"),
+    ("Reprise", f"{OTHER} (Reprise)"),
+    ("Mixed", f"{OTHER} (Mixed)"),
+    ("Remixes", f"{OTHER} (Remixes)"),
+    ("Dub Mix", f"{OTHER} (Dub Mix)"),
+    # Two titles compared by characters, and a dash tail read as a title.
+    ("Club", "Nightclub"),
+    ("Re", "There She Goes"),
+    ("Original Mix", f"{OTHER} - Original Mix"),
+    ("Mood", OTHER),
+    ("Dub", "Dub Siren"),
+    ("Remix", f"{OTHER} Remix"),
+    ("Love", "Love Is The Message"),
+]
+
+#: (file title, catalogue row) pairs that name the same recording, read one way
+#: round: the file's title carries a head before a dash, the ``KEY - BPM - ``
+#: the live library writes into the title tag or the "Artist - Title" stem of a
+#: file with no title tag, and a catalogue row never does.
+HEADED = [
+    ("04A - 126 - Burning (Extended Mix)", "Burning"),
+    ("04A - 126 - Burning (Extended Mix)", "Burning (Original Mix)"),
+    ("08A - 124 - Sunrise Mood", "Sunrise Mood feat. Someone"),
+    ("Bernard Badie - Sunrise Mood", "Sunrise Mood"),
+    ("08A - 124 - (Intro)", "Intro"),
+    ("08A - 124 - (Not Just) Knee Deep (Part 1)", "Knee Deep"),
 ]
 
 
@@ -125,6 +179,39 @@ def test_a_title_matches_its_own_recording_either_way_round(searched, found):
 def test_a_title_matches_no_other_recording_either_way_round(searched, found):
     assert not searchers._title_matches(searched, found)
     assert not searchers._title_matches(found, searched)
+
+
+@pytest.mark.parametrize(("searched", "found"), HEADED)
+def test_a_headed_file_title_matches_its_own_row(searched, found):
+    assert searchers._title_matches(searched, found)
+
+
+@pytest.mark.parametrize(
+    ("searched", "found"),
+    [
+        ("Club", "Nightclub"),
+        ("Re", "There She Goes"),
+        ("Dub", "Dub Siren"),
+        ("Remix", f"{OTHER} Remix"),
+    ],
+)
+def test_two_titles_are_compared_by_whole_words_never_by_characters(searched, found):
+    """The pairs R-1534 pinned as a known residual, two cores matched by raw
+    substring. A title is its words, so a word inside another word is no
+    match, and a title is never a part of another title's words."""
+    assert not searchers._title_matches(searched, found)
+    assert not searchers._title_matches(found, searched)
+    assert searchers._title_matches(f"{searched}!", searched)
+
+
+def test_a_catalogue_rows_dash_tail_is_never_its_title():
+    """A catalogue writes a version after a dash; a file writes its head before
+    one. So the row is read by its head and the file by any run of its
+    segments, and a tail of version words alone is no title on either side."""
+    assert not searchers._title_matches("Original Mix", f"{OTHER} - Original Mix")
+    assert not searchers._title_matches(f"{OTHER} - Original Mix", "Original Mix")
+    assert searchers._title_matches(f"{OTHER} - Original Mix", OTHER)
+    assert searchers._title_matches(OTHER, f"{OTHER} - Original Mix")
 
 
 @pytest.mark.parametrize("noise", NOISE)
@@ -190,6 +277,10 @@ def test_beatport_passes_over_a_row_whose_name_has_no_letter_or_digit(noise):
         ("Dub", "Dub", "Original Mix"),
         ("Original feat. Toni Halliday", "Original", "Original Mix"),
         ("Radio - Radio Edit", "Radio", "Original Mix"),
+        ("04A - 126 - Burning (Extended Mix)", "Burning", "Extended Mix"),
+        ("Bernard Badie - Sunrise Mood", OTHER, "Original Mix"),
+        ("Knee (Not Just) Deep (Part 1)", "Knee (Not Just) Deep", "Part 1"),
+        (f"{OTHER} Extended Mix", OTHER, "Extended Mix"),
     ],
 )
 def test_beatport_still_matches_a_title_to_its_own_row(searched, name, mix):
@@ -229,6 +320,12 @@ def test_beatport_never_lets_a_short_row_name_outscore_the_files_own_row():
         ("Track Two", "Track (Interlude)"),
         ("Intro Music", "(Intro)"),
         ("Mix", f"{OTHER} (Original Mix)"),
+        # R-1631: the lowest tier and the suffix clause of the middle tier.
+        (f"{OTHER} (Intro)", "(Intro)"),
+        (f"{OTHER} (Intro)", "Intro"),
+        ("Mood", "(Sunrise Mood)"),
+        ("Intro", f"{OTHER} (Intro)"),
+        ("Knee (Not Just) Deep (Part 1)", "Knee Slapper"),
     ],
 )
 def test_beatport_scores_no_row_by_a_part_of_its_name(searched, name):
@@ -239,22 +336,32 @@ def test_beatport_scores_no_row_by_a_part_of_its_name(searched, name):
     ("searched", "name"),
     [
         ("Knee Deep", "(Not Just) Knee Deep"),
-        ("How Does It Feel", "Untitled (How Does It Feel)"),
         ("Dub", "Dub (Original Mix)"),
+        ("Burning", "Burning feat. Someone"),
     ],
 )
 def test_beatport_still_finds_a_title_inside_its_rows_name(searched, name):
     assert _beatport_hit(searched, [_beatport_track(ARTIST, name, BUCKET_GENRE)]).genre == BUCKET_GENRE
 
 
-@pytest.mark.parametrize(
-    ("searched", "found"),
-    [("Club", "Nightclub"), ("Dub", "Dub Siren"), ("Remix", f"{OTHER} Remix")],
-)
-def test_two_cores_still_match_by_raw_substring_as_before_a_known_residual(searched, found):
-    """Not a property to keep: the looseness the base had between two ordinary
-    titles, filed as a residual at R-1534. Pinned so a fix to it is seen."""
-    assert searchers._title_matches(searched, found)
+def test_beatport_prefers_the_headed_files_own_row_over_another_by_the_artist():
+    rows = [
+        _beatport_track(ARTIST, "Burning Bridges", "Techno", mix="Original Mix"),
+        _beatport_track(ARTIST, "Burning", BUCKET_GENRE, mix="Extended Mix"),
+    ]
+    assert _beatport_hit("04A - 126 - Burning (Extended Mix)", rows).genre == BUCKET_GENRE
+
+
+def test_a_title_written_only_inside_the_rows_trailing_brackets_is_a_known_cost():
+    """Not a property to keep: a known cost of R-1631, recorded as a residual.
+    "How Does It Feel" against "Untitled (How Does It Feel)" carries the same
+    evidence as "Intro" against "Sunrise Mood (Intro)", a title read only inside
+    the other's brackets, and only a list of version words could tell the two
+    apart, so both are refused. Pinned so a change to it is seen."""
+    name = "Untitled (How Does It Feel)"
+    hit = _beatport_hit("How Does It Feel", [_beatport_track(ARTIST, name, BUCKET_GENRE)])
+    assert _beatport_answer(hit) == "miss"
+    assert not searchers._title_matches("How Does It Feel", name)
 
 
 def test_beatport_reads_no_artist_from_a_row_crediting_an_empty_name():
@@ -298,7 +405,7 @@ def test_bandcamp_writes_no_genre_off_another_track_by_the_artist(searched, foun
     assert _bandcamp_hit(searched, f"{ARTIST} - {found}").genre is None
 
 
-@pytest.mark.parametrize(("searched", "found"), SAME)
+@pytest.mark.parametrize(("searched", "found"), SAME + HEADED)
 def test_the_scraped_parsers_still_match_a_title_to_its_own_row(searched, found):
     trax = _traxsource_hit(searched, found)
     assert (trax.genre, trax.source) == (BUCKET_GENRE, searchers.TRAXSOURCE)
@@ -324,7 +431,7 @@ def test_discogs_writes_no_style_off_another_track_by_the_artist(searched, found
     assert hit.genre is None
 
 
-@pytest.mark.parametrize(("searched", "found"), SAME)
+@pytest.mark.parametrize(("searched", "found"), SAME + HEADED)
 def test_discogs_still_matches_a_title_to_its_own_track(searched, found):
     assert discogs_answer(_discogs_hit(searched, found)).answer == "matched"
 
@@ -377,3 +484,65 @@ def test_a_file_titled_in_brackets_still_takes_its_own_tracks_genre(tmp_path, si
     result = tag.tag_one(path, searcher=searcher(routed(search=results(), beatport=beatport)))
     assert result.genre_written == BUCKET_GENRE
     assert tags.read_genre_from_file(path) == BUCKET_GENRE
+
+
+#: (file title, another recording by the artist) pairs R-1631 drove to a wrong
+#: genre written through ``tag_one``.
+R1631_WRITES = [
+    ("Knee (Not Just) Deep (Part 1)", "Knee Slapper"),
+    (f"{OTHER} (Intro)", "Intro"),
+    ("Vocal Mix", "Other Song (Vocal Mix)"),
+    ("Club", "Nightclub"),
+    ("Original Mix", f"{OTHER} - Original Mix"),
+    ("Mood", "(Sunrise Mood)"),
+]
+
+
+@pytest.mark.parametrize(("title", "other"), R1631_WRITES)
+def test_a_file_takes_no_genre_off_another_recording_named_in_its_title(
+    tmp_path, silence, title, other
+):
+    """R-1631, as its review drove it: Beatport's row and Discogs' track are
+    another recording by the artist, and neither may write its genre."""
+    path = tmp_path / "a.flac"
+    path.write_bytes(Path(silence).read_bytes())
+    assert tags.write_tags(path, {"artist": ARTIST, "title": title})
+    beatport = searchers.Fetched(
+        text=_beatport_page([_beatport_track(ARTIST, other, BUCKET_GENRE, mix="Original Mix")]),
+        status=200,
+    )
+    tracks = [{"position": "A1", "type_": "track", "title": other}]
+    fetch = routed(search=results(44), releases={44: release(44, tracks=tracks)}, beatport=beatport)
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize("source", ["beatport", "discogs"])
+def test_a_file_whose_title_tag_carries_its_head_still_takes_its_own_genre(
+    tmp_path, silence, source
+):
+    """The live library writes ``KEY - BPM - `` into the title tag, so a file
+    is asked by that title and must still find its own row on either source."""
+    path = tmp_path / "a.flac"
+    path.write_bytes(Path(silence).read_bytes())
+    assert tags.write_tags(path, {"artist": ARTIST, "title": "04A - 126 - Burning (Extended Mix)"})
+    if source == "beatport":
+        rows = [
+            _beatport_track(ARTIST, "Burning Bridges", "Techno", mix="Original Mix"),
+            _beatport_track(ARTIST, "Burning", BUCKET_GENRE, mix="Extended Mix"),
+        ]
+        fetch = routed(search=results(), beatport=searchers.Fetched(text=_beatport_page(rows), status=200))
+    else:
+        tracks = [
+            {"position": "A1", "type_": "track", "title": "Burning Bridges"},
+            {"position": "A2", "type_": "track", "title": "Burning (Extended Mix)"},
+        ]
+        fetch = routed(search=results(45), releases={45: release(45, tracks=tracks)})
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written is not None
+    assert tags.read_genre_from_file(path) == result.genre_written
