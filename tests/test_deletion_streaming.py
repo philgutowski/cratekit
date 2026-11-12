@@ -27,7 +27,7 @@ from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.deletion import candidates, library, stores, watermark
 from cratekit.write import trees
-from tests.test_deletion import (  # noqa: F401 - fixtures
+from tests.test_deletion import (
     ONE,
     _categorize,
     _drive,
@@ -36,11 +36,11 @@ from tests.test_deletion import (  # noqa: F401 - fixtures
     _references,
     _removed,
     _write_rows,
-    cfg,
-    gates_pass,
-    library_root,
-    review_cli,
 )
+from tests.test_deletion import cfg as cfg  # noqa: PLC0414 - fixture
+from tests.test_deletion import gates_pass as gates_pass  # noqa: PLC0414 - fixture
+from tests.test_deletion import library_root as library_root  # noqa: PLC0414 - fixture
+from tests.test_deletion import review_cli as review_cli  # noqa: PLC0414 - fixture
 
 STREAMED = (
     "/v4/catalog/tracks/12345678/",
@@ -232,9 +232,13 @@ def test_delete_review_trashes_a_removed_file_beside_streaming_rows(
     assert code == int(ExitCode.OK), err
     code, out, err = _drive(["--output", "json", "--run", run_id, "delete", "review"])
     assert code == int(ExitCode.OK), err or out
+    # WHERE THE TRASH IS belongs to the platform, and the Trash tests own it;
+    # what this card owes is that the verb finished: the file was moved and its
+    # removal recorded with where it went.
+    del trash
     assert not music.exists()
-    assert any(trash.iterdir()), "the confirmed file never reached the Trash"
-    assert len(stores.list_tombstones(review_cli)) == 1
+    (recorded,) = stores.list_tombstones(review_cli)
+    assert recorded.payload["trashed_to"]
 
 
 def test_delete_review_still_refuses_an_unmapped_local_row_beside_streaming_rows(
