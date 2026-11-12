@@ -1,0 +1,79 @@
+name = "u275"
+pass_kind = "light"
+
+# U275 changes two constants and nothing else, so the table is the small
+# card's eight: the two figures put back, each moved to a realistic nearby
+# value just under the margin the unit claims, and four of U241's guards on
+# the same cost the new tests also lean on.
+
+[[rows]]
+id = "M1_base_back_to_linux"
+description = "LIGHT_BASE_BYTES back to U241's 320 megabytes, the figure before the Mac was measured"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''LIGHT_BASE_BYTES = 384 * 1024 * 1024'''
+new = '''LIGHT_BASE_BYTES = 320 * 1024 * 1024'''
+
+[[rows]]
+id = "M2_slope_back_to_linux"
+description = "LIGHT_BYTES_PER_SECOND back to U241's 1.5 megabytes a second, under every Mac peak"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''LIGHT_BYTES_PER_SECOND = 25 * 1024 * 1024 // 8'''
+new = '''LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024 // 2'''
+
+[[rows]]
+id = "M3_slope_rounded_down"
+description = "LIGHT_BYTES_PER_SECOND rounded down to 3.0 megabytes a second, over every peak but under a ninth above the measured slope"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''LIGHT_BYTES_PER_SECOND = 25 * 1024 * 1024 // 8'''
+new = '''LIGHT_BYTES_PER_SECOND = 3 * 1024 * 1024'''
+
+[[rows]]
+id = "M4_base_rounded_down"
+description = "LIGHT_BASE_BYTES rounded down to 352 megabytes, over the measured intercept but under an eighth above it"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''LIGHT_BASE_BYTES = 384 * 1024 * 1024'''
+new = '''LIGHT_BASE_BYTES = 352 * 1024 * 1024'''
+
+[[rows]]
+id = "M5_decode_line_dropped"
+description = "worker_bytes: drop the decode line, so a 192 kHz file costs only its length's analysis line"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''    return LIGHT_BASE_BYTES + max(analysis, decode)'''
+new = '''    return LIGHT_BASE_BYTES + analysis'''
+
+[[rows]]
+id = "M6_unknown_length_shorter"
+description = "_shape_of: bound an unknown length at fifty times the slowest rate, so not knowing plans wider than knowing"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''            seconds = target.stat().st_size / SLOWEST_BYTES_PER_SECOND'''
+new = '''            seconds = target.stat().st_size / (SLOWEST_BYTES_PER_SECOND * 50)'''
+
+[[rows]]
+id = "M7_cheapest_track_sets_the_cost"
+description = "costliest: take the cheapest track's cost, so a folder's longest track no longer sets the plan"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''    return max((cost_of(path) for path in paths), default=LIGHT_BASE_BYTES)'''
+new = '''    return min((cost_of(path) for path in paths), default=LIGHT_BASE_BYTES)'''
+
+[[rows]]
+id = "M8_analysis_line_scaled"
+description = "worker_bytes: the analysis line at three quarters of the declared slope, a coefficient mutation"
+file = "src/cratekit/analysis/light.py"
+surface = "user"
+tests = ["tests/test_analysis_ahead.py", "tests/test_analysis_workers.py", "tests/test_analysis_ahead_real.py", "tests/test_head_agreement.py", "tests/test_drift.py"]
+old = '''    analysis = int(seconds * LIGHT_BYTES_PER_SECOND)'''
+new = '''    analysis = int(seconds * LIGHT_BYTES_PER_SECOND * 3 // 4)'''
