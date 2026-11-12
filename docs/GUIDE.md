@@ -321,7 +321,10 @@ crate route pending
   registered label with a genre takes that genre with no catalogue asked; any
   other file is asked of Beatport, then of Discogs when Beatport does not
   carry it and a `discogs-token` is recorded, then of the general catalogue
-  by ISRC. Discogs' first style that names a folder is written, through the
+  by ISRC. A catalogue's row counts only when its title names the file's own
+  recording word for word, once the version, a featured artist and the
+  `KEY - BPM` head are set aside; a word inside the other title's brackets
+  never counts, so "Intro" is never "Sunrise Mood (Intro)". Discogs' first style that names a folder is written, through the
   taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the

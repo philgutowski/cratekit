@@ -10,7 +10,7 @@ resolution_type: code_fix
 applies_when:
   - "A unit compares titles, artists or any names by containment after stripping part of them"
   - "A unit adds a new catalogue source, or a new caller of the shared title matcher"
-tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534]
+tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534, r-1631, camelot-head]
 ---
 
 # A strip that can empty a title turns a substring match into a match of anything
@@ -34,17 +34,40 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   digit left identifies nothing and matches nothing, on either side, searched
   or found. `_identifies` in `tagging/searchers.py` is the check.
 - **Read a title the strip empties by its core, not by the remainder.**
-  `_title_core` keeps the leading bracket groups and the text after them, and
-  for a title of brackets alone takes the groups' words and marks them for
-  exact comparison only.
-- **A containment that reaches into a bracketed suffix needs a contained
-  side that names more than a version.** Version words alone ("Original Mix",
-  "Dub") are in the suffix of half a catalogue; `_contains` refuses them there.
-  Between two cores, where the bracketed suffix is gone (a dash suffix such
-  as " - Original Mix" is not stripped and stays), they compare as any title does,
-  or a track called "Original" loses "Original feat. Someone" (round one of
-  R-1534 drove that loss through `tag_one`). A differential that filters out
-  the pairs the new rule is about measures nothing: run it unfiltered.
+  `_title_core` takes off only the bracket groups a title ends with, read as
+  balanced groups from the end, and for a title of brackets alone takes the
+  groups' words and marks them for exact comparison only.
+- **Containment is the wrong comparison, not a loose one (R-1631).** After
+  R-1534 three shapes of the same substring test still wrote another
+  recording's genre: a strip from the first bracket cut "Knee (Not Just) Deep
+  (Part 1)" to "knee", in "Knee Slapper"; a containment between whole titles
+  read a word inside one title's brackets as the other title ("Intro" in
+  "Sunrise Mood (Intro)"), refused only for a hand list of version words that
+  missed "vocal" and "reprise"; and raw characters put "Club" in "Nightclub".
+  What landed compares readings, tuples of whole words once a title has shed
+  what is not its title (`_readings` in `tagging/searchers.py`), and two titles
+  match on a shared reading.
+- **A vocabulary may only shed, never refuse.** A list that refuses a match
+  for its words fails open on every word it lacks. The version words now come
+  from the domain's `core.tombstone.VERSION_WORDS` and are used only to shed a
+  trailing version from a title, so a word the list lacks costs a miss, never
+  another row's genre. Ask of any list in a matcher which way it fails.
+- **The file's title is not shaped like a catalogue's.** The live library
+  writes `KEY - BPM - ` into the title tag (the solution on the head in the
+  title tag), and a file with no title tag is asked by its "Artist - Album -
+  01 Title" name, so the file's side is read by any run of its dash parts and
+  a catalogue row only by its head before a version tail. Read the two the
+  same way and either the head is the title ("Aurora Bloom" matching every
+  "Aurora Bloom - X" heading) or the headed library matches nothing.
+- **What the new rule cannot tell apart, it refuses.** "How Does It Feel"
+  against "Untitled (How Does It Feel)" has the same evidence as "Intro"
+  against "Sunrise Mood (Intro)", so both are refused; that loss is pinned as
+  a known cost. Keep "Original" finding "Original feat. Someone" (round one
+  of R-1534 drove that loss through `tag_one`). A differential that filters
+  out the pairs the new rule is about measures nothing: run it unfiltered,
+  over title positions in the suite rather than every string, and read every
+  gain as closely as every loss: R-1631's own draft gained "Aurora Bloom - Sun
+  Path" matching a heading "Aurora Bloom - Tide", found only by reading gains.
 - **Every scorer that strips on its own needs the same care.** Beatport's
   `_beatport_best` never called the shared matcher; fixing the matcher alone
   would have left it open. And a scorer ranks, so a change that only widens
@@ -59,5 +82,7 @@ and Beatport's own scoring, which strips separately from the shared matcher.
 
 Drive both ways round, on every source that reads the matcher, with a table
 of pairs that must match (so no correct match is lost) and a table that must
-not, plus a file through `tag.tag_one` with the genre read back. A test of
+not, plus a file through `tag.tag_one` with the genre read back. A headed
+title tag, "04A - 126 - Burning (Extended Mix)", is in the table, since a
+plain title proves nothing about the library's own. A test of
 the matcher alone would have missed Beatport, which scores rows itself.
