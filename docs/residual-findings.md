@@ -49222,3 +49222,87 @@ grows 3.92 times and a tuple scan 4.03.
 
 **Closes when:** the pin calls `add_tracks` with every add, and the growth test
 reads a third size or a tighter coefficient. Ledger only.
+
+---
+
+## R-1548. The U248 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #677, U248, 2026-11-12.
+
+**The mechanism.** Fable's review of #677 was refused on its usage limit in both
+rounds, so by Phillip's rule of 2026-11-08 Opus 5.5 at high effort ran the
+`fable-reviewer` definition on the branch under the same merge bar and round
+cap. Neither round found a BLOCKING finding. The merged range has not had the
+reviewer the cloud lane names.
+
+**Measured cost.** None driven. The range changes `cli.build_parser`, which
+every command builds; round one compared the lazy and the eager parser over
+10,993 argument lists on 3.12 and 6,601 on 3.13 with no difference.
+
+**Closes when:** Fable reviews the merged range of U248 at high effort and its
+findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1549. The lazy and the eager parser build a verb by two copies of the same steps, which can drift
+
+**Found:** at the review of #677, U248, 2026-11-12.
+
+**The mechanism.** `cli.build_parser(eager=True)` keeps the construction loop
+as it stood before U248, and `_Unbuilt.build` in `src/cratekit/cli/__init__.py`
+does the same import, stub and builder steps for one verb when argparse selects
+it. They already differ in one deliberate way: a builder's own
+`argparse.ArgumentError` leaves the lazy path as a `RuntimeError`, because it is
+raised inside argparse's parse, and leaves the eager path as itself. A later
+change made to one copy and not the other would be caught by
+`tests/test_cli_lazy.py` only where it changes printed help or a parse result.
+
+**Measured cost.** None to a person: every command uses the lazy path, and the
+eager one is used by the docs walk in the suite and by CI's cold install. Kept
+twice on purpose, so the eager loop stays an independent oracle for the parity
+tests rather than the code under test asked twice.
+
+**Closes when:** the two are made to share the one step, with the parity tests
+moved to a captured oracle, or the eager path is retired. Ledger only.
+
+---
+
+## R-1550. The lazy parser subclasses argparse's private subcommand action and reads its private listing
+
+**Found:** at the build of #677, U248, 2026-11-12.
+
+**The mechanism.** `_LazyChoices` in `src/cratekit/cli/__init__.py` subclasses
+`argparse._SubParsersAction`, overrides `__call__` and `_get_subactions`, and
+takes the listing line from `_choices_actions[-1]` after `add_parser`. None of
+these is public. They hold on Python 3.12 and 3.13, which the parity tests in
+`tests/test_cli_lazy.py` and the cold install in CI exercise, and the package
+declares `<3.14`.
+
+**Measured cost.** None today. A Python whose argparse renames or reshapes one
+of them would fail the parity tests and CI's `crate --help`, not a user
+silently, since the build fails loudly.
+
+**Closes when:** the supported range widens past 3.13, at which point the
+parity tests run on the new interpreter before it is allowed. Ledger only.
+
+---
+
+## R-1551. A verb whose builder failed part way, asked again on the same parser, names the duplicate it left and not its own defect
+
+**Found:** at the review of #677, U248, 2026-11-12.
+
+**The mechanism.** `_Unbuilt.build` in `src/cratekit/cli/__init__.py` counts a
+verb built only once its builder returned, so a builder that raised part way is
+asked again the next time the same parser selects it. The arguments it added
+before it raised are still on the subparser, so the second attempt fails on a
+duplicate option, which `build` reports as a `RuntimeError` naming that
+duplicate rather than the builder's own first error.
+
+**Measured cost.** None to a person. Driven by review round two with a fake
+builder that adds an option and then raises: the first parse names its error,
+the second names the duplicate. No production path parses twice on one parser:
+`cli.run` and `cli.dispatch` build a new one per call, and every landed builder
+runs cleanly in the eager build.
+
+**Closes when:** the subparser is rebuilt fresh for a second attempt, or the
+first error is kept and raised again. Ledger only.
