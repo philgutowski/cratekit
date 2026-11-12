@@ -18,6 +18,7 @@ import subprocess
 import sys
 import textwrap
 from pathlib import Path
+from types import SimpleNamespace
 
 import pytest
 import tidalapi
@@ -617,7 +618,13 @@ def test_the_setting_reaches_the_cache_both_openers_build(tmp_path, monkeypatch)
 
     root = tmp_path / "library"
     built = config.from_dict(valid_data(root, provider={"isrc_cache_days": 4}))
-    monkeypatch.setattr(provider_session, "client_session", lambda gate=None: Client({}))
+    # U261: both openers take the process's held session rather than logging
+    # in themselves, so the stand in is the held session, with no app client.
+    monkeypatch.setattr(
+        provider_session,
+        "session_for",
+        lambda cfg=None: SimpleNamespace(client=Client({}), app=None),
+    )
 
     assert tidal_account.open_account(built)._cache.days == 4
     assert tidal_catalogue.open_catalogue(built)._cache.days == 4
