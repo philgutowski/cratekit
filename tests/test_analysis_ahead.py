@@ -884,17 +884,143 @@ def test_an_unreadable_calibration_is_each_items_refusal_and_opens_no_pool(
 
 
 def test_a_light_workers_cost_is_the_measured_line_in_the_tracks_length():
-    assert light.LIGHT_BASE_BYTES == 320 * MIB
-    assert light.LIGHT_BYTES_PER_SECOND == 1572864, "a megabyte and a half a second"
-    assert light.worker_bytes(0) == 320 * MIB
-    assert light.worker_bytes(600) == 320 * MIB + 900 * MIB
-    # Above what was measured at each end, a 45 second track and an 11 minute one.
+    assert light.LIGHT_BASE_BYTES == 384 * MIB
+    assert light.LIGHT_BYTES_PER_SECOND == 3276800, "three and an eighth megabytes a second"
+    assert light.worker_bytes(0) == 384 * MIB
+    assert light.worker_bytes(600) == 384 * MIB + 1875 * MIB
+    # Above what was measured on Linux at each end, a 45 second track and an
+    # 11 minute one.
     assert light.worker_bytes(45) > 345 * MIB
     assert light.worker_bytes(660) > 1175 * MIB
     with pytest.raises(ValueError):
         light.worker_bytes(-1)
     with pytest.raises(ValueError):
         light.worker_bytes(float("nan"))
+
+
+#: One light worker's peak resident memory, a fresh process per track, over six
+#: library tracks on Phillip's Mac at sitting 94 (A121, 2026-11-12): arm64,
+#: Python 3.12.5, librosa 1.0.0, 44.1 kHz stereo FLAC. Seconds, then megabytes.
+MAC_PEAKS = ((236, 987), (376, 1281), (576, 1805), (668, 2105), (690, 2162), (729, 2346))
+
+
+def _line_through(points) -> list[tuple[float, float]]:
+    """Slope and intercept of the line through the ends, and of least squares."""
+    (s0, p0), (s1, p1) = points[0], points[-1]
+    ends = (p1 - p0) / (s1 - s0)
+    n = len(points)
+    mean_s = sum(s for s, _ in points) / n
+    mean_p = sum(p for _, p in points) / n
+    fit = sum((s - mean_s) * (p - mean_p) for s, p in points) / sum(
+        (s - mean_s) ** 2 for s, _ in points
+    )
+    return [(ends, p0 - ends * s0), (fit, mean_p - fit * mean_s)]
+
+
+def _todays_cost(seconds: float, rate: int, channels: int) -> int:
+    """The cost U241 declared, from its literal figures: 320 MB plus 1.5 MB a second."""
+    analysis = int(seconds * 1572864)
+    decode = int(seconds * rate * 4 * (channels + 3))
+    return 320 * MIB + max(analysis, decode)
+
+
+@pytest.mark.parametrize(("seconds", "peak"), MAC_PEAKS)
+def test_each_measured_mac_peak_is_under_what_its_length_declares(seconds, peak):
+    """U275: every one of the six was over the declared figure before."""
+    declared = light.worker_bytes(float(seconds), rate=44100, channels=2)
+    assert declared >= peak * MIB
+    # With room, not by a hair: the Linux figures' margin was a ninth and up.
+    assert declared >= peak * MIB * 10 // 9
+
+
+def test_the_declared_line_keeps_the_linux_margin_over_the_macs_measured_line():
+    """A ninth over the steeper measured slope, an eighth over the higher intercept.
+
+    Linux measured 1.35 megabytes a second and declared 1.5, a ninth above;
+    it measured an intercept of 284 and declared 320, an eighth above.
+    """
+    lines = _line_through(MAC_PEAKS)
+    slope = max(s for s, _ in lines)
+    intercept = max(i for _, i in lines)
+    assert slope == pytest.approx(2.757, abs=0.001)
+    assert intercept == pytest.approx(336.4, abs=0.1)
+    assert light.LIGHT_BYTES_PER_SECOND >= slope * MIB * 10 / 9
+    assert light.LIGHT_BASE_BYTES >= intercept * MIB * 9 / 8
+
+
+@pytest.mark.parametrize("seconds", [0.0, 0.25, 1.0, 45.0, 236.0, 660.0, 3600.0, 86400.0])
+@pytest.mark.parametrize("rate", [1, 8000, 22050, 44100, 48000, 96000, 192000, 384000])
+@pytest.mark.parametrize("channels", [1, 2, 6])
+def test_no_shape_of_file_costs_less_than_it_did_before_u275(seconds, rate, channels):
+    """The pool never plans wider than it did: no cost falls, at any length or rate."""
+    assert light.worker_bytes(seconds, rate=rate, channels=channels) >= _todays_cost(
+        seconds, rate, channels
+    )
+
+
+def test_a_file_whose_length_is_unknown_costs_no_less_than_before(tmp_path):
+    unreadable = tmp_path / "odd.flac"
+    unreadable.write_bytes(b"\0" * 400_000)
+    assert tags.audio_seconds(unreadable) is None
+    assert light.cost_of(unreadable) >= _todays_cost(100.0, 1, 1)
+
+
+def test_a_file_whose_length_is_unknown_is_still_planned_narrower(tmp_path, monkeypatch):
+    """Not knowing the length bounds it by the size, which is the longer reading."""
+    known = tmp_path / "known.flac"
+    unknown = tmp_path / "unknown.flac"
+    for path in (known, unknown):
+        path.write_bytes(b"\0" * 8_000_000)
+    # Eight megabytes of uncompressed CD audio run 45 seconds; any real
+    # encoding of that size runs longer, and the unknown path reads 2000.
+    seconds = 8_000_000 / (44100 * 2 * 2)
+    monkeypatch.setattr(
+        tags,
+        "audio_shape",
+        lambda path: (seconds, 44100, 2) if Path(path).name == "known.flac" else (None, None, None),
+    )
+    assert light.cost_of(unknown) > light.cost_of(known)
+    machine(monkeypatch, core_count=12, available=24 * GIB)
+    narrow = light.plan([unknown] * 6)
+    wide = light.plan([known] * 6)
+    assert narrow.workers < wide.workers
+
+
+@pytest.mark.parametrize("available_gib", [4, 6, 8, 12, 18, 24, 32, 64])
+def test_the_light_plan_is_never_wider_than_before_u275(monkeypatch, available_gib):
+    names = {f"t{i}.flac": (float(s), 44100, 2) for i, (s, _) in enumerate(MAC_PEAKS)}
+    shapes(monkeypatch, names)
+    machine(monkeypatch, core_count=64, available=available_gib * GIB)
+    planned = light.plan(list(names))
+    before = pool.plan_pool(
+        worker_bytes=_todays_cost(729.0, 44100, 2),
+        items=len(names),
+        ceiling=cores.worker_ceiling(reserved=light.LIGHT_RESERVED_CORES),
+    )
+    assert planned.workers <= before.workers
+
+
+@pytest.mark.parametrize("available_gib", [4, 6, 8, 12, 18, 24, 32, 64])
+def test_six_mac_tracks_plan_no_more_workers_than_memory_holds(monkeypatch, available_gib):
+    """The card's scenario: the planner over the six measured lengths on the Mac."""
+    names = {f"t{i}.flac": (float(s), 44100, 2) for i, (s, _) in enumerate(MAC_PEAKS)}
+    shapes(monkeypatch, names)
+    machine(monkeypatch, core_count=12, available=available_gib * GIB)
+    planned = light.plan(list(names))
+    assert planned.worker_bytes == light.worker_bytes(729.0) >= 2346 * MIB
+    assert planned.workers <= max(1, available_gib * GIB // planned.worker_bytes)
+    if planned.workers > 1:
+        # Every worker at the largest peak the Mac measured still fits.
+        assert planned.workers * 2346 * MIB <= available_gib * GIB
+
+
+def test_eight_gigabytes_free_over_the_six_mac_tracks_is_one_worker(monkeypatch):
+    names = {f"t{i}.flac": (float(s), 44100, 2) for i, (s, _) in enumerate(MAC_PEAKS)}
+    shapes(monkeypatch, names)
+    machine(monkeypatch, core_count=12, available=8 * GIB)
+    planned = light.plan(list(names))
+    assert planned.workers <= 8 * GIB // light.worker_bytes(729.0) == 3
+    assert planned.workers == 1, "the reserve and the headroom come off first"
 
 
 def shapes(monkeypatch, known: dict[str, tuple]) -> None:
@@ -916,13 +1042,16 @@ def test_the_cost_is_set_by_the_costliest_track_in_the_batch(monkeypatch):
 def test_a_file_stored_at_a_high_rate_costs_its_decode_and_not_only_its_length():
     """The decode reads the file at its own rate; everything after it works at 22050."""
     cd_quality = light.worker_bytes(660.0, rate=44100, channels=2)
-    assert cd_quality == 320 * MIB + 990 * MIB, "CD audio is the analysis line, unchanged"
-    # At 96 kilohertz the decode has just passed the analysis: 1213 megabytes
-    # were measured, and the declared figure is above that.
+    assert cd_quality == 384 * MIB + 660 * 3276800, "CD audio is the analysis line, unchanged"
+    # At 96 kilohertz the decode is still under the analysis line the Mac's
+    # peaks set (U275); 1213 megabytes were measured on Linux, and the
+    # declared figure is above that.
     middle = light.worker_bytes(660.0, rate=96000, channels=2)
-    assert middle == 320 * MIB + 660 * 96000 * 4 * (2 + 3) > 1213 * MIB
+    assert 660 * 96000 * 4 * (2 + 3) < 660 * light.LIGHT_BYTES_PER_SECOND
+    assert middle == cd_quality > 1213 * MIB
     high = light.worker_bytes(660.0, rate=192000, channels=2)
-    assert high == 320 * MIB + 660 * 192000 * 4 * (2 + 3)
+    assert high == 384 * MIB + 660 * 192000 * 4 * (2 + 3)
+    assert high > cd_quality, "at 192 kilohertz the decode is the larger line"
     # Above both peaks measured for exactly this file, 2054 and 2180 megabytes.
     assert high > 2180 * MIB
     assert light.worker_bytes(660.0, rate=44100, channels=1) == cd_quality
@@ -960,7 +1089,7 @@ def test_a_length_the_header_will_not_give_is_bounded_by_the_files_size(tmp_path
     assert light.longest_seconds([]) == 0.0
     # The size's bound is the whole of it: no assumed rate is laid on top.
     assert light.cost_of(unreadable) == light.worker_bytes(100.0, rate=1, channels=1)
-    assert light.cost_of(unreadable) == 320 * MIB + 150 * MIB
+    assert light.cost_of(unreadable) == 384 * MIB + 100 * 3276800
     assert light.costliest([]) == light.LIGHT_BASE_BYTES
 
 
