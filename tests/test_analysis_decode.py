@@ -218,6 +218,24 @@ def test_the_first_audio_stream_is_taken_even_when_another_is_the_default(tmp_pa
     assert np.array_equal(native, first[:, 0].astype(np.float32) / np.float32(32768))
 
 
+def test_an_ffmpeg_that_exits_non_zero_saying_nothing_fails(tmp_path, monkeypatch):
+    """The exit code is half the rule on its own: an ffmpeg that wrote a
+    whole, valid stream and then failed in silence is not trusted. Bound
+    through the override variable every binary obeys."""
+    samples = np.linspace(-0.5, 0.5, 64, dtype="<f4")
+    stream = tmp_path / "stream.wav"
+    stream.write_bytes(_wav_header(_fmt(3, 2, 44100, 32), samples.tobytes()))
+    fake = tmp_path / "ffmpeg"
+    fake.write_text(f"#!/bin/sh\ncat '{stream}'\nexit 1\n")
+    fake.chmod(0o755)
+    monkeypatch.setenv(binaries.env_var("ffmpeg"), str(fake))
+    with pytest.raises(decode.DecodeFailed):
+        decode._ffmpeg_samples(tmp_path / "track.m4a")
+    fake.write_text(f"#!/bin/sh\ncat '{stream}'\nexit 0\n")
+    native, rate = decode._ffmpeg_samples(tmp_path / "track.m4a")
+    assert rate == 44100 and np.array_equal(native, samples.reshape(-1, 2).T)
+
+
 def test_a_file_that_is_not_audio_fails(tmp_path):
     junk = tmp_path / "junk.m4a"
     junk.write_bytes(b"not an audio file at all" * 40)
