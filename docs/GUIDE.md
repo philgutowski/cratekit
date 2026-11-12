@@ -39,6 +39,7 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -299,7 +300,15 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file no catalogue knows keeps no genre. A file's label is its label
+  other file is asked of Beatport, then of Discogs when Beatport does not
+  carry it and a `discogs-token` is recorded, then of the general catalogue
+  by ISRC. Discogs' first style that names a folder is written, through the
+  taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
+  folder is a decline. A library set up before that table shipped gets it
+  with `crate taxonomy upgrade`, which doctor names; until then nine of the
+  common dance styles, Nu-Disco and Techno among them, are declined. Traxsource and Bandcamp, which answer every search
+  with a bot check, are no longer asked. A file no catalogue knows keeps no
+  genre. A file's label is its label
   tag, else `--label`, else the one registered label whose whole `--match`
   needle its copyright line carries, as whole words, so a folder of several
   labels is tagged in one call with every catalogue refusing, as long as each
@@ -818,7 +827,7 @@ writes their genre tags.
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
 | `taxonomy folder WORD [--like GENRE]` | Makes the word a genre folder of its own with energy bands, copying family, tempo window and rating. |
-| `taxonomy upgrade` | Adds the classes and buckets the shipped template has and your copy lacks. |
+| `taxonomy upgrade` | Adds the classes, buckets and source vocabulary tables (`[vocabulary.discogs]`, `[vocabulary.deezer]`) the shipped template has and your copy lacks, never changing one your copy holds. |
 
 `taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
 dated name and refuse a word too coarse to be a genre (such as `Electronic`),

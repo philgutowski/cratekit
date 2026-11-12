@@ -1,4 +1,4 @@
-"""``crate taxonomy upgrade``: the shipped classes and buckets a library's copy lacks, added (U132).
+"""``crate taxonomy upgrade``: the shipped classes, buckets and vocabulary tables a library's copy lacks, added (U132, U244).
 
 Setup copies the shipped template beside the database once, and nothing the
 shipped template gains afterwards reaches the library on its own. This verb
@@ -88,6 +88,10 @@ def items(found: taxonomy_upgrade.Plan) -> list[dict[str, Any]]:
     out += [{"kind": taxonomy_upgrade.SUB_CLASS, "id": i, "change": "add"} for i in found.classes]
     out += [{"kind": taxonomy_upgrade.BUCKET, "id": i, "change": "add"} for i in found.buckets]
     out += [
+        {"kind": taxonomy_upgrade.VOCABULARY, "id": i, "change": "add"}
+        for i in found.vocabularies
+    ]
+    out += [
         {"kind": one.kind, "id": one.id, "change": "held", "reasons": list(one.reasons)}
         for one in found.held
     ]
@@ -113,6 +117,7 @@ def payload(found: taxonomy_upgrade.Plan) -> dict[str, Any]:
             "shipped_version": found.shipped_version,
             "classes": len(found.classes),
             "buckets": len(found.buckets),
+            "vocabularies": len(found.vocabularies),
             "held": len(found.held),
         },
         "chunk": None,
@@ -299,7 +304,11 @@ def taxonomy_upgrade_verb(ctx: "Context") -> Envelope:
         cfg, spec, ctx.run.run_id, path, fresh.before, fresh.after, data["digest"], what="upgraded"
     )
 
-    added = [*fresh.classes, *fresh.buckets]
+    added = [
+        *fresh.classes,
+        *fresh.buckets,
+        *(f"[{taxonomy_upgrade.VOCABULARY}.{source}]" for source in fresh.vocabularies),
+    ]
     return ctx.envelope(
         data=data,
         warnings=[

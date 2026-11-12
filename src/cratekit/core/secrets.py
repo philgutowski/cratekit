@@ -107,6 +107,10 @@ class Credential(StrEnum):
     #: when both are recorded, and under the account session when either is not.
     CATALOGUE_APP_ID = "catalogue-app-id"
     CATALOGUE_APP_KEY = "catalogue-app-key"
+    #: A Discogs personal access token (U244), sent in the Authorization header
+    #: of every request the tagging verbs make to Discogs' API and nowhere
+    #: else. Optional: without one Discogs is recorded as not asked.
+    DISCOGS_TOKEN = "discogs-token"
 
 
 class Remedy(StrEnum):

@@ -96,9 +96,11 @@ def filed(taxonomy, genre: str) -> tuple[str, str | None, Match]:
 # ── the shipped table ──────────────────────────────────────────────────────
 
 
-def test_the_shipped_template_declares_one_table_and_the_cards_rows():
-    (table,) = TAXONOMY.vocabularies
-    assert table.source == CATALOGUE
+def test_the_shipped_template_declares_the_catalogues_table_and_the_cards_rows():
+    """Two tables since U244, the general catalogue's and Discogs'; this card's
+    rows are the first one's, and Discogs' are ``tests/test_discogs_searcher.py``'s."""
+    assert {one.source for one in TAXONOMY.vocabularies} == {CATALOGUE, searchers.DISCOGS}
+    (table,) = [one for one in TAXONOMY.vocabularies if one.source == CATALOGUE]
     assert {row.word: (row.tag, row.bucket, row.sub) for row in table.words} == SHIPPED
     assert len(table.words) == len(SHIPPED)
 
@@ -408,10 +410,11 @@ def test_a_table_nothing_would_read_is_refused_and_not_ignored(default_raw, name
 
 def test_the_sources_the_loader_knows_are_the_ones_the_tagger_reads_a_table_for():
     """The loader cannot import the tagging package, so its tuple is pinned to
-    the name the chooser passes the resolver."""
-    assert taxonomy.VOCABULARY_SOURCES == (published.SOURCE,)
+    the names the chooser passes the resolver: the general catalogue's, and
+    Discogs' since U244. No record shop asked by page has one."""
+    assert taxonomy.VOCABULARY_SOURCES == (published.SOURCE, searchers.DISCOGS)
     assert published.SOURCE == CATALOGUE
-    assert not set(taxonomy.VOCABULARY_SOURCES) & set(searchers.SOURCES)
+    assert not set(taxonomy.VOCABULARY_SOURCES) & set(searchers.SCRAPED_WALK)
 
 
 # ── one rule for a folder's name, held to routing's own answer ─────────────
