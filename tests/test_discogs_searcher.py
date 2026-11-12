@@ -1175,3 +1175,19 @@ def test_a_styleless_match_beside_an_unread_pressing_is_unread_not_a_match():
     hit = searcher(fetch)(ARTIST, TITLE)
     assert discogs_answer(hit).answer == "unreachable"
     assert hit.unread == (searchers.DISCOGS,)
+
+
+def test_a_word_resolving_to_the_fallback_is_passed_over_where_its_name_is_not_too_coarse():
+    """The fallback check stands alone on a copy whose fallback name is not in
+    its too coarse list: the shipped template's lists it, which covered the
+    check and left it killing nothing (the mutation table's M19)."""
+    from cratekit.core.taxonomy import load_taxonomy, shipped_template_text
+
+    text = shipped_template_text("default")
+    line = 'too_coarse_as_source = ["", "Electronica", "Electronic", "Electronica / Other"]'
+    assert text.count(line) == 1
+    copy = load_taxonomy(text.replace(line, 'too_coarse_as_source = [""]'))
+    suggestion = routing.suggest_tag(copy, FALLBACK_GENRE, source=searchers.DISCOGS)
+    assert suggestion.bucket_id == copy.fallback.bucket
+    assert not copy.is_too_coarse_as_source(suggestion.tag)
+    assert searchers.choose_word(copy, [FALLBACK_GENRE], source=published.SOURCE, named_only=False) is None
