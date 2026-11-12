@@ -814,9 +814,9 @@ def _names_a_title(words: tuple[str, ...], *, tail: bool, head: bool) -> bool:
 
 #: A title read as its title's words and its version's words apart: "Sunrise
 #: Mood (Extended Mix)" is ("sunrise", "mood") and ("extended", "mix").
-Split = tuple[tuple[str, ...], tuple[str, ...]]
+TitleSplit = tuple[tuple[str, ...], tuple[str, ...]]
 
-Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]], frozenset[Split]]
+Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]], frozenset[TitleSplit]]
 
 
 def _a_tail_to_shed(tail: str, *, searched: bool) -> bool:
@@ -1079,7 +1079,7 @@ def _credit_words(part: str) -> set[tuple[str, ...]]:
     return {words for words in found if words}
 
 
-def _name_splits(parts: list[str], head: int, title: int) -> frozenset[Split]:
+def _name_splits(parts: list[str], head: int, title: int) -> frozenset[TitleSplit]:
     """The two ways a file's "Artist - X" name splits into a title and its
     version, when X ends in a version (R-1646): the artist's part titled, X
     its version, ("aurora bloom", "vocal mix"); or X titled up to its trailing
@@ -1099,7 +1099,7 @@ def _name_splits(parts: list[str], head: int, title: int) -> frozenset[Split]:
     return frozenset(splits)
 
 
-def _row_splits(text: str) -> frozenset[Split]:
+def _row_splits(text: str) -> frozenset[TitleSplit]:
     """The splits a catalogue row writes into a title and its version: before
     the bracket groups it ends with, "Sunrise Mood (Extended Mix)", or before
     a dash tail that is a version, "Sunrise Mood - Extended Mix". A row of no
@@ -1107,7 +1107,7 @@ def _row_splits(text: str) -> frozenset[Split]:
     since a catalogue lists a single's versions as its track titles."""
     parts = text.split(_DASH)
     every = _words(text)
-    splits: set[Split] = set()
+    splits: set[TitleSplit] = set()
     for last in range(1, len(parts) + 1):
         if last < len(parts) and not _a_tail_to_shed(_DASH.join(parts[last:]), searched=False):
             continue
