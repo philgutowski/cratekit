@@ -49621,3 +49621,49 @@ test that received it (18,320 tests, 12,048 loads, no answer changed).
 test that a write through one raises. Not done here because a `Taxonomy` might
 cross a process boundary through `core/pool.py`, which pickles its work, and
 a mapping proxy does not pickle; that path was not measured. Ledger only.
+
+---
+
+## R-1566. The index reader's memory trusts the volume's change time, which a FAT or exFAT volume may not keep, so a same size rewrite that puts the old time back while a pass runs is answered from memory
+
+**Found:** at the review of #678, U249, 2026-11-12.
+
+**The mechanism.** `match._read_from_disk` answers an unchanged file from
+memory for the rest of the process when its path, name template, size,
+modification time, change time, inode and device are all as they were and its
+modification time is at least two seconds older than the entry. On APFS and on
+Linux every write and every `os.utime` moves the change time, so a rewrite is
+always read again. Where a volume reports no change time of its own (FAT and
+exFAT under some drivers report the modification time or the creation time in
+its place), a tool outside Cratekit that rewrites a library file to the same
+size and puts its old modification time back, while one sync pass is running,
+would be answered with the file's old tags until the process ends. The window
+also reads the volume's clock against the machine's, which a network volume
+need not share.
+
+**Measured cost.** Not driven: no producer inside Cratekit restores a time
+(round one found no `os.utime` in `src`, and every `copy2` lands where the
+change time moves), and the live library is recorded on APFS
+(`docs/cutover.md`). The window and every stamp field are pinned by
+`tests/test_library_reads_remembered.py`.
+
+**Closes when:** the change time on the volume the live library uses is read
+on the Mac, or the reader keys on a content digest of the tag block. Ledger
+only.
+
+---
+
+## R-1567. U249's two review rounds ran on Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #678, U249, 2026-11-12.
+
+**The mechanism.** Both review rounds of U249, the library index reader that
+remembers each unchanged file for the process, were refused by Fable on its
+usage limit and run by Opus 5.5 at high effort under the same reviewer
+definition and merge bar, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None measured. The review a card is meant to have is
+Fable's, and it has not been run on this range.
+
+**Closes when:** Fable at high effort reviews U249's merged range against the
+merge bar and its findings are filed. Ledger only.

@@ -1818,13 +1818,23 @@ class _Resolved:
 #: is a module global standing in for a per drive setup seam the job engine
 #: does not have, which is recorded rather than hidden; ``reset_cache`` is
 #: what a suite calls between libraries, the same hook adoption exposes.
+#:
+#: EACH DRIVE STILL WALKS, but since U249 a walk opens only a file it cannot
+#: answer from memory: the index reader remembers each file's tags for the
+#: life of the process (the note above ``match._REMEMBERED``), so the several
+#: intake jobs of one sync pass and its ``intake missing`` read an unchanged
+#: library file once between them, and every walk still sees what a job
+#: landed, renamed or removed. A changed file, a new one, one written under
+#: two seconds before it was read and one whose read failed are read again.
 _RESOLVED: dict[tuple[str, int], _Resolved] = {}
 
 
 def reset_cache() -> None:
-    """Forget the cached library view. A module level cache no test can clear
-    is a cache that leaks one test's library into the next."""
+    """Forget the cached library view, and every file the index reader
+    remembers. A module level cache no test can clear is a cache that leaks one
+    test's library into the next."""
     _RESOLVED.clear()
+    match.reset_cache()
 
 
 def _resolved_for(job: jobs.Job, cfg: config.Config) -> _Resolved:

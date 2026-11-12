@@ -1,0 +1,237 @@
+name = "u249"
+pass_kind = "light"
+
+# U249: the library index reader remembers each unchanged file for the process.
+# Large by rigour: the index decides what a landing matches, refuses and files.
+
+[[rows]]
+id = "M01_path_alone"
+description = "_read_from_disk: answer any remembered path whatever its stamp, the path alone as identity"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and entry.stamp == stamp
+'''
+new = '''            and True
+'''
+
+[[rows]]
+id = "M02_size_out_of_stamp"
+description = "_read_from_disk: compare the stamp without its size"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and entry.stamp == stamp
+'''
+new = '''            and entry.stamp[1:] == stamp[1:]
+'''
+
+[[rows]]
+id = "M03_mtime_out_of_stamp"
+description = "_read_from_disk: compare the stamp without its modification time"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and entry.stamp == stamp
+'''
+new = '''            and entry.stamp[:1] + entry.stamp[2:] == stamp[:1] + stamp[2:]
+'''
+
+[[rows]]
+id = "M04_ctime_out_of_stamp"
+description = "_read_from_disk: compare the stamp without its change time, so a restore tool's old time over new bytes is answered from memory"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and entry.stamp == stamp
+'''
+new = '''            and entry.stamp[:2] + entry.stamp[3:] == stamp[:2] + stamp[3:]
+'''
+
+[[rows]]
+id = "M05_inode_out_of_stamp"
+description = "_read_from_disk: compare the stamp without its inode"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and entry.stamp == stamp
+'''
+new = '''            and entry.stamp[:3] + entry.stamp[4:] == stamp[:3] + stamp[4:]
+'''
+
+[[rows]]
+id = "M06_device_out_of_stamp"
+description = "_read_from_disk: compare the stamp without its device"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and entry.stamp == stamp
+'''
+new = '''            and entry.stamp[:4] == stamp[:4]
+'''
+
+[[rows]]
+id = "M07_size_not_stat"
+description = "_stamp_of: stamp a constant in place of the file's size"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''    return (seen.st_size, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev)'''
+new = '''    return (0, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev)'''
+
+[[rows]]
+id = "M08_template_out_of_key"
+description = "_read_from_disk: key the memory on the path alone, so an entry parsed under one name template answers another"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''    key = (path, template)'''
+new = '''    key = (path, None)'''
+
+[[rows]]
+id = "M09_no_window"
+description = "_read_from_disk: answer an equal stamp from memory however recent the file's modification time"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and stamp[1] <= entry.made_ns - REMEMBER_WINDOW_NS
+'''
+new = '''            and True
+'''
+
+[[rows]]
+id = "M10_window_halved"
+description = "REMEMBER_WINDOW_NS: one second in place of two, under a FAT volume's step"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''REMEMBER_WINDOW_NS = 2_000_000_000'''
+new = '''REMEMBER_WINDOW_NS = 1_000_000_000'''
+
+[[rows]]
+id = "M11_window_boundary"
+description = "_read_from_disk: a file exactly two seconds older than its entry is read again rather than answered"
+file = "src/cratekit/acquire/match.py"
+surface = "maintainer"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''            and stamp[1] <= entry.made_ns - REMEMBER_WINDOW_NS
+'''
+new = '''            and stamp[1] < entry.made_ns - REMEMBER_WINDOW_NS
+'''
+
+[[rows]]
+id = "M12_moment_after_read"
+description = "_read_from_disk: take the entry's moment after the read, so a write during the read can be answered from memory"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''    owned, whole = _read_fresh(path, template)
+    if stamp is not None and whole:'''
+new = '''    owned, whole = _read_fresh(path, template)
+    made_ns = _now_ns()
+    if stamp is not None and whole:'''
+
+[[rows]]
+id = "M13_failed_read_remembered"
+description = "_read_from_disk: remember a read that failed, so a moment's I/O error on a USB volume answers every later job"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''    if stamp is not None and whole:'''
+new = '''    if stamp is not None:'''
+
+[[rows]]
+id = "M14_unstated_remembered_never"
+description = "_stamp_of: answer None for every file, so nothing is ever remembered and every walk opens every file"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''    return (seen.st_size, seen.st_mtime_ns, seen.st_ctime_ns, seen.st_ino, seen.st_dev)'''
+new = '''    return None'''
+
+[[rows]]
+id = "M15_noting_reader_drops_field_failure"
+description = "_read_tags: note no failure for one undecodable field, so a partly failed read is remembered"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_tags.py", "tests/test_match_states.py"]
+old = '''            if failed is not None:
+                failed.append(f"{key}: {type(exc).__name__}: {exc}")
+            values[field] = None'''
+new = '''            values[field] = None'''
+
+[[rows]]
+id = "M16_noting_reader_drops_open_failure"
+description = "_read_tags: note no failure for a container mutagen could not open, so a moment's I/O error is remembered"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_tags.py", "tests/test_match_states.py"]
+old = '''        if failed is not None:
+            failed.append(f"{type(exc).__name__}: {exc}")
+        return absent'''
+new = '''        return absent'''
+
+[[rows]]
+id = "M17_noting_reader_drops_unrecognised"
+description = "_read_tags: note no failure for a container mutagen did not recognise"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_tags.py", "tests/test_match_states.py"]
+old = '''        if failed is not None:
+            failed.append("not a container the tag library recognises")
+        return absent'''
+new = '''        return absent'''
+
+[[rows]]
+id = "M18_noting_reader_drops_unsupported"
+description = "_read_tags: note no failure for a container this module does not read"
+file = "src/cratekit/core/tags.py"
+surface = "maintainer"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_tags.py", "tests/test_match_states.py"]
+old = '''        if failed is not None:
+            failed.append(str(exc))
+        return absent'''
+new = '''        return absent'''
+
+[[rows]]
+id = "M19_noting_reader_inverted"
+description = "read_tags_noting: report a failed read as whole"
+file = "src/cratekit/core/tags.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_tags.py", "tests/test_match_states.py"]
+old = '''    return values, not failed'''
+new = '''    return values, True'''
+
+[[rows]]
+id = "M20a_failed_read_keeps_old_entry"
+description = "_read_from_disk: keep an earlier whole read's entry when a later read is not whole, so a stamp that comes back brings the old tags back"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''    else:
+        # A read that was not whole, or a file with no stamp, forgets what an
+        # earlier whole read left: the file has been seen changing, and a stamp
+        # that came back later must not bring the older answer back with it.
+        _REMEMBERED.pop(key, None)
+    return owned'''
+new = '''    return owned'''
+
+[[rows]]
+id = "M20_reset_forgets_nothing"
+description = "match.reset_cache: forget nothing"
+file = "src/cratekit/acquire/match.py"
+surface = "maintainer"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_match_states.py", "tests/test_sync_land.py", "tests/intake/test_workers.py"]
+old = '''    test can clear is a memory that leaks one test's library into the next."""
+    _REMEMBERED.clear()'''
+new = '''    test can clear is a memory that leaks one test's library into the next."""'''
+
+[[rows]]
+id = "M21_intake_reset_leaves_reader"
+description = "intake.cli.reset_cache: clear the drive's view and leave the reader's memory"
+file = "src/cratekit/intake/cli.py"
+surface = "maintainer"
+tests = ["tests/test_library_reads_remembered.py", "tests/test_sync_unmark.py", "tests/intake/test_workers.py"]
+old = '''    _RESOLVED.clear()
+    match.reset_cache()'''
+new = '''    _RESOLVED.clear()'''
