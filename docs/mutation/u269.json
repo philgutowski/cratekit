@@ -1,0 +1,277 @@
+{
+  "name": "u269",
+  "pass_kind": "light",
+  "branch": "cloud/698-the-slim-install-stops-pulling-lxml-whic",
+  "head": "cd761569",
+  "when": "2026-11-12 17:52 UTC",
+  "valid": true,
+  "invalid_reason": "",
+  "baseline_collected": 19022,
+  "baseline_exit": 1,
+  "pytest_runs": 12,
+  "state_guarded": "~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries)",
+  "reused_rows": 0,
+  "known_failures": 162,
+  "known_source": ".cloud-battery/baseline.txt",
+  "control": {
+    "id": "NULL_CONTROL",
+    "description": "Automatic control: append a comment line to src/cratekit/acquire/bandcamp.py. Semantically empty, so it must kill zero. Any death here means the measuring apparatus is broken, not the code.",
+    "file": "src/cratekit/acquire/bandcamp.py",
+    "kind": "null-control",
+    "surface": "maintainer",
+    "pairs_with": null,
+    "fingerprint": "5a578f3013e70922",
+    "subset": null,
+    "subset_reason": "full suite",
+    "status": "zero",
+    "deaths": 0,
+    "collected": 19022,
+    "baseline_collected": 19022,
+    "collect_drift": false,
+    "collect_errors": [],
+    "killed": [],
+    "promoted": false,
+    "subset_deaths": null,
+    "note": "measured on the full suite",
+    "runs": 1,
+    "head_verified": true,
+    "old": "",
+    "new": "\n# mutation driver null control, restored automatically\n"
+  },
+  "rows": [
+    {
+      "id": "M1_lxml_declared_again",
+      "description": "pyproject.toml: declare lxml in the slim core again, which nothing under src imports",
+      "file": "pyproject.toml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "f2ab7427fa291072",
+      "subset": [
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_packaging.py::test_every_core_dependency_is_imported_by_the_package"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"rapidfuzz>=3.0\",      # three-state match scoring (R11)\n",
+      "new": "    \"rapidfuzz>=3.0\",      # three-state match scoring (R11)\n    \"lxml>=5.0\",           # rekordbox XML parsing\n"
+    },
+    {
+      "id": "M2_unused_dependency_by_another_import_name",
+      "description": "pyproject.toml: declare python-dateutil in the core, installed here and imported as dateutil, which nothing under src imports",
+      "file": "pyproject.toml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "ddad6e309cea7b3d",
+      "subset": [
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_packaging.py::test_every_core_dependency_is_imported_by_the_package"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"rapidfuzz>=3.0\",      # three-state match scoring (R11)\n",
+      "new": "    \"rapidfuzz>=3.0\",      # three-state match scoring (R11)\n    \"python-dateutil>=2.8\",\n"
+    },
+    {
+      "id": "M3_only_import_hidden_from_the_tree",
+      "description": "acquire/bandcamp.py: the one import of curl_cffi becomes a computed name, so no import under src names it",
+      "file": "src/cratekit/acquire/bandcamp.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "0c2eb0dd30f8bfde",
+      "subset": [
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_packaging.py::test_every_core_dependency_is_imported_by_the_package"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "        from curl_cffi import requests as curl_requests  # noqa: PLC0415 - the network seam\n",
+      "new": "        curl_requests = __import__(\"\".join([\"curl\", \"_cffi.requests\"])).requests\n"
+    },
+    {
+      "id": "M4_comment_names_the_missing_file",
+      "description": "pyproject.toml: the slim core comment names tests/test_slim_core.py again, a file that does not exist",
+      "file": "pyproject.toml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "3885afc65b718514",
+      "subset": [
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_packaging.py::test_every_path_pyproject_names_exists"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "# tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency\n# fails the build",
+      "new": "# tests/test_slim_core.py\n# fails the build"
+    },
+    {
+      "id": "M5_comment_names_a_missing_function",
+      "description": "pyproject.toml: the slim core comment names a test function test_packaging.py does not define",
+      "file": "pyproject.toml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "55b7c5e757f2e156",
+      "subset": [
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_packaging.py::test_every_path_pyproject_names_exists"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "# tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency\n# fails the build",
+      "new": "# tests/test_packaging.py::test_slim_core_is_slim\n# fails the build"
+    },
+    {
+      "id": "M6_heavy_dependency_in_the_core",
+      "description": "pyproject.toml: declare numpy in the slim core, the existing slim core guard's case",
+      "file": "pyproject.toml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "045e1a96b1d5e295",
+      "subset": [
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_packaging.py::test_slim_core_carries_no_dsp_web_or_ml_dependency"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "    \"rapidfuzz>=3.0\",      # three-state match scoring (R11)\n",
+      "new": "    \"rapidfuzz>=3.0\",      # three-state match scoring (R11)\n    \"numpy>=1.24\",\n"
+    },
+    {
+      "id": "M7_match_engine_binds_lxml",
+      "description": "acquire/match.py: bind lxml.etree under a branch that never runs, the export reader guard's lxml case, which stays as it is",
+      "file": "src/cratekit/acquire/match.py",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "fb2b7a7ec8c10995",
+      "subset": [
+        "tests/test_match_states.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 2,
+      "collected": 452,
+      "baseline_collected": 452,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_match_states.py::test_the_export_guard_stays_quiet_on_correct_code[from . import match\\n]",
+        "tests/test_match_states.py::test_the_match_engine_never_reaches_a_rekordbox_export"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "import hashlib\n",
+      "new": "import hashlib\n\nif False:\n    import lxml.etree  # noqa: F401\n"
+    },
+    {
+      "id": "M8_comment_names_a_missing_doc",
+      "description": "pyproject.toml: the slim core comment names docs/dependencies.md, which does not exist, the round one widening of the path guard to docs and vendor",
+      "file": "pyproject.toml",
+      "kind": "mutation",
+      "surface": "maintainer",
+      "pairs_with": null,
+      "fingerprint": "6060bdbcb2ec4e38",
+      "subset": [
+        "tests/test_packaging.py"
+      ],
+      "subset_reason": "explicit subset from the row",
+      "status": "killed",
+      "deaths": 1,
+      "collected": 18,
+      "baseline_collected": 18,
+      "collect_drift": false,
+      "collect_errors": [],
+      "killed": [
+        "tests/test_packaging.py::test_every_path_pyproject_names_exists"
+      ],
+      "promoted": false,
+      "subset_deaths": null,
+      "note": "",
+      "runs": 1,
+      "head_verified": true,
+      "old": "# fails the build if one appears. Every line here is also imported somewhere\n# under src/cratekit, which",
+      "new": "# fails the build if one appears (docs/dependencies.md). Every line here is\n# also imported somewhere under src/cratekit, which"
+    }
+  ],
+  "dropped": []
+}

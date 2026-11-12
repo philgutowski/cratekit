@@ -60,11 +60,14 @@ definition's body first and follow it, which is the same review.
 **When Fable is out of usage**, decided by Phillip on 2026-11-08: if the
 review is refused on Fable's usage limit, run the same reviewer definition
 on Opus 5.5 at high effort instead (a general purpose agent on the `opus`
-model told to read the `fable-reviewer` body first and follow it, under the
+model with its effort set to `high`, told to read the `fable-reviewer` body
+first and follow it, under the
 same merge bar and round cap). Say so in the Progress comment, the record
 and the pull request body (`Review: Opus 5.5 at high effort, Fable out of
-usage`), and file a residual owing a Fable pass on the merged range. Any
-other refusal or failure of the review is retried, never substituted.
+usage`). No follow up Fable pass is owed, decided by Phillip on
+2026-11-12: file a residual asking for one only when you judge the Opus
+review missed something, and name what it should look at. Any other
+refusal or failure of the review is retried, never substituted.
 
 ## Writes you never make
 
@@ -268,7 +271,10 @@ The baseline measures the machine's failures on the base, on this container,
 and writes them to `.cloud-battery/baseline.txt`. The clone is shallow, so it
 first fetches `main`'s full history and refuses if it cannot (U200, from
 R-1191): a test the missing history holds red would otherwise be subtracted by
-its id, and every later failure of it with it. Run it as a tracked
+its id, and every later failure of it with it. Every failing id is read
+whole off pytest's own reports (U268), and `compare` refuses a baseline
+measured before that, whose ids were cut at their first space, with the
+command that measures it again. Run it as a tracked
 background job with a two hour timeout from the start (a background job in a
 cloud thread is stopped at 30 minutes otherwise) before the first edit, so it measures the base and not your
 work in progress, and edit nothing under `src` or `tests` until it reports.
@@ -332,8 +338,9 @@ nothing else against the tree until it reports:
 
 The driver subtracts the machine's failures from every run, so its baseline
 is green net of them and its table says so. It refuses a known failures file
-whose header does not say `history full`, and refuses on a shallow clone, so
-pass it only a baseline `cloud_battery.py` measured. If it still refuses a red
+whose header does not end `history full ids whole`, which refuses a baseline
+measured before U268, whose ids were cut at their first space, and refuses on
+a shallow clone, so pass it only a baseline `cloud_battery.py` measured. If it still refuses a red
 baseline, rerun the test it names alone. If it fails alone it is yours: fix
 it. If it passes alone it is intermittent under the parallel run: run the
 driver again, and if the same test reddens the baseline a second time, treat

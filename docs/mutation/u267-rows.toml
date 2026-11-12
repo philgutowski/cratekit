@@ -1,0 +1,141 @@
+name = "u267"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_report_shares_nothing"
+description = "organize: the report makes no shared read, so every reader opens its own handle again, seven opens"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py", "tests/test_organize_inspiration.py"]
+old = '''    one_read = rb_writer.SharedRead(cfg) if report else None'''
+new = '''    one_read = None'''
+
+[[rows]]
+id = "M2_applying_run_shares"
+description = "organize: the run that answers a gate makes a shared read too, so its plans read through one handle"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py"]
+old = '''    one_read = rb_writer.SharedRead(cfg) if report else None'''
+new = '''    one_read = rb_writer.SharedRead(cfg)'''
+
+[[rows]]
+id = "M3_report_never_closes"
+description = "organize: the finally closes no shared read, so the report leaves its handle and engine open"
+file = "src/cratekit/organize/cli.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py"]
+old = '''        if one_read is not None:
+            one_read.close()'''
+new = '''        if one_read is not None:
+            pass'''
+
+[[rows]]
+id = "M4_handle_opens_every_time"
+description = "SharedRead.handle: open again on every call, keeping the last, so the report pays an open per reader and leaks the rest"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize_inspiration.py", "tests/test_organize_mirror_edits_u204.py"]
+old = '''        if self._db is None:
+            self._db = open_db('''
+new = '''        if True:
+            self._db = open_db('''
+
+[[rows]]
+id = "M5_handle_after_close"
+description = "SharedRead.handle: drop the refusal after close, so a closed shared read reopens silently"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_organize_one_read.py"]
+old = '''        if self._closed:
+            raise _defect("a read handle was asked of a shared read that was already closed")'''
+new = '''        if False:
+            raise _defect("a read handle was asked of a shared read that was already closed")'''
+
+[[rows]]
+id = "M6_release_keeps_rows"
+description = "SharedRead.release: keep the identity map, so the next reader takes a row an earlier reader loaded as the row the database holds now"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py", "tests/test_organize_inspiration.py"]
+old = '''        db.session.expunge_all()'''
+new = '''        db.session.flush()'''
+
+[[rows]]
+id = "M7_release_any_handle"
+description = "SharedRead.release: drop the refusal of a handle that is not its own"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_organize_one_read.py"]
+old = '''        if db is not self._db:
+            raise _defect("a handle that is not the shared read's own was released through it")'''
+new = '''        if False:
+            raise _defect("a handle that is not the shared read's own was released through it")'''
+
+[[rows]]
+id = "M8_close_closes_nothing"
+description = "SharedRead.close: forget the handle without close_db, so its engine and pooled connection stay open"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py"]
+old = '''        if db is not None:
+            close_db(db)'''
+new = '''        if db is not None:
+            pass'''
+
+[[rows]]
+id = "M9_done_reading_closes_shared"
+description = "done_reading: close the handle whatever its owner, so the first reader closes the shared handle under the rest"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py", "tests/test_organize_inspiration.py"]
+old = '''    if shared is None:
+        close_db(db)
+    else:
+        shared.release(db)'''
+new = '''    close_db(db)'''
+
+[[rows]]
+id = "M10_done_reading_leaks_own"
+description = "done_reading: never close a reader's own handle, so every reader of the run that answers a gate leaks one"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_organize.py"]
+old = '''    if shared is None:
+        close_db(db)'''
+new = '''    if shared is None:
+        pass'''
+
+[[rows]]
+id = "M11_rotation_opens_its_own"
+description = "rotate_cli.planned: ignore the shared read and open its own handle, a second open in the report"
+file = "src/cratekit/intake/rotate_cli.py"
+surface = "user"
+tests = ["tests/test_organize_one_read.py", "tests/test_inbox_rotate.py"]
+old = '''    db = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db('''
+new = '''    one_read = None
+    db = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db('''
+
+[[rows]]
+id = "M12_inspiration_set_folder_write_guard"
+description = "set_cli._inspiration_folder: drop the refusal of a shared read handed to an opener asked to write"
+file = "src/cratekit/export/set_cli.py"
+surface = "maintainer"
+tests = ["tests/test_organize_one_read.py", "tests/test_set_inspiration_playlist.py"]
+old = '''    if one_read is not None and not read_only:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M13_downloads_owned_opens_its_own"
+description = "mirror_downloads.plan: hand no shared read to the ISRC read, which then opens its own handle in the report"
+file = "src/cratekit/organize/mirror_downloads.py"
+surface = "user"
+tests = ["tests/test_organize_mirror_edits_u204.py", "tests/test_organize_one_read.py"]
+old = '''        owned = _owned(cfg, reading, one_read)'''
+new = '''        owned = _owned(cfg, reading)'''

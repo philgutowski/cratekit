@@ -1071,6 +1071,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held', 'utf-8'],  # 2026-11-12, U278
+    # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
     'core/rb_writer.py': [
         'app-version-pin-drift',
         'app-version-pin-unrecorded',
@@ -1079,6 +1080,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'cloud-sync-unreadable',
         'database-open-failed',
         'db-schema-pin-drift',
+        'internal-error',
         'library-database-missing',
         'library-database-not-rekordbox',
         'library-directory-missing',
@@ -2840,6 +2842,7 @@ PINNED_LITERAL_HOLDERS = {
     'core/processes.py': ['rekordbox-absence-unconfirmed'],
     # 2026-11-02, U193: the call ceiling's stop joined.
     'core/provider_gate.py': ['provider-budget', 'provider-call-ceiling', 'provider-cooldown', 'provider-gate-held'],  # 2026-11-12, U278
+    # 2026-11-12, U267: the shared read's refusal of a use it was not made for.
     'core/rb_writer.py': [
         'app-version-pin-drift',
         'app-version-pin-unrecorded',
@@ -2848,6 +2851,7 @@ PINNED_LITERAL_HOLDERS = {
         'cloud-sync-unreadable',
         'database-open-failed',
         'db-schema-pin-drift',
+        'internal-error',
         'library-database-missing',
         'library-database-not-rekordbox',
         'library-directory-missing',

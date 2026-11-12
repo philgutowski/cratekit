@@ -1668,29 +1668,44 @@ def build_parser() -> argparse.ArgumentParser:
         type=Path,
         default=None,
         help=(
-            "a file of node ids that fail on this machine and not for the tree, one "
+            "a file of whole node ids that fail on this machine and not for the tree, one "
             "a line, # comments allowed, as scripts/cloud_battery.py baseline writes "
-            "it with full history; subtracted from every run, and refused on a shallow clone"
+            "it with full history and whole ids; subtracted from every run, and refused "
+            "on a shallow clone"
         ),
     )
     return parser
 
 
-#: The field `cloud_battery.py baseline` ends its first line with (U200).
+#: The fields `cloud_battery.py baseline` ends its first line with: the clone's
+#: whole history was present (U200), and every id was stored whole (U268).
 KNOWN_FAILURES_FULL_HISTORY = "history full"
+KNOWN_FAILURES_WHOLE_IDS = "ids whole"
 
 
 def read_known_failures(path: Path) -> frozenset[str]:
-    """The node ids of a baseline, refused unless it was measured with full history.
+    """The node ids of a baseline, refused unless it was measured with full history
+    and its ids are whole.
 
     A shallow clone fails every test that reads old history, and a failure
     subtracted by id hides each later failure of that test (R-1191), so a file
-    whose first line does not end with the field `cloud_battery.py baseline`
-    writes, an older baseline or one written by hand, is refused.
+    whose first line does not end with the fields `cloud_battery.py baseline`
+    writes, an older baseline or one written by hand, is refused. A baseline
+    measured before U268 holds each id only up to its first space, and a cut id
+    equals no node id this driver reads off a report, so it is refused too, with
+    the command that measures it again.
     """
     text = path.read_text(encoding="utf-8").splitlines()
     first = text[0].strip() if text else ""
-    if not (first.startswith("# commit ") and first.endswith(f" {KNOWN_FAILURES_FULL_HISTORY}")):
+    measured = first.startswith("# commit ")
+    whole = f" {KNOWN_FAILURES_FULL_HISTORY} {KNOWN_FAILURES_WHOLE_IDS}"
+    if not (measured and first.endswith(whole)):
+        if measured and first.endswith(f" {KNOWN_FAILURES_FULL_HISTORY}"):
+            raise DriverRefusal(
+                f"{path} was measured before U268 and holds each id only up to its first "
+                f"space; measure it again with `scripts/cloud_battery.py baseline`, never "
+                f"write one by hand"
+            )
         raise DriverRefusal(
             f"{path} does not say it was measured with full history; measure it with "
             f"`scripts/cloud_battery.py baseline`, never write one by hand"

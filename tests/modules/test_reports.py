@@ -1804,6 +1804,11 @@ QUALIFIED_MUTATIONS = frozenset(
         # writer, so both are named here rather than admitted.
         "rb_writer.disposable_copy",
         "rb_writer.read_only_copy",
+        # U267: the organize report's one read handle opens the database at
+        # its first read, so a report holding one opens through a writer, and
+        # the reader's end of a read closes or releases that handle.
+        "rb_writer.SharedRead",
+        "rb_writer.done_reading",
         "rb_writer.integrity_ok",
         "rb_writer.live_db_path",
         "rb_writer.open_db",

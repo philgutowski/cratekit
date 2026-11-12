@@ -20,7 +20,12 @@ run, a failure is raised with its own reason, the steps that did write named
 in its message and the whole report in its detail, so a person is never told a
 clean organize over a write that failed.
 
-``--report`` plans both areas, asks nothing and writes nothing.
+``--report`` plans both areas, asks nothing and writes nothing. IT OPENS THE
+DATABASE ONCE (U267): every step that reads the library reads through one
+read handle, opened at the first read with every check an open runs and
+closed on every way out of the report, rather than each opening its own and
+paying the whole open path again. The run that answers a gate does not share
+it: each of its plans reads, and each of its writes opens to write, as before.
 
 ``--only KIND``, repeatable, NARROWS BOTH AREAS TO THE STEP KINDS IT NAMES
 (U137). An area none of whose kinds is named is not planned, not asked and not
@@ -48,7 +53,7 @@ import dataclasses
 from typing import Any
 
 from cratekit.cli.output import Envelope
-from cratekit.core import profiles
+from cratekit.core import profiles, rb_writer
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, rebuilt, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.intake import rotate_cli
@@ -300,38 +305,51 @@ def organize(ctx) -> Envelope:
         decided=not report and ACCOUNT_GATE in state.decisions,
         rematch=bool(getattr(ctx.args, "rematch", False)),
     )
-    # ONE ACCOUNT AND ONE MIRROR READING FOR BOTH AREAS (U201): the rekordbox
-    # area's mirror edits step decides from the very listings and matches the
-    # account area's mirror plans from, so the edit taken is the edit held.
-    from cratekit.modules.outbound import account as outbound_account
+    # ONE READ HANDLE FOR THE WHOLE REPORT (U267), and only for the report:
+    # it writes nothing, so no write can be handed the handle. Closed in the
+    # ``finally``, so a step that refuses, or fails in a way nobody expected,
+    # leaves no handle open.
+    one_read = rb_writer.SharedRead(cfg) if report else None
+    try:
+        # ONE ACCOUNT AND ONE MIRROR READING FOR BOTH AREAS (U201): the rekordbox
+        # area's mirror edits step decides from the very listings and matches the
+        # account area's mirror plans from, so the edit taken is the edit held.
+        from cratekit.modules.outbound import account as outbound_account
 
-    shared = account_mirror.Shared(cfg, lambda: outbound_account.resolve(cfg), run)
-    if _named(rekordbox.STEPS, only):
-        database = rekordbox.plan_area(
-            cfg,
-            ctx,
-            gate=REKORDBOX_GATE,
-            today=today,
-            labels=tuple(entry.name for entry in followed),
-            report=report,
-            only=only,
-            available=membership.available,
-            shared=shared,
+        shared = account_mirror.Shared(
+            cfg, lambda: outbound_account.resolve(cfg), run, one_read=one_read
         )
-        areas.append(database)
-        gates.append((database, REKORDBOX_GATE, APPROVE))
-    if _named(account.STEPS, only):
-        remote = account.plan_area(
-            cfg,
-            available=membership.available,
-            followed=followed,
-            unfollowed=unfollowed,
-            only=only,
-            run=run,
-            shared=shared,
-        )
-        areas.append(remote)
-        gates.append((remote, ACCOUNT_GATE, APPLY))
+        if _named(rekordbox.STEPS, only):
+            database = rekordbox.plan_area(
+                cfg,
+                ctx,
+                gate=REKORDBOX_GATE,
+                today=today,
+                labels=tuple(entry.name for entry in followed),
+                report=report,
+                only=only,
+                available=membership.available,
+                shared=shared,
+                one_read=one_read,
+            )
+            areas.append(database)
+            gates.append((database, REKORDBOX_GATE, APPROVE))
+        if _named(account.STEPS, only):
+            remote = account.plan_area(
+                cfg,
+                available=membership.available,
+                followed=followed,
+                unfollowed=unfollowed,
+                only=only,
+                run=run,
+                shared=shared,
+                one_read=one_read,
+            )
+            areas.append(remote)
+            gates.append((remote, ACCOUNT_GATE, APPLY))
+    finally:
+        if one_read is not None:
+            one_read.close()
 
     if report:
         data = _report(areas, report=True, answers={})
