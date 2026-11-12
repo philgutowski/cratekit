@@ -31,7 +31,14 @@ THREE PROPERTIES, EACH LOAD-BEARING:
 WHAT THIS IS NOT. It is not a lock. Two invocations in one installation would
 each materialise their own file in their own directory, which is correct for
 reading and is a last-writer-wins race for the refreshed token. Serialising
-acquisition belongs to the job engine, not here.
+acquisition belongs to the job engine, not here. A scope whose tool left the
+session as it was writes nothing back (U261), so only a run that refreshed the
+token takes part in that race.
+
+ONE LOGIN PER PROCESS FOR THE CATALOGUE AND THE ACCOUNT (U261). Their openers
+take :func:`session_for`, which logs in once and hands every later opener the
+same client while the keychain still holds the session it was opened from; a
+refusal from the provider, or a forget, drops it for every opener at once.
 """
 
 from __future__ import annotations
@@ -42,7 +49,7 @@ import tempfile
 import tomllib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -139,7 +146,7 @@ def materialised_session(
     try:
         config.atomic_write_bytes(codec.dumps(payload), path, mode=config.PRIVATE_FILE_MODE)
         yield SessionScope(directory=directory, path=path)
-        write_back(name, path, codec=codec)
+        write_back(name, path, codec=codec, stored=payload)
     finally:
         # Unconditional. The run that raised is the run most likely to have left
         # a live refresh token sitting in a temporary directory.
@@ -217,11 +224,13 @@ def client_session(
 ) -> Any:
     """An authenticated provider client, built from the stored session.
 
-    THE ONE PLACE A CATALOGUE OR ACCOUNT READS AND WRITES BACK THE TOKEN, and it
-    is built inside :func:`materialised_session` rather than beside it so that
-    stays true: the downloader and the catalogue then read the same stored blob
-    through the same scope, and a refresh the login performed goes back to the
-    keychain through the same validated :func:`write_back`.
+    THE ONE LOGIN A CATALOGUE OR ACCOUNT MAKES, and it is built inside
+    :func:`materialised_session` rather than beside it so that the downloader
+    and the catalogue read the same stored blob through the same scope, and a
+    refresh the login performed goes back to the keychain through the same
+    validated :func:`write_back`. Since U261 the openers reach it through
+    :func:`session_for`, which also reads the keychain on a reuse to see the
+    session it holds is still the stored one, and writes nothing there.
 
     THE GATE IS ASKED BEFORE THE CLIENT IS BUILT AND ATTACHED BEFORE IT LOGS IN
     (R-705). A verb started inside the cooldown a rate limited run left behind
@@ -244,8 +253,17 @@ def client_session(
     that the provider rejects, :class:`ProviderUnavailable` for a login that
     could not be asked at all, and lets :func:`materialised_session`'s own
     translation of a keychain failure through unchanged.
+
+    A VERB DOES NOT CALL THIS: it takes the process's held session from
+    :func:`session_for`, which calls this once and reuses the client (U261).
     """
-    gate = gate or provider_gate.Gate()
+    return _login(name, gate or provider_gate.Gate())[0]
+
+
+def _login(name: str, gate: provider_gate.Gate) -> tuple[Any, dict]:
+    """:func:`client_session`'s login, and the session the keychain holds for
+    the client it returns once the scope has closed: the stored one, or the
+    refresh the scope wrote back over it."""
     gate.assert_open()
     with materialised_session(name) as scope:
         stored = JSON.loads(scope.path.read_text(encoding="utf-8"))
@@ -295,7 +313,7 @@ def client_session(
         config.atomic_write_bytes(
             JSON.dumps(refreshed), scope.path, mode=config.PRIVATE_FILE_MODE
         )
-    return client
+    return client, refreshed
 
 
 def _requests_session() -> Any:
@@ -382,7 +400,171 @@ def catalogue_client(account: Any, *, gate: provider_gate.Gate) -> Any | None:
     return client
 
 
-def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
+#: Statuses that judge the SESSION on a call made after login. Narrower than
+#: :data:`REJECTED_STATUSES`, which includes 400 because a login's bad request
+#: is a bad token; a read answered 400 is a bad request about that read. The
+#: outbound account reads the same set (``account.SESSION_REFUSED_STATUSES``).
+SESSION_REFUSED_STATUSES = frozenset({401, 403})
+
+
+@dataclass(eq=False, slots=True)
+class HeldSession:
+    """The logged in session one process shares between its openers (U261).
+
+    Compared by identity, never by value: an adapter built over this session
+    asks whether the session it was built over is STILL the held one, and two
+    logins that happened to answer alike are still two logins.
+    """
+
+    #: The keychain entry it was opened from.
+    name: str
+    #: The gate settings it was opened under, so a caller handing over other
+    #: settings, a job's frozen configuration, opens a session of its own.
+    settings: provider_gate.GateSettings
+    #: The gate both the client and the app client are attached to.
+    gate: provider_gate.Gate
+    #: The logged in provider client every opener builds its adapter over.
+    #: Kept out of the repr, since the client carries the tokens.
+    client: Any = field(repr=False)
+    #: The bytes the keychain holds for this client, as ``secrets.set_json``
+    #: stores them: what a reuse compares the keychain against. Kept out of
+    #: the repr, since it IS the session, tokens and all.
+    blob: str = field(repr=False)
+    #: The app client :func:`catalogue_client` built beside it, or None.
+    app: Any = None
+
+
+#: The session this process holds, or None before the first open and after a
+#: refusal or :func:`forget`.
+_HELD: HeldSession | None = None
+
+
+def held() -> HeldSession | None:
+    """The session this process holds, if any. Read, never kept, by an adapter
+    holder that must know whether its client is still the held one."""
+    return _HELD
+
+
+def forget() -> None:
+    """Drop the held session, so the next :func:`session_for` logs in again."""
+    global _HELD
+    _HELD = None
+
+
+def drop(session: HeldSession) -> None:
+    """Drop ``session`` if it is still the held one, and nothing newer: what a
+    refusal of one client forgets, since a session logged in since was not
+    the one refused."""
+    global _HELD
+    if _HELD is session:
+        _HELD = None
+
+
+def _watch(session: HeldSession) -> None:
+    """Drop ``session`` the moment the provider refuses it on any call.
+
+    The refusal is read where every call of the shared client passes, its
+    transport, over the gate's own wrap, so it does not matter which seam made
+    the call or how that seam reads the failure: the label catalogue, which
+    has no forget of its own, and the account, which has, both leave the next
+    resolve to log in again rather than hand the next opener a client the
+    provider has refused. A status that judges no session, a not found or a
+    rate limit, keeps it. Only the account identity's transport is watched; the
+    app client's refusals are about the app's credentials, not the session.
+    """
+    transport = getattr(session.client, "request_session", None)
+    send = getattr(transport, "request", None)
+    if not callable(send):
+        return
+
+    def watched(method: Any, url: Any, *args: Any, **kwargs: Any) -> Any:
+        try:
+            response = send(method, url, *args, **kwargs)
+        except Exception as exc:
+            if answered_status(exc) in SESSION_REFUSED_STATUSES:
+                drop(session)
+            raise
+        if getattr(response, "status_code", None) in SESSION_REFUSED_STATUSES:
+            drop(session)
+        return response
+
+    transport.request = watched
+
+
+def session_for(
+    cfg: Any = None, name: str = secrets.Credential.PROVIDER_SESSION
+) -> HeldSession:
+    """The process's logged in session, opened once and reused (U261).
+
+    THE FIRST USE LOGS IN EXACTLY AS :func:`client_session` DOES: the gate is
+    asked, the stored session is materialised, the provider validates it, a
+    refresh goes back to the keychain, and every failure raises the typed
+    failure it raised before. Nothing is held unless all of that succeeded.
+
+    A LATER USE MAKES NO REQUEST, and is still asked three things first. The
+    gate, so a verb started inside a cooldown refuses here as a first open
+    does. The gate settings, so a caller with other settings opens its own.
+    And the keychain, read once: the client is reused only while the keychain
+    still holds the session it was opened from. A session another process
+    refreshed, or a different login recorded since, is logged in afresh from
+    the new value; one that is missing, unreadable or not a session raises the
+    same translation a login raises and drops the hold, so a session removed
+    after an open is refused rather than reused.
+
+    WHAT IS FORGOTTEN IS FORGOTTEN FOR EVERY OPENER. The outbound account's
+    forget on a refused session drops this hold, and so does any 401 or 403
+    answered through the shared client (:func:`_watch`), so the label
+    catalogue and the account never hand out a client the provider refused.
+
+    The app client is held with it (R-1218), so a process that opens both the
+    catalogue and the account asks the token service once. When none was
+    built, a reuse asks :func:`catalogue_client` again, which reads presence
+    only and notes a lost app value for this run's spend line as before.
+    """
+    global _HELD
+    settings = (
+        provider_gate.GateSettings.from_config(cfg)
+        if cfg is not None
+        else provider_gate.GateSettings()
+    )
+    current = _HELD
+    if current is not None and current.name == str(name) and current.settings == settings:
+        current.gate.assert_open()
+        try:
+            stored = secrets.get_json(name)
+        except secrets.CredentialError as exc:
+            drop(current)
+            raise _to_auth_failure(exc) from exc
+        if _canonical(stored) == current.blob:
+            if current.app is None:
+                current.app = catalogue_client(current.client, gate=current.gate)
+            return current
+    forget()
+    gate = provider_gate.Gate(settings)
+    client, refreshed = _login(name, gate)
+    app = catalogue_client(client, gate=gate)
+    blob = _canonical(refreshed)
+    opened = HeldSession(
+        name=str(name), settings=settings, gate=gate, client=client,
+        blob=blob if blob is not None else "", app=app,
+    )
+    _watch(opened)
+    _HELD = opened
+    return opened
+
+
+def _canonical(payload: Any) -> str | None:
+    """The bytes ``secrets.set_json`` would store for ``payload``, or None when
+    it cannot be encoded, which then compares equal to nothing."""
+    try:
+        return json.dumps(payload, sort_keys=True)
+    except (TypeError, ValueError):
+        return None
+
+
+def write_back(
+    name: str, path: Path, *, codec: Codec = JSON, stored: dict | None = None
+) -> bool:
     """Return a refreshed session to the keychain, or leave the keychain alone.
 
     Returns whether the keychain was updated, so a caller can tell "the tool
@@ -391,6 +573,16 @@ def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
     a successful run into a failed run, and writing it anyway destroys the stored
     session. Doing nothing keeps the last known good credential, which is the
     only one of the three outcomes the user can recover from unaided.
+
+    AN UNCHANGED SESSION IS NOT WRITTEN (U261). ``stored`` is the session the
+    scope read out of the keychain, and a file that comes back holding the same
+    value is left where it is: the keychain already holds it, and the write
+    would only spend a keychain write and a read back on every login. Same
+    means the same bytes ``secrets.set_json`` would store, so key order and
+    spacing in the file do not count as a change and a value that changed type
+    does. A session that differs is written exactly as before, through
+    ``secrets.set_json``, the index lock, the read back and the index. With no
+    ``stored`` to compare against, the file is written as before.
     """
     try:
         raw = path.read_text(encoding="utf-8")
@@ -404,6 +596,10 @@ def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
         return False
     if not any(field in refreshed for field in SESSION_FIELDS):
         return False
+    if stored is not None:
+        unchanged = _canonical(refreshed)
+        if unchanged is not None and unchanged == _canonical(stored):
+            return False
     secrets.set_json(name, refreshed)
     return True
 
@@ -411,9 +607,11 @@ def write_back(name: str, path: Path, *, codec: Codec = JSON) -> bool:
 __all__ = [
     "CATALOGUE_TRANSPORT_FACTORY",
     "CLIENT_FACTORY",
+    "HeldSession",
     "JSON",
     "REJECTED_STATUSES",
     "SESSION_FIELDS",
+    "SESSION_REFUSED_STATUSES",
     "TOML",
     "Codec",
     "ProviderUnavailable",
@@ -421,7 +619,11 @@ __all__ = [
     "answered_status",
     "catalogue_client",
     "client_session",
+    "drop",
     "failure_links",
+    "forget",
+    "held",
     "materialised_session",
+    "session_for",
     "write_back",
 ]

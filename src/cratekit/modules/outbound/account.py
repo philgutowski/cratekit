@@ -2,8 +2,8 @@
 
 **U63 BOUND IT.** ``cratekit.modules.outbound.tidal_account`` implements
 :class:`~cratekit.modules.outbound.service.RemoteAccount` over a provider client
-that ``acquire.provider_session.client_session`` logs in from the stored session,
-the same factory the label catalogue uses. Before that unit no implementation
+logged in from the stored session, the one ``acquire.provider_session.session_for``
+holds for the process and shares with the label catalogue (U261). Before that unit no implementation
 shipped and this module refused every call with ``outbound-account-unbound``.
 That refusal is kept for the one case it still describes truthfully: a build in
 which the adapter or its client library does not import.
@@ -29,6 +29,20 @@ So the first successful resolve is held and handed to every later call in the
 process; :func:`forget` drops it. A detached ``crate job resume`` is its own
 process and resolves its own.
 
+**ONE LOGIN PER PROCESS, SHARED WITH THE CATALOGUE (U261).** The adapter is
+built over the session ``provider_session.session_for`` holds, which the label
+catalogue's opener takes too, so a verb that opens both logs in once. The held
+adapter is handed out only while that session is still the held one: a 401 or
+403 answered through the shared client drops it, and so does a catalogue
+resolve that finds the keychain no longer holds it, after which the next
+resolve here opens a new adapter. A resolve here asks neither the keychain nor
+the gate on a reuse, as before U261, so a process that resolves only the
+account goes on over the adapter it opened until a refusal or :func:`forget`.
+A session refused through :func:`provider_failure` drops the adapter and the
+shared session it was built over, so the catalogue's next resolve logs in
+again rather than reuse the client the provider refused; :func:`forget` drops
+every hold.
+
 Layer: modules.
 """
 
@@ -36,6 +50,7 @@ from __future__ import annotations
 
 import importlib
 
+from cratekit.acquire import provider_session
 from cratekit.acquire.adapter import AdapterAuthFailed, AdapterBroken
 from cratekit.acquire.provider_session import (
     ProviderUnavailable,
@@ -54,6 +69,11 @@ ADAPTER_MODULE = "cratekit.modules.outbound.tidal_account"
 
 #: The adapter this process already opened, if any. See the module docstring.
 _OPENED: RemoteAccount | None = None
+
+#: The shared session :data:`_OPENED` was built over, read off
+#: ``provider_session.held`` when it was opened. None for an adapter that holds
+#: no shared session, which then stays valid while none is held.
+_OPENED_OVER: provider_session.HeldSession | None = None
 
 #: The session module's remedy, carried into the product's vocabulary, as
 #: ``label.catalogue`` carries it.
@@ -83,16 +103,40 @@ def bound() -> bool:
 
 
 def forget() -> None:
-    """Drop the adapter this process holds, so the next resolve opens a new one."""
-    global _OPENED
+    """Drop the adapter this process holds and the session it shares with the
+    catalogue, so the next resolve of either logs in again."""
+    global _OPENED, _OPENED_OVER
     _OPENED = None
+    _OPENED_OVER = None
+    provider_session.forget()
+
+
+def _forget_refused() -> None:
+    """Drop the held adapter and the shared session IT was built over.
+
+    Only that session: one the catalogue logged in since, from a session
+    recorded afresh, was not the one refused, and dropping it would cost a
+    login for nothing. The refused adapter is read as the one this module
+    holds, so an older adapter a caller kept and that meets the refusal drops
+    the session the held one was built over, which costs one login and never
+    leaves a refused client held. An adapter built over no shared session
+    forgets every hold, the safe direction.
+    """
+    global _OPENED, _OPENED_OVER
+    over = _OPENED_OVER
+    _OPENED = _OPENED_OVER = None
+    if over is None:
+        provider_session.forget()
+    else:
+        provider_session.drop(over)
 
 
 #: Statuses that judge the SESSION on a call made after login. Narrower than
 #: ``provider_session.REJECTED_STATUSES``, which includes 400 because a login's
 #: bad request is a bad token; a heart or a playlist add answered 400 is a bad
 #: request about that item, and telling that person to log in again is wrong.
-SESSION_REFUSED_STATUSES = frozenset({401, 403})
+#: The session module's own set, which its watch on the shared client reads.
+SESSION_REFUSED_STATUSES = provider_session.SESSION_REFUSED_STATUSES
 
 
 def _session_refused(exc: BaseException) -> bool:
@@ -133,7 +177,7 @@ def provider_failure(exc: BaseException, doing: str) -> CratekitError:
         # The held adapter's client is dead, so the next item resolves a fresh
         # one from the keychain rather than failing on this one for the rest of
         # the process, and a login made meanwhile is picked up.
-        forget()
+        _forget_refused()
         return refuse(
             "credential-missing",
             f"the streaming provider rejected the session while trying to {doing} "
@@ -164,7 +208,7 @@ def resolve(cfg: config.Config) -> RemoteAccount:
     slug with the remedy the session module chose. An adapter that does not
     import is this build's own gap, and authenticating again would not move it.
     """
-    global _OPENED
+    global _OPENED, _OPENED_OVER
     # The credential is installation scoped and the library does not pick it;
     # the configuration is still handed on, because the pacing gate reads its
     # interval and cooldown off the FROZEN one a job carries (R-705).
@@ -178,8 +222,9 @@ def resolve(cfg: config.Config) -> RemoteAccount:
             origin=("outbound", "account"),
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         )
-    if _OPENED is not None:
+    if _OPENED is not None and _OPENED_OVER is provider_session.held():
         return _OPENED
+    _OPENED = _OPENED_OVER = None
     try:
         adapter = importlib.import_module(ADAPTER_MODULE)
     except ImportError as exc:
@@ -218,6 +263,7 @@ def resolve(cfg: config.Config) -> RemoteAccount:
             detail={"credential": str(secrets.Credential.PROVIDER_SESSION)},
         ) from exc
     _OPENED = opened
+    _OPENED_OVER = provider_session.held()
     return opened
 
 
