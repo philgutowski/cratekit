@@ -911,6 +911,16 @@ crate metadata mytags-vocals [--apply]
   for the batch's costliest track (a long one, or one stored at a high
   sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
+- `analyze run` reads a track's key from the whole track's chroma without
+  the harmonic separation, since U276: about half the time of the reading it
+  replaced, and over 300 library tracks rekordbox analysed itself it agreed
+  with rekordbox's key 161 times against the old reading's 159. A track
+  analysed before U276 keeps the key it was given; analysed again, its key
+  can differ (on generated audio, every key that moved moved one Camelot
+  step, toward the key the track was written in). The answer's
+  `head_agreement` names the method the run reads with (`key_method`), the
+  method its `key` counts were read with (`key_read_with`), and each
+  method's reading over one sample (`key_by_method`).
 - The analysis reads every file the installed librosa reads exactly as it
   always did. A stereo track is mixed to mono with one add rather than
   librosa's mean, the same samples bit for bit and about a quarter of a
