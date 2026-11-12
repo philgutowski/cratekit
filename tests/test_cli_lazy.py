@@ -354,15 +354,26 @@ def test_a_defective_builder_is_a_defect_and_never_a_usage_error():
     entries = [_fake("status", "tests.cli_fixtures.conflicting_builder")]
     membership = profiles.resolve("full")
     parser = cli.build_parser(entries, membership=membership)
-    with pytest.raises(RuntimeError, match="builder of status") as raised:
+    with pytest.raises(RuntimeError, match="building status from") as raised:
         parser.parse_args(["status"])
     assert isinstance(raised.value.__cause__, argparse.ArgumentError)
-    # Built only once the builder returned, so asking again fails the same
-    # way rather than handing on a verb with half its arguments.
-    with pytest.raises(RuntimeError, match="builder of status"):
+    # Built only once the builder returned, so asking again is still refused
+    # as a defect rather than handing on a verb with half its arguments. What
+    # it names the second time is the duplicate the first attempt left behind,
+    # which for this fixture is the same defect and for another may not be.
+    with pytest.raises(RuntimeError, match="building status from"):
         parser.parse_args(["status"])
     with pytest.raises(argparse.ArgumentError):
         cli.build_parser(entries, membership=membership, eager=True)
+
+
+def test_an_argument_error_raised_by_the_import_is_a_defect_too():
+    """The same class one step earlier, from review round two."""
+    entries = [_fake("status", "tests.cli_fixtures.argument_error_at_import")]
+    membership = profiles.resolve("full")
+    with pytest.raises(RuntimeError, match="building status from") as raised:
+        cli.build_parser(entries, membership=membership).parse_args(["status"])
+    assert isinstance(raised.value.__cause__, argparse.ArgumentError)
 
 
 def test_the_eager_parser_still_raises_a_broken_module_at_construction():

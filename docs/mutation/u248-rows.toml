@@ -61,9 +61,11 @@ tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
 old = '''        if self.built:
             return
         try:
-            module = self.importer(self.entry.module)'''
+            try:
+                module = self.importer(self.entry.module)'''
 new = '''        try:
-            module = self.importer(self.entry.module)'''
+            try:
+                module = self.importer(self.entry.module)'''
 
 [[rows]]
 id = "L7_defect_as_stub"
@@ -71,12 +73,12 @@ description = "build: treat every import error as a missing extra, so a defect o
 file = "src/cratekit/cli/__init__.py"
 surface = "user"
 tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
-old = '''            if not _is_missing_extra(exc, self.entry):
-                raise
-            self._stub(exc)
-            return'''
-new = '''            self._stub(exc)
-            return'''
+old = '''                if not _is_missing_extra(exc, self.entry):
+                    raise
+                self._stub(exc)
+                return'''
+new = '''                self._stub(exc)
+                return'''
 
 [[rows]]
 id = "L8_listing_raises_a_defect"
@@ -88,3 +90,25 @@ old = '''        except Exception:  # noqa: BLE001 - see the docstring, the verb
             pass'''
 new = '''        except Exception:  # noqa: BLE001 - see the docstring, the verb itself raises
             raise'''
+
+[[rows]]
+id = "L9_argument_error_unwrapped"
+description = "build: let an ArgumentError from the import or the builder reach argparse, so a defect of ours exits 2 as the user's usage error"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_cli_lazy.py", "tests/test_cli_contract.py"]
+old = '''        except argparse.ArgumentError as exc:
+            raise RuntimeError('''
+new = '''        except ZeroDivisionError as exc:
+            raise RuntimeError('''
+
+[[rows]]
+id = "L10_built_before_the_builder"
+description = "build: count the verb built before its builder returns, so a builder that failed part way hands on a half built verb"
+file = "src/cratekit/cli/__init__.py"
+surface = "maintainer"
+tests = ["tests/test_cli_lazy.py"]
+old = '''            ) from exc
+        self.built = True'''
+new = '''            ) from exc
+        self.built = self.built'''
