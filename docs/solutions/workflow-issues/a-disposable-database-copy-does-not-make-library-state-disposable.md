@@ -30,7 +30,9 @@ tags:
 The attended sittings preview a live write by copying `master.db` into a
 temporary directory and pointing a temporary config at it, with
 `CRATEKIT_CONFIG_DIR` and `CRATEKIT_STATE_DIR` redirected. That isolates the
-database and the installation state. It does not isolate LIBRARY state, which
+database and the installation state, all but the provider gate, which is
+never redirected: every provider call the copy makes is spent from the live
+hour's budget, and a sweep on the copy can stop a live go (U278). It does not isolate LIBRARY state, which
 `config.library_state_dir` puts at `<library.root>/.cratekit` on the volume,
 and the copy's config still names the real root.
 

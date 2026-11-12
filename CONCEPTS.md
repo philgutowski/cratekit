@@ -226,6 +226,16 @@ counts calls and rate limits, and allows one call in flight. Settings are
 - **Identities**: `account` (the person's session) and `app` (Cratekit's own
   credentials, used only by `acquire/catalogue_api.py`), counted apart under one
   interval, breaker and ceiling.
+- **One gate per account**: the state file and its lock live under
+  `config.provider_gate_dir`, which `CRATEKIT_STATE_DIR` never moves
+  (`CRATEKIT_PROVIDER_GATE_DIR` does), so a copy run and the live run read one
+  gate (U278).
+- **Hour's budget**: most calls per identity in any sixty minutes, across every
+  command and process, `[provider] calls_per_hour` (1,500), raised for one run
+  with `--calls-per-hour N`; a call past it parks as `provider-budget`.
+- **Reserve**: the share of the hour a command that only reads never spends,
+  `[provider] reserve_share` (0.25), kept for verbs that declare a `remote` or
+  `files` write, outside a `--report` run and a `label sync` that is not `--go`.
 
 ### Active taxonomy
 The library's copy of the taxonomy, `.cratekit/coupled/taxonomy.toml` on the

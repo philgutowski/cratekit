@@ -98,8 +98,25 @@ Root options go before the verb:
 crate --output json doctor           # one JSON envelope
 crate -d route.inbox.apply=apply route inbox   # answer a gate inline
 crate --run RUN_ID route inbox       # continue a run stopped at a gate
-crate --calls 2000 --run RUN_ID sync pair   # raise the provider call ceiling for one run
+crate --calls 1000 --run RUN_ID sync pair   # raise the provider call ceiling for one run
+crate --calls-per-hour 3000 label sync --go # raise the hour's provider budget for one run
 ```
+
+### The hour's provider budget
+
+Every call to the streaming provider is counted in one gate per account,
+shared by every command, every process and every copy run, whatever
+`CRATEKIT_STATE_DIR` says. Each identity, the account session and Cratekit's
+app credentials, may make `[provider] calls_per_hour` calls (1,500) in any
+sixty minutes. A command that only reads stops a quarter short of that
+(`[provider] reserve_share`, 0.25), so 375 calls an hour are always kept for
+the commands that write the account or download: a label go, `sync land`, an
+export, an organize apply. `--report` runs and every `label sync` but `--go`
+read. A call past the line is not sent: the command stops as
+`provider-budget`, names the minute the line frees, and keeps what it did.
+`--calls` never reaches past the line its command may spend to; a higher one
+is refused before any call. `crate doctor`'s `provider.budget` line shows
+where each identity stands in the hour and any cooldown.
 
 ## Before every session
 
@@ -1144,7 +1161,8 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | A job that never moves | `crate job show JOB_ID`; queued work needs `crate job resume`. |
 | A blocked job | `job show` gives the cause, usually a review item or a credential. |
 | A resume that refuses the same way | `crate job cancel JOB_ID` and queue a fresh one. |
-| `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`. |
+| `provider-call-ceiling` | The command hit the provider call ceiling (`[provider] calls_per_command`, 500). Run the printed command; `--calls N` raises it for one run, as `crate --calls N job resume JOB_ID`, up to the hour's line for that command. |
+| `provider-budget` | The account, or the app credentials, has made as many provider calls in the last hour as this command may (`[provider] calls_per_hour`, 1,500, reads stopping at 1,125), counted across every command and copy. Wait until the time it names, then run it again or `crate job resume JOB_ID`; `crate --calls-per-hour N` raises the hour for one run. A `--calls` past the line is refused the same way: lower it. A `label sync` walk over every label refuses first when its estimate will not fit; ask one label with `--next --label NAME`. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
@@ -1171,7 +1189,8 @@ A cancelled job is its own state, never a failure.
 | What | Where |
 |---|---|
 | Configuration | `config.toml` in the platform config folder (`~/Library/Application Support/cratekit/` on macOS; `CRATEKIT_CONFIG_DIR` overrides) |
-| Job queue, provider pacing, ISRC answers | the installation's state folder (`CRATEKIT_STATE_DIR` overrides); doctor's `provider.isrc-cache` line names the ISRC file |
+| Job queue, ISRC answers | the installation's state folder (`CRATEKIT_STATE_DIR` overrides); doctor's `provider.isrc-cache` line names the ISRC file |
+| Provider pacing and the hour's budget | the platform's own state folder, which `CRATEKIT_STATE_DIR` does NOT move, so a copy run spends from the live hour; `CRATEKIT_PROVIDER_GATE_DIR` overrides; doctor's `provider.budget` line names the file |
 | Library state, active taxonomy, write sessions, snapshots | `.cratekit/` under the library root |
 | Credentials | the OS keychain |
 | Backups | the rclone remotes in `[backup]` |
@@ -1233,12 +1252,16 @@ wins over the profile's preset), `[taxonomy]`, `[naming]`, `[acquisition]`,
 | `provider.cooldown_s` | 900 |
 | `provider.calls_per_command` | 500 |
 | `provider.isrc_cache_days` | 30 (0 turns the ISRC cache off) |
+| `provider.calls_per_hour` | 1500 (per identity, over any sixty minutes) |
+| `provider.reserve_share` | 0.25 (kept for writes and downloads) |
 | `labels.offer_per_sweep` | 10 |
 | `labels.new_playlist_age_days` | 30 |
 
 An ISRC answer is shared by every verb, so a rehearsal and the live run pay
 for a lookup once. A copy run that redirects `CRATEKIT_STATE_DIR` should point
-`CRATEKIT_ISRC_CACHE_DIR` at the live state folder.
+`CRATEKIT_ISRC_CACHE_DIR` at the live state folder. The provider gate needs no
+such step: it never follows `CRATEKIT_STATE_DIR`, so a copy run's calls are
+counted in, and stopped by, the live hour's budget.
 
 ## Working with an AI assistant
 
