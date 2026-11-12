@@ -1,0 +1,196 @@
+name = "u246"
+pass_kind = "light"
+
+# The rebuild worker's second pass (rebuild_tree), which writes memberships.
+
+[[rows]]
+id = "R1_rebuild_set_per_placement"
+description = "rebuild_tree: put the set back inside the comprehension, one set of the derived placements built per placement (the shape on main)"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_growth.py", "tests/test_comprehension_sets.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_resort_scope.py"]
+old = '''    favorites = tuple(entry for entry in placements if entry not in first_pass)'''
+new = '''    favorites = tuple(entry for entry in placements if entry not in set(derived))'''
+
+[[rows]]
+id = "R2_rebuild_tuple_scan"
+description = "rebuild_tree: test each placement against the derived tuple itself, a linear scan per placement, quadratic by equality and not by hashing"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_growth.py", "tests/test_comprehension_sets.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_resort_scope.py"]
+old = '''    favorites = tuple(entry for entry in placements if entry not in first_pass)'''
+new = '''    favorites = tuple(entry for entry in placements if entry not in derived)'''
+
+[[rows]]
+id = "R3_rebuild_set_of_placements"
+description = "rebuild_tree: build the set from every placement rather than the derived ones, so the second pass files no favourite"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_growth.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '''    first_pass = set(derived)'''
+new = '''    first_pass = set(placements)'''
+
+[[rows]]
+id = "R4_rebuild_membership_inverted"
+description = "rebuild_tree: keep the placements present in the derived set, so the second pass refiles the first pass's placements and no favourite"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_growth.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '''    favorites = tuple(entry for entry in placements if entry not in first_pass)'''
+new = '''    favorites = tuple(entry for entry in placements if entry in first_pass)'''
+
+[[rows]]
+id = "R5_rebuild_set_empty"
+description = "rebuild_tree: an empty set, so every placement, the first pass's included, is filed again as a favourite"
+file = "src/cratekit/write/rebuild.py"
+surface = "user"
+tests = ["tests/test_rebuild_growth.py", "tests/test_rebuild.py", "tests/test_genre_favorites.py", "tests/test_resort_scope.py", "tests/test_routing_workers.py"]
+old = '''    first_pass = set(derived)'''
+new = '''    first_pass = set()'''
+
+# The ten sibling hoists: each set given the wrong value, so the line's
+# behaviour is shown pinned by the suite, and two of them put back per element.
+
+[[rows]]
+id = "S1_adapter_asked_empty"
+description = "InvocationResult: an empty set of requested keys, so every result reads as a track nobody asked for"
+file = "src/cratekit/acquire/adapter.py"
+surface = "user"
+tests = ["tests/test_adapter_contract.py", "tests/test_acquire_workers.py", "tests/test_acquire_cli.py", "tests/intake/test_pipeline.py"]
+old = '''            asked = set(self.requested)'''
+new = '''            asked = set()'''
+
+[[rows]]
+id = "S2_adapter_per_element"
+description = "InvocationResult: build the requested set once per result again (the shape on main)"
+file = "src/cratekit/acquire/adapter.py"
+surface = "maintainer"
+tests = ["tests/test_comprehension_sets.py", "tests/test_adapter_contract.py"]
+old = '''            stray = [r.key for r in self.results if r.key not in asked]'''
+new = '''            stray = [r.key for r in self.results if r.key not in set(self.requested)]'''
+
+[[rows]]
+id = "S3_set_playlist_order_set_empty"
+description = "assert_read_back (set playlist): an empty set of wanted ids, so a filled playlist always reads as out of order and refuses"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py", "tests/test_export_set.py", "tests/test_u129_set_account_playlist.py", "tests/test_write_session.py", "tests/test_inbox_refill.py"]
+old = '''    named = set(wanted)'''
+new = '''    named = set()'''
+
+[[rows]]
+id = "S4_set_playlist_order_set_read_back"
+description = "assert_read_back (set playlist): the set built from the read back, so a stranger row in a filled playlist no longer breaks the order"
+file = "src/cratekit/intake/set_playlist.py"
+surface = "user"
+tests = ["tests/test_set_inspiration_playlist.py", "tests/test_export_set.py", "tests/test_u129_set_account_playlist.py", "tests/test_write_session.py", "tests/test_inbox_refill.py"]
+old = '''    named = set(wanted)'''
+new = '''    named = set(written.read_back)'''
+
+[[rows]]
+id = "S5_inspiration_held_empty"
+description = "assert_read_back (inspiration): an empty set of live rows, so every planned row reads as missing and the write refuses"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py", "tests/test_u242_taken.py", "tests/test_write_session.py", "tests/test_organize.py"]
+old = '''        held = set(live)'''
+new = '''        held = set()'''
+
+[[rows]]
+id = "S6_inspiration_planned_live"
+description = "assert_read_back (inspiration): the planned set built from the live rows, so the refusal names no unplanned row"
+file = "src/cratekit/organize/inspiration.py"
+surface = "user"
+tests = ["tests/test_organize_inspiration.py", "tests/test_u242_taken.py", "tests/test_write_session.py", "tests/test_organize.py"]
+old = '''            planned = set(one.members)'''
+new = '''            planned = set(live)'''
+
+[[rows]]
+id = "S7_pair_calls_before_empty"
+description = "account_write: an empty set of what the playlist held, so no removal is counted as taking anything"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_resume.py"]
+old = '''    held_before = set(now)'''
+new = '''    held_before = set()'''
+
+[[rows]]
+id = "S8_pair_calls_after_empty"
+description = "account_write: an empty set of what the removals left, so an add the playlist already holds is counted as sent"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_resume.py"]
+old = '''    held_after = set(now)'''
+new = '''    held_after = set()'''
+
+[[rows]]
+id = "S9_pair_calls_after_stale"
+description = "account_write: the after set reuses the before set, so a track the removals took off reads as still held and its add is not counted"
+file = "src/cratekit/sync/pair_calls.py"
+surface = "user"
+tests = ["tests/test_sync_pair_calls.py", "tests/test_sync_pair_resume.py"]
+old = '''    held_after = set(now)'''
+new = '''    held_after = held_before'''
+
+[[rows]]
+id = "S10_pair_cli_started_empty"
+description = "pair: the stopped write's start as an empty set, so a folded base holds nothing it asked for"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_stopped.py", "tests/test_sync_pair_stopped_order.py", "tests/test_sync_pair_resume.py", "tests/test_sync_pair_resume_one.py", "tests/test_sync_pair.py"]
+old = '''        started = set(stopped_write.start) if folded else set()'''
+new = '''        started = set()'''
+
+[[rows]]
+id = "S11_pair_cli_served_empty"
+description = "pair: the served keys as an empty set, so under a short listing every base key reads as withheld"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair.py", "tests/test_sync_pair_unread.py", "tests/test_sync_pair_window_lag.py", "tests/test_sync_pair_hold.py"]
+old = '''            served = set(account_keys)'''
+new = '''            served = set()'''
+
+[[rows]]
+id = "S12_pair_cli_made_here_empty"
+description = "pair: no account ids made this run, so discovery is told every pair, the ones this run made included, is already paired"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "user"
+tests = ["tests/test_sync_pair_discover.py", "tests/test_sync_pair_adopted.py", "tests/test_sync_pair.py", "tests/test_organize_mirror.py"]
+old = '''            made_here = set(ours.values())'''
+new = '''            made_here = set()'''
+
+[[rows]]
+id = "S13_pair_cli_per_element"
+description = "pair: build the made here set once per pair again (the shape on main)"
+file = "src/cratekit/sync/pair_cli.py"
+surface = "maintainer"
+tests = ["tests/test_comprehension_sets.py", "tests/test_sync_pair_discover.py"]
+old = '''                        if pair.account_id not in made_here'''
+new = '''                        if pair.account_id not in set(ours.values())'''
+
+[[rows]]
+id = "S14_unmark_narrowed_empty"
+description = "unmark: an empty narrowed set, so --playlist narrows every mark away and the verb puts nothing back"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py", "tests/test_gate_shown_plan.py"]
+old = '''    narrowed = set(named)'''
+new = '''    narrowed = set()'''
+
+[[rows]]
+id = "S15_unmark_narrowed_first_only"
+description = "unmark: narrow to the first playlist named alone, so a second --playlist is dropped"
+file = "src/cratekit/sync/unmark_cli.py"
+surface = "user"
+tests = ["tests/test_sync_unmark.py", "tests/test_gate_shown_plan.py"]
+old = '''    narrowed = set(named)'''
+new = '''    narrowed = set(named[:1])'''
+
+[[rows]]
+id = "S16_inspiration_held_per_element"
+description = "assert_read_back (inspiration): build the live set once per planned row again (the shape on main)"
+file = "src/cratekit/organize/inspiration.py"
+surface = "maintainer"
+tests = ["tests/test_comprehension_sets.py", "tests/test_organize_inspiration.py"]
+old = '''        missing = [row for row in one.members if row not in held]'''
+new = '''        missing = [row for row in one.members if row not in set(live)]'''

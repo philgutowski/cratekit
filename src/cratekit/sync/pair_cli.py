@@ -1565,6 +1565,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
     # the gate never names a fold that was not made.
     folded = stopped_write is not None and stopped_write.written and not first_sync
     if not first_sync:
+        started = set(stopped_write.start) if folded else set()
         base_account = pair_merge.distinct(
             alias(one)
             for one in (
@@ -1574,7 +1575,7 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
                 [
                     held_id
                     for held_id in pair_merge.placed(stopped_write.target, stopped_write.start)
-                    if held_id in set(stopped_write.start)
+                    if held_id in started
                 ]
                 if folded
                 else held.account or ()
@@ -1585,7 +1586,8 @@ def plan_pair(reader: _Reader, target: Target, held, *, home: Any = None) -> Pai
             # left out is not known, so no track the base held is read as gone,
             # and none of them is offered to the account as an addition either:
             # it may be on the playlist, served to nobody.
-            unseen = {key for key in base_account if key not in set(account_keys)}
+            served = set(account_keys)
+            unseen = {key for key in base_account if key not in served}
             base_account = tuple(key for key in base_account if key not in unseen)
         if unread_keys:
             unseen |= {key for key in base_account if key in unread_keys}
@@ -4910,6 +4912,7 @@ def check(
     try:
         discovered: dict[str, Any] = {}
         if any(one.place is not None for one in planned.pairs):
+            made_here = set(ours.values())
             discovered = {
                 found.rekordbox_id: found
                 for found in pair_discover.discover(
@@ -4922,7 +4925,7 @@ def check(
                     paired=(
                         pair.rekordbox_id
                         for pair in document.pairs.values()
-                        if pair.account_id not in set(ours.values())
+                        if pair.account_id not in made_here
                     ),
                     released=document.released.rekordbox,
                 ).found

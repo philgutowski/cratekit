@@ -146,7 +146,8 @@ def _narrowed(
             not_marked=strangers,
             pass_name=name,
         )
-    return tuple(entry for entry in found if entry.playlist_id in set(named))
+    narrowed = set(named)
+    return tuple(entry for entry in found if entry.playlist_id in narrowed)
 
 
 def _later(entry: mark_record.Marked, every: tuple[mark_record.Marked, ...]) -> str:
