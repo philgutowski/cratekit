@@ -49726,3 +49726,70 @@ playlist once without the ladder, or the continuation reuse the plan's
 refusal for a playlist it left, and a card builds the answer. Ledger only:
 it costs time, not data, truth or a finishing workflow, so it meets none of
 the board bar's four costs. U252's card left this question out of scope.
+
+---
+
+## R-1570. Three verbs convert a stored level by their own copies of the tag reader's rule
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** U250 made `tags.whole_number` the one conversion the energy
+and vocal readers and `rebuild.read_truth` take from a stored level's text to a
+number. Three copies of the same rule stand outside it, each written before it:
+`_as_level` in `src/cratekit/analysis/cli.py` (`crate analyze restamp`),
+`_as_level` in `src/cratekit/vocals/cli.py`, and `_as_int` in
+`src/cratekit/modules/tools/setbuilder.py`, which strips the text first. Round
+two of the review drove all three against `whole_number` over 17 values (None,
+padded, decimal, underscore, non ASCII digits, NUL, hex) and all four agree
+today.
+
+**Measured cost.** None today. A change to `whole_number` (a decimal read as its
+whole part, say) would leave those verbs reading a stored level the old way
+while routing reads it the new way, and no test compares them.
+
+**Closes when:** each copy calls `tags.whole_number`, or is deleted for it.
+Ledger only: out of U250's scope, which named the derivation's three readers.
+
+---
+
+## R-1571. The U250 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** Fable's review of #679 was refused on its usage limit in both
+rounds, so by Phillip's rule of 2026-11-08 Opus 5.5 at high effort ran the
+`fable-reviewer` definition on the branch under the same merge bar and round
+cap. Neither round found a BLOCKING finding. The merged range has not had the
+reviewer the cloud lane names.
+
+**Measured cost.** None driven. The range changes `rebuild.read_truth`, which
+every derivation, preview and resort reads the library through; round one read
+469 files over every supported suffix three ways (the branch, the three single
+field readers, main's `read_truth`) and found no difference.
+
+**Closes when:** Fable reviews the merged range of U250 at high effort and its
+findings are driven or filed. Ledger only: a maintainer facing gap.
+
+---
+
+## R-1572. U250's test helper patches single readers no routing test reads, and its energy failure no longer chains its cause
+
+**Found:** at the review of #679, U250, 2026-11-12.
+
+**The mechanism.** Two small things round two of the review measured and the
+two round cap left. `serve_readings` in `tests/_readings.py` serves each field
+at `tags.read_tags` and also patches the matching single field reader, "so a
+path that reads one field alone sees the same fake"; removing those side
+patches kills no test in `tests/test_routing_workers.py` or
+`tests/test_export_collection.py`, since every served read there comes through
+`read_truth` (272 of 272 calls). And `tags.read_energy_checked` now raises
+`TagReadFailed` for a stored energy that is not a number without
+`from exc`, so the exception carries no `ValueError` as its `__cause__`; its
+three callers discard it, and its message, which only a debug line shows, is
+identical to main's and pinned by no test.
+
+**Measured cost.** None: 98 inputs over five containers read, raise and word
+identically to main; only `__cause__` differs, and nothing reads it.
+
+**Closes when:** the side patches are dropped or a test reads one, and the raise
+chains its cause again. Ledger only.
