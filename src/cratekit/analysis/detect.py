@@ -550,9 +550,10 @@ def analyse_file(
         # AT THE ENERGY MEASURE RATE, one constant for both, because every
         # spectral feature is rate dependent and the calibration fitted on the
         # restamp path scores the samples decoded here.
-        # THROUGH THE ONE DECODER (U263): ``librosa.load`` as before for
-        # every file it reads, and ffmpeg only for a file libsndfile cannot
-        # open, an M4A on librosa 1.0.
+        # THROUGH THE ONE DECODER (U263): ``librosa.load``'s samples, bit for
+        # bit, for every file it reads, mixed to mono with one add (U264),
+        # and ffmpeg only for a file libsndfile cannot open, an M4A on
+        # librosa 1.0.
         with timed(timings, "decode"):
             y, sr = decode.load(path, MEASURE_RATE)
         if y.size == 0:
