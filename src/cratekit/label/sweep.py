@@ -13,7 +13,7 @@ R-135 is what happens when those two answers share a shape.
 
 from __future__ import annotations
 
-from collections.abc import Callable, Container, Iterable, Iterator, Mapping
+from collections.abc import Callable, Container, Iterable, Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Any
@@ -68,6 +68,46 @@ class Gated:
 
 
 @dataclass(frozen=True, slots=True)
+class Canary:
+    """The one held release a sweep verified again, and what the verifier answered (U277).
+
+    Asked only when the sweep turned down every release it asked about and
+    holds one, chosen as :func:`_canary_of` says. Carried on the listing so the
+    run can say which release it was and what it answered: ``unconfirmed`` is
+    a release the verifier found no label credit for, the answer a provider
+    that is not answering gives, and ``mismatch`` one credited to a name the
+    needle does not match, with the name in ``notes``.
+    """
+
+    identity: str
+    artist: str
+    title: str
+    verdict: str
+    notes: str = ""
+
+    @property
+    def confirmed(self) -> bool:
+        return self.verdict == "confirmed"
+
+    def said(self) -> str:
+        """The release and its answer, in words a refusal or a check can carry."""
+        named = f"{self.title!r} by {self.artist}" if self.artist else repr(self.title)
+        answer = f"answered {self.verdict}"
+        if self.notes:
+            answer += f" ({self.notes})"
+        return f"{named}, release {self.identity}, {answer}"
+
+    def to_json(self) -> dict[str, str]:
+        return {
+            "identity": self.identity,
+            "artist": self.artist,
+            "title": self.title,
+            "verdict": self.verdict,
+            "notes": self.notes,
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class LabelListing:
     """What one label's crawl produced after verification and tombstones.
 
@@ -118,6 +158,10 @@ class LabelListing:
     #: A release the genre gate was already holding counts here too, since it
     #: is not verified again either (R-798).
     held_unconfirmed: int = 0
+    #: The held release re-verified for ``held_unconfirmed`` and its answer, or
+    #: ``None`` when none was asked (U277). The run says it, so a person
+    #: reading a refusal knows what was asked and what the verifier answered.
+    canary: Canary | None = None
     #: Releases THE GENRE GATE IS HOLDING BACK, each of which took a place in
     #: the offer window and was not filed (R-798). Not ``held`` above, which is
     #: the releases already in the queue: the two words met by accident, and
@@ -517,6 +561,67 @@ class QueuedReleases:
         return review.find(self.store, genre_gate.release_item_id(identity)) is not None
 
 
+#: How a release's own copyright line reads against a label's needle, by
+#: harvest's one extractor and ``labels_match``, with no provider call (U238,
+#: U277). Ordered: a line naming the label first, no line second, a line
+#: naming another label last.
+LINE_NAMES_LABEL = 0
+LINE_ABSENT = 1
+LINE_NAMES_OTHER = 2
+
+
+def line_reading(release: Any, claimed: str) -> int:
+    """Whether ``release``'s own copyright line names the label ``claimed`` is the needle of."""
+    names = harvest.labels_from_copyright(release)
+    if not names:
+        return LINE_ABSENT
+    if any(label_verify.labels_match(claimed, name) for name in names):
+        return LINE_NAMES_LABEL
+    return LINE_NAMES_OTHER
+
+
+#: The verdict ``verify_release`` gives a release whose credit names another
+#: label: the verifier answered, with a name the needle does not match.
+MISMATCH = "mismatch"
+
+
+def _canary_of(held: Sequence[Any], claimed: str, dropped: Sequence[Dropped]) -> Any:
+    """The held release to verify again, chosen by what the sweep's drops say.
+
+    THE NEWEST HELD RELEASE WAS THE CANARY BEFORE U277, and a held release can
+    be another act's: a sync that asked about releases a looser needle once
+    confirmed holds them still. Sitting 94 read Rawax's listing with three
+    ``RAWAXXX`` releases held newest and four ``Rawax`` ones below them, the
+    newest answered mismatch, and the label refused as one whose catalogue
+    nothing could confirm.
+
+    EVERY DROP A MISMATCH: the verifier answered each release it was asked
+    about with another label's name, so it is answering, and what is left to
+    know is whether the needle still names any of the label's releases. A held
+    release whose own line names the label shows it does, so it is asked
+    first, then one with no line, then one whose line names another label.
+
+    ANY DROP THE VERIFIER GAVE NO ANSWER FOR: the question is whether it is
+    answering at all, and a release carrying a line answers nothing about
+    that, because the catalogue judges such a release from its line with no
+    provider call (round one of U277's review drove a degraded provider to
+    "nothing new" over a held Rawax line). So a held release with no line is
+    asked first, the one the provider is read for, and otherwise the newest,
+    as before U277. Where no held release lacks a line, that newest one is
+    judged from its own line too, as it was before U277, and says nothing of
+    the provider either (the residual U277 filed). It can answer differently
+    from before: a lineless held release the provider answers for clears the
+    label where an older newest held release of another act would have
+    refused it, and a degraded provider refuses where a newest held label line
+    would have let it pass.
+
+    ALWAYS ASKED OF THE VERIFIER, never answered here from the line.
+    """
+    if all(one.reason == MISMATCH for one in dropped):
+        return min(held, key=lambda release: line_reading(release, claimed))
+    return min(held, key=lambda release: line_reading(release, claimed) != LINE_ABSENT)
+
+
 def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
     """How many releases past the window may be the label's, and how many of those are unchecked.
 
@@ -531,10 +636,10 @@ def _past_window(beyond: Iterable[Any], claimed: str) -> tuple[int, int]:
     """
     own = unchecked = 0
     for release in beyond:
-        names = harvest.labels_from_copyright(release)
-        if not names:
+        reading = line_reading(release, claimed)
+        if reading == LINE_ABSENT:
             unchecked += 1
-        elif any(label_verify.labels_match(claimed, name) for name in names):
+        elif reading == LINE_NAMES_LABEL:
             own += 1
     return own, unchecked
 
@@ -645,7 +750,7 @@ def list_for_label(
     # in the window, which is what keeps a later sweep from filing the next
     # slice of back catalogue every time (R-790).
     held = 0
-    first_held: Any = None
+    held_releases: list[Any] = []
     examined = 0
     gated: list[Gated] = []
     released: list[str] = []
@@ -668,7 +773,7 @@ def list_for_label(
         standing = gate.standing(identity) if gate is not None else None
         if identity in offered_ids:
             held += 1
-            first_held = first_held if first_held is not None else release
+            held_releases.append(release)
             # IN THE QUEUE AND STILL HELD is a state two writes can leave when
             # a process dies between them, and one a queue brought in from
             # another machine can make. The queue is the truth: the release is
@@ -686,7 +791,7 @@ def list_for_label(
             again = gate.rejudge(entry, standing)
             if again.held:
                 gated.append(Gated(_candidate(entry, release), again, standing=True))
-                first_held = first_held if first_held is not None else release
+                held_releases.append(release)
             elif identity in owned_ids:
                 # THE LIBRARY CAME TO OWN IT WHILE IT WAS HELD. Nothing to file
                 # and nothing to hold, and like any owned release it takes no
@@ -723,11 +828,22 @@ def list_for_label(
     # release whose answer is known: confirmed again means the endpoint is up
     # and what failed really is unconfirmed, and unconfirmed means nothing this
     # sweep asked could have been confirmed. One provider call, on the path
-    # where the worker is deciding whether to refuse.
+    # where the worker is deciding whether to refuse. Which held release is
+    # chosen by what the drops say and by each held release's own line
+    # (U277), :func:`_canary_of`.
     held_unconfirmed = 0
-    if first_held is not None and dropped and not candidates:
-        canary = label_verify.verify_release(claimed, first_held, search=verify)
-        if str(canary.get("verdict") or "unconfirmed") != "confirmed":
+    canary: Canary | None = None
+    if held_releases and dropped and not candidates:
+        chosen = _canary_of(held_releases, claimed, dropped)
+        answered = label_verify.verify_release(claimed, chosen, search=verify)
+        canary = Canary(
+            identity=str(getattr(chosen, "id", "") or ""),
+            artist=artist_name(chosen),
+            title=_title_of(chosen),
+            verdict=str(answered.get("verdict") or "unconfirmed"),
+            notes=str(answered.get("notes") or ""),
+        )
+        if not canary.confirmed:
             held_unconfirmed = held + sum(1 for one in gated if one.standing)
     own_past, unchecked_past = _past_window(listed[examined:], claimed)
     if gate is not None:
@@ -749,6 +865,7 @@ def list_for_label(
         beyond=own_past + unchecked_past,
         beyond_unchecked=unchecked_past,
         held_unconfirmed=held_unconfirmed,
+        canary=canary,
         gated=tuple(gated),
         released=tuple(released),
         stale=tuple(stale),

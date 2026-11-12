@@ -1115,15 +1115,35 @@ def _nothing_check(entry: labels.LabelEntry, listed: _Listed) -> dict[str, Any]:
 
 
 def _listing_checks(entry: labels.LabelEntry, listed: _Listed) -> list[dict[str, Any]]:
-    """Where the label's listing came from, kept or asked and why (U217), or nothing.
+    """Where the label's listing came from (U217), and the release it re-verified (U277).
 
     Said only for a listing this run made: a saved question printed again
-    made none, and a catalogue that keeps no listing has nothing to say.
+    made none, and a catalogue that keeps no listing has nothing to say of
+    where it came from.
+
+    THE RE-VERIFIED RELEASE IS SAID WHENEVER ONE WAS ASKED, on a nothing new
+    and a refused line alike, with what the verifier answered: ``unconfirmed``,
+    no label credit found for it, or ``mismatch``, credited to another name.
     """
-    kept = listed.listing.kept if listed.listing is not None else None
-    if kept is None:
+    listing = listed.listing
+    if listing is None:
         return []
-    return [_check(f"listing.{entry.label_id}", "info", f"{entry.name}: {kept.said()}")]
+    said: list[dict[str, Any]] = []
+    if listing.kept is not None:
+        said.append(
+            _check(f"listing.{entry.label_id}", "info", f"{entry.name}: {listing.kept.said()}")
+        )
+    if listing.canary is not None:
+        said.append(
+            _check(
+                f"reverified.{entry.label_id}",
+                "info",
+                f"{entry.name}: every release the listing asked about was turned down, "
+                f"so one already asked about or in review was verified again: "
+                f"{listing.canary.said()}",
+            )
+        )
+    return said
 
 
 def _skipped_check(entry: labels.LabelEntry, why: str) -> dict[str, Any]:
