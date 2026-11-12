@@ -46,7 +46,7 @@ OTHER = "Sunrise Mood"
 BRACKETED = "(Not Just) Knee Deep (Part 1)"
 
 #: Titles nothing can be read off: empty, blank, punctuation, empty brackets.
-NOISE = ("", "   ", "-", "...", "()", "( )", "!?")
+NOISE = ("", "   ", "-", "...", "()", "( )", "!?", "___")
 
 
 @pytest.fixture(scope="module")
@@ -78,6 +78,7 @@ SAME = [
     ("(Intro)", "Intro"),
     ("(Intro)", "Intro (Original Mix)"),
     ("(Intro) (Extended Mix)", "(Intro)"),
+    ("(Love) (Is) The Message (Extended Mix)", "(Love) (Is) The Message feat. X"),
     ("Dub", "Dub"),
     ("Dub", "Dub (Original Mix)"),
     ("Original Mix", "Original Mix"),
@@ -95,6 +96,7 @@ DIFFERENT = [
     ("Original Mix", f"{OTHER} (Original Mix)"),
     ("Extended Mix", f"{OTHER} (Extended Mix)"),
     ("Dub", "Dub Siren"),
+    ("Mix", f"{OTHER} Mix"),
     ("Remix", f"{OTHER} Remix"),
     ("- (Intro)", "- (Outro)"),
 ]
