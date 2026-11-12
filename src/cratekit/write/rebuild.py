@@ -1979,7 +1979,11 @@ def rebuild_tree(
     placements, not_compared = with_favorites(
         cfg, db, declared, registry, collection, derived, not_compared, tree_id=tree_id
     )
-    favorites = tuple(entry for entry in placements if entry not in set(derived))
+    # The derived placements are one set, built once (U246): built inside the
+    # comprehension it was the same set made again for every placement, which
+    # cost a rebuild of ten thousand tracks 17 of its 28 seconds.
+    first_pass = set(derived)
+    favorites = tuple(entry for entry in placements if entry not in first_pass)
     if approved is not None:
         # A RESORT WRITES ONLY WHAT ITS GATE SHOWED (U219). A favourite whose
         # track the first write has just moved into a new folder is derived

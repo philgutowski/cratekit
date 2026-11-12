@@ -709,10 +709,12 @@ def assert_read_back(wrote: Iterable[Wrote]) -> None:
     """
     for one in wrote:
         live = list(one.read_back)
-        missing = [row for row in one.members if row not in set(live)]
+        held = set(live)
+        missing = [row for row in one.members if row not in held]
         exact = live == list(one.members)
         if missing or (one.created and not exact):
-            unnamed = [row for row in live if row not in set(one.members)]
+            planned = set(one.members)
+            unnamed = [row for row in live if row not in planned]
             raise refuse(
                 "session-committed-unverified",
                 f"the INSPIRATION playlist {one.name!r} ({one.playlist_id}) read back "
