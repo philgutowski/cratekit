@@ -33,8 +33,12 @@ from cratekit.core.naming import AUDIO_EXTS, MarkerRule, NameTemplate
 from cratekit.modules.tools import setbuilder
 from tests._containers import synth_container
 
-# The tag suites' own container matrix, every dialect the reader dispatches on.
-CONTAINERS = [".flac", ".aiff", ".wav", ".mp3", ".m4a", ".ogg", ".opus"]
+# Every suffix ``iter_audio`` offers that the tag module reads, so every
+# dialect and every opening class the reader dispatches on.
+CONTAINERS = [".flac", ".aiff", ".aif", ".wav", ".mp3", ".m4a", ".ogg", ".opus"]
+
+# The suffixes ``iter_audio`` offers and the tag module refuses unopened.
+REFUSED = [suffix for suffix in AUDIO_EXTS if suffix not in CONTAINERS]
 
 TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[MP3]"),))
 
@@ -106,6 +110,22 @@ READINGS: dict[str, dict[str, object]] = {
 }
 
 
+#: What the every field shape reads back as, on every container.
+EVERY_FIELD_READ = {
+    "title": "08A - 124 - Sun Path",
+    "artist": "Nova Reef",
+    "genre": "Deep House",
+    "initialkey": "08A",
+    "energylevel": "6",
+    "voxlevel": "40",
+    "voxgender": "female",
+}
+
+
+#: The shapes whose title carries a key head, so a set can place them.
+KEYED_SHAPES = {"every-field", "lossy-marked", "padded", "beyond-ascii"}
+
+
 @pytest.mark.parametrize("suffix", CONTAINERS)
 @pytest.mark.parametrize("case", sorted(READINGS))
 def test_one_open_reads_what_the_seven_reads_read(tmp_path, probes, opens, suffix, case):
@@ -121,20 +141,15 @@ def test_one_open_reads_what_the_seven_reads_read(tmp_path, probes, opens, suffi
     assert opens == [path], f"{suffix} {case}: read_index_tags opened {opens!r}"
     assert read == expected
     assert list(read) == list(setbuilder.INDEX_FIELDS), "the mapping's keys moved"
+    if case == "every-field":
+        # Pinned literally too, since the seven reads share the one reader's body.
+        assert read == EVERY_FIELD_READ, f"{suffix}: the values written are not read"
 
 
 def test_the_values_read_are_the_values_written(tmp_path, probes):
     """Guard against an equality that holds only because both sides read None."""
     path = _tagged(probes, tmp_path / "lib", ".flac", "every", READINGS["every-field"])
-    assert setbuilder.read_index_tags(path) == {
-        "title": "08A - 124 - Sun Path",
-        "artist": "Nova Reef",
-        "genre": "Deep House",
-        "initialkey": "08A",
-        "energylevel": "6",
-        "voxlevel": "40",
-        "voxgender": "female",
-    }
+    assert setbuilder.read_index_tags(path) == EVERY_FIELD_READ
     padded = _tagged(probes, tmp_path / "lib", ".mp3", "padded", READINGS["padded"])
     assert setbuilder.read_index_tags(padded) == {
         "title": "03A - 120 - Spaced",
@@ -199,12 +214,21 @@ def test_a_file_one_open_cannot_read_reads_all_absent_and_never_raises(tmp_path,
         assert opens == [path], f"{path.name}: opened {opens!r}"
 
 
-@pytest.mark.parametrize("suffix", [".aac", ".alac", ".webm"])
+def test_the_refused_suffixes_are_the_ones_the_tag_module_refuses():
+    """The two lists above split ``AUDIO_EXTS`` the way the tag module does."""
+    assert REFUSED, "every suffix iter_audio offers is read, so nothing is refused"
+    for suffix in CONTAINERS:
+        tags.dialect_of(suffix)
+    for suffix in REFUSED:
+        with pytest.raises(tags.UnsupportedContainer):
+            tags.dialect_of(suffix)
+
+
+@pytest.mark.parametrize("suffix", REFUSED)
 def test_a_listed_container_no_tag_reader_handles_opens_nothing(tmp_path, opens, suffix):
     """``iter_audio`` lists these suffixes and the tag reader refuses them unopened."""
     path = tmp_path / f"stray{suffix}"
     path.write_bytes(b"\x00" * 64)
-    assert suffix in AUDIO_EXTS, "iter_audio would never offer this suffix"
 
     assert setbuilder.read_index_tags(path) == dict.fromkeys(setbuilder.INDEX_FIELDS)
     assert opens == []
@@ -257,9 +281,11 @@ def test_the_index_is_what_the_seven_open_reader_built_one_open_a_file(
     openable = [p for p in walked if p.suffix != ".aac"]
     assert sorted(opens) == sorted(openable), "a cold walk opens each file once"
     assert cold == today
-    # Four of the six shapes carry a key, so fifteen of the twenty one tagged
-    # files are works the index keeps, each its own.
-    assert len(cold) == 15, "the fixture indexed other than the works it holds"
+    # Four of the six shapes carry a key in the title head, and every fixture
+    # title is its own work, so the index keeps exactly the files of those shapes.
+    keyed = [p for p in made if p.stem.rsplit("-", 1)[0] in KEYED_SHAPES]
+    assert len(keyed) >= 2 * len(CONTAINERS), "the fixture holds too few works"
+    assert sorted(t.path for t in cold) == sorted(str(p) for p in keyed)
     assert json.loads(cache.read_text(encoding="utf-8")) == json.loads(
         today_cache.read_text(encoding="utf-8")
     ), "the cache stored something other than today's reader stored"

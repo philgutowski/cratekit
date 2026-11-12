@@ -966,8 +966,9 @@ def test_the_first_run_opens_each_file_once_and_the_second_none(configured, plac
 
     The index used to read its seven fields through seven single field reads,
     each opening the file again, so a first run over a library opened every file
-    seven times. Counted at ``mutagen.File``, which every tag read opens through,
-    so a second opener anywhere on the verb's path shows here too.
+    seven times. Counted at ``mutagen.File``, which ``read_index_tags`` opens
+    through; it is the only tag reader on the verb's path, and the writer's
+    container classes (``tags._open``) are not counted here.
     """
     import mutagen
 
@@ -983,11 +984,14 @@ def test_the_first_run_opens_each_file_once_and_the_second_none(configured, plac
 
     monkeypatch.setattr(mutagen, "File", counting)
 
-    code, _ = envelope_of(["setbuild", str(anchor)])
+    code, first = envelope_of(["setbuild", str(anchor)])
     assert code == int(ExitCode.OK)
+    assert first["data"], "the cold run built no set to compare"
     assert sorted(opens) == sorted([anchor, other, third]), "a cold run opens each file once"
     opens.clear()
-    envelope_of(["setbuild", str(anchor)])
+    warm_code, warm = envelope_of(["setbuild", str(anchor)])
+    assert warm_code == int(ExitCode.OK)
+    assert warm["data"] == first["data"], "a cached index answered differently"
     assert opens == [], "a warm run opened a file the cache holds"
 
 
