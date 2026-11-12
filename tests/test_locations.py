@@ -463,38 +463,47 @@ def test_leading_prefix_names_no_platform_mount_root():
 # The drift guard: exactly one decoder in the package
 # ═══════════════════════════════════════════════════════════════════════════
 
+#: The four call names that encode or decode a Location, by name alone.
+_LOCATION_CODEC_CALLS = frozenset({"unquote", "unquote_plus", "quote", "quote_plus"})
 
-def test_no_module_outside_this_one_decodes_a_location_itself():
-    """Six copies of this decoder drifted apart once. This is what stops a seventh.
+#: The one call in our own tree that wears this shape and is not this shape,
+#: as (module, function). Narrow on BOTH axes on purpose, so the day
+#: ``searchers.py`` decodes something it is still reported.
+#:
+#: U56's catalogue searcher builds a SEARCH QUERY STRING for three public
+#: record catalogues, ``?q=artist+title``. It is the same distinction this
+#: guard's vendored-tree paragraph below already draws, now arriving in code
+#: we wrote: that module never sees a rekordbox Location, has no concept of
+#: one, and cannot reach the code that does. What makes the exemption safe to
+#: state this narrowly rather than merely plausible is the function itself.
+#: ``quote_plus`` encodes a space as ``+``, which is a query-string
+#: convention and is WRONG for a path: a Location encoder written with it
+#: would corrupt every file whose name has a space, which is most of a music
+#: library. So this call cannot be the seventh copy of the decoder even by
+#: accident. The four-name scan cannot see that, and widening it to reason
+#: about intent would make it a thing nobody trusts.
+#:
+#: The alternative, spelling the same encoding as ``urlencode`` so the scan
+#: does not match the name, is what P7 calls training people to route around
+#: a guard. Stating the exemption where it can be read is the honest form.
+_PERMITTED_CODEC_CALLS = frozenset({("cratekit/tagging/searchers.py", "quote_plus")})
 
-    The consolidation in the source system was real but incomplete: two hand
-    rolled decoders survived it, and one of them omitted the composition-form
-    normalization entirely, which is the exact shape that cost 144 files. A
-    reviewer will not catch the eighth copy. A test will.
+
+def _location_codec_offenders(root: Path) -> list[str]:
+    """Every call outside the one decoder that encodes or decodes a Location.
+
+    One line per offending call, ``<path relative to root> calls <name>()``,
+    in sorted file order and walk order within a file. ``root`` is ``SRC_ROOT``
+    for the guard and a planted tree for the tests that prove it still bites.
+
+    The path relative to ``root`` is computed once per file, before the walk
+    over its nodes (U253). Computed once per node, as it was, the guard spent
+    forty seconds of a suite run in ``pathlib`` producing the same string
+    hundreds of thousands of times.
     """
-    #: The one call in our own tree that wears this shape and is not this shape,
-    #: as (module, function). Narrow on BOTH axes on purpose, so the day
-    #: ``searchers.py`` decodes something it is still reported.
-    #:
-    #: U56's catalogue searcher builds a SEARCH QUERY STRING for three public
-    #: record catalogues, ``?q=artist+title``. It is the same distinction this
-    #: guard's vendored-tree paragraph below already draws, now arriving in code
-    #: we wrote: that module never sees a rekordbox Location, has no concept of
-    #: one, and cannot reach the code that does. What makes the exemption safe to
-    #: state this narrowly rather than merely plausible is the function itself.
-    #: ``quote_plus`` encodes a space as ``+``, which is a query-string
-    #: convention and is WRONG for a path: a Location encoder written with it
-    #: would corrupt every file whose name has a space, which is most of a music
-    #: library. So this call cannot be the seventh copy of the decoder even by
-    #: accident. The four-name scan cannot see that, and widening it to reason
-    #: about intent would make it a thing nobody trusts.
-    #:
-    #: The alternative, spelling the same encoding as ``urlencode`` so the scan
-    #: does not match the name, is what P7 calls training people to route around
-    #: a guard. Stating the exemption where it can be read is the honest form.
-    permitted = {("cratekit/tagging/searchers.py", "quote_plus")}
+    vendor_root = root / "cratekit" / "_vendor"
     offenders: list[str] = []
-    for path in sorted(SRC_ROOT.rglob("*.py")):
+    for path in sorted(root.rglob("*.py")):
         if path.name == "locations.py":
             continue
         # The vendored tree is out of scope for this guard, and only for this
@@ -513,8 +522,9 @@ def test_no_module_outside_this_one_decodes_a_location_itself():
         # downloader is exactly why: it arrived writing a tempo tag in three
         # containers and carrying live third-party credentials. Adding this
         # exclusion to one of those would undo the reason they exist.
-        if _VENDOR_ROOT in path.parents:
+        if vendor_root in path.parents:
             continue
+        relative = path.relative_to(root).as_posix()
         tree = ast.parse(path.read_text())
         for node in ast.walk(tree):
             called = None
@@ -523,15 +533,150 @@ def test_no_module_outside_this_one_decodes_a_location_itself():
                     called = node.func.id
                 elif isinstance(node.func, ast.Attribute):
                     called = node.func.attr
-            relative = path.relative_to(SRC_ROOT).as_posix()
-            if called in {"unquote", "unquote_plus", "quote", "quote_plus"} and (
-                relative,
-                called,
-            ) not in permitted:
+            if called in _LOCATION_CODEC_CALLS and (relative, called) not in _PERMITTED_CODEC_CALLS:
                 offenders.append(f"{relative} calls {called}()")
+    return offenders
+
+
+def test_no_module_outside_this_one_decodes_a_location_itself():
+    """Six copies of this decoder drifted apart once. This is what stops a seventh.
+
+    The consolidation in the source system was real but incomplete: two hand
+    rolled decoders survived it, and one of them omitted the composition-form
+    normalization entirely, which is the exact shape that cost 144 files. A
+    reviewer will not catch the eighth copy. A test will.
+    """
+    offenders = _location_codec_offenders(SRC_ROOT)
     assert not offenders, (
         "Location encoding and decoding live in cratekit.core.locations and "
         "nowhere else:\n" + "\n".join(offenders)
+    )
+
+
+def _plant(root: Path, relative: str, source: str) -> None:
+    path = root / relative
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(source)
+
+
+def test_the_sweep_still_reports_a_planted_decoder_by_its_relative_path(tmp_path):
+    """The guard bites: a module that decodes for itself is named, path and call."""
+    _plant(
+        tmp_path,
+        "cratekit/library/planted.py",
+        "from urllib.parse import unquote_plus\n\n"
+        "def decode(value):\n    return unquote_plus(value)\n",
+    )
+    _plant(tmp_path, "cratekit/library/clean.py", "def nothing():\n    return 1\n")
+
+    assert _location_codec_offenders(tmp_path) == [
+        "cratekit/library/planted.py calls unquote_plus()"
+    ]
+
+
+def test_the_sweep_reports_every_name_in_both_call_shapes_and_every_call(tmp_path):
+    """Each of the four names, called bare or as an attribute, once per call."""
+    _plant(
+        tmp_path,
+        "cratekit/a.py",
+        "import urllib.parse as parse\n"
+        "from urllib.parse import quote, unquote\n\n"
+        "def f(v):\n"
+        "    unquote(v)\n"
+        "    unquote(v)\n"
+        "    parse.quote_plus(v)\n"
+        "    return quote(v)\n",
+    )
+    _plant(
+        tmp_path,
+        "cratekit/b/c.py",
+        "import shlex\n\ndef g(v):\n    return shlex.quote(v)\n",
+    )
+
+    offenders = _location_codec_offenders(tmp_path)
+
+    assert sorted(offenders) == sorted(
+        [
+            "cratekit/a.py calls unquote()",
+            "cratekit/a.py calls unquote()",
+            "cratekit/a.py calls quote_plus()",
+            "cratekit/a.py calls quote()",
+            "cratekit/b/c.py calls quote()",
+        ]
+    )
+
+
+def test_the_permitted_quote_plus_is_excused_and_nothing_else_is(tmp_path):
+    """The exemption covers one call name in one module, on both axes."""
+    _plant(
+        tmp_path,
+        "cratekit/tagging/searchers.py",
+        "from urllib.parse import quote_plus, unquote\n\n"
+        "def q(v):\n    return quote_plus(v), unquote(v)\n",
+    )
+    _plant(
+        tmp_path,
+        "cratekit/tagging/other.py",
+        "from urllib.parse import quote_plus\n\ndef q(v):\n    return quote_plus(v)\n",
+    )
+    _plant(
+        tmp_path,
+        "searchers.py",
+        "from urllib.parse import quote_plus\n\ndef q(v):\n    return quote_plus(v)\n",
+    )
+
+    assert sorted(_location_codec_offenders(tmp_path)) == [
+        "cratekit/tagging/other.py calls quote_plus()",
+        "cratekit/tagging/searchers.py calls unquote()",
+        "searchers.py calls quote_plus()",
+    ]
+
+
+def test_the_sweep_skips_the_decoder_and_the_vendored_tree_and_nothing_beside_them(
+    tmp_path,
+):
+    """locations.py and the vendored tree are excluded, their lookalikes are not."""
+    call = "from urllib.parse import unquote\n\ndef f(v):\n    return unquote(v)\n"
+    _plant(tmp_path, "cratekit/core/locations.py", call)
+    _plant(tmp_path, "cratekit/_vendor/downloader/fetch.py", call)
+    _plant(tmp_path, "cratekit/_vendor/top.py", call)
+    _plant(tmp_path, "cratekit/_vendored/fetch.py", call)
+    _plant(tmp_path, "cratekit/core/_vendor/fetch.py", call)
+    _plant(tmp_path, "cratekit/core/locations_extra.py", call)
+
+    assert _location_codec_offenders(tmp_path) == [
+        "cratekit/_vendored/fetch.py calls unquote()",
+        "cratekit/core/_vendor/fetch.py calls unquote()",
+        "cratekit/core/locations_extra.py calls unquote()",
+    ]
+
+
+def test_the_sweep_computes_each_relative_path_once_per_file(tmp_path, monkeypatch):
+    """U253's proof is a count: one ``relative_to`` per file swept, not per node.
+
+    Computed per node, the guard made 834,825 calls for 311 files and took
+    forty seconds of every suite run. The files planted here have hundreds of
+    nodes each, so a per node computation is read as hundreds of calls.
+    """
+    body = "".join(f"x{n} = [{n}, {n} + 1, ({n},)]\n" for n in range(100))
+    for name in ("one", "two", "three"):
+        _plant(tmp_path, f"cratekit/{name}.py", body)
+    _plant(tmp_path, "cratekit/core/locations.py", body)
+    _plant(tmp_path, "cratekit/_vendor/skip.py", body)
+
+    swept: list[Path] = []
+    real = Path.relative_to
+
+    def counting(self, *other, **kwargs):
+        if other == (tmp_path,):
+            swept.append(self)
+        return real(self, *other, **kwargs)
+
+    monkeypatch.setattr(Path, "relative_to", counting)
+
+    assert _location_codec_offenders(tmp_path) == []
+    assert sorted(swept) == sorted(
+        tmp_path / "cratekit" / f"{name}.py" for name in ("one", "two", "three")
     )
 
 
