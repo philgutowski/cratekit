@@ -50159,3 +50159,97 @@ files. The size, inode and time fields each kill a test of their own.
 **Closes when:** the no whole read test counts records parsed (or bytes read
 at the ledger's path by any route), and a test moves the ledger to another
 device, or the device field is accepted as belt and braces. Ledger only.
+
+---
+
+## R-1589. The merged range of U260 owes a Fable review, since Opus 5.5 at high effort reviewed it with Fable out of usage
+
+**Found:** at the build of #689, U260, 2026-11-12.
+
+**The mechanism.** METHOD's review is Fable's at high effort. Fable's review
+of this branch was refused on the account's usage limit on 2026-11-12, so by
+Phillip's decision of 2026-11-08 Opus 5.5 at high effort ran the same reviewer
+definition in its place, under the same merge bar and round cap. The range
+was therefore reviewed by the model that also built it.
+
+**Measured cost.** None measured: the substitution is the gap. The review's
+findings and the mutation table are in `docs/restart/u260.md`.
+
+**Closes when:** Fable reviews the merged range, the U260 merge commit's diff
+against its first parent, and any finding it raises is filed or fixed.
+Ledger only: a review owed, nothing lost.
+
+---
+
+## R-1590. The U259 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #688, U259, 2026-11-12.
+
+**The gap.** Fable's review of #688 was refused on its usage limit in both
+rounds on 2026-11-12, so by Phillip's rule of 2026-11-08 Opus 5.5 at high
+effort reviewed the branch in its place, following the `fable-reviewer`
+definition under the same merge bar and round cap. Round one found nothing
+BLOCKING and four residuals, two of which changed what the check reports on
+contents no producer was found to write; both were fixed with failing tests
+first. The merged range has not had the reviewer the cloud lane names.
+
+**What it covers.** In `src/cratekit/intake/analyzed.py`, `member` split into
+its read by ID and `judge`, the judgment the clear of INBOX / Analyze removes
+memberships by; in `src/cratekit/analysis/rekordbox_check.py`, `_unanalysed`,
+`_content_rows`, `Scope.read`, `read_row`'s `content` and `check_rows` with
+its fall back to reads by ID when a batch cannot load; the U259 block of
+`tests/test_analyze_check.py`; and the table `docs/mutation/u259.md`.
+
+**Closes when:** a Fable review at high effort of the merged range against
+METHOD's merge bar reports, and each BLOCKING finding is fixed or filed. It
+earns no issue: a review owed is maintainer facing, which the board bar
+excludes.
+
+---
+
+## R-1591. A collection row whose ID is stored as bytes is left out of the check's scope of every row not analysed
+
+**Found:** at the review of #688, U259, 2026-11-12.
+
+**The mechanism.** When INBOX / Analyze holds no row, `crate analyze check`
+reads every collection row rekordbox has not analysed. Before U259 it found
+each one again by the text of its ID, and a row whose `djmdContent.ID` is
+stored as bytes (`typeof(ID)` reads `blob`) was never found that way, so it
+was silently left out of the scope. U259 judges each row in hand, which would
+have put it in, and keeps it out on purpose (`_unanalysed` skips an ID that
+is `bytes`; an ID stored as an integer, which the read by ID did find, is
+kept, review round two), because the card required the check's answer to equal the
+answer before it on every database. The skip is absence read as evidence of
+absence, the first of METHOD's recurring patterns, kept rather than repaired.
+
+**Measured cost.** Driven on a disposable copy with one row's ID cast to a
+blob: the scope is the same rows before and after U259, and the cast row is
+not named. No producer was driven: the column has text affinity, so it holds
+bytes only if bytes are written to it, and neither rekordbox nor anything in
+Cratekit was found writing them.
+
+**Closes when:** someone decides whether such a row belongs in the scope
+(named as unreadable, most likely, rather than silently absent) and the skip
+in `_unanalysed` becomes that answer. Ledger only: no producer is known.
+
+---
+
+## R-1592. crate inbox analyzed still reads each INBOX / Analyze member by its ID, one statement a row, twice per apply
+
+**Found:** at the build of #688, U259, 2026-11-12.
+
+**The mechanism.** U259 took the check off reads by ID and left the clear
+alone, since the card named only the check. `analyzed.plan_clear` still calls
+`member` for each live member of INBOX / Analyze, one `djmdContent` read by ID
+a row, and `apply_clear` takes the plan again on the write handle, so an apply
+reads every member twice more.
+
+**Measured cost.** Not measured on the clear. On the check, the same per row
+reads cost 18,574 statements and 3.4 seconds over 10,001 members on the
+synthetic database, against 23 statements and 0.3 seconds batched. INBOX /
+Analyze holds what one landing left, usually tens of rows, so the clear's
+cost is small in practice.
+
+**Closes when:** `plan_clear` reads the members a chunk of IDs to a
+statement and judges them with `analyzed.judge`, its digest equal to today's
+on the same database. Ledger only: a speed point, no false answer.

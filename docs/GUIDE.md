@@ -325,6 +325,12 @@ crate route pending
   `--output json` the summary lists each file by label, by catalogue or not
   at all, with the reason a failed one failed; a sweep that ends in a refusal
   carries the same list in the refusal's detail and counts it in its message.
+  A file with no picture gets the cover the matching catalogue names. The
+  files of one album name one cover, so while they sit together in the sweep
+  it is asked for and resized once and every file of the album gets the same
+  picture; a sweep remembers the last four covers, so a folder that
+  interleaves more albums than that asks once per file, as before. A cover
+  that could not be had is asked for again by the next file.
 - `tag guess` gives each file with no genre one from its artist's other
   tracks and, with `--pass`, the account playlist that asked for it. A file
   that has a genre is never changed. `--report` writes nothing. Each genre

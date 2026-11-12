@@ -46,6 +46,12 @@ process. `published.for_lookup()` builds the lookup on first use and returns
 the same one after, and `published.for_taxonomy` builds the cheap per item
 seam over it. The refusal memory and the album memo live in the lookup.
 
+U260 bound the picture fetch the same way. `searchers.for_images()` hands
+back one remembering fetch per process, so an album's files, which name one
+cover address, cost one paced request, and `searchers.reset_images()` drops
+it. A shared object built once also freezes whatever it captured at build
+time, the HTTP getter among them, so the suite resets it around every test.
+
 Test it through the binders, one seam per file as the worker builds them,
 `test_a_refusal_on_one_file_reaches_the_next_files_seam`, and through the
 verb with a request count. Mutation row `V6_one_lookup_per_process` reverts

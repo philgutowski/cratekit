@@ -110,7 +110,10 @@ row that supplied its genre, Beatport's release image or Bandcamp's listing or
 page image, and Traxsource names none, which is parity. Discogs names none
 either: its covers are out of U244's scope, and Beatport stays the art source. The image is fetched
 later, and only for a file with no picture, by :func:`default_image_fetch`,
-which shares this module's pacer shape and rate limit policy.
+which shares this module's pacer shape and rate limit policy. An album's files
+name one address, so the worker's fetch, :func:`for_images`, is one per process
+and remembers the bytes the last few addresses answered (U260): an album whose
+files sit together in the sweep costs one paced request, not one per track.
 
 ``requests`` IS NAMED IN EXACTLY ONE FUNCTION. Everything above it takes a fetch
 seam, and the default fetch takes its HTTP getter and its sleep as parameters, so
@@ -125,8 +128,10 @@ import json
 import logging
 import random
 import re
+import threading
 import time
 import unicodedata
+from collections import OrderedDict
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import Enum
@@ -135,7 +140,7 @@ from typing import Any
 from urllib.parse import quote_plus, urlencode
 
 from cratekit import __version__
-from cratekit.core import routing, secrets
+from cratekit.core import art, routing, secrets
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy
@@ -490,6 +495,60 @@ def default_image_fetch(
         return bytes(data) if data else None
 
     return fetch_image
+
+
+#: How many addresses' pictures the worker's fetch keeps, the least recently
+#: used dropped first. A sweep takes files in sorted path order, so an album's
+#: files usually sit together and a few covers hold every album of a landed
+#: folder; a folder interleaving more albums than this asks once per file, as
+#: it did before. A few source pictures is little memory.
+IMAGE_MEMORY = 4
+
+
+def remembering(
+    fetch_image: FetchImage,
+    *,
+    keep: int | None = None,
+    admit: Callable[[bytes], bool] | None = None,
+) -> FetchImage:
+    """``fetch_image``, answering an address it already fetched from memory.
+
+    KEYED ON THE ADDRESS EXACTLY AS NAMED, because the address is what was
+    asked for; the encode that follows is remembered on the bytes themselves,
+    by :func:`cratekit.core.art.to_cdj_jpeg_remembered`, never on this key.
+
+    ONLY AN ANSWER IS REMEMBERED. A fetch that raises raises as it did, and one
+    that answers None or nothing, or bytes ``admit`` refuses, is handed back as
+    it was and kept nowhere, so the next file naming the address asks again
+    exactly as it did before. The shipped admission is
+    :func:`cratekit.core.art.decodes`, so bytes that are not a picture are a
+    failure each file meets on its own request, never a remembered answer.
+
+    A remembered answer makes no request, so it waits on no pacer; every
+    request that IS made still goes through ``fetch_image`` and waits first.
+    ``keep`` defaults to :data:`IMAGE_MEMORY`, read at each call.
+    """
+    held: OrderedDict[str, bytes] = OrderedDict()
+    lock = threading.Lock()
+
+    def fetch(url: str) -> bytes | None:
+        with lock:
+            data = held.get(url)
+            if data is not None:
+                held.move_to_end(url)
+                return data
+        data = fetch_image(url)
+        if not data or (admit is not None and not admit(data)):
+            return data
+        with lock:
+            held[url] = data
+            held.move_to_end(url)
+            bound = IMAGE_MEMORY if keep is None else keep
+            while len(held) > bound:
+                held.popitem(last=False)
+        return data
+
+    return fetch
 
 
 # ---------------------------------------------------------------------------
@@ -1806,6 +1865,10 @@ def for_taxonomy(declared: Taxonomy) -> Searcher:
     return catalogue_searcher(declared, discogs=for_discogs())
 
 
+#: The one image fetch this process asks through, built on first use (U260).
+_images: list[FetchImage] = []
+
+
 def for_images() -> FetchImage:
     """The image fetch a worker should use, looked up rather than constructed.
 
@@ -1813,8 +1876,24 @@ def for_images() -> FetchImage:
     this attribute on this module, and a worker that built its own fetch inline
     would leave it nowhere to hand a fake in. Building one touches no network.
     R-226's limit applies here too.
+
+    ONE PER PROCESS, unlike the searcher's binder and like
+    :func:`cratekit.tagging.published.for_lookup` (U260). The worker asks for
+    its seam once per file, and an album's files all name one address, so the
+    memory :func:`remembering` keeps is only worth having if the next file
+    meets the same fetch. A job is driven in one process, so the memory lasts
+    the run and no longer; :func:`reset_images` drops it. The default fetch is
+    looked up on this module when the shared one is built, so a test that
+    replaces it and resets is asking through its own.
     """
-    return default_image_fetch()
+    if not _images:
+        _images.append(remembering(default_image_fetch(), admit=art.decodes))
+    return _images[0]
+
+
+def reset_images() -> None:
+    """Forget the shared image fetch and every picture it remembered."""
+    _images.clear()
 
 
 __all__ = [
@@ -1838,6 +1917,7 @@ __all__ = [
     "DISCOGS_TOKEN_LOST",
     "DISCOGS_UNASKED_NOTES",
     "HEADERS",
+    "IMAGE_MEMORY",
     "JITTER_FRACTION",
     "MIN_INTERVAL_S",
     "NOT_ASKED",
@@ -1868,5 +1948,7 @@ __all__ = [
     "for_discogs",
     "for_images",
     "for_taxonomy",
+    "remembering",
+    "reset_images",
     "unread_outcome",
 ]
