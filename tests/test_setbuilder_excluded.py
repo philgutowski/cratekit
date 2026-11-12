@@ -34,6 +34,7 @@ from cratekit.core import config, tags
 from cratekit.core.exit_codes import ExitCode
 from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.modules.tools import setbuilder
+from cratekit.setbuilder import cli as setbuild_cli
 from tests._containers import synth_container
 
 TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[LQ]"),))
@@ -263,8 +264,7 @@ def envelope_of(argv: list[str]) -> tuple[int, dict]:
 
 
 def named_paths(document: dict) -> list[str]:
-    data = document["data"]
-    return [item["path"] for item in data["items"]] + [data["totals"]["anchor"]["path"]]
+    return [item["path"] for item in document["data"]["items"]]
 
 
 def a_library_with_staging_copies(place, staging_folder: Path) -> dict[str, Path]:
@@ -315,23 +315,26 @@ def test_setbuild_ranks_around_the_library_file_and_names_no_copy(
 
     code, document = envelope_of(["setbuild", str(held["anchor"])])
     assert code == int(ExitCode.OK), document
-    assert document["data"]["totals"]["anchor"]["path"] == str(held["anchor"])
     paths = [item["path"] for item in document["data"]["items"]]
     assert sorted(paths) == sorted([str(held["low"]), str(held["up"])])
     assert_nothing_from(document, excluded)
 
+    # The anchor payload carries no path, so the name is resolved through the
+    # verb's own index and resolver, then driven through the verb as well.
+    index = setbuild_cli._index(config.load(), library)
+    assert setbuild_cli.named_anchor("Alder - Anchor Work", index).path == str(held["anchor"])
+    assert not [t.path for t in index if under(Path(t.path), excluded)]
     code, document = envelope_of(["setbuild", "--named", "Alder - Anchor Work"])
     assert code == int(ExitCode.OK), document
-    assert document["data"]["totals"]["anchor"]["path"] == str(held["anchor"])
+    assert sorted(named_paths(document)) == sorted(paths)
     assert_nothing_from(document, excluded)
 
 
 def test_a_companion_held_only_in_staging_is_left_out_of_the_set(configure, library, place):
     cfg = configure()
-    folder = (config.library_state_dir(cfg) / STAGING.relative_to(".cratekit")).relative_to(
-        library
-    )
-    held = a_library_with_staging_copies(place, folder)
+    state = config.library_state_dir(cfg)
+    folder = state / "local" / "rehearsals" / "X" / "staging"
+    held = a_library_with_staging_copies(place, folder.relative_to(library))
 
     code, document = envelope_of(["setbuild", str(held["anchor"])])
     assert code == int(ExitCode.OK), document
@@ -346,8 +349,10 @@ def test_an_anchor_inside_an_excluded_folder_is_refused_naming_the_folder(
 ):
     cfg = configure()
     state = config.library_state_dir(cfg)
-    folder = state / "local" / "rehearsals" / "X" / "staging" if where == "state" else Path(
-        cfg.paths.download_staging
+    folder = (
+        state / "local" / "rehearsals" / "X" / "staging"
+        if where == "state"
+        else Path(cfg.paths.download_staging)
     )
     held = a_library_with_staging_copies(place, folder.relative_to(library))
 
