@@ -248,6 +248,8 @@ def test_a_featured_credit_is_a_performer_and_never_a_version():
         ("[]", ("", "")),
         ("[With You]", ("With You", "")),
         ("(With Or Without You)", ("With Or Without You", "")),
+        ("(Without You)", ("Without You", "")),
+        ("(Without You Remix)", ("", "Without You Remix")),
         ("(With Love) (Remix)", ("With Love", "Remix")),
         ("(feat. Mira)", ("feat. Mira", "")),
         ("(Extended)", ("", "Extended")),
@@ -262,11 +264,224 @@ def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
     so the row named no title and refused every playlist ``crate sync twins``
     planned. An empty group is still nothing, and a group after a title is
     still the version it always was. A first group is the title even when it
-    reads like a credit, since ``with `` is a credit prefix and ``[With You]``
+    reads like a credit, since ``with`` is a credit marker and ``[With You]``
     is a title.
     """
     assert match.split_version(spelled) == expected
     assert match.split_title(spelled) == expected
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U262: a credit is a first WORD, not the first letters of a group
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: Groups whose first word only BEGINS with a credit marker's letters. Each is a
+#: mix name, so each is a version. The letters rule read all five as credits and
+#: dropped them, so the remix resolved as the plain record, matched exact.
+U262_VERSION_GROUPS: tuple[str, ...] = (
+    "Without You Remix",
+    "Withdrawn Mix",
+    "Within Mix",
+    "Feature Edit",
+    "Featureless Dub",
+)
+
+#: Groups whose first word IS a credit marker, in the spellings a listing uses.
+U262_CREDIT_GROUPS: tuple[str, ...] = ("feat. Anna", "ft Anna", "Featuring Anna", "with Anna")
+
+
+def u262_plain_record(tmp_path: Path) -> match.LibraryIndex:
+    """A library holding only the plain ``Nova Reef - Sun Path``, tagged."""
+    path = tagged_container(
+        tmp_path, tmp_path / "library" / "Sun Path.flac", artist="Nova Reef", title="Sun Path"
+    )
+    return match.index_paths([path])
+
+
+def u262_wanted(spelled: str) -> match.Wanted:
+    title, version = match.split_title(spelled)
+    return match.Wanted(artist="Nova Reef", title=title, version=version, spelled=spelled)
+
+
+@pytest.mark.parametrize("group", U262_VERSION_GROUPS)
+def test_a_group_that_only_begins_with_a_credits_letters_is_a_version(tmp_path, group):
+    """U262. ``Sun Path (Without You Remix)`` is a remix, not the plain record.
+
+    The credit test folded its prefixes, which took off the space that made
+    each one a whole word, so ``with`` matched the first letters of
+    ``Without`` and the whole group came off the title. The row then resolved
+    matched, exact, against a library holding only the plain record: the remix
+    was reported owned and never downloaded, and nobody was asked.
+    """
+    spelled = f"Sun Path ({group})"
+    assert match.split_title(spelled) == ("Sun Path", group)
+    assert match.split_version(spelled) == ("Sun Path", group)
+    (found,) = resolve([u262_wanted(spelled)], u262_plain_record(tmp_path)).matches
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
+
+
+@pytest.mark.parametrize("group", U262_CREDIT_GROUPS)
+def test_a_group_whose_first_word_is_a_credit_still_comes_off(tmp_path, group):
+    """The other half: a real featured credit is still a performer and no version."""
+    spelled = f"Sun Path ({group})"
+    assert match.split_title(spelled) == ("Sun Path", "")
+    (found,) = resolve([u262_wanted(spelled)], u262_plain_record(tmp_path)).matches
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.EXACT)
+
+
+def test_a_group_whose_first_word_is_the_abbreviation_ft_stays_a_credit(tmp_path):
+    """``(Ft Worth Edit)`` reads as a credit, because ``Ft`` IS the word ``ft``.
+
+    The brief listed it among the versions, beside a rule (the group's first
+    whole word is a marker) under which it is a credit, and the rule is the one
+    ``core.tombstone`` records deletions by. A Fort Worth edit and a guest
+    called Worth Edit are one spelling, and telling them apart would need a
+    rule both modules share, which moves the tombstone identity stamp. Pinned
+    so the choice is visible; the card asks Phillip about it.
+    """
+    from cratekit.core import tombstone
+
+    spelled = "Sun Path (Ft Worth Edit)"
+    assert match.split_title(spelled) == ("Sun Path", "")
+    assert match._is_a_credit("Ft Worth Edit") and tombstone._is_a_credit("Ft Worth Edit")
+    (found,) = resolve([u262_wanted(spelled)], u262_plain_record(tmp_path)).matches
+    assert (found.state, found.why) == (match.MatchState.MATCHED, match.Why.EXACT)
+
+
+def test_a_library_file_whose_group_only_begins_with_a_credits_letters_is_that_version(tmp_path):
+    """The index reads a held title through the same split, so the fix reaches both sides.
+
+    Held only as ``Sun Path (Without You Remix)``, a list asking for the plain
+    record was matched exact against the remix, because the index had walked
+    the group off the held title as a credit.
+    """
+    held = tagged_container(
+        tmp_path,
+        tmp_path / "library" / "Sun Path (Without You Remix).flac",
+        artist="Nova Reef",
+        title="Sun Path (Without You Remix)",
+    )
+    index = match.index_paths([held])
+    (found,) = resolve([u262_wanted("Sun Path")], index).matches
+    assert (found.state, found.why) == (match.MatchState.NEEDS_REVIEW, match.Why.VERSION_DIFFERS)
+    (same,) = resolve([u262_wanted("Sun Path (Without You Remix)")], index).matches
+    assert (same.state, same.why) == (match.MatchState.MATCHED, match.Why.EXACT)
+
+
+#: One list of groups both credit predicates are asked about: the brief's ten,
+#: a marker that is a later word, the bare markers, and spellings of the marker
+#: that differ in case and punctuation.
+U262_EVERY_GROUP: tuple[str, ...] = (
+    *U262_VERSION_GROUPS,
+    *U262_CREDIT_GROUPS,
+    "Live with Strings",
+    "Nightwave Remix",
+    "feat",
+    "With",
+    "FT. Anna",
+    "Feat.Anna",
+    "ft.anna",
+    "featuring",
+    "Featurette",
+    "Ftw Edit",
+    "Ft Worth Edit",
+    "With You",
+    "",
+)
+
+
+@pytest.mark.parametrize("group", U262_EVERY_GROUP)
+def test_the_matcher_and_the_tombstone_agree_on_what_a_credit_is(group):
+    """U262. Two modules ask whether a group is a credit, and they now answer alike.
+
+    ``core.tombstone._is_a_credit`` read the first whole word and the matcher
+    read the first letters, so ``(Without You Remix)`` was a credit to one and
+    a mix name to the other. The tombstone module's rule is inside the
+    identity stamp, so the matcher keeps its own copy, and this holds the two
+    equal over one list of groups.
+    """
+    from cratekit.core import tombstone
+
+    assert match._is_a_credit(group) == tombstone._is_a_credit(group)
+
+
+def test_the_matcher_and_the_tombstone_share_one_credit_vocabulary():
+    from cratekit.core import tombstone
+
+    assert match._CREDIT_MARKERS == tombstone._CREDIT_MARKERS
+
+
+def test_a_defect_title_keeps_the_tombstone_identity_its_spelling_always_had():
+    """A tombstone recorded from such a row is still met.
+
+    The identity is the listing's verbatim spelling and the deletion pass
+    records a row's Title column composed by ``core.tombstone``, which this
+    unit does not touch, so the consult reaches the same record before and
+    after. What changes is only which other spellings it composes: the
+    remix's bracket and dash forms, where the letters rule composed the null
+    qualifier forms of a record it had read as plain.
+    """
+    from cratekit.core import tombstone
+
+    spelled = "Sun Path (Without You Remix)"
+    wanted = u262_wanted(spelled)
+    recorded = tombstone.version_identity(
+        artist="Nova Reef", title=tombstone.version_title(spelled, "")
+    )
+    assert wanted.identity == {"artist": "nova reef", "title": "sun path (without you remix)"}
+    assert recorded in wanted.suppression_spellings
+    assert wanted.addresses == (
+        "Sun Path (Without You Remix)",
+        "Sun Path [Without You Remix]",
+        "Sun Path (Without) (You Remix)",
+        "Sun Path (Without You) (Remix)",
+        "Sun Path - Without You Remix",
+        "Sun Path - Without You Remix (Without You Remix)",
+    )
+    plain = tombstone.version_identity(artist="Nova Reef", title="Sun Path")
+    assert plain not in wanted.suppression_spellings
+
+
+#: The addresses three credited listings composed before U262, run and recorded
+#: on the base. A credited row's spellings must not move.
+U262_CREDITED_ADDRESSES: tuple[tuple[str, tuple[str, ...]], ...] = (
+    (
+        "Sun Path (feat. Mira) (Nightwave Remix)",
+        (
+            "Sun Path (feat. Mira) (Nightwave Remix)",
+            "Sun Path (feat. Mira) [Nightwave Remix]",
+            "Sun Path (feat. Mira) (Nightwave) (Remix)",
+            "Sun Path (feat. Mira) - Nightwave Remix",
+            "Sun Path (feat. Mira) - Nightwave Remix (Nightwave Remix)",
+        ),
+    ),
+    ("Sun Path (Nightwave Remix) (ft Mira)", ("Sun Path (Nightwave Remix) (ft Mira)",)),
+    (
+        "Sun Path (with Mira)",
+        (
+            "Sun Path (with Mira)",
+            "Sun Path (with Mira) (original)",
+            "Sun Path (with Mira) [original]",
+            "Sun Path (with Mira) (original mix)",
+            "Sun Path (with Mira) [original mix]",
+            "Sun Path (with Mira) (original) (mix)",
+            "Sun Path (with Mira) - original mix",
+            "Sun Path (with Mira) - original mix (original mix)",
+            "Sun Path (with Mira) (original version)",
+            "Sun Path (with Mira) [original version]",
+            "Sun Path (with Mira) (original) (version)",
+            "Sun Path (with Mira) - original version",
+            "Sun Path (with Mira) - original version (original version)",
+        ),
+    ),
+)
+
+
+@pytest.mark.parametrize(("spelled", "addresses"), U262_CREDITED_ADDRESSES)
+def test_a_credited_rows_suppression_spellings_are_unchanged(spelled, addresses):
+    wanted = u262_wanted(spelled)
+    assert wanted.addresses == addresses
+    assert wanted.uncredited_spellings == ()
 
 
 def test_a_provider_row_titled_wholly_in_brackets_reads_rather_than_refuses():
@@ -6164,3 +6379,221 @@ def test_no_residual_is_cited_by_number_anywhere_in_this_unit():
     for path in UNIT_FILES:
         found = _BY_NUMBER.findall(path.read_text(encoding="utf-8"))
         assert found == [], f"{path.name} cites a residual by number: {found}"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U265: the approximate pass sorts each name's words once, and answers as before
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# ``_approximate`` handed ``rapidfuzz`` the scorer ``token_sort_ratio``, which
+# splits and sorts both strings' words again for every pair, so each library
+# name was sorted once per wanted row. It now sorts each name once for the life
+# of the index and scores the sorted forms with ``fuzz.ratio``, which is what
+# ``token_sort_ratio`` computes after its own sort. The matcher decides what is
+# acquired and what is a duplicate, so the shipped call is kept below as the
+# reference and the new pass is held EQUAL to it, every candidate, score and
+# order, rather than close to it.
+
+
+def _shipped_approximate(wanted, index):
+    """THE SCORER AS SHIPPED BEFORE U265, kept as the reference it is held to."""
+    from rapidfuzz import fuzz, process
+
+    if not index.by_recording:
+        return ()
+    found = process.extract(
+        wanted.recording,
+        tuple(index.by_recording),
+        scorer=fuzz.token_sort_ratio,
+        score_cutoff=match.APPROXIMATE_FLOOR,
+        limit=match.APPROXIMATE_LIMIT,
+    )
+    return tuple(held for token, _score, _position in found for held in index.versions(token))
+
+
+#: Words for generated names: plain, accented, fullwidth, ligatures, other
+#: scripts, a repeated word, and the halves that fold to nothing.
+_U265_WORDS = (
+    "sun", "path", "aurora", "bloom", "night", "drive", "deep", "echo", "you", "me",
+    "Beyoncé", "Sigur Rós", "Röyksopp", "Ｓｕｎ", "Ｐａｔｈ", "naïve", "straße", "ﬁne",
+    "東京", "Привет", "écho", "dup dup dup", "Ⅻ", "", "!!!", "01",
+)
+
+
+def _u265_library(seed: int) -> tuple[match.LibraryIndex, list[match.Wanted]]:
+    """A generated library and list, tie dense on purpose.
+
+    Three families: names drawn from the word pool above, including empty
+    halves; the fixtures' own ``Sun Path`` naming with one and two letter edits,
+    which puts many recordings over the floor for one row and many equal scores
+    inside the five returned; and every artist and title swapped, which the
+    word sort scores as one string.
+    """
+    import random
+
+    rng = random.Random(seed)
+
+    def name(most: int) -> str:
+        return " ".join(rng.choice(_U265_WORDS) for _ in range(rng.randint(0, most)))
+
+    pairs: set[tuple[str, str]] = set()
+    for _ in range(140):
+        pairs.add((name(3), name(4)))
+    for stem in ("Sun Path", "Sun Pathway", "Night Drive", "Deep Echo"):
+        for tail in ("", "x", "s", "y", " Alt", " Mix", " 2", " Ways", "ss"):
+            for artist in ("Aurora Bloom", "Aurora Blooms", "Bloom Aurora"):
+                pairs.add((artist, stem + tail))
+    pairs |= {(title, artist) for artist, title in list(pairs)[:40]}
+    held = [
+        match.Owned(path=Path(f"{n:04d}.flac"), artist=a, title=t, version=v, key=None)
+        for n, (a, t) in enumerate(sorted(pairs))
+        for v in ("",) * (1 + n % 2)
+    ]
+    grouped: dict[str, list[match.Owned]] = {}
+    for owned in held:
+        grouped.setdefault(owned.recording, []).append(owned)
+    index = match.LibraryIndex(by_recording={k: tuple(v) for k, v in grouped.items()})
+
+    rows = [one(artist=name(3), title=name(4)) for _ in range(60)]
+    rows += [
+        one(artist=artist, title=stem + tail)
+        for stem in ("Sun Path", "Night Drive", "Sun Pathwayss")
+        for tail in ("", "x", "ss", " Alt")
+        for artist in ("Aurora Bloom", "Aurora Bloomz", "")
+    ]
+    rows += [one(artist="", title=""), one(artist="Path Sun", title="Bloom Aurora")]
+    return index, rows
+
+
+@pytest.mark.parametrize("seed", [265, 2650, 26500])
+def test_the_approximate_pass_answers_exactly_as_the_shipped_scorer(seed):
+    """Every row's candidates, in their order, equal the shipped scorer's.
+
+    The comparison is on the whole ``Owned`` tuple, so a different candidate, a
+    different order among equal scores, or a different cut at the floor or the
+    limit all fail it. And the fixture is asserted to carry the cases that make
+    equality mean something: rows with more than five recordings over the floor,
+    equal scores inside a returned five, and rows with nothing over the floor.
+    """
+    from rapidfuzz import fuzz, process
+
+    index, rows = _u265_library(seed)
+    over_the_limit = tied_inside = nothing = 0
+    for wanted in rows:
+        assert match._approximate(wanted, index) == _shipped_approximate(wanted, index), (
+            wanted.recording
+        )
+        every = process.extract(
+            wanted.recording,
+            tuple(index.by_recording),
+            scorer=fuzz.token_sort_ratio,
+            score_cutoff=match.APPROXIMATE_FLOOR,
+            limit=None,
+        )
+        over_the_limit += len(every) > match.APPROXIMATE_LIMIT
+        kept = [score for _token, score, _position in every[: match.APPROXIMATE_LIMIT]]
+        tied_inside += len(kept) != len(set(kept))
+        nothing += not every
+    assert over_the_limit and tied_inside and nothing, (
+        "the generated library no longer carries more than five hits, ties inside "
+        "the five and empty answers, so equality is not being tested where it can fail"
+    )
+
+
+def test_every_pair_scores_the_same_through_the_sorted_form():
+    """THE WHOLE MATRIX, no cutoff: ``ratio`` over the sorted forms equals
+    ``token_sort_ratio`` over the tokens for every pair, as a float, with ``==``.
+
+    The candidate test above sees only what clears the floor; this sees every
+    score, so a pair the sort disagreed about under the floor cannot hide.
+    """
+    from rapidfuzz import fuzz
+
+    index, rows = _u265_library(7)
+    # Raw tokens too, never folded, at every width and with the two characters
+    # the scorer splits on in a wide string and not in a narrow one.
+    raw = [
+        "a\x85b\x1fc", "a\xa0b\x1fc d", "x\xa0y\x1fПривет", "a\x85b body\x1fﬁne",
+        "\x1f", "", " ", "\x1f\x1f", "tab\there\x1f  spaced  ", "😀\x1fz a\xa0b",
+    ]
+    choices = list(index.by_recording) + raw
+    asked = [wanted.recording for wanted in rows] + choices[:50] + raw
+    for query in asked:
+        sorted_query = match._sorted_words(query)
+        for choice in choices:
+            assert fuzz.ratio(sorted_query, match._sorted_words(choice)) == (
+                fuzz.token_sort_ratio(query, choice)
+            ), (query, choice)
+
+
+def test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on():
+    """Python's whitespace is not always ``rapidfuzz``'s, and which it is
+    depends on the string's WIDTH, measured over every code point when U265 was
+    built: in a string whose characters are all below U+0100 the scorer does not
+    split on U+0085 or U+00A0, and in any wider string it splits on exactly
+    Python's whitespace.
+
+    ``fold`` leaves neither in a token, but the sort is held to the scorer on
+    any text, so a token from anywhere scores as it did. Every code point Python
+    calls whitespace, both exceptions, and every code point below U+3100, in
+    three shapes (inside a word, alone, and doubled between two words) at each
+    of Python's three string widths, the wide ones made by a word beside it.
+    """
+    from rapidfuzz import fuzz
+
+    points = {cp for cp in range(0x110000) if chr(cp).isspace()}
+    points |= {0x85, 0xA0, 0x1F} | set(range(0x3100))
+    points -= set(range(0xD800, 0xE000))
+    for widen in ("", " \xe9", " Ā", " \U0001f600"):
+        for cp in sorted(points):
+            c = chr(cp)
+            for token, other in (
+                (f"zz{c}aa{widen}", f"aa zz{widen}"),
+                (f"{c}{widen}", ""),
+                (f"b{c}{c}a{widen}", f"a b{widen}"),
+                (f"b{c}a{widen}", "a b"),
+            ):
+                assert fuzz.ratio(match._sorted_words(token), match._sorted_words(other)) == (
+                    fuzz.token_sort_ratio(token, other)
+                ), (hex(cp), widen)
+    assert match._sorted_words("b\xa0a") == "b\xa0a", "a narrow string keeps its no-break space"
+    assert match._sorted_words("b\xa0a Ā") == "a b Ā", "a wide one splits on it"
+    # THE BOUNDARY: U+00FF is the widest narrow character and U+0100 the
+    # narrowest wide one, so a width test one off either way is caught here.
+    for edge in ("\xff", "Ā"):
+        for c in ("\x85", "\xa0"):
+            token, other = f"z{c}a{edge}", f"a{edge} z"
+            assert fuzz.ratio(match._sorted_words(token), match._sorted_words(other)) == (
+                fuzz.token_sort_ratio(token, other)
+            ), (hex(ord(edge)), hex(ord(c)))
+
+
+def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeypatch):
+    """R recordings and W rows cost R + W sorts, and a new index pays its own R.
+
+    The sort was paid once per PAIR, inside the scorer, so a library name was
+    sorted again for every wanted row; the count is the proof the saving is
+    there, since no wall clock threshold is asserted.
+    """
+    calls: list[str] = []
+    real = match._sorted_words
+
+    def counted(token: str) -> str:
+        calls.append(token)
+        return real(token)
+
+    monkeypatch.setattr(match, "_sorted_words", counted)
+    index, rows = _u265_library(11)
+    recordings = len(index.by_recording)
+    for wanted in rows:
+        match._approximate(wanted, index)
+    assert len(calls) == recordings + len(rows)
+
+    calls.clear()
+    again, _rows = _u265_library(12)
+    match._approximate(rows[0], again)
+    assert len(calls) == len(again.by_recording) + 1
+
+    calls.clear()
+    assert match._approximate(rows[0], match.LibraryIndex(by_recording={})) == ()
+    assert calls == [], "an empty index sorts nothing and asks the scorer nothing"

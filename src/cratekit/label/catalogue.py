@@ -1,8 +1,8 @@
 """The one place the label package gets the catalogue it reads a provider through.
 
 **U62 BOUND IT.** ``cratekit.label.tidal_catalogue`` implements :class:`Catalogue`
-over a provider client that ``acquire.provider_session.client_session`` logs in
-from the stored session. Before that unit no implementation shipped, and this
+over a provider client logged in from the stored session, the one
+``acquire.provider_session.session_for`` holds for the process (U261). Before that unit no implementation shipped, and this
 module refused every call with ``label-catalogue-unbound``. That refusal is kept
 for the one case it still describes truthfully: a build in which the adapter or
 its client library does not import.
@@ -653,6 +653,13 @@ def resolve(cfg: config.Config) -> Catalogue:
     credential is missing would record the one they already have. An adapter
     that does not import is this build's own gap, and authenticating again would
     not move it.
+
+    A FRESH CATALOGUE OVER ONE LOGIN PER PROCESS (U261). Every resolve builds a
+    new catalogue, as before, over the client
+    ``provider_session.session_for`` holds, so a verb that resolves it twice,
+    or resolves it and the outbound account, validates the session once. The
+    presence check below still runs first on every resolve, so a session the
+    index stopped recording is refused rather than reused.
     """
     # The credential is installation scoped and the library does not pick it;
     # the configuration is still handed on, because the pacing gate reads its

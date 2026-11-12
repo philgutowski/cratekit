@@ -208,7 +208,9 @@ def _no_live_provider_client():
 
     # U63: the outbound seam holds the account it opened for the life of the
     # process, so an adapter one test opened over its fake client would answer
-    # the next test's resolve. Dropped on both sides of every test.
+    # the next test's resolve. Dropped on both sides of every test. U261: the
+    # logged in session both openers share is held for the process too, and
+    # ``account.forget`` drops it with the adapter.
     from cratekit.modules.outbound import account
 
     account.forget()

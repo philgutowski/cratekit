@@ -1,7 +1,8 @@
 """The streaming provider's catalogue, behind the label package's seam.
 
 **THIN ON PURPOSE.** Every read here is one question to the provider client
-that ``acquire.provider_session.client_session`` logged in, and every PAGED read
+``acquire.provider_session.session_for`` logged in and holds for the process,
+and every PAGED read
 goes through ``acquire.listing``. That module's docstring is the argument: a
 listing that quietly returns one page looks exactly like a short one, and a
 paging loop written here would be the fourth copy of that defect. A guard in the
@@ -58,7 +59,6 @@ from typing import Any
 import tidalapi
 
 from cratekit.acquire import catalogue_api, isrc_cache, isrc_screen, listing, provider_session
-from cratekit.core import provider_gate
 from cratekit.core.cause import CratekitError, answered_not_found
 from cratekit.label import harvest, kept_listing, registry
 from cratekit.label import verify as label_verify
@@ -988,19 +988,21 @@ class TidalCatalogue:
 
 
 def open_catalogue(cfg: Any = None) -> TidalCatalogue:
-    """A catalogue over a freshly logged in client, from the stored session.
+    """A fresh catalogue over the process's logged in client, from the stored session.
+
+    The client is the one :func:`provider_session.session_for` holds for the
+    process (U261): the first open logs in, and a later one, or the outbound
+    account's, reuses it while the keychain still holds the session it was
+    opened from. The catalogue itself is built fresh on every open, as before.
 
     The configuration is what the pacing gate reads its interval and cooldown
     off (R-705), the FROZEN one a job carries rather than a fresh load. None
     means the gate's own defaults, which are still a gate.
     """
-    gate = provider_gate.Gate(
-        provider_gate.GateSettings.from_config(cfg) if cfg is not None else None
-    )
-    client = provider_session.client_session(gate=gate)
+    held = provider_session.session_for(cfg)
     return TidalCatalogue(
-        client,
-        catalogue=provider_session.catalogue_client(client, gate=gate),
+        held.client,
+        catalogue=held.app,
         cache=isrc_cache.Cache.from_config(cfg),
     )
 

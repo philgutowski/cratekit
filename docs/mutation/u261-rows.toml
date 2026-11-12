@@ -1,0 +1,257 @@
+name = "u261"
+pass_kind = "light"
+
+# Rows target the guards U261 added: the unchanged write back, the held
+# session's reuse checks, the refusal watch, and the account's hold over it.
+# The subset for every row is the test files that drive provider_session's
+# login, the two openers and the two seams.
+
+[[rows]]
+id = "W1_unchanged_skip_removed"
+description = "write_back: drop the unchanged comparison, so every login writes the value already stored back to the keychain"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''        if unchanged is not None and unchanged == _canonical(stored):
+            return False'''
+new = '''        if False:
+            return False'''
+
+[[rows]]
+id = "W2_changed_session_skipped"
+description = "write_back: read any encodable session as unchanged, so a refreshed token is never stored (the merge blocker the card names)"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''        if unchanged is not None and unchanged == _canonical(stored):'''
+new = '''        if unchanged is not None:'''
+
+[[rows]]
+id = "W3_compare_by_value_not_bytes"
+description = "write_back: compare the dicts by Python equality rather than the bytes set_json stores, so a value that changed type (an int expiry for a float) is not written"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_provider_session_hold.py", "tests/test_adapter_contract.py"]
+old = '''        unchanged = _canonical(refreshed)
+        if unchanged is not None and unchanged == _canonical(stored):'''
+new = '''        unchanged = refreshed
+        if unchanged == stored:'''
+
+[[rows]]
+id = "W4_scope_passes_no_stored"
+description = "materialised_session: hand write_back nothing to compare against, so the scope writes an unchanged session back as before"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_adapter_contract.py", "tests/test_outbound_tidal_account.py", "tests/test_catalogue_app.py", "tests/test_provider_gate.py"]
+old = '''        write_back(name, path, codec=codec, stored=payload)'''
+new = '''        write_back(name, path, codec=codec)'''
+
+[[rows]]
+id = "W5_session_fields_guard_sample"
+description = "write_back (existing guard, sampled): accept a blob carrying no session field, so a file that is not a session replaces the stored one"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_adapter_contract.py"]
+old = '''    if not any(field in refreshed for field in SESSION_FIELDS):
+        return False'''
+new = '''    if False:
+        return False'''
+
+[[rows]]
+id = "H1_reuse_skips_the_gate"
+description = "session_for: reuse the held session without asking the gate, so a verb started inside a cooldown gets a client"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_provider_gate.py", "tests/test_catalogue_app.py"]
+old = '''        current.gate.assert_open()
+        try:
+            stored = secrets.get_json(name)'''
+new = '''        try:
+            stored = secrets.get_json(name)'''
+
+[[rows]]
+id = "H2_reuse_ignores_a_replaced_session"
+description = "session_for: reuse the held client whatever the keychain now holds, so a session replaced or refreshed elsewhere is never picked up"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py", "tests/test_catalogue_app.py"]
+old = '''        if _canonical(stored) == current.blob:'''
+new = '''        if True:'''
+
+[[rows]]
+id = "H3_reuse_swallows_a_missing_session"
+description = "session_for: answer a keychain that no longer holds the session with the held client, so a withdrawn session is reused"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''            drop(current)
+            raise _to_auth_failure(exc) from exc'''
+new = '''            return current'''
+
+[[rows]]
+id = "H4_failed_read_keeps_the_hold"
+description = "session_for: refuse a keychain that cannot be read on a reuse but keep the hold, so the account's held adapter goes on over it"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''            drop(current)
+            raise _to_auth_failure(exc) from exc'''
+new = '''            raise _to_auth_failure(exc) from exc'''
+
+[[rows]]
+id = "H5_settings_not_in_the_key"
+description = "session_for: reuse a session opened under other gate settings, so a job's frozen interval and cooldown are not the ones its calls run under"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''    if current is not None and current.name == str(name) and current.settings == settings:'''
+new = '''    if current is not None and current.name == str(name):'''
+
+[[rows]]
+id = "H6_app_not_asked_again"
+description = "session_for: hand a reuse the held absence of an app client, so app values recorded or lost since the open are not seen and no lost value is noted"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_catalogue_app.py"]
+old = '''            if current.app is None:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "H7_nothing_held"
+description = "session_for: hold nothing after a login, so every opener logs in again as before the unit"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py", "tests/test_catalogue_app.py"]
+old = '''    _watch(opened)
+    _HELD = opened
+    return opened'''
+new = '''    _watch(opened)
+    return opened'''
+
+[[rows]]
+id = "H8_blob_is_the_stored_not_the_refresh"
+description = "_login: report the session read rather than the refresh written back, so a refreshed login reads as replaced on every reuse and logs in again"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_provider_session_hold.py"]
+old = '''    return client, refreshed'''
+new = '''    return client, stored'''
+
+[[rows]]
+id = "H9_no_forget_before_a_new_login"
+description = "session_for: keep the old hold while a replaced session is logged in afresh, so a login that fails leaves the account's adapter over the replaced session"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''    forget()
+    gate = provider_gate.Gate(settings)'''
+new = '''    gate = provider_gate.Gate(settings)'''
+
+[[rows]]
+id = "R1_watch_not_installed"
+description = "session_for: install no watch on the shared client, so a 401 or 403 the catalogue meets leaves the refused client held"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py", "tests/test_catalogue_app.py"]
+old = '''    _watch(opened)
+    _HELD = opened'''
+new = '''    _HELD = opened'''
+
+[[rows]]
+id = "R2_answered_refusal_ignored"
+description = "_watch: ignore a 401 or 403 the transport answers, so a refused client stays held"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py", "tests/test_catalogue_app.py"]
+old = '''        if getattr(response, "status_code", None) in SESSION_REFUSED_STATUSES:
+            drop(session)'''
+new = '''        if False:
+            drop(session)'''
+
+[[rows]]
+id = "R3_raised_refusal_ignored"
+description = "_watch: ignore a 401 or 403 the transport raises, so a refusal that arrives as an exception leaves the client held"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''            if answered_status(exc) in SESSION_REFUSED_STATUSES:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "R4_forbidden_not_a_refusal"
+description = "SESSION_REFUSED_STATUSES: read only 401 as judging the session, so a 403 neither drops the shared client nor forgets the account"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py", "tests/test_provider_rejection_bodies.py"]
+old = '''SESSION_REFUSED_STATUSES = frozenset({401, 403})'''
+new = '''SESSION_REFUSED_STATUSES = frozenset({401})'''
+
+[[rows]]
+id = "R5_drop_not_by_identity"
+description = "drop: drop whatever is held, so a stale client's refusal throws away the newer session logged in since"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "maintainer"
+tests = ["tests/test_provider_session_hold.py"]
+old = '''    if _HELD is session:
+        _HELD = None'''
+new = '''    if True:
+        _HELD = None'''
+
+[[rows]]
+id = "A1_account_forget_keeps_the_session"
+description = "account.forget: drop the adapter and keep the shared session, so a 401 on the account leaves the catalogue the refused client"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''    _OPENED_OVER = None
+    provider_session.forget()'''
+new = '''    _OPENED_OVER = None'''
+
+[[rows]]
+id = "A2_account_reuse_ignores_the_hold"
+description = "account.resolve: hand out the held adapter whatever became of its session, so a client the catalogue saw refused is reused by the account"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''    if _OPENED is not None and _OPENED_OVER is provider_session.held():'''
+new = '''    if _OPENED is not None:'''
+
+[[rows]]
+id = "A3_account_records_no_session"
+description = "account.resolve: record no session under the adapter, so the adapter is opened afresh on every resolve and the one login per process is lost"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''    _OPENED_OVER = provider_session.held()
+    return opened'''
+new = '''    _OPENED_OVER = None
+    return opened'''
+
+[[rows]]
+id = "O1_catalogue_drops_the_app"
+description = "open_catalogue: build the catalogue without the held app client, so its ISRC lookups go to the account"
+file = "src/cratekit/label/tidal_catalogue.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_catalogue_app.py", "tests/test_label_tidal_catalogue.py"]
+old = '''        catalogue=held.app,'''
+new = '''        catalogue=None,'''
+
+[[rows]]
+id = "O2_account_drops_the_app"
+description = "open_account: build the account without the held app client, so its ISRC lookups go to the account"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_catalogue_app.py", "tests/test_outbound_tidal_account.py"]
+old = '''    return TidalAccount(held.client, cfg=cfg, catalogue=held.app)'''
+new = '''    return TidalAccount(held.client, cfg=cfg, catalogue=None)'''
+
+[[rows]]
+id = "A4_refusal_drops_no_session"
+description = "account._forget_refused: drop the adapter and keep the shared session it was built over, so a 401 on the account leaves the catalogue the refused client"
+file = "src/cratekit/modules/outbound/account.py"
+surface = "user"
+tests = ["tests/test_provider_session_hold.py", "tests/test_outbound_tidal_account.py"]
+old = '''    else:
+        provider_session.drop(over)'''
+new = '''    else:
+        pass'''

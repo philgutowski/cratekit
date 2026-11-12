@@ -100,8 +100,12 @@ reads instead of the exit code.
 
 The OS keychain holds the provider session. For one invocation the adapter
 writes it to a private file in a private directory, hands the tool that path,
-writes back a refreshed session only if it parses as one, and erases the file
-on every exit path.
+writes back a refreshed session only if it parses as one and differs from the
+session it read, and erases the file on every exit path. The label catalogue
+and the outbound account share one login per process. A catalogue open reuses
+it only while the keychain still holds the session it was opened from; the
+account keeps the adapter it opened until the provider refuses the session,
+the session is no longer recorded, or a catalogue open finds it replaced.
 
 ### Signing in to the provider
 

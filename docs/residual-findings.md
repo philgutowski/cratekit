@@ -50178,3 +50178,517 @@ findings and the mutation table are in `docs/restart/u260.md`.
 **Closes when:** Fable reviews the merged range, the U260 merge commit's diff
 against its first parent, and any finding it raises is filed or fixed.
 Ledger only: a review owed, nothing lost.
+
+---
+
+## R-1590. The U259 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #688, U259, 2026-11-12.
+
+**The gap.** Fable's review of #688 was refused on its usage limit in both
+rounds on 2026-11-12, so by Phillip's rule of 2026-11-08 Opus 5.5 at high
+effort reviewed the branch in its place, following the `fable-reviewer`
+definition under the same merge bar and round cap. Round one found nothing
+BLOCKING and four residuals, two of which changed what the check reports on
+contents no producer was found to write; both were fixed with failing tests
+first. The merged range has not had the reviewer the cloud lane names.
+
+**What it covers.** In `src/cratekit/intake/analyzed.py`, `member` split into
+its read by ID and `judge`, the judgment the clear of INBOX / Analyze removes
+memberships by; in `src/cratekit/analysis/rekordbox_check.py`, `_unanalysed`,
+`_content_rows`, `Scope.read`, `read_row`'s `content` and `check_rows` with
+its fall back to reads by ID when a batch cannot load; the U259 block of
+`tests/test_analyze_check.py`; and the table `docs/mutation/u259.md`.
+
+**Closes when:** a Fable review at high effort of the merged range against
+METHOD's merge bar reports, and each BLOCKING finding is fixed or filed. It
+earns no issue: a review owed is maintainer facing, which the board bar
+excludes.
+
+---
+
+## R-1591. A collection row whose ID is stored as bytes is left out of the check's scope of every row not analysed
+
+**Found:** at the review of #688, U259, 2026-11-12.
+
+**The mechanism.** When INBOX / Analyze holds no row, `crate analyze check`
+reads every collection row rekordbox has not analysed. Before U259 it found
+each one again by the text of its ID, and a row whose `djmdContent.ID` is
+stored as bytes (`typeof(ID)` reads `blob`) was never found that way, so it
+was silently left out of the scope. U259 judges each row in hand, which would
+have put it in, and keeps it out on purpose (`_unanalysed` skips an ID that
+is `bytes`; an ID stored as an integer, which the read by ID did find, is
+kept, review round two), because the card required the check's answer to equal the
+answer before it on every database. The skip is absence read as evidence of
+absence, the first of METHOD's recurring patterns, kept rather than repaired.
+
+**Measured cost.** Driven on a disposable copy with one row's ID cast to a
+blob: the scope is the same rows before and after U259, and the cast row is
+not named. No producer was driven: the column has text affinity, so it holds
+bytes only if bytes are written to it, and neither rekordbox nor anything in
+Cratekit was found writing them.
+
+**Closes when:** someone decides whether such a row belongs in the scope
+(named as unreadable, most likely, rather than silently absent) and the skip
+in `_unanalysed` becomes that answer. Ledger only: no producer is known.
+
+---
+
+## R-1592. crate inbox analyzed still reads each INBOX / Analyze member by its ID, one statement a row, twice per apply
+
+**Found:** at the build of #688, U259, 2026-11-12.
+
+**The mechanism.** U259 took the check off reads by ID and left the clear
+alone, since the card named only the check. `analyzed.plan_clear` still calls
+`member` for each live member of INBOX / Analyze, one `djmdContent` read by ID
+a row, and `apply_clear` takes the plan again on the write handle, so an apply
+reads every member twice more.
+
+**Measured cost.** Not measured on the clear. On the check, the same per row
+reads cost 18,574 statements and 3.4 seconds over 10,001 members on the
+synthetic database, against 23 statements and 0.3 seconds batched. INBOX /
+Analyze holds what one landing left, usually tens of rows, so the clear's
+cost is small in practice.
+
+**Closes when:** `plan_clear` reads the members a chunk of IDs to a
+statement and judges them with `analyzed.judge`, its digest equal to today's
+on the same database. Ledger only: a speed point, no false answer.
+
+---
+
+## R-1593. An older account adapter a caller kept meets a refusal and drops the newer session the held adapter was built over, costing a login
+
+**Found:** at the review of #690, U261, 2026-11-12, round two.
+
+**The mechanism.** `account.provider_failure` reads the refused adapter as
+the one `account` holds and drops the shared session that one was built
+over (`_forget_refused`). A caller that kept an older adapter
+(`export/set_cli.py`, `organize/account.py`'s lazy holder, `sync/pair_cli.py`)
+and meets a 401 through it, after the held adapter was rebuilt over a
+session logged in since, drops that newer session instead.
+
+**Measured cost.** Driven by the review on the suite's doubles (probe P4):
+one extra login, two paced requests, never a refused client held. The
+producer also needs the keychain to change in the middle of a process,
+which only another process does, and was not driven.
+
+**Closes when:** the refusal drops the held session whose client is the
+refused adapter's own, rather than the session the module's held adapter
+names. Ledger only.
+
+---
+
+## R-1594. A session the provider withdraws in the middle of a process is handed to the next resolve without a request, and the label crawl's discovery search reads its 401 as no credited artists
+
+**Found:** at the review of #690, U261, 2026-11-12, round one.
+
+**The mechanism.** Since U261 a later resolve of the catalogue or the
+account reuses the process's held session after asking the gate and the
+keychain, never the provider, as the card chose. A session the provider
+withdraws between two resolves, with no call made in between, is handed out
+again; the first call over it is answered 401, which `provider_session._watch`
+reads and drops the hold, so the resolve after that refuses. The cost lands
+on that first call: `tidal_catalogue._credited_by` catches every exception
+but the gate's and the client's own authentication error as "one query, not
+the session", and the client raises a 401 as its HTTP error, so the
+discovery search answers no credited artists. The same swallow meets a
+revocation between login and the first search on `main` too.
+
+**Measured cost.** Driven by the review with the real client library over
+a fake provider (probes P4 and P5): on the branch one resolve's discovery
+searches read a withdrawn session as no credits, where `main` refused that
+resolve with `credential-missing`. The producer, the provider withdrawing a
+session in the middle of a process, was not driven against the live
+account, so its reachability is unmeasured.
+
+**Closes when:** `_credited_by` reads a 401 or 403 as the session and
+raises, as the account's `provider_failure` does, so a withdrawn session
+refuses the run on its first call whichever resolve handed it out. Ledger
+only until the producer is driven.
+
+---
+
+## R-1595. A scope that left the session unchanged no longer records the session's name in the credential index, which every login used to do
+
+**Found:** at the review of #690, U261, 2026-11-12, round one.
+
+**The mechanism.** Before U261 every scope wrote the session back through
+`secrets.set_json`, which records the name in the presence index, so a
+login repaired an index that had lost the name. An unchanged session is now
+not written, so the index is left as it was.
+
+**Measured cost.** Driven by the review: with the name removed from the
+index and the session still in the keychain, an unchanged downloader scope
+leaves `secrets.exists` False on the branch where `main` made it True. The
+catalogue and the account then refuse `credential-missing` until the session
+is recorded again, the remedy that refusal already names. The producers, a
+full disk in the window `secrets.set` documents or a person removing a
+damaged index, were not driven.
+
+**Closes when:** a scope that read the session records its name in the
+index when the index lacks it, without a keychain write, or the refusal's
+remedy is judged enough. Ledger only.
+
+---
+
+## R-1596. U261 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass over its merged range is owed
+
+**Found:** at the review of #690, U261, 2026-11-12.
+
+**The mechanism.** The review of U261 was refused on Fable's usage limit,
+so by the rule of 2026-11-08 the same reviewer definition ran on Opus 5.5 at
+high effort, under the same merge bar and round cap.
+
+**Measured cost.** None measured. A second model's review found no BLOCKING
+finding in either round; a Fable pass is what the rule asks for.
+
+**Closes when:** Fable at high effort reviews the merged range of U261
+(`provider_session.session_for`, the unchanged write back, the account's
+hold over the shared session) and its findings are filed. Ledger only.
+
+---
+
+## R-1597. The provider library's own recoverable expired token 401 drops the held session, costing a login and an account adapter rebuild per expiry
+
+**Found:** at the review of #690, U261, 2026-11-12, round one.
+
+**The mechanism.** `provider_session._watch` drops the process's held
+session on any 401 or 403 answered through the shared client. The provider
+library answers an expired access token with a 401, refreshes it and asks
+again, which the watch cannot tell from a refusal, so the hold is dropped
+although the client recovered.
+
+**Measured cost.** Driven by the review (probes P3 and P7): one more login
+per token expiry, two paced requests, and the account's held adapter is
+rebuilt, so its per process reads are made again (not measured). No wrong
+answer: the refreshed token reaches the keychain on the next login, which
+`main` never stored.
+
+**Closes when:** the watch tells the library's recoverable expiry from a
+refusal, or the cost is judged too small to matter. Ledger only.
+
+---
+
+## R-1598. U258 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #687, U258, 2026-11-12.
+
+**The mechanism.** The `fable-reviewer` agent was refused on Fable's usage
+limit at round one, so the same reviewer definition and merge bar ran on Opus
+5.5 at high effort, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None known. The review that ran is recorded in
+`docs/restart/u258.md`; this entry says only which model's reading is missing.
+
+**Closes when:** Fable reviews U258's merged range against the merge bar.
+Ledger only.
+
+---
+
+## R-1599. The brief's process wide parse memo was built, measured to cost more than it saved, and narrowed to one test
+
+**Found:** at the build of #687, U258, 2026-11-12.
+
+**The mechanism.** The brief asked that "within one test process a source text
+is parsed once however many guards ask". The first build did exactly that,
+`tests/_parse_memo.py` holding every tree for the life of the worker. Measured
+on the touched test files in the suite's own distribution, four workers, two
+runs each: wall time 85 to 91 s on `main` against 97 to 99 s with the memo, and
+peak worker memory about 200 to 290 MB on `main` against 410 to 970 MB. Every
+swept tree is about 720 MB in one process, and the collector walking that many
+live nodes made the permissive soft delete sweep slower, 19.5 s to 22.5 s alone,
+which outside pytest was 19.7 s without the memo, 25.0 s with it and 17.9 s with
+it and the collector switched off. The guards that share files across tests
+spend most of their time in analysis, so retaining trees bought them nothing.
+
+The memo now shares a tree only inside one test that opens a scope, and drops
+it when that test ends. The reading of the brief recorded here: its goal, that
+a guard stops repeating the reading and parsing that feed it, is met inside
+each test, where the repetition was; its literal wording, across tests, is not,
+on measurement.
+
+**Measured cost.** None to a person using the verbs. A future card that wants
+cross test sharing would have to beat the collector's cost first; this entry
+says what it is.
+
+**Closes when:** ledger only. It records a decision and its measurement.
+
+---
+
+## R-1600. The at risk test's headroom check over the widened key set is reached by no test
+
+**Found:** at the review of #687, U258, 2026-11-12.
+
+**The mechanism.** `test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned`
+in `tests/test_reserved_causes.py` asserts that adding every kebab shaped
+literal in the package to the key set reports no offender outside the two
+table owners. No test plants a module that reaches it: the suite's only
+planted run of the at risk test, in `tests/test_parse_memo.py`, plants a table
+whose new kebab literals move a pin earlier in the same test. Running the check
+over an empty population (row M10 of `docs/mutation/u258.md`) kills no test, on
+the branch and, by the review's hand mutation, on `main` before it: the gap
+predates U258. The round two review drove two plants that do reach it, a new
+module holding `{"cancelled": 30}` (a declared cause that is not kebab shaped,
+so no kebab pin moves) and `{"auth-failed": 30}` appended to
+`acquire/adapter.py` (which already pins that literal): each fails first at the
+headroom assertion, and with the check emptied each is still caught later, by
+the literal holder pin and the named with integer pin. So the check is
+unreached by the suite, and redundant with later pins for those two plants.
+
+**Measured cost.** Maintainer facing. The check guards an argument in a
+residual's prose, not a verb.
+
+**Closes when:** a test runs the at risk test over the package plus a one line
+plant like `{"cancelled": 30}` and sees it fail at the headroom assertion.
+Ledger only.
+
+---
+
+## R-1601. The slowest package wide guards left after U258 spend their time in analysis, not in parsing
+
+**Found:** at the build of #687, U258, 2026-11-12.
+
+**The mechanism.** U258 shares parses inside the tests that asked the same
+texts again and again, and that halved the at risk population test. Four of
+the slowest guards it was filed against were measured and found to spend their
+time elsewhere, so a parse memo cannot reach them:
+
+- `tests/test_rb_writer_guard.py`, the permissive soft delete sweep and the
+  reader pin, about 19.5 s and 15 s alone on a four core container. Each runs
+  `SoftDeleteNames` and `_soft_delete_reads` over 681 files; the parse is about
+  5 s of each. Measured outside pytest, the analysis of one sweep takes 10.3 s
+  on trees already parsed. It makes about six passes over each tree, and
+  `_laundered_reads` calls `_soft_delete_reads` once per `If` it walks, about
+  69,000 calls for 683 files (69,064 and 69,052 in two measurements a few
+  commits apart). An iterative `_own_nodes` in the same order was tried
+  and measured no faster, 16.0 s against 15.4 s for the recursive one over the
+  same analysis, with identical output.
+- `tests/test_pool_sizing.py::test_no_module_outside_the_sizing_module_builds_a_process_pool`,
+  about 12.5 s, the settling loop in `process_pool_constructions` walking each
+  function again on every pass.
+- `tests/test_skills_lint.py::test_real_skills_pass_lint`, about 4 s in the
+  parallel run and 7.4 s under the profiler, 7.1 s of which is
+  `cratekit.cli.build_parser` called 308 times, once per command line, by the
+  documented choice in `real_parser` that a failed parse must not leak argparse
+  state into the next line's verdict.
+
+Sharing a guard's ANSWERS across tests, rather than its parses, is not safe
+here: `tests/test_reserved_causes.py` and `tests/test_review_queue.py`
+monkeypatch the guard module's own constants (`EXIT_CODE_MODULE`,
+`EXIT_CODE_CLASS`, `MAX_HOPS`, `REVIEW_MODULE`), so an answer cached by text
+would be served under the wrong rule.
+
+**Measured cost.** Maintainer facing: about 50 s of a worker's time in each
+full run, spread across four workers. Nothing a person using the verbs sees.
+
+**Closes when:** a card of its own rewrites the soft delete analysis as fewer
+passes, proved identical on the tree and on planted shapes the way U258's
+comparison was, or decides the time is the price of the rule. Ledger only.
+
+---
+
+## R-1602. A credit written with no separator after its marker, such as (feat_Mira) or (featMira), now reads as a version
+
+**Found:** at the review of #691, U262, 2026-11-12.
+
+**The mechanism.** `acquire/match.py` `_is_a_credit` now asks the group's
+first whole word under the matcher's `fold`. `fold` keeps an underscore and
+any letter as part of a word, so `(feat_Mira)`, `(featMira)` and a marker run
+straight into a name in another script have no first word equal to a marker,
+and the group is kept as the version. The letters rule read them as credits.
+`core/tombstone.py` already read them as versions, so the two modules now
+agree on them.
+
+**Measured cost.** Driven through `read_text_lines` and `resolve_all` against
+a library holding only the plain `Sun Path`: `Sun Path (feat_Mira)` was
+matched exact on the base and is `needs_review`, `version-differs` on the
+branch. The cost is a question rather than a wrong ownership, the
+conservative direction. None of the 58,222 distinct bracketed groups in the
+repository's text is a real credit of this shape, so the reachability is
+unmeasured.
+
+**Closes when:** a live list shows such a spelling, and the rule learns to
+read a marker followed directly by a name in both modules together. Ledger
+only.
+
+---
+
+## R-1603. The matcher and the tombstone module still read a credit spelled with leading punctuation, an accent or fullwidth letters differently
+
+**Found:** at the build of #691, U262, 2026-11-12.
+
+**The mechanism.** U262 gave `acquire/match.py` `_is_a_credit` the first
+whole word rule `core/tombstone.py` `_is_a_credit` asks, over an equal
+marker set, and a test holds the two equal over one list of groups. The two
+still fold differently: the matcher folds punctuation to spaces and strips
+accents and compatibility forms (NFKD), the tombstone module keeps
+punctuation and composes (NFC). So `- feat. Anna`, `"with" Anna`,
+`ｆｅａｔ Anna`, `Feät Anna` and `Ⓕeat X` are credits to the matcher and
+versions to the tombstone module. Every one of them answered the same way
+under the letters rule U262 replaced, so this unit moved none of them.
+
+**Measured cost.** Driven on the two predicates only. A title carrying such
+a group is split by the matcher with the group taken off as a credit, while
+a deletion of that row records no companion, so a provider spelling without
+the guest misses the tombstone and is reported as a missed suppression. No
+list or library title in this shape was found or driven, so the reachability
+is unmeasured.
+
+**Closes when:** one fold is chosen for both predicates. The tombstone
+module's set and rule are inside the identity stamp, so the change is the
+matcher's, and it moves the matcher's answer for these spellings, which needs
+its own card. Ledger only.
+
+---
+
+## R-1604. U262 was reviewed by Opus 5.5 because Fable was out of usage, and a Fable pass on its merged range is owed
+
+**Found:** at the review of #691, U262, 2026-11-12.
+
+**The mechanism.** The `fable-reviewer` agent was refused on Fable's usage
+limit at round one, so the same reviewer definition ran on Opus 5.5 at high
+effort under the same merge bar, as the cloud lane allows since 2026-11-08.
+
+**Measured cost.** None measured. The review that ran was a different model
+from the one the pipeline names.
+
+**Closes when:** a Fable review at high effort reads U262's merged range,
+`acquire/match.py` `_is_a_credit` and `_CREDIT_MARKERS` and the U262 tests in
+`tests/test_match_states.py`, and its findings are driven. Ledger only.
+
+---
+
+## R-1605. A review item filed under the letters reading of a remix with a With, Feat or Ft name stays open beside the new question
+
+**Found:** at the build of #691, U262, 2026-11-12.
+
+**The mechanism.** A review item's identity and a match id carry the
+version (`acquire/match.py` `question_identity`, `TrackMatch.match_id`).
+Before U262 a listing such as `Sun Path (Without You Remix)` split to the
+version `""`, so where the library held another version of `Sun Path`, a run
+asked `version-differs` about the plain record. After U262 the same line splits
+to `Without You Remix` and asks under a new identity. The old item is neither
+found nor retired: `match_cli.retire_questions` retires only the identities
+the line's current reading computes, and only when the row is owned. A
+verdict given on the old item is not applied to the new question, which is
+the conservative direction, since it answered a question about another
+version.
+
+**Measured cost.** Not driven against a real review store. The item can only
+exist where the library held a different version of the same title, the
+listing's group began with the letters of a marker, and a run filed the item
+before this unit. Where one does, `crate review list` shows one stale question
+beside the real one until it is answered or dismissed. Tombstones are not
+affected: their identity is the listing's verbatim spelling, which U262 does
+not move.
+
+**Closes when:** a later live `review list` shows no such pair, or the
+retiring side learns the letters reading for these lines. Ledger only.
+
+---
+
+## R-1606. U266 was reviewed by Opus 5.5 standing in for Fable, out of usage, so a Fable pass on its merged range is owed
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** The review of U266 was refused on Fable's usage limit, so by
+Phillip's rule of 2026-11-08 the same reviewer definition ran on Opus 5.5 at
+high effort, under the same merge bar and round cap. It found nothing
+BLOCKING and no doc made untrue.
+
+**Measured cost.** None known. The owed pass is Fable's reading of the merged
+range, `read_index_tags` through one `tags.read_tags` call and its tests.
+
+**Closes when:** a Fable review of U266's merged range runs and its findings
+are driven or filed. Ledger only.
+
+---
+
+## R-1607. Four other verbs still open a file once per tag field they read
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** U266 made the set builder's index read its seven fields
+through one `tags.read_tags` open. Four other places still ask
+`tags.read_tag` for each field and so open the file again per field: the
+naming plan in `write/naming_cli.py` (title, then the initial key), the
+catalogue genre pass in `tagging/tag.py` (artist, then title), the retag
+candidate search in `tagging/retag.py` (artist, then title) and the staging
+read in `tagging/guess.py` (artist, then title). Each is two opens where one
+would do.
+
+**Measured cost.** Not driven; read from the code at the review. Twice the
+container opens of one read in each of those batch verbs, which matters on a
+library on an external drive.
+
+**Closes when:** each reads its fields through one `tags.read_tags` call with
+the answer proven equal and the open count as the assertion, the way U250 and
+U266 did. Ledger only, until a speed survey measures one of them on the real
+library.
+
+---
+
+## R-1608. The test wrapper that counts container opens is copied in six test files
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** U266 added two more copies of a wrapper over `mutagen.File`
+that counts container opens, in `tests/test_setbuilder_one_open.py` and
+`tests/test_setbuilder_cli.py`, beside the ones in
+`tests/test_rebuild_one_open.py`, `tests/test_library_reads_remembered.py`,
+`tests/test_match_states.py` and `tests/test_analysis_ahead.py`. Its
+`_tagged` helper also repeats most of `tests/_containers.tagged_container`.
+Six copies of one counter can drift apart in what they count.
+
+**Measured cost.** Maintenance only; no test is wrong today.
+
+**Closes when:** one shared open counting fixture lives beside the container
+helpers and the six suites use it. Ledger only.
+
+---
+
+## R-1609. U265 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass over its merged range is owed
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** Round one of U265's review was refused on Fable's usage limit, so the same reviewer definition ran on Opus 5.5 at high effort, as the cloud lane's Models section allows. It found nothing blocking and five residuals, two closed in the branch and three filed beside this one.
+
+**Measured cost.** None driven. The review that ran was the one the bar names, on a different model.
+
+**Closes when:** Fable reviews the merged range of U265 (the commits under `merge(u265)` on `main`) against METHOD's merge bar, and anything it finds is fixed or filed. Ledger only.
+
+---
+
+## R-1610. rapidfuzz's pure Python fallback splits a narrow string on U+0085 and U+00A0, so the sorted word pass disagrees with it on a raw unfolded token
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `match._sorted_words` splits a string whose characters are all below U+0100 on Python's whitespace minus U+0085 and U+00A0, which is what rapidfuzz's compiled scorer does. Under `RAPIDFUZZ_IMPLEMENTATION=python` the fallback splits on both, so for the query `a\xa0b\x1fc` against the choice `b a\x1fc` the shipped `token_sort_ratio` call offers the candidate and the new pass offers nothing. Two of U265's whitespace tests fail under the fallback.
+
+**Measured cost.** None reachable: `fold` leaves neither character in any recording token, which the review drove over every code point, and the shipped scorer equality test passes on every seed under the fallback. A cost needs a raw token and the fallback build together, and no producer of either was found.
+
+**Closes when:** the split asks which implementation rapidfuzz loaded, or the matcher refuses to run on the fallback, or the fallback's own split is measured equal. Ledger only.
+
+---
+
+## R-1611. LibraryIndex keeps its sorted recordings from the first approximate call, so a by_recording dict changed afterwards is scored stale
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `LibraryIndex.sorted_recordings` builds the recordings and their sorted words the first time the approximate pass asks and keeps them for the life of the index. The class is frozen, but `by_recording` is typed `Mapping` and a caller holding the dict it passed in could still add to it; the review added a recording to the dict after a first call and the pass did not offer it, where the shipped call did.
+
+**Measured cost.** None reachable: the one constructor in `src`, `index_paths`, builds a fresh dict and hands it over, and no code in `src` writes to `by_recording` afterwards (zero producers found by grep).
+
+**Closes when:** the index wraps its mappings read only at construction, or the cache checks the mapping's length before use. Ledger only.
+
+---
+
+## R-1612. The dependency allows any rapidfuzz from 3.0, and the width dependent whitespace the sorted word pass copies was measured on 3.14 only
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `pyproject.toml` asks for `rapidfuzz>=3.0`. U265's `_sorted_words` copies the compiled scorer's word split, which differs by string width, and that split was measured over every code point on 3.14.6, the version this tree installs. An older or newer release that splits differently, and above all one that did not split on U+001F, which joins every recording token, would move approximate answers.
+
+**Measured cost.** Unmeasured: no other version was installed and none was downloaded. U265's whitespace and whole matrix tests would fail on such an install, so a difference would be loud in the suite rather than silent in a run.
+
+**Closes when:** the floor is raised to the measured release, or the split is measured on the floor release too. Ledger only.

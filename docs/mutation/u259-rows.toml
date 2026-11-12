@@ -1,0 +1,155 @@
+name = "u259"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_judge_no_row"
+description = "analyzed.judge: drop the answer for a row the collection lacks, so None reaches the removal marker read"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_inbox_analyzed.py"]
+old = '''    if row is None:
+        return Member(content_id=content_id, title="", action=WAIT, why=NO_ROW)'''
+new = '''    if False:
+        return Member(content_id=content_id, title="", action=WAIT, why=NO_ROW)'''
+
+[[rows]]
+id = "M2_judge_removed"
+description = "analyzed.judge: a row rekordbox removed is judged as live, so it can be cleared or checked as analysed"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_inbox_analyzed.py"]
+old = '''    if removed:
+        return Member(content_id=content_id, title=title, action=WAIT, why=ROW_REMOVED)'''
+new = '''    if False:
+        return Member(content_id=content_id, title=title, action=WAIT, why=ROW_REMOVED)'''
+
+[[rows]]
+id = "M3_judge_analysed_column"
+description = "analyzed.judge: ignore the Analysed column, so a row with an analysis path reads analysed though rekordbox never analysed it"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_inbox_analyzed.py"]
+old = '''    if not int(getattr(row, "Analysed", 0) or 0):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M4_judge_analysis_path"
+description = "analyzed.judge: ignore an empty AnalysisDataPath, so a row marked analysed with no file is cleared"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_inbox_analyzed.py"]
+old = '''    if not str(getattr(row, "AnalysisDataPath", "") or "").strip():'''
+new = '''    if False:'''
+
+[[rows]]
+id = "M5_member_reads_nothing"
+description = "analyzed.member: judge no row instead of the row read by ID, so the clear reads every member as missing"
+file = "src/cratekit/intake/analyzed.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py", "tests/test_inbox_analyzed.py"]
+old = '''    return judge(content_id, db.get_content(ID=content_id))'''
+new = '''    return judge(content_id, None)'''
+
+[[rows]]
+id = "M6_unanalysed_reads_by_id"
+description = "_unanalysed: ask for each collection row again by ID, the per row read U259 removed"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        one = analyzed.judge(content_id, content)'''
+new = '''        one = analyzed.member(db, content_id)'''
+
+[[rows]]
+id = "M7_unanalysed_keeps_no_row"
+description = "_unanalysed: carry no row for a waiting ID, so every row of the scope reads as gone"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''            waiting[one.content_id] = content'''
+new = '''            waiting[one.content_id] = None'''
+
+[[rows]]
+id = "M8_check_rows_rereads_scope"
+description = "check_rows: ignore the rows the scope already read, so the unanalysed scope is read a second time"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    held: dict[str, Any] | None = dict(scope.read)'''
+new = '''    held: dict[str, Any] | None = {}'''
+
+[[rows]]
+id = "M9_read_row_per_row"
+description = "check_rows: hand read_row no row, so each row in scope is read by ID again"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''            content=_UNREAD if held is None else held.get(content_id),'''
+new = '''            content=_UNREAD,'''
+
+[[rows]]
+id = "M10_chunk_size"
+description = "_CHUNK: read 50 IDs to a statement rather than 500, so a scope's statements grow with it"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''_CHUNK = 500'''
+new = '''_CHUNK = 50'''
+
+[[rows]]
+id = "M11_scope_carries_no_rows"
+description = "resolve_scope: the unanalysed scope carries none of the rows it read"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        read=waiting,
+    )'''
+new = '''    )'''
+
+[[rows]]
+id = "M12_check_keeps_rows"
+description = "check_rows: the answer keeps the scope's rows past the handle's life"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "maintainer"
+tests = ["tests/test_analyze_check.py"]
+old = '''    return Check(scope=replace(scope, read={}), rows=rows)'''
+new = '''    return Check(scope=scope, rows=rows)'''
+
+[[rows]]
+id = "M13_batch_failure_not_met_again"
+description = "check_rows: a batch the binding cannot load fails the check, ahead of an earlier row's refusal"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''    except Exception:  # noqa: BLE001 - every failure is met again, in order, below
+        held = None'''
+new = '''    except Exception:  # noqa: BLE001 - every failure is met again, in order, below
+        raise'''
+
+[[rows]]
+id = "M14_batch_failure_reads_nothing"
+description = "check_rows: after a batch the binding cannot load, judge every row as missing rather than read it"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''            content=_UNREAD if held is None else held.get(content_id),'''
+new = '''            content=None if held is None else held.get(content_id),'''
+
+[[rows]]
+id = "M15_id_not_text_judged"
+description = "_unanalysed: judge a row whose ID is stored as bytes, so it joins a scope the read by ID never put it in"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if isinstance(content.ID, bytes):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "M16_id_skip_widened"
+description = "_unanalysed: leave out every ID that is not text, round one's fix, so integer IDs read as nothing to check"
+file = "src/cratekit/analysis/rekordbox_check.py"
+surface = "user"
+tests = ["tests/test_analyze_check.py"]
+old = '''        if isinstance(content.ID, bytes):'''
+new = '''        if not isinstance(content.ID, str):'''
