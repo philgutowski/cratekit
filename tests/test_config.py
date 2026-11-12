@@ -390,7 +390,9 @@ def test_every_installation_entry_resolves_under_a_directory_the_module_names(
     directory invented by a future entry fails here instead of resolving to
     somewhere nothing enumerates.
     """
-    known = (config.config_dir(), config.installation_state_dir())
+    # The provider gate's own directory (U278) is the third, named by the
+    # module as ``provider_gate_dir`` and resolved by the inventory itself.
+    known = (config.config_dir(), config.installation_state_dir(), config.provider_gate_dir())
     for entry in config.state_files_for(config.StateRoot.INSTALLATION):
         if entry.medium is config.Medium.KEYCHAIN:
             continue
@@ -412,6 +414,7 @@ def test_every_installation_entry_resolves_under_a_directory_the_module_names(
 _STATE_ROOT_ACCESSORS = {
     "config_dir",
     "installation_state_dir",
+    "provider_gate_dir",
     "library_state_dir",
     "library_coupled_dir",
     "library_history_dir",

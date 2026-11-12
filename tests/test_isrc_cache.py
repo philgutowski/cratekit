@@ -744,7 +744,10 @@ def test_a_rehearsal_keeps_the_live_isrc_cache_and_restores_the_environment(tmp_
     assert config.ENV_ISRC_CACHE_DIR not in os.environ
 
     with rehearsal.redirected(area):
-        assert config.state_path("provider_gate").parent == tmp_path / "local" / "state"
+        # U278: the provider gate stays live too, by its own resolution, so a
+        # rehearsal spends from the account's one allowance.
+        assert config.installation_state_dir() == tmp_path / "local" / "state"
+        assert config.state_path("provider_gate").parent != tmp_path / "local" / "state"
         assert isrc_cache.Cache().path == live
 
     assert config.ENV_ISRC_CACHE_DIR not in os.environ

@@ -126,6 +126,10 @@ def _isolate_state_roots(tmp_path_factory):
         # U206: an override a shell left set would put every test's ISRC cache
         # outside this tree, so it is cleared and the cache follows the state.
         monkeypatch.delenv("CRATEKIT_ISRC_CACHE_DIR", raising=False)
+        # U278: the provider gate never follows CRATEKIT_STATE_DIR, so it is
+        # pointed into this test's own state root by its own variable, and no
+        # test reads or spends the real gate's hour.
+        monkeypatch.setenv("CRATEKIT_PROVIDER_GATE_DIR", str(root / "state" / "cratekit"))
 
         # Once config lands (U2) it may cache its resolved directories at import time.
         # Re-point the module attributes too, so a cached value cannot outlive the
