@@ -160,11 +160,13 @@ file appearing under a different string expires none of them.
 Then clear `planned_in` on those entries. That is what
 `test_a_planned_verb_whose_module_has_landed_must_lose_its_marker`
 demands once `find_spec` succeeds. Clearing the marker without the
-named module existing is the other miss: `landed` becomes true,
-`build_parser` calls `import_module(entry.module)`, and a missing
-module that is not a missing extra raises
-(`src/cratekit/cli/__init__.py:227-230`). The product then fails at
-parser construction, not on the new verb.
+named module existing is the other miss: `landed` becomes true, and
+when the verb is chosen `build_parser` calls `import_module(entry.module)`
+and a missing module that is not a missing extra raises. Until U248 that
+import ran for every verb on every command, so the product failed at
+parser construction; since U248 it fails on the new verb only, and
+`test_every_landed_entry_imports_and_resolves_its_builder` in
+`tests/test_cli_lazy.py` is what catches it before a user types it.
 
 Do not copy `src/cratekit/modules/` from a unit that only owed
 engines. U34 landed engines at `src/cratekit/modules/reports/` because
