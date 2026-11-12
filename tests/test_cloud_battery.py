@@ -210,7 +210,7 @@ def test_compare_refuses_a_branch_it_cannot_unshallow(origin, tmp_path, monkeypa
     repo.rename(tmp_path / "gone")
     baseline = tmp_path / "baseline.txt"
     baseline.write_text(
-        f"# commit abc123 host {socket.gethostname()} history full\ntests/a.py::t\n",
+        f"# commit abc123 host {socket.gethostname()} history full ids whole\ntests/a.py::t\n",
         encoding="utf-8",
     )
     monkeypatch.setattr(battery, "ROOT", clone)
