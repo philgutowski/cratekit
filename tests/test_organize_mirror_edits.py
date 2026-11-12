@@ -581,7 +581,7 @@ def test_a_folder_that_is_not_a_genre_folder_is_mirrored_one_way(installed, monk
         ),
     )
     monkeypatch.setattr(
-        account_mirror, "read_library", lambda _cfg: account_mirror.Library(folders=(favorites,))
+        account_mirror, "read_library", lambda _cfg, **_: account_mirror.Library(folders=(favorites,))
     )
 
     def run() -> None:

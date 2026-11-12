@@ -969,3 +969,31 @@ def test_a_month_the_placement_did_not_make_is_refused_at_the_read_back(world, m
         step.apply()
 
     assert caught.value.cause.reason == "session-committed-unverified"
+
+
+def test_the_downloads_plan_reads_the_library_through_a_reports_one_handle(world, monkeypatch):
+    """U267. ``--report`` hands its one read handle to the ISRC read, which opens none."""
+    import sys
+
+    world.put_in("Tech House Med", "r3")
+    _area, _step, shared = world.plan()
+    opened: list[str] = []
+    real = rb_writer.open_db
+
+    def counting(*args, **kwargs):
+        opened.append(sys._getframe(1).f_code.co_name)
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(rb_writer, "open_db", counting)
+    alone = mirror_downloads.add_step(world.cfg, shared)
+    assert opened == ["_owned"], "the plan reads the library's codes on its own handle"
+    opened.clear()
+    one_read = rb_writer.SharedRead(world.cfg)
+    try:
+        through = mirror_downloads.add_step(world.cfg, shared, one_read=one_read)
+    finally:
+        one_read.close()
+
+    assert opened == ["handle"]
+    assert through.state == alone.state == PLANNED
+    assert (through.digest, through.items) == (alone.digest, alone.items)

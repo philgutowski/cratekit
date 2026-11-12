@@ -497,9 +497,11 @@ def plan(
 
     ``remote`` is the account, for its folders; ``found`` is the catalogue,
     for each set's tracks; ``reading`` opens a read handle on the database.
-    THE DATABASE IS NEVER HELD OPEN ACROSS A PROVIDER CALL: it is opened once
-    to read where INSPIRATION is and what it holds, closed while the account
-    is read, and opened again to match only when a set has tracks to match. A
+    NO READ IS HELD ACROSS A PROVIDER CALL: the database is read once for
+    where INSPIRATION is and what it holds, let go while the account is read,
+    and read again to match only when a set has tracks to match. Letting go
+    is closing the handle, or under ``crate organize --report`` releasing its
+    one shared handle (U267), which stays open holding no lock and no row. A
     taxonomy with no INSPIRATION folder, or a root holding it twice, refuses
     by the set playlist's own rule.
     """

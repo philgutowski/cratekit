@@ -292,16 +292,24 @@ def _inbox(
     )
 
 
-def read_library(cfg: config.Config) -> Library:
-    """Every folder to mirror, read on a read handle that is closed before returning."""
+def read_library(cfg: config.Config, *, one_read: Any = None) -> Library:
+    """Every folder to mirror, read on a read handle that is closed before returning.
+
+    ``one_read`` is ``crate organize --report``'s one read handle (U267), read
+    through and released rather than opened and closed here.
+    """
     from cratekit.core import active_taxonomy, rb_writer, tree_registry
     from cratekit.favorites import placement
     from cratekit.modules.outbound import mirror_edits
 
     declared = active_taxonomy.load(cfg)
     registry = tree_registry.read(cfg)
-    db = rb_writer.open_db(
-        rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+    db = (
+        one_read.handle()
+        if one_read is not None
+        else rb_writer.open_db(
+            rb_writer.live_db_path(cfg), require_closed=False, check_app_version=False, cfg=cfg
+        )
     )
     try:
         root_id = tree_registry.anchored_root(
@@ -354,7 +362,7 @@ def read_library(cfg: config.Config) -> Library:
         else:
             found.append((inbox_name, inbox))
     finally:
-        rb_writer.close_db(db)
+        rb_writer.done_reading(db, one_read)
     counted: dict[str, int] = {}
     for name, _held in found:
         counted[name] = counted.get(name, 0) + 1
@@ -541,11 +549,18 @@ class Reading:
     unread: str = ""
 
 
-def read(cfg: config.Config, account_of: Callable[[], Any], run: Run | None = None) -> Reading:
+def read(
+    cfg: config.Config,
+    account_of: Callable[[], Any],
+    run: Run | None = None,
+    *,
+    one_read: Any = None,
+) -> Reading:
     """Read the library, the ledger and the account, match every row, and decide the edits.
 
     Raises the refusal of the whole kind: a library, ledger or account that
-    cannot be read.
+    cannot be read. ``one_read`` is the report's one read handle (U267), which
+    the library is read through when given.
     """
     from cratekit.modules.outbound import mirror_edits as edits
 
@@ -553,7 +568,7 @@ def read(cfg: config.Config, account_of: Callable[[], Any], run: Run | None = No
     frozen, unfrozen = None, ""
     if run is not None and run.decided:
         frozen, unfrozen = mirror_frozen.load(cfg, run.run_id)
-    library = frozen.library if frozen is not None else read_library(cfg)
+    library = frozen.library if frozen is not None else read_library(cfg, one_read=one_read)
     # A FROZEN PLAN CARRIES EVERY ROW'S ANSWER ALREADY, so its rebuild
     # reads no landing record and asks the provider about no row.
     known = landed_tracks(cfg) if frozen is None else {}
@@ -757,13 +772,22 @@ class Shared:
 
     ``resolve`` resolves the provider seam; its refusal, and the reading's, is
     kept and raised again to every caller, so each area refuses the steps
-    that need it with the same reason.
+    that need it with the same reason. ``one_read`` is ``--report``'s one read
+    handle on the database (U267), which the library is read through.
     """
 
-    def __init__(self, cfg: config.Config, resolve: Callable[[], Any], run: Run | None = None) -> None:
+    def __init__(
+        self,
+        cfg: config.Config,
+        resolve: Callable[[], Any],
+        run: Run | None = None,
+        *,
+        one_read: Any = None,
+    ) -> None:
         self._cfg = cfg
         self._resolve = resolve
         self._run = run
+        self._one_read = one_read
         self._account: Any = None
         self._account_error: CratekitError | None = None
         self._account_done = False
@@ -784,7 +808,7 @@ class Shared:
     def reading(self) -> Reading:
         if self._reading is None and self._reading_error is None:
             try:
-                self._reading = read(self._cfg, self.account, self._run)
+                self._reading = read(self._cfg, self.account, self._run, one_read=self._one_read)
             except CratekitError as exc:
                 self._reading_error = exc
         if self._reading_error is not None:

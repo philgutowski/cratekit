@@ -839,3 +839,59 @@ def test_a_set_no_track_of_which_reads_names_five_counts_the_rest_and_the_withhe
         + ", and 2 more the same way; the provider also counts 3 track(s) on the "
         "playlist it would not list"
     )
+
+
+def test_a_report_reads_inspiration_twice_through_one_handle_and_locks_nothing_meanwhile(
+    machine, account, silence, monkeypatch
+):
+    """U267. The step reads, asks the provider, then reads again, all on the report's one handle.
+
+    The planner's rule is that no read is held across a provider call, so at
+    each listing the provider is asked for, another connection must be able to
+    take the database whole. The fixture is switched to the rollback journal,
+    where a reader's lock would keep that connection out.
+    """
+    import sys
+
+    conn = sqlite3.connect(machine.library.db_path)
+    assert conn.execute("PRAGMA journal_mode=DELETE").fetchone()[0] == "delete"
+    conn.close()
+    for title in TITLES[:3]:
+        _owned(machine, silence, title)
+    account.add_set(f"DOWNLOADED {FEMME}", TITLES[:3])
+    taken: list[bool] = []
+    real_read = inspiration._read
+
+    def probing(found, playlist_id):
+        probe = sqlite3.connect(machine.library.db_path, timeout=0)
+        try:
+            probe.execute("BEGIN EXCLUSIVE")
+            probe.rollback()
+            taken.append(True)
+        except sqlite3.OperationalError:
+            taken.append(False)
+        finally:
+            probe.close()
+        return real_read(found, playlist_id)
+
+    opened: list[str] = []
+    released: list[int] = []
+    real_open, real_release = rb_writer.open_db, rb_writer.SharedRead.release
+
+    def counting(*args, **kwargs):
+        opened.append(sys._getframe(1).f_code.co_name)
+        return real_open(*args, **kwargs)
+
+    def releasing(self, db):
+        released.append(1)
+        return real_release(self, db)
+
+    monkeypatch.setattr(inspiration, "_read", probing)
+    monkeypatch.setattr(rb_writer, "open_db", counting)
+    monkeypatch.setattr(rb_writer.SharedRead, "release", releasing)
+
+    step = _step(_report())
+
+    assert step["state"] == "planned" and _by_set(step)[FEMME]["tracks"] == 3
+    assert opened == ["handle"] and len(released) == 2
+    assert taken == [True]
