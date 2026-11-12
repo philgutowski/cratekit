@@ -100,6 +100,16 @@ TEMPO_PRIOR_OCTAVES = 1.0
 #: count was measured, none is a target. Re-measure with
 #: ``scripts/head_agreement.py --analyse 300 --step 4`` after any change to
 #: this module and replace every number here in the same commit.
+#:
+#: THE KEY BUCKETS WERE READ WITH THE WHOLE TRACK METHOD, which was the default
+#: then, and ``key_read_with`` says so (U276). The run reads the key with
+#: :data:`KEY_DEFAULT` since, and A121's reading of 2026-11-12 is carried
+#: beside the record under ``key_by_method``, every method over one sample:
+#: the keys equal to rekordbox's, and the wall time of the 300. That sitting
+#: recorded the equal counts and the tempo's equal count only, not the
+#: other buckets, so the record is not replaced whole and no ``differs`` is
+#: written for it: a record's buckets come from one run of the script, and
+#: none here is derived.
 _HEAD_AGREEMENT: dict[str, Any] = {
     "measured_on": date(2026, 9, 30).isoformat(),
     "reference": "rekordbox 7.2.19, its own analysis of the same files",
@@ -113,11 +123,23 @@ _HEAD_AGREEMENT: dict[str, Any] = {
     },
     "within_one": 226,
     "key": {"equal": 158, "differs": 141},
+    "key_read_with": "whole",
+    "key_by_method": {
+        "measured_on": date(2026, 11, 12).isoformat(),
+        "files": 300,
+        "equal": {"whole": 159, "windows": 157, "plain": 161},
+        "seconds": {"whole": 663, "windows": 453, "plain": 341},
+    },
 }
 
 
 def head_agreement(window: tuple[int, int] | None = None) -> dict[str, Any]:
     """A fresh copy of the recorded agreement, safe to place in an envelope.
+
+    ``key_method`` is the method the run reads the key with, which the
+    ``key`` buckets were not read with when it differs from
+    ``key_read_with``; ``key_by_method`` is the reading of every method over
+    one sample, the run's own among them.
 
     ``window`` is the floor and ceiling the run bound to the detector. The
     record was measured under one window, and a DJ who raised theirs is not
@@ -128,6 +150,9 @@ def head_agreement(window: tuple[int, int] | None = None) -> dict[str, Any]:
     record = copy.deepcopy(_HEAD_AGREEMENT)
     measured = (record["window"]["floor"], record["window"]["ceiling"])
     record["applies_to_window"] = window is None or tuple(window) == measured
+    # THE METHOD THE RUN READS THE KEY WITH, beside the method the buckets
+    # were read with, so a reader can tell the two apart (U276).
+    record["key_method"] = KEY_DEFAULT
     return record
 
 
@@ -359,19 +384,36 @@ def drift_from_tempogram(
 
 
 #: How the chroma the key is read from is taken (U241). ``KEY_WHOLE`` is the
-#: shipped method and the default everywhere: the harmonic part of the whole
-#: track, then its chroma. The other two are cheaper and are NOT the default,
-#: because their bar is agreement with rekordbox's own keys on the library,
-#: within one percentage point of the whole track's rate, and that is read at
-#: an attended sitting (``scripts/head_agreement.py --analyse N --key ...``),
-#: never on a fixture. ``KEY_WINDOWS`` reads the same chroma from windows
+#: harmonic part of the whole track, then its chroma, which shipped as the
+#: default until U276. ``KEY_WINDOWS`` reads the same chroma from windows
 #: spread evenly over the track. ``KEY_PLAIN`` reads the whole track's chroma
-#: without the harmonic separation, which is the half of the time the
-#: separation costs.
+#: without the harmonic separation.
+#:
+#: ``KEY_PLAIN`` IS THE DEFAULT SINCE U276, on a reading of all three against
+#: rekordbox's own keys. The bar U241 set was agreement with rekordbox on the
+#: library within one percentage point of the whole track's rate, read at an
+#: attended sitting and never on a fixture. A121 read it on 2026-11-12, over
+#: 300 library files rekordbox analysed itself, every fourth eligible one
+#: (``scripts/head_agreement.py --analyse 300 --step 4 --key ...``): whole 159
+#: equal (53.0%) in 663 seconds, windows 157 (52.3%) in 453, plain 161 (53.7%)
+#: in 341. Both cheaper methods met the bar; plain agreed the most and cost the
+#: least, about half of whole's time, because the separation is what it skips.
+#: The tempo, the drift and the energy do not read the key's chroma, so what
+#: can move is the key and whether there is one: the review of U276 drove a
+#: file of clicks with no tone, which the whole track's chroma read as keyless
+#: (``skipped-no-key``) and the plain chroma keys, so ``analyze run`` now
+#: writes it a key and a head. Four drum tools, noise and the 23 track
+#: synthetic set were keyed under both, the drum tools to keys far apart
+#: under the two, since a chroma with no tone in it names no key worth the
+#: name. ``KEY_WHOLE`` and ``KEY_WINDOWS`` stay
+#: selectable by name so a later sitting can read all three again.
 KEY_WHOLE = "whole"
 KEY_WINDOWS = "windows"
 KEY_PLAIN = "plain"
 KEY_METHODS = (KEY_WHOLE, KEY_WINDOWS, KEY_PLAIN)
+#: The method a caller that names none gets: ``analyze run``, its workers, the
+#: warm up and both measuring scripts.
+KEY_DEFAULT = KEY_PLAIN
 #: The harmonic margin the key's separation has always used.
 KEY_HARMONIC_MARGIN = 4
 #: The windowed method's windows: how many, and how long each is. Six of
@@ -384,7 +426,22 @@ KEY_WINDOW_SECONDS = 30.0
 
 #: The stages a run's time is reported under (U241), in the order they run.
 #: ``scripts/analyze_stages.py`` prints them; the vocal pass adds its own two.
+#: Every one of them is met by a method that separates; :func:`stages_of`
+#: answers the ones a given method meets.
 STAGES = ("decode", "tempo_drift", "harmonic", "chroma_key", "energy")
+
+
+def stages_of(method: str) -> tuple[str, ...]:
+    """The stages a head read with the key ``method`` meets, in the order they run.
+
+    The plain chroma never separates, so it meets no ``harmonic`` stage
+    (U276), and a report of its time does not count one.
+    """
+    if method not in KEY_METHODS:
+        raise ValueError(f"the key method is one of {KEY_METHODS}, not {method!r}")
+    if method == KEY_PLAIN:
+        return tuple(stage for stage in STAGES if stage != "harmonic")
+    return STAGES
 
 
 @contextmanager
@@ -434,7 +491,7 @@ def key_profile(
     samples: Any,
     rate: int,
     *,
-    method: str = KEY_WHOLE,
+    method: str = KEY_DEFAULT,
     timings: MutableMapping[str, float] | None = None,
 ) -> Any:
     """The twelve bin chroma profile the key is read from, by ``method``.
@@ -501,15 +558,15 @@ def analyse_file(
     calibration: Any = None,
     tempo_window: tuple[int, int] = (DEFAULT_TEMPO_FLOOR, DEFAULT_TEMPO_CEILING),
     drift_cut: float = DEFAULT_DRIFT_CUT,
-    key: str = KEY_WHOLE,
+    key: str = KEY_DEFAULT,
     timings: MutableMapping[str, float] | None = None,
 ) -> dict[str, Any] | None:
     """Return camelot, tempo, drift and energy, or None when detection cannot run.
 
-    ``key`` is how the key's chroma is taken, :data:`KEY_METHODS`, the whole
-    track unless a measurement asks otherwise (U241). ``timings`` collects the
-    wall time of each of :data:`STAGES` when a mapping is passed, and costs
-    nothing when it is not.
+    ``key`` is how the key's chroma is taken, :data:`KEY_METHODS`, the plain
+    chroma unless a caller names another (U241, U276). ``timings`` collects
+    the wall time of each stage :func:`stages_of` the method names when a
+    mapping is passed, and costs nothing when it is not.
 
     ``tempo_window`` is the configured floor and ceiling; the run binds it from
     ``analysis.tempo_floor`` and ``analysis.tempo_ceiling`` beside the
