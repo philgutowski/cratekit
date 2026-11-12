@@ -48479,3 +48479,601 @@ fix round on finds nothing BLOCKING, or its findings are filed. Ledger only.
 **Measured cost.** Replacing each with a raise killed nothing over ten test files (round one, mutation rows N1 to N3); one candidate for reaching them was driven (d9) and does not. No user facing cost; text nobody sees.
 
 **Closes when:** the branches are removed, or a test reaches them. Ledger only.
+
+---
+
+## R-1515. An absent mark record reads as nothing taken, so once the prefix is stripped a lost sync_marks.json offers every stripped playlist as new
+
+**Found:** at the review of #671, U242, round one, 2026-11-12.
+
+**The mechanism.** `MarkRecord._read` answers empty lists when
+`sync_marks.json` does not exist, which is right for a library that never
+marked anything and was right before U242, when a lost record cost only the
+undo. Since U242 the record is the only thing that holds a stripped playlist
+as taken, and an unreadable record refuses while an absent one reads as none.
+The review drove it: strip, delete the file, and `sync all` queued the
+stripped playlist as new.
+
+**Measured cost.** Every playlist the strip took the prefix off would be
+offered and queued as intake. No product verb deletes the record, which is
+`NEVER_RESTORED` so a database restore leaves it alone; 0 producers of an
+absent record were driven, so the reachability is unmeasured.
+
+**Closes when:** the record states that a strip ran, in a place its own
+absence cannot erase (the library's state index or the cursor's document), so
+an absent record after a strip refuses rather than reading as empty. Ledger
+only.
+
+---
+
+## R-1516. A build older than U242 offers every stripped playlist and refuses the version 2 mark record, so the live strip waits for every installed copy
+
+**Found:** at the review of #671, U242, round one, 2026-11-12.
+
+**The mechanism.** A build before U242 knows a taken playlist only by its
+`DOWNLOADED ` title, and reads the mark record only at version 1. The review
+drove `origin/main`'s source against a stripped title and a version 2
+document: its `exclusion` returned nothing for the title, so a sync there
+would offer it, and its `MarkRecord` refused the document ("it says version 2
+and this build writes 1").
+
+**Measured cost.** On an installed copy that lags behind U242, every playlist
+the strip took the prefix off is offered as new, and every mark verb refuses
+the record. Not driven as an install; the attended card owed by U242 updates
+the installed copy before the strip.
+
+**Closes when:** the strip has run only on installations that carry U242,
+which the attended card's first step makes true. Ledger only.
+
+---
+
+## R-1517. No verb lets a playlist the migration found prefixed go, so a hand marked playlist cannot be made new again short of editing the mark record
+
+**Found:** at the review of #671, U242, round two, 2026-11-12.
+
+**The mechanism.** `crate sync unmark` releases only what a pass took, and
+since round one a playlist `sync taken` recorded as `found-prefixed` under
+`migration` is no pass's, so no unmark lets it go. That was the fix for round
+one's third blocker, which released every hand mark at once and offered them
+all as new. The review drove three routes after the strip, `--pass migration
+--playlist ID`, an unmark of `prefix-strip` with the prefix then taken off by
+hand, and a plain retitle: none releases it. Before U242 a person could make
+such a playlist new by taking the prefix off by hand.
+
+**Measured cost.** A person who wants one hand marked playlist offered by a
+sync again has no verb for it. Nobody is told anything false: the guide says
+no unmark lets one go.
+
+**Closes when:** Phillip decides whether naming one playlist should let it go
+(`sync unmark --pass migration --playlist ID`, with its own gate), and it is
+built. Ledger only.
+
+---
+
+## R-1518. The brief's live check names sync all --report, which does not exist, so the strip's last proof is read off the next ordinary sync pass
+
+**Found:** at the build of #671, U242, 2026-11-12.
+
+**The mechanism.** U242's verification says to finish the live strip with "a
+`sync all --report` offers none of them". `crate sync all` takes only
+`--export` and `--favorites-playlist`; it has no report only mode, so a run
+of it queues whatever it finds new. The attended card's step reads the proof
+off the next ordinary pass instead, its `data.summary.playlists` block
+excluding each stripped playlist as `already-swept`.
+
+**Measured cost.** None to the account or the library; the check is one pass
+later than the brief asked. The offering rule itself is driven on fakes in
+`tests/test_u242_taken.py`.
+
+**Closes when:** `sync all` gains a report only mode, or the attended sitting
+reads the check off its next pass. Ledger only.
+
+---
+
+## R-1519. Some U242 tests build the strip's record by hand or call a private reader, and two fix guards kill no test
+
+**Found:** at the review of #671, U242, round two, 2026-11-12.
+
+**The mechanism.** `test_a_legacy_archive_mark_a_strip_superseded_no_longer_holds_the_rename`
+seeds the strip's record by hand and calls `set_cli._standing_mark`;
+`test_filing_after_a_real_strip_reads_every_playlist_as_it_did_before` hand
+lists two kinds of playlist. Round two's mutation of the fix found the stamp's
+"not already stamped" test and the supersede test's time half killing
+nothing; the second has a test since, the first is harmless by reading (a
+second stamp writes a later time over a stamp already there).
+
+**Measured cost.** None direct; the wiring a later change could drop is
+named here and in `docs/mutation/u242.md`.
+
+**Closes when:** each is driven through `sync strip` and `export set
+--rename` end to end. Ledger only.
+
+---
+
+## R-1520. The set rename's guard reads the mark record and not the title, so after a strip whose rename failed it renames a set still carrying the prefix
+
+**Found:** at the review of #671, U242, round two, 2026-11-12.
+
+**The mechanism.** `export set --rename` refuses while a legacy archive
+prefix mark stands, and since U242 a later strip record supersedes that mark.
+The strip records each rename before it makes it, so a rename the provider
+then refused leaves a strip record over a title still `DOWNLOADED <old>`. The
+review drove it: `_standing_mark` answered none, and the rename gate showed
+and applied `<old> -> <new>` over the prefixed title.
+
+**Measured cost.** None measured: the end state equals a whole strip then a
+rename, and the set stays taken by its id.
+
+**Closes when:** the guard reads the title the account lists, or the strip
+records its rename only once it lands. Ledger only.
+
+---
+
+## R-1521. The taken ledger is kept per library while the account is the installation's, so a second library syncing the same account would offer every stripped playlist as new
+
+**Found:** at the build of #671, U242, 2026-11-12.
+
+**The mechanism.** The taken ledger lives in the sync marks record, which is
+library state (`StateRoot.LIBRARY`), as the playlists cursor and the mark
+record always were. Before U242 a prefixed title excluded a playlist on every
+library, because the title is the account's. After `crate sync strip` takes
+the prefix off, only the record of the library the migration and the strip
+ran on holds those playlists as taken. A second library on the same
+installation, syncing the same account, whose record never had `crate sync
+taken` run against it, would read each stripped playlist as new and `sync all`
+would queue it as intake.
+
+**Measured cost.** Not driven: no fixture here makes a second library over one
+account, and whether any installation does is not known from the repository.
+The attended card owed by U242 runs the migration on every library before the
+strip, which closes it for the live account.
+
+**Closes when:** the ledger is keyed by the account rather than the library,
+or `crate sync strip` refuses while any library this installation knows has
+not recorded the prefixed playlists. Ledger only.
+
+---
+
+## R-1522. The three call sites that hand the taken ledger to the pair, twins and INSPIRATION readers kill no test when the ledger is left out
+
+**Found:** at the review of #671, U242, round one, 2026-11-12.
+
+**The mechanism.** `sync/pair_cli.py` (`_discovered_back`), `sync/twins.py`
+(`plan_backfill`) and `organize/inspiration.py` (`plan`) each read
+`playlists.taken_ids(cfg)` and hand it to a reader the suite tests as a pure
+function with a set it passes itself. The review's mutation of each call
+site, handing the reader an empty set, killed no test.
+
+**Measured cost.** None measured: on the branch each site was read, and the
+pair site driven, and they hand the ledger in correctly. A later change that
+dropped one would read a stripped copy, custom playlist or set as before the
+strip only by its title, with no test to say so.
+
+**Closes when:** a test drives each verb over a stripped playlist through the
+dispatcher. Ledger only.
+
+---
+
+## R-1523. A removed rekordbox streaming row holds the deletion watermark below it on every run
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** A row the person removed in rekordbox whose location is the
+streaming spelling resolves unmapped in `candidates.categorize`, which U243 did
+not change, so it is never handled and the watermark stays below its sequence.
+Every later run walks the removals above it again.
+
+**Measured cost.** Driven by the round one review: one removed streaming row at
+sequence 45 over a baseline of 40, a completed run, the watermark still 40,
+`unresolved: 0`, and no warning. Nothing is trashed wrongly; the cost is a
+re-walk and a watermark that never moves past a streamed removal.
+
+**Closes when:** a removed row that names no local file is handled as settled
+absence, with a test over the watermark. Ledger only.
+
+---
+
+## R-1524. Revoking a tombstone after a prune never returns the track to its year playlist
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `label prune` moves a tombstoned track from `added` to
+`pruned` in the outbound ledger, and `folders.plan` never adds a track the
+ledger records as pruned. Revoking the tombstone makes the version
+acquirable again and leaves the track off its year for good.
+
+**Measured cost.** Driven end to end by the round one review: tombstone,
+prune, revoke, full build, and the year stayed without the track. One track to
+add by hand on the account.
+
+**Closes when:** a prune records why a track left, and a build adds back a
+track whose reason no longer stands. Ledger only.
+
+---
+
+## R-1525. A tombstone can stand over a version an active row still holds, so the label verbs take a held track off its year
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `crate delete review` tombstones the version of a row it
+trashes even when another active row records the same artist and title under
+a different file. Since U243 the label verbs read that tombstone track by
+track, so the version comes off its label year playlist although the library
+still holds a copy of it.
+
+**Measured cost.** The round one review drove the deletion half end to end
+(row 1 removed, row 2 active, one title, two files, a tombstone written while
+row 2 stayed) and the prune half is the branch's own test; the two were not
+joined in one run. A person who keeps a second copy loses the track from one
+account playlist, and can put it back by hand.
+
+**Closes when:** the label side, or the recorder, declines a tombstone whose
+version an active row still holds, with a test over both halves in one run.
+Ledger only.
+
+---
+
+## R-1526. A full build of a label every track of which was removed creates an empty folder under its name
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** ``label playlists`` leaves out a year every playable track
+of which was removed, and a full build of a label with no year left still
+plans the folder: driven, the gate showed ``folder: Kompakt: create it`` and no
+year, and the apply made an empty folder. A releases build already guards
+against this and makes nothing.
+
+**Measured cost.** An empty folder under the label's name on the account. The
+input, a label whose every track was removed, was not produced by anything
+driven beyond the fixture.
+
+**Closes when:** a full build with no year to make makes no folder, as a
+releases build does. Ledger only.
+
+---
+
+## R-1527. Dated label playlists are outside the removal, so one can be made empty or keep a removed track until it is heard
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** U243 keeps a removed track off a label's YEAR playlists.
+The dated playlists ``label.dated`` makes, ``<Label> <year> new <date>``, are
+planned from the years and never pruned. Two shapes follow, both driven by the
+reviews: when every track of a release a go took on a day was removed, the
+dated plan makes the dated playlist with no tracks (driven through organize's
+label steps; on the base the same input made it holding the track); and a
+removed track already on a dated playlist stays there through a prune, an
+organize and a full build, until ``label heard`` removes the playlist.
+
+**Measured cost.** An empty private playlist on the account, or a removed track
+left on a dated playlist for a while. The card's requirement and every screen
+name year playlists only, so nothing false is said. ``label heard`` never puts
+the track in the year (round one's and round two's fixes).
+
+**Closes when:** the dated plan makes no playlist with nothing to put in it,
+and the prune, or the dated plan, takes a removed track off a dated playlist
+this product made. Ledger only.
+
+---
+
+## R-1528. The heard gate's counts for tracks left out and four guards of the fix rounds kill no test
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** Round two's mutation of the round one fix found seven
+guards that killed nothing; round two's fix pinned the kept read's artist half
+and the heard early return's year row. Still unpinned: the two subtractions
+that give the heard screen's "already there" count, the exclusion of a track
+the year already holds from ``HeardPlan.tombstoned``, the item's "removed from
+the library" count, and the prune note's clause naming removed tracks. When a
+removed track is still on the year, heard counts it "already there", which it
+is, while the early return counts every merged track as left out.
+
+**Measured cost.** None on any write: each is a count or a sentence on a gate.
+
+**Closes when:** each count is pinned by a test, or the screen's counts are
+drawn from one place. Ledger only.
+
+---
+
+## R-1529. The metadata refusal's step spells a whole location_prefix_map assignment, which a configuration holding a rule refuses to load
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** ``write/metadata_cli.py`` tells a person to add
+``library.location_prefix_map = [{ from = ..., to = ... }]`` to the
+configuration by hand. Setup always writes the key, so following the step
+literally assigns it twice, and ``config.load`` refuses with ``ConfigCorrupt``
+(driven by round two). U243 corrected the same wording in the deletion pass's
+refusal; this one predates it.
+
+**Measured cost.** A person who follows the step gets a configuration that
+will not load, until they merge the two lists by hand.
+
+**Closes when:** the step names one entry to add to the existing list, as the
+deletion refusal now does. Ledger only.
+
+---
+
+## R-1530. The label verbs ask the tombstone store under one spelling where the acquisition consult asks thirteen
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `label.tombstoned.Tombstoned` asks under the provider
+track's artists and full title, the version kind first and the uncredited
+companion second. The acquisition consult, `acquire.match.standing_tombstone`,
+asks under every spelling `Wanted.suppression_spellings` gives, thirteen for a
+title with a mix name. A tombstone written as `Track (Original Mix)` over a
+provider row titled `Track` suppresses acquisition and is not read as removed
+by the label, so the track stays on its year playlist.
+
+**Measured cost.** Driven by the round one review: acquisition suppressed,
+the label answered not removed. Whether a live library row carries a spelling
+the provider's full title does not is unmeasured, and is what the attended
+check filed with this unit reads.
+
+**Closes when:** the label question is asked under the spellings the
+acquisition consult asks, from one shared reader in the domain layer, or the
+attended check shows the provider spelling and the row spelling agree. Ledger
+only.
+
+---
+
+## R-1531. The deletion pass excuses the streaming spelling without its trailing slash, a form the live library was not measured to carry
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `deletion.candidates._STREAMING_LOCATION` accepts
+`/v4/catalog/tracks/<id>` as well as `/v4/catalog/tracks/<id>/`. The card
+measured 137 live rows in the slashed form; whether every one of them matches
+the pattern, and whether rekordbox ever writes the unslashed one, was not
+measured from a cloud container.
+
+**Measured cost.** None found. The unslashed form is still excused only when
+nothing exists at it, and a miss lands in the refusal named under
+`/v4/catalog`, the safe direction.
+
+**Closes when:** the attended run of `crate delete review` on the live library
+reads every streaming row as excused, or the pattern is narrowed to what it
+counts. Ledger only.
+
+---
+
+## R-1532. The label tombstone question's judgement of undated releases and the unmapped prefix fallback kill no test
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** Two guards the round one review mutated killed nothing and
+were not pinned in the fix round: `playlists_cli._group` judges a removed
+track on every release, dated or not, and judged on dated releases only the
+suite stays green, since an undated release is never planned into a year; and
+`candidates.reference_set` names an unmapped row with no prefix as "an
+unreadable prefix", a branch the resolver cannot reach, since it answers
+`UNMAPPED` only for an absolute path.
+
+**Measured cost.** None today. The undated judgement matters only for a track
+recorded on a year before its release lost its date.
+
+**Closes when:** each is pinned by a test or taken out. Ledger only.
+
+---
+
+## R-1533. Two label tracks with one artist and one title both leave their year playlists on one removal
+
+**Found:** at the review of #672, U243, 2026-11-12.
+
+**The mechanism.** `label.tombstoned.Tombstoned` asks the tombstone store by the
+version identity, the folded artist and title, which is the identity the
+deletion pass writes and acquisition consults. A label catalogue holding two
+different tracks under one artist and one title, two releases each carrying
+`Label Act - Untitled`, answers both as removed when one was, so `label prune`
+takes both off and no build adds either.
+
+**Measured cost.** Driven by the round one review on a fixture: the gate said
+two tracks were removed and took both off. A real catalogue holding such a
+pair was not driven. The gate names every track it takes off by artist and
+title, so the person approving sees both.
+
+**Closes when:** the tombstone carries an identity unique to the recording,
+such as the provider track id of a track this product acquired, and the label
+side asks by it. Ledger only.
+
+---
+
+## R-1534. The shared title matcher reads a title that strips to nothing as a match, so Beatport can write another track's genre
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** `_title_matches` in `src/cratekit/tagging/searchers.py`
+strips a trailing bracket with `_without_trailing_bracket`, whose group runs
+from the first "(" to the last ")". A title that starts and ends with a
+bracket, "(Not Just) Knee Deep (Part 1)" or an "(Intro)", strips to the empty
+string, and the empty string is a substring of every title, so any row by the
+artist matches. U244 closed this for Discogs alone, and only for a title the
+strip empties, with `_discogs_title_matches`; one it cuts to a single letter
+is the residual on Discogs' titles. Beatport and the two scraped parsers still
+read the shared matcher.
+
+**Measured cost.** Driven at U244's review through `tag.tag_one` on the
+shipped Beatport parser: a file titled "(Intro)" took Deep House off a
+different track by the same artist, written for good, since a genre is fill if
+empty. Not measured: how many files in a real library carry such a title.
+
+**Closes when:** the shared matcher refuses an empty side and compares a
+title its strip empties whole or by its last group, as Discogs' does, with the
+Beatport and scraped suites driven over it. A wrong genre written onto a file
+is the board bar's damaged data.
+
+---
+
+## R-1535. A Discogs token the API rejects fails every file Beatport misses instead of stopping the run once
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** A 401 from Discogs raises a run scoped refusal built from
+`secrets.CredentialRejected`, as the brief prescribes. The job engine stops a
+run only on a parked item, never on a refusal's scope, so each file Beatport
+misses fails its own item with the login step inside it, and the verb's own
+cause is the generic one. Since U244's fix round the asker remembers the
+rejection and sends the token once a process, so the cost is failed items, not
+requests. Those files are not offered to the general catalogue either.
+
+**Measured cost.** Driven at the review over four files: four failed items,
+no genre written, where the same folder with no token recorded had all four
+tagged by the general catalogue. A person re-records the token and resumes.
+
+**Closes when:** Phillip decides whether a rejected optional token should
+stop the run once with one sentence, or degrade to not asked as a missing one
+does; then the engine or the asker carries it. Ledger only: the workflow
+finishes once the token is recorded again.
+
+---
+
+## R-1536. Discogs reads the first three releases its search names, so a track on a later one, or a better styled later pressing, is not seen
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** `DiscogsAsker._search` reads at most
+`DISCOGS_RELEASES_READ` releases in the search's order. A track carried only
+by the fourth result is a MISS; three gone results before a live fourth are a
+MISS; the first matching release whose first style names no folder declines
+the file even when a later pressing's style would. A styleless match does give
+way to a later styled one since the fix round.
+
+**Measured cost.** Driven at the review on recorded JSON only. Whether the
+live search ever orders results this way was not measured, since the live API
+is off limits in the cloud.
+
+**Closes when:** the attended Discogs trial reads how often the match sits
+past the third result, and the cap or the gone count is changed if it does.
+Ledger only until then.
+
+---
+
+## R-1537. A file searched only for its picture spends up to four Discogs requests, which name no picture
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** A file that already has a genre and no picture is still
+searched, so Beatport's row can name a cover. When Beatport misses, the walk
+goes on to Discogs, which is never asked for a picture, and its answer is
+discarded. The searcher's signature carries no "picture only" question.
+
+**Measured cost.** Driven at the review: four paced requests a run for each
+such file, about five seconds and four of the sixty a minute. Since the fix
+round such a file is not counted in the no token warning.
+
+**Closes when:** the searcher is told when only a picture is wanted and stops
+at the sources that name pictures. Ledger only: a rate budget, not a wrong
+answer.
+
+---
+
+## R-1538. The taxonomy upgrade puts back a vocabulary table a person deleted, as it puts back a deleted bucket
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** `crate taxonomy upgrade` adds every shipped
+`[vocabulary.SOURCE]` table a copy lacks, so a copy whose `[vocabulary.deezer]`
+was deleted, as that table's comment invited before U244, gains it back beside
+Discogs' under one gate, and the general catalogue's Pop, Alternative and
+Country then file differently. A deleted table and one that was never there
+cannot be told apart, the same limit the upgrade states for buckets. The
+template's comment now says the upgrade adds a missing table back.
+
+**Measured cost.** Driven at the review on a constructed copy. Of nineteen
+historical template revisions none lacked the table by deletion; nobody was
+shown to have deleted it. The gate lists the table before anything is written.
+
+**Closes when:** a copy can say it declines a table, or the gate names the
+consequence. Ledger only.
+
+---
+
+## R-1539. Four Discogs styles file by substring rules written for the record shops, Afro-Cuban and Afro-Cuban Jazz as Afro House among them
+
+**Found:** at the review of #673, U244, 2026-11-12.
+
+**The mechanism.** A Discogs style with no row in `[vocabulary.discogs]` goes
+on to the taxonomy's `[[suggest]]` substring rules, which were written for the
+record shops' combined names and read a style by any word it contains. The fix
+rounds gave rows to four such styles. Afro-Cuban and Afro-Cuban Jazz (to Afro
+House), Electro House (to Tech House) and Progressive Breaks (to Progressive
+House) still file this way, and the full Discogs style list was not read. The
+two Afro-Cuban styles belong in Jazz, and a row writing Jazz was taken out in
+round two: a copy made before the Jazz folder gains the Discogs table in the
+run that holds Jazz, and after the hold's own hand edits it would not load.
+
+**Measured cost.** Driven at the review through `tag.tag_one` with recorded
+styles. The style names were the reviewer's, not read from the live API, so
+how many files carry them is not measured.
+
+**Closes when:** the attended Discogs trial reads the styles a real folder
+answers, and each misfiled one gains a row (the Jazz ones once the upgrade can
+add a row only where its tag names a folder in the copy), or Discogs' words
+skip the substring pass. Ledger only until measured.
+
+---
+
+## R-1540. Discogs asks with only the last bracket group stripped, and a title cut to one letter still matches any track
+
+**Found:** at the review of #673, U244, round two, 2026-11-12.
+
+**The mechanism.** Round one's fix asks Discogs with the title's last bracketed
+group stripped, so "Foo (feat. X) (Extended Mix)" is asked as "Foo (feat. X)"
+where it was "Foo", and "Foo (Bar (Baz) Remix)" is asked whole. And
+`_discogs_title_matches` refuses only a title the shared strip empties: "A
+(Warm Summer Night)" or a bare "I" strips to one letter, which is a substring
+of most titles, so a release by the artist without the track matches. The
+other way, "(Foo) Bar (feat. X) (Extended Mix)" misses its own track "(Foo)
+Bar".
+
+**Measured cost.** Driven at round two on recorded JSON over twenty titles.
+Whether the live search answers such a track field with nothing, which would
+make a Beatport miss read `no-hit`, or with releases lacking the track, was not
+measured.
+
+**Closes when:** the search asks with the shared strip wherever it leaves
+something, and the matcher refuses a stripped title under a few letters, both
+driven on the attended Discogs trial. Ledger only until measured.
+
+---
+
+## R-1541. tag suggest asks Beatport again every day about rows Discogs was not asked about, and keeps a general catalogue decline from Discogs for a week
+
+**Found:** at the review of #673, U244, round two, 2026-11-12.
+
+**The mechanism.** A row unread only because Discogs had no token is kept for
+the day and is no longer a reason to stop the walk, so with no token every
+unresolved row is asked of Beatport on every day `tag suggest` runs, where
+before U244 the walk stopped after three. And a row the general catalogue
+declined with no token recorded is kept `declined` for seven days, so a token
+recorded the next day is not asked about it until the eighth. Since round two
+a row kept as passed over is asked again once a token is recorded.
+
+**Measured cost.** Driven at round two: 40 rows with no token sent 40 paced
+Beatport searches on each of four days; the declined row was asked of Discogs
+on day seven. No false statement either way.
+
+**Closes when:** a kept answer records whether Discogs could be asked, and the
+walk keeps a per day budget for rows only passed over. Ledger only.
+
+---
+
+## R-1542. The no token count includes a file its label tagged that was searched for its picture, and the blocked sentence counts searches never sent
+
+**Found:** at the review of #673, U244, round two, 2026-11-12.
+
+**The mechanism.** `discogs_without_token` leaves out files with the
+`has-genre` skip reason, and a file its registered label tagged in the same
+run, then searched only for its picture, carries no skip reason and is
+counted. And after Discogs is remembered as blocked, the later files answer
+BLOCKED from memory with no request, and the summary's "refused every one of
+the N searches it was sent" counts them as sent.
+
+**Measured cost.** Driven at round two through `tag_one` and the summary: the
+count one file high; three files and one 429 read "the 3 searches it was
+sent" where one was sent.
+
+**Closes when:** the count reads whether a genre was owed, and a remembered
+refusal is counted apart from a sent one. Ledger only: a count in a warning.

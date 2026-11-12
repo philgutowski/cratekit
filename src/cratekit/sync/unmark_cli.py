@@ -1,4 +1,13 @@
-"""``sync.unmark``: put back the titles a pass's mark wrote, behind one gate (R-838).
+"""``sync.unmark``: let go what a pass took, and put back a title a mark wrote, behind one gate (R-838).
+
+SINCE U242 A MARK IS A TAKEN ENTRY, not a title. ``sync mark``, ``label mark``
+and the set archive hold a playlist as taken in Cratekit's own record and
+change no title, so undoing one is a release in that record and nothing on
+the account. A playlist the migration copied from a pass's legacy prefix mark
+is held under that pass, so this lets it go as well. What follows is the rule
+for a TITLE a mark wrote, which still holds for every legacy prefix a pass
+wrote and for ``crate sync strip``'s renames, recorded under its own pass, so
+``--pass prefix-strip`` puts each old title back.
 
 The source system strips its swept prefix again when a run is abandoned. Here
 ``sync mark`` renames and this is the verb that renames back, so a mark written
@@ -61,11 +70,15 @@ RENAMED_SINCE = "renamed-since-mark"
 MARKED_AGAIN = "marked-again"
 #: Why a planned playlist was not renamed after all: the recheck.
 CHANGED_SINCE = mark_cli.CHANGED_SINCE
+#: A playlist the pass holds as taken and whose title nothing changes: the
+#: release in the record is the whole undo (U242).
+RELEASE = "release"
+RELEASED = "released"
 
 #: What the gate screen and the warning say about a pass the record has no mark of.
 NO_MARK_SAID = (
-    "the mark record holds no playlist this pass renamed on this library, so "
-    "there is nothing to put back"
+    "the mark record holds no playlist this pass took or renamed on this library, "
+    "so there is nothing to let go or put back"
 )
 
 
@@ -118,18 +131,17 @@ def _pass_name(given: str) -> str:
 
 
 def _narrowed(
-    found: tuple[mark_record.Marked, ...], named: list[str], name: str
+    found: tuple[mark_record.Marked, ...], named: list[str], name: str, took: frozenset[str]
 ) -> tuple[mark_record.Marked, ...]:
     """``--playlist`` narrows and never widens, and refuses what the pass did not mark."""
     if not named:
         return found
-    held = {entry.playlist_id for entry in found}
+    held = {entry.playlist_id for entry in found} | took
     strangers = [identity for identity in dict.fromkeys(named) if identity not in held]
     if strangers:
         raise _blocked(
             f"pass {name} did not mark {', '.join(strangers)}, so this verb will not "
-            f"rename it, whatever its title says; the prefix it carries was written "
-            f"by something else",
+            f"let it go or rename it, whatever its title says",
             "name only playlists the pass marked, or leave --playlist out",
             not_marked=strangers,
             pass_name=name,
@@ -142,12 +154,19 @@ def _later(entry: mark_record.Marked, every: tuple[mark_record.Marked, ...]) -> 
 
     Timestamps are the record's own, written in one zone by one clock, so they
     order as text.
+
+    OF THE SAME KIND ONLY (U242, round one of its review). A title ``sync
+    strip`` wrote taking a prefix off is not a pass marking the playlist
+    again: with the strip standing the title is the one before the mark, and
+    with the strip put back it is the one the mark wrote, and either way the
+    earlier pass's mark is decided by the title as any other is.
     """
     later = [
         other.pass_name
         for other in every
         if other.playlist_id == entry.playlist_id
         and other.pass_name != entry.pass_name
+        and other.of_the_prefix == entry.of_the_prefix
         and other.marked > entry.marked
     ]
     return later[-1] if later else ""
@@ -175,7 +194,7 @@ def _item(
             **base,
             "action": SKIP,
             "reason": ALREADY_UNMARKED,
-            "why": f"an unmark already put its title back, {entry.unmarked}",
+            "why": f"an unmark already put its title back or let it go, {entry.unmarked}",
         }
     later = _later(entry, every)
     if later:
@@ -184,8 +203,8 @@ def _item(
             "action": SKIP,
             "reason": MARKED_AGAIN,
             "why": (
-                f"pass {later} marked it again after this one did, so the prefix "
-                f"is that pass's to take off"
+                f"pass {later} marked it again after this one did, so the title "
+                f"is that pass's to put back"
             ),
         }
     if current is None:
@@ -222,8 +241,62 @@ def _item(
     return {**base, "action": UNMARK}
 
 
+def _with_taken(
+    item: dict[str, Any] | None, identity: str, held: mark_record.Taken | None
+) -> dict[str, Any]:
+    """One playlist of the pass: its title's undo and its taken entry's, as one item (U242).
+
+    ``item`` is the title's decision, or ``None`` when the pass wrote no title
+    on it. ``held`` is the pass's taken entry on it, or ``None``. A title to put
+    back is put back and its entry let go with it; an entry still held with no
+    title to put back is a release alone, which writes nothing on the account;
+    an entry already let go says so.
+
+    A TITLE STILL CARRYING A PREFIX THIS PASS DOES NOT OWN IS LEFT ALONE, with
+    the reason the title half gave, as before U242 (round two of its review):
+    retitled since the mark and still prefixed, or marked again by a later
+    pass. Letting its entry go would say it is no longer taken while its title
+    still says it is. Every release the apply makes stamps the pass's legacy
+    mark with it, so no later migration takes it again.
+    """
+    taken_held = held is not None and held.held
+    if item is not None and item["action"] == UNMARK:
+        return {**item, "release": taken_held}
+    if (
+        item is not None
+        and item["action"] == SKIP
+        and (
+            item.get("reason") == MARKED_AGAIN
+            or (item.get("reason") == RENAMED_SINCE and playlists.is_swept_name(item.get("name")))
+        )
+    ):
+        return {**item, "release": False}
+    if taken_held:
+        return {
+            "id": identity,
+            "name": (item or {}).get("name") or held.name,
+            "marked_as": (item or {}).get("marked_as", ""),
+            "to": (item or {}).get("to", ""),
+            "action": RELEASE,
+            "release": True,
+            "why": "Cratekit holds it as taken under this pass, and lets it go; no title changes",
+        }
+    if item is not None:
+        return {**item, "release": False}
+    return {
+        "id": identity,
+        "name": held.name if held is not None else "",
+        "marked_as": "",
+        "to": "",
+        "action": SKIP,
+        "reason": ALREADY_UNMARKED,
+        "release": False,
+        "why": f"an unmark already let it go, {held.released if held is not None else ''}",
+    }
+
+
 def _payload(items: list[dict[str, Any]], *, name: str) -> dict[str, Any]:
-    identity = {
+    identity: dict[str, Any] = {
         "kind": "sync-unmark",
         "pass": name,
         "unmarks": sorted(
@@ -232,12 +305,17 @@ def _payload(items: list[dict[str, Any]], *, name: str) -> dict[str, Any]:
             if item["action"] == UNMARK
         ),
     }
+    releases = sorted(item["id"] for item in items if item.get("release"))
+    if releases:
+        # LEFT OUT WHEN NONE, so a legacy pass's digest is as it was.
+        identity["releases"] = releases
     return {
         "digest": digest_of(identity),
         "items": items,
         "totals": {
             "count": len(items),
             UNMARK: sum(1 for item in items if item["action"] == UNMARK),
+            RELEASE: sum(1 for item in items if item["action"] == RELEASE),
             SKIP: sum(1 for item in items if item["action"] == SKIP),
         },
         "chunk": None,
@@ -253,6 +331,9 @@ def _shown(payload: dict[str, Any], *, name: str, passes: tuple[str, ...]) -> di
             for item in payload["items"]
             if item["action"] == UNMARK
         ],
+        "no longer held as taken": [
+            item["name"] or item["id"] for item in payload["items"] if item.get("release")
+        ],
         "left alone": [
             f"{item['name'] or item['marked_as']}: {item['why']}"
             for item in payload["items"]
@@ -266,7 +347,11 @@ def _shown(payload: dict[str, Any], *, name: str, passes: tuple[str, ...]) -> di
 
 
 def _failed_part_way(
-    exc: Exception, landed: list[str], titles: dict[str, str], planned: list[str]
+    exc: Exception,
+    landed: list[str],
+    titles: dict[str, str],
+    planned: list[str],
+    released: list[str] | None = None,
 ) -> CratekitError:
     """The failure, with what was already put back named in it.
 
@@ -280,9 +365,15 @@ def _failed_part_way(
         if back
         else "no playlist had its title put back before this failed"
     )
+    if released:
+        said += (
+            f", and {len(released)} playlist(s) were let go, no longer held as taken: "
+            + ", ".join(released)
+        )
     detail = {
         "unmarked": list(landed),
         "still_marked": [identity for identity in planned if identity not in landed],
+        "released": list(released or ()),
     }
     again = "run crate sync unmark again; a playlist already put back is skipped"
     if isinstance(exc, CratekitError):
@@ -313,13 +404,24 @@ def sync_unmark(ctx) -> Envelope:
     name = _pass_name(str(ctx.args.pass_name))
     record = mark_record.MarkRecord(cfg)
     # THE RECORD FIRST, before the account is listed or a credential is asked
-    # for. Neither can change which playlists the pass marked.
+    # for. Neither can change which playlists the pass marked or took.
     every = record.all()
-    found = _narrowed(
-        tuple(entry for entry in every if entry.pass_name == name),
-        list(ctx.args.playlist or ()),
-        name,
+    taken = record.taken()
+    # A PLAYLIST THE MIGRATION FOUND PREFIXED IS NO PASS'S (U242, round one of
+    # its review). Nothing Cratekit did is undone by letting it go, and once
+    # its prefix is stripped nothing but this entry keeps it from being
+    # offered as new, so no unmark ever releases one.
+    took = frozenset(
+        identity
+        for identity, entry in taken.items()
+        if entry.by == name and entry.how != mark_record.FOUND_PREFIXED
     )
+    named = list(ctx.args.playlist or ())
+    found = _narrowed(
+        tuple(entry for entry in every if entry.pass_name == name), named, name, took
+    )
+    if named:
+        took = took & set(named)
     standing = [entry for entry in found if not entry.unmarked and not _later(entry, every)]
     catalogue_found = None
     listed: dict[str, str] | None = None
@@ -329,7 +431,12 @@ def sync_unmark(ctx) -> Envelope:
         catalogue_found = catalogue.resolve(cfg)
         listed = playlists.account_names(catalogue_found)
 
-    items = [_item(entry, listed, every) for entry in found]
+    titles = {entry.playlist_id: _item(entry, listed, every) for entry in found}
+    order = list(dict.fromkeys([*(entry.playlist_id for entry in found), *sorted(took)]))
+    items = [
+        _with_taken(titles.get(identity), identity, taken.get(identity) if identity in took else None)
+        for identity in order
+    ]
     payload = _payload(items, name=name)
     option = ctx.gate.require(
         ctx.entry.gates[0],
@@ -337,10 +444,23 @@ def sync_unmark(ctx) -> Envelope:
         context=_shown(
             payload,
             name=name,
-            passes=() if found else tuple(dict.fromkeys(e.pass_name for e in every)),
+            passes=()
+            if items
+            else tuple(
+                dict.fromkeys(
+                    [
+                        *(e.pass_name for e in every),
+                        *(
+                            e.by
+                            for e in taken.values()
+                            if e.how != mark_record.FOUND_PREFIXED
+                        ),
+                    ]
+                )
+            ),
         ),
     )
-    if not found:
+    if not items:
         return ctx.envelope(
             data=payload,
             outcome=Outcome.NO_OP,
@@ -348,31 +468,49 @@ def sync_unmark(ctx) -> Envelope:
         )
     by_id = {entry.playlist_id: entry for entry in found}
     planned = [item["id"] for item in items if item["action"] == UNMARK]
-    if option != "apply" or not planned:
+    letting = [item["id"] for item in items if item["action"] == RELEASE]
+    if option != "apply" or not (planned or letting):
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
-    from cratekit.modules.outbound import account
-
-    # THE RECORD IS LOCKABLE BEFORE THE FIRST RENAME, so a stamp that cannot
-    # land refuses while every title is still the mark's.
+    # THE RECORD IS LOCKABLE BEFORE THE FIRST WRITE, so a stamp that cannot
+    # land refuses while every title and every hold is still the mark's.
     record.ready()
-    remote = account.resolve(cfg)
-    titles = {identity: by_id[identity].to for identity in planned}
+    titles_put = {identity: by_id[identity].to for identity in planned}
     landed: list[str] = []
     changed: list[str] = []
+    released: list[str] = []
     try:
-        # THE RECHECK, against a listing taken after the answer, read once.
-        now = playlists.account_names(catalogue_found)
-        for identity in planned:
-            entry = by_id[identity]
-            if now.get(identity) != entry.to:
-                changed.append(identity)
-                continue
-            remote.rename_playlist(identity, entry.name)
-            landed.append(identity)
-            record.record_unmarked(name, identity)
+        # THE RELEASES FIRST: they write nothing on the account, so a provider
+        # that fails the renames below cannot leave one undone.
+        for identity in letting:
+            record.release(name, identity)
+            released.append(identity)
+            # THE PASS'S LEGACY MARK IS STAMPED WITH IT, when one stands: no
+            # title of the pass's is left to put back (the cases where one is
+            # are left alone above), so the release is the whole undo, and an
+            # unstamped mark would be taken again by the next migration or
+            # strip (U242, rounds one and two of its review).
+            if identity in by_id and not by_id[identity].unmarked:
+                record.record_unmarked(name, identity)
+        if planned:
+            from cratekit.modules.outbound import account
+
+            remote = account.resolve(cfg)
+            # THE RECHECK, against a listing taken after the answer, read once.
+            now = playlists.account_names(catalogue_found)
+            for identity in planned:
+                entry = by_id[identity]
+                if now.get(identity) != entry.to:
+                    changed.append(identity)
+                    continue
+                remote.rename_playlist(identity, entry.name)
+                landed.append(identity)
+                record.record_unmarked(name, identity)
+                if identity in took and taken[identity].held:
+                    record.release(name, identity)
+                    released.append(identity)
     except Exception as exc:
-        raise _failed_part_way(exc, landed, titles, planned) from exc
+        raise _failed_part_way(exc, landed, titles_put, planned, released) from exc
 
     done: list[dict[str, Any]] = []
     warnings: list[dict[str, str]] = []
@@ -387,7 +525,7 @@ def sync_unmark(ctx) -> Envelope:
                     "reason": CHANGED_SINCE,
                     "why": (
                         "the account lists it under another title, or not at all, "
-                        "since the plan was shown, so it was not renamed"
+                        "since the plan was shown, so it was not renamed and stays taken"
                     ),
                 }
             )
@@ -398,16 +536,19 @@ def sync_unmark(ctx) -> Envelope:
                     f"plan was shown and was not renamed",
                 }
             )
+        elif item["id"] in released:
+            done.append({**item, "action": RELEASED})
         else:
             done.append(item)
     totals = {
         "count": len(done),
         UNMARKED: len(landed),
+        RELEASED: sum(1 for item in done if item["action"] == RELEASED),
         SKIP: sum(1 for item in done if item["action"] == SKIP),
     }
     return ctx.envelope(
         data={**payload, "items": done, "totals": totals},
-        outcome=Outcome.OK if landed else Outcome.NO_OP,
+        outcome=Outcome.OK if (landed or released) else Outcome.NO_OP,
         warnings=warnings,
     )
 

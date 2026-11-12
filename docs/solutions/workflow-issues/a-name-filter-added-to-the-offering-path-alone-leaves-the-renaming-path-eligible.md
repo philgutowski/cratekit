@@ -42,6 +42,11 @@ issue brief names and the one a test naturally exercises first. The seam that
 was missed is not "did the check", it is "which callers ask a name predicate
 before doing something to the account".
 
+Since U242 the mark renames nothing: it records the playlist as taken in the
+mark record, and `pending_marks` asks `playlists.is_taken` where it asked the
+prefix. The lesson is unchanged, with TAKING in place of RENAMING: a rule on
+the offering path alone leaves the taking path open.
+
 ## Next time
 
 - When a naming convention gates a sync pass, ask at the seam how many entry

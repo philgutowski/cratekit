@@ -1144,6 +1144,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'catalogue-app-id',  # 2026-11-05, U205
         'catalogue-app-key',  # 2026-11-05, U205
         'credential-index-unreadable',
+        'discogs-token',  # 2026-11-12, U244
         'identify-key',
         'identify-signing-key',
         'install-keychain-backend',
@@ -1878,7 +1879,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-mark-record-unusable',
         'sync-marks-blocked',
     ],
-    'sync/mark_record.py': ['sync-mark-record-unusable', 'utf-8'],
+    # 2026-11-12, U242: the taken ledger's found prefix joined.
+    'sync/mark_record.py': ['found-prefixed', 'sync-mark-record-unusable', 'utf-8'],
     'sync/marks.py': ['sync-marks-blocked'],
     # 2026-10-10, U130: the sync pair verb joined. 2026-11-04, U198: the
     # not discovered and released warnings joined. 2026-11-04, U202: the
@@ -1972,6 +1974,19 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-committed-unverified',
         'whitelist-violation',
     ],
+    # 2026-11-12, U242: the strip verb joined.
+    'sync/strip_cli.py': [
+        'changed-since-plan',
+        'internal-error',
+        'nothing-left',
+        'prefix-strip',
+        'sync-marks-blocked',
+        'sync-strip',
+        'sync-strip-changed-since-plan',
+        'sync-strip-nothing',
+    ],
+    # 2026-11-12, U242: the migration verb joined.
+    'sync/taken_cli.py': ['sync-taken'],
     'sync/twins_cli.py': [
         'sync-twins-left',
         'sync-twins-listing-short',
@@ -2000,6 +2015,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'source-missing',
         'tag-folder-absent',
         'tag-folder-copyright-ambiguous',
+        'tag-folder-discogs-no-token',  # 2026-11-12, U244
         'tag-folder-label-no-genre',
         'tag-folder-label-on-resume',
         'tag-folder-label-registry-unread',
@@ -2095,8 +2111,10 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'tagging/searchers.py': [
         'catalogue-parse-broken',
         'catalogue-unreachable',
+        'credential-missing',  # 2026-11-12, U244: a token Discogs rejected
         'not-asked',
         'parse-break',
+        'x-discogs-ratelimit-remaining',  # 2026-11-12, U244
     ],
     'tagging/shell.py': ['internal-error'],
     'tagging/suggest.py': [
@@ -2365,7 +2383,8 @@ PINNED_NAMED_WITHOUT_OWN = {
     ],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
+    # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
+    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'credential-missing'],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
@@ -2567,7 +2586,13 @@ PINNED_NAMED_WITH_OWN = {
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     # 2026-11-01, R-1103: a file that would not take its corrected genre.
     'tagging/retag.py': ['tag-retag-unwritten'],
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'parse-break'],
+    # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
+    'tagging/searchers.py': [
+        'catalogue-parse-broken',
+        'catalogue-unreachable',
+        'credential-missing',
+        'parse-break',
+    ],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
     'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
@@ -3199,6 +3224,8 @@ PINNED_LITERAL_HOLDERS = {
     # 2026-11-05, U221.
     'sync/release_cli.py': ['sync-release-not-a-twin', 'sync-release-unnamed'],
     'sync/run.py': ['sync-source-lookups-failed'],
+    # 2026-11-12, U242: the strip verb joined.
+    'sync/strip_cli.py': ['internal-error', 'sync-marks-blocked'],
     # 2026-11-01, U149: the twins' stale plan, unverified read back and confinement.
     'sync/twins.py': ['decision-stale', 'session-committed-unverified', 'whitelist-violation'],
     'sync/unmark_cli.py': ['internal-error', 'sync-marks-blocked'],
@@ -3218,7 +3245,8 @@ PINNED_LITERAL_HOLDERS = {
     ],
     'tagging/rows.py': ['decision-stale', 'internal-error', 'whitelist-violation'],
     'tagging/rows_cli.py': ['config-unusable', 'internal-error'],
-    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable'],
+    # 2026-11-12, U244: a Discogs token the API rejected, or the keychain could not read.
+    'tagging/searchers.py': ['catalogue-parse-broken', 'catalogue-unreachable', 'credential-missing'],
     'tagging/shell.py': ['internal-error'],
     'tagging/suggest_cli.py': [
         'config-unusable',

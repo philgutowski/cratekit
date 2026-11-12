@@ -933,12 +933,15 @@ BANDCAMP_CHALLENGE = Fetched(
 
 
 def shops(beatport: str = EMPTY_BEATPORT, *, traxsource=TRAXSOURCE_403, bandcamp=BANDCAMP_CHALLENGE):
-    """The shipped searcher, in the state measured on the author's machine:
-    Beatport answering and both fallbacks refusing."""
+    """The searcher over the walk before U244, in the state measured on the
+    author's machine: Beatport answering and both fallbacks refusing. The
+    default walk's interplay with the general catalogue, Beatport then
+    Discogs, is ``tests/test_discogs_searcher.py``'s."""
     return searchers.catalogue_searcher(
         TAXONOMY,
         fetch=_all_three(beatport=beatport, traxsource=traxsource, bandcamp=bandcamp),
         sleep=lambda _seconds: None,
+        walk=searchers.SCRAPED_WALK,
     )
 
 
@@ -1137,7 +1140,7 @@ def test_a_published_genre_brings_no_picture_and_the_image_fetch_is_not_called(t
     assert result.genre_written is not None
     assert result.art_fetch == tag.ART_UNAVAILABLE
     assert result.art_fetch_detail == (
-        "traxsource, bandcamp could not be read and no other catalogue that is "
+        "traxsource, bandcamp went unread and no other catalogue that is "
         "asked for pictures carried the track, so no picture was named; deezer "
         "answered about the genre and is not asked for one"
     )

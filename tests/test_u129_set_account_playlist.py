@@ -22,6 +22,7 @@ from cratekit.intake import cli as intake_cli
 from cratekit.intake import fetch, land_cli, set_playlist
 from cratekit.label import catalogue
 from cratekit.modules.outbound import ledger
+from cratekit.sync import mark_record
 from tests import outbound_fakes
 from tests.cli_drive import drive
 from tests.intake import test_workers as workers
@@ -222,7 +223,7 @@ def test_a_rerun_of_export_set_plans_nothing_when_every_matched_track_is_on_it(a
     assert again["data"]["totals"]["writes"] is False
 
 
-def test_export_archive_prefixes_the_set_in_its_year_folder(account):
+def test_export_archive_takes_the_set_in_its_year_folder(account):
     cfg, _fake, held = account
     path = _tracklist(cfg)
     assert _two_acts(["export", "set", str(path), "--name", NAME], BUILD)[0] == int(ExitCode.OK)
@@ -232,7 +233,8 @@ def test_export_archive_prefixes_the_set_in_its_year_folder(account):
     code, done = _two_acts(["export", "archive", NAME, "--xml", str(xml)], ARCHIVE)
     assert code == int(ExitCode.OK), done
     remote_id = ledger.set_playlist(cfg, NAME).remote_id
-    assert any(pid == remote_id and title.startswith("DOWNLOADED ") for pid, title in held.renamed)
+    # U242: held as taken, no title written.
+    assert held.renamed == [] and remote_id in mark_record.MarkRecord(cfg).taken_ids()
 
 
 def test_frozen_name_agrees_with_inspiration_form():
@@ -249,7 +251,7 @@ def test_plan_archive_named_skips_the_intake_file_check(account):
     archived = set_cli.plan_archive_named(cfg, NAME, pass_name="set-batch")
     assert archived.writes
     assert archived.planned is not None
-    assert archived.planned.to.startswith("DOWNLOADED ")
+    assert archived.planned.mark and not archived.planned.taken
 
 
 def _succeeded_set_job(cfg, name: str, *, created: str = "2026-10-09T12:00:00+00:00"):
@@ -656,7 +658,7 @@ def test_export_archive_backfill_names_playlists_already_archived_when_a_credent
     assert done["cause"]["remediation"]["remedy"] == "set-credential"
     assert "internal-error" not in message
     assert "report a defect" not in message.lower()
-    assert any(title.startswith("DOWNLOADED ") for _pid, title in held.renamed)
+    assert held.renamed == [] and mark_record.MarkRecord(cfg).taken_ids()
 
 
 def test_export_archive_backfill_names_playlists_already_archived_when_one_fails(
@@ -703,7 +705,7 @@ def test_export_archive_backfill_names_playlists_already_archived_when_one_fails
     message = json.dumps(done)
     assert names[0] in message
     assert "already archived" in message
-    assert any(title.startswith("DOWNLOADED ") for _pid, title in held.renamed)
+    assert held.renamed == [] and mark_record.MarkRecord(cfg).taken_ids()
 
 
 def test_job_for_inspiration_name_uses_the_local_day_at_half_past_eleven(

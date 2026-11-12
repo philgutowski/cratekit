@@ -1,12 +1,13 @@
 """``crate sync unmark``: a mark a pass wrote can be taken off again (R-838).
 
-THE MARK IS MADE BY THE PRODUCT, NOT WRITTEN INTO THE RECORD BY HAND. Every test
-below drives ``crate sync all``, finishes its jobs, lists and lands the pass and
-answers ``crate sync mark``'s gate, through ``tests/test_sync_mark.py``'s own
-helpers, so the record the unmark reads is the one the mark wrote. What is faked
-is the two provider seams. The fake catalogue does not see the fake account's
-renames, so each test retitles the listing to what the mark wrote, which is
-what the account would list after it.
+A LEGACY MARK, SINCE U242. ``sync mark`` no longer retitles anything: it holds
+a playlist as taken in the record, and letting that go is driven in
+``tests/test_u242_taken.py``. What this file drives is the TITLE half of the
+verb, which still puts back every prefix a pass wrote before U242. Every test
+below drives ``crate sync all``, finishes its jobs and lists and lands the
+pass, through ``tests/test_sync_mark.py``'s own helpers, and then writes the
+record entry a pre U242 mark wrote, with the listing retitled to what that mark
+wrote, which is what the live account holds for every mark made before it.
 """
 
 from __future__ import annotations
@@ -55,14 +56,17 @@ def _marked(slim_cfg, monkeypatch, *listed):
     bind_account(monkeypatch, account)
     ids = [track.id for _playlist_, tracks in listed for track in tracks]
     xml = _land(slim_cfg, name, *ids)
-    code, done = _mark_answered(xml)
-    assert code == int(ExitCode.OK), done
-    renamed = dict(account.renamed)
+    mark_record.MarkRecord(slim_cfg).record_marked(
+        name,
+        {
+            playlist.playlist_id: (playlist.name, "DOWNLOADED " + playlist.name)
+            for playlist, _tracks_ in listed
+        },
+    )
     fake.account = [
-        _playlist(playlist.playlist_id, renamed.get(playlist.playlist_id, playlist.name))
+        _playlist(playlist.playlist_id, "DOWNLOADED " + playlist.name)
         for playlist, _tracks_ in listed
     ]
-    account.renamed.clear()
     return fake, account, name, xml
 
 
@@ -100,26 +104,21 @@ def test_the_record_survives_a_restore():
         assert config.state_file(key).snapshot is config.SnapshotRole.NEVER_RESTORED
 
 
-def test_sync_mark_records_every_rename_it_landed_under_the_pass(slim, monkeypatch):
-    _fake, _account, name, _xml = _marked(slim, monkeypatch)
-    held = mark_record.MarkRecord(slim).of_pass(name)
-    assert [(e.playlist_id, e.name, e.to, e.unmarked) for e in held] == [
-        ("pl-a", "Warmup", "DOWNLOADED Warmup", ""),
-        ("pl-b", "Peak", "DOWNLOADED Peak", ""),
-        ("pl-c", "Closing", "DOWNLOADED Closing", ""),
-    ]
-    assert all(entry.marked for entry in held)
-
-
-def test_a_mark_that_fails_part_way_records_what_landed(slim, monkeypatch):
+def test_sync_mark_since_u242_holds_each_playlist_as_taken_under_the_pass(slim, monkeypatch):
+    """The record the unmark reads: a taken entry per playlist, no title."""
     _fake, name = _swept_pass(monkeypatch, *THREE)
-    account = outbound_fakes.FakeAccount(fail_on={"pl-b"})
+    account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
-    xml = _land(slim, name, "101", "102", "201", "301")
-    code, failed = _mark_answered(xml)
-    assert code == int(ExitCode.INTERNAL), failed
-    held = [entry.playlist_id for entry in mark_record.MarkRecord(slim).of_pass(name)]
-    assert held == ["pl-a"]
+    code, done = _mark_answered(_land(slim, name, "101", "102", "201", "301"))
+    assert code == int(ExitCode.OK), done
+    taken = mark_record.MarkRecord(slim).taken()
+    assert {identity: (entry.name, entry.by) for identity, entry in taken.items()} == {
+        "pl-a": ("Warmup", name),
+        "pl-b": ("Peak", name),
+        "pl-c": ("Closing", name),
+    }
+    assert all(entry.at and entry.held for entry in taken.values())
+    assert account.renamed == [] and mark_record.MarkRecord(slim).of_pass(name) == ()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -142,7 +141,7 @@ def test_a_pass_that_marked_three_plans_three_renames_back_and_applies_them(slim
         "pl-b": "unmarked",
         "pl-c": "unmarked",
     }
-    assert done["data"]["totals"] == {"count": 3, "unmarked": 3, "skip": 0}
+    assert done["data"]["totals"] == {"count": 3, "unmarked": 3, "released": 0, "skip": 0}
     held = mark_record.MarkRecord(slim).of_pass(name)
     assert all(entry.unmarked for entry in held)
     del fake
@@ -203,7 +202,7 @@ def test_a_second_run_plans_nothing_and_still_asks(slim, monkeypatch):
     assert code == int(ExitCode.OK), again
     assert again["outcome"] == "no_op"
     assert account.renamed == []
-    assert again["data"]["totals"] == {"count": 3, "unmark": 0, "skip": 3}
+    assert again["data"]["totals"] == {"count": 3, "unmark": 0, "release": 0, "skip": 3}
     assert {item["reason"] for item in again["data"]["items"]} == {"already-unmarked"}
     assert fake.account_listings == listings, "nothing to put back still listed the account"
 
@@ -294,7 +293,7 @@ def test_a_playlist_that_changes_between_the_plan_and_the_rename_is_said(slim, m
     skipped = _by_id(done)["pl-a"]
     assert (skipped["action"], skipped["reason"]) == ("skip", "changed-since-plan")
     assert [w["code"] for w in done["warnings"]] == ["sync-unmark-changed-since-plan"]
-    assert done["data"]["totals"] == {"count": 3, "unmarked": 2, "skip": 1}
+    assert done["data"]["totals"] == {"count": 3, "unmarked": 2, "released": 0, "skip": 1}
 
 
 def test_a_failure_part_way_names_what_was_put_back(slim, monkeypatch):
@@ -436,26 +435,8 @@ def test_an_unreadable_record_refuses_the_mark_before_its_gate(slim, monkeypatch
     assert account.renamed == []
 
 
-def test_a_record_that_fails_after_a_failed_mark_keeps_the_accounts_failure(slim, monkeypatch):
-    _fake, name = _swept_pass(monkeypatch, *THREE)
-    account = outbound_fakes.FakeAccount(fail_on={"pl-b"})
-    bind_account(monkeypatch, account)
-    xml = _land(slim, name, "101", "102", "201", "301")
-
-    def full(self, *args, **kwargs):
-        raise OSError(28, "No space left on device")
-
-    monkeypatch.setattr(mark_record.MarkRecord, "record_marked", full)
-    code, failed = _mark_answered(xml)
-    assert code == int(ExitCode.INTERNAL), failed
-    assert failed["cause"]["reason"] == "internal-error"
-    detail = failed["cause"]["detail"]
-    assert detail["marked"] == ["pl-a"] and detail["unmarked"] == ["pl-b", "pl-c"]
-    assert detail["unrecorded"] is True
-    assert "could not take them" in failed["cause"]["message"]
-
-
-def test_a_record_that_fails_after_a_whole_mark_names_what_was_renamed(slim, monkeypatch):
+def test_a_record_that_cannot_be_written_refuses_the_mark_and_renames_nothing(slim, monkeypatch):
+    """Since U242 the record is the mark, so a full disk is the mark refused."""
     _fake, name = _swept_pass(monkeypatch, *THREE)
     account = outbound_fakes.FakeAccount()
     bind_account(monkeypatch, account)
@@ -464,12 +445,12 @@ def test_a_record_that_fails_after_a_whole_mark_names_what_was_renamed(slim, mon
     def full(self, *args, **kwargs):
         raise OSError(28, "No space left on device")
 
-    monkeypatch.setattr(mark_record.MarkRecord, "record_marked", full)
+    monkeypatch.setattr(mark_record.MarkRecord, "take", full)
     code, failed = _mark_answered(xml)
     assert code == int(ExitCode.PRECONDITION), failed
     assert failed["cause"]["reason"] == "sync-mark-record-unusable"
-    assert failed["cause"]["detail"]["marked"] == ["pl-a", "pl-b", "pl-c"]
-    assert len(account.renamed) == 3
+    assert failed["cause"]["detail"]["marked"] == []
+    assert account.renamed == []
 
 
 def test_the_mark_screen_says_a_playlist_was_put_back(slim, monkeypatch):
@@ -479,8 +460,8 @@ def test_the_mark_screen_says_a_playlist_was_put_back(slim, monkeypatch):
     fake.account = [_playlist("pl-a", "Warmup"), *fake.account[1:]]
     code, refused = drive(["sync", "mark", "--xml", str(xml)])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
-    said = [line for line in json.dumps(refused).split('"') if "sync unmark put" in line]
-    assert len(said) == 1 and said[0].startswith("Warmup -> DOWNLOADED Warmup"), said
+    said = [line for line in json.dumps(refused).split('"') if "sync unmark let it go" in line]
+    assert len(said) == 1 and said[0].startswith("Warmup ("), said
 
 
 def test_a_playlist_the_account_no_longer_lists_is_said_and_left(slim, monkeypatch):

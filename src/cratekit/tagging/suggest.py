@@ -63,7 +63,7 @@ from cratekit.adopt import scan as adopt_scan
 from cratekit.cli.output import digest_of
 from cratekit.core import config, locations, tags, taxonomy
 from cratekit.core.cause import CratekitError
-from cratekit.tagging import rows
+from cratekit.tagging import rows, searchers
 from cratekit.tagging.tag import PublishedGenre, Searcher, SearchHit
 from cratekit.write import metadata, trees
 
@@ -153,6 +153,11 @@ class Asked:
     ``said`` is :data:`MATCHED`, :data:`DECLINED` or :data:`UNREAD`. ``genre`` is
     the taxonomy's tag for a match and empty otherwise. ``off_taxonomy`` says
     the genre is the catalogue's own word passed through, which is never a vote.
+
+    ``passed_over`` names the catalogues left unread because they were not asked
+    at all, Discogs with no token recorded (U244). Such a row is UNREAD, since
+    whether that catalogue knows it is unknown, and it is not a refusal of this
+    client, so it never counts toward :data:`STOP_AFTER_UNREAD`.
     """
 
     said: str
@@ -161,6 +166,7 @@ class Asked:
     source_genre: str = ""
     off_taxonomy: bool = False
     note: str = ""
+    passed_over: tuple[str, ...] = ()
 
     def to_json(self) -> dict[str, Any]:
         return {
@@ -170,6 +176,7 @@ class Asked:
             "source_genre": self.source_genre,
             "off_taxonomy": self.off_taxonomy,
             "note": self.note,
+            "passed_over": list(self.passed_over),
         }
 
 
@@ -357,7 +364,22 @@ def _asked_from(hit: SearchHit | None) -> Asked:
             off_taxonomy=hit.off_taxonomy,
         )
     if hit.unread and not hit.source_genre:
-        return Asked(UNREAD, note=f"unread: {', '.join(hit.unread)}")
+        # A CATALOGUE THE WALK NEVER ASKED IS NOT ONE THAT REFUSED (U244). It is
+        # named with the reason its record gives, so the row says how to have
+        # it asked, and it is kept apart so the walk does not stop over it.
+        unasked = {
+            said.source: said.note
+            for said in hit.answers
+            if said.source in hit.unread and said.answer == searchers.NOT_ASKED
+        }
+        refused = [source for source in hit.unread if source not in unasked]
+        if refused:
+            return Asked(UNREAD, note=f"unread: {', '.join(refused)}")
+        return Asked(
+            UNREAD,
+            note="; ".join(f"unread: {source}, {why}" for source, why in unasked.items()),
+            passed_over=tuple(unasked),
+        )
     return Asked(DECLINED, source=hit.source, source_genre=hit.source_genre)
 
 
@@ -427,6 +449,7 @@ def _kept_answer(entry: Any, asked_for: dict[str, str], today: date) -> Asked | 
             source_genre=str(said.get("source_genre") or ""),
             off_taxonomy=bool(said.get("off_taxonomy")),
             note=str(said.get("note") or ""),
+            passed_over=tuple(str(one) for one in said.get("passed_over") or ()),
         )
     except (KeyError, TypeError, ValueError):
         return None
@@ -447,9 +470,22 @@ class KeptCatalogue:
     however the walk ends.
     """
 
-    def __init__(self, cfg: config.Config, lookup: Lookup, *, today: date | None = None):
+    def __init__(
+        self,
+        cfg: config.Config,
+        lookup: Lookup,
+        *,
+        today: date | None = None,
+        unasked: frozenset[str] | None = None,
+    ):
+        """``unasked`` is the catalogues this run cannot ask, Discogs with no
+        token, or None when the caller does not know. A kept answer that passed
+        over a catalogue this run CAN ask is asked again, whatever its day
+        (U244's review, round two): a person who recorded a token after the
+        morning's run is not told for the rest of the day that none is."""
         self._path = catalogue_path(cfg)
         self._lookup = lookup
+        self._unasked = unasked
         self._today = today or date.today()
         self._kept = _read_kept(self._path)
         self._unsaved = 0
@@ -464,6 +500,12 @@ class KeptCatalogue:
     def __exit__(self, *exc: object) -> None:
         self.save()
 
+    def _askable_now(self, kept: Asked) -> bool:
+        """Whether a kept answer passed over a catalogue this run can ask."""
+        if self._unasked is None or not kept.passed_over:
+            return False
+        return not set(kept.passed_over) <= self._unasked
+
     def save(self) -> None:
         if self._unsaved:
             _save_kept(self._path, self._kept)
@@ -472,7 +514,7 @@ class KeptCatalogue:
     def answer(self, content_id: str, artist: str, title: str, isrc: str) -> Asked:
         asked_for = {"artist": artist, "title": title, "isrc": isrc}
         kept = _kept_answer(self._kept.get(content_id), asked_for, self._today)
-        if kept is not None:
+        if kept is not None and not self._askable_now(kept):
             return kept
         if self.stopped:
             answer = Asked(
@@ -485,7 +527,13 @@ class KeptCatalogue:
         else:
             answer = self._lookup(artist, title, isrc)
             self.asked += 1
-            self._unread_running = self._unread_running + 1 if answer.said == UNREAD else 0
+            # A ROW LEFT UNREAD ONLY BY A CATALOGUE NOBODY ASKED neither counts
+            # toward the stop nor ends a run of refusals: it says nothing about
+            # whether the catalogues that were asked are refusing (U244).
+            if answer.said == UNREAD and not answer.passed_over:
+                self._unread_running += 1
+            elif answer.said != UNREAD:
+                self._unread_running = 0
             self.stopped = self._unread_running >= STOP_AFTER_UNREAD
         self._kept[content_id] = {
             "for": asked_for,

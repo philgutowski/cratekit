@@ -774,3 +774,156 @@ def test_the_read_back_names_a_copy_that_is_not_utf8(configured):
     path.write_bytes(raw)
     problem = upgrade_cli._read_back(configured, path, raw)
     assert problem is not None and "utf" in problem.lower(), problem
+
+
+# ---------------------------------------------------------------------------
+# U244: a source's vocabulary table the copy lacks, added whole and never over one it holds
+# ---------------------------------------------------------------------------
+
+DISCOGS_START = "# DISCOGS' STYLES (U244)."
+
+
+def without_discogs(text: str) -> str:
+    """``text`` as a copy made before U244 has it: no Discogs table at its end."""
+    assert text.count(DISCOGS_START) == 1
+    head, _, tail = text.partition(DISCOGS_START)
+    assert "\n[" not in tail.split("[vocabulary.discogs]", 1)[1], "the table is the last one"
+    return head.rstrip("\n") + "\n"
+
+
+def _shipped_table(source: str) -> dict:
+    return tomllib.loads(_shipped())["vocabulary"][source]
+
+
+def test_a_copy_made_before_u244_gains_the_discogs_table_whole():
+    copy = without_discogs(_shipped())
+    assert taxonomy.load_taxonomy(copy).vocabulary("discogs") is None
+    found = _plan(copy)
+    assert found.vocabularies == ("discogs",)
+    assert found.held == ()
+    assert found.behind and found.writes
+    assert found.missing_vocabularies == ("discogs",)
+    assert (found.classes, found.buckets) == ((), ())
+    after = tomllib.loads(found.after)
+    assert after["vocabulary"]["discogs"] == _shipped_table("discogs")
+    assert taxonomy.load_taxonomy(found.after).vocabulary("discogs") is not None
+    assert found.after.startswith(copy), "every line the copy held is kept, in order"
+    assert DISCOGS_START in found.after, "the table's comments come with it"
+    assert _plan(found.after).writes is False, "a rerun plans nothing"
+
+
+def test_the_copys_own_edits_are_kept_when_the_table_is_added():
+    copy = _retag(without_discogs(_shipped()), "Rock", "Rock", "Folk")
+    copy = copy.replace('display = "R&B"', 'display = "R&B Edited By Hand"', 1)
+    found = _plan(copy)
+    assert found.vocabularies == ("discogs",)
+    kept = taxonomy.load_taxonomy(found.after)
+    deezer = kept.vocabulary("deezer")
+    assert deezer is not None and deezer["rock"].tag == "Folk"
+    assert _bucket(found.after, "rnb").display == "R&B Edited By Hand"
+    old = tomllib.loads(copy)
+    new = tomllib.loads(found.after)
+    assert {k: v for k, v in old.items() if k != "vocabulary"} == {
+        k: v for k, v in new.items() if k != "vocabulary"
+    }
+    assert new["vocabulary"]["deezer"] == old["vocabulary"]["deezer"]
+
+
+def test_a_discogs_table_the_copy_declares_is_never_touched():
+    edited = _retag(_shipped(), "Techno", "Techno", "Tech House")
+    found = _plan(edited)
+    assert found.vocabularies == ()
+    assert not found.behind and not found.writes
+    assert found.after == edited
+
+
+def test_an_empty_discogs_table_the_copy_declares_is_its_choice():
+    copy = without_discogs(_shipped()) + "\n[vocabulary.discogs]\nwords = []\n"
+    found = _plan(copy)
+    assert found.vocabularies == () and not found.writes
+
+
+def test_a_copy_made_before_r799_gains_both_tables():
+    start = "# A SOURCE'S OWN VOCABULARY (R-799)."
+    copy = _shipped()
+    assert copy.count(start) == 1
+    copy = copy.partition(start)[0].rstrip("\n") + "\n"
+    found = _plan(copy)
+    assert found.vocabularies == ("deezer", "discogs")
+    after = tomllib.loads(found.after)["vocabulary"]
+    assert after == {"deezer": _shipped_table("deezer"), "discogs": _shipped_table("discogs")}
+
+
+def test_a_table_whose_row_names_no_folder_in_the_copy_is_held_with_the_loaders_words():
+    """The copy renamed the Techno folder, so the row writing Techno names no
+    folder there and the copy would not load with the table."""
+    copy = without_discogs(_shipped()).replace('display = "Techno"', 'display = "Techno By Hand"', 1)
+    taxonomy.load_taxonomy(copy)
+    found = _plan(copy)
+    assert found.vocabularies == ()
+    (held,) = found.held
+    assert (held.kind, held.id) == (upgrade.VOCABULARY, "discogs")
+    assert any("Techno" in reason for reason in held.reasons)
+    assert found.after == copy, "nothing is written around a held table"
+    assert found.missing_vocabularies == ("discogs",) and found.behind
+    assert "[vocabulary.discogs] is held" in upgrade.remedy(found)
+
+
+def test_a_copy_that_declares_its_vocabulary_inline_is_held_not_forced():
+    start = "# A SOURCE'S OWN VOCABULARY (R-799)."
+    copy = _shipped().partition(start)[0].rstrip("\n") + "\n"
+    line = f"schema_version = {taxonomy.load_taxonomy(copy).schema_version}\n"
+    assert copy.count(line) == 1
+    inline = 'vocabulary = { deezer = { words = [{ word = "Rock", tag = "Rock" }] } }\n'
+    copy = copy.replace(line, line + inline)
+    assert taxonomy.load_taxonomy(copy).vocabulary("deezer") is not None
+    found = _plan(copy)
+    (held,) = found.held
+    assert (held.kind, held.id) == (upgrade.VOCABULARY, "discogs")
+    assert "could not take [vocabulary.discogs]" in held.reasons[0]
+    assert found.after == copy
+
+
+def test_every_shipped_table_cuts_whole_and_a_missing_one_refuses():
+    for source in tomllib.loads(_shipped())["vocabulary"]:
+        cut = upgrade.cut_table(_shipped(), source)
+        assert tomllib.loads(cut)["vocabulary"][source] == _shipped_table(source)
+    with pytest.raises(ValueError):
+        upgrade.cut_table(_shipped(), "juno")
+
+
+def test_the_gap_and_the_remedy_name_the_missing_table():
+    found = _plan(without_discogs(_shipped()))
+    assert "it lacks the vocabulary table(s) [vocabulary.discogs]" in upgrade.gap(found)
+    assert "adds [vocabulary.discogs]" in upgrade.remedy(found)
+
+
+def test_the_verb_asks_then_adds_the_discogs_table(configured):
+    copy = without_discogs(_shipped())
+    path = write_active(configured, copy)
+    run_id, refused = _asked()
+    shown = refused["cause"]["detail"]["shown"]
+    assert {(i["kind"], i["id"], i["change"]) for i in shown["items"]} == {
+        ("vocabulary", "discogs", "add")
+    }
+    _decided(run_id, "approve")
+    code, acted = drive(["--run", run_id, *VERB])
+    assert code == int(ExitCode.OK), acted
+    assert acted["data"]["totals"]["vocabularies"] == 1
+    assert path.read_text(encoding="utf-8") == _plan(copy).after
+    assert "[vocabulary.discogs]" in acted["warnings"][0]["message"]
+
+
+def test_a_copy_made_before_u133_takes_the_discogs_table_and_loads_after_the_holds_edits():
+    """U244's round two. A copy made before the Jazz folder and before Discogs
+    gains the Discogs table in the run that holds Jazz; the hand edits the hold
+    names must then leave a copy that loads and takes Jazz, so no row of the
+    Discogs table may write Jazz, which that copy files only as a sub."""
+    first = _plan(without_discogs(before_jazz()))
+    assert first.vocabularies == ("discogs",)
+    assert [held.id for held in first.held] == ["jazz"]
+    by_hand = _swap(_without_jazz_words(first.after), JAZZ_VOCABULARY_ROW, "")
+    taxonomy.load_taxonomy(by_hand)
+    second = _plan(by_hand)
+    assert second.buckets == ("jazz",) and second.held == ()
+    assert taxonomy.load_taxonomy(second.after).vocabulary("discogs") is not None

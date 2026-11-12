@@ -39,6 +39,7 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -184,7 +185,8 @@ Then, in order:
    batch](#land-a-batch)).
 2. Answer and apply the landing with the two printed commands.
 3. The rekordbox visit, below.
-4. `crate sync mark --pass PASS` to prefix the finished account playlists.
+4. `crate sync mark --pass PASS` to record the finished account playlists as
+   taken.
 
 **The rekordbox visit.** Cratekit never analyses inside rekordbox and never
 writes a grid. Open rekordbox, select `INBOX / Analyze` and run Analyze Tracks:
@@ -298,7 +300,15 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file no catalogue knows keeps no genre. A file's label is its label
+  other file is asked of Beatport, then of Discogs when Beatport does not
+  carry it and a `discogs-token` is recorded, then of the general catalogue
+  by ISRC. Discogs' first style that names a folder is written, through the
+  taxonomy's `[vocabulary.discogs]` table and its aliases; a style naming no
+  folder is a decline. A library set up before that table shipped gets it
+  with `crate taxonomy upgrade`, which doctor names; until then nine of the
+  common dance styles, Nu-Disco and Techno among them, are declined. Traxsource and Bandcamp, which answer every search
+  with a bot check, are no longer asked. A file no catalogue knows keeps no
+  genre. A file's label is its label
   tag, else `--label`, else the one registered label whose whole `--match`
   needle its copyright line carries, as whole words, so a folder of several
   labels is tagged in one call with every catalogue refusing, as long as each
@@ -403,16 +413,31 @@ crate sync mark --pass PASS                     # database native
 crate sync mark --xml /path/to/PASS_inboxed.xml # xml bridge
 crate sync mark --pass PASS --playlist ID       # only these playlists
 crate sync unmark --pass PASS
+crate sync taken                                # record what is already taken
+crate sync strip                                # take the old prefix off, once
 ```
 
-`sync mark` prefixes `DOWNLOADED ` to each account playlist of the pass whose
-every track is now in the library, behind `sync.mark.confirm`. A playlist with
-a track still missing is left and the track named; one renamed since the plan
-is skipped; none is prefixed twice. A partial failure names what was renamed,
-and a rerun does the rest. `sync unmark` restores each title the pass's mark
-wrote, only where the title is still exactly what the mark wrote. Unmarking
-does not make the next `sync all` offer the playlist again. `crate organize
---only marks` marks every landed pass.
+`sync mark` records each account playlist of the pass whose every track is now
+in the library as **taken** in Cratekit's own record, behind
+`sync.mark.confirm`. No title changes on the account: the `DOWNLOADED ` prefix
+is retired. A taken playlist is never offered by `sync all` again. A playlist
+with a track still missing is left and the track named; one renamed since the
+plan is skipped; none is taken twice. A partial failure names what was taken,
+and a rerun does the rest. `sync unmark` lets go what the pass took, and puts
+back any title a pass's mark wrote before the prefix was retired, only where
+the title is still exactly what the mark wrote. Unmarking does not make the
+next `sync all` offer the playlist again, and a playlist `sync taken` found
+prefixed is no pass's, so no unmark lets it go. `crate organize --only marks` marks
+every landed pass.
+
+**Retiring the prefix.** `sync taken` records every playlist the account
+already carries with the `DOWNLOADED ` prefix, and every mark Cratekit made,
+as taken; it changes nothing on the account and a second run records nothing.
+`sync strip` then takes the prefix off every account playlist, behind
+`sync.strip.confirm`, whose screen lists every rename. It records each one as
+taken first, refuses by name any whose plain title another playlist already
+carries, and stops at the provider's call ceiling; run it again to carry on.
+`crate sync unmark --pass prefix-strip` puts the old titles back.
 
 ### Follow record labels
 
@@ -506,9 +531,9 @@ Other label verbs:
 | `label held [return RELEASE_ID ...]` | Lists releases the genre gate holds back, or returns some to review. |
 | `label judge [--label NAME]` | Judges releases waiting in review by the label's kind and holds what the gate would not file. |
 | `label artists` | Puts the artist's name on open releases whose artist reads as a provider address. |
-| `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
-| `label mark LABEL --pass PASS` (or `--xml FILE`) | Prefixes `DOWNLOADED ` to the year playlists a landed batch filed. |
-| `label prune LABEL` | Takes held or no longer confirmed tracks off the label's year playlists. |
+| `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes, and never adds a track removed through `delete review`. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
+| `label mark LABEL --pass PASS` (or `--xml FILE`) | Records the year playlists a landed batch filed as taken; no title changes. |
+| `label prune LABEL` | Takes held or no longer confirmed tracks, and tracks removed through `delete review`, off the year playlists it made; a playlist left empty is said and kept. |
 | `label heard LABEL YEAR DATE [--release ID]` | Moves a dated `<Label> <year> new <date>` playlist's tracks into the year playlist and removes the dated one. |
 
 `crate sync labels` is retired; it only resumes a labels sweep queued before
@@ -536,7 +561,7 @@ continue; nothing fetched is fetched again. It needs a native intake tree.
 ```bash
 crate intake set https://example.com/mix --dj NAME --set-name NAME
 crate export set TRACKLIST [--name NAME]    # a set or typed tracklist as a private account playlist
-crate export archive [NAME]                 # file a downloaded set's playlist in Downloaded Sets <year>
+crate export archive [NAME]                 # file a downloaded set's playlist in Downloaded Sets <year>, recorded as taken
 ```
 
 `export set` lists a row by its provider id, its ISRC, an accepted review
@@ -557,8 +582,8 @@ crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID
 
 - A custom account playlist lands as an INBOX playlist, which rotates out.
   Its **twin** is the permanent copy in `Custom Playlists <year>`. A landing
-  writes the twin itself; `sync twins` makes one for every `DOWNLOADED`
-  playlist already on the account.
+  writes the twin itself; `sync twins` makes one for every downloaded (taken)
+  playlist already in a year folder on the account.
 - `sync pair` keeps each pair one list both ways: additions and removals on
   either side land on both, and a track the library lacks is queued once,
   however many pairs list it: a pair listing a track another pair's job
@@ -718,13 +743,13 @@ plans just those steps; a side with no kind named is not asked.
 | rekordbox | `adopt` | Files unfiled tracks into BY GENRE + ENERGY and its `with vox` subs, as `adopt apply`. |
 | rekordbox | `rotate` | Rotates INBOX, as `inbox rotate`. |
 | rekordbox | `record-labels` | Listed only; a landing files label batches itself. |
-| rekordbox | `inspiration` | Gives each `DOWNLOADED` set in `Downloaded Sets <year>` its INSPIRATION playlist of owned tracks in set order. |
+| rekordbox | `inspiration` | Gives each downloaded (taken) set in `Downloaded Sets <year>` its INSPIRATION playlist of owned tracks in set order. |
 | rekordbox | `mirror-edits` | Carries your edits to mirrored playlists on the account back into the library (genre, energy, favourites, INBOX batches). |
 | rekordbox | `mirror-downloads` | Queues once each track you added to a mirrored playlist that the library lacks; the next new `sync land` pass takes the download. |
 | account | `labels` | Builds missing label folders and year playlists, and plans each label's dated `<Label> <year> new <date>` playlist of releases a go took that day. |
 | account | `sets` | Archives every set whose download is proven into `Downloaded Sets <year>`. |
 | account | `marks` | Marks every landed sync pass. |
-| account | `file` | Files each `DOWNLOADED` playlist at the root into its `<year>` folder. |
+| account | `file` | Files each playlist a sync marked at the root into its `<year>` folder. |
 | account | `root` | Removes label debris whose tracks are all downloaded and empty root playlists, and empties legacy `<year> Custom Playlists` folders, each named on the gate. |
 | account | `mirror` | Mirrors each BY GENRE + ENERGY genre folder, Favorites and INBOX's live batches to a root folder of private playlists. |
 | both | `yours` | Lists playlists you made, with a suggested home; never moves or renames them. |
@@ -802,7 +827,7 @@ writes their genre tags.
 | `tag remap` | Rewrites genres a tag job filed by a mapping the taxonomy has since changed. |
 | `taxonomy alias WORD GENRE [--folder]` | Saves an unplaced genre word as an alias of a genre folder and retags the files whose one genre is that word. |
 | `taxonomy folder WORD [--like GENRE]` | Makes the word a genre folder of its own with energy bands, copying family, tempo window and rating. |
-| `taxonomy upgrade` | Adds the classes and buckets the shipped template has and your copy lacks. |
+| `taxonomy upgrade` | Adds the classes, buckets and source vocabulary tables (`[vocabulary.discogs]`, `[vocabulary.deezer]`) the shipped template has and your copy lacks, never changing one your copy holds. |
 
 `taxonomy alias` and `taxonomy folder` keep the old copy beside it under a
 dated name and refuse a word too coarse to be a genre (such as `Electronic`),
@@ -812,9 +837,16 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
-removed in rekordbox; confirmed ones go to the system Trash only. `crate
-tombstone list` shows what was removed; `--revoke ID` lets that version be
-acquired again.
+removed in rekordbox; confirmed ones go to the system Trash only. It refuses
+while any active row records a path it cannot resolve, naming each prefix and
+the `library.location_prefix_map` rule that would resolve it; rows that are no
+local file, rekordbox's streaming rows and `soundcloud:` locations among them,
+are left out and counted on the gate. `crate tombstone list` shows what was
+removed; `--revoke ID` lets that version be acquired again. A removed track
+also stays off its label's year playlists: `label playlists` never adds it,
+`label heard` never merges it in from a dated playlist (nor a track `label
+prune` took off that year), and `label prune` takes it off, a single named for
+its track included.
 
 **Review queue.** `crate review list [--queue Q] [--kind K]`, `review show
 ID`, `review resolve ID --verdict accepted|rejected [--option X]` (or
@@ -988,6 +1020,8 @@ without one.
 | `sync.favorites.confirm` | sync | `sync favorites` |
 | `sync.mark.confirm` | apply | `sync mark` |
 | `sync.unmark.confirm` | apply | `sync unmark` |
+| `sync.taken.confirm` | apply | `sync taken` |
+| `sync.strip.confirm` | apply | `sync strip` |
 | `sync.pair.rekordbox` | apply (or skip) | `sync pair` |
 | `sync.pair.account` | apply (or skip) | `sync pair` |
 | `sync.twins.approve` | approve | `sync twins` |

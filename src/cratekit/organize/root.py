@@ -9,7 +9,7 @@ kinds and no other, each named on the account area's gate:
 
 * THE SOURCE SYSTEM'S LABEL DEBRIS, a root playlist whose name carries the
   label batch's ` LIBRARY` suffix (R-361), is removed when every one of its
-  tracks is already in a ``DOWNLOADED`` playlist of its label's folder. One
+  tracks is already in a downloaded (taken) playlist of its label's folder. One
   with a track the folder lacks is left and the track is named; one whose
   tracks could not all be read, or whose label's folder a name cannot decide,
   is left with that reason. Unread is not none;
@@ -50,7 +50,7 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.modules.outbound import kinds, ledger
 from cratekit.modules.outbound.service import RemoteAccount
 from cratekit.organize import filing
-from cratekit.sync.playlists import LIBRARY_PLAYLIST_SUFFIX, is_swept_name
+from cratekit.sync.playlists import LIBRARY_PLAYLIST_SUFFIX, is_taken, taken_ids
 
 _ORIGIN = ("organize.root",)
 
@@ -190,7 +190,7 @@ class Kept:
 
 
 class _LabelFolders:
-    """Each label's folder and the tracks its ``DOWNLOADED`` playlists hold, read once."""
+    """Each label's folder and the tracks its taken playlists hold, read once."""
 
     def __init__(
         self,
@@ -204,6 +204,7 @@ class _LabelFolders:
         self._root = root
         self._followed = tuple(followed)
         self._held: dict[str, tuple[int, frozenset[str]]] = {}
+        self._taken: frozenset[str] | None = None
 
     def find(self, label: str) -> tuple[str, str]:
         """``(folder_id, "")`` for the label's folder, or ``("", why)`` when none is decided.
@@ -231,12 +232,21 @@ class _LabelFolders:
         )
 
     def downloaded(self, folder_id: str) -> tuple[int, frozenset[str]]:
-        """How many ``DOWNLOADED`` playlists the folder holds, and every track on them."""
+        """How many taken playlists the folder holds, and every track on them.
+
+        TAKEN BY THE RECORD OR BY THE OLD PREFIX (U242): ``label mark`` holds
+        a year playlist as taken and changes no title, and one marked before
+        it keeps the ``DOWNLOADED`` prefix until ``sync strip`` takes it off.
+        The record is read once, the first time a folder is asked about, and
+        an unreadable one refuses the row as any unread read does.
+        """
         if folder_id not in self._held:
+            if self._taken is None:
+                self._taken = taken_ids(self._cfg)
             playlists = [
                 playlist_id
                 for playlist_id, name in self._remote.folder_playlists(folder_id).items()
-                if is_swept_name(name)
+                if is_taken(playlist_id, name, self._taken)
             ]
             tracks: set[str] = set()
             for playlist_id in playlists:
@@ -281,7 +291,7 @@ def _debris(
         count, held = folders.downloaded(folder_id)
         if not count:
             return left(
-                f"the {label} folder holds no DOWNLOADED playlist, so none of its tracks "
+                f"the {label} folder holds no downloaded playlist, so none of its tracks "
                 f"is shown as downloaded",
                 folder_id,
             )
@@ -298,7 +308,7 @@ def _debris(
         missing = [one for one in dict.fromkeys(tracks) if one not in held]
         if missing:
             return left(
-                f"{len(missing)} of its tracks are in no DOWNLOADED playlist of the {label} "
+                f"{len(missing)} of its tracks are in no downloaded playlist of the {label} "
                 f"folder: {_missing_named(remote.track_names(identity), missing)}",
                 folder_id,
             )

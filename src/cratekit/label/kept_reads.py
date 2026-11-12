@@ -16,10 +16,12 @@ read that day. Seven days is the recommendation put to Phillip on the
 decisions page on 2026-11-01, and the one number to change if he picks another.
 
 WHAT IS KEPT is what the plan reads off a release and nothing else: each
-track's identifier and whether the provider will play it, and the year the
-provider dates the release by. A release the provider no longer has is the
-provider answering, and is kept as gone. A read that failed is not an answer
-and is never kept.
+track's identifier, whether the provider will play it, and its artist and
+title, and the year the provider dates the release by. The artist and title
+are what a removed track is recognised by (U243), so a read kept before they
+were kept is read again rather than judged without them. A release the
+provider no longer has is the provider answering, and is kept as gone. A read
+that failed is not an answer and is never kept.
 
 WRITTEN AS IT GOES. :meth:`KeptReads.flush` writes the document whole and
 atomically, and the reader calls it every :data:`FLUSH_EVERY` new reads and on
@@ -53,6 +55,7 @@ from typing import Any
 
 from cratekit.core import config
 from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.label import tombstoned
 
 #: How long a kept read stays true before a build reads the release again.
 KEPT_FOR = timedelta(days=7)
@@ -93,6 +96,12 @@ class KeptTrack:
 
     id: str
     available: bool
+    #: The track's words as :func:`cratekit.label.tombstoned.track_artist` and
+    #: ``track_title`` read them off the provider row, ``None`` in a read kept
+    #: before they were kept (U243). Named ``artist`` and ``title`` so the same
+    #: readers read them back off this value.
+    artist: str | None = None
+    title: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -103,6 +112,13 @@ class Kept:
     gone: bool
     tracks: tuple[KeptTrack, ...] = ()
     year: int | None = None
+
+    @property
+    def named(self) -> bool:
+        """Whether every kept track carries the words a removal is judged by."""
+        return self.gone or all(
+            one.artist is not None and one.title is not None for one in self.tracks
+        )
 
 
 def _unusable(path: Path, what: str) -> CratekitError:
@@ -157,7 +173,17 @@ def _entry(path: Path, release_id: str, raw: Any) -> Kept:
             or not isinstance(track.get("available"), bool)
         ):
             raise _unusable(path, f"a track of the read of {release_id!r} is malformed")
-        kept.append(KeptTrack(id=track["id"], available=track["available"]))
+        words = {key: track.get(key) for key in ("artist", "title")}
+        if any(value is not None and not isinstance(value, str) for value in words.values()):
+            raise _unusable(path, f"a track of the read of {release_id!r} is malformed")
+        kept.append(
+            KeptTrack(
+                id=track["id"],
+                available=track["available"],
+                artist=words["artist"],
+                title=words["title"],
+            )
+        )
     return Kept(read_at=read_at, gone=False, tracks=tuple(kept), year=year)
 
 
@@ -167,6 +193,8 @@ def _row(track: Any) -> dict[str, Any]:
         # THE PLAN'S OWN TEST, ``available is not False``, so a row that says
         # nothing about playing reads as playable here exactly as it does live.
         "available": getattr(track, "available", True) is not False,
+        "artist": tombstoned.track_artist(track),
+        "title": tombstoned.track_title(track),
     }
 
 
@@ -176,7 +204,10 @@ def _stored(kept: Kept) -> dict[str, Any]:
     return {
         "read_at": kept.read_at.isoformat(),
         "year": kept.year,
-        "tracks": [{"id": one.id, "available": one.available} for one in kept.tracks],
+        "tracks": [
+            {"id": one.id, "available": one.available, "artist": one.artist, "title": one.title}
+            for one in kept.tracks
+        ],
     }
 
 
@@ -241,7 +272,10 @@ class KeptReads:
         # A READ FROM THE FUTURE IS NOT FRESH. A clock set back would otherwise
         # keep it for as long as the clock is wrong.
         age = clock() - kept.read_at
-        return timedelta(0) <= age < KEPT_FOR
+        # A READ WITHOUT THE TRACKS' WORDS IS NOT FRESH EITHER (U243): a
+        # removed track is recognised by them, and judged without them it
+        # would be added back to its year.
+        return timedelta(0) <= age < KEPT_FOR and kept.named
 
     def kept(self, release_ids: Iterable[str]) -> tuple[int, str]:
         """How many of ``release_ids`` the store keeps fresh, and how old the oldest is.

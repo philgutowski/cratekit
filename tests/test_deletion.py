@@ -2202,10 +2202,13 @@ def test_a_refusal_with_no_dead_anchor_offers_no_directory_to_mount(cfg):
     assert references.dead_anchors == ()
     with pytest.raises(CratekitError) as excinfo:
         candidates.assert_complete(references)
-    assert excinfo.value.cause.remediation.steps == (), (
+    steps = excinfo.value.cause.remediation.steps
+    assert not any("mount the volume" in step for step in steps), (
         "a refusal with no dead anchor offered a step naming an empty list of "
         "directories, which reads as an instruction and names nothing"
     )
+    # U243: the one step it does offer is the rule for the prefix it names.
+    assert len(steps) == 1 and 'from = "/nowhere/known"' in steps[0]
     assert excinfo.value.cause.remediation.remedy is Remedy.RUN_DOCTOR
 
 
@@ -6094,6 +6097,9 @@ def test_delete_review_says_on_the_refusal_that_a_first_run_accepted_history(
         "baselined": False,
         "accepted_as_history": 0,
         "offered": 0,
+        # U243: the disposable database's other row records no location, so the
+        # proof excused it, and the screen says how many it excused.
+        "ignored, not local files": 1,
     }
     _drive(
         ["run", "decide", second["run_id"], "delete.review.confirm", "trash", "--actor", "a-person"]

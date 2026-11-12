@@ -3,14 +3,15 @@
 Decided by Phillip on 2026-10-15
 (``docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md``, R6 to
 R10). A custom playlist the author builds on the account is swept, lands as an
-INBOX playlist, is marked ``DOWNLOADED `` and filed into the account's
+INBOX playlist, is marked (held as taken since U242, prefixed ``DOWNLOADED ``
+before it) and filed into the account's
 ``<year>`` folder for good, while its INBOX copy rotates out of rekordbox. The
 TWIN is the copy that stays: one plain playlist named as the account playlist
-less the prefix, in the top level folder ``Custom Playlists <year>``, holding
+less any old prefix, in the top level folder ``Custom Playlists <year>``, holding
 the rows the library owns for its tracks in the account's order, and paired
 with the account playlist so ``crate sync pair`` keeps the two one list.
 
-**TWO MAKERS, ONE RULE.** ``crate sync twins`` backfills every ``DOWNLOADED``
+**TWO MAKERS, ONE RULE.** ``crate sync twins`` backfills every taken
 custom playlist the account already holds in a year folder, once; the native
 landing of an account playlist pass writes the twin of each account playlist
 it writes an INBOX playlist for, in the same commit. Both take the folder, the
@@ -51,7 +52,7 @@ from cratekit.acquire import match
 from cratekit.cli.output import digest_of
 from cratekit.core import config, convergence, rb_writer, session, snapshot, tree_registry
 from cratekit.core.cause import CratekitError, refuse
-from cratekit.sync.playlists import PER_PLAYLIST_REASONS, SWEPT_PREFIX
+from cratekit.sync.playlists import PER_PLAYLIST_REASONS, is_taken, untaken_name
 from cratekit.write import playlist_pair, trees
 
 #: The folder's name before its year, decided on 2026-10-15.
@@ -85,11 +86,8 @@ def folder_name(year: str | int) -> str:
 
 
 def twin_name(account_name: str) -> str:
-    """The twin's name: the account playlist's, less the ``DOWNLOADED `` prefix."""
-    name = str(account_name or "")
-    if name.startswith(SWEPT_PREFIX):
-        name = name[len(SWEPT_PREFIX) :]
-    return name.strip()
+    """The twin's name: the account playlist's, less the old ``DOWNLOADED `` prefix."""
+    return untaken_name(account_name)
 
 
 # ---------------------------------------------------------------------------
@@ -408,15 +406,18 @@ class Backfill:
 
 
 def candidates(
-    remote: Any, own: Mapping[str, str], excluded: Iterable[str]
+    remote: Any, own: Mapping[str, str], excluded: Iterable[str], taken: Iterable[str] = ()
 ) -> list[tuple[str, str, str]]:
     """Every downloaded custom playlist in a year folder, as ``(year, id, name)``, by year then name.
 
     ``own`` is the account playlists listed as the author's, id to name, and
     ``excluded`` the ones a label, a set or the mirror keeps. A playlist in two
-    year folders is read once, under its first year.
+    year folders is read once, under its first year. DOWNLOADED MEANS TAKEN
+    (U242): one ``taken``, the record's taken ledger, holds, or one whose
+    title still carries the old prefix.
     """
     kept = set(excluded)
+    held = frozenset(taken)
     seen: set[str] = set()
     found: list[tuple[str, str, str]] = []
     for folder_id, title in sorted(remote.folders().items(), key=lambda one: (one[1], one[0])):
@@ -427,7 +428,7 @@ def candidates(
             name = own.get(playlist_id)
             if name is None or playlist_id in kept or playlist_id in seen:
                 continue
-            if not name.startswith(SWEPT_PREFIX):
+            if not is_taken(playlist_id, name, held):
                 continue
             seen.add(playlist_id)
             found.append((year, playlist_id, name))
@@ -452,9 +453,10 @@ def plan_backfill(
     """
     from cratekit.intake import cli as intake_cli
     from cratekit.sync import pair_merge
+    from cratekit.sync.playlists import taken_ids
 
     held = set(paired)
-    listed = candidates(remote, own, excluded)
+    listed = candidates(remote, own, excluded, taken_ids(cfg))
     wanted = [one for one in listed if one[1] not in held]
     if not wanted:
         return Backfill(paired=len(listed))
