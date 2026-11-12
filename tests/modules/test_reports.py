@@ -1706,6 +1706,10 @@ REPORTS_PACKAGE = "cratekit.modules.reports"
 #: one that was allowed.
 FILESYSTEM_MUTATIONS = frozenset(
     {
+        # U254: the synced append beside the atomic writer, for a ledger that
+        # grows a record at a time. Flat like its sibling, a name nothing else
+        # carries.
+        "append_durable_bytes",
         "atomic_write_bytes",
         "chmod",
         "hardlink_to",
@@ -8567,6 +8571,7 @@ def test_the_mutation_guard_bites_the_private_ledger_in_every_shape(source):
 #: fixture spelled both. The equality check below is what keeps the two lists in
 #: step, so dropping a name from the set fails here as well as in its own case.
 _EVERY_MUTATING_NAME = (
+    "append_durable_bytes",
     "atomic_write_bytes",
     "chmod",
     "hardlink_to",

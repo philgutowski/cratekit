@@ -50017,3 +50017,145 @@ write a credential shape (for example by running the table's text through
 `secret_violations` and replacing each span with a placeholder before
 writing), or the portability tests take ids that do not spell the body.
 Ledger only.
+
+---
+
+## R-1583. A mark appends without reading the applied ledger when its inode, size and modification time are as this process left them, whatever its bytes
+
+**Found:** at the review of #683, U254, 2026-11-12.
+
+**The mechanism.** `apply.mark_applied` skips the whole read of the journal
+when `os.stat` gives the same device, inode, size and modification time this
+process recorded after its own last write (`_LEFT`). An identity is not the
+content: a file rewritten in place to the same size within one tick of the
+volume's clock (a second on HFS+, two on FAT), or given its old time back with
+`utime`, reads as untouched, and the record is appended to whatever it now
+holds.
+
+**Measured cost.** Driven by the review on a scratch copy: three marks, the
+file overwritten in place with a schema 1 document of the same size and its
+time restored, then one more mark. The record was appended to the document
+and every later read refused it as not JSON, so `adopt apply` and the organize
+reads stop until the file is repaired by hand. Four producers were driven and
+none produces it: another process's mark (changes the size), a torn repair
+across processes (a new inode), a staged restore of the same size and time (a
+new inode, now pinned by a test), and an older build's mark (it refuses before
+writing). An outside in place writer inside one clock tick is unmeasured.
+
+**Closes when:** a mark proves the bytes it skips are the bytes it left, for
+example a digest of the last record kept beside the identity and compared to
+the file's tail, or the risk is accepted. Ledger only.
+
+---
+
+## R-1584. A journal's damaged last line is read as a torn mark and erased by the next mark, even when it was a whole record
+
+**Found:** at the review of #683, U254, 2026-11-12.
+
+**The mechanism.** `apply._read_journal` reads an unterminated last line, or
+a terminated last line that is not JSON, as the mark that did not finish, and
+the next mark rewrites the file without it. That is the decision U254's card
+asked for and its tests hold: a mark is the last act of an entry, so a mark
+that did not land re-applies the entry, which the module's crash table shows
+is safe. Two inputs are dropped with it that were not torn writes: a whole
+valid record that only lacks its newline, and a last line damaged by anything
+other than a kill.
+
+**Measured cost.** The documented re-apply: the entry is placed again (a no
+op for the membership writer) and marked again, so its record's actor, digest
+and applied time become the second run's. `organize/mirror_downloads.py` reads
+the digest and the applied time to tell an adoption from a person's filing.
+Neither producer (partial page persistence after a power loss, a hand edit)
+was driven.
+
+**Closes when:** the cost is accepted, or a whole record lacking only its
+newline is kept and repaired with its newline rather than dropped. Ledger
+only.
+
+---
+
+## R-1585. A build older than U254 reads a journal applied ledger as not JSON and says run doctor, not upgrade
+
+**Found:** while building #683, U254, 2026-11-12.
+
+**The mechanism.** U254 writes the applied adoption ledger as a journal, a
+header line and one record per line, at schema 2. A build before U254 parses
+the file as one JSON document, fails on the second line, and refuses with
+`adoption-ledger-unusable` and the doctor remedy, where a schema it did not
+know would have said to upgrade. The refusal is the safe one, never an empty
+ledger, so nothing re-applies; only the advice is wrong.
+
+**Measured cost.** Not driven on an installed copy. Reachable when one
+library is used from two installations at different versions, or when a
+library's ledger was written by a newer build and an older one is run against
+it.
+
+**Closes when:** nothing further is needed once every installed copy carries
+U254; the attended card U254 files updates them. Ledger only.
+
+---
+
+## R-1586. The adoption revert ledger is rewritten whole on every tag adoption writes, so its bytes grow with the square of the files tagged
+
+**Found:** while building #683, U254, 2026-11-12.
+
+**The mechanism.** `revert.write_tag_with_record` takes the adoption lock,
+reads the whole revert ledger, adds or stamps one record, and writes the whole
+ledger back through `config.atomic_write_bytes`, once per entry whose tag an
+apply writes. U254 made the applied ledger a journal and left this one as it
+was, because its records are changed in place after they are written (the
+digest stamp, the list of entries that wrote through a record), so an append
+needs update records and a fold of its own, not the applied ledger's.
+
+**Measured cost.** Driven on this container with `write_tag_with_record` over
+synthesized FLAC files in a scratch library: 50 records wrote 1,479,470 bytes,
+100 wrote 5,873,770, 200 wrote 23,417,570, about 582 bytes a record and four
+times the bytes for twice the records. By the fit, and not run, about 17.6 GB
+for the 7,773 entries of the cutover's live apply, if every entry wrote a tag.
+Only an apply that writes tags pays it; a membership only apply writes nothing
+here.
+
+**Closes when:** the revert ledger records each tag write without rewriting
+itself whole, on a card of its own, with the same byte count test U254 uses.
+Ledger only: a speed cost, none of the board bar's four.
+
+---
+
+## R-1587. U254 was reviewed by Opus 5.5 at high effort because Fable was out of usage, and a Fable pass over its merged range is owed
+
+**Found:** at the review of #683, U254, 2026-11-12.
+
+**The mechanism.** The cloud unit pipeline reviews every branch with Fable at
+high effort. Fable refused round one on its usage limit, so by the rule
+Phillip set on 2026-11-08 the same reviewer definition ran on Opus 5.5 at high
+effort, under the same merge bar and round cap.
+
+**Measured cost.** None known. The substitution is a different second pair of
+eyes, not a missing one.
+
+**Closes when:** the fable-reviewer agent has reviewed U254's merged range
+(the merge commit of #683 against its first parent) and its findings are
+driven or filed. Ledger only.
+
+---
+
+## R-1588. The applied ledger's no whole read test watches only Path.read_bytes, and the device in a mark's identity kills no test
+
+**Found:** at the review of #683, U254, round two, 2026-11-12.
+
+**The mechanism.** `test_a_mark_does_not_parse_the_ledger_it_appends_to` in
+`tests/test_adopt_apply_journal_u254.py` counts reads of the ledger through
+`Path.read_bytes`, which is how `apply._load` reads it today. A `_load` that
+read through `open(...).read()` with the cache off would bring back the whole
+read per mark, the square in the CPU, with the suite green. Separately, the
+device field of `apply._as_left`'s identity can be dropped with no test dying,
+since a file on another device at the same path almost always has another
+inode too.
+
+**Measured cost.** None today; the shipped code is correct. Driven by the
+round two review on a scratch copy: both mutants pass every test in eleven
+files. The size, inode and time fields each kill a test of their own.
+
+**Closes when:** the no whole read test counts records parsed (or bytes read
+at the ledger's path by any route), and a test moves the ledger to another
+device, or the device field is accepted as belt and braces. Ledger only.

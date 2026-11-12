@@ -1,0 +1,13 @@
+name = "u254-m08"
+pass_kind = "light"
+
+[[rows]]
+id = "M08_never_append"
+description = "mark_applied: rewrite the whole ledger on every mark that misses the cache, the square this card ends"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''            if appendable:
+                config.append_durable_bytes(line, path)'''
+new = '''            if False:
+                config.append_durable_bytes(line, path)'''

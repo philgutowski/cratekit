@@ -1,0 +1,253 @@
+name = "u254"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_mark_validates_record"
+description = "mark_applied: drop the reader's field rules on the record before it is written, so a record the reader refuses lands"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    _record_from(
+        entry.to_json(),
+        path=path,
+        where=f"was refused a record for the entry {entry.entry_id!r}, one",
+    )'''
+new = '''    pass'''
+
+[[rows]]
+id = "M02_cache_identity_ignored"
+description = "mark_applied: append whenever this process has marked the path before, whatever happened to the file since"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''        if known is not None and known == _as_left(path):'''
+new = '''        if known is not None:'''
+
+[[rows]]
+id = "M03_cache_identity_no_size"
+description = "_as_left: leave the size out of the identity, so a same inode file another hand changed reads as left"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'''
+new = '''    return (found.st_dev, found.st_ino, 0, found.st_mtime_ns)'''
+
+[[rows]]
+id = "M04_cache_identity_no_mtime"
+description = "_as_left: leave the modification time out of the identity"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'''
+new = '''    return (found.st_dev, found.st_ino, found.st_size, 0)'''
+
+[[rows]]
+id = "M05_cache_identity_no_inode"
+description = "_as_left: leave the inode out of the identity, so a replaced file of the same size reads as left"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    return (found.st_dev, found.st_ino, found.st_size, found.st_mtime_ns)'''
+new = '''    return (found.st_dev, 0, found.st_size, found.st_mtime_ns)'''
+
+[[rows]]
+id = "M06_never_cache"
+description = "mark_applied: never remember what this process left, so every mark reads the whole ledger again"
+file = "src/cratekit/adopt/apply.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''        if left is not None:
+            _LEFT[key] = left'''
+new = '''        if left is not None:
+            pass'''
+
+[[rows]]
+id = "M07_always_append"
+description = "mark_applied: append even to a torn, absent or schema 1 ledger"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''            if appendable:
+                config.append_durable_bytes(line, path)'''
+new = '''            if True:
+                config.append_durable_bytes(line, path)'''
+
+[[rows]]
+id = "M08_never_append"
+description = "mark_applied: rewrite the whole ledger on every mark that misses the cache, the square this card ends"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''            if appendable:
+                config.append_durable_bytes(line, path)'''
+new = '''            if False:
+                config.append_durable_bytes(line, path)'''
+
+[[rows]]
+id = "M09_any_line_torn"
+description = "_read_journal: read a damaged line anywhere as torn and stop, so the records after it are lost"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''            if index == len(body) - 1 and whole:'''
+new = '''            if whole:'''
+
+[[rows]]
+id = "M10_torn_needs_terminated_tail"
+description = "_read_journal: read a damaged last whole line as torn even when an unterminated line follows it"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''            if index == len(body) - 1 and whole:'''
+new = '''            if index == len(body) - 1:'''
+
+[[rows]]
+id = "M11_unterminated_tail_whole"
+description = "_read_journal: call a journal with an unterminated last line appendable"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    whole = not tail'''
+new = '''    whole = True'''
+
+[[rows]]
+id = "M12_header_upgrade"
+description = "_read_journal: drop the upgrade refusal of a newer journal header"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''            f"{SCHEMA_VERSION}",
+            Remedy.UPGRADE_CRATEKIT,
+        )
+    if version != SCHEMA_VERSION:'''
+new = '''            f"{SCHEMA_VERSION}",
+            Remedy.RUN_DOCTOR,
+        )
+    if version != SCHEMA_VERSION:'''
+
+[[rows]]
+id = "M13_header_older_version"
+description = "_read_journal: accept a journal header at a schema no build wrote as a journal"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    if version != SCHEMA_VERSION:'''
+new = '''    if version > SCHEMA_VERSION:'''
+
+[[rows]]
+id = "M14_header_unterminated"
+description = "_read_journal: accept a header with no line ending after it"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    if len(lines) < 2:'''
+new = '''    if len(lines) < 1:'''
+
+[[rows]]
+id = "M15_header_string_version"
+description = "_read_journal: drop the integer check on the header's schema_version"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    header = json.loads(lines[0].decode("utf-8"))
+    version = header.get("schema_version")
+    if not isinstance(version, int):'''
+new = '''    header = json.loads(lines[0].decode("utf-8"))
+    version = int(header.get("schema_version"))
+    if not isinstance(version, int):'''
+
+[[rows]]
+id = "M16_journal_needs_format"
+description = "_is_journal: take any object on the first line as a journal header"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    return isinstance(header, dict) and header.get("format") == JOURNAL_FORMAT'''
+new = '''    return isinstance(header, dict)'''
+
+[[rows]]
+id = "M17_document_at_journal_schema"
+description = "_read_document: read a whole document that claims schema 2"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    if version > DOCUMENT_SCHEMA_VERSION:'''
+new = '''    if version > SCHEMA_VERSION:'''
+
+[[rows]]
+id = "M18_remark_first_wins"
+description = "_read_journal: fold a re-mark first one wins, unlike the document's writer"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''        folded[record.entry_id] = record'''
+new = '''        folded.setdefault(record.entry_id, record)'''
+
+[[rows]]
+id = "M19_already_inverted"
+description = "apply_plan: report as already applied the entries the ledger does not hold"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''        entry.entry_id for entry in plan.applicable() if entry.entry_id in done'''
+new = '''        entry.entry_id for entry in plan.applicable() if entry.entry_id not in done'''
+
+[[rows]]
+id = "M20_mark_unlocked"
+description = "mark_applied: take no lock around the read, the choice and the write"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    with config._exclusive_lock(lock_path(cfg)):
+        known = _LEFT.pop(key, None)'''
+new = '''    if True:
+        known = _LEFT.pop(key, None)'''
+
+[[rows]]
+id = "M21_record_needs_actor"
+description = "_record_from: drop actor from the fields every record must carry"
+file = "src/cratekit/adopt/apply.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_adoption.py", "tests/test_adopt_workers.py", "tests/test_intake_land_filing.py", "tests/test_organize_mirror_edits_u227.py", "tests/test_mirror_downloads_filed_u227.py"]
+old = '''    for name in ("entry", "tree", "content", "actor"):'''
+new = '''    for name in ("entry", "tree", "content"):'''
+
+[[rows]]
+id = "C1_append_unsynced"
+description = "append_durable_bytes: return without syncing the appended record"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''            view = view[os.write(fd, view) :]
+        os.fsync(fd)'''
+new = '''            view = view[os.write(fd, view) :]'''
+
+[[rows]]
+id = "C2_append_one_write"
+description = "append_durable_bytes: make one write call and drop what it did not take"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''        while view:
+            view = view[os.write(fd, view) :]'''
+new = '''        if view:
+            view = view[os.write(fd, view) :]'''
+
+[[rows]]
+id = "C3_append_test_root"
+description = "append_durable_bytes: drop the test root refusal"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''    _refuse_write_outside_test_root(path, system_temporary=True)
+    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'''
+new = '''    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'''
+
+[[rows]]
+id = "C4_append_not_append"
+description = "append_durable_bytes: open for writing at the start of the file rather than its end"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_adopt_apply_journal_u254.py", "tests/test_config_test_root.py", "tests/test_config.py", "tests/test_adoption.py"]
+old = '''    fd = os.open(path, os.O_WRONLY | os.O_APPEND)'''
+new = '''    fd = os.open(path, os.O_WRONLY)'''
