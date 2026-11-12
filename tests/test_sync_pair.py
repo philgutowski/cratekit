@@ -499,6 +499,10 @@ def test_a_short_listing_removes_nothing_from_the_account(world):
     assert code == int(ExitCode.OK), envelope
     assert w.account.taken == []
     assert w.on_account() == ["t1", "t2"]
+    # U246: and a track the base held that the short listing still served stays
+    # in the base, so it is not read back into rekordbox as an addition and
+    # the removal there stands.
+    assert w.held() == ["1"]
 
 
 def test_a_rekordbox_change_between_the_gates_and_the_write_refuses_as_stale(world, cfg):

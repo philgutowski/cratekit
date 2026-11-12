@@ -316,7 +316,8 @@ class InvocationResult:
 
     def __post_init__(self) -> None:
         if self.requested:
-            stray = [r.key for r in self.results if r.key not in set(self.requested)]
+            asked = set(self.requested)
+            stray = [r.key for r in self.results if r.key not in asked]
             if stray:
                 raise ValueError(
                     f"{self.adapter}: reported on track(s) nobody asked for "

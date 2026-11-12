@@ -165,7 +165,8 @@ def account_write(
     now = [str(one) for one in held]
     known = made
     gone = {str(one) for one in removes}
-    taking = [one for one in dict.fromkeys(str(one) for one in removes) if one in set(now)]
+    held_before = set(now)
+    taking = [one for one in dict.fromkeys(str(one) for one in removes) if one in held_before]
     if removes:
         # The positions are read once; each request is a send and a read back.
         calls += judged_calls(len(now))
@@ -181,7 +182,8 @@ def account_write(
                 calls += 1 + REPARSE + judged_calls(length)
             now = [one for one in now if one not in gone]
         known = True
-    lacking = [one for one in dict.fromkeys(str(one) for one in adds) if one not in set(now)]
+    held_after = set(now)
+    lacking = [one for one in dict.fromkeys(str(one) for one in adds) if one not in held_after]
     if adds:
         if not known:
             calls += listing_calls(len(now))

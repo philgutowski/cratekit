@@ -1703,3 +1703,27 @@ def test_export_set_rename_refuses_a_playlist_a_legacy_archive_prefixed(account_
     ), refused["cause"]["remediation"]
     assert held.renamed == before
     assert ledger.set_playlist_names(cfg) == (NAME,)
+
+
+def test_a_filled_playlist_holding_a_row_it_found_still_reads_back_in_set_order():
+    """U246: a playlist found by its name keeps what it held ahead of the set's rows.
+
+    The commit added every member, so the order is held; a row the playlist
+    already held before them is not a member and does not break it.
+    """
+    written = set_playlist.Written(
+        name="a set",
+        playlist_id="p",
+        folder_id="f",
+        folder_created=False,
+        playlist_created=False,
+        members=2,
+        added=2,
+        left=(),
+        ids=("a", "b"),
+        read_back=("x", "a", "b"),
+    )
+    set_playlist.assert_read_back(written)
+    with pytest.raises(CratekitError) as caught:
+        set_playlist.assert_read_back(replace(written, read_back=("x", "b", "a")))
+    assert caught.value.cause.reason == "session-committed-unverified"
