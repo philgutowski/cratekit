@@ -2931,7 +2931,15 @@ def _discovered_back(cfg: config.Config, reader: _Reader, db: Any, document) -> 
             # AND A DOWNLOADED COPY of a playlist a pair in this folder holds, or
             # of one this sync brings in beside it (U216, from the review), is
             # that playlist again, so making it would put it in rekordbox twice.
-            beside = [other for other_id, other in fresh if other_id != account_id]
+            # TWO TAKEN PLAYLISTS OF ONE NAME ARE NOT EACH OTHER'S COPY (U242,
+            # round one of its review): a taken title with no prefix reads as a
+            # copy only of a playlist a pair holds or of one that is not taken.
+            beside = [
+                other
+                for other_id, other in fresh
+                if other_id != account_id
+                and not (account_id in taken and other_id in taken)
+            ]
             copied = pair_discover.downloaded_copy(
                 folder, title, [*paired_titles, *beside], taken=account_id in taken
             )

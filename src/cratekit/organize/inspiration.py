@@ -214,7 +214,7 @@ class ParityPlan:
             "no match": tally[EMPTY],
             "unread": tally[UNREAD],
             "two of one name": tally[TWICE],
-            "not prefixed": tally[UNPREFIXED],
+            "not taken": tally[UNPREFIXED],
             "folders unread": tally[FOLDER_UNREAD],
             "tracks matched": sum(len(row.members) for row in self.creates),
             "tracks missed": sum(len(row.misses) + row.withheld for row in self.creates),
@@ -228,7 +228,7 @@ class ParityPlan:
         rest = (
             f"{counts['already in INSPIRATION']} set(s) already in INSPIRATION, "
             f"{counts['no match']} with no track in the library, {counts['unread']} unread, "
-            f"{counts['not prefixed']} not prefixed, {counts['folders unread']} folder(s) unread"
+            f"{counts['not taken']} not taken, {counts['folders unread']} folder(s) unread"
         )
         if self.writes:
             return (

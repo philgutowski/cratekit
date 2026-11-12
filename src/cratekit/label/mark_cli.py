@@ -223,7 +223,7 @@ def _item(
             "why": (
                 "the label's folder is no longer on the account"
                 if listed is None
-                else "the label's folder no longer holds it, so there is no title to prefix"
+                else "the label's folder no longer holds it, so there is nothing to record"
             ),
         }
     if playlists.is_taken(year.remote_id, current, taken):

@@ -1639,6 +1639,28 @@ def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings
     assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == renamed
 
 
+def test_a_set_archived_by_its_inspiration_proof_stays_archived_once_that_playlist_goes(world):
+    """U242, round one: the archive's mark is a taken entry, and the step reads it."""
+    cfg, _fake, _held, _inbox, _ids = world
+    _no_intake_file(cfg)
+    _inspiration(cfg, SET_NAME)
+    code, done, _first = _answered("abort", "apply")
+    assert code == int(ExitCode.OK), done
+    connection = sqlite3.connect(cfg.library.db_path)
+    try:
+        connection.execute(
+            f"UPDATE djmdPlaylist SET {rb_writer.SOFT_DELETE_COLUMN} = 1 WHERE Name = ?",
+            (SET_NAME,),
+        )
+        connection.commit()
+    finally:
+        connection.close()
+
+    step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
+
+    assert (step["state"], step["detail"]) == ("nothing", "already archived and marked"), step
+
+
 def test_a_set_in_its_folder_with_its_built_title_is_taken_and_not_moved(world):
     from cratekit.modules.outbound import ledger
 

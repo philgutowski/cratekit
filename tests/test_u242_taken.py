@@ -597,3 +597,171 @@ def test_filing_reads_a_found_prefix_as_undated_and_a_pass_mark_as_dated():
     standing = filing._standing_marks((), (found, marked, gone))
     assert standing == {"pl-m": "2025-06-01T10:00:00Z"}
     assert filing.year_of_mark(standing["pl-m"]) == "2025"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. Round one of the review, driven through the producers
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _stripped(slim, monkeypatch, *listed):
+    """The account over ``listed``, stripped through the verb, the listing retitled."""
+    fake = bind_playlists(monkeypatch, *listed)
+    account = outbound_fakes.FakeAccount()
+    bind_account(monkeypatch, account)
+    code, done = _strip()
+    assert code == int(ExitCode.OK), done
+    _retitled(fake, account)
+    return fake, account
+
+
+def _filed(cfg, fake, account) -> dict[str, object]:
+    from cratekit.favorites import placeholders
+    from cratekit.organize import filing
+
+    record = mark_record.MarkRecord(cfg)
+    planned = filing.plan(
+        cfg,
+        listed=fake.account,
+        remote=account,
+        labels=("Kompakt",),
+        marks=record.all(),
+        working=placeholders.is_placeholder,
+        taken=tuple(record.taken().values()),
+    )
+    return {row.playlist_id: row for row in planned.rows}
+
+
+def test_filing_after_a_real_strip_reads_every_playlist_as_it_did_before(slim, monkeypatch):
+    """Row 1: the strip's own records are no dated marks, so a hand mark stays
+    undated and a pass mark keeps the year of its pass."""
+    from cratekit.organize import filing
+
+    record = mark_record.MarkRecord(slim)
+    record.record_marked("old-pass", {"pl-m": ("Marked", "DOWNLOADED Marked")}, now="2025-06-01T12:00:00+00:00")
+    listed = (HAND, (_playlist("pl-m", "DOWNLOADED Marked", 1), _tracks("701")))
+    fake = bind_playlists(monkeypatch, *listed)
+    account = outbound_fakes.FakeAccount()
+    before = _filed(slim, fake, account)
+    fake, account = _stripped(slim, monkeypatch, *listed)
+    assert [mark.pass_name for mark in record.all() if mark.pass_name == strip_cli.PASS] == [
+        strip_cli.PASS,
+        strip_cli.PASS,
+    ], "the producer wrote its own records"
+
+    after = _filed(slim, fake, account)
+
+    assert (after["pl-h"].action, after["pl-h"].why) == (before["pl-h"].action, before["pl-h"].why)
+    assert after["pl-h"].why == filing.PREFIXED_UNMARKED
+    assert (after["pl-m"].action, after["pl-m"].year) == (before["pl-m"].action, "2025")
+
+
+def test_a_stripped_playlist_named_like_a_followed_label_is_still_filed_by_its_mark(slim, monkeypatch):
+    """Row 5: the record stands in for the prefix that kept a label's name off it."""
+    from cratekit.organize import filing
+
+    record = mark_record.MarkRecord(slim)
+    record.record_marked(
+        "old-pass", {"pl-k": ("Kompakt summer mix", "DOWNLOADED Kompakt summer mix")},
+        now="2025-06-01T12:00:00+00:00",
+    )
+    fake, account = _stripped(
+        slim, monkeypatch, (_playlist("pl-k", "DOWNLOADED Kompakt summer mix", 1), _tracks("1"))
+    )
+    row = _filed(slim, fake, account)["pl-k"]
+    assert (row.action, row.year) == (filing.MOVE, "2025")
+
+
+def test_unmark_of_the_migration_lets_nothing_go_and_nothing_is_offered(slim, monkeypatch):
+    """Row 3: a playlist found prefixed is no pass's, so no unmark releases it."""
+    _stripped(slim, monkeypatch, HAND, FRESH)
+    code, done = _answered(["sync", "unmark", "--pass", mark_record.MIGRATION], "sync.unmark.confirm")
+    assert code == int(ExitCode.OK), done
+    assert done["outcome"] == "no_op" and done["data"]["items"] == []
+    assert "pl-h" in mark_record.MarkRecord(slim).taken_ids()
+    code, refused = drive(["sync", "unmark", "--pass", "no-such-pass"])
+    assert mark_record.MIGRATION not in refused["cause"]["detail"]["shown"]["passes the record holds"]
+    code, passed = drive(["sync", "all"])
+    assert code == int(ExitCode.OK), passed
+    assert _queued(passed) == ["pl-f"]
+
+
+def test_unmark_of_a_legacy_pass_after_the_strip_releases_and_stamps_it(slim, monkeypatch):
+    """Row 4: the release is the whole undo, and the stamped mark is not taken again."""
+    record = mark_record.MarkRecord(slim)
+    record.record_marked("old-pass", {"pl-m": ("Marked", "DOWNLOADED Marked")})
+    _stripped(slim, monkeypatch, (_playlist("pl-m", "DOWNLOADED Marked", 1), _tracks("701")))
+    code, done = _answered(["sync", "unmark", "--pass", "old-pass"], "sync.unmark.confirm")
+    assert code == int(ExitCode.OK), done
+    assert _items(done)["pl-m"]["action"] == "released"
+    assert record.of_pass("old-pass")[0].unmarked
+    assert "pl-m" not in record.taken_ids()
+    code, again = _answered(["sync", "taken"], TAKEN)
+    assert code == int(ExitCode.OK), again
+    assert again["data"]["totals"]["take"] == 0, "a stamped mark is not taken again"
+
+
+def test_unmark_of_a_legacy_pass_after_the_strip_is_put_back_renames_back(slim, monkeypatch):
+    """Row 4, its second half: the strip's records are no later mark of the pass's."""
+    record = mark_record.MarkRecord(slim)
+    record.record_marked("old-pass", {"pl-m": ("Marked", "DOWNLOADED Marked")})
+    fake, account = _stripped(slim, monkeypatch, (_playlist("pl-m", "DOWNLOADED Marked", 1), _tracks("701")))
+    code, back = _answered(["sync", "unmark", "--pass", strip_cli.PASS], "sync.unmark.confirm")
+    assert code == int(ExitCode.OK), back
+    _retitled(fake, account)
+    account.renamed.clear()
+    code, done = _answered(["sync", "unmark", "--pass", "old-pass"], "sync.unmark.confirm")
+    assert code == int(ExitCode.OK), done
+    assert account.renamed == [("pl-m", "Marked")]
+    assert "pl-m" not in record.taken_ids()
+
+
+def test_a_legacy_archive_mark_a_strip_superseded_no_longer_holds_the_rename(slim):
+    """Row 2: the set rename reads only a prefix a pass wrote that still stands."""
+    from cratekit.export import set_cli
+
+    record = mark_record.MarkRecord(slim)
+    record.record_marked("set-pass", {"pl-s": ("A Set", "DOWNLOADED A Set")}, now="2026-10-01T10:00:00Z")
+    assert set_cli._standing_mark(slim, "pl-s").pass_name == "set-pass"
+    record.record_marked(strip_cli.PASS, {"pl-s": ("DOWNLOADED A Set", "A Set")}, now="2026-11-12T10:00:00Z")
+    assert set_cli._standing_mark(slim, "pl-s") is None
+    record.record_unmarked(strip_cli.PASS, "pl-s")
+    assert set_cli._standing_mark(slim, "pl-s").pass_name == "set-pass", "the strip put back"
+    # A set prefixed by hand and stripped carries only the strip's record: no mark.
+    record.record_marked(strip_cli.PASS, {"pl-h": ("DOWNLOADED Mine", "Mine")})
+    assert set_cli._standing_mark(slim, "pl-h") is None
+
+
+def test_the_strip_records_each_old_title_before_its_rename(slim, monkeypatch):
+    """A rename that fails after its record reads to the unmark as already put back."""
+    bind_playlists(monkeypatch, HAND)
+    account = outbound_fakes.FakeAccount(fail_on={"pl-h"})
+    bind_account(monkeypatch, account)
+    code, failed = _strip()
+    assert code != int(ExitCode.OK), failed
+    assert account.renamed == []
+    (mark,) = mark_record.MarkRecord(slim).of_pass(strip_cli.PASS)
+    assert (mark.playlist_id, mark.name, mark.to) == ("pl-h", "DOWNLOADED Hand", "Hand")
+
+
+def test_the_migration_never_reads_a_strip_record_as_a_mark():
+    strip = mark_record.Marked(strip_cli.PASS, "pl-h", "DOWNLOADED Hand", "Hand", "2026-11-12T10:00:00Z")
+    legacy = mark_record.Marked("p1", "pl-m", "Marked", "DOWNLOADED Marked", "2025-01-01T10:00:00Z")
+    found = taken_cli.entries([strip, legacy], {}, now="2026-11-12T11:00:00Z")
+    assert [(one.playlist_id, one.by) for one in found] == [("pl-m", "p1")]
+
+
+def test_unmark_playlist_narrows_the_releases(slim, monkeypatch):
+    fake, name = _swept_pass(
+        monkeypatch, (_playlist("pl-a", "Warmup"), _tracks("101")), (_playlist("pl-b", "Peak"), _tracks("201"))
+    )
+    bind_account(monkeypatch, outbound_fakes.FakeAccount())
+    code, done = _mark_answered(_land(slim, name, "101", "201"))
+    assert code == int(ExitCode.OK), done
+    code, back = _answered(
+        ["sync", "unmark", "--pass", name, "--playlist", "pl-b"], "sync.unmark.confirm"
+    )
+    assert code == int(ExitCode.OK), back
+    assert sorted(_items(back)) == ["pl-b"]
+    assert mark_record.MarkRecord(slim).taken_ids() == frozenset({"pl-a"})
+    del fake

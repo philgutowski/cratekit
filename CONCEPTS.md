@@ -691,7 +691,8 @@ mark record's taken ledger, by a pass's `sync mark`, `label mark` or the set
 archive, or by `sync taken` for one found with the old `DOWNLOADED ` prefix; or
 its title still carries that prefix, until `sync strip` takes it off.
 `playlists.is_taken` is the one test. The prefix itself is retired: no verb
-writes it.
+writes it, save `sync unmark --pass prefix-strip`, which puts back the old
+titles the strip took it off.
 
 *Avoid:* reading a title for it; the record is what says so.
 

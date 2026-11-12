@@ -417,7 +417,8 @@ plan is skipped; none is taken twice. A partial failure names what was taken,
 and a rerun does the rest. `sync unmark` lets go what the pass took, and puts
 back any title a pass's mark wrote before the prefix was retired, only where
 the title is still exactly what the mark wrote. Unmarking does not make the
-next `sync all` offer the playlist again. `crate organize --only marks` marks
+next `sync all` offer the playlist again, and a playlist `sync taken` found
+prefixed is no pass's, so no unmark lets it go. `crate organize --only marks` marks
 every landed pass.
 
 **Retiring the prefix.** `sync taken` records every playlist the account

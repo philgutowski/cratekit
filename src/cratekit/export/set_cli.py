@@ -1558,9 +1558,27 @@ def _inspiration_of(cfg, job_id: str) -> tuple[str, str] | None:
 
 
 def _standing_mark(cfg, remote_id: str) -> mark_record.Marked | None:
-    """The archive's mark still on this playlist, from ``sync mark``'s record, or None."""
-    for entry in mark_record.MarkRecord(cfg).all():
-        if entry.playlist_id == remote_id and not entry.unmarked:
+    """A legacy archive prefix still on this playlist, from ``sync mark``'s record, or None.
+
+    ONLY A PREFIX A PASS WROTE, AND ONLY WHILE NOTHING TOOK IT OFF SINCE (U242,
+    round one of its review). A title ``sync strip`` wrote is no mark, and a
+    prefix mark a later strip superseded names a title the account no longer
+    carries, so no unmark could put it back and a rename takes nothing off.
+    Since U242 the archive writes no title at all, so a set it took is never
+    refused here.
+    """
+    every = mark_record.MarkRecord(cfg).all()
+    for entry in mark_record.standing_prefix_marks(every):
+        if entry.playlist_id != remote_id:
+            continue
+        superseded = any(
+            other.playlist_id == remote_id
+            and not other.of_the_prefix
+            and not other.unmarked
+            and other.marked > entry.marked
+            for other in every
+        )
+        if not superseded:
             return entry
     return None
 

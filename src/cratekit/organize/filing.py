@@ -286,7 +286,9 @@ def _standing_marks(marks: Iterable[Any], taken: Iterable[Any] = ()) -> dict[str
             standing[playlist_id] = marked
 
     for entry in marks:
-        if not entry.unmarked:
+        # A PREFIX A PASS WROTE, never a title ``sync strip`` wrote taking one
+        # off, which says nothing of when the playlist was finished (U242).
+        if not entry.unmarked and getattr(entry, "of_the_prefix", True):
             keep(entry.playlist_id, str(entry.marked))
     for entry in taken:
         if entry.held and entry.dated:
@@ -396,7 +398,11 @@ def plan(
         if not claimed and is_library_debris(name):
             rows.append(Placement(identity, name, LEFT, why=EMPTY if empty else DEBRIS))
             continue
-        if own.label_of(name, labels) is not None:
+        # A TAKEN PLAYLIST IS NEVER READ AS A LABEL'S BY ITS NAME (U242): the
+        # old prefix shielded a marked one from the label's name, and the
+        # record stands in for it once the prefix is gone. A label's own year
+        # playlists are claimed above by the ledger, not by a name.
+        if not is_taken(identity, name, held_taken) and own.label_of(name, labels) is not None:
             rows.append(Placement(identity, name, LEFT, why=LABEL_STEP))
             continue
         if working(name):

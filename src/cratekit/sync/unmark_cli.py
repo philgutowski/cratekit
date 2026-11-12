@@ -77,8 +77,8 @@ RELEASED = "released"
 
 #: What the gate screen and the warning say about a pass the record has no mark of.
 NO_MARK_SAID = (
-    "the mark record holds no playlist this pass renamed on this library, so "
-    "there is nothing to put back"
+    "the mark record holds no playlist this pass took or renamed on this library, "
+    "so there is nothing to let go or put back"
 )
 
 
@@ -141,8 +141,7 @@ def _narrowed(
     if strangers:
         raise _blocked(
             f"pass {name} did not mark {', '.join(strangers)}, so this verb will not "
-            f"rename it, whatever its title says; the prefix it carries was written "
-            f"by something else",
+            f"let it go or rename it, whatever its title says",
             "name only playlists the pass marked, or leave --playlist out",
             not_marked=strangers,
             pass_name=name,
@@ -155,12 +154,19 @@ def _later(entry: mark_record.Marked, every: tuple[mark_record.Marked, ...]) -> 
 
     Timestamps are the record's own, written in one zone by one clock, so they
     order as text.
+
+    OF THE SAME KIND ONLY (U242, round one of its review). A title ``sync
+    strip`` wrote taking a prefix off is not a pass marking the playlist
+    again: with the strip standing the title is the one before the mark, and
+    with the strip put back it is the one the mark wrote, and either way the
+    earlier pass's mark is decided by the title as any other is.
     """
     later = [
         other.pass_name
         for other in every
         if other.playlist_id == entry.playlist_id
         and other.pass_name != entry.pass_name
+        and other.of_the_prefix == entry.of_the_prefix
         and other.marked > entry.marked
     ]
     return later[-1] if later else ""
@@ -197,8 +203,8 @@ def _item(
             "action": SKIP,
             "reason": MARKED_AGAIN,
             "why": (
-                f"pass {later} marked it again after this one did, so the prefix "
-                f"is that pass's to take off"
+                f"pass {later} marked it again after this one did, so the title "
+                f"is that pass's to put back"
             ),
         }
     if current is None:
@@ -257,6 +263,9 @@ def _with_taken(
             "to": (item or {}).get("to", ""),
             "action": RELEASE,
             "release": True,
+            # What the title half decided, so the apply stamps a legacy mark
+            # only when its title is already the one before the mark.
+            **({"title_reason": item["reason"]} if item is not None and "reason" in item else {}),
             "why": "Cratekit holds it as taken under this pass, and lets it go; no title changes",
         }
     if item is not None:
@@ -375,7 +384,15 @@ def sync_unmark(ctx) -> Envelope:
     # for. Neither can change which playlists the pass marked or took.
     every = record.all()
     taken = record.taken()
-    took = frozenset(identity for identity, entry in taken.items() if entry.by == name)
+    # A PLAYLIST THE MIGRATION FOUND PREFIXED IS NO PASS'S (U242, round one of
+    # its review). Nothing Cratekit did is undone by letting it go, and once
+    # its prefix is stripped nothing but this entry keeps it from being
+    # offered as new, so no unmark ever releases one.
+    took = frozenset(
+        identity
+        for identity, entry in taken.items()
+        if entry.by == name and entry.how != mark_record.FOUND_PREFIXED
+    )
     named = list(ctx.args.playlist or ())
     found = _narrowed(
         tuple(entry for entry in every if entry.pass_name == name), named, name, took
@@ -408,7 +425,14 @@ def sync_unmark(ctx) -> Envelope:
             if items
             else tuple(
                 dict.fromkeys(
-                    [*(e.pass_name for e in every), *(e.by for e in taken.values())]
+                    [
+                        *(e.pass_name for e in every),
+                        *(
+                            e.by
+                            for e in taken.values()
+                            if e.how != mark_record.FOUND_PREFIXED
+                        ),
+                    ]
                 )
             ),
         ),
@@ -422,6 +446,7 @@ def sync_unmark(ctx) -> Envelope:
     by_id = {entry.playlist_id: entry for entry in found}
     planned = [item["id"] for item in items if item["action"] == UNMARK]
     letting = [item["id"] for item in items if item["action"] == RELEASE]
+    by_item = {item["id"]: item for item in items}
     if option != "apply" or not (planned or letting):
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)
 
@@ -438,6 +463,16 @@ def sync_unmark(ctx) -> Envelope:
         for identity in letting:
             record.release(name, identity)
             released.append(identity)
+            # THE PASS'S LEGACY MARK IS STAMPED WITH IT, when one stands: its
+            # title is already the one before the mark, so the release is the
+            # whole undo, and an unstamped mark would be taken again by the
+            # next migration (U242, round one of its review).
+            if (
+                identity in by_id
+                and not by_id[identity].unmarked
+                and by_item[identity].get("title_reason") == ALREADY_UNMARKED
+            ):
+                record.record_unmarked(name, identity)
         if planned:
             from cratekit.modules.outbound import account
 

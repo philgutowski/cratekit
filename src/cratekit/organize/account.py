@@ -318,12 +318,13 @@ def _set_steps(cfg, area: Area) -> None:
     try:
         names = ledger.set_playlist_names(cfg)
         # A MARK ``sync unmark`` PUT BACK IS NO MARK: the playlist carries its
-        # old title again and is not archived as far as anyone can see.
+        # old title again and is not archived as far as anyone can see. Since
+        # U242 the archive's mark is a taken entry, and a legacy one a prefix
+        # mark; a title ``sync strip`` wrote is neither.
+        record = mark_record.MarkRecord(cfg)
         marked = {
-            entry.playlist_id
-            for entry in mark_record.MarkRecord(cfg).all()
-            if not entry.unmarked
-        }
+            entry.playlist_id for entry in mark_record.standing_prefix_marks(record.all())
+        } | set(record.taken_ids())
     except CratekitError as exc:
         area.steps.append(refused(SETS, "archive downloaded sets", exc.cause))
         return

@@ -47,6 +47,10 @@ from cratekit.core.cause import CratekitError, Scope, refuse
 
 RECORD_VERSION = 2
 
+#: The retired prefix, spelled as ``sync.playlists`` spells it. Repeated here
+#: rather than imported, since ``sync.playlists`` reads this record.
+SWEPT_PREFIX = "DOWNLOADED "
+
 #: Every version this build reads. Version 1 is the record before U242,
 #: marks and no taken list.
 READS = frozenset({1, RECORD_VERSION})
@@ -83,6 +87,18 @@ class Marked:
     marked: str
     #: When an unmark put the title back, or ``""`` while the mark stands.
     unmarked: str = ""
+
+    @property
+    def of_the_prefix(self) -> bool:
+        """Whether this mark wrote the retired prefix, and is not one ``sync strip`` wrote.
+
+        THE MARKS LIST HOLDS TWO KINDS SINCE U242 (round one of its review): a
+        prefix a pass wrote before it, and a title the strip wrote taking a
+        prefix off, recorded so ``sync unmark`` can put it back. Only the first
+        says a pass finished the playlist, so every reader asking that asks
+        this.
+        """
+        return self.to.startswith(SWEPT_PREFIX)
 
     def to_json(self) -> dict[str, str]:
         return {
@@ -390,7 +406,14 @@ __all__ = [
     "MIGRATION",
     "READS",
     "RECORD_VERSION",
+    "SWEPT_PREFIX",
     "MarkRecord",
     "Marked",
     "Taken",
+    "standing_prefix_marks",
 ]
+
+
+def standing_prefix_marks(marks: Sequence[Marked]) -> tuple[Marked, ...]:
+    """Every prefix mark no unmark put back, the strip's own records left out."""
+    return tuple(entry for entry in marks if not entry.unmarked and entry.of_the_prefix)
