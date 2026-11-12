@@ -513,8 +513,10 @@ proposed in plan mode, because plan mode waits for an approval nobody is
 there to give. The merge bar and the two round cap are unchanged. **When
 Fable is out of usage, Opus 5.5 at high effort reviews in its place**,
 decided by Phillip on 2026-11-08: the same reviewer definition and merge bar,
-the substitution named in the record and the pull request, and a residual
-owing a Fable pass on the merged range. Only a usage limit refusal allows it.
+the substitution named in the record and the pull request. No follow up
+Fable pass is owed, decided by Phillip on 2026-11-12, unless the session
+judges the Opus review missed something, and then it files a residual
+naming what to look at. Only a usage limit refusal allows it.
 
 **The battery on Linux is read against the base's own failures.** About 170
 tests fail on the container for reasons bound to the machine (root reads
