@@ -411,7 +411,7 @@ def test_two_covers_sharing_a_long_header_are_encoded_apart(encodes):
 
     from tests.test_tagging_engine import _gradient
 
-    profile = bytes(range(256)) * 12
+    profile = bytes(range(256)) * 1024  # 256 KB, longer than any prefix worth hashing
 
     def saved(turn: int) -> bytes:
         buffer = io.BytesIO()
@@ -429,6 +429,7 @@ def test_two_covers_sharing_a_long_header_are_encoded_apart(encodes):
 
     assert encodes == [one, two]
     assert first.data != second.data
+
 
 def test_the_encode_memory_drops_the_least_recently_used(monkeypatch, encodes):
     monkeypatch.setattr(art, "COVER_MEMORY", 2)

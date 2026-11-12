@@ -515,7 +515,8 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
         return result(ART_UNAVAILABLE, f"the picture at {url} could not be fetched")
     try:
         # REMEMBERED BY ITS BYTES (U260): an album's files hand over the same
-        # fetched picture, and the encode is made once and handed to each.
+        # fetched picture, and while it is among the last few encoded, the
+        # one encode is handed to each.
         cdj = art.to_cdj_jpeg_remembered(data)
     except art.ArtError as exc:
         return result(ART_UNAVAILABLE, f"what {url} returned is not a usable picture: {exc}")

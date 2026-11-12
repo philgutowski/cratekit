@@ -112,8 +112,8 @@ either: its covers are out of U244's scope, and Beatport stays the art source. T
 later, and only for a file with no picture, by :func:`default_image_fetch`,
 which shares this module's pacer shape and rate limit policy. An album's files
 name one address, so the worker's fetch, :func:`for_images`, is one per process
-and remembers the bytes each address answered (U260): an album costs one paced
-request, not one per track.
+and remembers the bytes the last few addresses answered (U260): an album whose
+files sit together in the sweep costs one paced request, not one per track.
 
 ``requests`` IS NAMED IN EXACTLY ONE FUNCTION. Everything above it takes a fetch
 seam, and the default fetch takes its HTTP getter and its sleep as parameters, so

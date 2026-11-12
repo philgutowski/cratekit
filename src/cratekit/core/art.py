@@ -274,7 +274,7 @@ _remembered_lock = threading.Lock()
 def to_cdj_jpeg_remembered(
     data: bytes, *, size: int | None = ART_SIZE, max_bytes: int = ART_MAX_BYTES
 ) -> CdjJpeg:
-    """:func:`to_cdj_jpeg`, made once per picture for the life of the process.
+    """:func:`to_cdj_jpeg`, made once per picture while the picture is remembered.
 
     A sweep over an album hands the encoder the same fetched bytes for every
     file, and every one of them decoded, resized and encoded the same picture
@@ -293,7 +293,10 @@ def to_cdj_jpeg_remembered(
     did and the next call encodes again, so a picture that failed for one file
     fails for the next on its own encode, exactly as it did before.
 
-    Nothing is kept across processes. :func:`reset_cache` drops the memory.
+    The memory holds :data:`COVER_MEMORY` pictures, the least recently used
+    dropped first, so a picture asked for again after that many others is
+    encoded again. Nothing is kept across processes. :func:`reset_cache` drops
+    the memory.
     """
     key = (hashlib.sha256(data).digest(), len(data), size, max_bytes)
     with _remembered_lock:
