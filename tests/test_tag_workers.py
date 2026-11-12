@@ -3139,3 +3139,29 @@ def test_a_sweep_parses_the_active_taxonomy_once_however_many_files_it_tags(
     assert len(item_states(job.job_id)) == 3
     assert tags.read_genre_from_file(folder / "a.flac") == SPECIFIC
     assert parses.of(text) == 1, f"three files parsed the active copy {parses.of(text)} times"
+
+
+def test_a_retag_parses_the_active_taxonomy_once_however_many_files_it_corrects(
+    repair_on, folder, silence, monkeypatch
+):
+    """The third per item handler the speed survey named, counted the same way."""
+    from cratekit.core import taxonomy
+
+    text = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
+    active = config.state_path("taxonomy_active", repair_on)
+    active.parent.mkdir(parents=True, exist_ok=True)
+    active.write_text(text, encoding="utf-8")
+    for name in ("a", "b", "c"):
+        coarse(folder, silence, name)
+    bound(monkeypatch, answering({name: hit("deep house", SPECIFIC) for name in "abc"}))
+    parses = counted(monkeypatch)
+
+    _gate_run, job_id = approve_and_queue(["tag", "retag", str(folder)], RETAG_GATE)
+    code, resumed = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), resumed
+    assert item_states(job_id) == {
+        str(folder / f"{name}.flac"): jobs.ItemState.DONE for name in "abc"
+    }
+    assert all(tags.read_genre_from_file(folder / f"{name}.flac") == SPECIFIC for name in "abc")
+    assert parses.of(text) == 1, f"three files parsed the active copy {parses.of(text)} times"

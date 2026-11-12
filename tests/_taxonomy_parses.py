@@ -13,6 +13,7 @@ test writes, which changes no declaration and makes the text a key of its own.
 
 from __future__ import annotations
 
+import os
 import tomllib
 import uuid
 
@@ -46,3 +47,29 @@ def counted(monkeypatch) -> Parses:
 def unique(text: str) -> str:
     """``text`` with a comment no other test writes, so it is a key of its own."""
     return f"{text}\n# a text of this test's own, {uuid.uuid4().hex}\n"
+
+
+def renamed_in_place(text: str, display: str) -> tuple[str, str]:
+    """``text`` with one display name replaced by another of the same length.
+
+    THE SAME LENGTH ON PURPOSE. A memo keyed on a path and a size, or on a size
+    and a time, answers an edit that keeps the length with the declaration it
+    replaced, so an edit test whose new name is longer or shorter cannot tell
+    that memo from the right one. Returns the edited text and the new name.
+    """
+    renamed = "X" * len(display)
+    edited = text.replace(f'display = "{display}"', f'display = "{renamed}"', 1)
+    assert edited != text and len(edited) == len(text), "the edit did not keep the length"
+    return edited, renamed
+
+
+def rewrite_keeping_time(path, text: str) -> None:
+    """Write ``text`` over ``path`` in place and put its modification time back.
+
+    So a memo keyed on the file's time, as well as one keyed on its size, sees
+    nothing change. The inode is kept too, since the write truncates in place.
+    """
+    before = path.stat()
+    path.write_text(text, encoding="utf-8")
+    os.utime(path, ns=(before.st_atime_ns, before.st_mtime_ns))
+    assert path.stat().st_mtime_ns == before.st_mtime_ns

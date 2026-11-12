@@ -16,7 +16,7 @@ import pytest
 from cratekit.core import active_taxonomy, config, taxonomy
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
-from tests._taxonomy_parses import counted, unique
+from tests._taxonomy_parses import counted, renamed_in_place, rewrite_keeping_time, unique
 from tests.test_config import valid_data
 
 SRC = Path(__file__).resolve().parents[1] / "src" / "cratekit"
@@ -280,18 +280,23 @@ def test_a_copy_read_again_with_the_same_text_is_not_parsed_again(cfg, monkeypat
 
 
 def test_a_copy_rewritten_between_two_loads_is_read_and_judged_again(cfg, monkeypatch):
-    """A person's edit between two items is what the second item is judged by."""
-    bucket = taxonomy.load_taxonomy(_shipped_text()).buckets[0]
+    """A person's edit between two items is what the second item is judged by.
+
+    THE EDIT KEEPS THE LENGTH, THE TIME AND THE INODE, so a memo keyed on the
+    path with any of those would answer the second load with the first text's
+    declaration. Only the text tells the two apart, and the text is the key.
+    """
+    display = taxonomy.load_taxonomy(_shipped_text()).buckets[0].display
     before = unique(_shipped_text())
-    after = before.replace(f'display = "{bucket.display}"', 'display = "Edited Between"', 1)
+    after, renamed = renamed_in_place(before, display)
     path = write_active(cfg, before)
     parses = counted(monkeypatch)
 
-    assert active_taxonomy.load(cfg).buckets[0].display == bucket.display
-    path.write_text(after, encoding="utf-8")
-    assert active_taxonomy.load(cfg).buckets[0].display == "Edited Between"
-    path.write_text(before, encoding="utf-8")
-    assert active_taxonomy.load(cfg).buckets[0].display == bucket.display
+    assert active_taxonomy.load(cfg).buckets[0].display == display
+    rewrite_keeping_time(path, after)
+    assert active_taxonomy.load(cfg).buckets[0].display == renamed
+    rewrite_keeping_time(path, before)
+    assert active_taxonomy.load(cfg).buckets[0].display == display
 
     assert (parses.of(before), parses.of(after)) == (1, 1)
 

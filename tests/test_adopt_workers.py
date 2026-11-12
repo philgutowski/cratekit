@@ -33,7 +33,7 @@ from cratekit.core import config, jobs, preflight, rb_writer, session, taxonomy,
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from tests import adopt_fixtures
-from tests._taxonomy_parses import counted, unique
+from tests._taxonomy_parses import counted, renamed_in_place, rewrite_keeping_time, unique
 from tests.cli_drive import approve_and_queue, drive
 from tests.test_adoption import _bucket_and_genre
 from tests.test_config import valid_data
@@ -1872,11 +1872,13 @@ def test_a_scan_parses_the_active_taxonomy_once_however_many_rows_it_drives(
 
 
 def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, monkeypatch):
-    """R-690's question is left where it was: the read stays per item, so an edit counts."""
+    """R-690's question is left where it was: the read stays per item, so an edit counts.
+
+    The edit keeps the copy's length, time and inode, so only its text says it changed.
+    """
     before = unique(taxonomy.shipped_template_text(taxonomy.DEFAULT_TEMPLATE_NAME))
-    bucket = DECLARED.buckets[0]
-    after = before.replace(f'display = "{bucket.display}"', 'display = "Edited Mid Run"', 1)
-    assert after != before
+    display = DECLARED.buckets[0].display
+    after, renamed = renamed_in_place(before, display)
     path = _active_copy(machine, before)
     judged_by: list[taxonomy.Taxonomy] = []
     real = adopt_scan.scan_rows
@@ -1884,7 +1886,7 @@ def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, mo
     def watching(rows, declared, **kwargs):
         judged_by.append(declared)
         if len(judged_by) == 1:
-            path.write_text(after, encoding="utf-8")
+            rewrite_keeping_time(path, after)
         return real(rows, declared, **kwargs)
 
     monkeypatch.setattr(adopt_scan, "scan_rows", watching)
@@ -1897,6 +1899,6 @@ def test_a_copy_edited_during_a_scan_judges_every_row_after_the_edit(machine, mo
 
     assert len(judged_by) >= 3
     assert judged_by[0] == taxonomy.load_taxonomy(before)
-    assert judged_by[0].buckets[0].display == bucket.display
+    assert judged_by[0].buckets[0].display == display
     assert all(declared == taxonomy.load_taxonomy(after) for declared in judged_by[1:])
-    assert judged_by[1].buckets[0].display == "Edited Mid Run"
+    assert judged_by[1].buckets[0].display == renamed

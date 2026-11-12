@@ -21,7 +21,6 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import routing
-from cratekit.core import taxonomy as taxonomy_module
 from cratekit.core.taxonomy import (
     DEFAULT_TEMPLATE_NAME,
     SubPolicy,
@@ -31,7 +30,7 @@ from cratekit.core.taxonomy import (
     load_taxonomy,
     shipped_template_text,
 )
-from tests._taxonomy_parses import counted, unique
+from tests._taxonomy_parses import counted, renamed_in_place, unique
 
 HERE = Path(__file__).resolve().parent
 SECOND_TEMPLATE = HERE / "taxonomies" / "second.toml"
@@ -1226,17 +1225,17 @@ def test_two_texts_are_each_parsed_once_and_each_answers_its_own(monkeypatch):
     assert routing.resolve_bucket(answers[3], "Banger").bucket_id == "floor_filler"
 
 
-def test_an_edit_of_one_character_is_a_different_text_and_is_parsed_again(monkeypatch):
-    """The key is the whole text: a change a size or a time could miss still counts."""
+def test_an_edit_that_keeps_the_length_is_a_different_text_and_is_parsed_again(monkeypatch):
+    """The key is the whole text: an edit a size could not see still counts."""
     before = unique(_shipped_text())
-    bucket = load_taxonomy(before).buckets[0]
-    after = before.replace(f'display = "{bucket.display}"', f'display = "{bucket.display}!"', 1)
-    assert len(after) == len(before) + 1 and after != before
+    display = load_taxonomy(_shipped_text()).buckets[0].display
+    after, renamed = renamed_in_place(before, display)
     parses = counted(monkeypatch)
 
-    assert load_taxonomy(after).buckets[0].display == f"{bucket.display}!"
-    assert load_taxonomy(before).buckets[0].display == bucket.display
-    assert parses.of(after) == 1
+    assert load_taxonomy(before).buckets[0].display == display
+    assert load_taxonomy(after).buckets[0].display == renamed
+    assert load_taxonomy(before).buckets[0].display == display
+    assert (parses.of(before), parses.of(after)) == (1, 1)
 
 
 @pytest.mark.parametrize(
@@ -1261,8 +1260,30 @@ def test_a_text_that_does_not_load_raises_on_every_call(monkeypatch, text, probl
     assert parses.of(text) == 3
 
 
-def test_the_memo_is_bounded_and_parses_an_evicted_text_again(monkeypatch):
-    texts = [unique(_shipped_text()) for _ in range(taxonomy_module._PARSED_LIMIT + 1)]
+def test_the_three_texts_an_upgrade_reads_are_each_parsed_once(monkeypatch):
+    """The active copy, the shipped template and the upgraded text, asked in turn.
+
+    The fewest texts one verb asks for side by side, so a memo too small to hold
+    them would parse each one again on every round of an interleaved run.
+    """
+    texts = [unique(_shipped_text()) for _ in range(3)]
+    parses = counted(monkeypatch)
+
+    for _ in range(3):
+        for text in texts:
+            load_taxonomy(text)
+
+    assert [parses.of(text) for text in texts] == [1, 1, 1]
+
+
+def test_the_memo_holds_eight_texts_and_parses_the_first_again_after_a_ninth(monkeypatch):
+    """Bounded, and the bound is a handful: nine texts push the first one out.
+
+    THE NINE IS WRITTEN HERE rather than read off the module, so a bound raised
+    to hold every text a long process ever saw fails this test instead of
+    passing it by its own number.
+    """
+    texts = [unique(_shipped_text()) for _ in range(9)]
     parses = counted(monkeypatch)
 
     for text in texts:

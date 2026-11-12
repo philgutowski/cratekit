@@ -783,7 +783,7 @@ def load_taxonomy(text: str) -> Taxonomy:
 
     PARSED ONCE PER TEXT IN A PROCESS (U247). A job reads its library's active
     copy for every item, and parsing that copy again for each one was most of
-    the CPU of ``crate adopt scan``. The answer is a function of the text alone,
+    the CPU of the adopt scan. The answer is a function of the text alone,
     so the text itself is the key, never a path, a size or a time: a copy edited
     between two items is a different key and is parsed and judged afresh, and
     two copies holding different text are two keys whatever paths they sit at.
