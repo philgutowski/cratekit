@@ -1945,11 +1945,11 @@ class _Remembered:
 #: write that lands during or after the read either changes the stamp or falls
 #: inside the window.
 #:
-#: ONLY A CLEAN READ IS REMEMBERED. A read the checked reader refuses is
-#: answered by the lenient reader exactly as before and remembered never,
-#: because a failed read on an external volume can be a moment's I/O error and
-#: the next job must be free to read the file properly. A file that cannot be
-#: stat'ed is read as before and remembered never.
+#: ONLY A WHOLE READ IS REMEMBERED. A read that failed anywhere is answered
+#: through its one open exactly as the lenient reader always answered it, and
+#: remembered never, because a failed read on an external volume can be a
+#: moment's I/O error and the next job must be free to read the file properly.
+#: A file that cannot be stat'ed is read as before and remembered never.
 #:
 #: Nothing is kept across processes, so a resume in a new process walks and
 #: reads as before. :func:`reset_cache` forgets every entry, and the suite
@@ -1958,6 +1958,10 @@ _REMEMBERED: dict[tuple[Path, naming.NameTemplate], _Remembered] = {}
 
 #: Two seconds, a FAT volume's modification time step.
 REMEMBER_WINDOW_NS = 2_000_000_000
+
+#: The clock an entry's moment is read from, the wall clock a file's
+#: modification time is stamped by. A name of its own so a test can hold it.
+_now_ns = time.time_ns
 
 #: The four fields the index reads from every file, through one open.
 _INDEX_FIELDS = ("artist", "title", "initialkey", "isrc")
@@ -1991,7 +1995,7 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
     :func:`index_paths` gains and none changes. The rules are the note above
     :data:`_REMEMBERED`; :func:`_read_fresh` is what a miss reads.
     """
-    made_ns = time.time_ns()
+    made_ns = _now_ns()
     stamp = _stamp_of(path)
     key = (path, template)
     if stamp is not None:
@@ -2002,17 +2006,15 @@ def _read_from_disk(path: Path, template: naming.NameTemplate) -> Owned:
             and stamp[1] <= entry.made_ns - REMEMBER_WINDOW_NS
         ):
             return entry.owned
-    owned, clean = _read_fresh(path, template)
-    if stamp is not None and clean and stamp[1] <= made_ns - REMEMBER_WINDOW_NS:
+    owned, whole = _read_fresh(path, template)
+    if stamp is not None and whole:
         _REMEMBERED[key] = _Remembered(stamp=stamp, made_ns=made_ns, owned=owned)
-    else:
-        _REMEMBERED.pop(key, None)
     return owned
 
 
 def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]:
     """What this file is, from its tags first and its filename second, and
-    whether the read was clean enough to remember.
+    whether the read was whole enough to remember.
 
     Tags first because a tag is what the file itself says; the filename second
     because the library's own naming convention carries the Camelot head and,
@@ -2064,13 +2066,9 @@ def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]
     # ONE CONTAINER OPEN FOR THE FOUR FIELDS. Three opens per file was the shape
     # the residual titled "The index reader opens every container three times,
     # and the walk is the library" recorded, and the ISRC is not a fourth.
-    #
-    # THE CHECKED READER FIRST, so a failed read is known and never remembered;
-    # on a refusal the lenient reader answers exactly as it always has.
-    try:
-        read, clean = tags.read_tags_checked(path, _INDEX_FIELDS), True
-    except tags.TagReadFailed:
-        read, clean = tags.read_tags(path, _INDEX_FIELDS), False
+    # The lenient answer, and whether any part of it failed, through that one
+    # open: a failed read is indexed as it always was and never remembered.
+    read, whole = tags.read_tags_noting(path, _INDEX_FIELDS)
     tagged_artist = str(read["artist"] or "").strip()
     spelled_tag = read["title"] or ""
     tagged_title = naming.strip_heads(spelled_tag, template=template)
@@ -2093,7 +2091,7 @@ def _read_fresh(path: Path, template: naming.NameTemplate) -> tuple[Owned, bool]
         version=version,
         key=str(key).strip() if key else None,
         isrc=isrc_token(read["isrc"]),
-    ), clean
+    ), whole
 
 
 def index_library(

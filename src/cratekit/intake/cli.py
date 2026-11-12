@@ -1819,12 +1819,13 @@ class _Resolved:
 #: does not have, which is recorded rather than hidden; ``reset_cache`` is
 #: what a suite calls between libraries, the same hook adoption exposes.
 #:
-#: EACH DRIVE STILL WALKS, but since U249 a walk opens only the files that
-#: changed: the index reader remembers each unchanged file's tags for the life
-#: of the process (the note above ``match._REMEMBERED``), so the several
-#: intake jobs of one sync pass and its ``intake missing`` read each library
-#: file once between them, and every walk still sees what a job landed,
-#: renamed or removed.
+#: EACH DRIVE STILL WALKS, but since U249 a walk opens only a file it cannot
+#: answer from memory: the index reader remembers each file's tags for the
+#: life of the process (the note above ``match._REMEMBERED``), so the several
+#: intake jobs of one sync pass and its ``intake missing`` read an unchanged
+#: library file once between them, and every walk still sees what a job
+#: landed, renamed or removed. A changed file, a new one, one written under
+#: two seconds before it was read and one whose read failed are read again.
 _RESOLVED: dict[tuple[str, int], _Resolved] = {}
 
 

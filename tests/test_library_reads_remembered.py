@@ -310,6 +310,34 @@ def test_a_file_swapped_in_under_the_same_name_size_and_times_is_read_again_on_i
     assert _titles(match.index_library(music)) == {"C"}
 
 
+def test_a_file_on_another_device_under_the_same_name_and_stamp_is_read_again(
+    tmp_path, monkeypatch, template_flac
+):
+    """A volume remounted with another in its place can hand the same inode
+    number to another file; the device is the stamp that tells them apart."""
+    music = tmp_path / "Music"
+    path = _tagged(template_flac, music / "A - B.flac", "A", "B")
+    held = path.stat()
+    device = [held.st_dev]
+    real = match._stamp_of
+
+    def still(where: Path):
+        stamp = real(where)
+        if stamp is None or where != path:
+            return stamp
+        return (held.st_size, held.st_mtime_ns, held.st_ctime_ns, held.st_ino, device[0])
+
+    monkeypatch.setattr(match, "_stamp_of", still)
+    opens = Opens(monkeypatch)
+    match.index_library(music)
+    match.index_library(music)
+    assert opens.of(path) == 1, "an unchanged stamp is answered from memory"
+
+    device[0] = held.st_dev + 1
+    match.index_library(music)
+    assert opens.of(path) == 2
+
+
 def test_a_file_with_a_new_size_is_read_again(tmp_path, monkeypatch, template_flac):
     music = tmp_path / "Music"
     path = _tagged(template_flac, music / "A - B.flac", "A", "B")
@@ -320,9 +348,7 @@ def test_a_file_with_a_new_size_is_read_again(tmp_path, monkeypatch, template_fl
         stamp = real(where)
         if stamp is None or where != path:
             return stamp
-        return (stamp[0], held.st_mtime_ns) + stamp[2:3] + (
-            held.st_ctime_ns, held.st_ino, held.st_dev,
-        )
+        return (stamp[0], held.st_mtime_ns, held.st_ctime_ns, held.st_ino, held.st_dev)
 
     monkeypatch.setattr(match, "_stamp_of", still)
     assert _titles(match.index_library(music)) == {"B"}
@@ -412,35 +438,60 @@ def test_a_read_that_failed_is_not_remembered(tmp_path, monkeypatch):
     opens = Opens(monkeypatch)
 
     first = match.index_library(music)
-    reads = opens.of(path)
+    assert opens.of(path) == 1, "one open per walk, as before U249"
     second = match.index_library(music)
 
-    assert reads >= 1 and opens.of(path) == 2 * reads
+    assert opens.of(path) == 2
     for index in (first, second):
         (held,) = index.versions(match.recording_token("Named", "Only"))
         assert held.path == path
 
 
-def test_a_failed_field_reads_as_the_lenient_reader_answers(tmp_path, monkeypatch, template_flac):
-    """When the checked read refuses, the file is answered exactly as the
-    lenient reader answers it, which is what the index read before U249."""
+def test_a_read_that_is_not_whole_is_indexed_as_read_and_not_remembered(
+    tmp_path, monkeypatch, template_flac
+):
+    """Whatever a partly failed read answered is what the file is indexed by,
+    and the next walk asks the disk again rather than the memory."""
     music = tmp_path / "Music"
-    path = _tagged(template_flac, music / "A - B.flac", "X", "Y")
-
-    def refused(_path, _fields):
-        raise tags.TagReadFailed("a stored value could not be decoded")
-
-    monkeypatch.setattr(tags, "read_tags_checked", refused)
-    monkeypatch.setattr(tags, "read_tags", lambda _p, _fields: {
-        "artist": "Lenient", "title": "Answer", "initialkey": None, "isrc": None,
-    })
+    _tagged(template_flac, music / "A - B.flac", "X", "Y")
+    answers = iter(["Answer", "Again"])
+    monkeypatch.setattr(tags, "read_tags_noting", lambda _p, _fields: ({
+        "artist": "Lenient", "title": next(answers), "initialkey": None, "isrc": None,
+    }, False))
 
     assert _titles(match.index_library(music)) == {"Answer"}
-    monkeypatch.setattr(tags, "read_tags", lambda _p, _fields: {
-        "artist": "Lenient", "title": "Again", "initialkey": None, "isrc": None,
-    })
+    assert match.remembered() == 0
     assert _titles(match.index_library(music)) == {"Again"}, "the failed read was remembered"
-    assert path.is_file()
+
+
+def test_the_noting_reader_answers_what_the_lenient_reader_answers_and_says_what_failed(
+    tmp_path, monkeypatch, template_flac
+):
+    """One undecodable field reads as absent beside its neighbours, exactly as
+    :func:`tags.read_tags` answers, and the read is marked as not whole, where
+    the checked reader would have raised. A container mutagen cannot open is
+    absent and not whole; a clean read is whole."""
+    path = _tagged(template_flac, tmp_path / "A - B.flac", "A", "B")
+    fields = ("artist", "title", "initialkey", "isrc")
+    assert tags.read_tags_noting(path, fields) == (tags.read_tags(path, fields), True)
+
+    real = tags._one_text
+
+    def undecodable(handle, key, dialect):
+        if "title" in str(key).lower():
+            raise UnicodeDecodeError("utf-8", b"\xff", 0, 1, "invalid start byte")
+        return real(handle, key, dialect)
+
+    monkeypatch.setattr(tags, "_one_text", undecodable)
+    values, whole = tags.read_tags_noting(path, fields)
+    assert values == tags.read_tags(path, fields)
+    assert values["artist"] == "A" and values["title"] is None and not whole
+    with pytest.raises(tags.TagReadFailed):
+        tags.read_tags_checked(path, fields)
+
+    garbage = tmp_path / "C - D.flac"
+    garbage.write_bytes(b"not a flac stream at all")
+    assert tags.read_tags_noting(garbage, fields) == (dict.fromkeys(fields), False)
 
 
 def test_a_file_that_cannot_be_stated_is_read_as_before_and_never_remembered(
@@ -465,6 +516,59 @@ def test_the_stamp_is_the_files_stat_and_none_for_a_file_that_is_gone(tmp_path):
     )
     path.unlink()
     assert match._stamp_of(path) is None
+
+
+def _held_clock(monkeypatch, at: int) -> list[int]:
+    clock = [at]
+    monkeypatch.setattr(match, "_now_ns", lambda: clock[0])
+    return clock
+
+
+@pytest.mark.parametrize(
+    ("age_ns", "opened"),
+    [(1_500_000_000, 2), (1_999_999_999, 2), (2_000_000_000, 1), (2_500_000_000, 1)],
+    ids=["1.5s", "just-under-2s", "2s", "2.5s"],
+)
+def test_the_window_is_two_seconds_to_the_nanosecond(
+    tmp_path, monkeypatch, template_flac, age_ns, opened
+):
+    """A file whose modification time is under two seconds older than the
+    moment its entry was made is read again; two seconds or older is answered."""
+    music = tmp_path / "Music"
+    path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
+    now = time.time_ns()
+    _backdate(path, ns=now - age_ns)
+    _held_clock(monkeypatch, now)
+    opens = Opens(monkeypatch)
+
+    match.index_library(music)
+    match.index_library(music)
+
+    assert opens.of(path) == opened
+
+
+def test_the_entrys_moment_is_taken_before_the_read(tmp_path, monkeypatch, template_flac):
+    """A write that lands while the file is being read falls inside the window
+    only if the moment is the one before the read. The clock moves a second
+    during each read here, and the file is a second and a half old."""
+    music = tmp_path / "Music"
+    path = _tagged(template_flac, music / "A - B.flac", "A", "B", old=False)
+    now = time.time_ns()
+    _backdate(path, ns=now - 1_500_000_000)
+    clock = _held_clock(monkeypatch, now)
+    real = mutagen.File
+    opened: list[str] = []
+
+    def slow(*args, **kwargs):
+        opened.append(str(args[0]))
+        clock[0] += 1_000_000_000
+        return real(*args, **kwargs)
+
+    monkeypatch.setattr(mutagen, "File", slow)
+    match.index_library(music)
+    match.index_library(music)
+
+    assert opened.count(str(path)) == 2
 
 
 # ═══════════════════════════════════════════════════════════════════════════
