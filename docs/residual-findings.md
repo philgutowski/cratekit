@@ -50584,3 +50584,63 @@ not move.
 
 **Closes when:** a later live `review list` shows no such pair, or the
 retiring side learns the letters reading for these lines. Ledger only.
+
+---
+
+## R-1606. U266 was reviewed by Opus 5.5 standing in for Fable, out of usage, so a Fable pass on its merged range is owed
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** The review of U266 was refused on Fable's usage limit, so by
+Phillip's rule of 2026-11-08 the same reviewer definition ran on Opus 5.5 at
+high effort, under the same merge bar and round cap. It found nothing
+BLOCKING and no doc made untrue.
+
+**Measured cost.** None known. The owed pass is Fable's reading of the merged
+range, `read_index_tags` through one `tags.read_tags` call and its tests.
+
+**Closes when:** a Fable review of U266's merged range runs and its findings
+are driven or filed. Ledger only.
+
+---
+
+## R-1607. Four other verbs still open a file once per tag field they read
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** U266 made the set builder's index read its seven fields
+through one `tags.read_tags` open. Four other places still ask
+`tags.read_tag` for each field and so open the file again per field: the
+naming plan in `write/naming_cli.py` (title, then the initial key), the
+catalogue genre pass in `tagging/tag.py` (artist, then title), the retag
+candidate search in `tagging/retag.py` (artist, then title) and the staging
+read in `tagging/guess.py` (artist, then title). Each is two opens where one
+would do.
+
+**Measured cost.** Not driven; read from the code at the review. Twice the
+container opens of one read in each of those batch verbs, which matters on a
+library on an external drive.
+
+**Closes when:** each reads its fields through one `tags.read_tags` call with
+the answer proven equal and the open count as the assertion, the way U250 and
+U266 did. Ledger only, until a speed survey measures one of them on the real
+library.
+
+---
+
+## R-1608. The test wrapper that counts container opens is copied in six test files
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** U266 added two more copies of a wrapper over `mutagen.File`
+that counts container opens, in `tests/test_setbuilder_one_open.py` and
+`tests/test_setbuilder_cli.py`, beside the ones in
+`tests/test_rebuild_one_open.py`, `tests/test_library_reads_remembered.py`,
+`tests/test_match_states.py` and `tests/test_analysis_ahead.py`. Its
+`_tagged` helper also repeats most of `tests/_containers.tagged_container`.
+Six copies of one counter can drift apart in what they count.
+
+**Measured cost.** Maintenance only; no test is wrong today.
+
+**Closes when:** one shared open counting fixture lives beside the container
+helpers and the six suites use it. Ledger only.
