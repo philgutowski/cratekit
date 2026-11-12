@@ -2,8 +2,8 @@
 
 **U63 BOUND IT.** ``cratekit.modules.outbound.tidal_account`` implements
 :class:`~cratekit.modules.outbound.service.RemoteAccount` over a provider client
-that ``acquire.provider_session.client_session`` logs in from the stored session,
-the same factory the label catalogue uses. Before that unit no implementation
+logged in from the stored session, the one ``acquire.provider_session.session_for``
+holds for the process and shares with the label catalogue (U261). Before that unit no implementation
 shipped and this module refused every call with ``outbound-account-unbound``.
 That refusal is kept for the one case it still describes truthfully: a build in
 which the adapter or its client library does not import.
@@ -32,12 +32,16 @@ process and resolves its own.
 **ONE LOGIN PER PROCESS, SHARED WITH THE CATALOGUE (U261).** The adapter is
 built over the session ``provider_session.session_for`` holds, which the label
 catalogue's opener takes too, so a verb that opens both logs in once. The held
-adapter is handed out only while that session is still the held one: a session
-the catalogue saw refused, or one the keychain no longer holds, is dropped
-there and the next resolve opens a new adapter. And :func:`forget`, which a
-refused session reaches through :func:`provider_failure`, drops the shared
-session as well as the adapter, so the catalogue's next resolve logs in again
-rather than reuse the client the provider refused.
+adapter is handed out only while that session is still the held one: a 401 or
+403 answered through the shared client drops it, and so does a catalogue
+resolve that finds the keychain no longer holds it, after which the next
+resolve here opens a new adapter. A resolve here asks neither the keychain nor
+the gate on a reuse, as before U261, so a process that resolves only the
+account goes on over the adapter it opened until a refusal or :func:`forget`.
+A session refused through :func:`provider_failure` drops the adapter and the
+shared session it was built over, so the catalogue's next resolve logs in
+again rather than reuse the client the provider refused; :func:`forget` drops
+every hold.
 
 Layer: modules.
 """
@@ -107,6 +111,23 @@ def forget() -> None:
     provider_session.forget()
 
 
+def _forget_refused() -> None:
+    """Drop the held adapter and the shared session IT was built over.
+
+    Only that session: one the catalogue logged in since, from a session
+    recorded afresh, was not the one refused, and dropping it would cost a
+    login for nothing. An adapter built over no shared session forgets every
+    hold, the safe direction.
+    """
+    global _OPENED, _OPENED_OVER
+    over = _OPENED_OVER
+    _OPENED = _OPENED_OVER = None
+    if over is None:
+        provider_session.forget()
+    else:
+        provider_session.drop(over)
+
+
 #: Statuses that judge the SESSION on a call made after login. Narrower than
 #: ``provider_session.REJECTED_STATUSES``, which includes 400 because a login's
 #: bad request is a bad token; a heart or a playlist add answered 400 is a bad
@@ -153,7 +174,7 @@ def provider_failure(exc: BaseException, doing: str) -> CratekitError:
         # The held adapter's client is dead, so the next item resolves a fresh
         # one from the keychain rather than failing on this one for the rest of
         # the process, and a login made meanwhile is picked up.
-        forget()
+        _forget_refused()
         return refuse(
             "credential-missing",
             f"the streaming provider rejected the session while trying to {doing} "

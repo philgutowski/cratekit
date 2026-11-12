@@ -510,6 +510,55 @@ def test_a_session_replaced_after_an_open_is_logged_in_afresh_from_the_new_value
     assert found._session.logged_in_with == "FAKE-value-7"
 
 
+def test_a_replaced_session_the_provider_rejects_leaves_no_seam_the_old_client(
+    cfg, monkeypatch
+):
+    """Round one's R2: a session recorded afresh whose login fails must not
+    leave the account's adapter over the session it replaced."""
+    factory = use(monkeypatch, Factory())
+    record()
+    catalogue.resolve(cfg)
+    account.resolve(cfg)
+    record(dict(STORED, access_token="FAKE-value-7"))
+    factory.client = {"status": 401}
+
+    for seam in (catalogue, account):
+        with pytest.raises(CratekitError) as excinfo:
+            seam.resolve(cfg)
+        assert refused_with(excinfo) == ("credential-missing", Remedy.REAUTHENTICATE_PROVIDER)
+    assert provider_session.held() is None
+    assert len(factory.built) == 3
+
+
+def test_an_old_clients_refusal_on_the_account_keeps_the_session_logged_in_since(
+    cfg, monkeypatch
+):
+    """Round one's R4: the account's adapter over a replaced session meets a
+    401, and the session the catalogue logged in since stays held."""
+    factory = use(monkeypatch, Factory())
+    record()
+    account.resolve(cfg)
+    record(dict(STORED, access_token="FAKE-value-7"))
+    newer = catalogue.resolve(cfg)._session
+
+    account.provider_failure(HTTPFailure(Answer(401)), "heart a track")
+
+    assert catalogue.resolve(cfg)._session is newer
+    assert account.resolve(cfg)._session is newer
+    assert len(factory.built) == 2
+
+
+def test_the_held_sessions_repr_carries_no_token(cfg, monkeypatch):
+    use(monkeypatch, Factory())
+    record()
+    catalogue.resolve(cfg)
+
+    shown = repr(provider_session.held())
+
+    assert "FAKE-value-1" not in shown
+    assert "FAKE-value-2" not in shown
+
+
 def test_a_refreshed_login_is_reused_while_the_keychain_holds_the_refresh(cfg, monkeypatch):
     factory = use(monkeypatch, Factory(refresh_to="FAKE-value-3"))
     record()

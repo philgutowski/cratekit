@@ -49,7 +49,7 @@ import tempfile
 import tomllib
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -224,11 +224,13 @@ def client_session(
 ) -> Any:
     """An authenticated provider client, built from the stored session.
 
-    THE ONE PLACE A CATALOGUE OR ACCOUNT READS AND WRITES BACK THE TOKEN, and it
-    is built inside :func:`materialised_session` rather than beside it so that
-    stays true: the downloader and the catalogue then read the same stored blob
-    through the same scope, and a refresh the login performed goes back to the
-    keychain through the same validated :func:`write_back`.
+    THE ONE LOGIN A CATALOGUE OR ACCOUNT MAKES, and it is built inside
+    :func:`materialised_session` rather than beside it so that the downloader
+    and the catalogue read the same stored blob through the same scope, and a
+    refresh the login performed goes back to the keychain through the same
+    validated :func:`write_back`. Since U261 the openers reach it through
+    :func:`session_for`, which also reads the keychain on a reuse to see the
+    session it holds is still the stored one, and writes nothing there.
 
     THE GATE IS ASKED BEFORE THE CLIENT IS BUILT AND ATTACHED BEFORE IT LOGS IN
     (R-705). A verb started inside the cooldown a rate limited run left behind
@@ -422,10 +424,12 @@ class HeldSession:
     #: The gate both the client and the app client are attached to.
     gate: provider_gate.Gate
     #: The logged in provider client every opener builds its adapter over.
-    client: Any
+    #: Kept out of the repr, since the client carries the tokens.
+    client: Any = field(repr=False)
     #: The bytes the keychain holds for this client, as ``secrets.set_json``
-    #: stores them: what a reuse compares the keychain against.
-    blob: str
+    #: stores them: what a reuse compares the keychain against. Kept out of
+    #: the repr, since it IS the session, tokens and all.
+    blob: str = field(repr=False)
     #: The app client :func:`catalogue_client` built beside it, or None.
     app: Any = None
 
@@ -447,8 +451,10 @@ def forget() -> None:
     _HELD = None
 
 
-def _drop(session: HeldSession) -> None:
-    """Drop ``session`` if it is still the held one, and nothing newer."""
+def drop(session: HeldSession) -> None:
+    """Drop ``session`` if it is still the held one, and nothing newer: what a
+    refusal of one client forgets, since a session logged in since was not
+    the one refused."""
     global _HELD
     if _HELD is session:
         _HELD = None
@@ -476,10 +482,10 @@ def _watch(session: HeldSession) -> None:
             response = send(method, url, *args, **kwargs)
         except Exception as exc:
             if answered_status(exc) in SESSION_REFUSED_STATUSES:
-                _drop(session)
+                drop(session)
             raise
         if getattr(response, "status_code", None) in SESSION_REFUSED_STATUSES:
-            _drop(session)
+            drop(session)
         return response
 
     transport.request = watched
@@ -527,7 +533,7 @@ def session_for(
         try:
             stored = secrets.get_json(name)
         except secrets.CredentialError as exc:
-            _drop(current)
+            drop(current)
             raise _to_auth_failure(exc) from exc
         if _canonical(stored) == current.blob:
             if current.app is None:
@@ -613,6 +619,7 @@ __all__ = [
     "answered_status",
     "catalogue_client",
     "client_session",
+    "drop",
     "failure_links",
     "forget",
     "held",

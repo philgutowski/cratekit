@@ -1,7 +1,8 @@
 """The streaming provider's catalogue, behind the label package's seam.
 
 **THIN ON PURPOSE.** Every read here is one question to the provider client
-that ``acquire.provider_session.client_session`` logged in, and every PAGED read
+``acquire.provider_session.session_for`` logged in and holds for the process,
+and every PAGED read
 goes through ``acquire.listing``. That module's docstring is the argument: a
 listing that quietly returns one page looks exactly like a short one, and a
 paging loop written here would be the fourth copy of that defect. A guard in the

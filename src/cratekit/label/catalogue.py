@@ -1,8 +1,8 @@
 """The one place the label package gets the catalogue it reads a provider through.
 
 **U62 BOUND IT.** ``cratekit.label.tidal_catalogue`` implements :class:`Catalogue`
-over a provider client that ``acquire.provider_session.client_session`` logs in
-from the stored session. Before that unit no implementation shipped, and this
+over a provider client logged in from the stored session, the one
+``acquire.provider_session.session_for`` holds for the process (U261). Before that unit no implementation shipped, and this
 module refused every call with ``label-catalogue-unbound``. That refusal is kept
 for the one case it still describes truthfully: a build in which the adapter or
 its client library does not import.

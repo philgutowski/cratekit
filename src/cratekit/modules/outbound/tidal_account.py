@@ -1,7 +1,8 @@
 """The streaming provider's account, behind the outbound package's seam.
 
 **ONE CLASS OVER U62'S SESSION.** Every question here goes to the provider client
-that ``acquire.provider_session.client_session`` logged in, and every PAGED read
+``acquire.provider_session.session_for`` logged in and holds for the process,
+and every PAGED read
 goes through ``acquire.listing``, for the reason ``label.tidal_catalogue`` gives:
 a listing that quietly returns one page looks exactly like a short one. A guard
 in the suite scans this file for a direct paging call and for a vendored import.
