@@ -227,6 +227,20 @@ def test_twice_the_marks_write_about_twice_the_bytes(tmp_path, monkeypatch):
     assert (four_hundred.rewrites, four_hundred.appends) == (1, 399)
 
 
+def test_a_mark_on_a_journal_this_process_never_wrote_appends(cfg, monkeypatch):
+    """A run's first mark, and every mark after another process's, append too.
+
+    Read whole, since nothing says the file is as this process left it, and
+    then appended to, not rewritten: two processes taking turns would
+    otherwise rewrite the whole ledger on every mark, the square again.
+    """
+    path = _plant(cfg, _journal_of(3))
+    seen = _count_writes(monkeypatch)
+    adopt_apply.mark_applied(cfg, _entry(7))
+    assert (seen.rewrites, seen.appends) == (0, 1)
+    assert path.read_bytes() == _journal_of(3) + _line_of(_entry(7))
+
+
 def test_a_mark_does_not_parse_the_ledger_it_appends_to(cfg, monkeypatch):
     """The CPU half of the square: no whole read per mark once the file exists."""
     adopt_apply.mark_applied(cfg, _entry(0))
