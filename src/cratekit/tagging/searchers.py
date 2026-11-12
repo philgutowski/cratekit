@@ -812,7 +812,11 @@ def _names_a_title(words: tuple[str, ...], *, tail: bool, head: bool) -> bool:
     )
 
 
-Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]]]
+#: A title read as its title's words and its version's words apart: "Sunrise
+#: Mood (Extended Mix)" is ("sunrise", "mood") and ("extended", "mix").
+Split = tuple[tuple[str, ...], tuple[str, ...]]
+
+Readings = tuple[frozenset[tuple[str, ...]], frozenset[tuple[str, ...]], frozenset[Split]]
 
 
 def _a_tail_to_shed(tail: str, *, searched: bool) -> bool:
@@ -978,10 +982,11 @@ def _head_end(parts: list[str]) -> int:
 
 def _title_starts(
     parts: list[str], artist: str
-) -> tuple[int, int, frozenset[int], frozenset[int], tuple[int, ...]]:
+) -> tuple[int, int, frozenset[int], frozenset[int], tuple[int, ...], bool]:
     """Where a file's head ends and its title starts among its dash parts, the
     other parts that name the searched artist, the parts a later title starts
-    at or after, and every start a reading may take (R-1636).
+    at or after, every start a reading may take, and whether the title is
+    the card's both ways shape, read by its splits only (R-1636, R-1646).
 
     The title is the first part after the head that is not the artist's name: a
     file's title tag is "KEY - BPM - Title", maybe with a dash version after
@@ -998,9 +1003,16 @@ def _title_starts(
     or follows one written alone, the "01 Title" of "Artist - Album - 01 Title"
     or "Artist - Album - 01 - Title", and the part before it is never read
     alone, whatever version its title ends with. A track number alone before
-    the title is passed over as the head is, "01 - Artist - Title". And when
-    the title follows the artist's part and ends in a version, the artist's
-    part is read too, up to it (round one of R-1636's review).
+    the title is passed over as the head is, "01 - Artist - Title".
+
+    When the title follows the artist's part and ends in a version, "Aurora
+    Bloom - Vocal Mix" or "Aurora Bloom - Sunrise Mood Extended Mix", the name
+    is a title by the artist or the artist's self titled track in that
+    version, and only a list of version words could say which ("vocal" is a
+    version, "sunrise mood" a title). So it is read neither way alone: no
+    start is returned, and :func:`_name_splits` reads it as the two splits a
+    row must write itself to match it (R-1646). Since R-1636 it was read both
+    ways, and a "Vocal" row or a self titled row wrote its genre.
     """
     head = _head_end(parts)
     _, tail_start = _head_parts(parts)
@@ -1035,17 +1047,74 @@ def _title_starts(
         and (index - 1 in numbers or _numbered(_words(_title_core(parts[index])[0])))
     )
     # "Artist - X" with X ending in a version is a title X, or a self titled
-    # track and its version, "Aurora Bloom - Vocal Mix"; only a list could tell,
-    # so the artist's part is read too, up to such a tail only, as on main.
+    # track and its version, "Aurora Bloom - Vocal Mix"; only a list could
+    # tell, so neither is read alone, and a row matches only by writing the
+    # same split itself (R-1646). A track numbered part after it is the title.
     # Two parts crediting the artist are "Title - Artist" for a self titled
     # track, or "Artist - Title" for one titled as a credit writes the artist,
     # "Tide & Aurora Bloom - Aurora Bloom": the second is read too.
+    later = numbers | frozenset(numbered)
+    if (
+        title > head
+        and head in artists
+        and not numbered
+        and _a_tail_to_shed(parts[title], searched=False)
+    ):
+        return head, title, artists - {title}, later, (), True
     either = ()
-    if title > head and head in artists and _a_tail_to_shed(parts[title], searched=False):
-        either = (head,)
-    elif title == head and head in artists and head + 1 in artists:
+    if title == head and head in artists and head + 1 in artists:
         either = (head + 1,)
-    return head, title, artists - {title}, numbers | frozenset(numbered), (title, *numbered, *either)
+    return head, title, artists - {title}, later, (title, *numbered, *either), False
+
+
+def _credit_words(part: str) -> set[tuple[str, ...]]:
+    """The words of the artist's part as a self titled title, with and
+    without the marker and the track number :func:`_names_the_artist` reads
+    past: "[MP3] Aurora Bloom" is also "aurora bloom"."""
+    found = {_words(part)}
+    bare = _words(_LEADING_GROUPS.sub("", part))
+    found.add(bare)
+    if len(bare) > 1 and _TRACK_NUMBER.fullmatch(bare[0]):
+        found.add(bare[1:])
+    return {words for words in found if words}
+
+
+def _name_splits(parts: list[str], head: int, title: int) -> frozenset[Split]:
+    """The two ways a file's "Artist - X" name splits into a title and its
+    version, when X ends in a version (R-1646): the artist's part titled, X
+    its version, ("aurora bloom", "vocal mix"); or X titled up to its trailing
+    run of version words, the rest its version, ("sunrise mood", "extended
+    mix"). A row matches only by writing one of these splits itself
+    (:func:`_row_splits`), so the catalogue, never a list, says which reading
+    holds. A version word the list lacks makes the second split longer than
+    any row writes it, a miss rather than a match: "Sunrise Mood Vocal Mix"
+    splits ("sunrise mood vocal", "mix"), never "Sunrise Mood (Vocal Mix)".
+    """
+    tail = parts[title]
+    every = _words(tail)
+    splits = {(credit, every) for credit in _credit_words(parts[head])}
+    plain = _without_version(_words(_without_trailing_groups(tail)))
+    if plain:
+        splits.add((plain, every[len(plain) :]))
+    return frozenset(splits)
+
+
+def _row_splits(text: str) -> frozenset[Split]:
+    """The splits a catalogue row writes into a title and its version: before
+    the bracket groups it ends with, "Sunrise Mood (Extended Mix)", or before
+    a dash tail that is a version, "Sunrise Mood - Extended Mix". A row of no
+    such structure, "Vocal Mix" or "Sunrise Mood Extended Mix", writes none,
+    since a catalogue lists a single's versions as its track titles."""
+    parts = text.split(_DASH)
+    every = _words(text)
+    splits: set[Split] = set()
+    for last in range(1, len(parts) + 1):
+        if last < len(parts) and not _a_tail_to_shed(_DASH.join(parts[last:]), searched=False):
+            continue
+        core = _words(_without_trailing_groups(_DASH.join(parts[:last])))
+        if core and len(core) < len(every):
+            splits.add((core, every[len(core) :]))
+    return frozenset(splits)
 
 
 def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
@@ -1073,19 +1142,25 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
     its leading groups shed, "knee deep" of "(Not Just) Knee Deep", is kept
     apart, so two titles whose leading groups differ, "(Love) Is The Message"
     and "(Hate) Is The Message", never meet on what is left. The whole title
-    is always a reading.
+    is always a reading. The third set is the title's splits into a title
+    and its version: a row's as it writes them (:func:`_row_splits`), and a
+    file's only for "Artist - X" with X ending in a version, which is then
+    read by its splits and its whole title alone (:func:`_name_splits`,
+    R-1646).
     """
     text = _normalized(value)
     if not _identifies(text):
-        return frozenset(), frozenset()
+        return frozenset(), frozenset(), frozenset()
     parts = text.split(_DASH)
     whole = (0, len(parts))
     if searched:
         _, tail_start = _head_parts(parts)
-        head, title, artists, later, firsts = _title_starts(parts, artist)
+        head, title, artists, later, firsts, split = _title_starts(parts, artist)
+        splits = _name_splits(parts, head, title) if split else frozenset()
     else:
         tail_start = len(parts)
         head, title, artists, later, firsts = 0, 0, frozenset(), frozenset(), (0,)
+        splits = _row_splits(text)
     readings: set[tuple[str, ...]] = set()
     shed: set[tuple[str, ...]] = set()
     for first in dict.fromkeys((*firsts, 0)):
@@ -1117,15 +1192,22 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
                     if (first, last) == whole
                     or _names_a_title(words, tail=after_title, head=last <= head or first >= tail_start)
                 )
-    return frozenset(readings), frozenset(shed)
+    return frozenset(readings), frozenset(shed), splits
 
 
 def _meet(left: Readings, right: Readings) -> bool:
     """Whether two titles' readings share one. Two readings with leading groups
-    shed never meet each other, only a reading the other title holds whole."""
-    left_read, left_shed = left
-    right_read, right_shed = right
-    return bool(left_read & right_read or left_read & right_shed or left_shed & right_read)
+    shed never meet each other, only a reading the other title holds whole.
+    A file's splits (:func:`_name_splits`) meet a row's (:func:`_row_splits`)
+    only when the two write the same title and the same version (R-1646)."""
+    left_read, left_shed, left_splits = left
+    right_read, right_shed, right_splits = right
+    return bool(
+        left_read & right_read
+        or left_read & right_shed
+        or left_shed & right_read
+        or left_splits & right_splits
+    )
 
 
 def _artist_parts(value: str, separators: str) -> list[str]:
@@ -1164,7 +1246,9 @@ def _title_matches(searched: str, found: str, *, artist: str) -> bool:
     (Intro)", and "Dub" is not "Dub Siren" (R-1631). A side with no letter or
     digit matches nothing, on either side (R-1534). The artist tells which of
     the file's dash parts is its title: a part naming the artist is not, and
-    no part after the title is (R-1636). Every reader of a title by artist and
+    no part after the title is (R-1636); "Artist - X" with X ending in a
+    version matches only a row writing the same title and version apart
+    (R-1646). Every reader of a title by artist and
     title asks this, Discogs included, and Beatport's scoring reads the same
     readings.
     """
@@ -1263,6 +1347,17 @@ class _Pick:
     art_url: str = ""
 
 
+def _beatport_readings(name: str, mix: str) -> Readings:
+    """A Beatport row's readings: its name's, with the split its name and mix
+    write together, "Sunrise Mood" with "Extended Mix" splitting as "Sunrise
+    Mood (Extended Mix)" does (R-1646). The mix reaches no other reading, so a
+    name is still matched whatever mix it is listed under."""
+    read, shed, splits = _readings(name, searched=False)
+    if _identifies(mix):
+        splits |= _row_splits(f"{name} ({mix})")
+    return read, shed, splits
+
+
 def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) -> _Pick | None:
     """The genre and picture off the best scoring track, or None when nothing scores.
 
@@ -1282,7 +1377,9 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
     outranks the same title's other mixes; the next is the title's core word
     for word the row's name; the last is a reading the two share
     (:func:`_readings`), the title read as a file's and the name as a
-    catalogue's, so a row "Love (feat. X)" never scores against "Love Is The
+    catalogue's, or a split of the file's "Artist - X" name that the row's
+    name and mix write together (:func:`_beatport_readings`, R-1646), so a
+    row "Love (feat. X)" never scores against "Love Is The
     Message", a row "(Intro)" or "Intro" never against "Sunrise Mood
     (Intro)", and a row "(Sunrise Mood)" never against "Mood". No tier reads
     a row's name inside the title's brackets, or the title inside the name's.
@@ -1321,7 +1418,7 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
             title_score = 4
         elif whole_title == _words(name):
             title_score = 3
-        elif _meet(searched_readings, _readings(name, searched=False)):
+        elif _meet(searched_readings, _beatport_readings(name, mix)):
             title_score = 2
         else:
             continue

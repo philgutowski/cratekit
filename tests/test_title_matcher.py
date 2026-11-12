@@ -1,4 +1,4 @@
-"""R-1534 and R-1631: a title matches only its own recording, in every source.
+"""R-1534, R-1631, R-1636 and R-1646: a title matches only its own recording, in every source.
 
 THE DEFECTS. The shared matcher stripped a trailing bracket from the first "("
 to the last ")" and then compared the two titles by raw substring. A title that
@@ -18,7 +18,9 @@ groups from the end; a catalogue row's dash tail; the file's head, the
 ``KEY - BPM - `` the live library writes into the title tag, and every dash
 part of it that is not its title, the searched artist's name, a version, an
 album (R-1636); a feature credit; a trailing run of the domain's version words; its
-leading bracket groups. Nothing is compared by characters, and a word read only
+leading bracket groups. A name "Artist - X" with X ending in a version, a
+title X or the artist's self titled track in that version, is read neither
+way alone and matches only a row writing the same split (R-1646). Nothing is compared by characters, and a word read only
 inside the other title's brackets is never its title. A side with no letter or
 digit matches nothing, and a number is part of the title. The tables below
 drive the shapes the matcher must keep on every source, the headed title
@@ -1087,7 +1089,7 @@ def test_artist_then_a_version_ending_part_matches_no_row_that_reads_one_way(sea
     assert _bandcamp_hit(searched, found).genre is None
     assert _bandcamp_hit(searched, f"{ARTIST} - {found}").genre is None
     assert discogs_answer(_discogs_hit(searched, found)).answer == "miss"
-    for mix in ("", "Original Mix", "Extended Mix"):
+    for mix in ("", "Original Mix", "Radio Edit"):
         hit = _beatport_hit(searched, [_beatport_track(ARTIST, found, BUCKET_GENRE, mix=mix)])
         assert _beatport_answer(hit) == "miss"
 
