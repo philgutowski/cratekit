@@ -507,7 +507,10 @@ def _is_a_credit(inside: str) -> bool:
     nothing if the two answer the question differently.
 
     THE GROUP'S FIRST WHOLE WORD, folded, and nothing else (U262), which is the
-    rule ``core.tombstone._is_a_credit`` asks: ``(feat. Anna)``, ``(ft Anna)``
+    rule ``core.tombstone._is_a_credit`` asks, over the same marker set but
+    under this module's own :func:`fold`, so a group led by punctuation or
+    spelled with an accent or in fullwidth letters can still answer differently
+    there (a residual of U262's): ``(feat. Anna)``, ``(ft Anna)``
     and ``(with Anna)`` are credits, ``(Without You Remix)`` and ``(Feature
     Edit)`` are versions, and ``(Live with Strings)`` is a version because its
     marker is not first. The same answer as the letters test it replaced for

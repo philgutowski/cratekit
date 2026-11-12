@@ -264,7 +264,7 @@ def test_a_title_written_wholly_in_brackets_keeps_its_words(spelled, expected):
     so the row named no title and refused every playlist ``crate sync twins``
     planned. An empty group is still nothing, and a group after a title is
     still the version it always was. A first group is the title even when it
-    reads like a credit, since ``with `` is a credit prefix and ``[With You]``
+    reads like a credit, since ``with`` is a credit marker and ``[With You]``
     is a title.
     """
     assert match.split_version(spelled) == expected
