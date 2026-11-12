@@ -79,11 +79,16 @@ class Transport:
 
     def __init__(self, status: int = 200) -> None:
         self.status = status
+        #: A status to RAISE rather than answer, as a transport whose refusal
+        #: comes out as an exception carrying the answer.
+        self.raises: int | None = None
         self.sent: list[tuple[str, str]] = []
 
     def request(self, method: str, url: str, **kwargs: Any) -> Answer:
         del kwargs
         self.sent.append((method, url))
+        if self.raises is not None:
+            raise HTTPFailure(Answer(self.raises))
         return Answer(self.status)
 
 
@@ -399,6 +404,36 @@ def test_a_refusal_answered_through_the_shared_client_drops_it_for_both_seams(
 
     assert catalogue.resolve(cfg)._session is factory.built[1]
     assert account.resolve(cfg) is not remote
+    assert len(factory.built) == 2
+
+
+def test_a_refusal_the_transport_raises_drops_the_client_too(cfg, monkeypatch):
+    """A transport that raises its refusal rather than answering it, with the
+    answer on the exception as the provider library's HTTP error carries it."""
+    factory = use(monkeypatch, Factory())
+    record()
+    found = catalogue.resolve(cfg)
+
+    found._session.request_session.raises = 401
+    with pytest.raises(HTTPFailure):
+        found._session.read()
+
+    assert catalogue.resolve(cfg)._session is factory.built[1]
+
+
+def test_a_refusal_answered_to_a_client_no_longer_held_keeps_the_newer_one(cfg, monkeypatch):
+    """The first client, still in an adapter's hands after a replaced session
+    was logged in afresh, meets a 401: the newer session is not the one refused."""
+    factory = use(monkeypatch, Factory())
+    record()
+    first = catalogue.resolve(cfg)
+    record(dict(STORED, access_token="FAKE-value-7"))
+    second = catalogue.resolve(cfg)
+
+    first._session.request_session.status = 401
+    first._session.read()
+
+    assert catalogue.resolve(cfg)._session is second._session
     assert len(factory.built) == 2
 
 
