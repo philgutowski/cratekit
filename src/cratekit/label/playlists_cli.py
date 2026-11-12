@@ -113,10 +113,12 @@ NOTHING_LEFT_SAID = (
     "a dated track the provider still lists: {gone} gone from the provider, "
     "{undated} with no year, {unnamed} named by no release"
 )
-#: What it adds when tracks were left out as removed from the library.
+#: What it says instead when tracks were left out as removed from the library:
+#: the removal first, then the same tally.
 NOTHING_LEFT_TOMBSTONED_SAID = (
-    "; {tombstoned} track(s) of them were removed from the library through crate "
-    "delete review and are never added"
+    "label sync goes took {taken} release(s) of this label and none of them has "
+    "a dated track left to add, since {tombstoned} track(s) of them were removed "
+    "from the library through crate delete review and are never added"
 )
 
 
@@ -382,6 +384,7 @@ def read_catalogue(
             f"{len(confirmed.dropped)} release(s) were read and the catalogue "
             f"confirmed none of them as the label's",
         )
+    gone_from_library = tombstoned.Tombstoned(cfg)
     grouped = _grouped(
         entry,
         found,
@@ -389,8 +392,28 @@ def read_catalogue(
             (str(getattr(release, "id", "") or ""), sweep.year_of(release))
             for release in confirmed.releases
         ],
-        tombstoned.Tombstoned(cfg),
+        gone_from_library,
         reads,
+    )
+    # A RELEASE THE TOMBSTONE SUPPRESSED IS READ FOR ITS TRACKS' SAKE ALONE
+    # (U243, round two of its review). A single is named for its track, so
+    # removing the track suppresses the release, and unread its track was
+    # judged by nothing: the prune left it on its year and heard merged it
+    # back. Its tracks are judged and nothing else is taken from the read, so
+    # a suppressed release still adds nothing and keeps nothing.
+    held_back = (
+        _grouped(
+            entry,
+            found,
+            [
+                (str(getattr(release, "id", "") or ""), sweep.year_of(release))
+                for release in confirmed.suppressed_releases
+            ],
+            gone_from_library,
+            reads,
+        ).tombstoned
+        if confirmed.suppressed_releases
+        else ()
     )
     return folders.LabelCatalogue(
         label_id=entry.label_id,
@@ -402,7 +425,7 @@ def read_catalogue(
         gone=grouped.gone,
         suppressed=confirmed.suppressed,
         by_release=grouped.by_release,
-        tombstoned=grouped.tombstoned,
+        tombstoned=tuple(sorted({*grouped.tombstoned, *held_back})),
         # A VERDICT OF MISMATCH IS THE CATALOGUE SAYING ANOTHER LABEL, which is
         # what "no longer confirms" means to the prune. "unconfirmed" is no
         # credit found, an absence, and is not evidence of anything (R-836).
@@ -736,7 +759,11 @@ def _nothing_said(
         unnamed=sum(1 for one in taken if _unnamed(one.identity)),
     )
     if read.tombstoned:
-        said += NOTHING_LEFT_TOMBSTONED_SAID.format(tombstoned=len(read.tombstoned))
+        # THE REMOVAL LEADS, since the provider may still list every track of a
+        # release whose tracks the library removed.
+        return NOTHING_LEFT_TOMBSTONED_SAID.format(
+            taken=len(taken), tombstoned=len(read.tombstoned)
+        ) + said[said.index(":"):]
     return said
 
 

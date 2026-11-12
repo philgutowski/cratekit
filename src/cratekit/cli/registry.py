@@ -3568,7 +3568,8 @@ ENTRIES: tuple[Entry, ...] = (
                 name="label.heard.confirm",
                 options=("apply", "abort"),
                 prompt="Mark these releases heard, put the dated playlist's tracks in "
-                "the year and remove it from the streaming account?",
+                "the year, less any removed or pruned, and remove it from the "
+                "streaming account?",
                 #: EXPLICIT, as every other write to the account is (R34).
                 explicit=True,
                 digest_source="plan",

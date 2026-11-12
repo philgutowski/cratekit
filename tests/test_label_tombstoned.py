@@ -29,8 +29,15 @@ from tests import outbound_fakes
 from tests import test_label_dated as dated_suite
 from tests import test_label_heard as heard_suite
 from tests import test_label_playlists as playlists_suite
+from tests import test_prune as prune_suite
 from tests.cli_drive import drive
-from tests.label_fakes import FakeCatalogue, FakePagedArtist, FakeTrack, catalogue_factory
+from tests.label_fakes import (
+    FakeCatalogue,
+    FakePagedArtist,
+    FakeRelease,
+    FakeTrack,
+    catalogue_factory,
+)
 from tests.test_label_playlists import LABEL, LABEL_ID, LISTED
 from tests.test_label_playlists_releases import _took
 from tests.test_label_workers import register
@@ -448,12 +455,13 @@ def test_a_year_the_provider_plays_nothing_of_is_planned_as_before(followed):
     "tracks",
     [
         [{"id": "t4", "available": True, "artist": ACT}],
+        [{"id": "t4", "available": True, "title": "Track t4"}],
         [
             {"id": "t4", "available": True, "artist": ACT, "title": "Track t4"},
             {"id": "t5", "available": True},
         ],
     ],
-    ids=["no-title", "one-track-unnamed"],
+    ids=["no-title", "no-artist", "one-track-unnamed"],
 )
 def test_a_kept_read_missing_any_track_word_is_read_again(followed, tracks):
     path = kept_reads.path_for(LABEL_ID)
@@ -477,3 +485,86 @@ def test_a_kept_read_missing_any_track_word_is_read_again(followed, tracks):
     code, refused = drive(["label", "playlists", LABEL])
     assert code == int(ExitCode.DECISION_REQUIRED), refused
     assert "r3" in followed.fake.releases_asked_for
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. Round two's findings: a single named for its track, a prune heard undid
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _with_a_single() -> FakeCatalogue:
+    """The catalogue plus r8, a single whose title is its one track's."""
+    releases = _releases()
+    single = _named("t10")
+    single.name = single.full_name = "Solo Cut"
+    releases["r8"] = ([single], 2023)
+    return FakeCatalogue(
+        artists={
+            LABEL_ID: FakePagedArtist([*LISTED, FakeRelease("r8", year="2023", title="Solo Cut")])
+        },
+        releases=releases,
+        confirmed={"r1", "r2", "r3", "r4", "r5", "r7", "r8"},
+    )
+
+
+def test_a_removed_single_is_taken_off_though_its_release_is_suppressed(followed):
+    """R2 B1: the tombstone suppressed the single's release, so its track went unjudged."""
+    fake = _with_a_single()
+    followed.monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    code, done = _two_acts(["label", "playlists", LABEL], BUILD)
+    assert code == int(ExitCode.OK), done
+    assert followed.account.playlists["pl-3"][-1] == "t10"
+
+    _tombstone(followed.cfg, ACT, "Solo Cut")
+    code, refused = drive(["label", "prune", LABEL])
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    assert "removed from the library" in refused["cause"]["detail"]["shown"]
+    code, done = _two_acts(["label", "prune", LABEL], PRUNE)
+    assert code == int(ExitCode.OK), done
+    assert _taken(done) == [("pl-3", "t10")]
+    assert "t10" not in followed.account.playlists["pl-3"]
+
+
+def test_hearing_never_merges_back_a_removed_single(installed, monkeypatch):
+    """R2 B1's heard face: the dated playlist held the single from before the removal."""
+    register(LABEL)
+    fake = _with_a_single()
+    monkeypatch.setattr(catalogue, "resolve", catalogue_factory(fake))
+    account = outbound_fakes.StrictAccount()
+    bind_account(monkeypatch, account)
+    folder_id = heard_suite._made(
+        installed, fake, account, [dated_suite._answer(["r3", "r8"], DAY)]
+    )
+    year_id = heard_suite._ids(account, folder_id)[heard_suite.YEAR]
+    # TAKEN OFF THE YEAR BY HAND, as the card's live session did.
+    account.playlists[year_id] = [one for one in account.playlists[year_id] if one != "t10"]
+    _tombstone(installed, ACT, "Solo Cut")
+    code, envelope = heard_suite._two_acts(heard_suite.VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert "t10" not in account.playlists[year_id]
+
+
+def test_hearing_never_undoes_a_prune_of_a_held_release(plain):
+    """The class one step over: a track the prune took off the year stays off it."""
+    cfg, fake, account = plain
+    folder_id = heard_suite._made(cfg, fake, account, [dated_suite._answer(["r3", "r4"], DAY)])
+    prune_suite._hold(cfg, "r3")
+    code, done = _two_acts(["label", "prune", LABEL], PRUNE)
+    assert code == int(ExitCode.OK), done
+    assert playlists_suite._years(account, folder_id)[heard_suite.YEAR] == ["t6", "t7"]
+    code, envelope = heard_suite._two_acts(heard_suite.VERB)
+    assert code == int(ExitCode.OK), envelope
+    assert playlists_suite._years(account, folder_id)[heard_suite.YEAR] == ["t6", "t7"]
+    assert heard_suite.DATED not in heard_suite._ids(account, folder_id)
+
+
+def test_hearing_a_playlist_of_only_removed_tracks_says_nothing_goes_in_the_year(plain):
+    cfg, fake, account = plain
+    heard_suite._made(cfg, fake, account, [dated_suite._answer(["r3"], DAY)])
+    _tombstone(cfg, "", "Track t4", content_id="44")
+    _tombstone(cfg, "", "Track t5", content_id="45")
+    code, refused = drive(heard_suite.VERB)
+    assert code == int(ExitCode.DECISION_REQUIRED), refused
+    shown = refused["cause"]["detail"]["shown"]
+    assert shown["year playlist"].startswith("nothing goes in the year: all 2 track(s)")
+    assert not [one for one in shown.get("items", []) if one.get("action") == "add"]

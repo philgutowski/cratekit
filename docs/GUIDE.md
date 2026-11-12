@@ -819,8 +819,9 @@ local file, rekordbox's streaming rows and `soundcloud:` locations among them,
 are left out and counted on the gate. `crate tombstone list` shows what was
 removed; `--revoke ID` lets that version be acquired again. A removed track
 also stays off its label's year playlists: `label playlists` never adds it,
-`label heard` never merges it in from a dated playlist, and `label prune` takes
-it off.
+`label heard` never merges it in from a dated playlist (nor a track `label
+prune` took off that year), and `label prune` takes it off, a single named for
+its track included.
 
 **Review queue.** `crate review list [--queue Q] [--kind K]`, `review show
 ID`, `review resolve ID --verdict accepted|rejected [--option X]` (or

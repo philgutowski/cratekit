@@ -20,9 +20,16 @@ run over a playlist already merged plans nothing.
 
 THE MERGE ADDS BEFORE IT REMOVES. Every track the dated playlist holds that the
 year does not is added to the year first, and the dated playlist is removed
-only once every track it held is in the year. A track the provider would not
-add leaves the dated playlist where it is, said, rather than removed with the
-one copy of that track. The year keeps every confirmed track as it does today.
+only once every track it held is in the year or is one the year must not hold.
+A track the provider would not add leaves the dated playlist where it is,
+said, rather than removed with the one copy of that track. The year keeps
+every confirmed track as it does today.
+
+A TRACK THE YEAR MUST NOT HOLD IS NEVER MERGED (U243): one the library removed
+through ``crate delete review``, a tombstone standing over it, and one the
+outbound ledger records as taken off that year by ``label prune``. Either
+leaves with the dated playlist and nothing puts it back, so hearing a playlist
+never undoes a prune or a removal.
 
 SOME OF THE RELEASES, NOT ALL. Naming releases with ``--release`` marks those
 heard. While another release of the playlist is still unheard, the named ones'
@@ -153,10 +160,10 @@ class HeardPlan:
     merging: tuple[str, ...] = ()
     #: Those of ``merging`` the year does not hold yet, less ``tombstoned``.
     add: tuple[str, ...] = ()
-    #: Those of ``merging`` the library removed through ``crate delete review``
-    #: (U243): they leave the dated playlist with the rest and are never put in
-    #: the year, so hearing a playlist cannot undo a prune or a build that left
-    #: them out.
+    #: Those of ``merging`` the year must not hold (U243): removed from the
+    #: library through ``crate delete review``, or recorded as taken off the
+    #: year by ``label prune``. They leave the dated playlist with the rest and
+    #: are never put in the year, so hearing a playlist undoes neither.
     tombstoned: tuple[str, ...] = ()
     #: The year is the one the ledger records, so what is added is recorded on it.
     year_recorded: bool = False
@@ -205,7 +212,7 @@ class HeardPlan:
                 **({"why": _why(self)} if _why(self) else {}),
             }
         )
-        if self.add or self.merging:
+        if self.year_id and (self.add or self.merging):
             items.append(
                 {
                     "id": self.year_id,
@@ -255,7 +262,16 @@ def _why(planned: HeardPlan) -> str:
             f"{len(planned.unheard)} release(s) of it are still unheard, so the named "
             f"releases' tracks come off it and it stays"
         )
-    return "every release of it is heard, so its tracks go in the year and it is removed"
+    if planned.tombstoned and not planned.year_id:
+        return (
+            "every release of it is heard and every track it holds was removed from "
+            "the library or taken off the year, so nothing goes in the year and it is "
+            "removed"
+        )
+    return (
+        "every release of it is heard, so its tracks go in the year, less any the "
+        "year must not hold, and it is removed"
+    )
 
 
 def _refused(reason: str, message: str, *steps: str, **detail: Any) -> CratekitError:
@@ -377,7 +393,10 @@ def plan(
     planned = replace(base, action=action, dated_id=dated_id, tracks=tracks, merging=merging)
     if not merging:
         return planned
-    taken_away = set(catalogue.tombstoned)
+    year_record = shape.years.get(year)
+    taken_away = set(catalogue.tombstoned) | (
+        set(year_record.pruned) if year_record is not None else set()
+    )
     if all(one in taken_away for one in merging):
         # EVERY TRACK IT WOULD MERGE WAS REMOVED (U243), so no year is needed
         # to hold them and none is asked for: a year whose every track was
@@ -416,7 +435,8 @@ class Heard:
     """What an apply wrote, for the report and for a failure part way."""
 
     added: int = 0
-    #: Tracks of ``merging`` the year does not hold once the adds are done.
+    #: Tracks of ``merging`` the year does not hold once the adds are done and
+    #: that it must hold, so not ``tombstoned``.
     missing: list[str] = field(default_factory=list)
     taken_off: int = 0
     removed: bool = False
