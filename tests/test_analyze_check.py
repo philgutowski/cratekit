@@ -18,6 +18,7 @@ D1 applies. Nothing here names a real volume, a real person or a real track.
 from __future__ import annotations
 
 import builtins
+import contextlib
 import io
 import os
 import sqlite3
@@ -26,14 +27,17 @@ import threading
 from pathlib import Path
 
 import pytest
+from sqlalchemy import event
 
-from cratekit.analysis import check_cli
+from cratekit.analysis import agreement, check_cli
 from cratekit.analysis import rekordbox_check as rc
+from cratekit.cli.output import digest_of
 from cratekit.core import analysis_store, config, rb_writer
 from cratekit.core.exit_codes import ExitCode
-from cratekit.intake import native
+from cratekit.core.naming import pad_camelot
+from cratekit.intake import analyzed, native
 from tests.cli_drive import drive
-from tests.test_inbox_analyzed import _content_id, _land
+from tests.test_inbox_analyzed import _analyze_id, _content_id, _land
 from tests.test_inbox_refill import offline as offline  # noqa: PLC0414
 from tests.test_intake_land_account_playlists_native import (
     pinned_day as pinned_day,  # noqa: PLC0414
@@ -732,3 +736,311 @@ def test_a_removed_dyn_mark_does_not_excuse_a_variable_grid(native_library, sile
 
     assert code == int(ExitCode.LIBRARY_PREREQUISITE), envelope
     assert _items(envelope)["Charlie"]["dyn"] is False
+
+
+# ---------------------------------------------------------------------------
+# U259: the collection read in a handful of statements, the answer unchanged
+# ---------------------------------------------------------------------------
+#
+# The reference below is a VERBATIM COPY of the per row reads the check made
+# before U259, kept here as the answer the batched reads must equal: the scope
+# of every row rekordbox has not analysed judged by reading each collection row
+# again by its ID, and each row in scope read twice more, once for the clear's
+# judgment and once for its key, title head and analysis path. It reads through
+# ``analyzed.member``, the read by ID, so it holds today's judgment of a row as
+# well as today's reads.
+
+
+def _unanalysed_today(db):
+    """``rekordbox_check._unanalysed`` before U259, its scope as a mapping with no rows."""
+    waiting = []
+    for content in db.get_content():
+        one = analyzed.member(db, str(content.ID))
+        if one.why == analyzed.NOT_ANALYSED or one.why == analyzed.NO_ANALYSIS_PATH:
+            waiting.append(one.content_id)
+    return dict.fromkeys(waiting)
+
+
+def _read_row_today(cfg, db, content_id, *, keys, dyn, template):
+    """``rekordbox_check.read_row`` before U259: three reads of the row by ID."""
+    one = analyzed.member(db, content_id)
+    if one.why in (analyzed.NO_ROW, analyzed.ROW_REMOVED):
+        return rc.Row(content_id=content_id, title=one.title, state=rc.GONE, why=one.why)
+    content = db.get_content(ID=content_id)
+    key_id = getattr(content, "KeyID", None)
+    key = agreement.camelot_from_scale_name(keys.get(str(key_id))) if key_id else None
+    head = rc.head_key(content, template=template)
+    common = {
+        "content_id": content_id,
+        "title": one.title,
+        "key": key,
+        "head_key": None if head is None else pad_camelot(head),
+        "relation": rc.key_relation(head, key),
+        "dyn": content_id in dyn,
+    }
+    if one.action != analyzed.CLEAR:
+        return rc.Row(state=rc.NOT_ANALYSED, why=one.why, **common)
+    stored = str(getattr(content, "AnalysisDataPath", "") or "")
+    try:
+        path = analysis_store.analysis_file(cfg, stored)
+    except ValueError as exc:
+        return rc.Row(state=rc.ANALYSED, grid=rc.Grid(state=rc.UNREADABLE, why=str(exc)), **common)
+    return rc.Row(state=rc.ANALYSED, grid=rc.read_grid(path), **common)
+
+
+def _check_rows_today(cfg, db, scope, *, template):
+    """``rekordbox_check.check_rows`` before U259, each row read by ID."""
+    keys = {str(key.ID): key.ScaleName for key in db.get_key()}
+    dyn = rc.dyn_marked(db)
+    rows = tuple(
+        _read_row_today(cfg, db, content_id, keys=keys, dyn=dyn, template=template)
+        for content_id in scope.content_ids
+    )
+    return rc.Check(scope=scope, rows=rows)
+
+
+def _today(monkeypatch) -> None:
+    """Put the per row reads back, for the reference drive."""
+    monkeypatch.setattr(rc, "_unanalysed", _unanalysed_today)
+    monkeypatch.setattr(rc, "check_rows", _check_rows_today)
+
+
+def _answer(code: int, envelope: dict) -> dict:
+    """Everything the verb answered that a second drive of it can equal: no run id, no clock."""
+    pending = dict(envelope.get("pending_human_action") or {})
+    pending.pop("id", None)
+    cause = dict(envelope.get("cause") or {})
+    if "detail" in cause:
+        cause["detail"] = {k: v for k, v in cause["detail"].items() if k != "pending_id"}
+    return {
+        "code": code,
+        "outcome": envelope.get("outcome"),
+        "data": envelope.get("data"),
+        "digest": digest_of(envelope.get("data")),
+        "warnings": envelope.get("warnings"),
+        "cause": cause,
+        "pending": pending,
+    }
+
+
+def _both(monkeypatch, argv: list[str]) -> tuple[dict, dict]:
+    """The verb's answer with the batched reads, then with today's per row reads."""
+    batched = _answer(*drive(argv))
+    with monkeypatch.context() as patched:
+        _today(patched)
+        per_row = _answer(*drive(argv))
+    return batched, per_row
+
+
+def _mixed(cfg: config.Config, silence: Path) -> None:
+    """Every kind of row the check tells apart, landed into INBOX / Analyze.
+
+    Alpha analysed on a constant grid with an equal key; Bravo on a variable
+    grid, marked dyn; Charlie on a variable grid, unmarked; Delta not analysed;
+    Echo marked analysed with no analysis path; Foxtrot analysed with its file
+    missing; Golf analysed with no key; Hotel removed by rekordbox; India
+    deleted from the collection while its membership stays.
+    """
+    _land(cfg, silence, "2026-10-31_mixed", MIXED)
+    _visit(cfg, "Alpha")
+    _visit(cfg, "Bravo", tempos=VARIABLE_GRID, scale="2A")
+    _visit(cfg, "Charlie", tempos=VARIABLE_GRID, scale="5B")
+    _visit(cfg, "Foxtrot", write_file=False)
+    _visit(cfg, "Golf", scale=None)
+    _mark_dyn(cfg, "Bravo")
+    echo, hotel, india = (_content_id(cfg, stem) for stem in ("Echo", "Hotel", "India"))
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            "UPDATE djmdContent SET Analysed = 105, AnalysisDataPath = '' WHERE ID = ?", (echo,)
+        )
+        conn.execute("UPDATE djmdContent SET rb_local_deleted = 1 WHERE ID = ?", (hotel,))
+        conn.execute("DELETE FROM djmdContent WHERE ID = ?", (india,))
+    conn.close()
+
+
+MIXED = ("Alpha", "Bravo", "Charlie", "Delta", "Echo", "Foxtrot", "Golf", "Hotel", "India")
+
+
+def test_the_mixed_library_reads_as_the_per_row_reads_read_it_in_inbox_analyze(
+    native_library, silence, monkeypatch
+):
+    cfg, _root = native_library
+    _mixed(cfg, silence)
+
+    batched, per_row = _both(monkeypatch, VERB)
+
+    assert batched == per_row
+    summary = batched["data"]["summary"]
+    # The fixture is the mix it says, so the equality is over every kind of row.
+    assert summary["scope"] == rc.SCOPE_ANALYZE and summary["verdict"] == rc.SUSPECT
+    states = {stem: item["state"] for stem, item in _items(batched).items() if stem}
+    assert states == {
+        "Alpha": rc.ANALYSED,
+        "Bravo": rc.ANALYSED,
+        "Charlie": rc.ANALYSED,
+        "Delta": rc.NOT_ANALYSED,
+        "Echo": rc.NOT_ANALYSED,
+        "Foxtrot": rc.ANALYSED,
+        "Golf": rc.ANALYSED,
+        "Hotel": rc.GONE,
+    }
+    # India has left the collection, so it has no title to be named by: it is
+    # the one row whose title is empty, and it is read as gone.
+    gone = [item for item in summary["items"] if not item["title"]]
+    assert [item["state"] for item in gone] == [rc.GONE]
+    assert gone[0]["why"] == analyzed.NO_ROW
+
+
+def test_the_mixed_library_reads_as_the_per_row_reads_read_it_over_every_row(
+    native_library, silence, monkeypatch
+):
+    cfg, root_id = native_library
+    _mixed(cfg, silence)
+    _empty_analyze(cfg, root_id)
+
+    batched, per_row = _both(monkeypatch, VERB)
+
+    assert batched == per_row
+    summary = batched["data"]["summary"]
+    assert summary["scope"] == rc.SCOPE_UNANALYSED
+    waiting = sorted(item["title"].rsplit(" - ", 1)[-1] for item in summary["items"])
+    # Delta and Echo wait, Echo for its missing path; nothing removed or gone is
+    # in this scope, and no row analysed is.
+    assert {"Delta", "Echo"} <= set(waiting)
+    assert not {"Alpha", "Bravo", "Charlie", "Foxtrot", "Golf", "Hotel", "India"} & set(waiting)
+
+
+def test_the_mixed_library_reads_as_the_per_row_reads_read_it_for_a_named_landing(
+    native_library, silence, monkeypatch
+):
+    cfg, _root = native_library
+    _mixed(cfg, silence)
+    (landing,) = [r.session_id for r in native_records(cfg)]
+
+    batched, per_row = _both(monkeypatch, [*VERB, "--session", landing])
+
+    assert batched == per_row
+    assert batched["data"]["summary"]["scope"] == rc.SCOPE_SESSION
+
+
+def _empty_analyze(cfg: config.Config, root_id: str) -> None:
+    """Remove every membership of INBOX / Analyze, so the scope falls to every row."""
+    analyze = _analyze_id(cfg, root_id)
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute("UPDATE djmdSongPlaylist SET rb_local_deleted = 1 WHERE PlaylistID = ?", (analyze,))
+    conn.close()
+
+
+@pytest.mark.parametrize("scope", [rc.SCOPE_ANALYZE, rc.SCOPE_UNANALYSED])
+def test_a_row_whose_removal_marker_cannot_be_read_refuses_as_it_did(
+    native_library, silence, monkeypatch, scope
+):
+    """The first row that cannot say whether it was removed refuses, the same row and words."""
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    if scope == rc.SCOPE_UNANALYSED:
+        _empty_analyze(cfg, root_id)
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        conn.execute(
+            "UPDATE djmdContent SET rb_local_deleted = NULL WHERE ID = ?", (_content_id(cfg, "Charlie"),)
+        )
+    conn.close()
+
+    batched, per_row = _both(monkeypatch, VERB)
+
+    assert batched == per_row
+    assert batched["cause"]["reason"] == "soft-delete-marker-unreadable"
+
+
+def _clone(
+    cfg: config.Config, stem: str, count: int, *, analyze: str | None, start: int = 0
+) -> None:
+    """``count`` more collection rows like ``stem``'s, each in INBOX / Analyze when named."""
+    source = _content_id(cfg, stem)
+    conn = sqlite3.connect(cfg.library.db_path)
+    with conn:
+        columns = [row[1] for row in conn.execute("PRAGMA table_info(djmdContent)")]
+        member = conn.execute(
+            "SELECT ID FROM djmdSongPlaylist WHERE ContentID = ? AND PlaylistID = ?", (source, analyze)
+        ).fetchone()
+        links = [row[1] for row in conn.execute("PRAGMA table_info(djmdSongPlaylist)")]
+        for index in range(start, start + count):
+            content_id = f"9{index:05d}"
+            fresh = {"ID": content_id, "UUID": f"u259-{index}", "Title": f"Clone {index} - C{index}"}
+            conn.execute(
+                f"INSERT INTO djmdContent ({', '.join(columns)}) SELECT "
+                + ", ".join("?" if name in fresh else name for name in columns)
+                + " FROM djmdContent WHERE ID = ?",
+                (*(fresh[name] for name in columns if name in fresh), source),
+            )
+            if analyze is None:
+                continue
+            link = {"ID": f"sp-u259-{index}", "UUID": f"spu-u259-{index}", "ContentID": content_id,
+                    "TrackNo": 1000 + index}
+            conn.execute(
+                f"INSERT INTO djmdSongPlaylist ({', '.join(links)}) SELECT "
+                + ", ".join("?" if name in link else name for name in links)
+                + " FROM djmdSongPlaylist WHERE ID = ?",
+                (*(link[name] for name in links if name in link), member[0]),
+            )
+    conn.close()
+
+
+def _statements(monkeypatch, *, scope: str) -> tuple[int, int]:
+    """The statements one check issues on its own handle, and the rows it read."""
+    issued: list[str] = []
+    opened = rb_writer.read_only_copy
+
+    @contextlib.contextmanager
+    def counted(source, *, cfg=None):
+        with opened(source, cfg=cfg) as db:
+            bind = db.session.get_bind()
+            listener = lambda *args: issued.append(args[2])  # noqa: E731
+            event.listen(bind, "before_cursor_execute", listener)
+            try:
+                yield db
+            finally:
+                event.remove(bind, "before_cursor_execute", listener)
+
+    with monkeypatch.context() as patched:
+        patched.setattr(rb_writer, "read_only_copy", counted)
+        code, envelope = drive(VERB)
+    assert code == int(ExitCode.PENDING_HUMAN), envelope
+    summary = envelope["data"]["summary"]
+    assert summary["scope"] == scope
+    return len(issued), summary["rows"]
+
+
+@pytest.mark.parametrize("scope", [rc.SCOPE_ANALYZE, rc.SCOPE_UNANALYSED])
+def test_the_check_reads_the_collection_in_statements_that_do_not_grow_with_it(
+    native_library, silence, monkeypatch, scope
+):
+    """The statements one check issues are the same at two sizes, and few (U259).
+
+    Before U259 the unanalysed scope asked for every collection row again by
+    its ID and each row in scope twice more, and a playlist's members twice
+    each, so the count grew by one to three a row. The count is the assertion,
+    not a clock.
+    """
+    cfg, root_id = native_library
+    _land(cfg, silence, "2026-10-31_five", FIVE)
+    analyze = _analyze_id(cfg, root_id) if scope == rc.SCOPE_ANALYZE else None
+    if analyze is None:
+        _empty_analyze(cfg, root_id)
+
+    _clone(cfg, "Alpha", 10, analyze=analyze)
+    small, small_rows = _statements(monkeypatch, scope=scope)
+    _clone(cfg, "Alpha", 110, analyze=analyze, start=10)
+    large, large_rows = _statements(monkeypatch, scope=scope)
+
+    assert large_rows == small_rows + 110
+    assert large == small, (small, large)
+    assert large <= _FEW, large
+
+
+#: What a handful is: the statements one check issues whatever the library's
+#: size, measured at 9 for INBOX / Analyze and 6 for every row on 2026-11-12.
+_FEW = 12
