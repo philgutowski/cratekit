@@ -390,6 +390,19 @@ def test_a_float_file_keeps_its_minus_zero_frames_as_librosa_does(awkward):
 
 
 @pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
+def test_the_mix_itself_refuses_audio_that_is_not_finite_as_to_mono_does(bad):
+    """The resampler after it would refuse the mix as well; the mix refuses
+    first, as ``to_mono`` does, so it is ``to_mono`` wherever it is called."""
+    stereo = np.zeros((2, 9), dtype=np.float32)
+    stereo[0, 4] = bad
+    with pytest.raises(librosa.util.exceptions.ParameterError) as before:
+        librosa.to_mono(stereo)
+    with pytest.raises(librosa.util.exceptions.ParameterError) as now:
+        decode.mono(stereo)
+    assert str(now.value) == str(before.value)
+
+
+@pytest.mark.parametrize("bad", [np.nan, np.inf, -np.inf])
 def test_audio_that_is_not_finite_is_refused_as_before(tmp_path, bad):
     stereo = _awkward_stereo(NATIVE_RATE, seed=1)
     stereo[NATIVE_RATE // 2, 1] = bad
