@@ -221,7 +221,13 @@ crate run show RUN-ID
 crate status
 ```
 
-Remote marks are held back until that local file exists and is non-empty, and
-they are rechecked before they are applied. Marking the account first is how a
-crash leaves the service believing the run finished while the library has
-nothing to import.
+Marks are held back until that local file exists and is non-empty, and they
+are rechecked before they are applied. A mark changes no title on the
+streaming account: it records the playlist as taken in Cratekit's own record,
+so no later sync offers it again. Marking first is how a crash would leave a
+playlist taken while the library has nothing to import.
+
+Playlists the account carries with an old `DOWNLOADED ` prefix still read as
+taken. To retire that prefix, run `crate sync taken` once, which records every
+one of them, then `crate sync strip`, which takes the prefix off each behind
+its own gate and can be run again after a provider's call ceiling stops it.

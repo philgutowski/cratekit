@@ -441,7 +441,11 @@ def test_aborting_rekordbox_and_applying_the_account_writes_only_the_account(wor
     assert _filed(cfg) == []
     assert _parent(cfg, ids["batch"]) == inbox
     assert LABEL in held.folders_created
-    assert any(name.startswith("DOWNLOADED ") for _pid, name in held.renamed)
+    # U242: what the account area marked is held as taken, no prefix written.
+    from cratekit.sync import mark_record
+
+    assert mark_record.MarkRecord(cfg).taken_ids()
+    assert not any(name.startswith("DOWNLOADED ") for _pid, name in held.renamed)
 
 
 def test_report_writes_nothing_and_asks_nothing(world):
@@ -1527,10 +1531,10 @@ def test_a_set_with_no_intake_file_and_an_inspiration_playlist_of_its_name_is_ar
     assert code == int(ExitCode.OK), done
     recorded = ledger.set_playlist(cfg, SET_NAME)
     assert held.folder_names[held.placed[recorded.remote_id]] == f"Downloaded Sets {recorded.year}"
-    assert held.titles[recorded.remote_id] == f"DOWNLOADED {SET_NAME}"
+    assert held.titles[recorded.remote_id] == SET_NAME, "no title written (U242)"
     # THE SET'S OWN NAME IS THE PASS, so ``sync unmark --pass <set>`` finds it.
-    (mark,) = mark_record.MarkRecord(cfg).of_pass(SET_NAME)
-    assert (mark.playlist_id, mark.to) == (recorded.remote_id, f"DOWNLOADED {SET_NAME}")
+    taken = mark_record.MarkRecord(cfg).taken()[recorded.remote_id]
+    assert (taken.by, taken.how) == (SET_NAME, mark_record.BY_SET)
 
 
 def test_a_playlist_of_the_sets_name_outside_inspiration_or_removed_proves_nothing(world):
@@ -1635,7 +1639,7 @@ def test_a_year_record_whose_folder_now_carries_the_sets_name_is_not_the_filings
     assert ledger.set_folder(cfg, f"Downloaded Sets {year}") == renamed
 
 
-def test_a_set_in_its_folder_with_its_built_title_is_prefixed_and_not_moved(world):
+def test_a_set_in_its_folder_with_its_built_title_is_taken_and_not_moved(world):
     from cratekit.modules.outbound import ledger
 
     cfg, _fake, held, _inbox, _ids = world
@@ -1649,14 +1653,17 @@ def test_a_set_in_its_folder_with_its_built_title_is_prefixed_and_not_moved(worl
     step = _steps(_report(), account_area.AREA)[f"archive:{SET_NAME}"]
 
     assert step["state"] == "planned", step
-    assert step["detail"].startswith("prefix it where it is"), step
+    assert step["detail"].startswith("record it as taken where it is"), step
     assert "file it in" not in step["detail"]
 
     code, done, _first = _answered("abort", "apply")
 
     assert code == int(ExitCode.OK), done
     assert recorded.remote_id not in [pid for pid, _folder in held.moves]
-    assert held.titles[recorded.remote_id] == f"DOWNLOADED {SET_NAME}"
+    assert held.titles[recorded.remote_id] == SET_NAME
+    from cratekit.sync import mark_record
+
+    assert recorded.remote_id in mark_record.MarkRecord(cfg).taken_ids()
 
 
 def test_no_downloaded_sets_folder_is_made_once_and_the_year_folder_beside_it(world):

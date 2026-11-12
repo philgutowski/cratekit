@@ -2112,6 +2112,11 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # writes this product's own state and no database. The verb is driven
         # in tests/test_sync_twins_hold.py.
         "sync.release": _a_twin_holding_one_track,
+        # U242. An account with no playlist on it, so each plan is empty, the
+        # explicit gate is still asked, and approving it writes nothing. Both
+        # verbs are driven in tests/test_u242_taken.py.
+        "sync.taken": _an_account_with_no_year_folder,
+        "sync.strip": _an_account_with_no_year_folder,
     }[entry.name]
     if not callable(sample):
         return sample

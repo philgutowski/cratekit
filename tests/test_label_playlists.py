@@ -70,6 +70,14 @@ LISTED = [
     FakeRelease("r7", year="2020"),
 ]
 
+def _took(account) -> list[str]:
+    """What the mark holds as taken, having renamed nothing (U242)."""
+    from cratekit.core import config as _config
+
+    assert account.renamed == [], "no verb writes the DOWNLOADED prefix since U242"
+    return sorted(mark_record.MarkRecord(_config.load()).taken_ids())
+
+
 
 def _catalogue(releases=None, listed=None, **kwargs) -> FakeCatalogue:
     return FakeCatalogue(
@@ -131,9 +139,11 @@ def _years(account, folder_id: str) -> dict[str, list[str]]:
 
 
 def test_both_verbs_write_only_the_account_behind_an_explicit_gate():
+    """U242: the mark writes only Cratekit's own record, no surface at all."""
     for name, gate in (("label.playlists", BUILD), ("label.mark", MARK)):
         entry = registry.entry(name)
-        assert entry.writes == frozenset({"remote"}), name
+        wanted = {"label.playlists": frozenset({"remote"}), "label.mark": frozenset()}[name]
+        assert entry.writes == wanted, name
         assert entry.module_id == "labels" and entry.feature_rows == (23,)
         spec = entry.gates[0]
         assert (spec.name, spec.options, spec.explicit) == (gate, ("apply", "abort"), True)
@@ -455,22 +465,18 @@ def _mark(xml: Path, option: str = "apply") -> tuple[int, dict]:
     return _two_acts(["label", "mark", LABEL, "--xml", str(xml)], MARK, option)
 
 
-def test_the_prefix_step_renames_each_year_and_records_it_for_unmark(followed):
+def test_the_mark_takes_each_year_and_records_it_for_unmark(followed):
     cfg, _fake, account = followed
     assert _build()[0] == int(ExitCode.OK)
     xml = _landed(cfg)
     code, done = _mark(xml)
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == [
-        ("pl-1", "DOWNLOADED Kompakt 2021"),
-        ("pl-2", "DOWNLOADED Kompakt 2022"),
-        ("pl-3", "DOWNLOADED Kompakt 2023"),
-    ]
-    held = mark_record.MarkRecord(cfg).of_pass("label-sync-batch")
-    assert sorted((e.playlist_id, e.name, e.to) for e in held) == [
-        ("pl-1", "Kompakt 2021", "DOWNLOADED Kompakt 2021"),
-        ("pl-2", "Kompakt 2022", "DOWNLOADED Kompakt 2022"),
-        ("pl-3", "Kompakt 2023", "DOWNLOADED Kompakt 2023"),
+    assert _took(account) == ["pl-1", "pl-2", "pl-3"]
+    held = mark_record.MarkRecord(cfg).taken()
+    assert sorted((e.playlist_id, e.name, e.by, e.how) for e in held.values()) == [
+        ("pl-1", "Kompakt 2021", "label-sync-batch", mark_record.BY_LABEL),
+        ("pl-2", "Kompakt 2022", "label-sync-batch", mark_record.BY_LABEL),
+        ("pl-3", "Kompakt 2023", "label-sync-batch", mark_record.BY_LABEL),
     ]
 
 
@@ -501,11 +507,9 @@ def test_sync_unmark_takes_the_label_mark_off_again(followed):
         ["sync", "unmark", "--pass", "label-sync-batch"], "sync.unmark.confirm"
     )
     assert code == int(ExitCode.OK), done
-    assert sorted(account.renamed) == [
-        ("pl-1", "Kompakt 2021"),
-        ("pl-2", "Kompakt 2022"),
-        ("pl-3", "Kompakt 2023"),
-    ]
+    assert account.renamed == [], "a release writes nothing on the account (U242)"
+    assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
+    assert {item["action"] for item in done["data"]["items"]} == {"released"}
 
 
 def test_a_mark_with_no_landed_file_refuses_before_anything(followed):
@@ -806,7 +810,7 @@ def test_a_year_the_batch_did_not_file_is_left_alone(followed):
     assert _build()[0] == int(ExitCode.OK)
     code, done = _mark(_landed(cfg, years=("2023",)))
     assert code == int(ExitCode.OK), done
-    assert account.renamed == [("pl-3", "DOWNLOADED Kompakt 2023")]
+    assert _took(account) == ["pl-3"]
     reasons = {item["id"]: item.get("reason") for item in done["data"]["items"]}
     assert reasons["pl-1"] == reasons["pl-2"] == "not-in-batch"
 
@@ -840,25 +844,25 @@ def test_a_mark_of_a_label_nobody_follows_says_so(followed):
     assert [w["code"] for w in done["warnings"]] == ["label-playlists-not-followed"]
 
 
-def test_a_rename_the_record_cannot_take_is_said_apart_from_the_recorded_ones(
-    followed, monkeypatch
-):
+def test_a_mark_the_record_cannot_take_names_what_it_took_before(followed, monkeypatch):
     cfg, _fake, account = followed
     assert _build()[0] == int(ExitCode.OK)
+    take = mark_record.MarkRecord.take
     written: list[str] = []
 
-    def record_marked(self, pass_name, renamed, *, now=None):
+    def full(self, entries):
         if written:
             raise OSError(28, "No space left on device")
-        written.extend(renamed)
+        written.extend(entry.playlist_id for entry in entries)
+        return take(self, entries)
 
-    monkeypatch.setattr(mark_record.MarkRecord, "record_marked", record_marked)
+    monkeypatch.setattr(mark_record.MarkRecord, "take", full)
     code, failed = _mark(_landed(cfg))
     assert code == int(ExitCode.PRECONDITION), failed
     assert failed["cause"]["reason"] == "sync-mark-record-unusable"
-    assert failed["cause"]["detail"]["unrecorded"] == ["pl-2"]
-    assert "sync unmark will not find it" in failed["cause"]["message"]
-    assert [pid for pid, _to in account.renamed] == ["pl-1", "pl-2"]
+    assert failed["cause"]["detail"]["marked"] == ["pl-1"]
+    assert failed["cause"]["detail"]["still_unmarked"] == ["pl-2", "pl-3"]
+    assert account.renamed == []
 
 
 def test_a_recorded_year_deleted_on_the_account_is_left_alone_not_refused(followed):

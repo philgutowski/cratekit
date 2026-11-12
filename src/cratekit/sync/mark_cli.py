@@ -589,6 +589,16 @@ def _failed_part_way(
         "unmarked": [identity for identity in planned if identity not in landed],
     }
     again = "run crate sync mark again; a playlist already taken is skipped"
+    if isinstance(exc, OSError):
+        # THE RECORD COULD NOT BE WRITTEN, which since U242 is the mark itself.
+        return refuse(
+            "sync-mark-record-unusable",
+            f"{said}. The record could not be written ({type(exc).__name__}: {exc})",
+            steps=("make the library's state directory writable by this account", again),
+            scope=Scope.RUN,
+            origin=_ORIGIN,
+            detail={**detail, "kind": type(exc).__name__},
+        )
     if isinstance(exc, CratekitError):
         cause = exc.cause
         return refuse(

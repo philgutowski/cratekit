@@ -711,7 +711,7 @@ def test_an_empty_page_after_full_ones_ends_the_listing_and_a_full_last_page_nev
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def test_the_archive_prefixes_records_and_files_it_in_a_year_folder_made_once(account):
+def test_the_archive_takes_records_and_files_it_in_a_year_folder_made_once(account):
     cfg, _fake, held = account
     assert _build(_tracklist(cfg))[0] == int(ExitCode.OK)
     other = "Second Night"
@@ -728,10 +728,11 @@ def test_the_archive_prefixes_records_and_files_it_in_a_year_folder_made_once(ac
     assert folder_item["name"] == f"Downloaded Sets {year}"
     (folder_id,) = held.folder_names
     assert held.placed[first] == folder_id
-    assert held.titles[first] == f"DOWNLOADED {NAME}"
-    marks = mark_record.MarkRecord(cfg).of_pass("set-batch")
-    assert [(m.playlist_id, m.name, m.to) for m in marks] == [
-        (first, NAME, f"DOWNLOADED {NAME}")
+    # U242: NO TITLE CHANGES, the set is held as taken under the pass.
+    assert held.titles[first] == NAME and held.renamed == []
+    taken = mark_record.MarkRecord(cfg).taken()
+    assert [(t.playlist_id, t.name, t.by, t.how) for t in taken.values()] == [
+        (first, NAME, "set-batch", mark_record.BY_SET)
     ]
     code, done = _archive(xml, name=other)
     assert code == int(ExitCode.OK), done
@@ -792,6 +793,7 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     folder = held.create_folder(folder_name)
     made_by_hand = len(held.folders_created)
     held.placed[recorded.remote_id] = folder
+    # A SET MARKED BY HAND BEFORE U242, its old prefix still on it.
     held.titles[recorded.remote_id] = f"DOWNLOADED {NAME}"
     argv = ["export", "archive", NAME, "--xml", str(_landed(cfg))]
 
@@ -800,7 +802,7 @@ def test_a_set_put_in_its_folder_by_hand_writes_nothing_and_its_gate_says_so(acc
     assert code == int(ExitCode.DECISION_REQUIRED), asked
     shown = asked["cause"]["detail"]["shown"]
     assert "recorded folder" not in shown
-    assert shown["nothing to write"] == "the playlist is already in its folder and marked"
+    assert shown["nothing to write"] == "the playlist is already in its folder and held as taken"
     code, done = _archive(_landed(cfg))
     assert code == int(ExitCode.OK), done
     assert done["outcome"] == "no_op"
@@ -835,7 +837,7 @@ def test_a_playlist_retitled_by_a_person_is_filed_and_its_title_left(account):
     assert code == int(ExitCode.OK), done
     assert held.placed.get(playlist) and held.renamed == []
     assert any(w["code"] == "export-archive-changed-since-plan" for w in done["warnings"])
-    assert mark_record.MarkRecord(cfg).of_pass("set-batch") == ()
+    assert mark_record.MarkRecord(cfg).taken() == {}
 
 
 def test_a_name_with_a_slash_finds_the_set_it_named_at_build(account):
@@ -844,7 +846,10 @@ def test_a_name_with_a_slash_finds_the_set_it_named_at_build(account):
     assert held.created == ["Live - Boiler Room"]
     code, done = _archive(_landed(cfg), name="Live / Boiler Room")
     assert code == int(ExitCode.OK), done
-    assert done["outcome"] == "ok" and held.renamed
+    assert done["outcome"] == "ok" and held.renamed == []
+    assert ledger.set_playlist(cfg, "Live - Boiler Room").remote_id in (
+        mark_record.MarkRecord(cfg).taken_ids()
+    )
 
 
 def test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed(account, monkeypatch):
@@ -866,9 +871,8 @@ def test_a_playlist_the_folder_does_not_list_yet_is_not_renamed_or_blamed(accoun
     held.moves.clear()
     code, done = _archive(_landed(cfg))
     assert code == int(ExitCode.OK), done
-    assert held.moves == [] and held.renamed == [
-        (ledger.set_playlist(cfg, NAME).remote_id, f"DOWNLOADED {NAME}")
-    ]
+    assert held.moves == [] and held.renamed == []
+    assert ledger.set_playlist(cfg, NAME).remote_id in mark_record.MarkRecord(cfg).taken_ids()
 
 
 def test_an_archive_with_no_landed_file_refuses_before_anything(account):
@@ -900,7 +904,8 @@ def test_sync_unmark_takes_the_archive_mark_off_again(account):
     held.renamed.clear()
     code, done = _two_acts(["sync", "unmark", "--pass", "set-batch"], "sync.unmark.confirm")
     assert code == int(ExitCode.OK), done
-    assert held.renamed == [(ledger.set_playlist(cfg, NAME).remote_id, NAME)]
+    assert held.renamed == [], "a release writes nothing on the account (U242)"
+    assert mark_record.MarkRecord(cfg).taken_ids() == frozenset()
 
 
 # ═══════════════════════════════════════════════════════════════════════════
