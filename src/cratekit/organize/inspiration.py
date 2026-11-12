@@ -1,7 +1,8 @@
 """INSPIRATION brought level with the account's downloaded sets (U144).
 
-The account's ``Downloaded Sets <year>`` folders hold one ``DOWNLOADED``
-playlist per set the source system downloaded, and most of those sets were
+The account's ``Downloaded Sets <year>`` folders hold one downloaded playlist
+per set the source system downloaded, once prefixed ``DOWNLOADED `` and since
+U242 held as taken in Cratekit's own record, and most of those sets were
 downloaded before a set landing wrote a playlist under INSPIRATION (U121), so
 their tracks are in the library with nothing naming the set. This step of
 ``crate organize``'s rekordbox area backfills them by MATCHING, chosen by the
@@ -9,11 +10,12 @@ author over running each set through the intake again: no track is
 downloaded, a set the source system did not finish shows as a short playlist,
 and every track left out is named under its set.
 
-THE PLAN. Every ``DOWNLOADED`` playlist in every root folder named
-``Downloaded Sets <year>``, or recorded by the archive as that year's folder
-whatever it is called now, is one set, and its INSPIRATION name is the account
-name with that prefix off, spelled by the rule a set playlist's name is made
-by (a slash becomes a dash). A playlist in such a folder without the prefix,
+THE PLAN. Every taken playlist (:func:`cratekit.sync.playlists.is_taken`, the
+record or the old prefix) in every root folder named ``Downloaded Sets
+<year>``, or recorded by the archive as that year's folder whatever it is
+called now, is one set, and its INSPIRATION name is the account name with any
+old prefix off, spelled by the rule a set playlist's name is made
+by (a slash becomes a dash). A playlist in such a folder that is not taken,
 and a folder whose playlists could not be listed, are named on the gate and
 read no further. A set whose name an INSPIRATION playlist already
 carries, by the rule the set archive reads that proof with (U142), is skipped,

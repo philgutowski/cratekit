@@ -50,7 +50,7 @@ discovery itself would never pair.
 root folder was synced. :func:`before_adoption` says when a playlist is one
 the folder held before a sync adopted it, from the record of what it held, or
 by time for a folder adopted before that record, every unknown read as held;
-:func:`downloaded_copy` says when a playlist is a ``DOWNLOADED `` copy of one
+:func:`downloaded_copy` says when a playlist is a downloaded copy of one
 a pair in the same folder already holds.
 
 Layer: modules.
@@ -97,7 +97,7 @@ SAID = {
     TWICE: "refused, two taking one account title",
     TAKEN: "left, the account already holds its folder or title for something else",
     BEFORE: "left, its account folder held it before a sync adopted the folder",
-    COPY: "left, a DOWNLOADED copy of a playlist a pair already holds",
+    COPY: "left, a downloaded copy of a playlist a pair already holds",
 }
 
 #: The attributes a playlist row carries: a plain playlist and a folder.

@@ -153,7 +153,7 @@ def sync_taken(ctx) -> Envelope:
     wanted = entries(marks, listed, now=timestamp())
     held = record.taken_ids()
     payload = _payload(wanted, held, _cursor(cfg))
-    option = ctx.gate.require(ctx.entry.gates[0], digest=payload["digest"], context=_shown(payload))
+    option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=_shown(payload))
     taking = [one for one in wanted if one.playlist_id not in held]
     if option != "apply" or not taking:
         return ctx.envelope(data=payload, outcome=Outcome.NO_OP)

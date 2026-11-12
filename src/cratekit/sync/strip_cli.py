@@ -256,7 +256,7 @@ def sync_strip(ctx) -> Envelope:
     named = list(dict.fromkeys(str(one) for one in (ctx.args.playlist or ())))
     items = _narrowed(plan(listed), named, listed)
     payload = _payload(items, named)
-    option = ctx.gate.require(ctx.entry.gates[0], digest=payload["digest"], context=_shown(payload))
+    option = ctx.gate.require(ctx.entry.gates[0], plan=payload, context=_shown(payload))
     planned = [item["id"] for item in items if item["action"] == STRIP]
     if not items:
         return ctx.envelope(

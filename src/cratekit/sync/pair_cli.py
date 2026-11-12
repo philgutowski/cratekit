@@ -64,7 +64,8 @@ name already held the account's own playlists, and those never come to
 rekordbox: the adoption records what the folder held (``MadeFolder.held``),
 and a folder adopted before that record existed is read by when the account
 says each playlist was made against the earliest mark of a pair made in it,
-an unknown read as held. A ``DOWNLOADED `` copy of a playlist a pair in the
+an unknown read as held. A downloaded copy (``DOWNLOADED `` titled, or taken
+since U242) of a playlist a pair in the
 same folder holds is that playlist again, and is not made either. Each is
 named on the gate, never dropped.
 

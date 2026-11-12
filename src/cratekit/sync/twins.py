@@ -3,14 +3,15 @@
 Decided by Phillip on 2026-10-15
 (``docs/plans/2026-10-15-1330-feat-rekordbox-tidal-parity-plan.md``, R6 to
 R10). A custom playlist the author builds on the account is swept, lands as an
-INBOX playlist, is marked ``DOWNLOADED `` and filed into the account's
+INBOX playlist, is marked (held as taken since U242, prefixed ``DOWNLOADED ``
+before it) and filed into the account's
 ``<year>`` folder for good, while its INBOX copy rotates out of rekordbox. The
 TWIN is the copy that stays: one plain playlist named as the account playlist
-less the prefix, in the top level folder ``Custom Playlists <year>``, holding
+less any old prefix, in the top level folder ``Custom Playlists <year>``, holding
 the rows the library owns for its tracks in the account's order, and paired
 with the account playlist so ``crate sync pair`` keeps the two one list.
 
-**TWO MAKERS, ONE RULE.** ``crate sync twins`` backfills every ``DOWNLOADED``
+**TWO MAKERS, ONE RULE.** ``crate sync twins`` backfills every taken
 custom playlist the account already holds in a year folder, once; the native
 landing of an account playlist pass writes the twin of each account playlist
 it writes an INBOX playlist for, in the same commit. Both take the folder, the
