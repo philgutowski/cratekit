@@ -323,7 +323,10 @@ crate route pending
   carry it and a `discogs-token` is recorded, then of the general catalogue
   by ISRC. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the
-  `KEY - BPM` head are set aside; a title is never matched by words that sit
+  `KEY - BPM` head are set aside; a file's title is read from where it
+  starts, after the head and after a part naming the file's artist, so the
+  version, artist or album written after it in a title tag or in the name of
+  a file with no title tag is never read as its title; a title is never matched by words that sit
   only inside the other title's brackets, so "Intro" is never "Sunrise Mood
   (Intro)", and a number in a title is kept, save a remaster's year and the
   zero padded track number a file's name opens with, so "Session 2" is never
