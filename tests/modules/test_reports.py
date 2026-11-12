@@ -51,6 +51,7 @@ from cratekit.core.naming import MarkerRule, NameTemplate
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.modules.reports import aging, duplicates, export
 from cratekit.write import rbxml
+from tests._parse_memo import parsed
 
 REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 SRC_ROOT = REPO_ROOT / "src"
@@ -1934,7 +1935,7 @@ def _resolved_imports(source: str, module: str, root: Path = SRC_ROOT) -> list[s
     """
     package = _package_of(module, root)
     found: list[str] = []
-    for node in ast.walk(ast.parse(source)):
+    for node in ast.walk(parsed(source)):
         if isinstance(node, ast.Import):
             found += [alias.name for alias in node.names]
         elif isinstance(node, ast.ImportFrom):
@@ -2087,7 +2088,7 @@ def filesystem_mutations(source: str) -> list[str]:
        did not ask it about ``table = vars(Path)``. There is ONE place a receiver
        resolves now, ``_bound_value``, and every rule asks it.
     """
-    tree = ast.parse(source)
+    tree = parsed(source)
     modules, direct = _writer_bindings(tree)
     return mutations_in(tree, modules=modules, direct=direct)
 
@@ -5125,7 +5126,7 @@ def _first_party_module(target: str, root: Path = SRC_ROOT) -> tuple[str, Path] 
 def _names_bound_by(source: str) -> frozenset[str]:
     """Every name a module's top level binds, read off its own statements."""
     names: set[str] = set()
-    for node in ast.parse(source).body:
+    for node in parsed(source).body:
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef, ast.ClassDef)):
             names.add(node.name)
         elif isinstance(node, (ast.Assign, ast.AnnAssign)):
@@ -5155,7 +5156,7 @@ def _import_module_calls(source: str) -> list[str]:
     absolute name is a target. Anything else, a computed name or a relative one
     whose package this does not resolve, is unreadable and is reported as such.
     """
-    tree = ast.parse(source)
+    tree = parsed(source)
     bare = {"import_module"} | {
         alias.asname
         for node in ast.walk(tree)
@@ -5263,7 +5264,7 @@ def _unnamed_writers(dotted: str, source: str) -> list[str]:
     audit exists for. No module on the allowlist does that today, which is why it
     is driven by a fixture rather than found by the walk.
     """
-    tree = ast.parse(source)
+    tree = parsed(source)
     imported, from_admitted = _writer_bindings(tree)
     own = _writer_names_of(dotted) | from_admitted
     # THE WHOLE FILE ANSWERS BOTH OF THESE and one statement cannot. A reflective
