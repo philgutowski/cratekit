@@ -1,0 +1,96 @@
+name = "u256"
+pass_kind = "light"
+
+[[rows]]
+id = "T1_existing_path_fallback"
+description = "_build_disposable_database: drop the check for a file already at the path, so a copy is written over (or refused at) a path that holds a database or a sidecar"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''    if any(os.path.lexists(f"{db_path}{suffix}") for suffix in _DATABASE_FILES):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "T2_sidecars_in_the_check"
+description = "_DATABASE_FILES: check the database file alone, so a path with a stray WAL, shared memory or journal sidecar gets a copy written beside it"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''_DATABASE_FILES = ("", "-wal", "-shm", "-journal")'''
+new = '''_DATABASE_FILES = ("",)'''
+
+[[rows]]
+id = "T3_key_carries_the_pin"
+description = "_build_disposable_database: key the cache on the variant alone, so a schema pin configured before the build is lost to the first build's"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''    key = (with_tag_category, db_version)'''
+new = '''    key = (with_tag_category, "")'''
+
+[[rows]]
+id = "T4_key_carries_the_variant"
+description = "_build_disposable_database: key the cache on the pin alone, so an untagged call gets the tagged database or the other way about"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''    key = (with_tag_category, db_version)'''
+new = '''    key = (True, db_version)'''
+
+[[rows]]
+id = "T5_template_kept"
+description = "_build_disposable_database: never keep the template, so every call builds from nothing again and the unit saves nothing"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''        _TEMPLATES[key] = template'''
+new = '''        pass'''
+
+[[rows]]
+id = "T6_template_left_whole"
+description = "_template: drop the refusal of a build that left anything beside the database file, so half a database could be copied"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''        if left != ["master.db"]:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "T7_wal_mode_kept"
+description = "_build_from_nothing (existing guard, sampled): leave the database in rollback mode, so the copies are not in the mode the real database and the snapshot pair run in"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''    conn.execute("PRAGMA journal_mode=WAL")
+    conn.commit()
+    conn.close()
+
+
+def _encrypt_in_place'''
+new = '''    conn.commit()
+    conn.close()
+
+
+def _encrypt_in_place'''
+
+[[rows]]
+id = "T8_private_copy_per_call"
+description = "_build_disposable_database: hand every caller the first caller's file by a hard link instead of a copy, the shared mutable state the unit must not introduce"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''    descriptor = os.open(db_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SQLITE_FILE_MODE)'''
+new = '''    first = _TEMPLATES.setdefault(("first", key), db_path)
+    if first != db_path and os.path.exists(first):
+        os.link(first, db_path)
+        return
+    descriptor = os.open(db_path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, _SQLITE_FILE_MODE)'''
+
+[[rows]]
+id = "T9_copy_mode"
+description = "_SQLITE_FILE_MODE: create a copy at 0666 before the umask, a plain create, so under a loose umask a copy is group writable where a build from nothing is not"
+file = "tests/test_rb_writer_db.py"
+surface = "maintainer"
+tests = ["tests/test_fixture_database_template.py", "tests/test_rb_writer_db.py"]
+old = '''_SQLITE_FILE_MODE = 0o644'''
+new = '''_SQLITE_FILE_MODE = 0o666'''
