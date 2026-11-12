@@ -78,6 +78,7 @@ from cratekit.core import (
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.write import rebuild, routing_cli, routing_pass, trees
+from tests._readings import serve_readings
 from tests.test_active_taxonomy import shipped_without, write_active
 from tests.test_config import valid_data
 from tests.test_rb_writer_db import (
@@ -2249,23 +2250,21 @@ def _write_export(
 def tagged(monkeypatch):
     """The three tag readings, served from the file NAME.
 
-    Patched at the tag reader rather than at ``read_truth``, so the reader the
-    native path uses is the one that runs. An empty file has no tags, and a
-    tag writer here would be a second thing under test.
+    Served at the tag reader rather than at ``read_truth``, so the reader the
+    native path uses is the one that runs (``tests/_readings.py``, U250). An
+    empty file has no tags, and a tag writer here would be a second thing under
+    test.
     """
-    from cratekit.core import tags
-
     by_name = {
         name: (genre, energy)
         for name, genre, energy, _ in (*EXPORT_TRACKS.values(), *RATING_TRACKS.values())
     }
-    monkeypatch.setattr(
-        tags, "read_genre_from_file", lambda path: by_name.get(Path(path).name, (None, None))[0]
+    serve_readings(
+        monkeypatch,
+        genre=lambda path: by_name.get(path.name, (None, None))[0],
+        energy=lambda path: by_name.get(path.name, (None, None))[1],
+        vox=lambda path: None,
     )
-    monkeypatch.setattr(
-        tags, "read_energy_from_file", lambda path: by_name.get(Path(path).name, (None, None))[1]
-    )
-    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: None)
 
 
 def _routed(export: Path) -> Path:
@@ -3294,13 +3293,11 @@ def _vox_members(cfg: config.Config, root_id: str) -> set[str]:
 def vox_levels(monkeypatch) -> dict[str, int]:
     """Voxlevel readings served from the file NAME, set by each test.
 
-    Patched at the tag reader, as ``tagged`` patches genre and energy, so the
+    Served at the tag reader, as ``tagged`` serves genre and energy, so the
     reader the routing derivation calls is the one that runs.
     """
-    from cratekit.core import tags
-
     levels: dict[str, int] = {}
-    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: levels.get(Path(path).name))
+    serve_readings(monkeypatch, vox=lambda path: levels.get(path.name))
     return levels
 
 
@@ -3457,11 +3454,9 @@ def test_a_corrupt_calibration_is_converge_not_comparing_rather_than_a_match(
 @pytest.fixture
 def voiced(tagged, monkeypatch) -> dict[str, int]:
     """``tagged``, with voxlevel readings served from the file name as well."""
-    from cratekit.core import tags
-
     del tagged
     levels: dict[str, int] = {}
-    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: levels.get(Path(path).name))
+    serve_readings(monkeypatch, vox=lambda path: levels.get(path.name))
     return levels
 
 
@@ -4474,16 +4469,13 @@ def test_an_intake_key_with_no_row_warns_once_and_only_as_row_absent(
 @pytest.fixture
 def rominimal(monkeypatch):
     """The intake file reads as a Rominimal track at energy 3, with no vocal reading."""
-    from cratekit.core import tags
-
     readings = {ARRIVED: ("Rominimal", 3)}
-    monkeypatch.setattr(
-        tags, "read_genre_from_file", lambda path: readings.get(Path(path).name, (None, None))[0]
+    serve_readings(
+        monkeypatch,
+        genre=lambda path: readings.get(path.name, (None, None))[0],
+        energy=lambda path: readings.get(path.name, (None, None))[1],
+        vox=lambda path: None,
     )
-    monkeypatch.setattr(
-        tags, "read_energy_from_file", lambda path: readings.get(Path(path).name, (None, None))[1]
-    )
-    monkeypatch.setattr(tags, "read_vox_from_file", lambda path: None)
 
 
 def test_the_database_inbox_gate_shows_a_genre_sub_beside_the_band_and_files_both(
@@ -4542,17 +4534,14 @@ ROMINIMAL_FOLDER = ("Minimal / Deep Tech", ("Low Energy", "Med Energy", "High En
 
 @pytest.fixture
 def rominimal_export(tagged, monkeypatch):
-    from cratekit.core import tags
-
     del tagged
     readings = {
         name: (genre, energy) for name, genre, energy, _ in EXPORT_TRACKS.values()
     } | {"Low Track.flac": ("Rominimal", 2)}
-    monkeypatch.setattr(
-        tags, "read_genre_from_file", lambda path: readings.get(Path(path).name, (None, None))[0]
-    )
-    monkeypatch.setattr(
-        tags, "read_energy_from_file", lambda path: readings.get(Path(path).name, (None, None))[1]
+    serve_readings(
+        monkeypatch,
+        genre=lambda path: readings.get(path.name, (None, None))[0],
+        energy=lambda path: readings.get(path.name, (None, None))[1],
     )
 
 
