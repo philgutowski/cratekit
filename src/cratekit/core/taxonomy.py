@@ -32,6 +32,13 @@ Spelling the rule twice is how a wizard comes to offer a name that validation
 then refuses, which is the same two-answers-to-one-question defect the shared
 walk below exists to close.
 
+THE ONE THING IT REMEMBERS is its own parse (U247). :func:`load_taxonomy`
+keeps the taxonomy built from each of a handful of texts, keyed on the text
+itself. That changes no answer, since the answer was already a function of the
+text, and it is why a job that reads its library's copy for every item parses
+it once. It is a memo of a pure function, not configuration, so two taxonomies
+still load side by side in one process.
+
 WHY VALIDATION HAPPENS AT LOAD. Every rule below fails at load time and again in
 the setup wizard, never at write time. A friend whose template omits a tempo
 prior should learn during setup, not three hours into their first intake with a
@@ -45,6 +52,7 @@ import re
 import tomllib
 from dataclasses import dataclass, field, replace
 from enum import Enum
+from functools import lru_cache
 from importlib import resources
 from typing import Any, Mapping, Sequence
 
@@ -758,13 +766,38 @@ class Taxonomy:
 FOREIGN_ROOT_NAMES: frozenset[str] = frozenset({"DEADCA7"})
 
 
+#: How many distinct template texts one process keeps parsed (U247). A handful,
+#: because a process asks for very few: a verb reads its library's one active
+#: copy, and doctor and the upgrade read that copy and a shipped template or two
+#: beside it. Past the bound, the text asked for least recently is parsed again
+#: when it is next asked for.
+_PARSED_LIMIT = 8
+
+
 def load_taxonomy(text: str) -> Taxonomy:
     """Parse and validate a template from TOML text.
 
     Text rather than a path, so the caller owns the input and this stays a pure
     function of its argument. That is what lets one test drive two taxonomies
     through the same process, which is the verification this unit owes.
+
+    PARSED ONCE PER TEXT IN A PROCESS (U247). A job reads its library's active
+    copy for every item, and parsing that copy again for each one was most of
+    the CPU of the adopt scan. The answer is a function of the text alone,
+    so the text itself is the key, never a path, a size or a time: a copy edited
+    between two items is a different key and is parsed and judged afresh, and
+    two copies holding different text are two keys whatever paths they sit at.
+    A text that does not load raises on every call, since a raise is never
+    remembered. The answer is the frozen ``Taxonomy`` the first parse built,
+    one object shared by every caller that hands in the same text, which is
+    safe only because nothing in the package mutates one.
     """
+    return _parsed(text)
+
+
+@lru_cache(maxsize=_PARSED_LIMIT)
+def _parsed(text: str) -> Taxonomy:
+    """The parse :func:`load_taxonomy` remembers, keyed on the whole text."""
     try:
         data = tomllib.loads(text)
     except tomllib.TOMLDecodeError as exc:
