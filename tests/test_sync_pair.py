@@ -499,8 +499,9 @@ def test_a_short_listing_removes_nothing_from_the_account(world):
     assert code == int(ExitCode.OK), envelope
     assert w.account.taken == []
     assert w.on_account() == ["t1", "t2"]
-    # U246: and the track the base held that the short listing did not serve is
-    # not read as an addition to rekordbox either, so the removal there stands.
+    # U246: and a track the base held that the short listing still served stays
+    # in the base, so it is not read back into rekordbox as an addition and
+    # the removal there stands.
     assert w.held() == ["1"]
 
 

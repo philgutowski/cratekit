@@ -74,11 +74,41 @@ def _builds_a_set(node: ast.AST) -> bool:
     return False
 
 
+def _scoped_children(node: ast.AST, names: set[str]):
+    """Each child of ``node`` with the names that vary where it is evaluated.
+
+    A comprehension's own variables vary inside it, except in its first ``for``
+    clause's iterable, which Python evaluates once in the enclosing scope. A
+    lambda's parameters vary in its body.
+    """
+    if isinstance(node, COMPREHENSIONS):
+        first, *rest = node.generators
+        inner = names | _binds(node)
+        yield first.iter, names
+        yield first.target, inner
+        for condition in first.ifs:
+            yield condition, inner
+        for generator in rest:
+            yield generator, inner
+        for part in ("elt", "key", "value"):
+            if getattr(node, part, None) is not None:
+                yield getattr(node, part), inner
+        return
+    inner = names | _binds(node)
+    for child in ast.iter_child_nodes(node):
+        yield child, inner
+
+
 def _free(node: ast.AST) -> set[str]:
     """The names an expression reads that nothing inside it binds."""
-    read = {name.id for name in ast.walk(node) if isinstance(name, ast.Name)}
-    bound = set().union(*(_binds(inner) for inner in ast.walk(node)))
-    return read - bound
+    free: set[str] = set()
+    pending: list[tuple[ast.AST, set[str]]] = [(node, set())]
+    while pending:
+        current, bound = pending.pop()
+        if isinstance(current, ast.Name) and current.id not in bound:
+            free.add(current.id)
+        pending.extend(_scoped_children(current, bound))
+    return free
 
 
 def _membership_operands(expression: ast.AST):
@@ -106,8 +136,7 @@ def _invariant_sets(expression: ast.AST, varying: set[str], *, anywhere: bool):
             if anywhere or any(node is right for right in _membership_operands(expression)):
                 found.append(node)
                 continue
-        inner = names | _binds(node)
-        pending.extend((child, inner) for child in ast.iter_child_nodes(node))
+        pending.extend(_scoped_children(node, names))
     return found
 
 
@@ -177,6 +206,10 @@ def test_no_comprehension_in_the_package_rebuilds_an_invariant_set_per_element()
         "found = any(x in set(ys) for x in xs)",
         "kept = [a if a in set(ys) else b for a in xs]",
         "kept = {k: k in frozenset(ys) for k in xs}",
+        "kept = {k in set(ys): k for k in xs}",
+        "kept = [x not in set(ys) for x in xs]",
+        "kept = {x in set(ys) for x in xs}",
+        "kept = [e for e in xs if e in builtins.frozenset(ys)]",
     ],
 )
 def test_the_guard_finds_the_shape_in_every_comprehension(source):
@@ -199,6 +232,11 @@ def test_the_guard_finds_the_shape_in_every_comprehension(source):
         "kept = [e for e in xs if any(1 for o in set(e.options) if o)]",
         # Built in the element but not tested against: a value, not a lookup.
         "kept = [frozenset(ys) for x in xs]",
+        # An inner comprehension's first iterable reads the outer variable,
+        # even when the inner one rebinds its name.
+        "kept = [one for one in rows if 1 in {one for one in one.kids}]",
+        "kept = [x for x in xs if x in set(x for x in x.kids)]",
+        "kept = [e for e in xs if any(filter(lambda *g, **h: 'a' in set(g), e.groups))]",
     ],
 )
 def test_the_guard_passes_a_set_built_once_or_built_from_the_element(source):
