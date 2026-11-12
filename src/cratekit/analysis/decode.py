@@ -10,20 +10,22 @@ a damaged file, while the same audio as FLAC or MP3 was analysed.
 
 THE ORDER IS THE GUARANTEE THAT NOTHING ANALYSED TODAY CHANGES.
 
-1. ``librosa.load`` is called first, exactly as each site called it before
-   this module, and whatever it returns is returned untouched. On librosa 1.0
-   that is every file libsndfile reads; on an older release it is those and
-   the files its own fallback reads, an M4A among them. So no file the
-   installed librosa decodes is decoded any other way.
+1. ``librosa.load`` reads the file first, at its own rate and channels,
+   and its samples take the two calls ``librosa.load`` makes after its read,
+   the mix to mono and ``resample`` with ``soxr_hq``, so the result is the
+   bits the call each site made before this module returns (U264 made the
+   mix one add, :func:`mono`). On librosa 1.0 that is every file libsndfile
+   reads; on an older release it is those and the files its own fallback
+   reads, an M4A among them. So no file the installed librosa decodes is
+   decoded any other way.
 2. Only when that raises AND libsndfile itself cannot open the file is the
    file handed to ffmpeg. A failure on a file libsndfile does open, a FLAC
    truncated mid frame, is raised as before, so a damaged file in a format
    that decodes today is still the caller's undecodable.
 3. ffmpeg decodes the first audio stream to 32 bit float at the file's own
    rate and channels, into a pipe; nothing is written to disk. The samples
-   then take the two calls ``librosa.load`` makes after its own read,
-   ``to_mono`` and ``resample`` with ``soxr_hq``, so the arithmetic after the
-   decode is librosa's on every path.
+   then take the same mix and resampler as in 1, so the arithmetic after the
+   decode is the same on every path.
 4. No ffmpeg, for a file librosa did not read and libsndfile cannot open,
    raises :class:`DecoderMissing`, which the head reports as
    ``skipped-no-decoder`` and the vocal pass as ``vocal-no-decoder``: the
@@ -42,7 +44,10 @@ WHAT IS LEFT AS IT WAS. An older librosa still decodes an M4A through its own
 fallback, so on such a copy an M4A's samples are audioread's, not ffmpeg's.
 That keeps every result on that copy as it is; the record of U263 says so.
 
-THE MONO MIX OF U264 LANDS HERE, so the two cards build one decoder.
+THE MONO MIX IS ONE ADD (U264). Every path mixes through :func:`mono`,
+which gives the bits ``librosa.to_mono`` gives in a tenth of its time, for two
+channels on a librosa release it was measured on, and is ``to_mono`` itself
+for anything else.
 
 Layer: modules. librosa, soundfile and numpy are imported inside the
 functions, so a slim install can still import the package.
@@ -107,15 +112,110 @@ def load(
     if duration is not None:
         window["duration"] = duration
     try:
-        return librosa.load(str(path), sr=rate, mono=True, **window)
+        # ``librosa.load`` at the file's own rate and channels is the read
+        # ``librosa.load(sr=rate, mono=True)`` makes, fallback and all; the
+        # mix and the resampler after it are the two calls it makes next,
+        # with the mix one add (U264). All three stay inside the ``try``, so
+        # a refusal is handled where it was.
+        native, native_rate = librosa.load(str(path), sr=None, mono=False, **window)
+        return _mono_at(librosa, native, native_rate, rate), rate
     except Exception:
         if libsndfile_opens(path):
             raise
     native, native_rate = _ffmpeg_samples(path)
     native = _window(native, native_rate, offset=offset, duration=duration)
-    samples = librosa.to_mono(native)
-    samples = librosa.resample(samples, orig_sr=native_rate, target_sr=rate, res_type="soxr_hq")
-    return samples, rate
+    return _mono_at(librosa, native, native_rate, rate), rate
+
+
+def _mono_at(librosa: Any, native: Any, native_rate: int, rate: int) -> Any:
+    """``native`` mixed to one channel and resampled to ``rate``, as
+    ``librosa.load`` does after its read."""
+    return librosa.resample(mono(native), orig_sr=native_rate, target_sr=rate, res_type="soxr_hq")
+
+
+#: THE librosa RELEASES WHOSE ``to_mono`` WAS MEASURED (U264), each with its
+#: rule for a zero, as a release names itself in ``librosa.__version__``.
+#: Every release adds the two channels through numpy's add reduction, which
+#: starts from its identity, plus zero, so a frame whose two channels are both
+#: minus zero mixes to plus zero; 1.0 then adds the mean into a buffer of
+#: zeros, so a mean that rounds to minus zero is plus zero as well (True
+#: here). Every other value is the correctly rounded half sum on every
+#: release, or an infinity where the float32 sum overflows, as librosa's.
+#: Any other release, a patch or a pre release included, mixes through its
+#: own ``to_mono``: it can lose the speed, never change a sample.
+#: Measuring a new release and naming it here is what gives it the speed.
+_MEASURED_MIX: dict[str, bool] = {
+    "0.10.2": False,
+    "0.10.2.post1": False,
+    "0.11.0": False,
+    "1.0.0": True,
+}
+
+
+def mono(samples: Any) -> Any:
+    """``samples`` mixed to one channel, bit for bit as ``librosa.to_mono``.
+
+    WHAT IS FASTER. ``to_mono`` takes ``np.mean`` over a transposed view of
+    the stereo buffer, the slowest way to add two float arrays: 271 ms of a
+    345 second track's decode, measured on the speed survey of 2026-11-12,
+    paid once at each rate. Two channels of float32 on a measured release are
+    added with one add instead, in a tenth of the time, after librosa's own
+    ``valid_audio``, so audio that is not finite is refused with the same
+    error, where it was.
+
+    WHY IT IS THE SAME BITS. Short of an overflow, a sum of two and a halving
+    round once whichever way they are done, so the half sum is the one value
+    of its frame on numpy 1 and 2. A sum past float32's largest value
+    overflows to an infinity here as in librosa's float32 reduction (a float64
+    sum would not), and the resampler then refuses it as before. What the
+    ways differ in is a zero's sign, which :data:`_MEASURED_MIX` holds per
+    release, measured on 0.10.2, 0.10.2.post1, 0.11.0 and 1.0.0. Anything
+    else, mono, three or more channels, another dtype, a release not
+    measured, is ``to_mono``'s.
+    """
+    import librosa
+
+    zero_after = _measured_zero_rule(librosa.__version__)
+    if zero_after is None or not _two_float32_channels(samples):
+        return librosa.to_mono(samples)
+    librosa.util.valid_audio(samples)
+    return _mean_of_two(samples, zero_after=zero_after)
+
+
+def _measured_zero_rule(version: str) -> bool | None:
+    """The zero rule of a measured release, or None for one not measured."""
+    return _MEASURED_MIX.get(version)
+
+
+def _two_float32_channels(samples: Any) -> bool:
+    import numpy as np
+
+    return (
+        isinstance(samples, np.ndarray)
+        and samples.ndim == 2
+        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+    )
+
+
+def _mean_of_two(stereo: Any, *, zero_after: bool) -> Any:
+    """The half sum of two channels, with the zero rule of a measured release.
+
+    ``stereo`` is channels first; a fresh float32 array is returned and the
+    buffer is not touched.
+    """
+    import numpy as np
+
+    out = np.add(stereo[0], stereo[1])
+    # numpy's reduction starts from plus zero: minus zero plus minus zero is
+    # minus zero here and plus zero in the mean, and no other sum changes.
+    out += out.dtype.type(0)
+    out /= out.dtype.type(2)
+    if zero_after:
+        # librosa 1.0 adds the mean into zeros: a half sum that rounds to
+        # minus zero, minus the smallest subnormal and zero, is plus zero.
+        out += out.dtype.type(0)
+    return out
 
 
 def duration(path: Any) -> float:

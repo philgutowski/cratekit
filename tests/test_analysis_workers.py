@@ -2026,8 +2026,14 @@ def test_a_decodable_file_the_analyser_raises_on_is_its_own_terminal_not_keyless
     def onset_strength(**kwargs):
         raise ValueError("too short")
 
+    # The decoder reads at the file's own rate, then mixes and resamples as
+    # ``librosa.load`` does after its read (U264), so the stand in carries
+    # those two calls; a version it does not name mixes through ``to_mono``.
     fake = types.SimpleNamespace(
-        load=lambda p, sr, mono: (np.ones(64, dtype=np.float32), sr),
+        __version__="stand-in",
+        load=lambda p, sr, mono: (np.ones(64, dtype=np.float32), sr or 44100),
+        to_mono=lambda y: y,
+        resample=lambda y, orig_sr, target_sr, res_type: y,
         onset=types.SimpleNamespace(onset_strength=onset_strength),
         feature=types.SimpleNamespace(),
         effects=types.SimpleNamespace(),
