@@ -1,0 +1,58 @@
+name = "u266"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_seven_opens_again"
+description = "read_index_tags: go back to one read_tag call per field, seven opens a file, the regression the card removes"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '''    return tags.read_tags(path, INDEX_FIELDS)'''
+new = '''    return {name: tags.read_tag(path, name) for name in INDEX_FIELDS}'''
+
+[[rows]]
+id = "M2_strict_reader"
+description = "read_index_tags: read through the checked reader, so a file one open cannot read raises and aborts the walk instead of reading all absent"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '''    return tags.read_tags(path, INDEX_FIELDS)'''
+new = '''    return tags.read_tags_checked(path, INDEX_FIELDS)'''
+
+[[rows]]
+id = "M3_a_field_dropped"
+description = "read_index_tags: read every field but the last, so the vocal gender never reaches the index"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '''    return tags.read_tags(path, INDEX_FIELDS)'''
+new = '''    return tags.read_tags(path, INDEX_FIELDS[:-1])'''
+
+[[rows]]
+id = "M4_key_order_reversed"
+description = "read_index_tags: read the fields in reverse order, the same values under a different key order"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "maintainer"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '''    return tags.read_tags(path, INDEX_FIELDS)'''
+new = '''    return tags.read_tags(path, tuple(reversed(INDEX_FIELDS)))'''
+
+[[rows]]
+id = "M5_empty_read_cached"
+description = "build_index: cache a read that held no field, the sample guard the warm walk test holds, so an I/O error drops a track until the file is touched"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '''            if identity is not None and any(value is not None for value in raw.values()):'''
+new = '''            if identity is not None:'''
+
+[[rows]]
+id = "M6_size_not_compared"
+description = "_entry_is_current: trust a cached entry without comparing the size, the sample guard on when the warm index is trusted"
+file = "src/cratekit/modules/tools/setbuilder.py"
+surface = "user"
+tests = ["tests/test_setbuilder_one_open.py", "tests/test_setbuilder_cli.py", "tests/modules/test_tools.py"]
+old = '''        and entry.get("size") == identity["size"]
+'''
+new = '''
+'''
