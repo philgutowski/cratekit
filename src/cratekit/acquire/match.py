@@ -446,11 +446,23 @@ APPROXIMATE_LIMIT = 5
 _MARKS = re.compile(r"[^\w\s]", re.UNICODE)
 _RUNS = re.compile(r"\s+")
 
-#: Trailing bracketed groups that name a PERFORMER rather than a version. They
-#: come off the title because two listings of one record disagree constantly
-#: about whether the guest is in the title or in the artist field, and they are
-#: not folded into the version because a guest vocalist is not an edit.
-_CREDIT_PREFIXES: tuple[str, ...] = ("feat ", "feat. ", "ft ", "ft. ", "featuring ", "with ")
+#: The FIRST WORDS that make a trailing bracketed group a PERFORMER credit rather
+#: than a version. Credits come off the title because two listings of one record
+#: disagree constantly about whether the guest is in the title or in the artist
+#: field, and they are not folded into the version because a guest vocalist is
+#: not an edit.
+#:
+#: WORDS AND NOT LETTERS (U262). This was a tuple of prefixes, ``"with "`` and
+#: the rest, each ending on the space that made it a whole word, and the test
+#: folded them before comparing, which took the space off. ``with`` then matched
+#: the first letters of ``Without``, so ``Sun Path (Without You Remix)`` dropped
+#: its remix as a credit, read as the plain record, and was reported owned and
+#: never fetched; ``Withdrawn``, ``Within``, ``Feature`` and ``Featureless``
+#: did the same. ``core.tombstone._CREDIT_MARKERS`` is this set, and
+#: ``test_the_matcher_and_the_tombstone_share_one_credit_vocabulary`` holds the
+#: two equal. It is a copy rather than an import because the tombstone module's
+#: set is inside the identity stamp ``deletion.stores.identity_scheme`` walks.
+_CREDIT_MARKERS: frozenset[str] = frozenset({"feat", "ft", "featuring", "with"})
 
 #: Version qualifiers that mean "no qualifier at all". A record listed as the
 #: original mix and the same record listed with nothing are one version, and
@@ -493,9 +505,21 @@ def _is_a_credit(inside: str) -> bool:
     version, and :func:`_credits_in` checks that a head this module composed from
     still carries every one the listing spelled, which is a check that means
     nothing if the two answer the question differently.
+
+    THE GROUP'S FIRST WHOLE WORD, folded, and nothing else (U262), which is the
+    rule ``core.tombstone._is_a_credit`` asks, over the same marker set but
+    under this module's own :func:`fold`, so a group led by punctuation or
+    spelled with an accent or in fullwidth letters can still answer differently
+    there (a residual of U262's): ``(feat. Anna)``, ``(ft Anna)``
+    and ``(with Anna)`` are credits, ``(Without You Remix)`` and ``(Feature
+    Edit)`` are versions, and ``(Live with Strings)`` is a version because its
+    marker is not first. The same answer as the letters test it replaced for
+    every group whose first word IS a marker, so the only groups that moved are
+    those whose first word merely begins with one. ``(Ft Worth Edit)`` reads as
+    a credit under it, since ``Ft`` is the word ``ft``.
     """
-    folded = fold(inside)
-    return any(folded.startswith(fold(prefix)) for prefix in _CREDIT_PREFIXES)
+    words = fold(inside).split()
+    return bool(words) and words[0] in _CREDIT_MARKERS
 
 
 def _names_a_version(inside: str) -> bool:
@@ -531,7 +555,7 @@ def split_version(title: str) -> tuple[str, str]:
     whole ``crate sync twins`` run, and a library file tagged that way indexed
     under an empty title no row could reach. A qualifier needs a title to
     qualify, so the group that stands first is never one. NOT EVEN A CREDIT:
-    the credit prefixes include ``with ``, and ``[With You]`` or ``(With Or
+    the credit markers include ``with``, and ``[With You]`` or ``(With Or
     Without You)`` are titles, so excepting credits put the defect back for
     them (U213's review, round two). A row titled only ``(feat. Mira)`` reads
     as the title ``feat. Mira``, a residual. A GROUP THAT NAMES A VERSION
@@ -786,6 +810,38 @@ def recording_token(artist: str, title: str) -> str:
     collide with a different split of the same characters.
     """
     return f"{fold(artist)}\x1f{fold(title)}"
+
+
+#: The whitespace ``rapidfuzz``'s token scorers split a NARROW string on, one
+#: whose every character is below U+0100: everything Python calls whitespace
+#: except NEL (U+0085) and the no-break space (U+00A0). A wider string, one
+#: holding any character from U+0100 up, is split on exactly Python's
+#: whitespace. Measured over every code point at all three of Python's string
+#: widths, on rapidfuzz 3.14's compiled scorer, when U265 was built, and held
+#: for every whitespace code point, every code point below U+3100 and both
+#: sides of the U+00FF boundary by
+#: ``test_the_word_sort_splits_on_exactly_the_whitespace_the_scorer_splits_on``.
+#: :func:`fold` leaves neither character in a token, so this matters only for a
+#: token that did not come through it, and then it is what keeps the score the
+#: same.
+_NARROW_SPACE = re.compile(r"[^\S\x85\xa0]+")
+
+
+def _sorted_words(token: str) -> str:
+    """A token's words sorted and joined by one space, which is the string
+    ``fuzz.token_sort_ratio`` builds from it before it scores (U265).
+
+    Split where the scorer splits, which depends on the string's width (see
+    :data:`_NARROW_SPACE`), and sorted by code point, as the scorer sorts. The
+    unit separator :func:`recording_token` joins artist and title with is
+    whitespace to both this and the scorer at every width, so the artist's and
+    the title's words sort together, exactly as they did inside the scorer.
+    """
+    if token and max(token) > "\xff":
+        words = token.split()
+    else:
+        words = [word for word in _NARROW_SPACE.split(token) if word]
+    return " ".join(sorted(words))
 
 
 def version_token(version: str) -> str:
@@ -1856,10 +1912,32 @@ class LibraryIndex:
     #: is indexed once however many artists its tag credits and ``__len__``
     #: still counts files.
     by_title: Mapping[str, tuple[Owned, ...]] = field(default_factory=dict)
+    #: The recordings beside their words sorted, built the first time the
+    #: approximate pass asks and kept for the life of the index (U265), so a
+    #: library name is sorted once and not once for every wanted row. Built
+    #: lazily because a landing or a set build that never reaches the
+    #: approximate pass should not pay for it; read it through
+    #: :meth:`sorted_recordings`.
+    _sorted: tuple[tuple[str, ...], tuple[str, ...]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def recordings(self) -> tuple[str, ...]:
         return tuple(self.by_recording)
+
+    def sorted_recordings(self) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        """The recordings, and each one's words sorted, position for position.
+
+        The two tuples are taken together so a position the scorer returns in
+        the second names the recording at the same position in the first.
+        """
+        cached = self._sorted
+        if cached is None:
+            recordings = self.recordings
+            cached = (recordings, tuple(_sorted_words(token) for token in recordings))
+            object.__setattr__(self, "_sorted", cached)
+        return cached
 
     def versions(self, recording: str) -> tuple[Owned, ...]:
         return self.by_recording.get(recording, ())
@@ -2531,22 +2609,36 @@ def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     included, and this is the only function in the unit that needs it. A cheap
     help screen is a property U5 states about the dispatcher, and paying for a
     scoring library to print one would take it away.
+
+    THE SCORE IS ``token_sort_ratio``, computed as ``ratio`` over words sorted
+    once (U265). The shipped call handed ``token_sort_ratio`` the raw tokens,
+    and it split and sorted both strings again for every pair, so each library
+    name was sorted once per wanted row. ``token_sort_ratio`` is ``ratio`` over
+    the two sorted strings, so sorting each library name once for the index,
+    and the wanted token once here, gives the same float for every pair, and
+    the same ``extract`` over the same positions gives the same candidates in
+    the same order with the same ties, floor and limit. The suite keeps the
+    shipped call as the reference and holds this one equal to it.
     """
     if not index.by_recording:
         return ()
     from rapidfuzz import fuzz, process
 
+    recordings, sorted_choices = index.sorted_recordings()
     found = process.extract(
-        wanted.recording,
-        index.recordings,
-        scorer=fuzz.token_sort_ratio,
+        _sorted_words(wanted.recording),
+        sorted_choices,
+        scorer=fuzz.ratio,
         score_cutoff=APPROXIMATE_FLOOR,
         limit=APPROXIMATE_LIMIT,
     )
     # BEST SCORE FIRST, and the order is load-bearing from here on. ``extract``
-    # returns descending, and everything downstream preserves it so that the
-    # offer limit drops the worst answers rather than whichever sorted last.
-    return tuple(held for token, _score, _position in found for held in index.versions(token))
+    # returns descending, ties in position order, and everything downstream
+    # preserves it so that the offer limit drops the worst answers rather than
+    # whichever sorted last. The position names the unsorted recording.
+    return tuple(
+        held for _sorted, _score, position in found for held in index.versions(recordings[position])
+    )
 
 
 def standing_tombstone(

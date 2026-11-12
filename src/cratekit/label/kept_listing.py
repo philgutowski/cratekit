@@ -519,6 +519,40 @@ class KeptListing:
         )
 
 
+@dataclass(frozen=True, slots=True)
+class Cost:
+    """What a fresh ask of one label's listing would cost, read off its kept
+    answers (U278): ``held`` answers in the store, ``aged`` of them too old to
+    answer and so asked again."""
+
+    held: int
+    aged: int
+
+
+def cost(entry: Any) -> Cost | None:
+    """The label's kept answers and how many are aged, or None when no kept
+    answer can say: no store, a store asked for something else, or one that
+    cannot be read, which the listing itself refuses when it reaches it.
+
+    AN ESTIMATE, AND A FLOOR: each answer is counted as one call, and a
+    listing of many pages is one answer that costs a call a page.
+    """
+    try:
+        kept = KeptListing.load(entry)
+    except CratekitError:
+        return None
+    answers = [held for section in _SECTIONS for held in kept._held[section].values()]
+    if not answers:
+        return None
+    return Cost(held=len(answers), aged=sum(1 for held in answers if not _young(held)))
+
+
+def estimate(entry: Any) -> int | None:
+    """The calls a fresh ask of the label would make, by :func:`cost`, or None."""
+    found = cost(entry)
+    return found.aged if found is not None else None
+
+
 def _young(held: Answer) -> bool:
     return timedelta(0) <= _now() - held.read_at < kept_for()
 
@@ -529,12 +563,15 @@ def _listing_key(artist_id: str, method: str) -> str:
 
 __all__ = [
     "FLUSH_EVERY",
+    "Cost",
     "UNUSABLE",
     "KeptArtist",
     "KeptListing",
     "KeptRelease",
     "Summary",
     "asked_for",
+    "cost",
+    "estimate",
     "path_for",
     "release_row",
 ]

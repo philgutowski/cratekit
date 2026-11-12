@@ -50366,3 +50366,472 @@ answer: the refreshed token reaches the keychain on the next login, which
 
 **Closes when:** the watch tells the library's recoverable expiry from a
 refusal, or the cost is judged too small to matter. Ledger only.
+
+---
+
+## R-1598. U258 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #687, U258, 2026-11-12.
+
+**The mechanism.** The `fable-reviewer` agent was refused on Fable's usage
+limit at round one, so the same reviewer definition and merge bar ran on Opus
+5.5 at high effort, as decided by Phillip on 2026-11-08.
+
+**Measured cost.** None known. The review that ran is recorded in
+`docs/restart/u258.md`; this entry says only which model's reading is missing.
+
+**Closes when:** Fable reviews U258's merged range against the merge bar.
+Ledger only.
+
+---
+
+## R-1599. The brief's process wide parse memo was built, measured to cost more than it saved, and narrowed to one test
+
+**Found:** at the build of #687, U258, 2026-11-12.
+
+**The mechanism.** The brief asked that "within one test process a source text
+is parsed once however many guards ask". The first build did exactly that,
+`tests/_parse_memo.py` holding every tree for the life of the worker. Measured
+on the touched test files in the suite's own distribution, four workers, two
+runs each: wall time 85 to 91 s on `main` against 97 to 99 s with the memo, and
+peak worker memory about 200 to 290 MB on `main` against 410 to 970 MB. Every
+swept tree is about 720 MB in one process, and the collector walking that many
+live nodes made the permissive soft delete sweep slower, 19.5 s to 22.5 s alone,
+which outside pytest was 19.7 s without the memo, 25.0 s with it and 17.9 s with
+it and the collector switched off. The guards that share files across tests
+spend most of their time in analysis, so retaining trees bought them nothing.
+
+The memo now shares a tree only inside one test that opens a scope, and drops
+it when that test ends. The reading of the brief recorded here: its goal, that
+a guard stops repeating the reading and parsing that feed it, is met inside
+each test, where the repetition was; its literal wording, across tests, is not,
+on measurement.
+
+**Measured cost.** None to a person using the verbs. A future card that wants
+cross test sharing would have to beat the collector's cost first; this entry
+says what it is.
+
+**Closes when:** ledger only. It records a decision and its measurement.
+
+---
+
+## R-1600. The at risk test's headroom check over the widened key set is reached by no test
+
+**Found:** at the review of #687, U258, 2026-11-12.
+
+**The mechanism.** `test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned`
+in `tests/test_reserved_causes.py` asserts that adding every kebab shaped
+literal in the package to the key set reports no offender outside the two
+table owners. No test plants a module that reaches it: the suite's only
+planted run of the at risk test, in `tests/test_parse_memo.py`, plants a table
+whose new kebab literals move a pin earlier in the same test. Running the check
+over an empty population (row M10 of `docs/mutation/u258.md`) kills no test, on
+the branch and, by the review's hand mutation, on `main` before it: the gap
+predates U258. The round two review drove two plants that do reach it, a new
+module holding `{"cancelled": 30}` (a declared cause that is not kebab shaped,
+so no kebab pin moves) and `{"auth-failed": 30}` appended to
+`acquire/adapter.py` (which already pins that literal): each fails first at the
+headroom assertion, and with the check emptied each is still caught later, by
+the literal holder pin and the named with integer pin. So the check is
+unreached by the suite, and redundant with later pins for those two plants.
+
+**Measured cost.** Maintainer facing. The check guards an argument in a
+residual's prose, not a verb.
+
+**Closes when:** a test runs the at risk test over the package plus a one line
+plant like `{"cancelled": 30}` and sees it fail at the headroom assertion.
+Ledger only.
+
+---
+
+## R-1601. The slowest package wide guards left after U258 spend their time in analysis, not in parsing
+
+**Found:** at the build of #687, U258, 2026-11-12.
+
+**The mechanism.** U258 shares parses inside the tests that asked the same
+texts again and again, and that halved the at risk population test. Four of
+the slowest guards it was filed against were measured and found to spend their
+time elsewhere, so a parse memo cannot reach them:
+
+- `tests/test_rb_writer_guard.py`, the permissive soft delete sweep and the
+  reader pin, about 19.5 s and 15 s alone on a four core container. Each runs
+  `SoftDeleteNames` and `_soft_delete_reads` over 681 files; the parse is about
+  5 s of each. Measured outside pytest, the analysis of one sweep takes 10.3 s
+  on trees already parsed. It makes about six passes over each tree, and
+  `_laundered_reads` calls `_soft_delete_reads` once per `If` it walks, about
+  69,000 calls for 683 files (69,064 and 69,052 in two measurements a few
+  commits apart). An iterative `_own_nodes` in the same order was tried
+  and measured no faster, 16.0 s against 15.4 s for the recursive one over the
+  same analysis, with identical output.
+- `tests/test_pool_sizing.py::test_no_module_outside_the_sizing_module_builds_a_process_pool`,
+  about 12.5 s, the settling loop in `process_pool_constructions` walking each
+  function again on every pass.
+- `tests/test_skills_lint.py::test_real_skills_pass_lint`, about 4 s in the
+  parallel run and 7.4 s under the profiler, 7.1 s of which is
+  `cratekit.cli.build_parser` called 308 times, once per command line, by the
+  documented choice in `real_parser` that a failed parse must not leak argparse
+  state into the next line's verdict.
+
+Sharing a guard's ANSWERS across tests, rather than its parses, is not safe
+here: `tests/test_reserved_causes.py` and `tests/test_review_queue.py`
+monkeypatch the guard module's own constants (`EXIT_CODE_MODULE`,
+`EXIT_CODE_CLASS`, `MAX_HOPS`, `REVIEW_MODULE`), so an answer cached by text
+would be served under the wrong rule.
+
+**Measured cost.** Maintainer facing: about 50 s of a worker's time in each
+full run, spread across four workers. Nothing a person using the verbs sees.
+
+**Closes when:** a card of its own rewrites the soft delete analysis as fewer
+passes, proved identical on the tree and on planted shapes the way U258's
+comparison was, or decides the time is the price of the rule. Ledger only.
+
+---
+
+## R-1602. A credit written with no separator after its marker, such as (feat_Mira) or (featMira), now reads as a version
+
+**Found:** at the review of #691, U262, 2026-11-12.
+
+**The mechanism.** `acquire/match.py` `_is_a_credit` now asks the group's
+first whole word under the matcher's `fold`. `fold` keeps an underscore and
+any letter as part of a word, so `(feat_Mira)`, `(featMira)` and a marker run
+straight into a name in another script have no first word equal to a marker,
+and the group is kept as the version. The letters rule read them as credits.
+`core/tombstone.py` already read them as versions, so the two modules now
+agree on them.
+
+**Measured cost.** Driven through `read_text_lines` and `resolve_all` against
+a library holding only the plain `Sun Path`: `Sun Path (feat_Mira)` was
+matched exact on the base and is `needs_review`, `version-differs` on the
+branch. The cost is a question rather than a wrong ownership, the
+conservative direction. None of the 58,222 distinct bracketed groups in the
+repository's text is a real credit of this shape, so the reachability is
+unmeasured.
+
+**Closes when:** a live list shows such a spelling, and the rule learns to
+read a marker followed directly by a name in both modules together. Ledger
+only.
+
+---
+
+## R-1603. The matcher and the tombstone module still read a credit spelled with leading punctuation, an accent or fullwidth letters differently
+
+**Found:** at the build of #691, U262, 2026-11-12.
+
+**The mechanism.** U262 gave `acquire/match.py` `_is_a_credit` the first
+whole word rule `core/tombstone.py` `_is_a_credit` asks, over an equal
+marker set, and a test holds the two equal over one list of groups. The two
+still fold differently: the matcher folds punctuation to spaces and strips
+accents and compatibility forms (NFKD), the tombstone module keeps
+punctuation and composes (NFC). So `- feat. Anna`, `"with" Anna`,
+`ｆｅａｔ Anna`, `Feät Anna` and `Ⓕeat X` are credits to the matcher and
+versions to the tombstone module. Every one of them answered the same way
+under the letters rule U262 replaced, so this unit moved none of them.
+
+**Measured cost.** Driven on the two predicates only. A title carrying such
+a group is split by the matcher with the group taken off as a credit, while
+a deletion of that row records no companion, so a provider spelling without
+the guest misses the tombstone and is reported as a missed suppression. No
+list or library title in this shape was found or driven, so the reachability
+is unmeasured.
+
+**Closes when:** one fold is chosen for both predicates. The tombstone
+module's set and rule are inside the identity stamp, so the change is the
+matcher's, and it moves the matcher's answer for these spellings, which needs
+its own card. Ledger only.
+
+---
+
+## R-1604. U262 was reviewed by Opus 5.5 because Fable was out of usage, and a Fable pass on its merged range is owed
+
+**Found:** at the review of #691, U262, 2026-11-12.
+
+**The mechanism.** The `fable-reviewer` agent was refused on Fable's usage
+limit at round one, so the same reviewer definition ran on Opus 5.5 at high
+effort under the same merge bar, as the cloud lane allows since 2026-11-08.
+
+**Measured cost.** None measured. The review that ran was a different model
+from the one the pipeline names.
+
+**Closes when:** a Fable review at high effort reads U262's merged range,
+`acquire/match.py` `_is_a_credit` and `_CREDIT_MARKERS` and the U262 tests in
+`tests/test_match_states.py`, and its findings are driven. Ledger only.
+
+---
+
+## R-1605. A review item filed under the letters reading of a remix with a With, Feat or Ft name stays open beside the new question
+
+**Found:** at the build of #691, U262, 2026-11-12.
+
+**The mechanism.** A review item's identity and a match id carry the
+version (`acquire/match.py` `question_identity`, `TrackMatch.match_id`).
+Before U262 a listing such as `Sun Path (Without You Remix)` split to the
+version `""`, so where the library held another version of `Sun Path`, a run
+asked `version-differs` about the plain record. After U262 the same line splits
+to `Without You Remix` and asks under a new identity. The old item is neither
+found nor retired: `match_cli.retire_questions` retires only the identities
+the line's current reading computes, and only when the row is owned. A
+verdict given on the old item is not applied to the new question, which is
+the conservative direction, since it answered a question about another
+version.
+
+**Measured cost.** Not driven against a real review store. The item can only
+exist where the library held a different version of the same title, the
+listing's group began with the letters of a marker, and a run filed the item
+before this unit. Where one does, `crate review list` shows one stale question
+beside the real one until it is answered or dismissed. Tombstones are not
+affected: their identity is the listing's verbatim spelling, which U262 does
+not move.
+
+**Closes when:** a later live `review list` shows no such pair, or the
+retiring side learns the letters reading for these lines. Ledger only.
+
+---
+
+## R-1606. U266 was reviewed by Opus 5.5 standing in for Fable, out of usage, so a Fable pass on its merged range is owed
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** The review of U266 was refused on Fable's usage limit, so by
+Phillip's rule of 2026-11-08 the same reviewer definition ran on Opus 5.5 at
+high effort, under the same merge bar and round cap. It found nothing
+BLOCKING and no doc made untrue.
+
+**Measured cost.** None known. The owed pass is Fable's reading of the merged
+range, `read_index_tags` through one `tags.read_tags` call and its tests.
+
+**Closes when:** a Fable review of U266's merged range runs and its findings
+are driven or filed. Ledger only.
+
+---
+
+## R-1607. Four other verbs still open a file once per tag field they read
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** U266 made the set builder's index read its seven fields
+through one `tags.read_tags` open. Four other places still ask
+`tags.read_tag` for each field and so open the file again per field: the
+naming plan in `write/naming_cli.py` (title, then the initial key), the
+catalogue genre pass in `tagging/tag.py` (artist, then title), the retag
+candidate search in `tagging/retag.py` (artist, then title) and the staging
+read in `tagging/guess.py` (artist, then title). Each is two opens where one
+would do.
+
+**Measured cost.** Not driven; read from the code at the review. Twice the
+container opens of one read in each of those batch verbs, which matters on a
+library on an external drive.
+
+**Closes when:** each reads its fields through one `tags.read_tags` call with
+the answer proven equal and the open count as the assertion, the way U250 and
+U266 did. Ledger only, until a speed survey measures one of them on the real
+library.
+
+---
+
+## R-1608. The test wrapper that counts container opens is copied in six test files
+
+**Found:** at the review of #695, U266, 2026-11-12.
+
+**The mechanism.** U266 added two more copies of a wrapper over `mutagen.File`
+that counts container opens, in `tests/test_setbuilder_one_open.py` and
+`tests/test_setbuilder_cli.py`, beside the ones in
+`tests/test_rebuild_one_open.py`, `tests/test_library_reads_remembered.py`,
+`tests/test_match_states.py` and `tests/test_analysis_ahead.py`. Its
+`_tagged` helper also repeats most of `tests/_containers.tagged_container`.
+Six copies of one counter can drift apart in what they count.
+
+**Measured cost.** Maintenance only; no test is wrong today.
+
+**Closes when:** one shared open counting fixture lives beside the container
+helpers and the six suites use it. Ledger only.
+
+---
+
+## R-1609. U265 was reviewed by Opus 5.5 standing in for Fable, so a Fable pass over its merged range is owed
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** Round one of U265's review was refused on Fable's usage limit, so the same reviewer definition ran on Opus 5.5 at high effort, as the cloud lane's Models section allows. It found nothing blocking and five residuals, two closed in the branch and three filed beside this one.
+
+**Measured cost.** None driven. The review that ran was the one the bar names, on a different model.
+
+**Closes when:** Fable reviews the merged range of U265 (the commits under `merge(u265)` on `main`) against METHOD's merge bar, and anything it finds is fixed or filed. Ledger only.
+
+---
+
+## R-1610. rapidfuzz's pure Python fallback splits a narrow string on U+0085 and U+00A0, so the sorted word pass disagrees with it on a raw unfolded token
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `match._sorted_words` splits a string whose characters are all below U+0100 on Python's whitespace minus U+0085 and U+00A0, which is what rapidfuzz's compiled scorer does. Under `RAPIDFUZZ_IMPLEMENTATION=python` the fallback splits on both, so for the query `a\xa0b\x1fc` against the choice `b a\x1fc` the shipped `token_sort_ratio` call offers the candidate and the new pass offers nothing. Two of U265's whitespace tests fail under the fallback.
+
+**Measured cost.** None reachable: `fold` leaves neither character in any recording token, which the review drove over every code point, and the shipped scorer equality test passes on every seed under the fallback. A cost needs a raw token and the fallback build together, and no producer of either was found.
+
+**Closes when:** the split asks which implementation rapidfuzz loaded, or the matcher refuses to run on the fallback, or the fallback's own split is measured equal. Ledger only.
+
+---
+
+## R-1611. LibraryIndex keeps its sorted recordings from the first approximate call, so a by_recording dict changed afterwards is scored stale
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `LibraryIndex.sorted_recordings` builds the recordings and their sorted words the first time the approximate pass asks and keeps them for the life of the index. The class is frozen, but `by_recording` is typed `Mapping` and a caller holding the dict it passed in could still add to it; the review added a recording to the dict after a first call and the pass did not offer it, where the shipped call did.
+
+**Measured cost.** None reachable: the one constructor in `src`, `index_paths`, builds a fresh dict and hands it over, and no code in `src` writes to `by_recording` afterwards (zero producers found by grep).
+
+**Closes when:** the index wraps its mappings read only at construction, or the cache checks the mapping's length before use. Ledger only.
+
+---
+
+## R-1612. The dependency allows any rapidfuzz from 3.0, and the width dependent whitespace the sorted word pass copies was measured on 3.14 only
+
+**Found:** at the review of #694, U265, 2026-11-12.
+
+**The mechanism.** `pyproject.toml` asks for `rapidfuzz>=3.0`. U265's `_sorted_words` copies the compiled scorer's word split, which differs by string width, and that split was measured over every code point on 3.14.6, the version this tree installs. An older or newer release that splits differently, and above all one that did not split on U+001F, which joins every recording token, would move approximate answers.
+
+**Measured cost.** Unmeasured: no other version was installed and none was downloaded. U265's whitespace and whole matrix tests would fail on such an install, so a difference would be loud in the suite rather than silent in a run.
+
+**Closes when:** the floor is raised to the measured release, or the split is measured on the floor release too. Ledger only.
+
+---
+
+## R-1613. U278 was reviewed by Opus 5.5 in Fable's place, so a Fable pass over its merged range is owed
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** Both review rounds of U278 were refused on Fable's usage
+limit, so the `fable-reviewer` definition was run on Opus 5.5 at high effort
+in its place, as the cloud-unit skill's Models section allows. The merge bar
+and the round cap were the same; the model was not.
+
+**Measured cost.** None measured. The rule exists because a second model
+reads differently, and this range has had one model's two reads.
+
+**Closes when:** Fable reviews the merged range of U278 (the provider gate's
+own directory, the hour's budget and reserve, the dispatcher's classes, doctor's
+`provider.budget` and `label sync`'s estimate) and its findings are filed.
+Ledger only: a review owed is maintainer facing.
+
+---
+
+## R-1614. A copy run that redirects XDG_STATE_HOME or HOME still gets a provider gate of its own
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** `config.provider_gate_dir` reads
+`platformdirs.user_state_dir`, which honours `XDG_STATE_HOME`, and on macOS
+too (platformdirs 4.14.5's `MacOS` takes XDG variables over its defaults),
+and resolves under `HOME`. A copy run that redirects either, rather than
+`CRATEKIT_STATE_DIR`, resolves a fresh gate and a fresh hour. The suite relies
+on exactly this, through its own pointer as well.
+
+**Measured cost.** Driven by the round one review: with `XDG_STATE_HOME` set
+to a scratch folder the gate resolved under it. No documented procedure, skill
+or solutions entry sets either variable for a copy run; reachability is
+unmeasured. 1 candidate was driven (the mutation driver, which also sets the
+gate's pointer) and it does not produce it.
+
+**Closes when:** the gate resolves by the account's own identity rather than a
+directory a process environment can move, or doctor names a gate outside the
+platform default that no pointer explains. Ledger only, since no producer is
+known.
+
+---
+
+## R-1615. A build from before U278 that writes the provider gate file drops the hour's count
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** The hour's count is a new `window` key in
+`provider_gate.json`. A build before U278 reads the file into its own state,
+which has no such field, and writes it back without it, so every minute the
+window held is lost and the next U278 build starts an empty hour.
+
+**Measured cost.** Driven by the round one review: seven calls through the
+branch's gate, one through `origin/main`'s on the same file, and the window
+read 0. The producer is an installed copy older than U278 beside a newer one,
+which lasts until the Mac's installed copy is updated; the attended check of
+this unit is owed on an installed copy at U278 or later.
+
+**Closes when:** every installed copy on the machine carries U278. Ledger only.
+
+---
+
+## R-1616. The hour's window is one per account but its line is read from each process's own configuration
+
+**Found:** at the build of #741, U278, 2026-11-12.
+
+**The mechanism.** Every process counts into the one gate's window, and each
+compares it with `[provider] calls_per_hour` and `reserve_share` off the
+configuration it loaded. A copy run that redirects `CRATEKIT_CONFIG_DIR` to a
+config with a higher budget spends further into the shared hour than the
+live config allows, and the live run then meets a window past its own line.
+
+**Measured cost.** Not driven. A copy's config is copied from the live one, so
+the two agree unless someone edits the copy's provider section.
+
+**Closes when:** the line a call is held to is written into the gate file by
+the live configuration, or doctor names a difference between the two. Ledger
+only.
+
+---
+
+## R-1617. The label sweep's estimate counts kept answers rather than pages and only label sync says one
+
+**Found:** at the build of #741, U278, 2026-11-12.
+
+**The mechanism.** `label sync`'s estimate before a walk over every followed
+label counts one call per aged kept answer, but a listed answer of many pages
+costs a call a page, and a label with no kept listing is estimated at the
+mean of the kept ones (or 100). Only `label sync --next` without `--label`
+and its interactive walk say an estimate; the retired `sync labels` resume,
+`label import` and any other verb that lists a label's whole catalogue say
+none. The hour's line still stops each of them call by call.
+
+**Measured cost.** Not measured on a real catalogue. A low estimate lets a
+sweep start that the hour then stops part way, which keeps what it read; it
+cannot spend the reserve.
+
+**Closes when:** a kept listing records the calls its pages cost and the
+estimate reads that, and every verb that walks every label shares the one
+estimate. Ledger only.
+
+---
+
+## R-1618. The hour's budget of 1,500 per identity and its quarter reserve are a conservative call awaiting Phillip's answer
+
+**Found:** at the build of #741, U278, 2026-11-12.
+
+**The mechanism.** The brief asked for a budget "well under" the 7,800 calls in
+twenty minutes of 2026-11-12 and a reserve of "for example a quarter". The
+build set `[provider] calls_per_hour` to 1,500 and `reserve_share` to 0.25 and
+asked Phillip on the card, as a Question for Phillip, between 1,500, 3,000 and
+900 an hour. A first `sync pair` plan of 2,500 to 4,200 calls now needs
+`--calls-per-hour` as well as `--calls`.
+
+**Measured cost.** None to the account: a lower line only stops reads sooner.
+A long sweep takes more hours than it did.
+
+**Closes when:** Phillip answers the card's question and the two defaults in
+`core/config.py`, the GUIDE's settings table and CONCEPTS agree with it.
+Ledger only.
+
+---
+
+## R-1619. The go a label sync walk ends at spends the reserve, and no test kills its removal
+
+**Found:** at the review of #741, U278, 2026-11-12.
+
+**The mechanism.** `label sync`'s walk is held to the read line by
+`provider_gate.reading`, and the go its last gate leads to widens back to the
+verb's declared class through `provider_gate.spending` in `sync_cli._go`.
+Removing that `with` leaves the suite green: no test drives a walk whose go
+meets an hour already past the read line.
+
+**Measured cost.** Driven by the round one review as a mutation, zero kills.
+With it removed, a walk's go would stop at 1,125 rather than 1,500 in an hour
+the reads had used, which is the case the reserve exists for. The code is
+present and correct at the merge; only its guard is unpinned.
+
+**Closes when:** a test walks every label to the go with the account's hour
+at its read line and the download still runs. Ledger only, maintainer facing.

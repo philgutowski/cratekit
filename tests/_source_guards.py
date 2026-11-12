@@ -1577,6 +1577,28 @@ def reserved_code_tables(
     """
     tree = ast.parse(source)
     table = ReservedCodeTable(tree, causes, code_range, package)
+    return _reservations(table)
+
+
+def reserved_code_tables_in(
+    tree: ast.AST,
+    causes: frozenset[str],
+    code_range: tuple[int, int],
+    package: str | None = None,
+) -> list[str]:
+    """:func:`reserved_code_tables` asked of a tree already parsed (U258).
+
+    The same question with the same answer: both build the one table and read it
+    with :func:`_reservations`. It exists so a test can hand over a tree it shares
+    with its other questions, since a parse memo keyed on the text could not live
+    in this module without the text reaching something other than ``ast.parse``.
+    The tree is read and never written.
+    """
+    return _reservations(ReservedCodeTable(tree, causes, code_range, package))
+
+
+def _reservations(table: ReservedCodeTable) -> list[str]:
+    """Every reservation one table reads, one line per (line, slug, status)."""
     found: list[str] = []
     # ONE HIT PER (LINE, SLUG, STATUS), and this is not decoration. A duplicate
     # key in a mapping literal, which is the very first defect this unit's suite

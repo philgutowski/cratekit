@@ -53,7 +53,9 @@ _WORD = r"[a-z][a-z0-9-]*"
 #: The top level options that take a value, so ``crate --output json doctor``
 #: reads as ``doctor`` and not as a verb called ``json``. Held equal to the
 #: parser's own below.
-TOP_VALUED = frozenset({"--output", "-d", "--decision", "--run", "--calls"})
+TOP_VALUED = frozenset(
+    {"--output", "-d", "--decision", "--run", "--calls", "--calls-per-hour"}
+)
 
 #: Every top level option. Argparse takes one only before the verb, so one
 #: written between ``crate`` and the verb is judged against this set, and one

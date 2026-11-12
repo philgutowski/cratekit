@@ -174,6 +174,7 @@ from cratekit.core import backup_facts, config
 from cratekit.core.cause import REASONS, Cause, CratekitError, Remediation
 from cratekit.core.exit_codes import BANDS, MAX_CODE, ExitCode, Remedy, band_of, meaning_of
 from tests import _source_guards as _guards
+from tests._parse_memo import parsed, shares_parses
 from tests._pinned_reserved_populations import (
     PINNED_KEBAB_LITERALS_BY_MODULE,
     PINNED_LITERAL_HOLDERS,
@@ -184,7 +185,11 @@ from tests._pinned_reserved_populations import (
     PINNED_NON_RESERVED_CAUSES,
     PINNED_RESERVED_CAUSE_COUNT,
 )
-from tests._source_guards import process_status_literals, reserved_code_tables
+from tests._source_guards import (
+    process_status_literals,
+    reserved_code_tables,
+    reserved_code_tables_in,
+)
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
 PACKAGE_ROOT = REPO_ROOT / "src" / "cratekit"
@@ -4581,16 +4586,28 @@ def test_the_package_scan_reaches_the_modules_it_claims_to():
 # ═══════════════════════════════════════════════════════════════════════════
 
 
-def population_under_measurement() -> list[tuple[str, str]]:
-    """The 49 non-owner files every count in this section is taken over."""
+def population_under_measurement(
+    sources: list[tuple[str, str]],
+) -> list[tuple[str, str]]:
+    """The non-owner files every count in this section is taken over.
+
+    314 of the package's 316 on 2026-11-12; the 49 this line used to say had
+    long gone stale. ``sources`` is what ``package_sources()`` returned, read
+    once by the test asking, so every count one test takes is over one reading
+    of the package (U258). The two population tests used to read it again
+    inside each helper and inside each comprehension, 242 and 5 readings on
+    ``main`` when U258 measured them.
+    """
     return [
         (relative, source)
-        for relative, source in package_sources()
+        for relative, source in sources
         if relative not in TABLE_OWNERS
     ]
 
 
-def modules_holding_a_named_cause(*, own_declarations: bool) -> dict[str, list[str]]:
+def modules_holding_a_named_cause(
+    sources: list[tuple[str, str]], *, own_declarations: bool
+) -> dict[str, list[str]]:
     """Modules where a NAME or a class attribute resolves to a declared cause.
 
     ``own_declarations`` says whether the file's own enum declarations are in the
@@ -4600,8 +4617,8 @@ def modules_holding_a_named_cause(*, own_declarations: bool) -> dict[str, list[s
     """
     causes = declared_causes()
     found: dict[str, list[str]] = {}
-    for relative, source in population_under_measurement():
-        tree = ast.parse(source)
+    for relative, source in population_under_measurement(sources):
+        tree = parsed(source)
         table = _guards.ReservedCodeTable(tree, causes, RANGE, package_of(relative))
         if not own_declarations:
             table.causes = set(causes)
@@ -4617,14 +4634,16 @@ def modules_holding_a_named_cause(*, own_declarations: bool) -> dict[str, list[s
     return found
 
 
-def modules_holding_a_cause_literal() -> dict[str, list[str]]:
+def modules_holding_a_cause_literal(
+    sources: list[tuple[str, str]],
+) -> dict[str, list[str]]:
     """The same population under the OLD constant-only key rule, for comparison."""
     causes = declared_causes()
     found: dict[str, list[str]] = {}
-    for relative, source in population_under_measurement():
+    for relative, source in population_under_measurement(sources):
         hits = {
             node.value
-            for node in ast.walk(ast.parse(source))
+            for node in ast.walk(parsed(source))
             if isinstance(node, ast.Constant)
             and isinstance(node.value, str)
             and node.value in causes
@@ -4642,7 +4661,7 @@ def holds_an_in_range_integer(source: str) -> bool:
         and isinstance(node.value, int)
         and not isinstance(node.value, bool)
         and low <= node.value < high
-        for node in ast.walk(ast.parse(source))
+        for node in ast.walk(parsed(source))
     )
 
 
@@ -4668,18 +4687,18 @@ def kebab_shaped_literals() -> set[str]:
 # residual "Five places where"
 # residual "`crate sync favorites` declares a local colour and tag write it never performs"
 
-def kebab_literals_by_module() -> dict[str, list[str]]:
+def kebab_literals_by_module(sources: list[tuple[str, str]]) -> dict[str, list[str]]:
     """Kebab-shaped string literals in each package module, sorted.
 
     The package-wide distinct set is the union of these lists. Pinning per module
     means two cards that add literals in different modules edit different entries.
     """
     found: dict[str, list[str]] = {}
-    for relative, source in package_sources():
+    for relative, source in sources:
         hits = sorted(
             {
                 node.value
-                for node in ast.walk(ast.parse(source))
+                for node in ast.walk(parsed(source))
                 if isinstance(node, ast.Constant)
                 and isinstance(node.value, str)
                 and _guards.CAUSE_SLUG.match(node.value)
@@ -4691,6 +4710,7 @@ def kebab_literals_by_module() -> dict[str, list[str]]:
 
 
 
+@shares_parses
 def test_pinned_populations_derive_totals_and_key_by_module():
     """U125: totals come from per-module pins, so parallel cards edit different lines.
 
@@ -4703,16 +4723,17 @@ def test_pinned_populations_derive_totals_and_key_by_module():
     """
     causes = declared_causes()
     non_reserved = causes - CAUSES
-    by_module = kebab_literals_by_module()
+    scanned = package_sources()
+    by_module = kebab_literals_by_module(scanned)
     literals = (
         frozenset().union(*(frozenset(v) for v in by_module.values()))
         if by_module
         else frozenset()
     )
-    without = modules_holding_a_named_cause(own_declarations=False)
-    with_own = modules_holding_a_named_cause(own_declarations=True)
-    literal_holders = modules_holding_a_cause_literal()
-    sources = dict(package_sources())
+    without = modules_holding_a_named_cause(scanned, own_declarations=False)
+    with_own = modules_holding_a_named_cause(scanned, own_declarations=True)
+    literal_holders = modules_holding_a_cause_literal(scanned)
+    sources = dict(scanned)
     both = [
         relative
         for relative in with_own
@@ -4764,6 +4785,7 @@ def test_pinned_populations_derive_totals_and_key_by_module():
     assert all(isinstance(slug, str) and slug for slug in PINNED_NON_RESERVED_CAUSES)
 
 
+@shares_parses
 def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
     """The numbers the residual argues from, recomputed here rather than recalled.
 
@@ -4809,7 +4831,9 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         PINNED_RESERVED_CAUSE_COUNT,
     ), "derived cause totals must equal the pinned parts"
 
-    by_module = kebab_literals_by_module()
+    scanned = package_sources()
+    sources = dict(scanned)
+    by_module = kebab_literals_by_module(scanned)
     assert by_module == PINNED_KEBAB_LITERALS_BY_MODULE, (
         "kebab literals moved in at least one module; joined modules or literals: "
         f"{ {k: sorted(set(by_module.get(k, [])) - set(PINNED_KEBAB_LITERALS_BY_MODULE.get(k, []))) for k in sorted(set(by_module) | set(PINNED_KEBAB_LITERALS_BY_MODULE)) if set(by_module.get(k, [])) != set(PINNED_KEBAB_LITERALS_BY_MODULE.get(k, [])) } }. "
@@ -4832,27 +4856,29 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
 
     widened = frozenset(set(causes) | literals)
     assert {
-        relative: reserved_code_tables(source, widened, RANGE, package_of(relative))
-        for relative, source in population_under_measurement()
-        if reserved_code_tables(source, widened, RANGE, package_of(relative))
+        relative: reserved_code_tables_in(
+            parsed(source), widened, RANGE, package_of(relative)
+        )
+        for relative, source in population_under_measurement(scanned)
+        if reserved_code_tables_in(parsed(source), widened, RANGE, package_of(relative))
     } == {}, (
         "the wide rule has a headroom problem now: adding every kebab-shaped "
         "literal in the package to the key set reports an offender, and the "
         "argument for one key set rests on it reporting none"
     )
 
-    without = modules_holding_a_named_cause(own_declarations=False)
-    with_own = modules_holding_a_named_cause(own_declarations=True)
-    literal_holders = modules_holding_a_cause_literal()
+    without = modules_holding_a_named_cause(scanned, own_declarations=False)
+    with_own = modules_holding_a_named_cause(scanned, own_declarations=True)
+    literal_holders = modules_holding_a_cause_literal(scanned)
     both = [
         relative
         for relative in with_own
-        if holds_an_in_range_integer(dict(package_sources())[relative])
+        if holds_an_in_range_integer(sources[relative])
     ]
     literal_both = [
         relative
         for relative in literal_holders
-        if holds_an_in_range_integer(dict(package_sources())[relative])
+        if holds_an_in_range_integer(sources[relative])
     ]
     assert without == PINNED_NAMED_WITHOUT_OWN, (
         "the named without-own population moved; update only the modules that "
@@ -4903,12 +4929,12 @@ def test_the_at_risk_population_is_recomputed_from_the_tree_and_pinned():
         "the widening rests on. Re-argue it or narrow the key side"
     )
 
-    sharpest = dict(package_sources())["core/exit_codes.py"]
-    declared_in_its_own_enum = _guards._declared_enum_values(ast.parse(sharpest))
+    sharpest = sources["core/exit_codes.py"]
+    declared_in_its_own_enum = _guards._declared_enum_values(parsed(sharpest))
     low, high = RANGE
     integers = [
         node.value
-        for node in ast.walk(ast.parse(sharpest))
+        for node in ast.walk(parsed(sharpest))
         if isinstance(node, ast.Constant)
         and isinstance(node.value, int)
         and not isinstance(node.value, bool)

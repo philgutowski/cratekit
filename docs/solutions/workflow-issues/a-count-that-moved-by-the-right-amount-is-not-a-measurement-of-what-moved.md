@@ -222,19 +222,25 @@ done < .scratch/causes-after.txt
 ```
 
 Set difference for a set a walk derives. Cut the scratch worktree before
-merging, or from the pre-merge commit after:
+merging, or from the pre-merge commit after. Since U258 the helper takes the
+package sources its caller read once, and before it took none, so the recipe
+asks the signature and works on either side of that change:
 
 ```sh
 cd /path/to/Cratekit
 git worktree add --detach .scratch/pre-merge <pre-merge>
 PYTHONPATH=.scratch/pre-merge/src:.scratch/pre-merge/tests \
   .venv/bin/python -c '
-from test_reserved_causes import modules_holding_a_named_cause
-print("\n".join(sorted(modules_holding_a_named_cause(own_declarations=True))))
+import inspect
+from test_reserved_causes import modules_holding_a_named_cause as named, package_sources
+given = (package_sources(),) if "sources" in inspect.signature(named).parameters else ()
+print("\n".join(sorted(named(*given, own_declarations=True))))
 ' > .scratch/named-before.txt
 PYTHONPATH=src:tests .venv/bin/python -c '
-from test_reserved_causes import modules_holding_a_named_cause
-print("\n".join(sorted(modules_holding_a_named_cause(own_declarations=True))))
+import inspect
+from test_reserved_causes import modules_holding_a_named_cause as named, package_sources
+given = (package_sources(),) if "sources" in inspect.signature(named).parameters else ()
+print("\n".join(sorted(named(*given, own_declarations=True))))
 ' > .scratch/named-after.txt
 diff .scratch/named-before.txt .scratch/named-after.txt
 git worktree remove .scratch/pre-merge

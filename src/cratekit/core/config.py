@@ -223,6 +223,16 @@ ENV_LIBRARY_ROOT = "CRATEKIT_LIBRARY_ROOT"
 #: directory and its lookups are not paid for twice. ``core.rehearsal`` does
 #: that for every rehearsal it redirects.
 ENV_ISRC_CACHE_DIR = "CRATEKIT_ISRC_CACHE_DIR"
+
+#: The directory the provider gate's state file and its lock live in, when set
+#: (U278). Unset, they live under the PLATFORM's installation state directory,
+#: the one ``CRATEKIT_STATE_DIR`` overrides, and never under the override: the
+#: gate describes the account's allowance, and a copy run that redirects its
+#: state to scratch must still spend from the one allowance the live run reads.
+#: On 2026-11-12 a copy whose gate followed its state spent about 7,800
+#: catalogue calls the live gate never saw, and the live breaker then refused
+#: the label go they had cost. The suite sets this to each test's own state.
+ENV_PROVIDER_GATE_DIR = "CRATEKIT_PROVIDER_GATE_DIR"
 ENV_DOWNLOAD_STAGING = "CRATEKIT_DOWNLOAD_STAGING"
 
 _APP_NAME = "cratekit"
@@ -415,6 +425,27 @@ def installation_state_dir() -> Path:
     if override:
         return Path(override)
     return Path(platformdirs.user_state_dir(_APP_NAME))
+
+
+def provider_gate_dir() -> Path:
+    """Where the provider gate's two files live: ``CRATEKIT_PROVIDER_GATE_DIR``
+    when set, else the platform's installation state directory (U278).
+
+    NOT :func:`installation_state_dir`. That honours ``CRATEKIT_STATE_DIR``,
+    which every copy run sets to scratch, and a gate that followed it gave each
+    copy an allowance of its own that the live gate could not see. The account
+    has one allowance, so every installation state pointed at it reads one gate.
+    """
+    override = os.environ.get(ENV_PROVIDER_GATE_DIR)
+    if override:
+        return Path(override)
+    return Path(platformdirs.user_state_dir(_APP_NAME))
+
+
+#: The state entries resolved under :func:`provider_gate_dir` rather than under
+#: their root's directory (U278). Resolved here, inside :func:`state_path`, so
+#: the gate, a report, doctor and a rehearsal's copy all get one answer.
+_PROVIDER_GATE_KEYS = frozenset({"provider_gate", "provider_gate_lock"})
 
 
 def library_state_dir(config: Config) -> Path:
@@ -806,9 +837,12 @@ STATE_FILES: tuple[StateFile, ...] = (
             "The streaming provider's pacing state (R-705): when the last call "
             "went out, how many rate limit answers came back in a row, when the "
             "breaker tripped and when its cooldown lifts, and the running call "
-            "totals. It describes the ACCOUNT's allowance, not a library: two "
-            "libraries swept on one account share one limit, so one file beside "
-            "the credential is the only placement that can tell the truth."
+            "totals, and each identity's calls in the last hour (U278). It "
+            "describes the ACCOUNT's allowance, not a library: two libraries "
+            "swept on one account share one limit, so one file beside the "
+            "credential is the only placement that can tell the truth. Resolved "
+            "under provider_gate_dir, never under a redirected state directory, "
+            "so a copy run spends from the same allowance as the live run."
         ),
     ),
     StateFile(
@@ -2356,6 +2390,8 @@ def state_path(key: str, config: Config | None = None) -> Path:
             f"how to fail when no keychain backend is reachable."
         )
     if entry.root is StateRoot.INSTALLATION:
+        if key in _PROVIDER_GATE_KEYS:
+            return provider_gate_dir() / entry.relative
         # The installation root spans two physical directories with different
         # backup and sync semantics, and the entry says which one it means. It
         # used to be implicit, which is how the config file came to be declared
@@ -3085,6 +3121,21 @@ DEFAULT_PROVIDER_CALLS_PER_COMMAND = 500
 #: give.
 DEFAULT_PROVIDER_ISRC_CACHE_DAYS = 30
 
+#: How many calls each identity, the account session and Cratekit's app
+#: credentials, may make to the streaming provider in any sixty minutes, from
+#: every command and every process that reads the one gate (U278). Fifteen
+#: hundred, well under the 7,800 in twenty minutes that preceded the block of
+#: 2026-11-12, and under the 3,600 the default pacing allows, so a day of reads
+#: can no longer use up what a label go needs. A person raises it for one run
+#: with ``--calls-per-hour`` or for every run here. Named here as well as on the
+#: field for the reason the intake ages give.
+DEFAULT_PROVIDER_CALLS_PER_HOUR = 1500
+
+#: The share of the hour's budget a command that only reads may never spend,
+#: kept for the verbs that write the account or download (U278). A quarter, the
+#: brief's default: reads stop at 1,125 of 1,500 and a label go keeps 375.
+DEFAULT_PROVIDER_RESERVE_SHARE = 0.25
+
 
 @dataclass(frozen=True, slots=True)
 class ProviderConfig:
@@ -3109,12 +3160,19 @@ class ProviderConfig:
     again (U206), by any verb, in a rehearsal or a live run. Zero turns the
     cache off and every lookup asks; that saves nothing and costs nothing but
     calls.
+
+    ``calls_per_hour`` is the hour's budget (U278): the most calls each identity
+    may make in any sixty minutes, counted in the one gate across every command
+    and every process, and ``reserve_share`` the part of it a command that only
+    reads may never spend. Neither has a value that switches it off.
     """
 
     min_interval_s: float = DEFAULT_PROVIDER_MIN_INTERVAL_S
     cooldown_s: int = DEFAULT_PROVIDER_COOLDOWN_S
     calls_per_command: int = DEFAULT_PROVIDER_CALLS_PER_COMMAND
     isrc_cache_days: int = DEFAULT_PROVIDER_ISRC_CACHE_DAYS
+    calls_per_hour: int = DEFAULT_PROVIDER_CALLS_PER_HOUR
+    reserve_share: float = DEFAULT_PROVIDER_RESERVE_SHARE
 
 
 #: How many releases one sweep of one favourite label may offer for review,
@@ -3595,6 +3653,27 @@ def _validate_provider(data: Mapping) -> list[str]:
         problems.append(
             f"{key} must be a whole number of days an answer the streaming provider "
             f"gave for an ISRC is reused, found {days!r}. Zero turns the cache off."
+        )
+    key = "provider.calls_per_hour"
+    hour = _dig(data, key)
+    if hour is not None and (not isinstance(hour, int) or isinstance(hour, bool) or hour < 1):
+        problems.append(
+            f"{key} must be a positive whole number of calls each identity may make "
+            f"to the streaming provider in an hour, found {hour!r}. There is no value "
+            f"that switches the budget off; raise it for one run with --calls-per-hour."
+        )
+    key = "provider.reserve_share"
+    share = _dig(data, key)
+    if share is not None and (
+        isinstance(share, bool)
+        or not isinstance(share, (int, float))
+        or not math.isfinite(share)
+        or share < 0
+        or share >= 1
+    ):
+        problems.append(
+            f"{key} must be a number from 0 up to but not including 1, the share of "
+            f"the hour's budget kept for writes and downloads, found {share!r}."
         )
     return problems
 
@@ -4936,6 +5015,7 @@ __all__ = [
     "merge_changes",
     "migrate",
     "out_of_band_effects",
+    "provider_gate_dir",
     "rekey_records",
     "reset_cache",
     "save",
