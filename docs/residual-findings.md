@@ -49909,3 +49909,65 @@ exists to stop. No producer of such a module was found.
 **Closes when:** the skip names the decoder's own path under the root
 (`cratekit/core/locations.py`), with a planted `locations.py` in another
 package reported, as its own card if wanted. Ledger only.
+
+---
+
+## R-1578. U256 was reviewed by Opus 5.5 standing in for Fable, out of usage, so a Fable pass on its merged range is owed
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** Both review rounds of U256 were refused on Fable's usage
+limit, and ran on Opus 5.5 at high effort under the same reviewer definition,
+merge bar and round cap, as the cloud unit skill's Models section allows.
+
+**Measured cost.** None known. Round one drove every one of the 2,694 copies
+in a full run against a build from nothing in the caller's own environment
+and found them identical; round two drove the fix round's mutants. Neither
+found anything blocking.
+
+**Closes when:** Fable reviews the merged range of U256, the changes to
+`tests/test_rb_writer_db.py` and `tests/test_fixture_database_template.py`,
+and its findings are driven or filed. Ledger only.
+
+---
+
+## R-1579. The fixture rows test's check that every row is stamped reads two columns the binding fills itself, so it guards nothing
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** `tests/test_fixture_database_template.py::test_a_copy_carries_the_rows_the_safety_chain_reads`
+asserts that no row of the four fixed tables has a null `created_at` or
+`updated_at`. The binding gives both columns a default of its own, so they
+are filled whether or not `_row` stamps them, and the check leaves out
+`agentRegistry.date_1` and `date_2`, the only stamp columns `_row` has to
+fill, which fail at the insert when unfilled.
+
+**Measured cost.** None to a person. Round two drove three mutants of
+`_row`: skipping both columns and skipping `updated_at` alone killed nothing,
+and skipping `date_1` and `date_2` failed at the insert before the clause was
+read. A reader may think the stamps are guarded by the clause when they are
+guarded by the binding.
+
+**Closes when:** the clause is removed, or rewritten to say what it holds.
+Ledger only.
+
+---
+
+## R-1580. The fixture template's refusal of a build that left a sidecar has no input that reaches it, so it kills no test
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** `tests/test_rb_writer_db.py::_template` refuses when the
+build from nothing leaves anything beside `master.db` in its directory, so a
+copy of the one file could never be half a database. A WAL build closes its
+last connection and SQLite folds the log into the main file, so nothing is
+left, and every probe build in both review rounds left only `master.db`.
+
+**Measured cost.** None to a person. Round one replaced the check with
+`if False:` and all ten tests of the new file passed; it is mutation row T6.
+A maintainer facing backstop for a change in SQLite or in the binding's
+close.
+
+**Closes when:** an input that leaves a sidecar is found and a test drives
+it, or the check is accepted as a backstop no current build reaches. Ledger
+only.
