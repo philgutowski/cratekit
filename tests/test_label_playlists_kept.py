@@ -261,9 +261,11 @@ def test_a_kept_read_keeps_a_track_the_provider_will_not_play_out_of_the_year(fo
     unplayable.available = False
     fake.releases["r1"] = ([FakeTrack("t1"), unplayable], 2021)
     assert drive(FULL)[0] == int(ExitCode.DECISION_REQUIRED)
+    # U243: each track's words ride with it, so a removed track is judged
+    # without reading the release again.
     assert _stored()["reads"]["r1"]["tracks"] == [
-        {"id": "t1", "available": True},
-        {"id": "t2", "available": False},
+        {"id": "t1", "available": True, "artist": "", "title": "Track t1"},
+        {"id": "t2", "available": False, "artist": "", "title": "Track t2"},
     ]
     code, done = _decided(FULL, (BUILD, "apply"))
     assert code == int(ExitCode.OK), done

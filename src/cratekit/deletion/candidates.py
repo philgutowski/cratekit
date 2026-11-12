@@ -38,7 +38,9 @@ references no existing file, so it cannot be the row that references a file that
 does exist. Counting it as incomplete would refuse the whole feature for any
 library holding a single row whose file the user moved by hand, which is every
 real library. A row that exists and cannot be STAT'd is the incomplete case, and
-so is one whose recorded prefix nothing maps, and both refuse.
+so is one whose recorded prefix nothing maps, and both refuse. The one unmapped
+spelling excused is a rekordbox streaming row, ``/v4/catalog/tracks/<id>/`` with
+nothing at it (U243), which names no file: see :func:`_streaming`.
 
 **AND THERE IS ONE PLACE THAT READING DOES NOT REACH, WHICH IS THE ANCHOR.**
 ``FileNotFoundError`` carries two facts and only one of them is an answer about
@@ -317,6 +319,22 @@ class ReferenceSet:
     #: all, and reading a real path as one of those is how the proof comes back
     #: empty and every candidate passes it.
     unnameable: tuple[str, ...] = ()
+    #: Active rows recorded as a rekordbox STREAMING location (U243), the exact
+    #: spelling ``/v4/catalog/tracks/<id>/`` with nothing at it on this machine.
+    #: The spelling opens with a slash, so the resolver reads it as a path no
+    #: rule maps, and it used to land in ``unmapped`` and refuse every deletion
+    #: on a library that ever streamed a track. Excused as ``not_a_path`` is and
+    #: counted as it is. See :func:`_streaming` for what keeps a real path out.
+    streaming: tuple[str, ...] = ()
+    #: The leading prefix of every row in ``unmapped`` and how many rows record
+    #: it, most first, so the refusal names the rule that would resolve them
+    #: rather than a count somebody has to go and search for.
+    unmapped_prefixes: tuple[tuple[str, int], ...] = ()
+
+    @property
+    def ignored(self) -> int:
+        """How many active rows the proof excused as referencing no local file."""
+        return len(self.not_a_path) + len(self.streaming)
 
     @property
     def complete(self) -> bool:
@@ -347,6 +365,7 @@ class ReferenceSet:
             "missing": len(self.missing),
             "not_a_path": len(self.not_a_path),
             "unnameable": len(self.unnameable),
+            "streaming": len(self.streaming),
         }
 
 
@@ -365,6 +384,42 @@ _DRIVE_LETTER = re.compile(r"^[A-Za-z]:[\\/]")
 #: surely; anchored, because a title containing the text ``file://`` is not a
 #: location.
 _FILE_LOCATION = re.compile(r"^file://", re.IGNORECASE)
+
+#: The location rekordbox records for a track it streams from a store (U243):
+#: ``/v4/catalog/tracks/<id>/``, measured on the live library as 137 rows of a
+#: Beatport or Beatsource catalogue. The identifier is letters and digits and
+#: nothing else, so the last component can never be a file name with an
+#: extension, and the whole value is matched, start to end, with ``\Z`` rather
+#: than ``$``, which would also accept a trailing newline.
+_STREAMING_LOCATION = re.compile(r"/v4/catalog/tracks/[A-Za-z0-9]+/?\Z")
+
+
+def _streaming(recorded: str, stat: Stat) -> bool:
+    """Whether an unmapped row is a rekordbox streaming row, which names no file.
+
+    **TWO FACTS, AND EITHER ONE ALONE IS NOT ENOUGH.** The spelling is the
+    exact one rekordbox writes for a streamed track, and nothing is at that
+    spelling on this machine: the filesystem answers ``FileNotFoundError``.
+    Anything else, a file or a directory there, a permission refused, a
+    component that is not a directory, a value the call will not take, keeps
+    the row unmapped, so the run refuses exactly as it did before this unit.
+    A real path cannot pass: a file at the spelling fails the second test, and
+    a renamed volume is mounted under a volume directory, never at ``/v4``, so
+    no recorded volume prefix produces this spelling.
+
+    Asked only of a row the resolver could not place. A rule a person wrote
+    that maps ``/v4`` is configuration and wins, as every rule does.
+    """
+    text = str(recorded)
+    if not _STREAMING_LOCATION.match(text):
+        return False
+    try:
+        stat(text)
+    except FileNotFoundError:
+        return True
+    except (OSError, ValueError):
+        return False
+    return False
 
 
 def _unnameable(recorded: str) -> bool:
@@ -551,6 +606,11 @@ def reference_set(
     and a ``file://`` location as readily as for a streaming pseudo-location. A
     row of the second kind names a real file, so excusing it removes real
     evidence from the proof rather than declining to add irrelevant evidence.
+
+    A REKORDBOX STREAMING ROW IS EXCUSED THE SAME WAY (U243), though its
+    location opens with a slash and the resolver answers ``UNMAPPED`` for it:
+    see :func:`_streaming`, which excuses the exact spelling only when nothing
+    is at it, and counts it in ``streaming``. Every other unmapped row refuses.
     """
     found: dict[FileIdentity, list[str]] = {}
     unmapped: list[str] = []
@@ -559,6 +619,8 @@ def reference_set(
     unanchored: list[str] = []
     not_a_path: list[str] = []
     unnameable: list[str] = []
+    streaming: list[str] = []
+    unmapped_under: dict[str, int] = {}
     dead: dict[str, None] = {}
     # Per anchor rather than per run, because the global tally is exactly what
     # the all-or-nothing warning got wrong: one unrelated active row that
@@ -584,7 +646,12 @@ def reference_set(
                 not_a_path.append(row.content_id)
             continue
         if resolved.path is None:
+            if _streaming(row.recorded, stat):
+                streaming.append(row.content_id)
+                continue
             unmapped.append(row.content_id)
+            prefix = resolved.prefix or "an unreadable prefix"
+            unmapped_under[prefix] = unmapped_under.get(prefix, 0) + 1
             continue
         anchor = _anchor_of(resolved, root=root, prefix_map=rules)
         try:
@@ -622,11 +689,20 @@ def reference_set(
         dead_anchors=tuple(dead),
         not_a_path=tuple(not_a_path),
         unnameable=tuple(unnameable),
+        streaming=tuple(streaming),
+        # MOST ROWS FIRST, then by prefix, so the order is the same every run.
+        unmapped_prefixes=tuple(
+            sorted(unmapped_under.items(), key=lambda pair: (-pair[1], pair[0]))
+        ),
         suspect_anchors=tuple(
             anchor for anchor in missing_under if not indexed_under.get(anchor)
         ),
         unstable_anchors=anchors.changed(),
     )
+
+
+#: How many unmapped prefixes a refusal names before it counts the rest.
+_NAMED_PREFIXES = 5
 
 
 def assert_complete(references: ReferenceSet) -> None:
@@ -698,10 +774,20 @@ def assert_complete(references: ReferenceSet) -> None:
             origin=("deletion.candidates",),
             detail={**references.counts, "unstable_anchors": list(references.unstable_anchors)},
         )
+    # THE UNMAPPED ROWS ARE NAMED BY THEIR PREFIX (U243), with the rule that
+    # would resolve them. "153 rows cannot be resolved" sent the person who met
+    # it to the database to find out which; the prefix is what a rule is
+    # written against, so it is the one fact they need.
+    named = references.unmapped_prefixes[:_NAMED_PREFIXES]
+    under = ", ".join(f"{count} under {prefix}" for prefix, count in named)
+    more = len(references.unmapped_prefixes) - len(named)
+    if more > 0:
+        under += f", and {more} other prefix{'es' if more > 1 else ''}"
     raise refuse(
         "deletion-reference-set-incomplete",
         f"{len(references.unmapped)} active rows record a location this machine "
-        f"cannot resolve, {len(references.uninspectable)} resolve to files "
+        f"cannot resolve{f' ({under})' if under else ''}, "
+        f"{len(references.uninspectable)} resolve to files "
         f"that could not be inspected, and {anchored}so the proof that a removed "
         f"file is unreferenced would be a proof about the rows that happened to "
         f"answer; nothing is offered this run",
@@ -711,19 +797,33 @@ def assert_complete(references: ReferenceSet) -> None:
         # one act away from a run that works. Saying which act is the difference
         # between a refusal and a wall.
         steps=(
-            (
-                f"mount the volume holding {', '.join(references.dead_anchors)}, "
-                f"or correct the volume prefix rule that points at it, then run "
-                f"this again"
+            *(
+                (
+                    f"mount the volume holding {', '.join(references.dead_anchors)}, "
+                    f"or correct the volume prefix rule that points at it, then run "
+                    f"this again",
+                )
+                if references.dead_anchors
+                else ()
             ),
-        )
-        if references.dead_anchors
-        else (),
+            # ONE ENTRY TO ADD TO THE LIST, never an assignment of the list: a
+            # configuration that already holds a rule would refuse a second
+            # assignment of the key, and setup always writes the key.
+            *(
+                f'add {{ from = "{prefix}", to = "<where those files are now>" }} '
+                f"to the library.location_prefix_map list in the configuration "
+                f"for the {count} row(s) under {prefix}, with from equal to to "
+                f"when the files are exactly where the rows say, then run this "
+                f"again"
+                for prefix, count in named
+            ),
+        ),
         remedy=Remedy.RUN_DOCTOR,
         scope=Scope.RUN,
         origin=("deletion.candidates",),
         detail={
             **references.counts,
+            "unmapped_prefixes": dict(references.unmapped_prefixes),
             "dead_anchors": list(references.dead_anchors),
             "unmapped_rows": list(references.unmapped[:20]),
             "uninspectable_rows": list(references.uninspectable[:20]),

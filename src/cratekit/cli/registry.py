@@ -2187,7 +2187,8 @@ ENTRIES: tuple[Entry, ...] = (
         name="label.playlists",
         summary=(
             "build a followed label's folder of private year playlists on the "
-            "streaming account; adds, never removes"
+            "streaming account; adds, never removes, and never adds a track the "
+            "library removed through delete review"
         ),
         module="cratekit.label.playlists_cli",
         builder="build_playlists",
@@ -2260,8 +2261,9 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="label.prune",
         summary=(
-            "take the tracks the genre gate holds or the catalogue no longer "
-            "confirms off the year playlists this product made for a label"
+            "take the tracks the genre gate holds, the catalogue no longer "
+            "confirms, or the library removed through delete review off the year "
+            "playlists this product made for a label"
         ),
         module="cratekit.label.prune_cli",
         builder="build_prune",
@@ -3621,7 +3623,8 @@ ENTRIES: tuple[Entry, ...] = (
                 name="label.heard.confirm",
                 options=("apply", "abort"),
                 prompt="Mark these releases heard, put the dated playlist's tracks in "
-                "the year and remove it from the streaming account?",
+                "the year, less any removed or pruned, and remove it from the "
+                "streaming account?",
                 #: EXPLICIT, as every other write to the account is (R34).
                 explicit=True,
                 digest_source="plan",

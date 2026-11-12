@@ -522,9 +522,9 @@ Other label verbs:
 | `label held [return RELEASE_ID ...]` | Lists releases the genre gate holds back, or returns some to review. |
 | `label judge [--label NAME]` | Judges releases waiting in review by the label's kind and holds what the gate would not file. |
 | `label artists` | Puts the artist's name on open releases whose artist reads as a provider address. |
-| `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
+| `label playlists LABEL [--releases]` | Keeps the label's account folder of private `<Label> <year>` playlists; adds, never removes, and never adds a track removed through `delete review`. `--releases` reads only what the last go took. A full build over 500 calls stops at `label.playlists.crawl` first. |
 | `label mark LABEL --pass PASS` (or `--xml FILE`) | Records the year playlists a landed batch filed as taken; no title changes. |
-| `label prune LABEL` | Takes held or no longer confirmed tracks off the label's year playlists. |
+| `label prune LABEL` | Takes held or no longer confirmed tracks, and tracks removed through `delete review`, off the year playlists it made; a playlist left empty is said and kept. |
 | `label heard LABEL YEAR DATE [--release ID]` | Moves a dated `<Label> <year> new <date>` playlist's tracks into the year playlist and removes the dated one. |
 
 `crate sync labels` is retired; it only resumes a labels sweep queued before
@@ -828,9 +828,16 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
-removed in rekordbox; confirmed ones go to the system Trash only. `crate
-tombstone list` shows what was removed; `--revoke ID` lets that version be
-acquired again.
+removed in rekordbox; confirmed ones go to the system Trash only. It refuses
+while any active row records a path it cannot resolve, naming each prefix and
+the `library.location_prefix_map` rule that would resolve it; rows that are no
+local file, rekordbox's streaming rows and `soundcloud:` locations among them,
+are left out and counted on the gate. `crate tombstone list` shows what was
+removed; `--revoke ID` lets that version be acquired again. A removed track
+also stays off its label's year playlists: `label playlists` never adds it,
+`label heard` never merges it in from a dated playlist (nor a track `label
+prune` took off that year), and `label prune` takes it off, a single named for
+its track included.
 
 **Review queue.** `crate review list [--queue Q] [--kind K]`, `review show
 ID`, `review resolve ID --verdict accepted|rejected [--option X]` (or

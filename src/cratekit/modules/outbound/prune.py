@@ -4,7 +4,8 @@ The account protocol's one removal, ``remove_tracks``, planned and applied. Two
 kinds of playlist can lose a track here and no others:
 
 * a label year playlist ``label playlists`` CREATED, for a release the genre
-  gate now holds or the label's catalogue no longer confirms;
+  gate now holds or the label's catalogue no longer confirms, or for a track
+  the library removed through ``crate delete review`` (U243);
 * a playlist ``export playlist`` made, for a track no longer in the library
   playlist it was exported from.
 
@@ -26,14 +27,16 @@ removal takes every copy.
 
 ABSENCE IS NEVER THE EVIDENCE. A label year track leaves only when a release
 the read REACHED says so: one the genre gate holds, or one the verifier
-credits to another label. A track no release in the read carries stays,
+credits to another label, or a tombstone stands over a track of a release the
+read reached (U243), which is a person's own recorded act and not an absence. A track no release in the read carries stays,
 however the read came out, since an empty or short read looks exactly like a
 label whose catalogue moved on.
 
 THE PLAN READS AND WRITES NOTHING. The apply takes tracks off in chunks and
 records each chunk as it lands, moving it from ``added`` to ``pruned``, so a
 refusal part way resumes without taking anything off twice and a second run
-plans nothing. Nothing here removes a playlist, a folder or a heart.
+plans nothing. Nothing here removes a playlist, a folder or a heart: a year
+playlist the plan takes every track off is said on the gate and kept.
 
 Layer: modules.
 """
@@ -96,6 +99,9 @@ class PlaylistPrune:
     why: str = ""
     #: How many tracks would leave a playlist left alone, for the sentence.
     would: int = 0
+    #: True when every track on the playlist is taken off, so the playlist is
+    #: left empty. Said, never acted on: the playlist itself stays (U243).
+    empties: bool = False
 
     @property
     def writes(self) -> bool:
@@ -187,17 +193,22 @@ def _step(
         )
     copies = Counter(order)
     asked = set(wanted)
+    take = tuple(
+        Taken(remote_id=one, artist=artist, title=title)
+        for one, (artist, title) in names.items()
+        if one in asked and copies[one] == 1
+    )
     return PlaylistPrune(
         key=key,
         name=name,
         remote_id=remote_id,
-        take=tuple(
-            Taken(remote_id=one, artist=artist, title=title)
-            for one, (artist, title) in names.items()
-            if one in asked and copies[one] == 1
-        ),
+        take=take,
         settle=tuple(one for one in wanted if one not in names and copies[one] == 0),
         twice=tuple(one for one in wanted if copies[one] > 1),
+        # EMPTIED is read off the playlist as it is: every member it holds is
+        # one this plan takes off. A playlist holding nothing to begin with is
+        # not one the plan empties.
+        empties=bool(take) and set(order) <= {one.remote_id for one in take},
     )
 
 
@@ -227,6 +238,11 @@ def plan_label(
 
     A track on a held release and a kept one stays, since the kept release
     asked for it. A track on no release the read reached stays, said.
+
+    A TRACK THE LIBRARY REMOVED LEAVES WHATEVER RELEASE KEEPS IT (U243):
+    ``catalogue.tombstoned``, a track of a release the read reached with a
+    tombstone standing over its artist and title. The kept release asks for
+    the track, and the person who removed it from the library asked louder.
     """
     if len(catalogue.by_release) + catalogue.gone != catalogue.releases:
         raise _incomplete(
@@ -235,6 +251,7 @@ def plan_label(
             f"with their tracks and {catalogue.gone} gone",
         )
     holding = set(held)
+    taken_away = set(catalogue.tombstoned)
     judged = catalogue.gone == 0
     kept: dict[str, set[str]] = {}
     undated: set[str] = set()
@@ -275,7 +292,7 @@ def plan_label(
         notes.append(
             f"{catalogue.gone} confirmed release(s) the provider no longer has, so a "
             f"release credited to another label is not judged and only the tracks "
-            f"of held releases are taken off"
+            f"of held releases, and tracks removed from the library, are taken off"
         )
     if unexplained:
         notes.append(
@@ -291,7 +308,8 @@ def plan_label(
         leaving = [
             one
             for one in sorted(recorded.added)
-            if one not in staying(year) and (one in on_held or one in on_other)
+            if one in taken_away
+            or (one not in staying(year) and (one in on_held or one in on_other))
         ]
         if not leaving:
             continue
@@ -514,6 +532,13 @@ def payload(
             "count": len(items),
             "take_off": sum(1 for item in items if item["action"] == "take-off"),
             "writes": bool(planned is not None and planned.writes),
+            # SAID AND NOT A WRITE, so outside the digest: the playlists the
+            # plan leaves empty, which stay on the account.
+            "emptied": [
+                step.name
+                for step in (planned.playlists if planned is not None else ())
+                if step.empties and not step.why
+            ],
         },
         "chunk": None,
     }
@@ -534,6 +559,11 @@ def shown(planned: Plan) -> dict[str, Any]:
         if step.twice:
             lines.append(
                 f"and {len(step.twice)} track(s) on the playlist more than once, left alone"
+            )
+        if step.empties:
+            lines.append(
+                "and the playlist is left empty; it stays on the account, since a "
+                "prune never removes a playlist"
             )
         lists[step.name] = lines
     said: dict[str, Any] = {

@@ -1173,6 +1173,11 @@ class Confirmed:
     dropped: tuple[Dropped, ...]
     suppressed: int
     unread: tuple[Unread, ...]
+    #: The releases a tombstone suppressed, counted in ``suppressed``. Carried
+    #: so a reader can judge their tracks (U243): a single is named for its one
+    #: track, so the tombstone ``crate delete review`` writes for the track
+    #: suppresses the release too, and its track would otherwise go unjudged.
+    suppressed_releases: tuple[Any, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -1231,9 +1236,11 @@ def confirm_listed(cfg: config.Config, listed: Listed) -> Confirmed:
     confirmed: list[Any] = []
     dropped: list[Dropped] = []
     suppressed = 0
+    held_back: list[Any] = []
     for release in ordered:
         if tombstoned(release):
             suppressed += 1
+            held_back.append(release)
             continue
         verdict = label_verify.verify_release(listed.claimed, release, search=listed.verify)
         status = str(verdict.get("verdict") or "unconfirmed")
@@ -1253,6 +1260,7 @@ def confirm_listed(cfg: config.Config, listed: Listed) -> Confirmed:
         dropped=tuple(dropped),
         suppressed=suppressed,
         unread=listed.unread,
+        suppressed_releases=tuple(held_back),
     )
 
 
