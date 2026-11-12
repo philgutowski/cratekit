@@ -49909,3 +49909,347 @@ exists to stop. No producer of such a module was found.
 **Closes when:** the skip names the decoder's own path under the root
 (`cratekit/core/locations.py`), with a planted `locations.py` in another
 package reported, as its own card if wanted. Ledger only.
+
+---
+
+## R-1578. U256 was reviewed by Opus 5.5 standing in for Fable, out of usage, so a Fable pass on its merged range is owed
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** Both review rounds of U256 were refused on Fable's usage
+limit, and ran on Opus 5.5 at high effort under the same reviewer definition,
+merge bar and round cap, as the cloud unit skill's Models section allows.
+
+**Measured cost.** None known. Round one drove every one of the 2,694 copies
+in a full run against a build from nothing in the caller's own environment
+and found them identical; round two drove the fix round's mutants. Neither
+found anything blocking.
+
+**Closes when:** Fable reviews the merged range of U256, the changes to
+`tests/test_rb_writer_db.py` and `tests/test_fixture_database_template.py`,
+and its findings are driven or filed. Ledger only.
+
+---
+
+## R-1579. The fixture rows test's check that every row is stamped reads two columns the binding fills itself, so it guards nothing
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** `tests/test_fixture_database_template.py::test_a_copy_carries_the_rows_the_safety_chain_reads`
+asserts that no row of the four fixed tables has a null `created_at` or
+`updated_at`. The binding gives both columns a default of its own, so they
+are filled whether or not `_row` stamps them, and the check leaves out
+`agentRegistry.date_1` and `date_2`, the only stamp columns `_row` has to
+fill, which fail at the insert when unfilled.
+
+**Measured cost.** None to a person. Round two drove three mutants of
+`_row`: skipping both columns and skipping `updated_at` alone killed nothing,
+and skipping `date_1` and `date_2` failed at the insert before the clause was
+read. A reader may think the stamps are guarded by the clause when they are
+guarded by the binding.
+
+**Closes when:** the clause is removed, or rewritten to say what it holds.
+Ledger only.
+
+---
+
+## R-1580. The fixture template's refusal of a build that left a sidecar has no input that reaches it, so it kills no test
+
+**Found:** at the review of #685, U256, 2026-11-12.
+
+**The mechanism.** `tests/test_rb_writer_db.py::_template` refuses when the
+build from nothing leaves anything beside `master.db` in its directory, so a
+copy of the one file could never be half a database. A WAL build closes its
+last connection and SQLite folds the log into the main file, so nothing is
+left, and every probe build in both review rounds left only `master.db`.
+
+**Measured cost.** None to a person. Round one replaced the check with
+`if False:` and all ten tests of the new file passed; it is mutation row T6.
+A maintainer facing backstop for a change in SQLite or in the binding's
+close.
+
+**Closes when:** an input that leaves a sidecar is found and a test drives
+it, or the check is accepted as a backstop no current build reaches. Ledger
+only.
+
+---
+
+## R-1581. U257's review was Opus 5.5 standing in for Fable, out of usage, so a Fable pass is owed on its merged range
+
+**Found:** at the review of #686, U257, 2026-11-12.
+
+**The mechanism.** The Fable reviewer was refused on its usage limit at round
+one, and the same reviewer definition ran on Opus 5.5 at high effort in its
+place, as the cloud-unit skill's Models section allows. Nothing BLOCKING was
+found after 256,000 fuzzed texts, every tracked file, every code point's
+folding and five pathological inputs; its four residual points were fixed in
+the round.
+
+**Measured cost.** None known. The merged range has had one reviewer of a
+different model from the one METHOD names.
+
+**Closes when:** a Fable pass at high effort reads the range U257 merged
+(the `test(u257)`, `feat(u257)`, `fix(u257)` and `record(u257)` commits) and
+finds nothing BLOCKING, or its findings are driven to the merge bar. Ledger
+only: no shipped verb pays for it.
+
+---
+
+## R-1582. The mutation driver writes test ids verbatim, so a table whose rows kill the scan's own tests quotes their planted credentials and fails the scan
+
+**Found:** at the mutation table of #686, U257, 2026-11-12.
+
+**The mechanism.** `scripts/mutate.py` lists each killed test by its node id
+in `docs/mutation/<unit>.md`. `tests/test_portability.py` parametrizes some
+tests with a credential shaped body assembled at runtime, so pytest's id for
+the case spells the whole body, for example a JSON `access_token` field
+holding the file's fake token. A table whose rows kill those tests then
+carries the shape on disk, and `scripts/scan_repo.py` refuses it: U257's
+table drew five findings (three OAuth token fields, two credential
+assignments). The JSON sidecar escapes its quotes and stays clean.
+
+**Measured cost.** Maintainer facing only. The unit that measured it spells
+the token as a placeholder in the table by hand and says so in it, which is
+an edit to a measured record. No shipped verb pays for it.
+
+**Closes when:** the driver elides a parametrized id's value where it would
+write a credential shape (for example by running the table's text through
+`secret_violations` and replacing each span with a placeholder before
+writing), or the portability tests take ids that do not spell the body.
+Ledger only.
+
+---
+
+## R-1583. A mark appends without reading the applied ledger when its inode, size and modification time are as this process left them, whatever its bytes
+
+**Found:** at the review of #683, U254, 2026-11-12.
+
+**The mechanism.** `apply.mark_applied` skips the whole read of the journal
+when `os.stat` gives the same device, inode, size and modification time this
+process recorded after its own last write (`_LEFT`). An identity is not the
+content: a file rewritten in place to the same size within one tick of the
+volume's clock (a second on HFS+, two on FAT), or given its old time back with
+`utime`, reads as untouched, and the record is appended to whatever it now
+holds.
+
+**Measured cost.** Driven by the review on a scratch copy: three marks, the
+file overwritten in place with a schema 1 document of the same size and its
+time restored, then one more mark. The record was appended to the document
+and every later read refused it as not JSON, so `adopt apply` and the organize
+reads stop until the file is repaired by hand. Four producers were driven and
+none produces it: another process's mark (changes the size), a torn repair
+across processes (a new inode), a staged restore of the same size and time (a
+new inode, now pinned by a test), and an older build's mark (it refuses before
+writing). An outside in place writer inside one clock tick is unmeasured.
+
+**Closes when:** a mark proves the bytes it skips are the bytes it left, for
+example a digest of the last record kept beside the identity and compared to
+the file's tail, or the risk is accepted. Ledger only.
+
+---
+
+## R-1584. A journal's damaged last line is read as a torn mark and erased by the next mark, even when it was a whole record
+
+**Found:** at the review of #683, U254, 2026-11-12.
+
+**The mechanism.** `apply._read_journal` reads an unterminated last line, or
+a terminated last line that is not JSON, as the mark that did not finish, and
+the next mark rewrites the file without it. That is the decision U254's card
+asked for and its tests hold: a mark is the last act of an entry, so a mark
+that did not land re-applies the entry, which the module's crash table shows
+is safe. Two inputs are dropped with it that were not torn writes: a whole
+valid record that only lacks its newline, and a last line damaged by anything
+other than a kill.
+
+**Measured cost.** The documented re-apply: the entry is placed again (a no
+op for the membership writer) and marked again, so its record's actor, digest
+and applied time become the second run's. `organize/mirror_downloads.py` reads
+the digest and the applied time to tell an adoption from a person's filing.
+Neither producer (partial page persistence after a power loss, a hand edit)
+was driven.
+
+**Closes when:** the cost is accepted, or a whole record lacking only its
+newline is kept and repaired with its newline rather than dropped. Ledger
+only.
+
+---
+
+## R-1585. A build older than U254 reads a journal applied ledger as not JSON and says run doctor, not upgrade
+
+**Found:** while building #683, U254, 2026-11-12.
+
+**The mechanism.** U254 writes the applied adoption ledger as a journal, a
+header line and one record per line, at schema 2. A build before U254 parses
+the file as one JSON document, fails on the second line, and refuses with
+`adoption-ledger-unusable` and the doctor remedy, where a schema it did not
+know would have said to upgrade. The refusal is the safe one, never an empty
+ledger, so nothing re-applies; only the advice is wrong.
+
+**Measured cost.** Not driven on an installed copy. Reachable when one
+library is used from two installations at different versions, or when a
+library's ledger was written by a newer build and an older one is run against
+it.
+
+**Closes when:** nothing further is needed once every installed copy carries
+U254; the attended card U254 files updates them. Ledger only.
+
+---
+
+## R-1586. The adoption revert ledger is rewritten whole on every tag adoption writes, so its bytes grow with the square of the files tagged
+
+**Found:** while building #683, U254, 2026-11-12.
+
+**The mechanism.** `revert.write_tag_with_record` takes the adoption lock,
+reads the whole revert ledger, adds or stamps one record, and writes the whole
+ledger back through `config.atomic_write_bytes`, once per entry whose tag an
+apply writes. U254 made the applied ledger a journal and left this one as it
+was, because its records are changed in place after they are written (the
+digest stamp, the list of entries that wrote through a record), so an append
+needs update records and a fold of its own, not the applied ledger's.
+
+**Measured cost.** Driven on this container with `write_tag_with_record` over
+synthesized FLAC files in a scratch library: 50 records wrote 1,479,470 bytes,
+100 wrote 5,873,770, 200 wrote 23,417,570, about 582 bytes a record and four
+times the bytes for twice the records. By the fit, and not run, about 17.6 GB
+for the 7,773 entries of the cutover's live apply, if every entry wrote a tag.
+Only an apply that writes tags pays it; a membership only apply writes nothing
+here.
+
+**Closes when:** the revert ledger records each tag write without rewriting
+itself whole, on a card of its own, with the same byte count test U254 uses.
+Ledger only: a speed cost, none of the board bar's four.
+
+---
+
+## R-1587. U254 was reviewed by Opus 5.5 at high effort because Fable was out of usage, and a Fable pass over its merged range is owed
+
+**Found:** at the review of #683, U254, 2026-11-12.
+
+**The mechanism.** The cloud unit pipeline reviews every branch with Fable at
+high effort. Fable refused round one on its usage limit, so by the rule
+Phillip set on 2026-11-08 the same reviewer definition ran on Opus 5.5 at high
+effort, under the same merge bar and round cap.
+
+**Measured cost.** None known. The substitution is a different second pair of
+eyes, not a missing one.
+
+**Closes when:** the fable-reviewer agent has reviewed U254's merged range
+(the merge commit of #683 against its first parent) and its findings are
+driven or filed. Ledger only.
+
+---
+
+## R-1588. The applied ledger's no whole read test watches only Path.read_bytes, and the device in a mark's identity kills no test
+
+**Found:** at the review of #683, U254, round two, 2026-11-12.
+
+**The mechanism.** `test_a_mark_does_not_parse_the_ledger_it_appends_to` in
+`tests/test_adopt_apply_journal_u254.py` counts reads of the ledger through
+`Path.read_bytes`, which is how `apply._load` reads it today. A `_load` that
+read through `open(...).read()` with the cache off would bring back the whole
+read per mark, the square in the CPU, with the suite green. Separately, the
+device field of `apply._as_left`'s identity can be dropped with no test dying,
+since a file on another device at the same path almost always has another
+inode too.
+
+**Measured cost.** None today; the shipped code is correct. Driven by the
+round two review on a scratch copy: both mutants pass every test in eleven
+files. The size, inode and time fields each kill a test of their own.
+
+**Closes when:** the no whole read test counts records parsed (or bytes read
+at the ledger's path by any route), and a test moves the ledger to another
+device, or the device field is accepted as belt and braces. Ledger only.
+
+---
+
+## R-1589. The merged range of U260 owes a Fable review, since Opus 5.5 at high effort reviewed it with Fable out of usage
+
+**Found:** at the build of #689, U260, 2026-11-12.
+
+**The mechanism.** METHOD's review is Fable's at high effort. Fable's review
+of this branch was refused on the account's usage limit on 2026-11-12, so by
+Phillip's decision of 2026-11-08 Opus 5.5 at high effort ran the same reviewer
+definition in its place, under the same merge bar and round cap. The range
+was therefore reviewed by the model that also built it.
+
+**Measured cost.** None measured: the substitution is the gap. The review's
+findings and the mutation table are in `docs/restart/u260.md`.
+
+**Closes when:** Fable reviews the merged range, the U260 merge commit's diff
+against its first parent, and any finding it raises is filed or fixed.
+Ledger only: a review owed, nothing lost.
+
+---
+
+## R-1590. The U259 merge was reviewed by Opus 5.5 in Fable's place and owes a Fable pass
+
+**Found:** at the review of #688, U259, 2026-11-12.
+
+**The gap.** Fable's review of #688 was refused on its usage limit in both
+rounds on 2026-11-12, so by Phillip's rule of 2026-11-08 Opus 5.5 at high
+effort reviewed the branch in its place, following the `fable-reviewer`
+definition under the same merge bar and round cap. Round one found nothing
+BLOCKING and four residuals, two of which changed what the check reports on
+contents no producer was found to write; both were fixed with failing tests
+first. The merged range has not had the reviewer the cloud lane names.
+
+**What it covers.** In `src/cratekit/intake/analyzed.py`, `member` split into
+its read by ID and `judge`, the judgment the clear of INBOX / Analyze removes
+memberships by; in `src/cratekit/analysis/rekordbox_check.py`, `_unanalysed`,
+`_content_rows`, `Scope.read`, `read_row`'s `content` and `check_rows` with
+its fall back to reads by ID when a batch cannot load; the U259 block of
+`tests/test_analyze_check.py`; and the table `docs/mutation/u259.md`.
+
+**Closes when:** a Fable review at high effort of the merged range against
+METHOD's merge bar reports, and each BLOCKING finding is fixed or filed. It
+earns no issue: a review owed is maintainer facing, which the board bar
+excludes.
+
+---
+
+## R-1591. A collection row whose ID is stored as bytes is left out of the check's scope of every row not analysed
+
+**Found:** at the review of #688, U259, 2026-11-12.
+
+**The mechanism.** When INBOX / Analyze holds no row, `crate analyze check`
+reads every collection row rekordbox has not analysed. Before U259 it found
+each one again by the text of its ID, and a row whose `djmdContent.ID` is
+stored as bytes (`typeof(ID)` reads `blob`) was never found that way, so it
+was silently left out of the scope. U259 judges each row in hand, which would
+have put it in, and keeps it out on purpose (`_unanalysed` skips an ID that
+is `bytes`; an ID stored as an integer, which the read by ID did find, is
+kept, review round two), because the card required the check's answer to equal the
+answer before it on every database. The skip is absence read as evidence of
+absence, the first of METHOD's recurring patterns, kept rather than repaired.
+
+**Measured cost.** Driven on a disposable copy with one row's ID cast to a
+blob: the scope is the same rows before and after U259, and the cast row is
+not named. No producer was driven: the column has text affinity, so it holds
+bytes only if bytes are written to it, and neither rekordbox nor anything in
+Cratekit was found writing them.
+
+**Closes when:** someone decides whether such a row belongs in the scope
+(named as unreadable, most likely, rather than silently absent) and the skip
+in `_unanalysed` becomes that answer. Ledger only: no producer is known.
+
+---
+
+## R-1592. crate inbox analyzed still reads each INBOX / Analyze member by its ID, one statement a row, twice per apply
+
+**Found:** at the build of #688, U259, 2026-11-12.
+
+**The mechanism.** U259 took the check off reads by ID and left the clear
+alone, since the card named only the check. `analyzed.plan_clear` still calls
+`member` for each live member of INBOX / Analyze, one `djmdContent` read by ID
+a row, and `apply_clear` takes the plan again on the write handle, so an apply
+reads every member twice more.
+
+**Measured cost.** Not measured on the clear. On the check, the same per row
+reads cost 18,574 statements and 3.4 seconds over 10,001 members on the
+synthetic database, against 23 statements and 0.3 seconds batched. INBOX /
+Analyze holds what one landing left, usually tens of rows, so the clear's
+cost is small in practice.
+
+**Closes when:** `plan_clear` reads the members a chunk of IDs to a
+statement and judges them with `analyzed.judge`, its digest equal to today's
+on the same database. Ledger only: a speed point, no false answer.

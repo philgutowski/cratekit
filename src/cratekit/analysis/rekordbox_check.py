@@ -18,7 +18,14 @@ forbids, so there is no object in hand that could save a file back.
 
 WHAT ANALYSED MEANS is :func:`cratekit.intake.analyzed.member`'s, the one the
 clear of INBOX / Analyze uses, so this check and the clear never disagree about
-which rows rekordbox has finished with.
+which rows rekordbox has finished with. The check calls its judgment,
+:func:`cratekit.intake.analyzed.judge`, over rows it already holds.
+
+THE COLLECTION IS READ IN A HANDFUL OF STATEMENTS (U259), never one or three
+a row: the scope of every row rekordbox has not analysed is judged off the one
+read of the collection, a scope of playlist members is read a chunk of IDs to
+a statement, and each row in scope is read once, its judgment, key, title head
+and analysis path all off that one read.
 
 THE VERDICT, and why each part is there:
 
@@ -43,9 +50,9 @@ from __future__ import annotations
 
 import math
 import struct
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from pathlib import Path
-from typing import Any, Iterable, Sequence
+from typing import Any, Iterable, Mapping, Sequence
 
 from cratekit.analysis import agreement, detect
 from cratekit.core import analysis_store, config, rb_writer, session, taxonomy, tree_registry
@@ -280,6 +287,12 @@ class Scope:
     #: An unlisted log never reaches a Scope: it reads no record, so a named
     #: landing refuses, naming the listing (R-1255).
     unreadable_records: int = 0
+    #: The collection rows the scope already read, by content ID, so the rows
+    #: are not read a second time (U259). The unanalysed scope holds every row
+    #: it names; a scope of playlist members holds none and its rows are read
+    #: in :func:`check_rows`. Not part of what a scope IS, so it is left out of
+    #: equality and of its repr.
+    read: Mapping[str, Any] = field(default_factory=dict, compare=False, repr=False)
 
 
 def _recorded_playlists(record: session.SessionRecord) -> tuple[str, ...]:
@@ -353,14 +366,54 @@ def _analyze_members(
     return tuple(dict.fromkeys(members)), ""
 
 
-def _unanalysed(db: Any) -> tuple[str, ...]:
-    """Every live collection row rekordbox has not analysed, by the clear's own reading."""
-    waiting = []
+def _unanalysed(db: Any) -> dict[str, Any]:
+    """Every live collection row rekordbox has not analysed, by the clear's own reading,
+    each with the row the one read of the collection holds, in the collection's order.
+
+    ONE STATEMENT, NOT ONE A ROW (U259). Each row is judged by
+    :func:`cratekit.intake.analyzed.judge` as the read hands it over, which is
+    the judgment the clear reads by ID, so no row is asked for again; the check
+    reads a private copy, so nothing changes a row between the read and the
+    judgment.
+
+    A ROW WHOSE ID IS STORED AS BYTES IS LEFT OUT, as the read by ID always
+    left it (review round one): the text of such an ID, ``str`` of the bytes,
+    never finds it, so it was never in this scope, and judging it in hand
+    would add it. ONLY BYTES (review round two): an ID stored as an integer,
+    in a column of integer affinity, IS found by its text, so it stays in.
+    Whether a bytes ID belongs in the scope is a question of its own, not one
+    this saving answers.
+    """
+    waiting: dict[str, Any] = {}
     for content in db.get_content():
-        one = analyzed.member(db, str(content.ID))
+        if isinstance(content.ID, bytes):
+            continue
+        content_id = str(content.ID)
+        one = analyzed.judge(content_id, content)
         if one.why == analyzed.NOT_ANALYSED or one.why == analyzed.NO_ANALYSIS_PATH:
-            waiting.append(one.content_id)
-    return tuple(waiting)
+            waiting[one.content_id] = content
+    return waiting
+
+
+#: How many IDs one statement asks for, under every SQLite build's variable limit.
+_CHUNK = 500
+
+
+def _content_rows(db: Any, content_ids: Sequence[str]) -> dict[str, Any]:
+    """The collection rows named, by content ID, read a chunk of IDs to a statement (U259).
+
+    A row the collection lacks is absent from the answer, which the caller
+    reads as ``None``: what a read by ID answers for it.
+    """
+    from pyrekordbox.db6 import tables
+
+    found: dict[str, Any] = {}
+    for start in range(0, len(content_ids), _CHUNK):
+        chunk = list(content_ids[start : start + _CHUNK])
+        query = db.query(tables.DjmdContent).filter(tables.DjmdContent.ID.in_(chunk))
+        for row in query.all():
+            found[str(row.ID)] = row
+    return found
 
 
 def resolve_scope(
@@ -430,11 +483,13 @@ def resolve_scope(
     members, why = _analyze_members(db, declared, registry)
     if members:
         return Scope(kind=SCOPE_ANALYZE, name=f"INBOX / {native.ANALYZE}", content_ids=members)
+    waiting = dict(_unanalysed(db))
     return Scope(
         kind=SCOPE_UNANALYSED,
         name="every row rekordbox has not analysed",
-        content_ids=_unanalysed(db),
+        content_ids=tuple(waiting),
         passed_over=(why,),
+        read=waiting,
     )
 
 
@@ -487,6 +542,10 @@ class Row:
 #: exactly what the landing reports it wrote (U157).
 dyn_marked = native.dyn_marked
 
+#: What :func:`read_row` is handed when its caller holds no row, told apart
+#: from ``None``, which is a row the collection lacks.
+_UNREAD: Any = object()
+
 
 def read_row(
     cfg: config.Config,
@@ -496,12 +555,20 @@ def read_row(
     keys: dict[str, str | None],
     dyn: frozenset[str],
     template: NameTemplate,
+    content: Any = _UNREAD,
 ) -> Row:
-    """Read one row: analysed or not, then its grid, its key and its mark."""
-    one = analyzed.member(db, content_id)
+    """Read one row: analysed or not, then its grid, its key and its mark.
+
+    ONE READ OF THE ROW (U259): the clear's judgment, the key, the title head
+    and the analysis path all come off ``content``, the row the caller already
+    holds (``None`` for a row the collection lacks), and only a call that
+    hands none reads it, once, by ID.
+    """
+    if content is _UNREAD:
+        content = db.get_content(ID=content_id)
+    one = analyzed.judge(content_id, content)
     if one.why in (analyzed.NO_ROW, analyzed.ROW_REMOVED):
         return Row(content_id=content_id, title=one.title, state=GONE, why=one.why)
-    content = db.get_content(ID=content_id)
     key_id = getattr(content, "KeyID", None)
     key = agreement.camelot_from_scale_name(keys.get(str(key_id))) if key_id else None
     head = head_key(content, template=template)
@@ -598,14 +665,48 @@ class Check:
 def check_rows(
     cfg: config.Config, db: Any, scope: Scope, *, template: NameTemplate
 ) -> Check:
-    """Read every row the scope names, once, off the handle given."""
+    """Read every row the scope names, once, off the handle given.
+
+    IN A HANDFUL OF STATEMENTS, NOT ONE A ROW (U259): the rows the scope
+    already read are used as read, the rest are read a chunk of IDs to a
+    statement, and each row is then judged in the scope's order, so the first
+    row that cannot say whether it was removed refuses as it did when each
+    row was read by itself.
+
+    A BATCH THE BINDING CANNOT LOAD IS READ A ROW AT A TIME (review round
+    one). A batch loads every row before any is judged, so a later row the
+    binding cannot load, a date it cannot parse, would fail the read ahead of
+    an earlier row's refusal. The rows are then read one by one by ID, as
+    they were before U259, and the first failure in the scope's order is the
+    answer: the same refusal, or the same error, nothing swallowed.
+    """
     keys = {str(key.ID): key.ScaleName for key in db.get_key()}
     dyn = dyn_marked(db)
+    held: dict[str, Any] | None = dict(scope.read)
+    try:
+        held.update(
+            _content_rows(
+                db, [content_id for content_id in scope.content_ids if content_id not in held]
+            )
+        )
+    except Exception:  # noqa: BLE001 - every failure is met again, in order, below
+        held = None
     rows = tuple(
-        read_row(cfg, db, content_id, keys=keys, dyn=dyn, template=template)
+        read_row(
+            cfg,
+            db,
+            content_id,
+            keys=keys,
+            dyn=dyn,
+            template=template,
+            content=_UNREAD if held is None else held.get(content_id),
+        )
         for content_id in scope.content_ids
     )
-    return Check(scope=scope, rows=rows)
+    # THE ROWS THE SCOPE CARRIED STAY WITH THE HANDLE: they belong to the
+    # copy's session, which closes when the check returns, so the answer
+    # holds the scope without them.
+    return Check(scope=replace(scope, read={}), rows=rows)
 
 
 def check(

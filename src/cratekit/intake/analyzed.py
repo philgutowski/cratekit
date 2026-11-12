@@ -127,9 +127,22 @@ def member(db: Any, content_id: str) -> Member:
 
     PUBLIC SINCE U167, because ``crate analyze check`` asks the same question of
     the same rows and must not answer it a second way: this is the one reading
-    of what analysed means, for the clear and for the check.
+    of what analysed means, for the clear and for the check. The read is here
+    and the judgment is :func:`judge`, so a caller that already holds the row
+    asks the same rule without reading it again (U259).
     """
-    row = db.get_content(ID=content_id)
+    return judge(content_id, db.get_content(ID=content_id))
+
+
+def judge(content_id: str, row: Any) -> Member:
+    """Judge one collection row already in hand; ``None`` is a row the collection lacks.
+
+    THE JUDGMENT OF :func:`member`, SPLIT FROM ITS READ (U259), not a second
+    rule: ``member`` is this over a read by ID, and ``crate analyze check``
+    calls it over the rows its one read of the collection, or of the rows in
+    scope, already holds. A row whose removal marker cannot be read refuses
+    here, for both.
+    """
     if row is None:
         return Member(content_id=content_id, title="", action=WAIT, why=NO_ROW)
     title = str(getattr(row, "Title", "") or "")
@@ -332,6 +345,7 @@ __all__ = [
     "apply_clear",
     "assert_read_back",
     "identity",
+    "judge",
     "live_members",
     "member",
     "plan_clear",
