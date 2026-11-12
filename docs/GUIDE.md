@@ -884,6 +884,17 @@ crate metadata mytags-vocals [--apply]
   for the batch's costliest track (a long one, or one stored at a high
   sample rate), or the ceiling. One worker means the run was
   serial, and the results are the same at any width.
+- The analysis reads every file the installed librosa reads exactly as it
+  always did. A file libsndfile cannot open, an M4A (AAC or ALAC) on
+  librosa 1.0, is decoded through `ffmpeg` instead, into memory, writing
+  nothing. On librosa 1.0 an M4A whose audio ffmpeg reports an error in is
+  `skipped-undecodable`, as a damaged FLAC is; a cover image it cannot read
+  is not an error in the audio. Without `ffmpeg`, `analyze run` settles such
+  a file `skipped-no-decoder` rather than `skipped-undecodable`, `analyze
+  vocals` gives the vocal reason `vocal-no-decoder`, `analyze restamp`
+  settles it `features-unavailable`, and `analyze calibrate` counts it among
+  the unreadable tracks, as each does any file it cannot measure. Doctor's `binary.ffmpeg` row names the analysis verbs
+  it stops. The extra needs librosa 0.10.2 or newer.
 - `--recursive` queues every folder under the one named as one resumable
   job; linked folders are not walked. `analyze run` has no such flag.
 - `analyze calibrate` fits only over the whole library walked recursively;

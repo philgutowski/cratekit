@@ -2040,7 +2040,8 @@ def test_a_decodable_file_the_analyser_raises_on_is_its_own_terminal_not_keyless
 
 def test_the_head_decodes_at_the_energy_measure_rate():
     source = (SRC_ROOT / "cratekit" / "analysis" / "detect.py").read_text(encoding="utf-8")
-    assert "sr=MEASURE_RATE" in source
+    # Through the one decoder since U263, at the same constant.
+    assert "decode.load(path, MEASURE_RATE)" in source
     assert "22050" not in source, "a second literal for the rate is how the two drift"
 
 

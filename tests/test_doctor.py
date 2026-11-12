@@ -579,6 +579,25 @@ def test_a_missing_binary_is_reported_with_where_it_comes_from(library):
     assert binaries.env_var("ffmpeg") in finding.detail
 
 
+def test_a_missing_ffmpeg_names_the_analysis_whose_decoder_it_is(library):
+    """U263: an M4A is decoded through ffmpeg on a librosa that cannot read it,
+    so with the analysis module on, the failing row names the analysis verbs
+    it stops and not only that some verb shells out to it."""
+    document = document_for(library)
+    document["profile"] = {"name": "slim"}
+    document["modules"] = {"analysis": True}
+    report = doctor.run(
+        config.from_dict(document),
+        probes=probes(find_binary=lambda name: None if name == "ffmpeg" else f"/bin/{name}"),
+    )
+    finding = find(report, "binary.ffmpeg")
+    assert finding.status is doctor.Status.FAIL
+    for verb in ("analyze run", "analyze restamp", "analyze calibrate"):
+        assert verb in finding.detail, finding.detail
+    for entry in ("analyze.run", "analyze.restamp", "analyze.calibrate", "analyze.vocals"):
+        assert "binary.ffmpeg" in registry.entry(entry).doctor_checks, entry
+
+
 def test_a_binary_no_enabled_verb_needs_is_a_note_rather_than_a_failure(library):
     """P7 in the report itself. rclone is only reachable through the backup
     module, so on an install without it a missing rclone is worth knowing and is

@@ -264,24 +264,31 @@ def features_from_path(path: Path) -> dict[str, float] | None:
     """Decode the central slice of ``path`` and measure it.
 
     The restamp and calibrate path, which has no head pass to share samples
-    with. ONLY THE SLICE IS DECODED: the duration is read off the header and
-    the decode is asked for the central :data:`SEGMENT_SECONDS`, so a ten
-    minute file costs a fifth of itself rather than all of it and then a cut.
+    with. ONLY THE SLICE IS DECODED for a file librosa reads: the duration is
+    read off the header and the decode is asked for the central
+    :data:`SEGMENT_SECONDS`, so a ten minute file costs a fifth of itself
+    rather than all of it and then a cut. A file decoded through ffmpeg, an
+    M4A on librosa 1.0, has no such seek: it is decoded whole for its
+    duration and whole again for the slice (U263).
     """
     try:
-        import librosa
+        import librosa  # noqa: F401 - asked for so its absence is the extra's absence
     except ImportError:
         return None
+    from cratekit.analysis import decode
+
+    # THROUGH THE ONE DECODER (U263), which is librosa's own two calls for
+    # every file librosa reads and ffmpeg for one libsndfile cannot open.
     try:
         offset = 0.0
         try:
-            duration = float(librosa.get_duration(path=str(path)))
+            duration = decode.duration(path)
         except Exception:
             duration = 0.0
         if duration > SEGMENT_SECONDS:
             offset = (duration - SEGMENT_SECONDS) / 2.0
-        samples, decoded_rate = librosa.load(
-            str(path), sr=MEASURE_RATE, mono=True, offset=offset, duration=SEGMENT_SECONDS
+        samples, decoded_rate = decode.load(
+            path, MEASURE_RATE, offset=offset, duration=SEGMENT_SECONDS
         )
     except Exception:
         return None

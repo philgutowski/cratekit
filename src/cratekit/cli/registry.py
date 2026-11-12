@@ -1718,7 +1718,8 @@ ENTRIES: tuple[Entry, ...] = (
         # It writes two library scoped state files, so the library has to be
         # there. Not in ``writes``, whose vocabulary is the library's own
         # material, files, database and XML, and a calibration is none of those.
-        doctor_checks=("library.mounted",),
+        # ffmpeg decodes what libsndfile cannot open, an M4A (U263).
+        doctor_checks=("library.mounted", "binary.ffmpeg"),
     ),
     Entry(
         name="analyze.validate",
@@ -1751,7 +1752,8 @@ ENTRIES: tuple[Entry, ...] = (
         output_schema="job_state/1",
         writes=frozenset({"files", "db_metadata"}),
         destructive=True,
-        doctor_checks=("library.mounted", "rekordbox.pins"),
+        # ffmpeg decodes what libsndfile cannot open, an M4A (U263).
+        doctor_checks=("library.mounted", "rekordbox.pins", "binary.ffmpeg"),
         gates=(CLOUD_SYNC_UNREADABLE_GATE,),
     ),
     Entry(
