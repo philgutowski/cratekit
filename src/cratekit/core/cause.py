@@ -1081,6 +1081,13 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # park, so what the run did is kept and the cause names the command that
         # continues with a higher ceiling for one run.
         "provider-call-ceiling": ExitCode.REFUSED_BY_POLICY,
+        # U278. One identity has made as many calls in the last hour as the
+        # line its command may reach, counted in the one gate across every
+        # command and every copy, or a ``--calls`` asked past that line. The
+        # person's own line again, so the policy code, and its own slug because
+        # the act differs from the ceiling's: it frees at a named minute, and a
+        # higher ceiling cannot continue it.
+        "provider-budget": ExitCode.REFUSED_BY_POLICY,
         # U56. No public catalogue could be READ, which is a different fact from
         # no catalogue carrying the track, and the slug is the only place that
         # difference survives. The tagging searcher declines when a source

@@ -1,0 +1,152 @@
+name = "u264"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_fast_path_never"
+description = "mono: never take the one add, so every mix is librosa.to_mono (the speed is lost, the samples are not)"
+file = "src/cratekit/analysis/decode.py"
+surface = "maintainer"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+    )'''
+new = '''        and samples.shape[0] == 2
+        and samples.dtype == np.float32
+        and False
+    )'''
+
+[[rows]]
+id = "M2_leading_zero_dropped"
+description = "_mean_of_two: drop the plus zero numpy's reduction starts from, so two minus zero channels mix to minus zero"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    out = np.add(stereo[0], stereo[1])
+    # numpy's reduction starts from plus zero: minus zero plus minus zero is
+    # minus zero here and plus zero in the mean, and no other sum changes.
+    out += out.dtype.type(0)'''
+new = '''    out = np.add(stereo[0], stereo[1])'''
+
+[[rows]]
+id = "M3_trailing_zero_dropped"
+description = "_mean_of_two: drop librosa 1.0's buffer of zeros, so a half sum that rounds to minus zero stays minus zero on 1.0"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    if zero_after:
+        # librosa 1.0 adds the mean into zeros: a half sum that rounds to
+        # minus zero, minus the smallest subnormal and zero, is plus zero.
+        out += out.dtype.type(0)'''
+new = '''    if zero_after:
+        pass'''
+
+[[rows]]
+id = "M4_table_rule_1_0"
+description = "_MEASURED_MIX: give 1.0.0 the rule of the releases before it"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    "1.0.0": True,'''
+new = '''    "1.0.0": False,'''
+
+[[rows]]
+id = "M5_halving"
+description = "_mean_of_two: return the sum of the two channels, not its half"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    out /= out.dtype.type(2)'''
+new = '''    out /= out.dtype.type(1)'''
+
+[[rows]]
+id = "M6_any_release_measured"
+description = "_measured_zero_rule: treat a release not measured as measured, with the 1.0 rule"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    return _MEASURED_MIX.get(version)'''
+new = '''    return _MEASURED_MIX.get(version, True)'''
+
+[[rows]]
+id = "M7_three_channels_one_add"
+description = "_two_float32_channels: take the one add for two or more channels, so a three channel file mixes its first two"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        and samples.shape[0] == 2'''
+new = '''        and samples.shape[0] >= 2'''
+
+[[rows]]
+id = "M8_finite_check"
+description = "mono: drop librosa's valid_audio before the one add, so mono no longer refuses audio that is not finite itself"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    librosa.util.valid_audio(samples)
+    return _mean_of_two(samples, zero_after=zero_after)'''
+new = '''    return _mean_of_two(samples, zero_after=zero_after)'''
+
+[[rows]]
+id = "M9_read_at_target_rate"
+description = "decode.load: read through librosa.load at the target rate, so the channels are resampled before the mix rather than after"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        native, native_rate = librosa.load(str(path), sr=None, mono=False, **window)'''
+new = '''        native, native_rate = librosa.load(str(path), sr=rate, mono=False, **window)'''
+
+[[rows]]
+id = "M10_window_dropped"
+description = "decode.load: read the whole file through librosa, dropping the offset and duration"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''        native, native_rate = librosa.load(str(path), sr=None, mono=False, **window)'''
+new = '''        native, native_rate = librosa.load(str(path), sr=None, mono=False)'''
+
+[[rows]]
+id = "M11_ffmpeg_left_channel"
+description = "decode.load: mix the ffmpeg path's samples by keeping the left channel"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    native = _window(native, native_rate, offset=offset, duration=duration)
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+new = '''    native = _window(native, native_rate, offset=offset, duration=duration)
+    native = native[0] if native.ndim == 2 else native
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+
+[[rows]]
+id = "M12_resampler"
+description = "_mono_at: resample with soxr_mq rather than librosa.load's soxr_hq"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    return librosa.resample(mono(native), orig_sr=native_rate, target_sr=rate, res_type="soxr_hq")'''
+new = '''    return librosa.resample(mono(native), orig_sr=native_rate, target_sr=rate, res_type="soxr_mq")'''
+
+[[rows]]
+id = "M13_float64_halving"
+description = "_mean_of_two: add and halve in float64 and round once, so a finite pair whose float32 sum overflows mixes to a finite value"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    out = np.add(stereo[0], stereo[1])
+    # numpy's reduction starts from plus zero: minus zero plus minus zero is
+    # minus zero here and plus zero in the mean, and no other sum changes.
+    out += out.dtype.type(0)
+    out /= out.dtype.type(2)'''
+new = '''    out = ((stereo[0].astype(np.float64) + stereo[1]) / 2).astype(stereo.dtype)
+    out += out.dtype.type(0)'''
+
+[[rows]]
+id = "M14_ffmpeg_numpy_mean"
+description = "decode.load: mix the ffmpeg path's samples with numpy's mean, the arithmetic before librosa 1.0, rather than the shared mix"
+file = "src/cratekit/analysis/decode.py"
+surface = "user"
+tests = ["tests/test_analysis_decode.py", "tests/test_analysis_decode_librosa.py"]
+old = '''    native = _window(native, native_rate, offset=offset, duration=duration)
+    return _mono_at(librosa, native, native_rate, rate), rate'''
+new = '''    native = _window(native, native_rate, offset=offset, duration=duration)
+    samples = native.mean(axis=0) if native.ndim == 2 else native
+    return librosa.resample(samples, orig_sr=native_rate, target_sr=rate, res_type="soxr_hq"), rate'''

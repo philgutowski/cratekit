@@ -273,6 +273,9 @@ SANDBOXED_ENV = {
     "XDG_CACHE_HOME": "cache",
     "CRATEKIT_CONFIG_DIR": f"config/{APP_NAME}",
     "CRATEKIT_STATE_DIR": f"state/{APP_NAME}",
+    # U278: the provider gate never follows CRATEKIT_STATE_DIR, so a child is
+    # pointed away from the real one by its own variable.
+    "CRATEKIT_PROVIDER_GATE_DIR": f"state/{APP_NAME}",
 }
 
 #: Added on top of the inherited environment, never as a fresh dict.

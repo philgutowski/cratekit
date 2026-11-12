@@ -292,3 +292,104 @@ def test_the_vocal_pass_names_the_missing_decoder(monkeypatch):
     assert scored["vocal_active"] is False
     assert scored["vocal_reason"] == vocals.REASON_NO_DECODER == "vocal-no-decoder"
     assert scored["voxlevel"] is None
+
+
+# ---------------------------------------------------------------------------
+# U264: the mono mix, one add, which needs no librosa for its arithmetic
+# ---------------------------------------------------------------------------
+
+#: The smallest float32 subnormal, whose half is a tie that rounds to zero.
+_TINY = np.float32(1.401298464324817e-45)
+
+
+def _bits(values) -> list[str]:
+    return [f"{int(v):08x}" for v in np.asarray(values, dtype=np.float32).view(np.uint32)]
+
+
+@pytest.mark.parametrize("zero_after", [False, True], ids=["0.10-0.11", "1.0"])
+def test_the_half_sum_of_two_channels_rounds_once_like_float64(zero_after):
+    """Every value that is not a zero is the correctly rounded half sum.
+
+    The expectation is taken in float64, where a sum of two float32 values
+    and its halving are exact, and rounded to float32 once: a value the code
+    under test does not compute. Random bit patterns reach subnormals and
+    every exponent. A sum past float32's largest value is the one place
+    float64 differs, and librosa's float32 reduction overflows there as the
+    one add does; the table below pins it.
+    """
+    rng = np.random.default_rng(264)
+    frames = 200_003  # odd, so no length is a power of two
+    raw = np.frombuffer(rng.integers(0, 2**32, 2 * frames, dtype=np.uint32).tobytes(), "<f4")
+    raw = raw.reshape(frames, 2)
+    raw = raw[np.isfinite(raw).all(axis=1)]
+    uniform = rng.uniform(-1, 1, (frames, 2)).astype(np.float32)
+    stereo = np.concatenate([raw, uniform]).T  # channels first, a transposed view
+    exact = stereo[0].astype(np.float64) + stereo[1]
+    with np.errstate(over="ignore"):
+        expected = (exact / 2).astype(np.float32)
+        overflows = ~np.isfinite(exact.astype(np.float32))
+    kept = stereo.copy()
+    got = decode._mean_of_two(stereo, zero_after=zero_after)
+    assert got.dtype == np.float32 and got.shape == (stereo.shape[1],)
+    compared = (expected != 0) & ~overflows
+    assert compared.sum() > 390_000
+    assert np.array_equal(got[compared].view(np.uint32), expected[compared].view(np.uint32))
+    assert np.array_equal(kept.view(np.uint32), stereo.view(np.uint32))  # the buffer is untouched
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "before_1_0", "on_1_0"),
+    [
+        # numpy's add reduction starts from plus zero, so both minus zero is plus.
+        (-0.0, -0.0, "00000000", "00000000"),
+        (0.0, -0.0, "00000000", "00000000"),
+        (-0.0, 0.0, "00000000", "00000000"),
+        (0.5, -0.5, "00000000", "00000000"),
+        # A half sum of minus the smallest subnormal rounds to minus zero, which
+        # librosa 1.0's buffer of zeros turns to plus zero.
+        (-_TINY, 0.0, "80000000", "00000000"),
+        (-0.0, -_TINY, "80000000", "00000000"),
+        (_TINY, -0.0, "00000000", "00000000"),
+        # Three halves of the smallest subnormal is a tie, to the even two.
+        (3 * _TINY, 0.0, "00000002", "00000002"),
+        (-3 * _TINY, -0.0, "80000002", "80000002"),
+        # A sum past float32's largest value overflows in librosa's float32
+        # reduction as in the one add, and the resampler then refuses it.
+        (3e38, 3e38, "7f800000", "7f800000"),
+        (-3e38, -3e38, "ff800000", "ff800000"),
+    ],
+)
+def test_a_zero_takes_the_sign_each_measured_release_gives_it(left, right, before_1_0, on_1_0):
+    """The sign of a zero is the one place the ways of mixing differ, and an
+    overflow the one place float64 would.
+
+    The expected bits were read from ``librosa.to_mono`` on 0.10.2,
+    0.10.2.post1 and 0.11.0 (``before_1_0``) and on 1.0.0 (``on_1_0``), on
+    numpy 2.5 and 1.26; the librosa half of this file checks the installed
+    release against its own ``to_mono``.
+    """
+    stereo = np.array([[left], [right]], dtype=np.float32)
+    assert _bits(decode._mean_of_two(stereo, zero_after=False)) == [before_1_0]
+    assert _bits(decode._mean_of_two(stereo, zero_after=True)) == [on_1_0]
+
+
+@pytest.mark.parametrize(
+    ("version", "rule"),
+    [
+        ("0.10.2", False),
+        ("0.10.2.post1", False),
+        ("0.11.0", False),
+        ("1.0.0", True),
+        ("1.0.1", None),
+        ("1.0.0rc0", None),
+        ("0.11.0rc1", None),
+        ("1.1.0", None),
+        ("2.0.0", None),
+        ("0.12.0.dev0", None),
+        ("0.9.2", None),
+        ("", None),
+    ],
+)
+def test_only_a_measured_release_takes_the_one_add(version, rule):
+    """A release not measured, a patch or a pre release, is mixed by its own ``to_mono``."""
+    assert decode._measured_zero_rule(version) is rule

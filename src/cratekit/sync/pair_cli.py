@@ -5295,11 +5295,26 @@ def _stopped(
         check_calls, write_calls = _expected(planned, steps)
         line = int(detail.get("ceiling") or _ceiling(cfg))
         higher = pair_calls.named(check_calls + write_calls, line)
-        detail.update({"higher": higher, "expected": check_calls + write_calls})
+        # THE HOUR TOO (U278), when the ceiling named is above it, or the
+        # continue printed here is refused as printed.
+        hour = provider_gate.hour_to_name(higher, provider_gate.GateSettings.from_config(cfg))
+        detail.update(
+            {"higher": higher, "expected": check_calls + write_calls, "calls_per_hour": hour}
+        )
         said += (
             f"; what is left is expected to take about {check_calls + write_calls} calls, "
             f"so continue it with --calls {higher}: "
-            + shlex.join(["crate", "--calls", str(higher), "--run", run_id, *(argv or VERB_PATH)])
+            + shlex.join(
+                [
+                    "crate",
+                    "--calls",
+                    str(higher),
+                    *(["--calls-per-hour", str(hour)] if hour is not None else []),
+                    "--run",
+                    run_id,
+                    *(argv or VERB_PATH),
+                ]
+            )
         )
     return dataclasses.replace(cause, message=f"{cause.message}{said}", detail=detail)
 
@@ -5460,11 +5475,22 @@ def sync_pair(ctx) -> Envelope:
         )
         if writing > line:
             higher = pair_calls.named(writing, line)
+            # THE HOUR TOO (U278), when the ceiling named is above it.
+            from cratekit.core import provider_gate  # noqa: PLC0415 - as _ceiling does
+
+            hour_words = provider_gate.hour_args(
+                higher, provider_gate.GateSettings.from_config(cfg)
+            )
             shown["call ceiling"] = (
                 f"too low for this write: about {writing} calls are expected and one "
                 f"command may make {line}, so the write would stop part way; give the "
-                f"command that writes --calls {higher}, for example "
-                + shlex.join(["crate", "--calls", str(higher), "--run", run_id, *(ctx.run.argv or VERB_PATH)])
+                f"command that writes --calls {higher}"
+                + (f" and {' '.join(hour_words)}" if hour_words else "")
+                + ", for example "
+                + shlex.join(
+                    ["crate", "--calls", str(higher), *hour_words, "--run", run_id,
+                     *(ctx.run.argv or VERB_PATH)]
+                )
                 + " once both gates are answered"
             )
         if not_held:

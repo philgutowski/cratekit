@@ -534,6 +534,11 @@ class Estimate:
         default_factory=lambda: int(core_config.DEFAULT_PROVIDER_CALLS_PER_COMMAND)
     )
     spent: int = 0
+    #: The hour's budget this command runs under (U278), so a ``--calls`` named
+    #: above it carries the ``--calls-per-hour`` it needs.
+    budget: int = field(
+        default_factory=lambda: int(core_config.DEFAULT_PROVIDER_CALLS_PER_HOUR)
+    )
     #: Where the label's listing came from, kept or asked and why (U217),
     #: ``""`` from a catalogue that keeps none.
     listing: str = ""
@@ -640,7 +645,13 @@ class Estimate:
                 f"this is more than the {self.ceiling} provider calls one command may "
                 f"make, {self.spent} of them spent on the listing already, so a crawl "
                 f"stops at the ceiling and keeps what it read; to read it in one run, "
-                f"answer crawl with --calls {self.one_run} before the command"
+                f"answer crawl with --calls {self.one_run}"
+                + (
+                    f" --calls-per-hour {self.one_run}"
+                    if self.one_run > self.budget
+                    else ""
+                )
+                + " before the command"
             )
         return shown
 
@@ -672,6 +683,7 @@ def estimate(
         kept_age=oldest,
         ceiling=provider_gate.ceiling(provider_gate.GateSettings.from_config(cfg)),
         spent=provider_gate.command_spent(),
+        budget=provider_gate.hourly(provider_gate.GateSettings.from_config(cfg)),
         listing=listed.kept.said() if listed.kept is not None else "",
     )
 

@@ -23,7 +23,9 @@ verb can rehearse through it. Each area is per run and never shared:
   :func:`redirected`, so a lock, a run record or a fallback ``config.load()``
   deep in a writer lands in the area too, all but the ISRC cache, which
   stays live because it records the provider's catalogue and nothing the
-  rehearsal did (U206).
+  rehearsal did (U206), and the provider gate, which never follows a
+  redirected state directory: a rehearsal spends from the account's one
+  allowance, and the live gate counts every call it makes (U278).
 
 Nothing here writes the live database or moves a live file, and
 :func:`witness` with :func:`assert_untouched` proves it after every rehearsal:
@@ -245,7 +247,10 @@ def redirected(area: Area) -> Iterator[config.Config]:
     installation state directory. Restored on the way out whatever happened.
 
     One thing is pointed the other way: the ISRC cache stays the live one
-    (U206), through ``config.ENV_ISRC_CACHE_DIR``.
+    (U206), through ``config.ENV_ISRC_CACHE_DIR``. The provider gate needs no
+    pointing: ``config.provider_gate_dir`` never reads the state directory
+    this moves, so the rehearsal's calls are counted, paced and refused by
+    the live gate (U278). ``CRATEKIT_PROVIDER_GATE_DIR`` is left as it is.
     """
     keys = (config.ENV_CONFIG_DIR, config.ENV_STATE_DIR, config.ENV_ISRC_CACHE_DIR)
     saved = {key: os.environ.get(key) for key in keys}
