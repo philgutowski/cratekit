@@ -214,7 +214,7 @@ def test_held_releases_whose_lines_name_another_act_still_refuse(installed, monk
     assert "read 119 release(s)" in line["detail"]
     assert "could not confirm a single one" in line["detail"]
     canary = check(envelope, f"canary.{SLUG}")
-    assert "answered mismatch" in canary["detail"]
+    assert "release x0, answered mismatch (credited as 'RAWAXXX')" in canary["detail"]
     assert len([one for one in fake.verified if one.startswith(("a", "x"))]) == 1
     assert sync_cli.load_record(installed)["labels"][SLUG] == {
         "asked": ["x0", "x1", "x2", "a1", "a2", "a3", "a4"]
@@ -272,9 +272,11 @@ def test_the_worker_refuses_held_lines_naming_another_act_and_names_the_canary(
     cause = item_cause(job_id)
     assert cause.reason == "label-sweep-incomplete"
     assert cause.detail["read"] == 119
-    assert cause.detail["canary"]["identity"] == "a1"
+    # Every held line names another act, so the newest is asked, as before.
+    assert cause.detail["canary"]["identity"] == "x0"
     assert cause.detail["canary"]["verdict"] == "mismatch"
-    assert "Release a1" in cause.message
+    assert "Release x0" in cause.message
+    assert "credited as 'RAWAXXX'" in cause.message
     assert filed(installed) == []
 
 
@@ -316,7 +318,8 @@ def listing_of(cfg, entry, releases, held, *, verify=None) -> tuple[sweep.LabelL
 
 def test_the_canary_is_a_held_release_whose_line_the_needle_confirms(installed, entry):
     releases = [*rawaxxx(), *rawax(), *others(3)]
-    found, verified = listing_of(installed, entry, releases, {"x0", "x1", "x2", "a1"})
+    held = {one.id for one in [*rawaxxx(), *rawax()]}
+    found, verified = listing_of(installed, entry, releases, held)
 
     assert found.canary is not None
     assert (found.canary.identity, found.canary.verdict) == ("a1", "confirmed")
