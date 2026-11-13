@@ -540,5 +540,45 @@ def test_a_capture_that_cannot_be_walked_around_its_check_is_not_recorded_verifi
 
     captured = snapshot.capture(resolved, verifier=passes)
 
+    # The check runs only when the walk before it finished.
+    assert checked == ([] if which == "before" else [captured.database])
     assert not captured.verified
     assert snapshot.read_manifest(captured.root).integrity_verified is False
+
+
+def test_a_check_that_resizes_the_database_at_its_own_time_is_not_recorded_verified(
+    tmp_path, monkeypatch
+):
+    """The size is the other half of the identity, not the modification time alone."""
+    resolved = _hermetic(tmp_path, monkeypatch)
+
+    def resizes(database):
+        path = Path(database)
+        status = path.stat()
+        path.write_bytes(path.read_bytes() + b" and more")
+        os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns))
+        assert path.stat().st_mtime_ns == status.st_mtime_ns
+        return True
+
+    captured = snapshot.capture(resolved, verifier=resizes)
+
+    assert not captured.verified
+
+
+def test_the_walk_raises_on_a_directory_it_cannot_read(tmp_path, monkeypatch):
+    """``os.walk`` skips what it cannot read unless told to raise, and a skipped
+    directory is one the guard cannot vouch for. Driven through the walk's own
+    error report, since this container reads every directory as root."""
+    real = os.walk
+
+    def unreadable(top, *args, onerror=None, **kwargs):
+        if onerror is not None:
+            onerror(PermissionError(13, "Permission denied", str(top)))
+        yield from ()
+
+    (tmp_path / "capture").mkdir()
+    monkeypatch.setattr(snapshot.os, "walk", unreadable)
+    with pytest.raises(PermissionError):
+        snapshot._walked(tmp_path / "capture")
+    monkeypatch.setattr(snapshot.os, "walk", real)
+    assert snapshot._walked(tmp_path / "capture") == {}
