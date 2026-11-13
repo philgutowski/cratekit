@@ -37,13 +37,15 @@ Layer: modules.
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 
 from cratekit.cli.output import Envelope, digest_of
 from cratekit.core import config, jobs
 from cratekit.core.cause import CratekitError, Outcome, refuse
+from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound import account, artifacts, kinds, ledger, shell, source
 from cratekit.modules.outbound import export as outbound_export
 
@@ -597,63 +599,157 @@ def run_export_item(
     second run adds nothing and that an unmatched row is reported rather than
     dropped, are then drivable without a queue.
 
+    One item of :func:`run_export_items`, raising what that item met, so a
+    one track run is judged by the code a batch is (U270).
+    """
+    answered = run_export_items(payload, (track_id,), cfg, remote) or {}
+    outcome = answered.get(track_id)
+    if isinstance(outcome, Exception):
+        raise outcome
+    if not isinstance(outcome, dict):
+        raise refuse(
+            "internal-error",
+            f"the export of track {track_id!r} answered nothing for it",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("export", "cli"),
+            detail={"track": track_id},
+        )
+    return outcome
+
+
+def _absent(payload: Mapping[str, Any], track_id: str) -> CratekitError:
+    return refuse(
+        "outbound-item-absent",
+        f"the export at {Path(str(payload[EXPORT])).name} no longer carries "
+        f"track {track_id!r}, which this job queued, so there is nothing to "
+        f"write for this item and nothing was written",
+        steps=(
+            "export the collection again and queue a new export rather than "
+            "resuming this one",
+        ),
+        origin=("export", "cli"),
+        detail={"track": track_id},
+    )
+
+
+def _refused(track: str, remote_id: str) -> CratekitError:
+    """The cause an item whose track the provider would not add fails with.
+
+    The same cause ``add_to_playlist`` raised for it before U270, so a one
+    track item is judged as it was.
+    """
+    return account.provider_failure(
+        LookupError(f"the provider added nothing for the track {track!r}"),
+        f"add the track {track} to the playlist {remote_id}",
+    )
+
+
+def run_export_items(
+    payload: dict[str, Any],
+    track_ids: Sequence[str],
+    cfg: config.Config,
+    remote,
+    stop: Callable[[], bool] = lambda: False,
+) -> dict[str, dict | Exception] | None:
+    """Write several library tracks to the remote playlist in one add (U270).
+
+    EACH TRACK IS PLANNED ON ITS OWN, so a row the export no longer carries or
+    a match the provider refused fails that track alone, as it failed that item
+    before. The tracks planned are then written by ONE :func:`apply`, which
+    reserves the playlist once, reads it once and sends what it lacks in one
+    request, and each track's report is cut from that apply's outcomes. A raise
+    out of the apply is the outcome of every track it was writing. A
+    :class:`jobs.Parked` is raised, never answered, since it stops the run.
+
+    ``stop`` is asked between tracks while planning; when it answers true
+    nothing is written and None is returned, so the driver releases the batch
+    whole.
+
     THE PLAYLIST NAME COMES OFF THE PAYLOAD, never from splitting the key here.
     The key is a display path and the name is its last element, and rebuilding
     one from the other in a second place is how the remote playlist comes to be
     created under a name nobody chose.
 
     ``apply`` REUSES THE RECORDED REMOTE PLAYLIST, which is what makes the per
-    item shape safe: the first item creates the remote playlist and records it,
-    and every item after it reads that record rather than creating a second one.
+    item shape safe: the first batch creates the remote playlist and records it,
+    and every batch after it reads that record rather than creating a second one.
     """
-    library = source.read_library(Path(str(payload[EXPORT])))
-    tracks = source.local_tracks(library, (track_id,), cfg=cfg)
-    if not tracks:
-        raise refuse(
-            "outbound-item-absent",
-            f"the export at {Path(str(payload[EXPORT])).name} no longer carries "
-            f"track {track_id!r}, which this job queued, so there is nothing to "
-            f"write for this item and nothing was written",
-            steps=(
-                "export the collection again and queue a new export rather than "
-                "resuming this one",
-            ),
-            origin=("export", "cli"),
-            detail={"track": track_id},
-        )
-    planned = outbound_export.plan(
-        tracks,
-        playlist_key=str(payload[PLAYLIST]),
-        name=str(payload.get(NAME) or payload[PLAYLIST]),
-        account=remote,
-        adopts=str(payload.get(ADOPTS) or ""),
-        expected=str(payload.get(REMOTE) or ""),
+    exported = Path(str(payload[EXPORT]))
+    library = source.read_library(exported)
+    shared = {
+        "playlist_key": str(payload[PLAYLIST]),
+        "name": str(payload.get(NAME) or payload[PLAYLIST]),
+        "account": remote,
+        "adopts": str(payload.get(ADOPTS) or ""),
+        "expected": str(payload.get(REMOTE) or ""),
         # THE WHOLE CRATE, not this item. See ``ExportPlan.contents``.
-        contents=[str(track) for track in payload.get(shell.TRACKS) or ()],
+        "contents": [str(track) for track in payload.get(shell.TRACKS) or ()],
         # THE EXPORT'S DATE, so a later prune can refuse an older export (R-836).
-        written=exported_on(Path(str(payload[EXPORT])), cfg),
-        filing=str(payload.get(FILING) or ""),
-    )
-    report = outbound_export.apply(cfg, remote, planned)
-    return {
-        "track": track_id,
-        "playlist_key": report.playlist_key,
-        "remote_id": report.remote_id,
-        "created": report.created,
-        "adopted_from": report.adopted_from,
-        "unfiled": report.unfiled,
-        "added": list(report.added),
-        "already": list(report.already),
-        "unmatched": [
-            {
-                "identity": row.identity,
-                "title": row.title,
-                "artist": row.artist,
-                "reason": row.reason,
-            }
-            for row in report.unmatched
-        ],
+        "written": exported_on(exported, cfg),
+        "filing": str(payload.get(FILING) or ""),
     }
+    answered: dict[str, dict | Exception] = {}
+    planned: dict[str, outbound_export.ExportPlan] = {}
+    for track_id in track_ids:
+        if stop():
+            return None
+        try:
+            tracks = source.local_tracks(library, (track_id,), cfg=cfg)
+            if not tracks:
+                raise _absent(payload, track_id)
+            planned[track_id] = outbound_export.plan(tracks, **shared)
+        except jobs.Parked:
+            raise
+        except Exception as exc:  # noqa: BLE001 - this track's outcome
+            answered[track_id] = exc
+    if not planned:
+        return answered
+    first = next(iter(planned.values()))
+    together = replace(
+        first,
+        matched=tuple(pair for one in planned.values() for pair in one.matched),
+        unmatched=tuple(row for one in planned.values() for row in one.unmatched),
+    )
+    try:
+        report = outbound_export.apply(cfg, remote, together)
+    except jobs.Parked:
+        raise
+    except Exception as exc:  # noqa: BLE001 - every written track's outcome
+        answered.update({track_id: exc for track_id in planned})
+        return answered
+    reported = False
+    for track_id, one in planned.items():
+        rows = {local for local, _remote in one.matched}
+        mine = [row for row in report.outcomes if row[0] in rows]
+        refused = [remote_track for _local, remote_track, said in mine if said == outbound_export.REFUSED]
+        if refused:
+            answered[track_id] = _refused(refused[0], report.remote_id)
+            continue
+        # WHAT THE APPLY DID ONCE IS SAID ONCE, on the first track reported:
+        # the create, the adoption and the filing are the batch's, not each
+        # track's, and the summary would list a filing warning per track.
+        first_said = not reported
+        reported = True
+        answered[track_id] = {
+            "track": track_id,
+            "playlist_key": report.playlist_key,
+            "remote_id": report.remote_id,
+            "created": report.created and first_said,
+            "adopted_from": report.adopted_from if first_said else "",
+            "unfiled": report.unfiled if first_said else "",
+            "added": [r for _l, r, said in mine if said == outbound_export.ADDED],
+            "already": [r for _l, r, said in mine if said == outbound_export.ALREADY],
+            "unmatched": [
+                {
+                    "identity": row.identity,
+                    "title": row.title,
+                    "artist": row.artist,
+                    "reason": row.reason,
+                }
+                for row in one.unmatched
+            ],
+        }
+    return answered
 
 
 def exported_on(path: Path, cfg: config.Config) -> str:
@@ -685,6 +781,47 @@ def handle(job, item, cfg) -> jobs.Produced:
     return artifacts.produced(cfg, job, item, report)
 
 
+#: How many queued tracks the driver hands :func:`handle_batch` at once (U270).
+BATCH = outbound_export.BATCH
+
+
+def handle_batch(job, items, cfg, stop) -> dict[str, jobs.Produced | Exception]:
+    """Export up to :data:`BATCH` queued tracks in one add. The driver's batch form of :func:`handle`.
+
+    ONE ITEM IS STILL ONE TRACK, decided by Phillip on 2026-11-13: the job keeps
+    an item per track, so a resume knows which tracks landed and an empty
+    playlist is still an empty job, and the driver hands this worker a batch of
+    them so their adds go in one request. Each item gets its own artifact or its
+    own failure, exactly what :func:`handle` would have produced for it, and
+    ``cfg`` is the frozen configuration :func:`handle` is given.
+    """
+    payload = dict(job.payload or {})
+    answered = run_export_items(
+        payload, [str(item.item_id) for item in items], cfg, account.resolve(cfg), stop
+    )
+    if answered is None:
+        return {}
+    outcomes: dict[str, jobs.Produced | Exception] = {}
+    for item in items:
+        got = answered.get(str(item.item_id))
+        if got is None:
+            # LEFT FOR THE DRIVER, which fails an item given no outcome.
+            continue
+        if isinstance(got, Exception):
+            outcomes[item.item_id] = got
+            continue
+        try:
+            outcomes[item.item_id] = artifacts.produced(cfg, job, item, got)
+        except Exception as exc:  # noqa: BLE001 - this item's outcome
+            outcomes[item.item_id] = exc
+    return outcomes
+
+
+#: The driver hands this worker several items at once (U270), see
+#: :data:`cratekit.cli.handlers.BATCH_ATTRIBUTE`.
+handle.batched = (handle_batch, BATCH)  # type: ignore[attr-defined]
+
+
 __all__ = [
     "NO_MATCH",
     "FILING",
@@ -695,9 +832,12 @@ __all__ = [
     "confirm_digest",
     "export_argv",
     "export_playlist",
+    "BATCH",
     "handle",
+    "handle_batch",
     "recognition_warnings",
     "run_export_item",
+    "run_export_items",
     "shown_playlist",
     "summary",
 ]
