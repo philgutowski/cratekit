@@ -12,8 +12,10 @@ goes on to the guess, analysis, naming and the landing, naming each such file
 and the refusing catalogues with the date each began refusing. With no token
 the pass stops at its tag step, as before, and its refusal says which
 catalogues refused and since when, and that recording a Discogs token lets it
-carry on, rather than sending the person to their network. A timeout, a failed
-name lookup or a 5xx still stops it with the network step first.
+carry on, rather than sending the person to their network. A file no
+catalogue could be read for, by a timeout, a failed name lookup or a 5xx,
+still fails its item, whose refusal puts the network step first, and stops
+the pass.
 
 Five sections: the record of when a catalogue began refusing, the run count
 that writes it, the searcher's refusal, the sweep's report, and the chain every
@@ -34,6 +36,7 @@ from cratekit.core import config, jobs, tags
 from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import artifacts, refused, searchers, tag
+from cratekit.tagging import cli as tag_cli
 from tests._containers import synth_container
 from tests.cli_drive import drive
 from tests.test_config import valid_data
@@ -633,3 +636,83 @@ def test_every_landing_verb_runs_the_one_chain_whose_tag_step_this_is():
 
     for module in (sync_land, label_sync, sync_bandcamp):
         assert "tail.through_name(" in inspect.getsource(module)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. Round one's review: the guards nothing pinned
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_file_discogs_tagged_while_beatport_refused_its_picture_is_not_named():
+    """The reason guard: a genre written is never a file left with none."""
+    report = {
+        "item": "a.flac",
+        "skipped": None,
+        "genre_written": "Techno",
+        "answers": [
+            {"source": searchers.DISCOGS, "answer": "matched"},
+            {"source": searchers.BEATPORT, "answer": "blocked"},
+        ],
+    }
+    assert tag_cli._refused_out(report, "") == ()
+    assert tag_cli._refused_out(report, tag.SOURCES_UNREAD) == (searchers.BEATPORT,)
+
+
+def test_an_outage_never_sets_a_refusal_date(clock):
+    run = searchers.for_run("job@1")
+    _searcher(routed(search=results(), beatport=TIMED_OUT), run=run)("", "a")
+    _searcher(routed(search=results(), beatport=SERVER_ERROR), run=run)("", "b")
+
+    assert refused.read() == {}
+    assert not _record_path().exists()
+
+
+def test_a_rejected_token_beside_a_beatport_miss_names_no_refusing_shop(clock):
+    error = _raised(
+        _searcher(routed(search=searchers.Fetched(note="HTTP 401", status=401)))
+    )
+
+    cause = error.cause
+    assert cause.reason == "credential-missing"
+    assert searchers.REFUSED_DETAIL not in (cause.detail or {})
+    assert not any("refused this client too" in step for step in cause.remediation.steps)
+
+
+def test_a_record_whose_target_cannot_be_replaced_never_raises(tmp_path, clock):
+    target = tmp_path / "record.json"
+    target.mkdir()
+
+    refused.refused(searchers.BEATPORT, path=target, lock=tmp_path / "record.lock")
+
+    assert refused.read(target) == {}
+
+
+def test_a_record_nested_past_the_parsers_depth_reads_as_none_and_is_written_over(clock):
+    path = _record_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text("[" * 200000, encoding="utf-8")
+
+    assert refused.read() == {}
+    assert refused.since((searchers.BEATPORT,)) == {searchers.BEATPORT: ""}
+    refused.refused(searchers.BEATPORT)
+    assert refused.read()[searchers.BEATPORT].since == BEGAN_STAMP
+
+
+def test_a_stop_over_a_token_discogs_refused_never_says_waiting_mends_it():
+    from cratekit.core.cause import refuse
+
+    cause = refuse(
+        "credential-missing",
+        "Discogs refused the recorded token",
+        origin=("test",),
+        detail={
+            searchers.REFUSED_DETAIL: {searchers.BEATPORT: BEGAN_STAMP},
+            searchers.DISCOGS_DETAIL: searchers.DISCOGS_TOKEN_REFUSED,
+        },
+    ).cause
+    stop = tag_cli._refusal_stop({"a.flac": cause})
+
+    assert "Discogs refused the recorded token" in stop["said"]
+    assert len(stop["steps"]) == 1
+    assert "crate login discogs-token" in stop["steps"][0]
+    assert not any("later" in step for step in stop["steps"])

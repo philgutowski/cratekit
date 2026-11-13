@@ -90,7 +90,10 @@ def _parse(text: str) -> dict[str, Standing]:
     """The standings a file's text holds, skipping any entry this build cannot read."""
     try:
         document = json.loads(text)
-    except ValueError:
+    except (ValueError, RecursionError):
+        # A RECORD NESTED PAST THE PARSER'S DEPTH (round one): only a hand
+        # edit or a damaged disk writes one, and it reads as none like any
+        # other record that does not parse.
         return {}
     held = document.get("catalogues") if isinstance(document, dict) else None
     if not isinstance(held, dict):
@@ -201,7 +204,7 @@ def _change(
             elif held.pop(source, None) is None:
                 return
             _write(at, held)
-    except (OSError, ValueError) as exc:
+    except (OSError, ValueError, RecursionError) as exc:
         LOG.info("the catalogue refusal record was not written: %s", exc)
 
 

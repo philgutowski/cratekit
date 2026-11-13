@@ -180,13 +180,16 @@ the two commands that answer and apply it and the rekordbox visit after.
   lands under needs genre unless the guess gave it one; `tag retag` and `tag
   suggest` ask the catalogues again later. The pass names each such file and
   the refusing catalogues, with the date each began refusing, in its
-  `sync.land.refused` row and its summary's `tail` `refused`. With no token,
-  or with Discogs refusing too, the pass stops at its tag step as before and
-  says which catalogues refused this machine and since when, and, with no
-  token, that `crate login discogs-token` lets it carry on. A timeout, a
-  failed name lookup or a server error still stops it, with checking the
-  network as the first step. `label sync --go` and `sync bandcamp` run the
-  same tail and behave the same.
+  `refused` row and its summary's `refused` (under `tail` for `label sync
+  --go`). With no token, or with Discogs refusing too, the pass stops at its
+  tag step as before and says which catalogues refused this machine and since
+  when, and, with no token, that `crate login discogs-token` lets it carry on.
+  A file no catalogue could be read for, by a timeout, a failed name lookup or
+  a server error, still fails its item and stops the pass at its tag step; a
+  file Discogs missed beside a Beatport that was down is settled askable and
+  carries on, as it has since a token was first asked for, and is not named
+  among the refused. `label sync --go` and `sync bandcamp` run the same tail
+  and behave the same.
 - A track the download refuses for good (lossy only, gone from the provider)
   is named and skipped. Anything a wait would mend ends the pass.
 - A missing track already staged by an earlier unlanded download is not

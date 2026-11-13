@@ -554,9 +554,12 @@ def _refusal_stop(stopped: Mapping[str, Cause]) -> dict | None:
             ". Carrying on past refusing catalogues needs Discogs to have read the "
             "file, so nothing is landed until a catalogue answers this client"
         )
-    steps.append(
-        "run the pass or the sweep again later; the job resumes at the files it stopped on"
-    )
+    if unasked != searchers.DISCOGS_TOKEN_REFUSED:
+        # NOT FOR A TOKEN DISCOGS REFUSED (round one): those files failed for
+        # good, and waiting mends nothing until a working token is recorded.
+        steps.append(
+            "run the pass or the sweep again later; the job resumes at the files it stopped on"
+        )
     return {
         "files": named,
         "catalogues": since,
