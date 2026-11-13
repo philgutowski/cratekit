@@ -180,10 +180,10 @@ from urllib.parse import quote_plus, urlencode
 
 from cratekit import __version__
 from cratekit.core import art, routing, secrets
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy
-from cratekit.tagging import titles
+from cratekit.tagging import refused, titles
 from cratekit.tagging.tag import FetchImage, Searcher, SearchHit, SourceAnswer
 
 log = logging.getLogger(__name__)
@@ -459,6 +459,10 @@ class Refusals:
     limit: int = REFUSALS_BEFORE_STOP
     running: dict[str, int] = field(default_factory=dict)
     last: dict[str, SourceOutcome] = field(default_factory=dict)
+    #: Whether this run's answers move the record of when each catalogue
+    #: began refusing (U284), :mod:`cratekit.tagging.refused`. A sweep's run
+    #: count does, :func:`for_run`; a count built anywhere else keeps none.
+    record: bool = False
 
     def stopped(self, source: str) -> SourceOutcome | None:
         """The answer for a catalogue this run no longer asks, or None to ask it."""
@@ -482,6 +486,15 @@ class Refusals:
         else:
             self.running.pop(outcome.source, None)
             self.last.pop(outcome.source, None)
+        if not self.record:
+            return
+        # ONLY A REFUSAL SENT, OR AN ANSWER (U284). A stopped catalogue's
+        # answer never reaches here, since it was not sent; an outage or a
+        # parse break says nothing about whether the catalogue would refuse.
+        if outcome.answer is Answer.BLOCKED:
+            refused.refused(outcome.source)
+        elif outcome.answer in (Answer.MATCHED, Answer.MISS):
+            refused.answered(outcome.source)
 
 
 # ---------------------------------------------------------------------------
@@ -1916,6 +1929,8 @@ def _decide(
         )
 
     blocked = [outcome.source for outcome in outcomes if outcome.answer is Answer.BLOCKED]
+    if len(blocked) == len(outcomes):
+        raise _refused_by_all(outcomes, passed, artist, title)
     steps = [
         "check this machine's network connection and run the tagging job again; "
         "the job resumes at the item it stopped on",
@@ -1944,6 +1959,113 @@ def _decide(
             "answers": [outcome.answer.value for outcome in outcomes],
             "notes": [outcome.note for outcome in outcomes],
         },
+    )
+
+
+#: The detail keys a refusal by every catalogue asked carries (U284): the
+#: refusing catalogues with the date each began refusing, empty where none is
+#: recorded, and the note Discogs was passed over with, empty when it was asked.
+REFUSED_DETAIL = "refused"
+DISCOGS_DETAIL = "discogs"
+
+
+def refusing_since(since: Mapping[str, str]) -> str:
+    """The refusing catalogues in words, each with the date it began when one is recorded."""
+    return ", ".join(
+        f"{source}, refusing since {began}" if began else source
+        for source, began in since.items()
+    )
+
+
+def _refused_by_all(
+    outcomes: Sequence[SourceOutcome],
+    passed: Sequence[NotAsked],
+    artist: str,
+    title: str,
+) -> CratekitError:
+    """The refusal of a file every catalogue asked refused, said as a refusal (U284).
+
+    NOT AN OUTAGE, SO THE NETWORK IS NOT THE FIRST STEP. Sitting 94's pass
+    stopped over 23 files Beatport refused, and the refusal's first step sent
+    the person to their network over a block no network check moves (u281-a).
+    The slug and the retry are unchanged: nothing is known of the track, and
+    the next run asks again.
+
+    THE TOKEN IS NAMED WHEN DISCOGS WAS PASSED OVER FOR WANT OF ONE, because
+    with a token recorded a file Discogs searched and could not tag beside a
+    refusing Beatport is settled askable rather than failed, and a sync pass
+    or a label go carries on to its landing (Phillip's answer on #790). A
+    Discogs that was asked and refused too is named among the refusing, and
+    the pass stops: carrying on needs Discogs to have read the file.
+    """
+    since = refused.since(outcome.source for outcome in outcomes)
+    named = refusing_since(since)
+    unasked = next((skipped.note for skipped in passed if skipped.source == DISCOGS), "")
+    steps: list[str] = []
+    if unasked:
+        steps.append(
+            f"record a Discogs token, then run the tagging job again: "
+            f"{DISCOGS_LOGIN_STEPS}. With one recorded Discogs is asked first, "
+            f"and a file it searched and could not tag while every other "
+            f"catalogue refuses is left untagged and askable rather than "
+            f"failing, so a sync pass or a label go carries on to its landing"
+        )
+    steps.append(
+        f"{', '.join(since)} refused this client, with a bot check, a block page "
+        f"or a rate limit that outlasted the backoff, rather than a result; this "
+        f"tool does not try to get past one, so a later run asks again and the "
+        f"job resumes at the item it stopped on"
+    )
+    steps.extend(f"{skipped.source} was {skipped.note}" for skipped in passed)
+    return refuse(
+        UNREACHABLE_REASON,
+        f"every catalogue asked refused this client: {named}, so nothing is "
+        f"known about {artist!r} {title!r}. A refusal is not the catalogues not "
+        f"carrying it, and it is not recorded as one",
+        remedy=Remedy.RETRY_LATER,
+        steps=tuple(steps),
+        scope=Scope.RUN,
+        retryable=True,
+        origin=("tagging", "searchers"),
+        detail={
+            "sources": [outcome.source for outcome in outcomes],
+            "answers": [outcome.answer.value for outcome in outcomes],
+            "notes": [outcome.note for outcome in outcomes],
+            REFUSED_DETAIL: since,
+            DISCOGS_DETAIL: unasked,
+        },
+    )
+
+
+def _beside_refusals(rejected: CratekitError, outcomes: Sequence[SourceOutcome]) -> CratekitError:
+    """A token Discogs rejected, naming the record shops that refused too (U284).
+
+    Raised where it always was, when no shop matched; when every shop asked
+    refused, a person fixing the token learns the shops are no help meanwhile,
+    and since when.
+    """
+    if not outcomes or any(outcome.answer is not Answer.BLOCKED for outcome in outcomes):
+        return rejected
+    since = refused.since(outcome.source for outcome in outcomes)
+    cause = rejected.cause
+    return rebuilt(
+        rejected,
+        replace(
+            cause,
+            remediation=replace(
+                cause.remediation,
+                steps=(
+                    *cause.remediation.steps,
+                    f"meanwhile every record shop asked refused this client too: "
+                    f"{refusing_since(since)}",
+                ),
+            ),
+            detail={
+                **dict(cause.detail or {}),
+                REFUSED_DETAIL: since,
+                DISCOGS_DETAIL: DISCOGS_TOKEN_REFUSED,
+            },
+        ),
     )
 
 
@@ -2071,7 +2193,7 @@ def catalogue_searcher(
                 shown,
             )
         if rejected is not None:
-            raise rejected
+            raise _beside_refusals(rejected, outcomes) from rejected.__cause__
         return _decide(order, outcomes, passed, artist, title)
 
     return search
@@ -2196,7 +2318,7 @@ def for_run(run: str) -> Refusals:
     :func:`for_taxonomy`; :func:`reset_runs` forgets the count.
     """
     if not _run_refusals or _run_refusals[0][0] != run:
-        _run_refusals[:] = [(run, Refusals())]
+        _run_refusals[:] = [(run, Refusals(record=True))]
     return _run_refusals[0][1]
 
 
@@ -2257,6 +2379,7 @@ __all__ = [
     "DISCOGS_SLOWDOWN_S",
     "DISCOGS_TOKEN_LOST",
     "DISCOGS_TOKEN_REFUSED",
+    "DISCOGS_DETAIL",
     "DISCOGS_UNASKED_NOTES",
     "HEADERS",
     "IMAGE_MEMORY",
@@ -2273,6 +2396,7 @@ __all__ = [
     "SOURCES",
     "TRAXSOURCE",
     "TRAXSOURCE_SEARCH",
+    "REFUSED_DETAIL",
     "UNREACHABLE_REASON",
     "UNREAD_ANSWERS",
     "WALK",
@@ -2296,6 +2420,7 @@ __all__ = [
     "for_taxonomy",
     "remembering",
     "reset_images",
+    "refusing_since",
     "reset_runs",
     "unread_outcome",
 ]
