@@ -30,8 +30,10 @@ Usage:
 
 Prints a summary per shape and writes every difference, one per line, to
 ``--out``: ``lost`` (the base matched, the tree does not) or ``gained``, then
-the artist tag, the file's name and the row. Exit 0 always: a difference is a
-finding to read, not a failure.
+the shape, the artist tag, the file's name, the row and the tree's outcome
+for the name (titled, ambiguous); Beatport's lines carry the row's mix in
+place of the shape and outcome. Exit 0 always: a difference is a finding to
+read, not a failure.
 """
 
 from __future__ import annotations
@@ -320,12 +322,14 @@ def main(argv: list[str] | None = None) -> int:
     per_shape: Counter = Counter()
     lines: list[str] = []
     for number, (shape, artist, name, _) in enumerate(names):
+        if old[number] != new[number]:
+            outcome = titles.read_file(name, artist).outcome.value
         for row in sorted(old[number] - new[number]):
             per_shape[(shape, "lost")] += 1
-            lines.append(f"lost\t{shape}\t{artist}\t{name}\t{rows[row]}")
+            lines.append(f"lost\t{shape}\t{artist}\t{name}\t{rows[row]}\t{outcome}")
         for row in sorted(new[number] - old[number]):
             per_shape[(shape, "gained")] += 1
-            lines.append(f"gained\t{shape}\t{artist}\t{name}\t{rows[row]}")
+            lines.append(f"gained\t{shape}\t{artist}\t{name}\t{rows[row]}\t{outcome}")
         per_shape[(shape, "both")] += len(old[number] & new[number])
     for shape in (*shapes, "generated"):
         print(

@@ -2,7 +2,7 @@
 title: "A strip that can empty a title turns a substring match into a match of anything"
 date: 2026-11-12
 category: integration-issues
-module: src/cratekit/tagging/searchers.py
+module: src/cratekit/tagging/titles.py
 problem_type: integration_issue
 component: tagging
 severity: high
@@ -10,7 +10,7 @@ resolution_type: code_fix
 applies_when:
   - "A unit compares titles, artists or any names by containment after stripping part of them"
   - "A unit adds a new catalogue source, or a new caller of the shared title matcher"
-tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534, r-1631, r-1636, camelot-head, dash-parts]
+tags: [title-match, substring, bracket-strip, beatport, discogs, traxsource, bandcamp, r-1534, r-1631, r-1636, r-1646, u280, camelot-head, dash-parts, typed-parse, differential]
 ---
 
 # A strip that can empty a title turns a substring match into a match of anything
@@ -32,9 +32,9 @@ and Beatport's own scoring, which strips separately from the shared matcher.
 
 - **Ask what the strip leaves before comparing.** A side with no letter or
   digit left identifies nothing and matches nothing, on either side, searched
-  or found. `_identifies` in `tagging/searchers.py` is the check.
+  or found. `identifies` in `tagging/titles.py` is the check.
 - **Read a title the strip empties by its core, not by the remainder.**
-  `_title_core` takes off only the bracket groups a title ends with, read as
+  `title_core` takes off only the bracket groups a title ends with, read as
   balanced groups from the end, and for a title of brackets alone takes the
   groups' words and marks them for exact comparison only.
 - **Containment is the wrong comparison, not a loose one (R-1631).** After
@@ -45,13 +45,13 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   "Sunrise Mood (Intro)"), refused only for a hand list of version words that
   missed "vocal" and "reprise"; and raw characters put "Club" in "Nightclub".
   What landed compares readings, tuples of whole words once a title has shed
-  what is not its title (`_readings` in `tagging/searchers.py`), and two titles
-  match on a shared reading.
+  what is not its title (`_readings`, since replaced by U280's parse, below), and two titles
+  matched on a shared reading.
 - **Ask of any list in a matcher which way it fails.** A list that refuses a
   match for its words fails open on every word it lacks. The version words now
   come from the domain's `core.tombstone.VERSION_WORDS` and mostly shed a
   trailing version from a title, where a word the list lacks costs a miss. A
-  file's dash tail of version words alone was refused on it (`_names_a_title`),
+  file's dash tail of version words alone was refused on it (`_names_a_title`, gone),
   so "Other Song - Vocal Mix" read "vocal mix" as a title until R-1636 replaced
   the list's verdict with the tail's position (below).
 - **A number is part of the title (round one of R-1631).** Shedding numbers
@@ -76,7 +76,7 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   Mix" as "vocal mix"), an untagged name's album ("KEY - BPM - Tide - Artist -
   Sun Path" as "sun path") and its artist ("KEY - BPM - Artist - Sun Path" as
   the artist) each wrote another recording's genre. The searcher already
-  holds the file's artist, so `_title_starts` places the title at the first
+  holds the file's artist, so the parse (`_layout` in `tagging/titles.py`) places the title at the first
   part after the head that does not credit the artist, and never reads a
   later part alone, save a track numbered "02 Title". Read the artist's part
   as a name writes it, not as the tag does: round one of the review drove a
@@ -107,7 +107,7 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   on every word it lacks. So the name is read only as its two splits into a
   title and a version (`_name_splits`), and a row matches it only by writing
   one of them itself, its title and version apart in brackets, after a dash,
-  or in Beatport's name and mix (`_row_splits`, `_beatport_readings`). A
+  or in Beatport's name and mix (`_row_splits`, `read_beatport_row`). A
   plain row "Vocal Mix" confirms nothing, since Discogs lists a single's
   versions as its track titles. The cost is a miss on the file's own row
   written under another mix, with no version, or with one more bracket
@@ -118,7 +118,34 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   found the whole title reading, shed of a feature credit, still collapsing
   "Artist feat. Tide - Sunrise Mood Extended Mix" to the artist's name, so
   the self titled row won where `main` had at least ranked the title's own
-  row. A whole name whose first part credits the artist is now read unshed.
+  row. A whole name whose first part credits the artist was then read
+  unshed; since U280 no whole name is shed across its dashes (below).
+- **After four fixes in a day, stop patching the reading model (U280).** A
+  matcher that reads a title as every way it could be read and matches on
+  any shared reading widens every source with each reading a fix adds, and a
+  fix that removes one must chase every other path to the same words; four
+  fixes in a row each made the next review's defect. What replaced it,
+  `tagging/titles.py`, reads a file's name once into typed parts (the head,
+  a track number, the artist's credits, the title, an album before a track
+  numbered title), each with how it was told, and an outcome: titled,
+  ambiguous where only a list of version words could tell, or unreadable.
+  Ambiguity is a miss unless the row writes the same split. Two lessons of
+  how it was built. Build the new beside the old and drive it to parity
+  first: `scripts/title_differential.py` loads `main`'s `searchers.py` from
+  git and decides every name and row pair of the suite's corpus, wrapped in
+  the naming verb's shapes, by an index, so the first run proved the parse
+  re-expressed `main` exactly (no difference over 394,160 names) before any
+  rule moved. Then make each deliberate change alone and classify every
+  difference it makes against the commit before it, by which change
+  explains it; a difference no change explains is a defect. And no shedding
+  crosses a dash: a feature credit or a version shed from a whole name cuts
+  through parts that are not the title, which is how "Artist feat. Tide -
+  X" collapsed to the artist, and how "08A - 124 - Interlude" met "08A - 124
+  - (Intro)" on the head's words alone. What that shedding found rightly, a
+  first part naming the artist only as featured and a tempo alone before a
+  version alone, is now a title candidate the parse names. A property over
+  names the naming verb renders found two misses `main` shared, a marker
+  before a lone track number and before a title of its own brackets.
 - **What the new rule cannot tell apart, it refuses.** "How Does It Feel"
   against "Untitled (How Does It Feel)" has the same evidence as "Intro"
   against "Sunrise Mood (Intro)", so both are refused; that loss is pinned as

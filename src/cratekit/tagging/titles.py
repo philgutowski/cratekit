@@ -748,15 +748,26 @@ class FileName:
 
 @dataclass(frozen=True, slots=True)
 class _Layout:
-    """Where a name's head ends, its title starts and its later titles start."""
+    """Where a name's head ends, its title starts and its later titles start,
+    each an index into its dash parts."""
 
+    #: The first part after the ``KEY - BPM`` head, where the naming verb
+    #: writes its marker.
     body: int
+    #: The first part after the head and a lone track number before the body.
     head: int
+    #: Where a trailing head starts, "08A - 124" of "Sun Path - 08A - 124".
     tail: int
+    #: Where the body ends: the trailing head, or at least one part past ``head``.
     end: int
+    #: The parts that credit the searched artist.
     credits: frozenset[int]
+    #: The lone track numbers among the body's parts.
     numbers: frozenset[int]
+    #: Where the title starts: the first part that is neither, or the
+    #: artist's own part when nothing else can be the title.
     title: int
+    #: Later parts a track number marks as the title, "02 Tide".
     numbered: tuple[int, ...]
 
 
@@ -885,7 +896,7 @@ def _parts(parts: list[str], layout: _Layout, ambiguous: int | None) -> tuple[Pa
     return tuple(read)
 
 
-def _title_stretches(parts: list[str], layout: _Layout) -> dict[Title, str]:
+def _title_stretches(parts: list[str], layout: _Layout, names: frozenset[Words]) -> dict[Title, str]:
     """The stretches a titled name's title is read as, each with where it came from.
 
     From the title, and from each track numbered later title, a stretch runs
@@ -898,6 +909,8 @@ def _title_stretches(parts: list[str], layout: _Layout) -> dict[Title, str]:
     numbered title, so the album before one is never read alone. When the
     title is the artist's part and the next part credits the artist too,
     "Tide & Artist - Artist", the second is read as a title as well (R-1653).
+    Two more parts are read as a title too, each with its reason
+    (:func:`_featured_first_part`, :func:`_tempo_as_title`).
     """
     head, title, credits = layout.head, layout.title, layout.credits
     starts = [title, *layout.numbered]
@@ -913,8 +926,6 @@ def _title_stretches(parts: list[str], layout: _Layout) -> dict[Title, str]:
                 or not (after_head or last in credits or _a_tail_to_shed(DASH.join(parts[last:]), file=True))
             ):
                 continue
-            if (first, last) == (0, len(parts)):
-                continue
             stretch = read_title(
                 DASH.join(parts[first:last]),
                 numbered=_numbered(words(parts[first])),
@@ -924,7 +935,38 @@ def _title_stretches(parts: list[str], layout: _Layout) -> dict[Title, str]:
             )
             if stretch is not None:
                 read.setdefault(stretch, f"parts {first} to {last}")
+    for found in (_featured_first_part(parts, layout, names), _tempo_as_title(parts, layout)):
+        if found is not None:
+            read.setdefault(*found)
     return read
+
+
+def _featured_first_part(parts: list[str], layout: _Layout, names: frozenset[Words]) -> tuple[Title, str] | None:
+    """A first part that names the artist only in its feature credit, read as
+    a title too. "Sunrise Mood feat. Tide - Bernard Badie" by Tide is another
+    artist's credit featuring them, or a title featuring them, and only the
+    second has a title in it (R-1646, round two). Main read it so by shedding
+    the feature credit from the whole name, across every dash."""
+    head = layout.head
+    if head == layout.title or head not in layout.credits or _credits_before_featuring(parts[head], names):
+        return None
+    featured = read_title(parts[head], marker=head == layout.body)
+    return None if featured is None else (featured, f"part {head}, naming the artist only as featured")
+
+
+def _tempo_as_title(parts: list[str], layout: _Layout) -> tuple[Title, str] | None:
+    """A lone number in a tempo's range before nothing but a version, its
+    bracket groups and a feature credit, read as a title too: "100 - Original
+    Mix" or "100 - Original Mix feat. Tide - Artist" is a tempo head and a
+    title "Original Mix", or a title "100" and its version. Main read it so
+    by shedding the version from the whole name."""
+    if layout.body != 1 or naming.is_camelot(words(parts[0])[0]):
+        return None
+    cut = _before_featuring(DASH.join(parts))
+    if not _version_alone(words(title_core(cut)[0])[1:]):
+        return None
+    titled = read_title(cut)
+    return None if titled is None else (titled, "a tempo alone before a version alone, read as a title")
 
 
 def read_file(value: str, artist: str) -> FileName:
@@ -938,11 +980,11 @@ def read_file(value: str, artist: str) -> FileName:
     Any other is :attr:`Outcome.TITLED`, read as the stretches its title runs
     to (:func:`_title_stretches`) and as its whole name.
 
-    The whole name is read as written. A whole name whose first part is the
-    artist's own credit is never shed: a feature credit or a version cut from
-    it leaves the artist's name, "Artist feat. Tide - Title" read as
-    "artist", which met the self titled row (R-1646, round one). A first
-    part that is the title, a self titled track, is no credit here.
+    The whole name is also read as written, never shed: a feature credit or
+    a version cut from across its dashes leaves what no part says, "Artist
+    feat. Tide - Title" read as "artist", which met the self titled row
+    (R-1646, round one). A title that starts at the first part is a stretch
+    to the end like any other, and sheds as its own.
     """
     text = normalized(value)
     if not identifies(text):
@@ -950,16 +992,12 @@ def read_file(value: str, artist: str) -> FileName:
     parts = text.split(DASH)
     names = _artist_names(artist)
     layout = _layout(parts, names)
-    head, title = layout.head, layout.title
     ambiguous = _only_a_list_reads(parts, layout, names)
     roles = _parts(parts, layout, ambiguous)
-    credited = head != title and head in layout.credits and _credits_before_featuring(parts[head], names)
-    whole = read_title(
-        text, shed=not credited, numbered=_numbered(words(parts[0])), marker=layout.body == 0
-    )
+    whole = read_title(text, shed=False, numbered=_numbered(words(parts[0])), marker=layout.body == 0)
     if ambiguous is not None:
         return FileName(roles, Outcome.AMBIGUOUS, whole=whole, splits=_name_splits(parts, layout, ambiguous))
-    read = _title_stretches(parts, layout)
+    read = _title_stretches(parts, layout, names)
     return FileName(roles, Outcome.TITLED, tuple(read), tuple(read.values()), whole)
 
 

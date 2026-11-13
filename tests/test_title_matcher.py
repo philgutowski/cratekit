@@ -30,18 +30,28 @@ only inside the other's trailing brackets ("How Does It Feel" against
 "Intro" against "Sunrise Mood (Intro)", pinned below as a known cost, and some
 shapes of a file with no title tag, asked by its name.
 
+HOW IT IS READ, SINCE U280. The matcher is `cratekit.tagging.titles`: a
+file's title or name is read once into its parts, each with its role and how
+that was told, and an outcome, titled, ambiguous or unreadable; a row is read
+by its own structure; and the tables above hold as they were written. Section
+L pins the parse itself, the shapes R-1651 named that are ambiguous now, the
+whole name read as written, and a property over names the naming verb
+renders.
+
 NOTHING HERE OPENS A SOCKET. Pages are synthetic text in the shapes the
 parsers read, handed to the injected fetch seam.
 """
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import pytest
 
 from cratekit.core import tags
-from cratekit.tagging import searchers, tag
+from cratekit.core.naming import MarkerRule, NameSpec, NameTemplate, render_all
+from cratekit.tagging import searchers, tag, titles
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import (
     ARTIST,
@@ -1385,9 +1395,6 @@ def test_a_bracketed_title_before_a_feature_is_read_without_the_credit(title, ow
 # L. U280: a title read once into typed parts, ambiguity an outcome
 # ---------------------------------------------------------------------------
 
-from cratekit.core.naming import MarkerRule, NameSpec, NameTemplate, render_all  # noqa: E402
-from cratekit.tagging import titles  # noqa: E402
-
 #: (artist tag, file title, each part's role, the outcome): the parse says what
 #: each dash part is, and a name only a list of version words could read is
 #: ambiguous rather than read both ways.
@@ -1569,8 +1576,6 @@ def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other():
     numbers, each match their own title's row however a catalogue writes its
     version, and no other title's, nor the artist's self titled row, nor the
     album, nor a version alone."""
-    import random
-
     chance = random.Random(791)
     for _ in range(3000):
         artist, searched, title, album = _rendered(chance)
@@ -1581,3 +1586,35 @@ def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other():
         wrong += [name for name in ("Bernard Badie", "Tide", "Black Madonna", "Ame") if name not in title]
         for row in wrong:
             assert not searchers._title_matches(searched, row, artist=artist), (searched, row)
+
+
+#: (artist tag, file title, a row): a whole name is read as written, never shed
+#: across its dashes, so a feature credit cut from it never leaves the
+#: artist's name alone (R-1646 round one's class, here in a name of two
+#: credits), and what main found only that way is read by the parse instead.
+WHOLE_NAME_NOT = [
+    (f"{ARTIST} & Tide", f"{ARTIST} feat. Someone - Tide - Vocal Mix", ARTIST),
+    (f"{ARTIST} & Tide", f"{ARTIST} - Tide feat. Someone - Sunrise Mood Extended Mix", ARTIST),
+    (ARTIST, "08A - 124 - Interlude", "08A - 124 - (Intro)"),
+    # A tempo is a title only before nothing but a version.
+    (ARTIST, "124 - Dub - Sunrise Mood", "124"),
+]
+WHOLE_NAME_STILL = [
+    # The first part names the artist only as featured: a title featuring them.
+    ("Tide", "Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood"),
+    ("Tide", "08A - 124 - Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood"),
+    # A number in a tempo's range before a version alone is a title too.
+    (ARTIST, "100 - Original Mix", "100"),
+    (ARTIST, "124 - Interlude", "Interlude"),
+    (ARTIST, "124 - Interlude", "124"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_NOT)
+def test_a_whole_name_is_never_shed_across_its_dashes(artist, title, row):
+    assert not searchers._title_matches(title, row, artist=artist)
+
+
+@pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_STILL)
+def test_what_the_whole_name_found_the_parse_still_reads(artist, title, row):
+    assert searchers._title_matches(title, row, artist=artist)
