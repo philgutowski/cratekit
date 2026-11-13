@@ -41,7 +41,11 @@ were the same shape (U286).
 - **Keep what the joined score got right.** A swapped listing, title first,
   scores 100 joined and is the same record, so each half may stand for the
   other; a title that folds to nothing cannot be read, so the title test says
-  nothing about it. Dropping either would download a duplicate.
+  nothing about it. Titles equal once their spaces are gone, `O.K.` and
+  `OK`, `Good Bye` and `Goodbye`, are one title, since `fold` turns a dot
+  into a space and they then share no word; compare them for equality, not
+  by a ratio, which lets `Get Out` and `Agenou` in at 66.67. Dropping any of
+  these would download a duplicate.
 - **A floor between short titles is narrow.** One changed letter in a three
   letter title scores 66.67 and `Get Out` against `Agenou` 61.5, so the free
   band is a few points wide: pin it with computed neighbours either side, as

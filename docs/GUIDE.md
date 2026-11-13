@@ -290,10 +290,12 @@ crate match run /path/to/tracklist.txt
 
 - `intake playlist` queues a job that sorts each track into owned, offered
   (another version is held, or a recording whose title resembles it: a review
-  item) or missing. A held song that shares only the artist is not offered,
-  so a short title like `Joy` beside the artist's `Goodbye` reads missing and
-  is listed for download. It downloads nothing and writes nothing to the
-  account.
+  item) or missing. The title is judged on its own as well as with the
+  artist: a typo, a dropped or reordered word, or a title spelled `O.K.`
+  for `OK` is still offered, but a short title like `Joy` beside the same
+  artist's `Goodbye` reads missing and is listed for download. A title a
+  letter or two away, `Joy` beside `Boy`, is still offered. It downloads
+  nothing and writes nothing to the account.
 - `intake file` plans one file. On the xml bridge it writes only with
   `--export`; once the intake tree is native it takes no export, plans one
   collection row and one INBOX playlist for the file where it sits (it must be

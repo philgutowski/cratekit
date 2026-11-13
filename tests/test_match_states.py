@@ -6674,6 +6674,14 @@ U286_NEAR = (
     ("Sun Path", "Sun Path Alt"),  # the module's own near miss
     ("Joy", "Jay"),  # one letter changed in a three letter title
     ("Joy", "Joys"),  # one letter added to a three letter title
+    # THE WORDS SPLIT OR JOINED, review round one's finding: ``fold`` turns a
+    # dot into a space, so these share no word and score on their letters
+    # alone, under the floor, and were read missing and downloaded again.
+    ("OK", "O.K."),
+    ("DNA", "D.N.A."),
+    ("Good Bye", "Goodbye"),
+    ("Every Day", "Everyday"),
+    ("Hi Fi", "HiFi"),
 )
 
 
@@ -6857,6 +6865,8 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
         asked, found = match.fold(wanted.title), match.fold(held.title)
         if not asked or not found:
             return True
+        if "".join(asked.split()) == "".join(found.split()):
+            return True
         floor = match.APPROXIMATE_TITLE_FLOOR
         if fuzz.token_set_ratio(asked, found) >= floor:
             return True
@@ -6903,3 +6913,16 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
             dropped += 1
             refilled += len(kept) > len([g for g in shipped if passes(wanted, g[0])])
     assert unchanged and dropped and refilled, (unchanged, dropped, refilled)
+
+
+def test_titles_split_differently_are_kept_by_equality_and_not_by_a_ratio():
+    """``Get Out`` against ``Agenou`` with the spaces taken out scores 66.67,
+    over the title floor, so the joined form is compared for equality only:
+    a ratio would let the card's own unrelated pair back in."""
+    from rapidfuzz import fuzz
+
+    assert fuzz.ratio("getout", "agenou") >= match.APPROXIMATE_TITLE_FLOOR
+    agenou = match.Owned(path=Path("x.flac"), artist="Traumer", title="Agenou", version="", key=None)
+    assert not match._title_resembles(one(artist="Traumer", title="Get Out"), agenou)
+    goodbye = match.Owned(path=Path("x.flac"), artist="Traumer", title="Goodbye", version="", key=None)
+    assert match._title_resembles(one(artist="Traumer", title="Good Bye"), goodbye)

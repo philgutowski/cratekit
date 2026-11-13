@@ -2682,11 +2682,17 @@ def _title_resembles(wanted: Wanted, held: Owned) -> bool:
     and reordered words score 100 and a typo scores as a typo, while two
     titles sharing no word score on their letters alone.
 
-    TWO ALLOWANCES, both keeping the offer U286 found, and both because the
+    THREE ALLOWANCES, each keeping the offer U286 found, and each because the
     cost of a wrong drop is a duplicate downloaded where the cost of a wrong
     offer is one question. A title that folds to nothing on either side holds
     no letter or digit to read, so this says nothing about it and the
-    discovery score decides, as it always did. And a file whose artist and
+    discovery score decides, as it always did. Two titles that are one string
+    once their spaces are gone, ``O.K.`` and ``OK``, ``Good Bye`` and
+    ``Goodbye``, are one title split differently: :func:`fold` turns a dot
+    into a space, so they share no word and score on their letters alone,
+    under the floor (review round one's finding). EQUALITY AND NOT A RATIO:
+    ``getout`` against ``agenou`` scores 66.67, which would let one of the
+    card's unrelated pairs back in. And a file whose artist and
     title are the row's swapped, a listing pasted title first or a file named
     the wrong way round, is the same record, which the word sort scores as one
     string at 100: each half then has to resemble the other side's other half.
@@ -2695,6 +2701,8 @@ def _title_resembles(wanted: Wanted, held: Owned) -> bool:
 
     asked, found = fold(wanted.title), fold(held.title)
     if not asked or not found:
+        return True
+    if asked.replace(" ", "") == found.replace(" ", ""):
         return True
     if fuzz.token_set_ratio(asked, found) >= APPROXIMATE_TITLE_FLOOR:
         return True
