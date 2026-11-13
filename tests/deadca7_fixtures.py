@@ -15,6 +15,16 @@ SELECTs against ``djmdContent``, while the same note says the push sets
 the proof covers them either way. A fixture that writes more than the push
 cannot make the guard weaker, only the proof wider than the app needs.
 
+THE ZERO DATE IS THE PRODUCER'S OWN VALUE (U285). DEADCA7 0.2.3, read on a
+real push at sitting 98, stamps ``created_at`` and ``updated_at`` on its folder,
+its playlists and every membership as ``0001-01-01T00:00:00Z``, where
+rekordbox writes ``2026-03-09 21:06:07.516 +00:00``. :data:`ZERO_STAMP` is that
+text exactly, and :func:`push` writes it when asked. The cue rows take the same
+stamp: their stamp on a real push was not read, and writing the zero date there
+too makes the proof wider than the app needs, never narrower. The binding turns
+the value into local time, so it fails to read only west of UTC, which
+:func:`west_of_utc` sets for the process.
+
 THE FOLDER'S POSITION IS PAST THE ROOT'S ROW COUNT on purpose: rekordbox's
 binding renumbers every root sibling at or past a position a caller names, so
 the folder sits where such a write would move it, and a test that writes beside
@@ -23,7 +33,11 @@ it would see it move.
 
 from __future__ import annotations
 
+import os
 import sqlite3
+import time
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -39,6 +53,10 @@ ANALYSIS_PATH = "/PIONEER/USBANLZ/dc7/0001/ANLZ0000.DAT"
 ANALYSIS_UPDATED = 2
 CUE_IDS = ("88101", "88102")
 STAMP = "2026-10-30 12:00:00.000 +00:00"
+#: What DEADCA7 0.2.3 stamps on a real push, read at sitting 98 (U285).
+ZERO_STAMP = "0001-01-01T00:00:00Z"
+#: US Eastern as a POSIX rule, so it needs no zone database on either platform.
+EASTERN = "EST5EDT,M3.2.0,M11.1.0"
 
 
 @dataclass(frozen=True)
@@ -52,22 +70,46 @@ class Pushed:
     cue_ids: tuple[str, ...]
 
 
-def push(db_path: Path | str, content_ids: tuple[str, ...]) -> Pushed:
-    """Write one push: the folder, two playlists holding ``content_ids``, cues, analysis."""
+@contextmanager
+def west_of_utc(zone: str = EASTERN) -> Iterator[None]:
+    """The process's local time zone set west of UTC, and put back after.
+
+    The zero date reads as the year before year 1 only at a negative offset, so
+    a test run on a machine at UTC would pass by accident without this.
+    """
+    before = os.environ.get("TZ")
+    os.environ["TZ"] = zone
+    time.tzset()
+    try:
+        yield
+    finally:
+        if before is None:
+            os.environ.pop("TZ", None)
+        else:
+            os.environ["TZ"] = before
+        time.tzset()
+
+
+def push(db_path: Path | str, content_ids: tuple[str, ...], *, stamp: str = STAMP) -> Pushed:
+    """Write one push: the folder, two playlists holding ``content_ids``, cues, analysis.
+
+    ``stamp`` is the date written on every row the push makes;
+    :data:`ZERO_STAMP` is what the real app writes.
+    """
     conn = sqlite3.connect(db_path)
     try:
         conn.execute(
             "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, UUID, "
             "rb_local_deleted, rb_local_usn, created_at, updated_at) "
             "VALUES (?, ?, ?, 1, 'root', ?, 0, ?, ?, ?)",
-            (FOLDER_ID, FOLDER_SEQ, FOLDER, "dc7-folder", USN, STAMP, STAMP),
+            (FOLDER_ID, FOLDER_SEQ, FOLDER, "dc7-folder", USN, stamp, stamp),
         )
         for seq, (playlist_id, name) in enumerate(PLAYLISTS.items(), start=1):
             conn.execute(
                 "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, UUID, "
                 "rb_local_deleted, rb_local_usn, created_at, updated_at) "
                 "VALUES (?, ?, ?, 0, ?, ?, 0, ?, ?, ?)",
-                (playlist_id, seq, name, FOLDER_ID, f"dc7-{playlist_id}", USN, STAMP, STAMP),
+                (playlist_id, seq, name, FOLDER_ID, f"dc7-{playlist_id}", USN, stamp, stamp),
             )
             for number, content_id in enumerate(content_ids, start=1):
                 conn.execute(
@@ -81,8 +123,8 @@ def push(db_path: Path | str, content_ids: tuple[str, ...]) -> Pushed:
                         number,
                         f"dc7-m-{playlist_id}-{number}",
                         USN,
-                        STAMP,
-                        STAMP,
+                        stamp,
+                        stamp,
                     ),
                 )
         track = content_ids[0]
@@ -91,7 +133,7 @@ def push(db_path: Path | str, content_ids: tuple[str, ...]) -> Pushed:
                 "INSERT INTO djmdCue (ID, ContentID, InMsec, Kind, Color, UUID, "
                 "rb_local_deleted, rb_local_usn, created_at, updated_at) "
                 "VALUES (?, ?, ?, ?, 1, ?, 0, ?, ?, ?)",
-                (cue_id, track, 1000 * kind, kind, f"dc7-cue-{cue_id}", USN, STAMP, STAMP),
+                (cue_id, track, 1000 * kind, kind, f"dc7-cue-{cue_id}", USN, stamp, stamp),
             )
         conn.execute(
             "UPDATE djmdContent SET AnalysisDataPath = ?, AnalysisUpdated = ?, "
@@ -182,12 +224,15 @@ def nested_namesake(db_path: Path | str, parent_id: str, node_id: str = "88900")
 
 
 __all__ = [
+    "EASTERN",
     "FOLDER",
     "FOLDER_ID",
+    "ZERO_STAMP",
     "Pushed",
     "analysis_files_now",
     "nested_namesake",
     "push",
     "push_analysis_files",
+    "west_of_utc",
     "written",
 ]

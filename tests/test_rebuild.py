@@ -40,6 +40,7 @@ or a real track.
 
 from __future__ import annotations
 
+import contextlib
 import json
 import os
 import sqlite3
@@ -854,24 +855,31 @@ def test_a_second_rebuild_writes_nothing(cfg, gates_pass, db, adopted_root, decl
     assert second.after.converged
 
 
-@pytest.fixture
-def pushed(cfg, monkeypatch):
-    """The disposable database with a DEADCA7 push of both tracks, opened after it."""
-    path = Path(cfg.library.db_path)
-    _build_disposable_database(path)
-    _record_locations(path, {"1": _music(cfg, COMPOSED), "2": _music(cfg, PLAIN)})
-    push = deadca7_fixtures.push(path, ("1", "2"))
-    real_integrity_ok = rb_writer.integrity_ok
-    monkeypatch.setattr(
-        rb_writer,
-        "integrity_ok",
-        lambda target, **kwargs: real_integrity_ok(target, unlock=False),
-    )
-    handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
-    try:
-        yield handle, path, push
-    finally:
-        rb_writer.close_db(handle)
+@pytest.fixture(params=["ordinary", "zero-date-west-of-utc"])
+def pushed(request, cfg, monkeypatch):
+    """The disposable database with a DEADCA7 push of both tracks, opened after it.
+
+    Twice: with an ordinary stamp, and with the zero date the real app writes
+    read west of UTC, where the binding could not place it (U285).
+    """
+    zero = request.param != "ordinary"
+    stamp = deadca7_fixtures.ZERO_STAMP if zero else deadca7_fixtures.STAMP
+    with deadca7_fixtures.west_of_utc() if zero else contextlib.nullcontext():
+        path = Path(cfg.library.db_path)
+        _build_disposable_database(path)
+        _record_locations(path, {"1": _music(cfg, COMPOSED), "2": _music(cfg, PLAIN)})
+        push = deadca7_fixtures.push(path, ("1", "2"), stamp=stamp)
+        real_integrity_ok = rb_writer.integrity_ok
+        monkeypatch.setattr(
+            rb_writer,
+            "integrity_ok",
+            lambda target, **kwargs: real_integrity_ok(target, unlock=False),
+        )
+        handle = rb_writer.open_db(path, unlock=False, cfg=cfg)
+        try:
+            yield handle, path, push
+        finally:
+            rb_writer.close_db(handle)
 
 
 def test_a_rebuild_and_its_check_beside_deadca7s_folder_leave_it_and_report_no_drift(
