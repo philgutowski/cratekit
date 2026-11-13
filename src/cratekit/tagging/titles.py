@@ -92,6 +92,10 @@ _CLOSING = frozenset(")]")
 #: "(Not Just) Knee Deep (Part 1)", "[MP3] " of "[MP3] Real Title".
 _LEADING_GROUPS = re.compile(r"^(?:\s*(?:\([^()]*\)|\[[^\[\]]*\]))+\s*")
 
+#: The marker the naming verb writes after the head, square bracketed: "[MP3] "
+#: of "08A - 124 - [MP3] Sunrise Mood" (``config.naming.lossy_marker``).
+_MARKER = re.compile(r"^\s*\[[^\[\]]*\]\s*")
+
 
 def identifies(value: str) -> bool:
     """Whether a title carries a letter or a digit at all.
@@ -297,6 +301,7 @@ def read_title(
     numbered: bool = False,
     after_title: bool = False,
     in_head: bool = False,
+    marker: bool = False,
 ) -> Title | None:
     """One stretch of normalized text read as a title, or None when it carries
     no letter or digit.
@@ -306,6 +311,11 @@ def read_title(
     core's, each shed of a feature credit and a version run unless ``shed`` is
     False, by its core without a zero padded track number it opens with when
     ``numbered``, and, kept apart, by its core with its leading groups shed.
+
+    With ``marker``, a stretch that opens where the naming verb writes its
+    marker, a square bracketed group it opens with is read past as well, so
+    "[MP3] (Not Just) Knee Deep" is also "(Not Just) Knee Deep", whose own
+    leading group then sheds as any title's does.
 
     Two filters say what a stretch read at that place cannot be. ``after_title``
     (a title read after the artist's credit or a track number) is never
@@ -334,6 +344,18 @@ def read_title(
             return False
         return not (after_title and _version_alone(found))
 
+    found = _MARKER.match(text) if marker else None
+    if found is not None and identifies(text[found.end() :]):
+        past = read_title(
+            text[found.end() :],
+            shed=shed,
+            numbered=_numbered(words(text[found.end() :])),
+            after_title=after_title,
+            in_head=in_head,
+        )
+        if past is not None:
+            names |= past.names
+            bare |= past.bare
     return Title(
         frozenset(filter(can_be_a_title, names)), frozenset(filter(can_be_a_title, bare))
     )
@@ -512,8 +534,8 @@ def _numbered(found: Words) -> bool:
 
 def _a_track_number(part: str) -> bool:
     """Whether a dash part is a track number alone, "01" of "01 - Artist -
-    Title"."""
-    return _LONE_TRACK_NUMBER.fullmatch(part.strip()) is not None
+    Title", past a marker the naming verb writes before it, "[MP3] 01"."""
+    return _LONE_TRACK_NUMBER.fullmatch(_LEADING_GROUPS.sub("", part).strip()) is not None
 
 
 # ---------------------------------------------------------------------------
@@ -610,6 +632,23 @@ def _names_the_artist(part: str, names: frozenset[Words], *, first: bool) -> boo
     return len(folded) > 1 and any(_runs_in(folded, name, initials=True) for name in names)
 
 
+def _featuring_at(text: str) -> int | None:
+    """Where a feature credit written in a part opens, at its feature word as
+    written, or None: 12 of "Vocal Mix feat. Tide"."""
+    found = list(_WORD.finditer(text))
+    return next(
+        (word.start() for index, word in enumerate(found) if index and word.group() in _FEATURING),
+        None,
+    )
+
+
+def _before_featuring(text: str) -> str:
+    """A part with a feature credit after its first word cut off, as written:
+    "Vocal Mix " of "Vocal Mix feat. Tide"."""
+    cut = _featuring_at(text)
+    return text if cut is None else text[:cut]
+
+
 def _credits_before_featuring(part: str, names: frozenset[Words]) -> bool:
     """Whether a part credits the searched artist before any feature credit
     it carries: "Aurora Bloom feat. Tide" does for "Aurora Bloom", and
@@ -618,14 +657,9 @@ def _credits_before_featuring(part: str, names: frozenset[Words]) -> bool:
     title of brackets. The part is cut at the feature word as written, so the
     marker strip :func:`_names_the_artist` makes never takes a title's own
     brackets."""
-    found = list(_WORD.finditer(part))
-    cut = next(
-        (word.start() for index, word in enumerate(found) if index and word.group() in _FEATURING),
-        None,
-    )
-    if cut is None:
+    if _featuring_at(part) is None:
         return True
-    return _names_the_artist(part[:cut], names, first=True)
+    return _names_the_artist(_before_featuring(part), names, first=True)
 
 
 def _credit_words(part: str) -> set[Words]:
@@ -658,6 +692,7 @@ class Role(Enum):
     NUMBER = "track number"
     CREDIT = "the artist's credit"
     TITLE = "title"
+    ALBUM = "album"
     LATER = "after the title"
 
 
@@ -711,29 +746,11 @@ class FileName:
     splits: frozenset[TitleSplit] = frozenset()
 
 
-def _name_splits(parts: list[str], credit: int, title: int) -> frozenset[TitleSplit]:
-    """The two ways a file's "Artist - X" name splits into a title and its
-    version, when X ends in a version (R-1646): the artist's part titled, X
-    its version, ("aurora bloom", "vocal mix"); or X titled up to its trailing
-    run of version words, the rest its version, ("sunrise mood", "extended
-    mix"). A row matches only by writing one of these splits itself
-    (:func:`_row_splits`), so the catalogue, never a list, says which reading
-    holds. A version word the list lacks makes the second split longer than
-    any row writes it, a miss rather than a match.
-    """
-    tail = parts[title]
-    every = words(tail)
-    splits = {(credit_words, every) for credit_words in _credit_words(parts[credit])}
-    plain = _without_version(words(without_trailing_groups(tail)))
-    if plain:
-        splits.add((plain, every[len(plain) :]))
-    return frozenset(splits)
-
-
 @dataclass(frozen=True, slots=True)
 class _Layout:
     """Where a name's head ends, its title starts and its later titles start."""
 
+    body: int
     head: int
     tail: int
     end: int
@@ -758,7 +775,7 @@ def _layout(parts: list[str], names: frozenset[Words]) -> _Layout:
     "01 Title" of "Artist - Album - 01 Title". A lone track number before the
     title is passed over as the head is, "01 - Artist - Title".
     """
-    head = _head_end(parts)
+    body = head = _head_end(parts)
     _, tail = _head_parts(parts)
     end = max(tail, head + 1)
 
@@ -785,68 +802,104 @@ def _layout(parts: list[str], names: frozenset[Words]) -> _Layout:
         for index in range(title + 1, end)
         if index not in credits and (index - 1 in numbers or _numbered(words(title_core(parts[index])[0])))
     )
-    return _Layout(head, tail, end, credits, numbers, title, numbered)
+    return _Layout(body, head, tail, end, credits, numbers, title, numbered)
 
 
-def _parts(parts: list[str], layout: _Layout) -> tuple[Part, ...]:
-    """Each part's role, from the layout."""
+def _only_a_list_reads(parts: list[str], layout: _Layout, names: frozenset[Words]) -> int | None:
+    """The part of a name that only a list of version words could read, or None.
+
+    "Artist - X", X ending in a version, is a title X by the artist or the
+    artist's self titled track in its version X, and only a list could say
+    which: "vocal" is a version, "sunrise mood" a title (R-1646). X is the
+    first part after the artist's credits and any lone track number, read
+    with a feature credit after it cut off, "Vocal Mix feat. Tide", and
+    after more than one credit, "Artist - Tide - Sunrise Mood Extended Mix";
+    main read those two one way (R-1651), each credit then the artist's own
+    and not a feature credit naming them. A version alone is no title, so
+    "Artist - Original Mix" is the self titled track, and a track numbered
+    later part is the title, so X is then its album.
+    """
+    first = layout.head
+    while first < layout.end and (first in layout.credits or first in layout.numbers):
+        first += 1
+    credits = [index for index in range(layout.head, first) if index in layout.credits]
+    if first >= layout.end or layout.numbered or not credits:
+        return None
+    # More than one credit counts only when each is the artist's own credit:
+    # "Sunrise Mood (feat. Tide) - Artist - Vocal Mix" by "Artist & Tide"
+    # names the artist in its first part only as featured, so that part is
+    # the title, as main read it.
+    if len(credits) > 1 and not all(_credits_before_featuring(parts[index], names) for index in credits):
+        return None
+    cut = _before_featuring(parts[first])
+    if _version_alone(words(title_core(cut)[0])) or not _ends_in_version(cut):
+        return None
+    return first
+
+
+def _name_splits(parts: list[str], layout: _Layout, ambiguous: int) -> frozenset[TitleSplit]:
+    """The ways an ambiguous name splits into a title and its version: each
+    credit before X titled, X its version, ("aurora bloom", "vocal mix"); or
+    X titled up to its trailing run of version words, the rest its version,
+    ("sunrise mood", "extended mix"). X is read as written and without a
+    feature credit after it. A row matches only by writing one of these
+    splits itself (:func:`_row_splits`), so the catalogue, never a list, says
+    which reading holds. A version word the list lacks makes the second split
+    longer than any row writes it, a miss rather than a match.
+    """
+    credits = [index for index in range(layout.head, ambiguous) if index in layout.credits]
+    splits: set[TitleSplit] = set()
+    for tail in dict.fromkeys((parts[ambiguous], _before_featuring(parts[ambiguous]).rstrip())):
+        every = words(tail)
+        for credit in credits:
+            splits |= {(credit_words, every) for credit_words in _credit_words(parts[credit])}
+        plain = _without_version(words(without_trailing_groups(tail)))
+        if plain:
+            splits.add((plain, every[len(plain) :]))
+    return frozenset(splits)
+
+
+def _parts(parts: list[str], layout: _Layout, ambiguous: int | None) -> tuple[Part, ...]:
+    """Each part's role, and how it was told."""
     read: list[Part] = []
     for index, text in enumerate(parts):
         if index < layout.head:
-            role, told = (Role.NUMBER, Told.SHAPE) if _a_track_number(text) else (Role.HEAD, Told.SHAPE)
+            role = Role.NUMBER if _a_track_number(text) else Role.HEAD
+            read.append(Part(text, role, Told.SHAPE))
         elif index >= layout.end:
-            role, told = Role.HEAD, Told.SHAPE
-        elif index == layout.title or index in layout.numbered:
-            role, told = Role.TITLE, Told.POSITION
+            read.append(Part(text, Role.HEAD, Told.SHAPE))
+        elif index == ambiguous:
+            read.append(Part(text, Role.TITLE, Told.LIST))
+        elif ambiguous is not None and index in layout.credits:
+            read.append(Part(text, Role.CREDIT, Told.CREDIT))
+        elif index in layout.numbered:
+            read.append(Part(text, Role.TITLE, Told.POSITION))
+        elif index == layout.title:
+            read.append(Part(text, Role.ALBUM if layout.numbered else Role.TITLE, Told.POSITION))
         elif index in layout.credits:
-            role, told = Role.CREDIT, Told.CREDIT
+            read.append(Part(text, Role.CREDIT, Told.CREDIT))
         elif index in layout.numbers:
-            role, told = Role.NUMBER, Told.SHAPE
+            read.append(Part(text, Role.NUMBER, Told.SHAPE))
         else:
-            role, told = Role.LATER, Told.POSITION
-        read.append(Part(text, role, told))
+            read.append(Part(text, Role.LATER, Told.POSITION))
     return tuple(read)
 
 
-def read_file(value: str, artist: str) -> FileName:
-    """A file's title, or its name, read once for a file by ``artist``.
+def _title_stretches(parts: list[str], layout: _Layout) -> dict[Title, str]:
+    """The stretches a titled name's title is read as, each with where it came from.
 
-    The title is read from where it starts (:func:`_layout`), as one stretch
-    and as the stretches its own structure lets it run to: up to a part that
-    credits the artist ("Title - Artist - Album"), up to a tail that is a
-    version or a trailing head ("Title - Original Mix", "Title - 08A - 124"),
-    through to the end of the name, and anywhere when the title follows the
-    head directly, since the naming verb keeps whatever body a name carries
-    after the head and an artist may be spelled there as the tag does not. A
-    track numbered later part is read as a title too, and the part before it,
-    its album, never alone. Two parts that both credit the artist read the
-    second as a title too, "Tide & Artist - Artist" (R-1653).
-
-    "Artist - X", X ending in a version, is a title X by the artist or the
-    artist's self titled track in that version, and only a list could say
-    which, so it is :attr:`Outcome.AMBIGUOUS`: it matches a row writing one of
-    its two splits (:func:`_name_splits`) or its whole name as written
-    (R-1646).
+    From the title, and from each track numbered later title, a stretch runs
+    to the end of the name, or stops before a part that credits the artist
+    ("Title - Artist - Album"), before a tail that is a version or a trailing
+    head ("Title - Original Mix", "Title - 08A - 124"), or anywhere when the
+    title follows the head directly, since the naming verb keeps whatever body
+    a name carries after the head and an artist may be spelled there as the
+    tag does not. A stretch never stops before a track number or a track
+    numbered title, so the album before one is never read alone. When the
+    title is the artist's part and the next part credits the artist too,
+    "Tide & Artist - Artist", the second is read as a title as well (R-1653).
     """
-    text = normalized(value)
-    if not identifies(text):
-        return FileName((), Outcome.UNREADABLE)
-    parts = text.split(DASH)
-    names = _artist_names(artist)
-    layout = _layout(parts, names)
     head, title, credits = layout.head, layout.title, layout.credits
-    roles = _parts(parts, layout)
-    credited = head != title and head in credits and _credits_before_featuring(parts[head], names)
-    # The name as written. A whole name whose first part is the artist's own
-    # credit is read unshed: a feature credit or a version cut from it leaves
-    # the artist's name, "Artist feat. Tide - Title" read as "artist", which
-    # met the self titled row (R-1646, round one). A first part that is the
-    # title, a self titled track, is no credit here.
-    whole = read_title(text, shed=not credited, numbered=_numbered(words(parts[0])))
-    if title > head and head in credits and not layout.numbered and _a_tail_to_shed(parts[title], file=False):
-        return FileName(
-            roles, Outcome.AMBIGUOUS, whole=whole, splits=_name_splits(parts, head, title)
-        )
     starts = [title, *layout.numbered]
     if title == head and head in credits and head + 1 in credits:
         starts.append(head + 1)
@@ -860,14 +913,53 @@ def read_file(value: str, artist: str) -> FileName:
                 or not (after_head or last in credits or _a_tail_to_shed(DASH.join(parts[last:]), file=True))
             ):
                 continue
+            if (first, last) == (0, len(parts)):
+                continue
             stretch = read_title(
                 DASH.join(parts[first:last]),
                 numbered=_numbered(words(parts[first])),
                 after_title=first > head,
                 in_head=first >= layout.tail,
+                marker=first == layout.body,
             )
-            if stretch is not None and (first, last) != (0, len(parts)):
+            if stretch is not None:
                 read.setdefault(stretch, f"parts {first} to {last}")
+    return read
+
+
+def read_file(value: str, artist: str) -> FileName:
+    """A file's title, or its name, read once for a file by ``artist``.
+
+    Its parts are laid out (:func:`_layout`): the head, a lone track number,
+    the artist's credits, the title, an album before a track numbered title,
+    and what follows the title. A name only a list could read
+    (:func:`_only_a_list_reads`) is :attr:`Outcome.AMBIGUOUS`, and matches a
+    row writing one of its splits (:func:`_name_splits`) or its whole name.
+    Any other is :attr:`Outcome.TITLED`, read as the stretches its title runs
+    to (:func:`_title_stretches`) and as its whole name.
+
+    The whole name is read as written. A whole name whose first part is the
+    artist's own credit is never shed: a feature credit or a version cut from
+    it leaves the artist's name, "Artist feat. Tide - Title" read as
+    "artist", which met the self titled row (R-1646, round one). A first
+    part that is the title, a self titled track, is no credit here.
+    """
+    text = normalized(value)
+    if not identifies(text):
+        return FileName((), Outcome.UNREADABLE)
+    parts = text.split(DASH)
+    names = _artist_names(artist)
+    layout = _layout(parts, names)
+    head, title = layout.head, layout.title
+    ambiguous = _only_a_list_reads(parts, layout, names)
+    roles = _parts(parts, layout, ambiguous)
+    credited = head != title and head in layout.credits and _credits_before_featuring(parts[head], names)
+    whole = read_title(
+        text, shed=not credited, numbered=_numbered(words(parts[0])), marker=layout.body == 0
+    )
+    if ambiguous is not None:
+        return FileName(roles, Outcome.AMBIGUOUS, whole=whole, splits=_name_splits(parts, layout, ambiguous))
+    read = _title_stretches(parts, layout)
     return FileName(roles, Outcome.TITLED, tuple(read), tuple(read.values()), whole)
 
 
