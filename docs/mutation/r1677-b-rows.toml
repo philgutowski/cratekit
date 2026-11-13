@@ -1,0 +1,11 @@
+name = "r1677-b"
+pass_kind = "light"
+
+[[rows]]
+id = "C11_database_only"
+description = "assert_room_for_check: measure the database alone, leaving out its companions and the playlist file the copy takes"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''    needed = sum(_allocated_size(member) for member in rb_writer.file_set(database))'''
+new = '''    needed = _allocated_size(Path(database))'''

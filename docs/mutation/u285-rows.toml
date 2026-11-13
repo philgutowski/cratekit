@@ -1,0 +1,144 @@
+name = "u285"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_seam_installs"
+description = "open_db: drop the install, so a handle reads with the binding's own conversion and a zero dated push fails its row west of UTC"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''    rb_dates.install()
+'''
+new = '''    pass
+'''
+
+[[rows]]
+id = "M2_overflow_reads_as_edge"
+description = "placeable: re-raise every OverflowError, so the zero date fails west of UTC as before the unit"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''            if edge is None:
+                raise'''
+new = '''            if True:
+                raise'''
+
+[[rows]]
+id = "M3_edge_hides_real_overflow"
+description = "_edge: answer FLOOR for any year, so an overflow away from the calendar's edge is hidden as the zero date"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''    if year == CEILING.year:
+        return CEILING
+    return None'''
+new = '''    if year == CEILING.year:
+        return CEILING
+    return FLOOR'''
+
+[[rows]]
+id = "M4_floor_clamp"
+description = "placeable: drop the floor clamp, so east of UTC the zero date reads as 0001-01-01 09:00, which a reader cannot convert again"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''        if moment < FLOOR:
+            return FLOOR'''
+new = '''        if False:
+            return FLOOR'''
+
+[[rows]]
+id = "M5_ceiling_clamp"
+description = "placeable: drop the ceiling clamp, so west of UTC the calendar's last moment reads as itself, unconvertible again"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''        if moment > CEILING:
+            return CEILING'''
+new = '''        if False:
+            return CEILING'''
+
+[[rows]]
+id = "M6_floor_value"
+description = "FLOOR: the calendar's first day rather than a day inside it, which no zone can convert back"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''FLOOR = datetime(1, 1, 2)'''
+new = '''FLOOR = datetime(1, 1, 1)'''
+
+[[rows]]
+id = "M7_ceiling_value"
+description = "CEILING: the calendar's last day rather than a day inside it"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''CEILING = datetime(9999, 12, 30)'''
+new = '''CEILING = datetime(9999, 12, 31)'''
+
+[[rows]]
+id = "M8_install_once"
+description = "placeable: wrap a wrapper again rather than answering it as it is, so a second open nests the conversion"
+file = "src/cratekit/core/rb_dates.py"
+surface = "maintainer"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''    if getattr(convert, _MARK, False):
+        return convert'''
+new = '''    if False:
+        return convert'''
+
+[[rows]]
+id = "M9_aware_passes"
+description = "placeable: compare an aware answer with the naive bounds rather than handing it on"
+file = "src/cratekit/core/rb_dates.py"
+surface = "maintainer"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''        if moment.tzinfo is not None:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M10_no_offset_edge"
+description = "placeable: catch OverflowError alone, so a year 1 stamp with no offset fails its row with ValueError in every zone"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''        except (OverflowError, ValueError) as exc:'''
+new = '''        except OverflowError as exc:'''
+
+[[rows]]
+id = "M11_value_error_message"
+description = "placeable: read any ValueError at an edge year as the bound, so text the binding cannot parse is hidden as the zero date"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''            if isinstance(exc, ValueError) and str(exc) != _PAST_THE_EDGE[edge]:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M12_xml_bound_dropped"
+description = "keeps_bounds: hand a bound updated_at to the binding's XML update, so a commit writes the floor's instant into DEADCA7's nodes"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''        if isinstance(updated_at, datetime) and updated_at in (FLOOR, CEILING):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M13_xml_empty_update"
+description = "keeps_bounds: call the update with nothing to set rather than skipping it, which marks the file changed"
+file = "src/cratekit/core/rb_dates.py"
+surface = "maintainer"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''            if parent_id is None and attribute is None and lib_type is None and check_type is None:
+                return None'''
+new = '''            if False:
+                return None'''
+
+[[rows]]
+id = "M14_xml_update_installed"
+description = "install: leave the binding's XML update unwrapped, so only the read is guarded"
+file = "src/cratekit/core/rb_dates.py"
+surface = "user"
+tests = ["tests/test_rb_dates.py", "tests/test_organize.py", "tests/test_rebuild.py", "tests/test_foreign_tree.py"]
+old = '''    aux_files.MasterPlaylistXml.update = keeps_bounds(aux_files.MasterPlaylistXml.update)'''
+new = '''    pass'''

@@ -91,7 +91,12 @@ Cratekit reaches your rekordbox library three ways:
   acknowledgment is on record. It snapshots first, reads the copy back, and
   flushes it to the library's drive before recording it as verified, so the
   restore point is on the disk before anything is written; a snapshot that
-  cannot be flushed refuses the write.
+  cannot be flushed refuses the write. The read back checks a throwaway copy
+  in the system's temporary directory, so the write also measures room for
+  that copy there first, beside the room for the snapshot, and refuses as
+  `snapshot-check-temp-full` naming the directory and the bytes it needs when
+  there is not enough; free space there, or set `TMPDIR` to a directory on a
+  volume with room.
 
 Terms:
 
@@ -1314,7 +1319,9 @@ taxonomy tree of that name. Doctor says whether DEADCA7 is installed, when it
 last pushed, and warns when that push is newer than your last database backup:
 run `crate backup run` then. Both tools need rekordbox closed; do not push
 from DEADCA7 while a verb runs, or the verb's next commit refuses. A folder
-named DEADCA7 below the top level is yours.
+named DEADCA7 below the top level is yours. DEADCA7 dates the rows it pushes
+`0001-01-01`; Cratekit reads them in any time zone (as 2 January of year 1)
+and never rewrites them.
 
 ## When something refuses or stalls
 

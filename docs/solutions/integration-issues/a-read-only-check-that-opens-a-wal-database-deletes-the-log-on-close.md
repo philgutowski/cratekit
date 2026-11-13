@@ -86,3 +86,11 @@ Never open a file through SQLite to read it when another record already says
 which of its files exist. Open a throwaway copy, or accept that the close may
 fold and delete. A test of a path that reads a database through SQLite runs
 the real reader at least once on a WAL database with a handle held open.
+
+A throwaway copy needs room where it is made. Since the card on the check's
+throwaway copy, `snapshot.assert_room_for_check` measures the temporary
+volume before the capture, counting the capture too when the two share a
+volume, and a copy that still finds no room is refused as
+`snapshot-check-temp-full` rather than read as a check that failed. A new
+reader that copies before it opens measures the same way, over
+`rb_writer.file_set`, the list the copy itself reads.
