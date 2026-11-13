@@ -185,7 +185,7 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     )
     # ASKED FOR, NEVER OFFERED UNPROMPTED (U283). A recorded Discogs token is
     # acknowledged and left alone; this flag is how a person asks to replace
-    # it, and a replacement Discogs refuses leaves the recorded one in place.
+    # it, and a replacement Discogs does not accept leaves the recorded one.
     parser.add_argument(
         RELINK_FLAG,
         dest="relink_discogs",
@@ -1747,7 +1747,8 @@ def _link_discogs(
                 (
                     f"the new token was not recorded, because it could not be "
                     f"checked: {check.note}; {unlinked}. Run crate setup "
-                    f"{RELINK_FLAG} again once Discogs answers"
+                    f"{RELINK_FLAG} again once Discogs answers, or record it "
+                    f"unchecked: {searchers.DISCOGS_LOGIN_STEPS}"
                 ),
                 Remedy.SET_CREDENTIAL,
             )

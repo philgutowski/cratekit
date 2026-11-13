@@ -411,6 +411,45 @@ def test_a_check_that_raises_anything_else_stores_nothing_and_is_a_note(configur
     assert "RecursionError" in note.detail and "not recorded" in note.detail
 
 
+def test_an_exception_carrying_the_token_never_reaches_the_note(configured, monkeypatch):
+    """Round two: the bare except's note names the exception's type and never
+    its words, which a client library may build from the request."""
+
+    def raising(token, *, fetch=None, sleep=None):
+        raise ValueError(f"bad header Authorization: Discogs token={token}")
+
+    monkeypatch.setattr(searchers, "check_discogs_token", raising)
+    person = Person(["yes"], [GOOD])
+    wizard = link(configured, person)
+    assert the_note(wizard).status is doctor.Status.FAIL
+    assert GOOD not in everything_said(wizard, person)
+
+
+def test_the_step_says_it_is_checking_before_it_asks_discogs(configured):
+    """Round one: a rate limited check waits up to a minute and a half, so the
+    line comes before the request, not after it."""
+    person = Person(["yes"], [GOOD])
+    order: list[str] = []
+
+    def fetch(url):
+        order.append("request")
+        return accepted()
+
+    wizard = person.wizard()
+    original = wizard.prompter.write
+
+    def write(text):
+        if "Checking the token with Discogs" in text:
+            order.append("checking")
+        original(text)
+
+    wizard.prompter = prompt.Prompter(
+        read_line=wizard.prompter.read_line, read_secret=wizard.prompter.read_secret, write=write
+    )
+    setup_verb._link_discogs(wizard, configured, fetch=fetch, sleep=lambda _s: None)
+    assert order == ["checking", "request"]
+
+
 def test_a_refusal_the_fetch_raises_is_no_verdict_and_stores_nothing(configured):
     """The identity call reads a 401 as a rejection and re-raises any other
     refusal, which the step notes without storing (round one's unkilled row)."""
@@ -569,6 +608,7 @@ def test_a_replacement_discogs_could_not_check_keeps_the_recorded_token(configur
     assert note.status is doctor.Status.INFO
     assert "new token was not recorded" in note.detail and "was kept" in note.detail
     assert "--relink-discogs" in note.detail
+    assert "crate login discogs-token --from-file PATH" in note.detail
     assert NEW not in everything_said(wizard, person)
 
 
