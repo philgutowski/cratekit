@@ -317,9 +317,17 @@ def test_the_check_changes_nothing_in_the_file_set_it_is_given(cfg, tmp_path, en
 def test_a_damaged_copy_still_fails_the_check(cfg, tmp_path):
     """The throwaway copy carries the damage, so the verdict is still about these bytes."""
     copied = W.snapshot_db(_database(cfg), stamp="s", root=tmp_path / "snaps")
+    conn = sqlite3.connect(copied)
+    try:
+        (size,) = conn.execute("PRAGMA page_size").fetchone()
+        (root,) = conn.execute(
+            "SELECT rootpage FROM sqlite_master WHERE name = 'djmdContent'"
+        ).fetchone()
+    finally:
+        conn.close()
     raw = bytearray(copied.read_bytes())
-    page = 4096
-    raw[page + 100 : page + 400] = b"\xff" * 300
+    # The table's root page given a type byte no b-tree page carries.
+    raw[(root - 1) * size] = 0x07
     copied.write_bytes(bytes(raw))
 
     assert W.integrity_ok(copied) is False
