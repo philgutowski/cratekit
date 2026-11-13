@@ -1064,3 +1064,19 @@ def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkey
     with review.open_store(cfg) as items, pytest.raises(CratekitError) as caught:
         candidates.settled(items, wanted)
     assert caught.value.cause.reason == "unavailable-transient"
+
+
+def test_a_search_answered_by_another_emoji_title_is_not_exact():
+    """R-1709 one module over: the exact flag compared recording tokens, and
+    two emoji titles by one artist fold to one, so a search for ``💧``
+    answered only by the artist's ``🔥`` listed it without a person and
+    downloaded a record nobody asked for."""
+    _wanted, answer = answer_of("Aurora Bloom - \U0001f4a7", Hit("7001", "Aurora Bloom", "\U0001f525"))
+    assert [one.exact for one in answer.candidates] == [False]
+    assert candidates.sole_exact(answer) is None
+
+
+def test_a_search_answered_by_the_same_emoji_title_is_exact():
+    _wanted, answer = answer_of("Aurora Bloom - ❤", Hit("7001", "Aurora Bloom", "❤️"))
+    assert [one.exact for one in answer.candidates] == [True]
+    assert candidates.sole_exact(answer) is not None

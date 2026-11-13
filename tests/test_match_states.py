@@ -6956,3 +6956,199 @@ def test_a_swapped_listing_split_differently_is_still_offered(cfg, music, tmp_pa
     assert code == int(ExitCode.PENDING_HUMAN)
     (row,) = envelope["data"]["needs_review"]
     assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# R-1709: a title that folds to nothing is told apart by its own text
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+#: Two titles of emoji alone by one artist, which ``fold`` takes to nothing.
+FIRE, DROP, SNOW = "\U0001f525", "\U0001f4a7", "❄"
+
+
+def test_two_different_emoji_titles_by_one_artist_are_not_one_recording(music):
+    """The card's own pair. ``fold`` takes both titles to nothing, so the
+    recording token was one, the exact branch called the wanted ``💧`` owned
+    by the held ``🔥``, and the track was never downloaded. It is now asked,
+    by U286's allowance for a title that folds to nothing, never matched."""
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    found = resolve([one(title=DROP)], index_of(music)).matches[0]
+    assert found.state is not match.MatchState.MATCHED
+    assert found.paths == ()
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert [c.title for c in found.candidates] == [FIRE]
+
+
+def test_two_different_emoji_titles_through_the_real_verb_are_not_owned(cfg, music, tmp_path):
+    """The residual's own drive, a text list through ``match run``: not
+    matched, so the row reaches a person and is never silently skipped."""
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    path = write_list(tmp_path, f"Aurora Bloom - {DROP}\n", "emoji.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert envelope["data"]["matched"] == []
+    (row,) = envelope["data"]["needs_review"]
+    assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
+
+
+def test_the_same_emoji_title_by_one_artist_is_still_owned(music):
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    found = resolve([one(title=FIRE)], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MATCHED
+    assert found.why is match.Why.EXACT
+    assert [Path(p).name for p in found.paths] == [f"08A - 124 - Aurora Bloom - {FIRE}.flac"]
+
+
+def test_the_wanted_emoji_title_is_owned_beside_another_one_the_library_holds(music):
+    """Both files sit under one recording token. Only the one the row names is
+    the match, and its path alone is reported."""
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    hold(music, f"08A - 124 - Aurora Bloom - {DROP}")
+    found = resolve([one(title=DROP)], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MATCHED
+    assert [Path(p).name for p in found.paths] == [f"08A - 124 - Aurora Bloom - {DROP}.flac"]
+
+
+@pytest.mark.parametrize(
+    ("wanted", "held"),
+    [
+        ("!!!", "!!!"),
+        ("!!!", "！！！"),  # fullwidth marks, one title at another width
+        ("❤", "❤️"),  # the emoji presentation selector
+        ("❤︎", "❤️"),  # text and emoji presentation
+        ("? ?", "??"),  # spacing
+        ("...", "…"),  # an ellipsis, one character or three
+        ("\U0001f468‍\U0001f467", "\U0001f468\U0001f467"),  # a zero width joiner
+        ("​" + FIRE, FIRE),  # a zero width space
+        ("", ""),
+    ],
+    ids=["marks", "width", "selector", "text-and-emoji", "spacing", "ellipsis", "joiner",
+         "zero-width-space", "empty"],
+)
+def test_a_title_that_folds_to_nothing_spelled_another_way_is_still_owned(wanted, held):
+    """One title written two ways by two sources is one recording, so the
+    bare text drops width, case, spacing and the invisible characters a
+    source adds or leaves out. A real duplicate must not download again."""
+    owned = match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=held, version="", key=None)
+    assert match.same_title(wanted, held)
+    found = resolve([one(title=wanted)], _index_of_owned(owned)).matches[0]
+    assert found.state is match.MatchState.MATCHED, found.why
+
+
+@pytest.mark.parametrize(
+    ("wanted", "held"),
+    [
+        (DROP, FIRE),
+        ("!!!", "???"),
+        ("!!!", "!!"),
+        ("\U0001f44d", "\U0001f44d\U0001f3fd"),  # a skin tone is a visible difference
+        (FIRE, ""),
+        ("❤", "♥"),  # two hearts, two code points
+    ],
+)
+def test_two_titles_that_fold_to_nothing_and_differ_are_not_one_title(wanted, held):
+    owned = match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=held, version="", key=None)
+    assert not match.same_title(wanted, held)
+    found = resolve([one(title=wanted)], _index_of_owned(owned)).matches[0]
+    assert found.state is not match.MatchState.MATCHED
+    assert found.paths == ()
+
+
+def test_two_held_emoji_titles_are_offered_as_two_candidates(music):
+    """Grouped by the recording token alone they were one candidate titled
+    by whichever file came first and carrying both paths, so accepting it
+    accepted a file the person was never shown, under one identifier."""
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    hold(music, f"08A - 124 - Aurora Bloom - {SNOW}")
+    found = resolve([one(title=DROP)], index_of(music)).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert sorted(c.title for c in found.candidates) == sorted([FIRE, SNOW])
+    assert all(len(c.paths) == 1 for c in found.candidates)
+    assert len({c.candidate_id for c in found.candidates}) == 2
+
+
+def test_a_candidate_whose_title_folds_to_something_keeps_its_identifier(music):
+    """The identifier a recorded answer names is unchanged for every title
+    that folds to something: the bare title joins the digest only when it is
+    not empty."""
+    hold(music, "08A - 124 - Aurora Bloom - Sun Path (Extended Mix)")
+    found = resolve([one()], index_of(music)).matches[0]
+    (candidate,) = found.candidates
+    expected = match._digest(
+        match.recording_token("Aurora Bloom", "Sun Path"), "extended mix", "08A"
+    )
+    assert candidate.candidate_id == f"cd_{expected}"
+
+
+def test_an_emoji_titles_identities_are_unchanged():
+    """No recorded tombstone, review item or match identifier moves: they hash
+    through ``fold`` and ``tombstone_fold``, which this change leaves alone."""
+    wanted = one(title=DROP)
+    assert wanted.recording == "aurora bloom\x1f"
+    assert wanted.recording == match.recording_token("Aurora Bloom", FIRE)
+    assert wanted.identity == {"artist": "aurora bloom", "title": DROP}
+    asked = match.question_identity("Aurora Bloom", DROP, "", None, match.Why.TITLE_APPROXIMATE)
+    assert asked["recording"] == "aurora bloom\x1f"
+    found = match.TrackMatch(wanted=wanted, state=match.MatchState.MISSING, why=match.Why.NOT_IN_LIBRARY)
+    assert found.match_id == f"mt_{match._digest('aurora bloom\x1f', '', '')}"
+
+
+def test_an_isrc_on_a_file_under_another_emoji_title_is_asked_not_settled(music, tmp_path):
+    """An ISRC agrees only with the title, and two emoji titles are two
+    titles, so the file is offered as the question a differing title is."""
+    credited(
+        music, tmp_path, "08A - 124 - Aurora Bloom - fire",
+        artist="Aurora Bloom", title=f"08A - 124 - {FIRE}", isrc="USNRS2644532",
+    )
+    index = index_of(music)
+    asked = resolve([row(artist="Aurora Bloom", title=DROP, isrc="USNRS2644532")], index)
+    (found,) = asked.matches
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.TITLE_APPROXIMATE
+    owned = resolve([row(artist="Aurora Bloom", title=FIRE, isrc="USNRS2644532")], index)
+    assert owned.matches[0].why is match.Why.ISRC_EXACT
+
+
+def test_the_credited_list_rule_tells_two_emoji_titles_apart(music, tmp_path):
+    credited(
+        music, tmp_path, "08A - 124 - Nova Reef, Aurora Bloom - fire",
+        artist="Nova Reef, Aurora Bloom", title=f"08A - 124 - {FIRE}", isrc=None,
+    )
+    index = index_of(music)
+    found = resolve([row(artist="Aurora Bloom", title=DROP, isrc=None)], index).matches[0]
+    assert found.state is not match.MatchState.MATCHED
+    assert found.paths == ()
+    owned = resolve([row(artist="Aurora Bloom", title=FIRE, isrc=None)], index).matches[0]
+    assert owned.why is match.Why.CREDITED_EXACT
+
+
+#: Titles that fold to something, for the differential below: the fixtures'
+#: own, U265's generated words, and the shapes ``fold`` exists for.
+_FOLDED_TITLES = (
+    "Sun Path", "sun path", "SUN PATH", "Sun  Path", "Sun-Path", "Sun.Path", "Sun Path!",
+    "Sun Pathx", "Re Mix", "Remix", "O.K.", "OK", "Good Bye", "Goodbye", "Beyoncé",
+    "Beyonce", "Ｓｕｎ", "Sun", "naïve", "naive", "straße", "STRASSE", "ﬁne", "fine",
+    "東京", "Привет", "Ⅻ", "XII", "01", "1", "_", "A", "a", "Joy", "Jay", "\U0001f525 Sun",
+    "Sun \U0001f525", "Sun \U0001f4a7", "1️⃣", "Ⓐ",
+)
+
+
+def test_a_title_that_folds_to_something_compares_exactly_as_it_did():
+    """Every pair whose folds are not empty: ``same_title`` is ``fold``
+    equality, so no title that matched before stops matching and none starts."""
+    for left in _FOLDED_TITLES:
+        assert match.fold(left), left
+        assert match.bare_title(left) == ""
+        for right in _FOLDED_TITLES:
+            assert match.same_title(left, right) == (match.fold(left) == match.fold(right)), (
+                left, right,
+            )
+
+
+def test_a_title_that_folds_to_nothing_never_equals_one_that_folds_to_something():
+    for left in ("", "!!!", FIRE, "❤️"):
+        for right in _FOLDED_TITLES:
+            assert not match.same_title(left, right)
+            assert not match.same_title(right, left)
