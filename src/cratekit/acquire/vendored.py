@@ -64,8 +64,7 @@ from cratekit.acquire.adapter import (
     TrackSource,
     verify_applied,
 )
-from cratekit.core import binaries, config, provider_gate, secrets
-from cratekit.core.cause import CratekitError
+from cratekit.core import binaries, config, provider_gate
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -973,8 +972,10 @@ class _Drive:
 
 
 #: The warning a drive's report carries when the session it refreshed could
-#: not be stored at its close (U274, round one).
-SESSION_NOT_STORED = "provider-session-not-stored"
+#: not be stored at its close (U274, round one). The code is the one a
+#: catalogue or account login's report carries since R-1694, so it is
+#: defined once, beside the scope both close.
+SESSION_NOT_STORED = provider_session.SESSION_NOT_STORED
 
 #: The drive this thread of control is inside, if any (U274).
 _DRIVE: ContextVar[_Drive | None] = ContextVar("cratekit_vendored_drive", default=None)
@@ -1014,7 +1015,7 @@ def drive() -> Iterator[_Drive]:
         _DRIVE.reset(entered)
         try:
             held.close()
-        except (secrets.CredentialError, CratekitError, OSError) as exc:
+        except provider_session.STORE_FAILURES as exc:
             # The class and not the words: a credential refusal's words are
             # written for the person setting one up, and here they are not.
             held.warnings.append(

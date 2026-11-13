@@ -212,7 +212,8 @@ def test_an_unchanged_session_never_rewrites_the_token_file(monkeypatch):
     writes: list[Path] = []
 
     def counted(data, path, **kwargs):
-        writes.append(Path(path))
+        if Path(path).parent.name.startswith(provider_session.SESSION_PREFIX):
+            writes.append(Path(path))
         return real(data, path, **kwargs)
 
     monkeypatch.setattr(config, "atomic_write_bytes", counted)
