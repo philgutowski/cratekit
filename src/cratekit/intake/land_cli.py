@@ -49,7 +49,16 @@ from pathlib import Path
 from typing import Any, Callable, TypeVar
 
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, drift, jobs, rb_writer, rehearsal, session
+from cratekit.core import (
+    analysis_store,
+    config,
+    drift,
+    jobs,
+    rb_writer,
+    rehearsal,
+    session,
+    snapshot,
+)
 from cratekit.core.cause import CratekitError, Outcome, Remedy, refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.favorites import backfill, placement
@@ -2079,7 +2088,18 @@ def _rehearse_in(
             rows_after = _active_rows(db)
     finally:
         rb_writer.close_db(db)
-    if not rb_writer.integrity_ok(area.database):
+    # The check reads a throwaway copy on the temporary volume, so that room is
+    # measured first and a copy that still finds none is named as that, never
+    # as a database that failed its check (R-1677).
+    snapshot.assert_room_for_check(area.database)
+    try:
+        sound = rb_writer.integrity_ok(area.database, raise_copy_failure=True)
+    except rb_writer.IntegrityCheckCopyFailed as failed:
+        no_room = snapshot.check_had_no_room(failed, origin=_ORIGIN)
+        if no_room is not None:
+            raise no_room from failed
+        sound = False
+    if not sound:
         raise refuse(
             "snapshot-integrity-failed",
             f"the database copy {area.database} fails SQLite's integrity check after "

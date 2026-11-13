@@ -739,3 +739,95 @@ def test_a_batch_whose_name_is_not_ascii_rehearses_equal_and_the_gate_says_so(
     shown = live["cause"]["detail"]["shown"]
     assert "equal to this plan's" in shown["rehearsal"], shown["rehearsal"]
     assert "differs from the rehearsal" not in shown
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The rehearsal's own check of its scratch database, when its throwaway copy
+# has no room on the temporary volume (R-1677)
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def _is_the_area_database(target) -> bool:
+    """The rehearsal's scratch database, rather than its capture's copy of it."""
+    path = Path(target)
+    return path.parent.name == "db" and "rehearsals" in path.parts
+
+
+def _area_check_answers(monkeypatch, *, error: OSError | None) -> list[dict]:
+    """The real check everywhere, but the area's own copy failing with ``error``."""
+    real = rb_writer.integrity_ok
+    asked: list[dict] = []
+
+    def checking(target, **kwargs):
+        if _is_the_area_database(target):
+            asked.append(kwargs)
+            if error is not None and kwargs.get("raise_copy_failure"):
+                raise rb_writer.IntegrityCheckCopyFailed(Path(target), error, Path("/scratch"))
+            if error is not None:
+                return False
+        return real(target, unlock=False)
+
+    monkeypatch.setattr(rb_writer, "integrity_ok", checking)
+    return asked
+
+
+def test_a_rehearsal_check_whose_copy_finds_no_room_is_refused_under_the_room_slug(
+    native_library, silence, monkeypatch
+):
+    import errno
+
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    asked = _area_check_answers(monkeypatch, error=OSError(errno.ENOSPC, "No space left"))
+
+    code, refused = _rehearse()
+
+    assert asked == [{"raise_copy_failure": True}]
+    assert refused["cause"]["reason"] == "snapshot-check-temp-full", refused
+    assert "/scratch" in refused["cause"]["message"]
+    assert "rehearsal area is kept at" in refused["cause"]["message"]
+
+
+def test_a_rehearsal_check_whose_copy_fails_otherwise_is_still_a_failed_check(
+    native_library, silence, monkeypatch
+):
+    import errno
+
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    _area_check_answers(monkeypatch, error=OSError(errno.EACCES, "Permission denied"))
+
+    code, refused = _rehearse()
+
+    assert refused["cause"]["reason"] == "snapshot-integrity-failed", refused
+
+
+def test_a_temporary_volume_with_no_room_for_the_rehearsal_check_refuses_before_its_copy(
+    native_library, silence, monkeypatch
+):
+    """Measured before the check's copy, as the capture's is: no copy is attempted."""
+    from cratekit.core import snapshot
+
+    cfg, _root = native_library
+    _stage(cfg, silence, "One.flac")
+    asked = _area_check_answers(monkeypatch, error=None)
+    measured: list[tuple[Path, object]] = []
+    real_measure = snapshot.assert_room_for_check
+
+    def measuring(database, **kwargs):
+        measured.append((Path(database), kwargs.get("store")))
+        # The rehearsal's capture measures the same database for its own check,
+        # naming its store; only the rehearsal's own check names none.
+        if _is_the_area_database(database) and kwargs.get("store") is None:
+            return real_measure(database, free_bytes=0, **kwargs)
+        return real_measure(database, **kwargs)
+
+    monkeypatch.setattr(snapshot, "assert_room_for_check", measuring)
+
+    code, refused = _rehearse()
+
+    assert refused["cause"]["reason"] == "snapshot-check-temp-full", refused
+    assert "0 bytes free" in refused["cause"]["message"]
+    assert asked == [], "the area's check copied after the measure refused"
+    stores = [store for database, store in measured if _is_the_area_database(database)]
+    assert len(stores) == 2 and stores[0] is not None and stores[1] is None, stores
