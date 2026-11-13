@@ -1,0 +1,243 @@
+"""A date the binding cannot place in local time reads as a bound, never a failure (U285).
+
+DEADCA7 0.2.3 stamps every row it pushes ``0001-01-01T00:00:00Z``. The pinned
+binding converts each stamp to local time, which west of UTC falls before year
+1 and raised ``OverflowError``, so a verb walking the playlist tree failed over
+a real push. ``core/rb_dates.py`` wraps that conversion once, at the open seam.
+Driven here on the conversion itself and through a real handle on a disposable
+database carrying the producer's own value.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime
+
+import pytest
+from pyrekordbox.db6 import tables
+
+from cratekit.core import rb_dates
+from cratekit.core import rb_writer as W
+from tests import deadca7_fixtures as dc7
+from tests.test_rb_writer_db import (  # noqa: F401 - fixtures
+    _build_disposable_database,
+    cloud_sync_off,
+    library,
+)
+
+#: Zones as POSIX rules, which need no zone database: US Eastern, Japan, UTC,
+#: and the two furthest offsets in use, twelve hours west and fourteen east.
+WEST = dc7.EASTERN
+EAST = "JST-9"
+ZONES = (WEST, EAST, "UTC0", "AOE+12", "LINT-14")
+
+#: rekordbox's own stamp, as its rows read, and what it is in US Eastern
+#: (four hours behind in March, after the change to summer time).
+OWN = "2026-03-09 21:06:07.516 +00:00"
+OWN_EASTERN = datetime(2026, 3, 9, 17, 6, 7, 516000)
+#: A playlist of the library's own, stamped as rekordbox stamps.
+OWN_ID = "4242"
+
+
+def _binding() -> object:
+    """The binding's own conversion, unwrapped whatever state the process is in."""
+    current = tables.string_to_datetime
+    return getattr(current, "__wrapped__", current)
+
+
+@pytest.fixture
+def unwrapped(monkeypatch):
+    """The binding's conversion as shipped, put back as it was after the test."""
+    monkeypatch.setattr(tables, "string_to_datetime", _binding())
+    return tables.string_to_datetime
+
+
+@pytest.fixture(autouse=True)
+def _rekordbox_closed(monkeypatch):
+    from pyrekordbox.db6 import database as binding
+
+    monkeypatch.setattr(W, "rekordbox_running", lambda: False)
+    monkeypatch.setattr(W, "rekordbox_agent_running", lambda: False)
+    monkeypatch.setattr(binding, "get_rekordbox_pid", lambda *args, **kwargs: 0)
+
+
+# ---------------------------------------------------------------------------
+# The conversion
+# ---------------------------------------------------------------------------
+
+
+def test_the_binding_alone_cannot_place_the_zero_date_west_of_utc(unwrapped):
+    """The defect, so the tests below are known to reach it."""
+    with dc7.west_of_utc(WEST), pytest.raises(OverflowError):
+        unwrapped(dc7.ZERO_STAMP)
+
+
+@pytest.mark.parametrize("zone", ZONES)
+def test_the_zero_date_reads_as_the_floor_in_every_zone(unwrapped, zone):
+    read = rb_dates.placeable(unwrapped)
+    with dc7.west_of_utc(zone):
+        assert read(dc7.ZERO_STAMP) == rb_dates.FLOOR == datetime(1, 1, 2)
+
+
+@pytest.mark.parametrize("zone", ZONES)
+def test_the_calendars_last_moment_reads_as_the_ceiling(unwrapped, zone):
+    read = rb_dates.placeable(unwrapped)
+    with dc7.west_of_utc(zone):
+        assert read("9999-12-31T23:59:59Z") == rb_dates.CEILING == datetime(9999, 12, 30)
+
+
+def test_an_ordinary_stamp_reads_exactly_as_the_binding_reads_it(unwrapped):
+    read = rb_dates.placeable(unwrapped)
+    with dc7.west_of_utc(WEST):
+        assert read(OWN) == unwrapped(OWN) == OWN_EASTERN
+        assert read(dc7.STAMP) == datetime(2026, 10, 30, 8, 0)
+
+
+@pytest.mark.parametrize("zone", ZONES)
+def test_each_bound_converts_back_in_every_zone(zone):
+    """A reader that converts a bound again cannot overflow where the binding did."""
+    with dc7.west_of_utc(zone):
+        for bound in (rb_dates.FLOOR, rb_dates.CEILING):
+            assert bound.astimezone().replace(tzinfo=None) == bound
+            assert isinstance(bound.timestamp(), float)
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["not a date", "0001-13-01T00:00:00Z", "2026-02-30 00:00:00.000 +00:00", "0000-01-01T00:00:00Z"],
+)
+def test_text_the_binding_cannot_parse_still_fails_as_it_did(unwrapped, text):
+    """Never a hidden error: only the calendar's edge reads as a bound, and text
+    the binding refuses is refused with the binding's own error."""
+    read = rb_dates.placeable(unwrapped)
+    with dc7.west_of_utc(WEST):
+        with pytest.raises(Exception) as by_binding:
+            unwrapped(text)
+        with pytest.raises(Exception) as by_wrapper:
+            read(text)
+    assert not isinstance(by_binding.value, OverflowError)
+    assert type(by_wrapper.value) is type(by_binding.value)
+    assert str(by_wrapper.value) == str(by_binding.value)
+
+
+def test_an_overflow_away_from_the_calendars_edge_is_raised_as_it_came():
+    def overflowing(value: str) -> datetime:
+        raise OverflowError(f"cannot place {value}")
+
+    read = rb_dates.placeable(overflowing)
+    with pytest.raises(OverflowError, match="cannot place 2026"):
+        read(OWN)
+    assert read(dc7.ZERO_STAMP) == rb_dates.FLOOR
+
+
+def test_an_aware_answer_is_handed_on_as_it_came():
+    from datetime import timezone
+
+    aware = datetime(1, 1, 1, tzinfo=timezone.utc)
+    assert rb_dates.placeable(lambda value: aware)(dc7.ZERO_STAMP) is aware
+
+
+def test_installing_twice_wraps_once(unwrapped):
+    rb_dates.install()
+    first = tables.string_to_datetime
+    rb_dates.install()
+    assert tables.string_to_datetime is first
+    assert first.__wrapped__ is unwrapped
+    assert rb_dates.installed()
+
+
+# ---------------------------------------------------------------------------
+# Through a real handle
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def zero_pushed(library):  # noqa: F811 - the imported fixture
+    """A disposable database holding two tracks and a push stamped as the app stamps."""
+    import sqlite3
+
+    path = library / "db" / "master.db"
+    _build_disposable_database(path)
+    conn = sqlite3.connect(path)
+    try:
+        conn.execute(
+            "INSERT INTO djmdPlaylist (ID, Seq, Name, Attribute, ParentID, UUID, "
+            "rb_local_deleted, created_at, updated_at) "
+            "VALUES (?, 1, 'my own', 0, 'root', 'own-uuid', 0, ?, ?)",
+            (OWN_ID, OWN, OWN),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    return path, dc7.push(path, ("1", "2"), stamp=dc7.ZERO_STAMP)
+
+
+def test_the_open_seam_installs_the_wrapper(unwrapped, zero_pushed, cloud_sync_off):  # noqa: F811
+    path, _pushed = zero_pushed
+    assert not rb_dates.installed()
+    db = W.open_db(path, unlock=False)
+    try:
+        assert rb_dates.installed()
+    finally:
+        W.close_db(db)
+
+
+def test_a_handle_reads_the_whole_tree_over_a_zero_dated_push_and_writes_nothing(
+    unwrapped, zero_pushed, cloud_sync_off  # noqa: F811
+):
+    """Every playlist and membership row loads; the push's read as the floor, the
+    library's own exactly as the binding reads them; the file is not written."""
+    import sqlite3
+
+    path, pushed = zero_pushed
+    before = dc7.written(path, pushed)
+    conn = sqlite3.connect(path)
+    try:
+        own = dict(
+            conn.execute(
+                "SELECT ID, created_at FROM djmdPlaylist WHERE ID NOT IN (?, ?, ?)",
+                (pushed.folder_id, *pushed.playlist_ids),
+            ).fetchall()
+        )
+    finally:
+        conn.close()
+    with dc7.west_of_utc(WEST):
+        expected_own = {str(key): unwrapped(text) for key, text in own.items() if text}
+        db = W.open_db(path, unlock=False)
+        try:
+            rows = {str(row.ID): row for row in db.get_playlist()}
+            songs = list(db.get_playlist_songs())
+            for node in (pushed.folder_id, *pushed.playlist_ids):
+                assert rows[node].created_at == rows[node].updated_at == rb_dates.FLOOR
+            pushed_songs = [song for song in songs if str(song.PlaylistID) in pushed.playlist_ids]
+            assert len(pushed_songs) == 2 * len(pushed.content_ids)
+            assert {song.created_at for song in pushed_songs} == {rb_dates.FLOOR}
+            assert OWN_ID in expected_own
+            assert {key: rows[key].created_at for key in expected_own} == expected_own
+            assert rows[OWN_ID].created_at == rows[OWN_ID].updated_at == OWN_EASTERN
+            assert not db.session.dirty and not db.session.new
+            W.commit_guarded(db)
+        finally:
+            W.close_db(db)
+    assert dc7.written(path, pushed) == before
+
+
+def test_a_wrapper_installed_after_a_handle_has_read_is_still_the_one_called(
+    unwrapped, zero_pushed, cloud_sync_off  # noqa: F811
+):
+    """The binding's column looks the conversion up at every row, so a handle
+    that has already read a date before the install reads a zero dated row
+    after it."""
+    from pyrekordbox import Rekordbox6Database
+
+    path, pushed = zero_pushed
+    with dc7.west_of_utc(WEST):
+        db = Rekordbox6Database(path=str(path), unlock=False)
+        try:
+            assert isinstance(db.get_playlist(ID=OWN_ID).created_at, datetime)
+            with pytest.raises(OverflowError):
+                db.get_playlist(ID=pushed.folder_id)
+            db.session.rollback()
+            rb_dates.install()
+            assert db.get_playlist(ID=pushed.folder_id).created_at == rb_dates.FLOOR
+        finally:
+            db.close()

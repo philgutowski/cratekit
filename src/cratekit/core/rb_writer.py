@@ -1243,6 +1243,12 @@ def open_db(
 
     from pyrekordbox import Rekordbox6Database
 
+    # U285. A stamp the binding cannot place in local time, the zero date
+    # another app writes, reads as a bound rather than failing its row.
+    from cratekit.core import rb_dates
+
+    rb_dates.install()
+
     if unlock is None:
         unlock = unlock_needed(target)
 

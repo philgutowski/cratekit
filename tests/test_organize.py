@@ -465,12 +465,25 @@ def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(e
         cfg.library.db_path, ("r-one", "r-two"), stamp=deadca7_fixtures.ZERO_STAMP
     )
     written = deadca7_fixtures.written(cfg.library.db_path, pushed)
-    assert {row[-2:] for rows in written.values() for row in rows if len(row) > 2} >= {
-        (deadca7_fixtures.ZERO_STAMP, deadca7_fixtures.ZERO_STAMP)
-    } or deadca7_fixtures.ZERO_STAMP in str(written)
+    nodes = (pushed.folder_id, *pushed.playlist_ids)
+    stamps = _query(
+        cfg,
+        "SELECT created_at, updated_at FROM djmdPlaylist WHERE ID IN (?, ?, ?) "
+        "UNION ALL SELECT created_at, updated_at FROM djmdSongPlaylist "
+        "WHERE PlaylistID IN (?, ?, ?)",
+        *nodes,
+        *nodes,
+    )
+    assert len(stamps) == 3 + 2 * len(pushed.content_ids)
+    assert set(stamps) == {(deadca7_fixtures.ZERO_STAMP, deadca7_fixtures.ZERO_STAMP)}
 
     after_push = _readings()
     assert after_push == before_push
+    # The readings read the database: converge compared a governed tree, which
+    # walks every playlist row through the binding.
+    _code, checks = after_push["converge"]
+    statuses = {status for key, status, _detail in checks if key.startswith("tree.")}
+    assert statuses & {"matching", "differing"}, checks
     area = _report()["data"]["summary"]["areas"][rekordbox.AREA]
     assert deadca7_fixtures.FOLDER not in {one["name"] for one in area["yours"]}
     assert area["facts"][rekordbox.FOREIGN_FACT].startswith(f"{deadca7_fixtures.FOLDER} at")
