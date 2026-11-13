@@ -21,7 +21,9 @@ by the real fetch.
 
 from __future__ import annotations
 
+import hashlib
 import importlib.util
+import json
 import socket
 import subprocess
 import sys
@@ -152,6 +154,7 @@ def test_a_baseline_that_cannot_fetch_the_history_writes_nothing(origin, tmp_pat
 
     monkeypatch.setattr(battery, "static_checks", must_not_run)
     monkeypatch.setattr(battery, "failing_ids", must_not_run)
+    monkeypatch.setattr(battery, "measure_suite", must_not_run)
 
     assert battery.cmd_baseline(None) == 1
     assert not (state / "baseline.txt").exists()
@@ -165,7 +168,17 @@ def test_a_baseline_header_says_it_was_measured_with_full_history(origin, tmp_pa
     monkeypatch.setattr(battery, "STATE", state)
     monkeypatch.setattr(battery, "BASELINE", state / "baseline.txt")
     monkeypatch.setattr(battery, "static_checks", lambda: True)
-    monkeypatch.setattr(battery, "failing_ids", lambda: ({"tests/a.py::t"}, "1 failed"))
+    monkeypatch.setattr(
+        battery,
+        "measure_suite",
+        lambda: battery.SuiteRun(
+            ids=frozenset({"tests/a.py::t"}),
+            summary="1 failed",
+            collected=1,
+            collect_errors=frozenset(),
+            exit_code=1,
+        ),
+    )
 
     assert battery.cmd_baseline(None) == 0
 
@@ -198,6 +211,7 @@ def test_compare_refuses_a_baseline_not_measured_with_full_history(
 
     monkeypatch.setattr(battery, "ensure_full_history", must_not_run)
     monkeypatch.setattr(battery, "failing_ids", must_not_run)
+    monkeypatch.setattr(battery, "measure_suite", must_not_run)
 
     assert battery.read_baseline() is None
     assert battery.cmd_compare(None) == 2
@@ -221,6 +235,7 @@ def test_compare_refuses_a_branch_it_cannot_unshallow(origin, tmp_path, monkeypa
 
     monkeypatch.setattr(battery, "static_checks", must_not_run)
     monkeypatch.setattr(battery, "failing_ids", must_not_run)
+    monkeypatch.setattr(battery, "measure_suite", must_not_run)
 
     assert battery.cmd_compare(None) == 1
 
@@ -432,6 +447,7 @@ def test_a_baseline_written_before_u268_is_refused_with_the_command_that_measure
 
     monkeypatch.setattr(battery, "ensure_full_history", must_not_run)
     monkeypatch.setattr(battery, "failing_ids", must_not_run)
+    monkeypatch.setattr(battery, "measure_suite", must_not_run)
 
     assert battery.read_baseline() is None
     out = capsys.readouterr().out
@@ -529,3 +545,181 @@ def test_a_run_that_wrote_no_report_is_refused(spaced, monkeypatch):
     monkeypatch.setattr(battery, "run", summary_only)
     with pytest.raises(SystemExit, match="wrote no report"):
         battery.failing_ids()
+
+
+# ---------------------------------------------------------------------------
+# The run record the mutation driver reads in place of its full baseline, U271
+# ---------------------------------------------------------------------------
+#
+# The driver reads it only when it is for the same commit, on a clean tree, on
+# this machine, with the same known failures file, so what the battery writes
+# for each of those keys is what these pin. The driver's side, reading it and
+# refusing every difference, is in `tests/test_mutation_driver.py`.
+
+
+def test_the_suite_run_reads_the_collected_count_and_the_collection_errors(spaced, monkeypatch):
+    (spaced / "tests" / "test_broken.py").write_text("import not_a_module_here\n")
+    monkeypatch.setenv(FAILING_VARIABLE, "")
+
+    suite = battery.measure_suite()
+
+    assert suite.ids == {"tests/test_broken.py"}
+    assert suite.collect_errors == {"tests/test_broken.py"}
+    assert suite.exit_code == 2
+
+
+def test_a_complete_run_records_what_it_collected_and_pytests_exit(spaced, monkeypatch):
+    monkeypatch.setenv(FAILING_VARIABLE, "one two")
+
+    suite = battery.measure_suite()
+
+    # Four cases of test_case and two of test_with_resource.
+    assert suite.collected == 6
+    assert suite.ids == {f"{SPACED}[one two]"}
+    assert suite.collect_errors == set()
+    assert suite.exit_code == 1
+
+
+def test_the_collected_count_is_read_under_the_repositorys_distribution(tmp_path, monkeypatch):
+    """Under xdist the controller collects nothing itself; the count is a worker's."""
+    suite = stealing.write(tmp_path / "suite")
+    stealing.prepare_environment(monkeypatch, tmp_path / "workers")
+    monkeypatch.setattr(battery, "ROOT", suite)
+    monkeypatch.setattr(battery, "PYTHON", Path(sys.executable))
+
+    assert battery.measure_suite().collected == stealing.FULL_COUNT
+
+
+@pytest.fixture
+def judged_repo(tmp_path, monkeypatch) -> Path:
+    """A git repository holding the spaced suite, the battery pointed at it."""
+    root = _spaced_suite(tmp_path / "repo")
+    (root / ".gitignore").write_text(".cloud-battery/\n__pycache__/\n", encoding="utf-8")
+    assert _git(root, "init", "-b", "main").returncode == 0
+    assert _git(root, "add", "-A").returncode == 0
+    assert _git(root, "commit", "-m", "suite").returncode == 0
+    state = root / ".cloud-battery"
+    for name in stealing.INHERITED_RUN_STATE:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(battery, "ROOT", root.resolve())
+    monkeypatch.setattr(battery, "STATE", state)
+    monkeypatch.setattr(battery, "BASELINE", state / "baseline.txt")
+    monkeypatch.setattr(battery, "VERDICT", state / "last-compare.txt")
+    monkeypatch.setattr(battery, "PYTHON", Path(sys.executable))
+    monkeypatch.setattr(battery, "ensure_full_history", lambda root=None: None)
+    monkeypatch.setattr(battery, "static_checks", lambda: True)
+    monkeypatch.setenv(FAILING_VARIABLE, "one two")
+    return root
+
+
+def _record(root: Path) -> dict:
+    return json.loads((root / ".cloud-battery" / "verdict.json").read_text(encoding="utf-8"))
+
+
+def _head(root: Path) -> str:
+    return _git(root, "rev-parse", "HEAD").stdout.strip()
+
+
+def test_compare_records_every_key_the_driver_reads(judged_repo):
+    assert battery.cmd_baseline(None) == 0
+    assert battery.cmd_compare(None) == 0
+
+    record = _record(judged_repo)
+    baseline = judged_repo / ".cloud-battery" / "baseline.txt"
+    assert record["format"] == battery.RUN_RECORD_FORMAT
+    assert record["source"] == "compare"
+    assert record["commit"] == _head(judged_repo)
+    assert record["clean_tree"] is True
+    assert record["host"] == socket.gethostname()
+    assert record["root"] == str(judged_repo.resolve())
+    assert record["python"] == sys.executable
+    assert record["known_failures_sha256"] == hashlib.sha256(baseline.read_bytes()).hexdigest()
+    assert record["verdict"] == "clean"
+    assert record["collected"] == 6
+    assert record["exit_code"] == 1
+    assert record["failing"] == [f"{SPACED}[one two]"]
+    assert record["collect_errors"] == []
+    assert (judged_repo / ".cloud-battery" / "last-compare.txt").read_text() == (
+        f"{_head(judged_repo)} clean\n"
+    )
+
+
+def test_baseline_records_its_run_against_the_file_it_wrote(judged_repo):
+    assert battery.cmd_baseline(None) == 0
+
+    record = _record(judged_repo)
+    baseline = judged_repo / ".cloud-battery" / "baseline.txt"
+    assert record["source"] == "baseline"
+    assert record["verdict"] == "clean"
+    assert record["commit"] == _head(judged_repo)
+    assert record["known_failures_sha256"] == hashlib.sha256(baseline.read_bytes()).hexdigest()
+    # The release reads compare's verdict only, never a baseline's.
+    assert not (judged_repo / ".cloud-battery" / "last-compare.txt").exists()
+
+
+def test_a_red_compare_is_recorded_red(judged_repo, monkeypatch):
+    assert battery.cmd_baseline(None) == 0
+    monkeypatch.setenv(FAILING_VARIABLE, "one two|one three")
+    assert battery.cmd_compare(None) == 1
+
+    record = _record(judged_repo)
+    assert record["verdict"] == "red"
+    assert record["failing"] == [f"{SPACED}[one three]", f"{SPACED}[one two]"]
+
+
+def _committing_during_the_run(root: Path, real):
+    def measure():
+        measured = real()
+        (root / "later.txt").write_text("committed while the suite ran\n", encoding="utf-8")
+        assert _git(root, "add", "later.txt").returncode == 0
+        assert _git(root, "commit", "-m", "later").returncode == 0
+        return measured
+
+    return measure
+
+
+def test_a_commit_made_during_the_run_is_never_recorded_as_measured(judged_repo, monkeypatch):
+    """The sha is read before the run: the run measured that commit, not the next."""
+    assert battery.cmd_baseline(None) == 0
+    measured_head = _head(judged_repo)
+    monkeypatch.setattr(
+        battery, "measure_suite", _committing_during_the_run(judged_repo, battery.measure_suite)
+    )
+
+    assert battery.cmd_compare(None) == 0
+
+    record = _record(judged_repo)
+    assert _head(judged_repo) != measured_head
+    assert record["commit"] == measured_head
+    assert record["clean_tree"] is False
+    last = (judged_repo / ".cloud-battery" / "last-compare.txt").read_text()
+    assert last == f"{measured_head} dirty\n"
+
+
+@pytest.mark.parametrize("when", ["before", "during"])
+def test_a_change_to_the_tree_marks_the_run_unclean(judged_repo, monkeypatch, when):
+    assert battery.cmd_baseline(None) == 0
+    stray = judged_repo / "stray.txt"
+    if when == "before":
+        stray.write_text("untracked\n", encoding="utf-8")
+    else:
+        real = battery.measure_suite
+
+        def measure():
+            measured = real()
+            stray.write_text("untracked\n", encoding="utf-8")
+            return measured
+
+        monkeypatch.setattr(battery, "measure_suite", measure)
+
+    assert battery.cmd_compare(None) == 0
+    assert _record(judged_repo)["clean_tree"] is False
+    assert (judged_repo / ".cloud-battery" / "last-compare.txt").read_text().endswith(" dirty\n")
+
+
+def test_a_tree_git_cannot_read_is_never_recorded_clean(tmp_path, monkeypatch):
+    """Absence is not evidence: no answer from git is not an empty status."""
+    monkeypatch.setattr(battery, "ROOT", tmp_path)
+    state = battery.tree_state()
+    assert state.commit == ""
+    assert state.clean is False

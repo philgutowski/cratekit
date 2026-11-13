@@ -1593,3 +1593,307 @@ def test_a_three_file_subset_still_collects_and_reports_under_a_steal(stealing_r
     assert list(result.failed) == [stealing.STOLEN_FAILURE]
     assert not result.errored
     stealing.assert_the_failure_moved(log)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The full baseline read from the battery's verdict for the same commit, U271
+# ═══════════════════════════════════════════════════════════════════════════
+#
+# Phillip's answer of 2026-11-13: the driver may read its full baseline from
+# the cloud battery's verdict when that verdict is for the same commit, on a
+# clean tree, on this machine, with the same known failures file, and clean.
+# Every subset baseline is still measured, and the null control still runs the
+# full suite in the driver's own environment. The verdicts here are written by
+# the battery itself, run for real over the fixture, never by hand, except
+# where a test changes one field of a real one to name the key it tests.
+
+
+def _load_battery():
+    spec = importlib.util.spec_from_file_location(
+        "cratekit_cloud_battery_for_the_driver", REPO_ROOT / "scripts" / "cloud_battery.py"
+    )
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+battery = _load_battery()
+
+KILLER = ("K1", "if value > limit:", "if value > 10000:")
+
+
+def _ignore_the_battery_state(root: Path) -> None:
+    """The real repository ignores the battery's state directory; so does the fixture."""
+    (root / ".gitignore").write_text(".cloud-battery/\n__pycache__/\n", encoding="utf-8")
+    _git(root, "add", ".gitignore")
+    _git(root, "commit", "-q", "-m", "ignore the battery's state")
+
+
+@pytest.fixture
+def battery_on(monkeypatch):
+    """Point the battery at a fixture repository and run its verbs there for real.
+
+    Only the two steps that read the real repository are replaced: the history
+    fetch, which a fixture with no remote cannot do, and ruff with the scan,
+    which read this repository's sources. The suite runs for real, through the
+    battery's own command, plugin and reader.
+    """
+
+    for name in stealing.INHERITED_RUN_STATE:
+        monkeypatch.delenv(name, raising=False)
+
+    def point(root: Path) -> Path:
+        state = root / ".cloud-battery"
+        monkeypatch.setattr(battery, "ROOT", root.resolve())
+        monkeypatch.setattr(battery, "STATE", state)
+        monkeypatch.setattr(battery, "BASELINE", state / "baseline.txt")
+        monkeypatch.setattr(battery, "VERDICT", state / "last-compare.txt")
+        monkeypatch.setattr(battery, "PYTHON", Path(sys.executable))
+        monkeypatch.setattr(battery, "ensure_full_history", lambda root=None: None)
+        monkeypatch.setattr(battery, "static_checks", lambda: True)
+        return state
+
+    return point
+
+
+def _known(state: Path) -> tuple[frozenset[str], str]:
+    path = state / "baseline.txt"
+    return mutate.read_known_failures(path), mutate.file_digest(path)
+
+
+def _batch(root: Path, state: Path, name: str, *, verdict: bool = True, rows=None):
+    known, digest = _known(state)
+    return mutate.measure_batch(
+        root,
+        name,
+        rows or [_row(*KILLER)],
+        known=known,
+        known_source=".cloud-battery/baseline.txt",
+        known_digest=digest,
+        battery_verdict=(state / mutate.BATTERY_VERDICT.name) if verdict else None,
+    )
+
+
+@pytest.fixture
+def judged(red_repo, battery_on) -> tuple[Path, Path]:
+    """The red fixture with the battery's baseline and a clean compare on its head.
+
+    The fixture's one failing test is the machine's: the battery measures it on
+    the base as known, and `compare` on the same commit reads it as still the
+    machine's, so the verdict is clean.
+    """
+    _ignore_the_battery_state(red_repo)
+    state = battery_on(red_repo)
+    assert battery.cmd_baseline(None) == 0
+    assert battery.cmd_compare(None) == 0
+    return red_repo, state
+
+
+def _rows_as_measured(batch) -> list[tuple]:
+    return [(one.id, one.status, one.deaths, tuple(one.killed)) for one in batch.results]
+
+
+def test_a_clean_verdict_for_this_commit_stands_for_the_full_baseline(judged):
+    """Read, one full run fewer, and the rows equal a batch that measured its own."""
+    root, state = judged
+    read = _batch(root, state, "read")
+    measured = _batch(root, state, "measured", verdict=False)
+
+    assert read.valid, read.invalid_reason
+    assert measured.valid, measured.invalid_reason
+    assert read.baseline_source == "read"
+    assert measured.baseline_source == "measured"
+    assert read.pytest_runs == measured.pytest_runs - 1
+    assert read.baseline_collected == measured.baseline_collected == 6
+    assert _rows_as_measured(read) == _rows_as_measured(measured)
+    assert _rows_as_measured(read) == [
+        ("K1", "killed", 1, ("tests/test_guards.py::test_clamp_caps_at_the_limit",))
+    ]
+    # The null control still ran the full suite, here, and was compared with
+    # the collected count the verdict gave.
+    assert read.control is not None and read.control.status == "zero"
+    assert read.control.runs == 1
+    assert read.control.collected == read.baseline_collected
+    assert read.subset_baselines == measured.subset_baselines == 1
+
+
+def test_the_table_says_the_full_baseline_was_read_and_what_was_measured(judged, tmp_path):
+    root, state = judged
+    read = _batch(root, state, "read")
+    text = mutate.render_markdown(read)
+    assert "Full baseline: READ, not measured by this driver" in text
+    assert "`cloud_battery.py compare`" in text
+    assert "Subset baselines: 1, each measured by this driver" in text
+    assert "The null control below ran the full suite in this driver's own environment" in text
+    assert mutate.BATTERY_VERDICT.as_posix() in text
+    sidecar = read.to_dict()
+    assert sidecar["baseline_source"] == "read"
+    assert sidecar["subset_baselines"] == 1
+
+    measured = mutate.render_markdown(_batch(root, state, "measured", verdict=False))
+    assert "Full baseline: measured by this driver" in measured
+    assert "READ" not in measured
+
+
+def test_a_verdict_for_another_commit_is_not_read(judged):
+    root, state = judged
+    (root / "README.md").write_text("a later commit\n", encoding="utf-8")
+    _git(root, "add", "README.md")
+    _git(root, "commit", "-q", "-m", "a later commit")
+
+    batch = _batch(root, state, "moved")
+    assert batch.valid, batch.invalid_reason
+    assert batch.baseline_source == "measured"
+    assert "it is for commit" in batch.baseline_note
+
+
+def test_a_verdict_is_not_read_over_a_tree_with_changes(judged):
+    """Untracked counts: the suite reads files nobody committed (U34's report test)."""
+    root, state = judged
+    (root / "stray.txt").write_text("not committed\n", encoding="utf-8")
+
+    batch = _batch(root, state, "dirty-now")
+    assert batch.baseline_source == "measured"
+    assert "uncommitted or untracked" in batch.baseline_note
+
+
+def test_a_red_verdict_for_this_commit_refuses_the_batch(red_repo, battery_on):
+    """Green baseline or refuse holds for a read baseline as for a measured one."""
+    _ignore_the_battery_state(red_repo)
+    state = battery_on(red_repo)
+    assert battery.cmd_baseline(None) == 0
+    (red_repo / "tests" / "test_branch.py").write_text(
+        "def test_the_branch_broke():\n    assert False\n", encoding="utf-8"
+    )
+    _git(red_repo, "add", "-A")
+    _git(red_repo, "commit", "-q", "-m", "the branch breaks a test")
+    assert battery.cmd_compare(None) == 1
+
+    with pytest.raises(mutate.DriverRefusal) as caught:
+        _batch(red_repo, state, "red-verdict")
+    message = str(caught.value)
+    assert "BASELINE IS NOT GREEN: 1 failing" in message
+    assert "read from the battery's verdict" in message
+    assert "tests/test_branch.py::test_the_branch_broke" in message
+
+
+def _edited_verdict(state: Path, **fields) -> None:
+    path = state / mutate.BATTERY_VERDICT.name
+    record = json.loads(path.read_text(encoding="utf-8"))
+    record.update(fields)
+    path.write_text(json.dumps(record), encoding="utf-8")
+
+
+@pytest.mark.parametrize(
+    ("fields", "why"),
+    [
+        ({"clean_tree": False}, "was not clean throughout"),
+        ({"host": "another-machine"}, "on another machine"),
+        ({"boot_id": "another-boot"}, "on another machine"),
+        ({"root": "/elsewhere/cratekit"}, "in another checkout"),
+        ({"python": "/elsewhere/bin/python"}, "with another interpreter"),
+        ({"known_failures_sha256": "0" * 64}, "another known failures file"),
+        ({"exit_code": 2}, "did not complete"),
+        ({"collected": 0}, "no collected count"),
+        ({"format": 2}, "a record this driver cannot read"),
+        ({"verdict": "red"}, "disagrees with the ids it lists"),
+        ({"failing": "tests/test_red.py::test_that_fails"}, "a record this driver cannot read"),
+        ({"commit": "unknown"}, "it is for commit"),
+    ],
+    ids=[
+        "dirty-during-the-run",
+        "another-host",
+        "another-boot",
+        "another-checkout",
+        "another-interpreter",
+        "another-known-failures-file",
+        "an-interrupted-run",
+        "nothing-collected",
+        "another-format",
+        "a-verdict-its-ids-contradict",
+        "ids-not-a-list",
+        "no-commit",
+    ],
+)
+def test_a_verdict_that_differs_in_any_key_is_not_read(judged, fields, why):
+    root, state = judged
+    _edited_verdict(state, **fields)
+    known, digest = _known(state)
+
+    result, note = mutate.read_battery_verdict(
+        root, state / mutate.BATTERY_VERDICT.name, known=known, known_digest=digest
+    )
+
+    assert result is None
+    assert why in note
+    assert note.startswith("the battery's verdict was not read")
+
+
+def test_an_unreadable_or_absent_verdict_is_not_read(judged):
+    root, state = judged
+    known, digest = _known(state)
+    path = state / mutate.BATTERY_VERDICT.name
+
+    path.write_text("{ not json", encoding="utf-8")
+    result, note = mutate.read_battery_verdict(root, path, known=known, known_digest=digest)
+    assert result is None and "a record this driver cannot read" in note
+
+    path.unlink()
+    result, note = mutate.read_battery_verdict(root, path, known=known, known_digest=digest)
+    assert result is None and "no battery verdict" in note
+
+
+def test_no_known_failures_file_means_the_verdict_is_not_read(judged):
+    """The battery's verdict is net of the machine's failures; a run without them is not."""
+    root, state = judged
+    known, _ = _known(state)
+    result, note = mutate.read_battery_verdict(
+        root, state / mutate.BATTERY_VERDICT.name, known=known, known_digest=""
+    )
+    assert result is None
+    assert "no known failures file" in note
+
+
+def test_the_verdict_names_no_machine_or_path_in_the_table(judged):
+    """The table is committed to a public repository: no host name, no absolute path."""
+    root, state = judged
+    _edited_verdict(state, host="phillips-own-machine")
+    batch = _batch(root, state, "named")
+    text = mutate.render_markdown(batch)
+    assert "phillips-own-machine" not in text
+    assert str(root) not in text
+    assert "on another machine" in text
+
+
+def test_the_command_line_reads_the_verdict_and_measures_on_request(judged, capsys):
+    root, state = judged
+    spec = root.parent / "rows.toml"
+    spec.write_text(
+        'name = "cli"\npass_kind = "light"\n\n[[rows]]\nid = "K1"\n'
+        'description = "Raise the clamp\'s limit"\nfile = "src/fixtpkg/guards.py"\n'
+        "old = 'if value > limit:'\nnew = 'if value > 10000:'\n",
+        encoding="utf-8",
+    )
+    base = ["mutate.py", str(spec), "--repo-root", str(root)]
+    base += ["--known-failures", str(state / "baseline.txt")]
+
+    assert mutate.main([*base, "--out-dir", str(root.parent / "read")]) == 0
+    read = json.loads((root.parent / "read" / "cli.json").read_text(encoding="utf-8"))
+    assert read["baseline_source"] == "read"
+
+    out = ["--out-dir", str(root.parent / "measured"), "--measure-baseline"]
+    assert mutate.main([*base, *out]) == 0
+    measured = json.loads((root.parent / "measured" / "cli.json").read_text(encoding="utf-8"))
+    assert measured["baseline_source"] == "measured"
+    assert "--measure-baseline" in measured["baseline_note"]
+    assert measured["pytest_runs"] == read["pytest_runs"] + 1
+    assert [r["killed"] for r in measured["rows"]] == [r["killed"] for r in read["rows"]]
+
+
+def test_the_driver_and_the_battery_name_one_record():
+    """Neither script imports the other, so the shared keys are held equal here."""
+    assert mutate.BATTERY_VERDICT == Path(".cloud-battery") / battery.RUN_RECORD_NAME
+    assert battery.STATE.name == mutate.BATTERY_VERDICT.parent.as_posix()
+    assert mutate.BATTERY_VERDICT_FORMAT == battery.RUN_RECORD_FORMAT
+    assert mutate.BOOT_ID == battery.BOOT_ID
