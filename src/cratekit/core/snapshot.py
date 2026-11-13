@@ -50,6 +50,10 @@ writes: a check placed anywhere else is a check some future caller reaches the
 copy without. See :func:`assert_room_for_capture`, and :func:`assert_room_for`
 underneath it, which the restore asks the same question of the library volume
 because a restore copies the same bytes back the other way.
+The integrity check's throwaway copy is measured the same way on the
+temporary volume it lands on, :func:`assert_room_for_check` (R-1677), so a
+full temporary volume refuses as that rather than as a capture that failed
+its check.
 
 LAYER: infrastructure. It reads configuration, does input and output, and
 carries remediation TOKENS rather than any text a user types (D2).
