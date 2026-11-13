@@ -45,6 +45,15 @@ copy of one recording, with the ISRC; the chain reads the download jobs for it
 and adds the step that names each pass whose download it was, earliest first,
 since the naming verb sits below the download verb and may not read its jobs.
 
+A FILE THE CATALOGUES REFUSED IS NAMED, AND A STOP FOR ONE SAYS WHO (U284).
+With a Discogs token recorded, ``tag folder`` settles a file Discogs searched
+and could not tag while every other catalogue refused, and the chain goes on;
+the tag step's report of those files becomes the chain's ``refused`` row and
+summary, so the pass names each file and the refusing catalogues with the date
+each began refusing. A tag step that stopped because every catalogue asked
+refused carries the sweep's words onto the job's refusal: who refused, since
+when, and the token when Discogs went unasked.
+
 ``name apply``'s CONFIRM IS ANSWERED INLINE, by one argument list. It is not
 explicit, so answering it on the command line is the act a person running the
 tail makes; the plan it answers is the verb's own.

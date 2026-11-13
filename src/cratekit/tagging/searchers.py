@@ -60,6 +60,12 @@ again from its first file, and Discogs keeps its own memory and is asked
 whatever Beatport said. A picture's question asks Beatport under the same
 count (U282).
 
+A REFUSAL BY EVERY CATALOGUE ASKED IS SAID AS ONE (U284). It keeps its slug
+and its retry, and names the refusing catalogues with the date each began
+refusing, off :mod:`cratekit.tagging.refused`, which a sweep's run count
+keeps, and the Discogs token when Discogs went unasked for want of one; the
+network is the first step only when something was unreachable.
+
 ``no-hit`` NEEDS EVERY SOURCE ASKED TO HAVE SAID MISS. One MISS beside a source
 that could not be read is not an absence, because the unread one may carry the
 track, so the hit says which sources went unread and the file stays untagged
@@ -2316,6 +2322,11 @@ def for_run(run: str) -> Refusals:
     a resumed run each ask a refusing catalogue again from their first file,
     as U281 asks. A test replaces this attribute, as it does
     :func:`for_taxonomy`; :func:`reset_runs` forgets the count.
+
+    THE ONE COUNT THAT KEEPS THE RECORD (U284). A sweep's refusals sent, and
+    its matches and misses, move :mod:`cratekit.tagging.refused`, so the date a
+    catalogue began refusing outlives the run; a count built anywhere else
+    keeps none.
     """
     if not _run_refusals or _run_refusals[0][0] != run:
         _run_refusals[:] = [(run, Refusals(record=True))]
