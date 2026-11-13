@@ -31,8 +31,8 @@ walk.
 
 ## Read
 
-- Twelve rows die by one test each (R3, R4, R6, R7, S2, S3, S6, S7, S9, C1,
-  C5, C7, T1, T2 among them): what the author could not kill twice.
+- Fourteen rows die by one test each (R3, R4, R6, R7, S2, S3, S6, S7, S9, C1,
+  C5, C7, T1, T2): what the author could not kill twice.
 - S5, the refusal by every catalogue said as an outage, dies by five: the
   searcher's, the sweep's and the chain's words all read it.
 - Round two's two guards with no shipped producer (`_change`'s
