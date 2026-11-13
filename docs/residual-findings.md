@@ -52098,3 +52098,93 @@ assigned, and the lane would have sat empty until the next hourly fill.
 **Closes when:** the lane count leaves out a card whose latest comment is a
 relayed answer with no hold after it, or the skill says the coordinator's
 assignment wins over the alarm. Ledger only.
+
+---
+
+## R-1667. A Cyanite trial killed between asking for a library track and reading the answer loses the track, and its resume pays for it again
+
+**Found:** at the review of #674, U245, round two, 2026-11-13.
+
+**The mechanism.** `tagging/cyanite.py` writes a file's row, with the
+library track Cyanite made, the moment the create's answer is read
+(`CyaniteAsker.on_made`), ahead of the analysis wait, so a run ended by an
+error, an interrupt or a signal during the wait keeps the track and a
+`--resume` asks about it without uploading. A run ended after the create was
+sent and before its answer was read has no track id to write: Cyanite has
+made the track, the table has no row, and the resume uploads the file again.
+
+**Measured cost.** Driven by the round two reviewer with a recorded seam
+raising KeyboardInterrupt after Cyanite registered the track and before its
+reply: the resume uploaded the file again. The window is one round trip wide,
+so how often a person meets it is unmeasured. The cost is one track paid for
+twice.
+
+**Closes when:** a resume looks the file up in Cyanite's library before
+uploading it, by the `libraryTracks(filter: { sha256 })` lookup Cyanite
+documents for duplicates or by the title the trial sends, and asks about the
+track it finds. Ledger only: it is a paid trial's corner, not a shipped verb.
+
+---
+
+## R-1668. The Cyanite trial's mutations and its reading of a rejected key are written from Cyanite's documentation and never driven against the service
+
+**Found:** at the build of #674, U245, 2026-11-13.
+
+**The mechanism.** `tagging/cyanite.py` asks Cyanite's GraphQL API with three
+texts: `fileUploadRequest`, `libraryTrackCreate(input: { uploadId, title })`
+and `libraryTrack(id)` with `audioAnalysisV6`'s `genreTags`, `subgenreTags`,
+`moodTags` and `energyLevel`. The documentation read on 2026-11-13 shows the
+read query and the answers' shapes, not the two mutations' text or input
+type, and does not say how a bad key is answered; the trial reads a 401, or a
+GraphQL error coded or worded as unauthenticated, as a rejected key. The free
+preflight proves the read query's shape and the key before any upload; a
+mutation's shape is proved only by the first file.
+
+**Measured cost.** Not driven: no live key and no live call in the cloud, by
+standing rule. A wrong mutation text is answered with a GraphQL error, which
+stops the run at the first file before anything is billed, so the cost is a
+stopped run, never a silent wrong answer.
+
+**Closes when:** the attended trial's first run reads its first row, or its
+stop line, and the texts are corrected if Cyanite refused them. Ledger only.
+
+---
+
+## R-1669. The Cyanite trial sends MP3s only, so a filed track held as AIFF, WAV or FLAC cannot be measured
+
+**Found:** at the build of #674, U245, 2026-11-13.
+
+**The mechanism.** Cyanite's API takes MP3 uploads of up to fifteen minutes,
+by its documentation, so `tagging/cyanite.py` sends a file only when its
+suffix is `.mp3` and lists every other file as not sent. Nothing converts a
+lossless file for the trial. A file over fifteen minutes is uploaded and its
+refusal, whatever Cyanite answers, is written on its row.
+
+**Measured cost.** A trial over folders of lossless files measures nothing
+for them, and says so on each one. How much of the filed library is MP3 is
+unmeasured. Converting was out of the card's scope; whether the trial should
+convert a temporary copy is asked on the card as a Question for Phillip.
+
+**Closes when:** Phillip chooses MP3s for the trial, or a later card converts
+a temporary MP3 copy of each chosen lossless file for the upload and deletes
+it after. Ledger only.
+
+---
+
+## R-1670. The Cyanite trial waits on each file's analysis before uploading the next, so a run of forty files can take hours
+
+**Found:** at the build of #674, U245, 2026-11-13.
+
+**The mechanism.** `tagging/cyanite.py` uploads a file, makes its library
+track, and polls its analysis every ten seconds for up to five minutes before
+it uploads the next. A file still unfinished after the window is kept,
+pending, for a resumed run.
+
+**Measured cost.** Not measured against the service. At Cyanite's stated
+analysis time of about a minute a track, forty files take about forty
+minutes; at the window's worst, over three hours. Nothing is lost or paid
+twice either way, since every made track is written down before its wait.
+
+**Closes when:** the attended trial measures the time a track takes, and, if
+it matters, a later card uploads every file first and then polls them
+together. Ledger only.
