@@ -51775,3 +51775,133 @@ library.
 
 **Closes when:** a wrong genre is driven through it, or U280 (#791) reads a
 name's parts as typed fields. Ledger only.
+
+---
+
+## R-1654. A name whose first part credits the artist otherwise than the tag names them is still read one way, as on main
+
+**Found:** at the build and review of #791, U280, 2026-11-13.
+
+**The mechanism.** U280 reads R-1651's first two shapes as ambiguous
+(`_only_a_list_reads` in `tagging/titles.py`), but its third needs the parse
+to know the first part is the artist's credit, which only the tag can say:
+"Bernard Badie feat. Tide - Sunrise Mood" tagged "DJ Bernard Badie" or
+"Tide" reads its first part as a title, so the self titled row "Bernard
+Badie" matches. With no head before it the first part naming the tag's
+artist only as featured is read as a title by design (`_featured_first_part`,
+R-1646 round two's test); after a head it is not, since round one of U280's
+review drove "08A - 124 - Bernard Badie feat. Tide - Sunrise Mood" tagged
+"Tide" to a wrong genre once the rule reached past the head (F3).
+
+**Measured cost.** A wrong genre where the tag disagrees with the name, as
+on main and no wider: driven through `_title_matches`; no producer of such a
+tag was driven, since the naming verb writes "Artist - Title" from the tags.
+
+**Closes when:** a name's credit can be told without the tag, or a tag that
+disagrees with the name is shown common. Ledger only.
+
+---
+
+## R-1655. Guards of the typed title parse that no test kills
+
+**Found:** at the mutation table and the review of #791, U280, 2026-11-13.
+
+**The mechanism.** In `tagging/titles.py`, with each removed alone the suite
+stays green:
+- `_tempo_as_title`'s test that only a version follows the tempo (row M20 of
+  `docs/mutation/u280.md`): redundant behind the whole name read as written,
+  which already holds every word the candidate adds when anything else
+  follows;
+- `read_row`'s `file=False`, which keeps a catalogue row from shedding a
+  trailing `KEY - BPM` head (M25): it decides only a row ending in a head,
+  which no catalogue writes;
+- from the reviews' own mutants: the numbered read's `after_title`,
+  `in_head` and bare names, `_opens_with_a_track_number` refusing a three
+  figure number before brackets (the read past it is held by the number rule
+  in `read_title`, pinned), and the nested `identifies(rest)` in
+  `read_title`, which can change no result.
+
+**Measured cost.** None to a user: the reviewers' mutant differentials over
+6,000 names found no pair the first four decide, and the rest decide only
+shapes no catalogue or library writes.
+
+**Closes when:** each is removed or a case it decides is found and pinned.
+Ledger only, maintainer facing.
+
+---
+
+## R-1656. The naming verb's marker is read past only when it is written in square brackets
+
+**Found:** at the build of #791, U280, 2026-11-13.
+
+**The mechanism.** `tagging/titles.py` reads past the marker the naming verb
+writes after the head (`_MARKER`, a square bracketed group), so "[MP3] (Not
+Just) Knee Deep" finds its own row. The marker is configurable,
+`config.naming.lossy_marker`, and the matcher is not handed the
+configuration, so a marker written otherwise, "(MP3)" or "MP3", is read as
+part of the title: a leading round group is shed as any title's is, with the
+title's own leading group, and a bare word stays in the title.
+
+**Measured cost.** A miss on such a file's row; the default "[MP3]" is read.
+Not measured: whether any configuration writes another marker.
+
+**Closes when:** the searcher is handed the configured marker. Ledger only.
+
+---
+
+## R-1657. The shapes U280 made ambiguous, and the whole name read as written, cost a file some rows main found
+
+**Found:** at the build and review of #791, U280, 2026-11-13.
+
+**The mechanism.** U280's deliberate changes in `tagging/titles.py` each
+refuse some rows main matched, by design:
+- the R-1651 shapes now ambiguous, "Artist - Vocal Mix feat. Tide" and
+  "Artist - Tide - Sunrise Mood Extended Mix" by "Artist & Tide", match only
+  a row writing the same split or the whole name, as R-1646's shape does:
+  the file's own row under another mix or with no version is a miss (R-1652's
+  cost, wider);
+- an ambiguous name whose first part names the artist only as featured,
+  "Tide feat. Artist - Vocal Mix", no longer finds a plain "Tide" row, which
+  main found by shedding the feature credit across the dash;
+- a key read as a title, "8A - Original Mix" against "8A", and a track
+  number, "01 - feat" against "01";
+- a last part of brackets alone that is no version, a row or a file "Sunrise
+  Mood - (Vocal)" or "Sunrise Mood - (Bonus Track)", no longer reads as
+  "Sunrise Mood", since a bracket group is shed only from the part carrying
+  it (review round two's row 3).
+
+**Measured cost.** Misses, never a wrong genre. The differential against
+main (`scripts/title_differential.py`, about 400,000 names of the suite's
+corpus in 22 shapes) lost 2,280 pairs to the ambiguous shapes (414 outside
+corpus fragments) and 16,091 to the whole name and the bracket rule (1,818
+outside fragments), most of them wrong matches main made (a head's words,
+"(Intro) - Original Mix" taking an "Original Mix" row, "Artist - (Intro)"
+the self titled row). Not measured: how many files or catalogue rows are
+written so.
+
+**Closes when:** a catalogue is shown to write "Title - (X)" for a version
+of no version word, or Phillip asks for the own row under another mix
+(#788's question). Ledger only.
+
+---
+
+## R-1658. A name with two parts crediting the artist before a version word album reads the artist's part as the title, as on main
+
+**Found:** at the review of #791, U280, round one, 2026-11-13.
+
+**The mechanism.** R-1653 named "Tide & Artist - Artist", two parts both
+crediting the artist, read both ways (`_title_stretches` in
+`tagging/titles.py`, kept by R-1636's tests). U280's review drove it to a
+wrong genre one rule over: `_layout` counts a part naming the artist only as
+featured as a credit, so "08A - 124 - Sunrise Mood feat. Tide - Bernard
+Badie - Summer Mix" tagged "Bernard Badie & Tide" takes the artist's part as a self
+titled title, and the row "Bernard Badie" matches. The ambiguity test refuses
+a featured only credit among several (`_only_a_list_reads`), but the layout
+does not.
+
+**Measured cost.** A wrong genre, driven through `_title_matches`, True on
+main and on the branch alike; `tag_one` and the naming verb were not driven,
+and a name of this shape needs an album after the artist's part.
+
+**Closes when:** `_layout` reads a featured only credit as the title it
+holds, measured by the differential, or R-1653 is decided. Ledger only.
