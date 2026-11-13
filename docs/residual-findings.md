@@ -52821,3 +52821,106 @@ the warning.
 **Closes when:** a refusal raised for a job's state carries the drive's
 warnings onto the envelope it becomes. Ledger only: maintainer facing, nothing
 is lost.
+
+---
+
+## R-1697. A read only diagnostic on a full temporary volume fails with a raw no space error and the remedy to report a defect
+
+**Found:** at the review of #813, R-1677, 2026-11-13.
+
+**The mechanism.** `rb_writer.read_only_copy`, through `disposable_copy`,
+copies the database into the system's temporary directory for doctor, setup,
+cutover, the collection export, favorites, shelve, the agreement check and the
+rekordbox check. A full temporary volume raises the `OSError` from the copy,
+which doctor's dispatcher renders as a check that did not complete with
+`access_remedy(otherwise=REPORT_DEFECT)`, which answers `report-defect` for
+no space (driven at round two). R-1677 measured and named the room
+only for the integrity check's copy; these callers were left as they were.
+
+**Measured cost.** Driven by the review: `doctor._survey_paths` with the
+temporary directory on a 256 KiB tmpfs raises `[Errno 28] No space left on
+device` from the copy. The rendering through doctor's dispatcher was read,
+not driven. The message names the error, so nothing false is said, but the
+remedy points at a defect rather than at the temporary volume. Predates this
+card (R-372, R-1665).
+
+**Closes when:** `read_only_copy` refuses a copy that found no room under
+`snapshot-check-temp-full` or a sibling slug naming the temporary directory,
+reusing `snapshot.check_had_no_room`. Ledger only: a remedy's wording on a read.
+Two write verbs read through it first, `favorites.cli.read_pink_track_ids`
+before a sweep queues and `cutover._one_root`, so a full temporary volume
+stops them on the read with the raw error; they stop for a real reason, so no
+write proceeds or is misreported and nothing is damaged.
+
+---
+
+## R-1698. A capture refused because its check's copy found no room keeps an unverified capture the refusal does not name
+
+**Found:** at the review of #813, R-1677, 2026-11-13.
+
+**The mechanism.** When the throwaway copy runs out of room after the measure
+passed, `snapshot.capture` writes the capture's manifest unverified and
+refuses as `snapshot-check-temp-full`, naming the temporary directory. The
+capture directory, its copy of the database and its unverified manifest stay
+in the store, as a capture that failed its check always has. The refusal does
+not name it, and on a volume the store shares with the temporary directory
+that capture holds part of the room the step asks the person to free.
+
+**Measured cost.** Driven by the review on a 256 KiB tmpfs with the measure
+bypassed: the stamp directory with `capture.json` saying not verified and
+`master.db` stays, the throwaway is removed. Not a regression: the same
+capture was kept, unverified, before this card. Pruning reaches it as any
+unverified capture.
+
+**Closes when:** the refusal's detail and message name the capture it kept
+and say pruning frees it. Ledger only.
+
+---
+
+## R-1699. The integrity check's open after a throwaway copy that fits makes files the room measure counts only through its headroom
+
+**Found:** at the review of #813, R-1677, 2026-11-13.
+
+**The mechanism.** `snapshot.assert_room_for_check` measures the file set the
+check copies, `rb_writer.file_set`, with the capture's ten percent headroom.
+Opening the copy then makes a shared memory index (32 KiB here) and may grow
+a log, neither of which is in the file set. When the copy fits and those do
+not, `open_db` refuses with a disk input output error, `integrity_ok` answers
+False as for any failed open, and the capture is refused as
+`snapshot-integrity-failed` with the remedy to report a defect: the card's
+symptom one step past the copy. The branch keeps it that way on purpose, so
+that no failure after the copy is ever told as a room message
+(`test_an_open_that_fails_after_the_copy_is_a_failed_check_not_a_copy_failure`).
+Separately, `open_db`'s failure path leaks the connection, which holds the
+deleted throwaway open, so inside one process the space stays pinned; that
+predates this card.
+
+**Measured cost.** Driven by the review on a real tmpfs with the measure
+bypassed, at 330 KiB to 352 KiB for a 330 KiB file set: refused as above.
+With the measure in place it needs a temporary volume that fills between the
+measure and the copy, or a database under about 330 KB, where the headroom is
+smaller than the index. A real library is far larger, so the headroom covers
+it; no producer with the measure in place was driven.
+
+**Closes when:** the open's own files are counted in the measure (a fixed
+allowance for the index and the log), or a failed open on a copy whose volume
+reports no free space is told as no room. Ledger only.
+
+---
+
+## R-1700. The rehearsal's refusal for a check copy with no room carries its origin by no test
+
+**Found:** at the review of #813, R-1677, 2026-11-13.
+
+**The mechanism.** `intake/land_cli.py` passes `origin=_ORIGIN` to
+`snapshot.check_had_no_room` so the rehearsal's refusal for a throwaway copy
+with no room carries the land verb in its cause's origin, as every
+neighbouring refusal there does. The rehearsal's wrapper re-raises the cause
+with the same origin on its way out, so dropping the argument loses nothing
+a person reads.
+
+**Measured cost.** Driven at round two: the call without the argument kills
+no test. Maintainer facing only, the provenance trail in the envelope.
+
+**Closes when:** a test asserts the origin trail of that refusal, or the
+argument is dropped as redundant beside the wrapper. Ledger only.
