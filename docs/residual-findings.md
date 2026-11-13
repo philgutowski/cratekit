@@ -52429,3 +52429,67 @@ spent files the crash as a failure. Predates U271.
 **Closes when:** the driver's plugin counts the node ids that reported, as the
 battery's does, and `run_pytest` raises a measurement failure when that count
 differs from the collected count. Ledger only.
+
+---
+
+## R-1680. Setup says it is checking a Discogs token it then refuses to send for its shape, and a relink's last note drops an earlier refusal
+
+**Found:** at the review of #799, U283, 2026-11-13.
+
+**The mechanism.** `_link_discogs` writes "Checking the token with Discogs..."
+before `searchers.check_discogs_token`, which refuses a token that is not one
+printable word without a request, so the line precedes a refusal that says
+it was not sent. Separately, when one try is refused with a 401 and a later
+try meets an outage on a relink, the final note names the outage only.
+
+**Measured cost.** Driven by round two's reviewer with "two words", "x y"
+and "a b": each printed the line and then "it was not sent to Discogs".
+Nothing stored, nothing leaked; a wording cost only.
+
+**Closes when:** the line is written only for a token that will be sent, and
+a relink's final note names any earlier refusal. Ledger only.
+
+---
+
+## R-1681. A Discogs answer whose remaining count header runs past Python's integer digit limit raises ValueError out of a tag sweep's search
+
+**Found:** at the review of #799, U283, 2026-11-13.
+
+**The mechanism.** `searchers._remaining` reads `x-discogs-ratelimit-remaining`
+with `int(raw)` whenever the text is ASCII digits. A header of more than 4300
+digits makes `int` raise `ValueError`, which `DiscogsAsker._read` does not
+catch, and a sweep's `search` catches only `CratekitError`. Setup's token
+check meets the same raise and, since U283's first fix round, notes it as a
+FAIL with nothing stored; the sweep is older than this branch and unchanged.
+
+**Measured cost.** Driven by round two's reviewer:
+`discogs_asker(token, fetch=<a 5000 digit header>).ask(...)` raised
+`ValueError: Exceeds the limit (4300 digits)`. Not driven through a tag run.
+The only producer is a server posing as api.discogs.com; Discogs sends a
+count under a hundred.
+
+**Closes when:** `_remaining` returns None for a header longer than a handful
+of digits, with a test. Ledger only: no realistic producer.
+
+---
+
+## R-1682. With the environment credential opt in set, a Discogs token setup links or relinks is reported linked while the environment's token is the one every read returns
+
+**Found:** at the review of #799, U283, 2026-11-13.
+
+**The mechanism.** `secrets.get` prefers the environment variable when
+`CRATE_ALLOW_ENV_CREDENTIALS=1` and the token's variable are set. Setup's
+Discogs step checks and stores the typed token in the keychain and says
+"linked: Discogs accepted the token", and a later tag run reads the
+environment's token instead. `crate login discogs-token --from-file` already
+behaves the same way, and the brief required storing exactly as login does,
+so the step kept the shared store's precedence.
+
+**Measured cost.** Driven by the round one reviewer with both variables set
+and `--relink-discogs`: the note said linked while `secrets.get` returned the
+environment's value. Reachable only on a headless machine that opted in by
+name; nobody on the Mac sets the opt in.
+
+**Closes when:** setup and login both say, when the environment fallback is
+on and names this credential, that the environment's value is the one used.
+Ledger only: a maintainer's opt in, no data lost.
