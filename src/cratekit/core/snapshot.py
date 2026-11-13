@@ -57,6 +57,7 @@ carries remediation TOKENS rather than any text a user types (D2).
 
 from __future__ import annotations
 
+import errno
 import json
 import logging
 import os
@@ -351,13 +352,12 @@ def _write_manifest(record: Capture, manifest: Path) -> None:
     )
 
 
-def _not_flushed(record: Capture, manifest: Path, exc: OSError) -> CratekitError:
-    """Record the capture as NOT verified, then the refusal the caller raises.
+def _record_unverified(record: Capture, manifest: Path) -> None:
+    """Write the capture's manifest saying NOT verified, before any refusal of it.
 
-    The manifest is rewritten unverified first, so a capture whose flush failed
-    is never on disk as one anything may commit behind. If even that write
-    fails, the refusal still stands: it is the guard, and a capture with no
-    manifest is one a restore already refuses to use.
+    So a capture that is refused is never on disk as one anything may commit
+    behind. If even this write fails the refusal still stands: it is the guard,
+    and a capture with no manifest is one a restore already refuses to use.
     """
     unverified = Capture(
         stamp=record.stamp,
@@ -372,6 +372,17 @@ def _not_flushed(record: Capture, manifest: Path, exc: OSError) -> CratekitError
         logger.warning(
             "the capture at %s could not record that it is not verified: %s", record.root, written
         )
+
+
+def _not_flushed(record: Capture, manifest: Path, exc: OSError) -> CratekitError:
+    """Record the capture as NOT verified, then the refusal the caller raises.
+
+    The manifest is rewritten unverified first, so a capture whose flush failed
+    is never on disk as one anything may commit behind. If even that write
+    fails, the refusal still stands: it is the guard, and a capture with no
+    manifest is one a restore already refuses to use.
+    """
+    _record_unverified(record, manifest)
     return refuse(
         "snapshot-integrity-failed",
         f"the capture at {record.root} could not be flushed to the disk ({exc}), so it "
@@ -441,15 +452,24 @@ def _changed_by_the_check(before: Mapping[Path, _Identity], capture_root: Path) 
 def _verify(database: Path, verifier: Verifier | None) -> bool:
     """Run the integrity check, failing CLOSED on anything unexpected.
 
+    The real check is asked to raise :class:`rb_writer.IntegrityCheckCopyFailed`
+    when its throwaway copy cannot be made, and that alone passes through, for
+    :func:`capture` to name (R-1677).
+
     A verdict this module cannot produce is treated as "did not verify", because
     the verdict gates a commit and the safe direction for an unknown is to refuse
     it. Reporting True on an unreadable answer would put a session behind a
     capture nobody has established is sound, which is the one thing the check
     exists to prevent.
     """
-    check = verifier if verifier is not None else rb_writer.integrity_ok
     try:
-        return bool(check(database))
+        if verifier is None:
+            return bool(rb_writer.integrity_ok(database, raise_copy_failure=True))
+        return bool(verifier(database))
+    except rb_writer.IntegrityCheckCopyFailed:
+        # No verdict at all, which the capture names rather than folding into a
+        # failed one (R-1677); it still records the capture unverified.
+        raise
     except Exception as exc:  # noqa: BLE001 - a check that cannot answer has not passed
         logger.warning("the capture integrity check could not run, so it did not pass: %s", exc)
         return False
@@ -699,6 +719,162 @@ def assert_room_for(
     )
 
 
+#: What a person does about a throwaway copy with no room (R-1677), refused as
+#: ``snapshot-check-temp-full``. Steps rather than a remedy token, for the reason
+#: ``snapshot-store-full`` gives in the cause registry: freeing disk is not a
+#: command this product runs.
+CHECK_ROOM_STEPS: tuple[str, ...] = (
+    "free space on the volume holding the temporary directory named above, or "
+    "set TMPDIR (TEMP on Windows) to a directory on a volume with room, and run "
+    "this again",
+)
+
+#: The operating system's answers that mean a volume had no room: no space left,
+#: and a quota reached where the platform has quotas.
+_NO_ROOM_ERRNOS = frozenset(
+    code for code in (errno.ENOSPC, getattr(errno, "EDQUOT", None)) if code is not None
+)
+
+
+def _device(path: Path) -> int:
+    """The device of the nearest ancestor of ``path`` that exists, as ``stat`` reads it."""
+    probe = path
+    while not probe.exists() and probe.parent != probe:
+        probe = probe.parent
+    return os.stat(probe).st_dev
+
+
+def _same_volume(first: Path, second: Path) -> bool:
+    """Whether two paths, made or not yet made, land on one filesystem.
+
+    UNKNOWN COUNTS AS SHARED, the direction that asks for more room: a volume
+    whose device cannot be read is one whose free space cannot be read either,
+    and that already refuses.
+    """
+    try:
+        return _device(Path(first)) == _device(Path(second))
+    except OSError:
+        return True
+
+
+def assert_room_for_check(
+    database: Path | str,
+    *,
+    store: tuple[Path, int] | None = None,
+    headroom: float = CAPACITY_HEADROOM,
+    free_bytes: int | None = None,
+) -> int:
+    """Refuse BEFORE a capture when the integrity check's throwaway copy has no room.
+
+    Returns the estimate. Since R-1665 the check never opens the capture: it
+    copies the database's file set into the system's temporary directory
+    (:func:`rb_writer.disposable_root`) and checks the copy. Nothing measured
+    that room, and a temporary volume too small for the copy made the check
+    answer False, so the capture was recorded unverified and every guarded
+    write refused it as one that failed its integrity check, with the remedy
+    to report a defect (R-1677). Measured here instead, beside
+    :func:`assert_room_for_capture` and before anything is written, under its
+    own slug naming the temporary volume.
+
+    THE FILE SET IS THE ONE THE CHECK COPIES, :func:`rb_writer.file_set`, in
+    allocated bytes with the same headroom as the capture. ``database`` is the
+    live database the capture copies: the throwaway is a copy of that copy.
+
+    ``store`` IS THE CAPTURE'S OWN DESTINATION AND WHAT IT NEEDS THERE. When
+    the temporary directory sits on the same volume, both land on it, the
+    capture first and its throwaway after, so the room asked of it is for the
+    two together: room for either alone, which two separate questions would
+    each find, is not room for both.
+    """
+    try:
+        scratch = rb_writer.disposable_root()
+    except OSError as exc:
+        raise refuse(
+            "snapshot-check-temp-full",
+            f"no temporary directory could be found for the integrity check's "
+            f"throwaway copy of the database ({exc}), so the check could not run",
+            steps=CHECK_ROOM_STEPS,
+            scope=Scope.SESSION,
+            detail={"root": None, "database": str(database)},
+        ) from exc
+    needed = sum(_allocated_size(member) for member in rb_writer.file_set(database))
+    shared = store is not None and _same_volume(scratch, store[0])
+    total = needed + (store[1] if store is not None and shared else 0)
+    available = free_bytes if free_bytes is not None else _free_bytes(scratch)
+    required = int(total * headroom)
+    detail: dict[str, Any] = {
+        "root": str(scratch),
+        "database": str(database),
+        "required_bytes": required,
+        "estimated_bytes": needed,
+        "shares_volume_with": str(store[0]) if store is not None and shared else None,
+    }
+    if available is None:
+        raise refuse(
+            "snapshot-check-temp-full",
+            f"the free space on the volume holding the temporary directory {scratch} "
+            f"could not be read, so there is no way to know whether the integrity "
+            f"check's throwaway copy of the database fits there",
+            steps=(
+                "check that the volume holding the temporary directory is mounted "
+                "and readable, or set TMPDIR (TEMP on Windows) to one that is, and "
+                "run this again",
+            ),
+            scope=Scope.SESSION,
+            detail=detail,
+        )
+    if available >= required:
+        return needed
+    sharing = (
+        f", since that volume also holds the capture store at {store[0]}, which the "
+        f"capture fills first"
+        if store is not None and shared
+        else ""
+    )
+    raise refuse(
+        "snapshot-check-temp-full",
+        f"the temporary directory {scratch} has {available} bytes free and the "
+        f"integrity check's throwaway copy of the database needs about {required} "
+        f"there{sharing}; refusing before the capture rather than taking one the "
+        f"check cannot verify",
+        steps=CHECK_ROOM_STEPS,
+        scope=Scope.SESSION,
+        detail={**detail, "free_bytes": available},
+    )
+
+
+def check_had_no_room(
+    failed: rb_writer.IntegrityCheckCopyFailed, *, origin: tuple[str, ...] = ()
+) -> CratekitError | None:
+    """The refusal for a throwaway copy that ran out of room, or None for any other failure.
+
+    For the case the measure cannot rule out: the temporary volume filled
+    between the measure and the copy, or the copy took more than its estimate.
+    Only no space and a quota reached are read as no room; any other copy
+    failure is left to its caller, which records the database unverified as
+    before. The check never ran, so this says nothing about the database
+    either way, and the caller still never records it verified.
+    """
+    code = getattr(failed.error, "errno", None)
+    if code not in _NO_ROOM_ERRNOS:
+        return None
+    where = failed.scratch if failed.scratch is not None else "the temporary directory"
+    return refuse(
+        "snapshot-check-temp-full",
+        f"the integrity check could not run: its throwaway copy of {failed.source} "
+        f"found no room in {where} ({failed.error}), so the database has no verdict "
+        f"and is not recorded as verified; nothing here says it is damaged",
+        steps=CHECK_ROOM_STEPS,
+        scope=Scope.SESSION,
+        origin=origin,
+        detail={
+            "root": str(where),
+            "database": str(failed.source),
+            "errno": code,
+        },
+    )
+
+
 def incoming_bytes(source: Path) -> int:
     """What a copy of ``source`` will ALLOCATE at the destination.
 
@@ -764,7 +940,12 @@ def capture(
     destination_root = Path(root) if root is not None else store_root(cfg)
     # BEFORE the collision check and before anything is created, because a
     # refusal that has already made a directory is a refusal that did something.
-    assert_room_for_capture(cfg, root=destination_root)
+    estimate = assert_room_for_capture(cfg, root=destination_root)
+    # And the room the real check's throwaway copy needs on the temporary
+    # volume (R-1677), counted with the capture's own when they share one. A
+    # stand in verifier makes no copy, so nothing is asked of that volume.
+    if verifier is None:
+        assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))
     chosen = stamp or new_stamp(now)
     destination = destination_root / chosen
     if destination.exists():
@@ -854,11 +1035,23 @@ def capture(
     except OSError as exc:
         logger.warning("the capture at %s could not be walked before its check: %s", destination, exc)
         copied = None
-    verdict = (
-        _verify(record.database, verifier)
-        if record.database is not None and copied is not None
-        else False
-    )
+    manifest = destination / MANIFEST_NAME
+    try:
+        verdict = (
+            _verify(record.database, verifier)
+            if record.database is not None and copied is not None
+            else False
+        )
+    except rb_writer.IntegrityCheckCopyFailed as failed:
+        # The check never ran. No room for its copy is refused as that, with
+        # the capture recorded unverified first (R-1677); any other copy that
+        # could not be made leaves the capture unverified, as it always has.
+        no_room = check_had_no_room(failed)
+        if no_room is not None:
+            _record_unverified(record, manifest)
+            raise no_room from failed
+        logger.warning("the capture integrity check could not run, so it did not pass: %s", failed)
+        verdict = False
     if verdict and copied is not None:
         changed = _changed_by_the_check(copied, destination)
         if changed:
@@ -885,7 +1078,6 @@ def capture(
     # whatever a check leaves behind is flushed with the rest; the real check
     # reads a throwaway copy and changes nothing here (R-1665), and a check
     # that changed what the copy left was refused its verdict above.
-    manifest = destination / MANIFEST_NAME
     try:
         _flush(destination, destination_root)
     except OSError as exc:
@@ -1031,6 +1223,7 @@ def assert_sources_present(record: Capture) -> None:
 __all__ = [
     "ALLOCATION_UNIT",
     "CAPACITY_HEADROOM",
+    "CHECK_ROOM_STEPS",
     "DATABASE_KEY",
     "DIRECTORY_ENTRY_OVERHEAD",
     "MANIFEST_NAME",
@@ -1041,9 +1234,11 @@ __all__ = [
     "Verifier",
     "assert_room_for",
     "assert_room_for_capture",
+    "assert_room_for_check",
     "assert_sources_present",
     "assert_verified",
     "capture",
+    "check_had_no_room",
     "database_paths",
     "new_stamp",
     "read_manifest",

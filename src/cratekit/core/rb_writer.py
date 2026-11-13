@@ -1429,16 +1429,30 @@ def _copy_file_set(source: Path, destination: Path) -> Path:
     this loop is where the next sidecar gets added to one and not the other,
     and the copy that misses the log opens cleanly and is silently behind.
     """
-    copied = destination / source.name
-    shutil.copy2(source, copied)
-    for suffix in db_sidecar_suffixes():
-        sidecar = source.with_name(source.name + suffix)
-        if sidecar.exists():
-            shutil.copy2(sidecar, destination / sidecar.name)
-    playlist_xml = source.parent / MASTER_PLAYLIST_XML
-    if playlist_xml.exists():
-        shutil.copy2(playlist_xml, destination / MASTER_PLAYLIST_XML)
+    database, *companions = file_set(source)
+    copied = destination / database.name
+    shutil.copy2(database, copied)
+    for companion in companions:
+        if companion.exists():
+            shutil.copy2(companion, destination / companion.name)
     return copied
+
+
+def file_set(source: Path | str) -> tuple[Path, ...]:
+    """The database first, then every file a copy of it takes along, present or not.
+
+    The list :func:`_copy_file_set` copies from and the one the room for a
+    throwaway copy is measured over (``snapshot.assert_room_for_check``,
+    R-1677), so the two cannot drift apart: the companions derived from the
+    state schema (P4), and the playlist file the binding saves beside the
+    database. What is absent is copied as nothing and measured as nothing.
+    """
+    origin = Path(source)
+    return (
+        origin,
+        *(origin.with_name(origin.name + suffix) for suffix in db_sidecar_suffixes()),
+        origin.parent / MASTER_PLAYLIST_XML,
+    )
 
 
 def copy_file_set(source: Path | str, destination: Path) -> Path:
@@ -1450,6 +1464,47 @@ def copy_file_set(source: Path | str, destination: Path) -> Path:
     :func:`disposable_copy`.
     """
     return _copy_file_set(Path(source), destination)
+
+
+def disposable_root() -> Path:
+    """The directory every throwaway copy is made in: the system's temporary one.
+
+    Asked in this one place so that the room measured for a throwaway copy
+    (``snapshot.assert_room_for_check``, R-1677) is the room of the volume the
+    copy then lands on. ``tempfile`` reads ``TMPDIR`` (``TEMP`` on Windows),
+    which is how a person moves it to a volume with room. Raises
+    :class:`FileNotFoundError` when no usable temporary directory exists.
+    """
+    return Path(tempfile.gettempdir())
+
+
+class IntegrityCheckCopyFailed(Exception):
+    """The throwaway copy the integrity check reads could not be made (R-1677).
+
+    NO VERDICT, WHICH IS NOT A FAILED ONE. The check never opens the file it is
+    asked about (R-1665), so a copy that cannot be made leaves nothing checked
+    and nothing to say about the database. Raised by :func:`integrity_ok` only
+    when its caller asks with ``raise_copy_failure``, so a caller that can name
+    the cause, a full temporary volume above all, does, and every other caller
+    keeps the False it has always had. ``scratch`` is the directory the copy
+    was to go in, None when not even that could be found.
+    """
+
+    def __init__(self, source: Path | str, error: OSError, scratch: Path | None = None) -> None:
+        self.source = Path(source)
+        self.error = error
+        self.scratch = scratch
+        super().__init__(
+            f"the integrity check's throwaway copy of {self.source} could not be made "
+            f"in {scratch if scratch is not None else 'any temporary directory'}: {error}"
+        )
+
+
+def _scratch_or_none() -> Path | None:
+    try:
+        return disposable_root()
+    except OSError:
+        return None
 
 
 @contextmanager
@@ -1473,7 +1528,7 @@ def disposable_copy(source: Path | str) -> Iterator[Path]:
     who else holds them; ``read_only_copy`` below asks before it copies.
     """
     origin = Path(source)
-    directory = Path(tempfile.mkdtemp(prefix="cratekit-copy-"))
+    directory = Path(tempfile.mkdtemp(prefix="cratekit-copy-", dir=disposable_root()))
     try:
         yield _copy_file_set(origin, directory)
     finally:
@@ -1624,7 +1679,12 @@ def recorded_db_drives(db: Any) -> tuple[str | None, str | None]:
     return _clean(row[0]), _clean(row[1])
 
 
-def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -> bool:
+def integrity_ok(
+    snapshot_database: Path | str,
+    *,
+    unlock: bool | None = None,
+    raise_copy_failure: bool = False,
+) -> bool:
     """True when a snapshot passes SQLite's own consistency check.
 
     Run through the same open path the writers use rather than through a bare
@@ -1646,11 +1706,22 @@ def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -
     refused the capture as missing them. A copy that cannot be made answers
     False, like an unreadable snapshot: a check that could not run has not
     passed. The throwaway directory is removed whatever the check answered.
+
+    ``raise_copy_failure`` RAISES :class:`IntegrityCheckCopyFailed` IN PLACE OF
+    THAT FALSE, and only for the copy (R-1677): the capture asks for it so a
+    temporary volume with no room for the copy is refused as that, under its
+    own slug, rather than as a capture that failed its check with the remedy
+    to report a defect. Everything after the copy, an open refused, a
+    consistency check not ok, an error from either or from the close, is the
+    check's own answer and stays False whatever was asked, so a real integrity
+    failure is never told as a copy that could not be made.
     """
     from sqlalchemy import text
 
+    copied = False
     try:
         with disposable_copy(snapshot_database) as checked:
+            copied = True
             try:
                 db = open_db(checked, check_app_version=False, unlock=unlock)
             except RekordboxUnavailable:
@@ -1666,6 +1737,8 @@ def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -
                 # left open would hold its files while it goes.
                 close_db(db)
     except OSError as exc:
+        if raise_copy_failure and not copied:
+            raise IntegrityCheckCopyFailed(snapshot_database, exc, _scratch_or_none()) from exc
         logger.warning(
             "the integrity check could not copy %s to check it, so it did not pass: %s",
             snapshot_database,
@@ -4006,6 +4079,9 @@ __all__ = [
     "pending_changes",
     "pending_objects",
     "integration_db_path",
+    "IntegrityCheckCopyFailed",
+    "disposable_root",
+    "file_set",
     "integrity_ok",
     "is_folder",
     "live_db_path",

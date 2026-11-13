@@ -199,6 +199,7 @@ PINNED_NON_RESERVED_CAUSES = frozenset({
     'setbuild-supplied-needs-unowned',
     'setbuild-unowned-key-missing',
     'smoke-test-failed',
+    'snapshot-check-temp-full',  # 2026-11-13, R-1677: the check's throwaway copy with no room.
     'snapshot-integrity-failed',
     'snapshot-store-full',
     'soft-delete-marker-unreadable',
@@ -930,6 +931,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'setbuild-supplied-needs-unowned',
         'setbuild-unowned-key-missing',
         'smoke-test-failed',
+        'snapshot-check-temp-full',  # 2026-11-13, R-1677: the check's throwaway copy with no room.
         'snapshot-identity-unrecorded',
         'snapshot-integrity-failed',
         'snapshot-library-mismatch',
@@ -1180,9 +1182,11 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'session-lock-held',
         'utf-8',
     ],
+    # 2026-11-13, R-1677: the check's throwaway copy with no room joined.
     'core/snapshot.py': [
         'internal-error',
         'library-database-missing',
+        'snapshot-check-temp-full',
         'snapshot-integrity-failed',
         'snapshot-store-full',
         'utf-8',
@@ -2909,9 +2913,11 @@ PINNED_LITERAL_HOLDERS = {
         'session-committed-unverified',
         'session-lock-held',
     ],
+    # 2026-11-13, R-1677: the check's throwaway copy with no room joined.
     'core/snapshot.py': [
         'internal-error',
         'library-database-missing',
+        'snapshot-check-temp-full',
         'snapshot-integrity-failed',
         'snapshot-store-full',
     ],
