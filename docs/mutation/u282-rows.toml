@@ -47,15 +47,6 @@ old = '''                declined if resolved.genre is None and declined is not 
 new = '''                resolved,'''
 
 [[rows]]
-id = "D4_first_decline_kept"
-description = "search: each Discogs decline replaces the held one rather than the first being kept"
-file = "src/cratekit/tagging/searchers.py"
-surface = "user"
-tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
-old = '''                declined = declined or resolved'''
-new = '''                declined = resolved'''
-
-[[rows]]
 id = "D5_held_decline_dropped"
 description = "search: a held Discogs decline is forgotten at the walk's end, so a Discogs decline beside a Beatport miss is a no-hit and beside a refusal an outage (merge blocker 3)"
 file = "src/cratekit/tagging/searchers.py"
@@ -223,5 +214,35 @@ description = "search: a rejected token is recorded with the no token note, so t
 file = "src/cratekit/tagging/searchers.py"
 surface = "user"
 tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_catalogue_searcher.py", "tests/test_beatport_refusal.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tagging_engine.py", "tests/test_title_matcher.py", "tests/test_tag_suggest.py"]
-old = '''                    passed.append(NotAsked(DISCOGS, f"{NOT_SENT}{refusal.cause.message}"))'''
-new = '''                    passed.append(NotAsked(DISCOGS, DISCOGS_NO_TOKEN))'''
+old = '''                        NotAsked(DISCOGS, f"{DISCOGS_TOKEN_REFUSED}{refusal.cause.message}")'''
+new = '''                        NotAsked(DISCOGS, DISCOGS_NO_TOKEN)'''
+
+[[rows]]
+id = "C1_refused_token_not_counted"
+description = "_summary: a refused token's not-asked is never counted, so the sweep says nothing about it (round two's BLOCKING)"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tag_suggest.py"]
+old = '''                discogs_refused += 1'''
+new = '''                discogs_refused += 0'''
+
+[[rows]]
+id = "C2_refused_token_not_warned"
+description = "_discogs_warnings: the refused token's warning is never raised"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tag_suggest.py"]
+old = '''    if refused:
+        warnings.append('''
+new = '''    if False:
+        warnings.append('''
+
+[[rows]]
+id = "C3_label_genre_counted_as_owed"
+description = "_summary: a file whose label gave its genre is counted as having no token, overstating the warning"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_discogs_first.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py", "tests/test_tag_suggest.py"]
+old = '''                and str(report.get("source") or "") != tag_engine.LABEL_GENRE
+            )'''
+new = '''            )'''

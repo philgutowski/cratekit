@@ -589,3 +589,33 @@ def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propaga
     with pytest.raises(CratekitError) as raised:
         searcher(ARTIST, TITLE)
     assert raised.value.cause.reason == "internal-error"
+
+
+def test_the_no_token_count_leaves_out_files_whose_genre_was_their_own_or_their_labels(
+    monkeypatch,
+):
+    """Discogs is asked first, so with no token it is not-asked on every file
+    searched; only a file whose genre was owed to a catalogue is counted."""
+    from cratekit.tagging import artifacts
+    from cratekit.tagging import cli as tag_cli
+
+    def record(**fields):
+        return {
+            "item": fields.pop("item"),
+            "answers": [
+                {"source": searchers.DISCOGS, "answer": searchers.NOT_ASKED,
+                 "note": searchers.DISCOGS_NO_TOKEN},
+                {"source": searchers.BEATPORT, "answer": "matched"},
+            ],
+            **fields,
+        }
+
+    reports = [
+        record(item="owed.flac", genre_written="House", source=searchers.BEATPORT),
+        record(item="own.flac", skipped=tag.HAS_GENRE),
+        record(item="label.flac", genre_written="House", source=tag.LABEL_GENRE),
+    ]
+    monkeypatch.setattr(artifacts, "committed", lambda cfg, job_id: iter(reports))
+    summary = tag_cli._summary(None, "job")
+    assert summary["discogs_without_token"] == 1
+    assert summary["discogs_token_refused"] == 0
