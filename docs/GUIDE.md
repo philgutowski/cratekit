@@ -23,7 +23,7 @@ crate doctor
   personal access token (discogs.com/settings/developers, Generate new
   token), then asks `Link Discogs now?`. The token is typed or pasted unseen,
   checked with one call to Discogs, and stored in the keychain as
-  `discogs-token` only once Discogs accepts it. A token Discogs refuses is
+  `discogs-token` once Discogs accepts it. A token Discogs refuses is
   said so, asked again up to three times, and never stored. If Discogs cannot
   be reached, or refuses the computer rather than the token, the token is
   stored with a note that it was not checked. Saying no, or entering
