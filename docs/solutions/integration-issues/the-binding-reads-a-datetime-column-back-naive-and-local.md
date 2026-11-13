@@ -55,6 +55,9 @@ whole row fails to load. East of UTC it loads as `0001-01-01 09:00`, which a
 reader converting it again cannot convert either. `core/rb_dates.py` wraps
 the binding's `tables.string_to_datetime`, installed by `open_db`, so such a
 stamp reads as `FLOOR` (`0001-01-02`) or `CEILING` (`9999-12-30`), a day
-inside the calendar and convertible in any zone. **A test of this must set the
+inside the calendar and convertible in any zone. It also wraps
+`aux_files.MasterPlaylistXml.update`, since the binding's `commit` copies each
+playlist's `updated_at` into `masterPlaylists6.xml`: a bound is a value the
+seam made up, so it is never written there. **A test of this must set the
 process west of UTC** (`deadca7_fixtures.west_of_utc()`): the container and CI
 run at UTC, where the binding never overflows and the test passes by accident.
