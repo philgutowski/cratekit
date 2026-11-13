@@ -65,6 +65,7 @@ from cratekit.acquire.adapter import (
     verify_applied,
 )
 from cratekit.core import binaries, config, provider_gate, secrets
+from cratekit.core.cause import CratekitError
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -992,13 +993,16 @@ def drive() -> Iterator[_Drive]:
 
     A WRITE BACK THAT FAILS NEVER REPLACES THE DRIVE'S OWN ANSWER (round one).
     A keychain that cannot take the session, the product's own opt in for a
-    machine with none among them, would otherwise turn a finished download
-    into a defect report and a parked one's ``auth-failed`` into the same. The
-    keychain keeps the session it had, whose refresh token still logs in, and
-    the failure becomes :data:`SESSION_NOT_STORED` on the verb's report. On a
-    way out by an exception nothing reaches a report, so it is dropped and the
-    drive's own error is the one raised. Anything else the close raises after a
-    drive that returned is a defect, and raises.
+    machine with none among them, or a credential index it cannot read after
+    the keychain took it, would otherwise turn a finished download into a
+    failure and a parked one's ``auth-failed`` into another cause. The stored
+    session is left as it was, its refresh token still logs in, and the
+    failure becomes :data:`SESSION_NOT_STORED` on the drive's result, which a
+    verb that finished reports; a verb that parked or failed reports its own
+    cause instead, as it does every other warning. On a way out by an exception
+    nothing reaches a report, so it is dropped and the drive's own error is the
+    one raised. Anything else the close raises after a drive that returned is
+    a defect, and raises.
     """
     held = _Drive()
     entered = _DRIVE.set(held)
@@ -1010,14 +1014,16 @@ def drive() -> Iterator[_Drive]:
         _DRIVE.reset(entered)
         try:
             held.close()
-        except (secrets.CredentialError, OSError) as exc:
+        except (secrets.CredentialError, CratekitError, OSError) as exc:
+            # The class and not the words: a credential refusal's words are
+            # written for the person setting one up, and here they are not.
             held.warnings.append(
                 {
                     "code": SESSION_NOT_STORED,
                     "message": (
                         f"the provider session this download refreshed could not be "
-                        f"stored ({exc}); the keychain keeps the session it had, and "
-                        f"the next run logs in from it"
+                        f"stored ({type(exc).__name__}); the stored session is left "
+                        f"as it was, and the next run logs in from it"
                     ),
                 }
             )

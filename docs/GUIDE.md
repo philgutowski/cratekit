@@ -307,9 +307,10 @@ crate acquire audit                # files that break the lossless policy
 adapter, paced. A track refused for good is skipped and named in an
 `acquire-refused` warning. The vendored adapter logs in to the provider once
 for each run of a job, not once a track, and stores a session the provider
-refreshed when the run ends; a keychain that cannot take it is said in a
-`provider-session-not-stored` warning, and the next run logs in from the
-session the keychain still holds.
+refreshed when the run ends. When the session cannot be stored, the stored one
+is left as it was and the next run logs in from it; a run that finished says so
+in a `provider-session-not-stored` warning, and a run that parked or failed
+reports its own cause.
 
 Then the tail and the landing, in this order (`sync land`, `label sync --go`
 and `sync bandcamp` run it for you):

@@ -1010,6 +1010,8 @@ def test_a_fetch_that_meets_a_dead_session_is_remembered(cfg, tmp_path, tool, pr
         asked = len(provider.asked)
         with pytest.raises(vendored.AdapterAuthFailed):
             source.authenticate()
+        with pytest.raises(vendored.AdapterAuthFailed):
+            source.offer(vendored.TrackRequest(key="2"))
     assert len(provider.asked) == asked
 
 
@@ -1048,3 +1050,75 @@ def test_a_process_id_no_process_can_have_is_left_and_does_not_raise(temporary, 
         pass
 
     assert left.exists()
+
+
+
+def test_a_token_file_that_cannot_be_written_at_the_close_is_a_warning(
+    cfg, library, tool, provider, stored, temporary, monkeypatch
+):
+    tracks = keys(2)
+    tool.session.refresh_at = tracks[0]
+    job_id = queued(library, tracks)
+    real = config.atomic_write_bytes
+
+    def full(data, path, **kwargs):
+        if Path(path).name == vendored.TOKEN_FILENAME and json.loads(data)["access_token"] == "FAKE-value-3":
+            raise OSError(28, "No space left on device")
+        return real(data, path, **kwargs)
+
+    monkeypatch.setattr(config, "atomic_write_bytes", full)
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    assert vendored.SESSION_NOT_STORED in {w["code"] for w in envelope["warnings"]}
+    assert stored_now() == STORED
+    assert token_directories(temporary) == []
+
+
+def test_an_index_that_refuses_after_the_keychain_took_the_session_is_a_warning(
+    cfg, library, tool, provider, stored, temporary, monkeypatch
+):
+    """Round two: the write's index step refuses with the product's own cause."""
+    from cratekit.core.cause import refuse
+
+    tracks = keys(2)
+    tool.session.refresh_at = tracks[0]
+    job_id = queued(library, tracks)
+
+    def unreadable(name):
+        raise refuse("credential-index-unreadable", "the credential index could not be read")
+
+    monkeypatch.setattr(secrets, "_record_name", unreadable)
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    noted = [w for w in envelope["warnings"] if w["code"] == vendored.SESSION_NOT_STORED]
+    assert len(noted) == 1
+    assert "CRATE_ALLOW_ENV_CREDENTIALS" not in noted[0]["message"]
+
+
+def test_a_defect_at_the_close_of_a_drive_that_raised_leaves_the_drives_own_error(
+    cfg, library, tool, provider, stored, temporary, monkeypatch
+):
+    """Every item failed: the engine's no evidence refusal is the drive's own
+    answer, and a defect in the close must not replace it."""
+    def broken_capture(self, scope):
+        raise TypeError("a defect in the capture")
+
+    def broken() -> None:
+        raise RuntimeError("the stream manifest could not be parsed")
+
+    monkeypatch.setattr(vendored._VendoredSource, "capture", broken_capture)
+    tracks = keys(2)
+    for key in tracks:
+        tool.during[key] = broken
+    job_id = queued(library, tracks)
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code != int(ExitCode.OK), envelope
+    assert envelope["cause"]["reason"] != "internal-error", envelope
+    assert set(states(job_id).values()) == {jobs.ItemState.FAILED}
+    assert token_directories(temporary) == []
