@@ -179,13 +179,15 @@ def test_the_manifest_is_followed_by_a_flush_of_the_directory_that_holds_it(cfg,
 
 
 def test_the_flush_follows_the_check_so_what_the_check_leaves_is_flushed(cfg, monkeypatch):
-    """The check opens the copy, and closing a database can change its files.
+    """The flush runs after the check, over what is there then.
 
-    Driven with the real check on a database with an open log, closing it
-    folds the log into the main file and removes the engine's companion files
-    from the capture. So the flush runs after the check, over what is there
-    then. Pinned here with a check that leaves a file of its own behind: a
-    flush moved ahead of the check would not have reached it.
+    The real check once opened the capture, and closing it on a database with
+    an open log removed the engine's companion files from the capture. It now
+    reads a throwaway copy, and a check that removes or rewrites part of the
+    capture is refused its verdict (R-1665), but a check may still ADD a file,
+    which no record lists and the flush must still reach. Pinned here with a
+    check that leaves a file of its own behind: a flush moved ahead of the
+    check would not have reached it.
     """
     left: list[Path] = []
 

@@ -116,6 +116,12 @@ NO_ISRC_FILES = "tag-folder-no-isrc"
 #: a person who never recorded a token needs to hear that Discogs exists.
 DISCOGS_NO_TOKEN_FILES = "tag-folder-discogs-no-token"
 
+#: The warning that counts the files Discogs was not read for because it
+#: refused the recorded token (U282's review). Discogs is asked first and a
+#: refusal no longer stops the sweep before Beatport, so without this a sweep
+#: Beatport settled whole would end clean over a token that no longer works.
+DISCOGS_TOKEN_REFUSED_FILES = "tag-folder-discogs-token-refused"
+
 
 #: The warning a sweep queued with ``--label`` carries when that label is
 #: registered with no genre (U178). Its files are searched as they always were,
@@ -313,6 +319,7 @@ def _summary(
     off_taxonomy: dict[str, int] = {}
     tagged = 0
     discogs_without_token = 0
+    discogs_refused = 0
     for report in artifacts.committed(cfg, job_id):
         reason = str(report.get("skipped") or "")
         source_genre = str(report.get("source_genre") or "")
@@ -371,14 +378,28 @@ def _summary(
                 if note.startswith(searchers.NOT_SENT):
                     not_sent[source] += 1
             # A FILE SEARCHED ONLY FOR ITS PICTURE is not one Discogs' genre was
-            # owed to, so it is not counted (U244's review): it already has one.
-            if (
+            # owed to, so it is not counted (U244's review): it already has one,
+            # its own or its label's (U282's review).
+            owed = (
                 reason != tag_engine.HAS_GENRE
+                and str(report.get("source") or "") != tag_engine.LABEL_GENRE
+            )
+            if (
+                owed
                 and said.get("source") == searchers.DISCOGS
                 and word == searchers.NOT_ASKED
                 and said.get("note") in searchers.DISCOGS_UNASKED_NOTES
             ):
                 discogs_without_token += 1
+            # A REFUSED TOKEN IS COUNTED ON EVERY FILE IT CAME UP ON, owed a
+            # genre or not (U282's review): the walk goes on to Beatport past
+            # it, so this count is the only place the refusal reaches.
+            if (
+                said.get("source") == searchers.DISCOGS
+                and word == searchers.NOT_ASKED
+                and str(said.get("note") or "").startswith(searchers.DISCOGS_TOKEN_REFUSED)
+            ):
+                discogs_refused += 1
     reported = {row["item"] for row in files}
     for item_id, cause in (causes or {}).items():
         if item_id in reported:
@@ -410,6 +431,7 @@ def _summary(
         "challenged": challenged,
         "not_sent": not_sent,
         "discogs_without_token": discogs_without_token,
+        "discogs_token_refused": discogs_refused,
         "art_repair": art_repair,
         "art_fetch": art_fetch,
     }
@@ -592,18 +614,40 @@ def _discogs_warnings(summary: dict) -> tuple[dict[str, str], ...]:
 
     THOSE FILES ARE NOT NO-HIT. Each rides ``sources-unread`` unless another
     catalogue settled it, and the next run asks again; this says what would let
-    it ask Discogs, once, however many files it was.
+    it ask Discogs, once, however many files it was. Since U282 Discogs is
+    asked first, so with no token this counts every file that needed a genre
+    from a catalogue, those Beatport tagged among them.
+
+    A TOKEN DISCOGS REFUSED IS SAID APART (U282's review). The person recorded
+    one and believes it works; Discogs was not read for those files, and a
+    sweep Beatport settled whole would otherwise end with no word of it.
     """
+    warnings: list[dict[str, str]] = []
+    refused = int(summary.get("discogs_token_refused") or 0)
+    if refused:
+        warnings.append(
+            {
+                "code": DISCOGS_TOKEN_REFUSED_FILES,
+                "message": (
+                    f"Discogs refused the recorded token, so it was not read for "
+                    f"{refused} file(s); the other catalogues were asked about "
+                    f"them as usual. To record a working one: "
+                    f"{searchers.DISCOGS_LOGIN_STEPS}"
+                ),
+            }
+        )
     count = int(summary.get("discogs_without_token") or 0)
     if not count:
-        return ()
+        return tuple(warnings)
     return (
+        *warnings,
         {
             "code": DISCOGS_NO_TOKEN_FILES,
             "message": (
                 f"Discogs was not asked about {count} file(s) because no Discogs "
                 f"token is recorded, or the keychain no longer holds the recorded "
-                f"one; those files were not reported as no-hit. To ask it: "
+                f"one; any of them no other catalogue tagged was not reported as "
+                f"no-hit. To ask it: "
                 f"{searchers.DISCOGS_LOGIN_STEPS}"
             ),
         },

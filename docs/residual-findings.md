@@ -52286,3 +52286,210 @@ does the same a track at a time, so U270 did not cause it.
 reported as already there rather than recorded, or the membership is read
 again before each batch. Ledger only by origin; its cost is a prune taking off
 a person's track, so it is worth a card if it is ever met live.
+
+---
+
+## R-1675. A file that needs only its picture asks Discogs first, which never names one
+
+**Found:** at the build of #798, U282, 2026-11-13.
+
+**The mechanism.** `tag.tag_one` asks the searcher about a file that already
+has a genre (its own, or its registered label's) when it has no picture,
+because only its cover is wanted. The searcher's signature is `(artist,
+title)`, so it cannot tell a picture-only file from one that needs a genre,
+and since U282 its walk asks Discogs first. Discogs names no picture, so for
+such a file its answer is spent: a database search and up to three release
+reads, each paced, before Beatport is asked for the cover through the hit's
+`ask_picture`.
+
+**Measured cost.** Driven on fakes: a three file sweep with one picture-only
+file sends Discogs three searches where only the two genre-needing files
+needed one (U282's review, round one). A person pays time, about five seconds
+of pacing per such file, and Discogs' sixty a minute budget. No wrong write,
+no false report: the cover arrives as before.
+
+**Closes when:** the searcher is told what the file needs, a keyword on the
+shipped searcher or a second binder for a picture-only question, and a
+picture-only file asks the record shops alone. Ledger only.
+
+---
+
+## R-1676. The integrity check's answer for a consistency check that raises after a good open is held by no test that runs on Linux
+
+**Found:** at the review of #804, R-1665, 2026-11-13.
+
+**The mechanism.** `rb_writer.integrity_ok` answers False when `PRAGMA
+quick_check` raises after the open succeeded (`except Exception: return
+False`). Mutated to answer True, the only tests that fail are the two sealed
+database tests in `tests/test_rb_writer_db.py`, which fail on the Linux
+container anyway because it runs as root, so on Linux the branch is held by
+nothing. The guard predates R-1665; the round two review found it while
+checking that R-1665's new damage test reaches the consistency check's own
+verdict, which it does.
+
+**Measured cost.** None driven. Four damaged copies were tried (a truncated
+tail, an index cell count of 0xffff, a garbage index body, a garbage root of
+an empty table) and none made `quick_check` raise after a good open, so the
+input that would reach this branch is unmeasured.
+
+**Closes when:** a damaged copy that opens and then makes `quick_check`
+raise is found and pinned, or the macOS battery is confirmed to kill the
+mutant through the sealed database tests. Ledger only: no producer is known.
+
+---
+
+## R-1677. The integrity check's throwaway copy needs room on the temporary volume that nothing measures, and a full one refuses the write as a failed check
+
+**Found:** at the review of #804, R-1665, 2026-11-13.
+
+**The mechanism.** Since R-1665, `rb_writer.integrity_ok` copies the file set
+it checks (the database, its log and index, the legacy playlist file) into a
+private directory under the system's temporary directory and checks the copy,
+so the capture itself is never opened. `snapshot.assert_room_for_capture`
+measures only the capture store, on the library volume, so nothing asks
+whether the temporary volume can hold a second copy of the database. When it
+cannot, the copy raises, `integrity_ok` answers False with a log warning
+naming the error, the capture records itself not verified, and every guarded
+write refuses through `snapshot.assert_verified` with "did not pass its
+integrity check" and the `report-defect` remedy. The true cause, no space on
+the temporary volume, is in the log only.
+
+**Measured cost.** Fails closed: nothing commits behind a capture that was
+not checked, so no data is at risk. The review drove `snapshot.capture` with
+the temporary directory on a 256 KiB tmpfs: the branch recorded the capture
+not verified and refused, the temporary directory was left empty, and the
+base recorded it verified. At verb level (`test_inbox_rotate` with the
+temporary directory on tmpfs of 128 KiB to 800 KiB) base and branch failed and
+passed at the same sizes, because SQLite's own temporary files already need
+that much on the suite's small fixture. Whether a window exists on a full size
+library, where the database is hundreds of megabytes and SQLite's own needs
+are far smaller, is unmeasured; if it does, a DJ is told the capture failed
+its check and to report a defect, when the disk is full.
+
+**Closes when:** the room the throwaway copy needs is measured before the
+capture and refused under the room slug with a remedy naming the temporary
+volume, or the throwaway copy is placed on the store's volume and counted in
+`assert_room_for_capture`, with a test that fills the temporary volume and
+asserts the refusal names it. Earns an issue: a person is told something false
+(board bar b) on the path every guarded write takes.
+
+---
+
+## R-1678. A battery record read across an environment difference ends in an invalid batch blamed on the apparatus, not in a refusal naming the difference
+
+**Found:** at review round one of #700, U271, 2026-11-13.
+
+**The mechanism.** `scripts/mutate.py`'s `read_battery_verdict` keys the
+battery's record on the commit, the tree, the host and boot id, the checkout,
+the interpreter, the known failures file, an inherited `PYTEST_ADDOPTS`, and
+a run that ran all it collected. It does not key the rest of the environment
+the battery's suite ran in: `HOME`, the XDG directories and the Cratekit
+state directories, which the driver sandboxes for its own children and the
+battery does not, or a `TMPDIR` that moves where the inode bound test writes.
+A difference there that changes what the suite collects or fails is caught
+by the null control, a full run in the driver's own environment held to the
+read collected count, so the batch is declared invalid with "the apparatus
+is what is broken", where a measured baseline would have refused naming the
+failing test.
+
+**Measured cost.** No wrong table: every candidate round one drove ended in
+an invalid batch. The cost is a misattributed refusal and a session sent
+looking at the apparatus. On the real tree a collect only count was 20,403
+in both environments, and round two's real suite run read the record and ran
+a zero null control at 20,414, so the producer was not reached here.
+
+**Closes when:** the invalid batch's message, when the full baseline was read,
+says so and names `--measure-baseline` as the first thing to try, or the
+battery records and the driver compares the environment it sandboxes. Ledger
+only.
+
+---
+
+## R-1679. The mutation driver's own runs count no tests run, so a run that stopped early with no failure reads as complete
+
+**Found:** at review round two of #700, U271, 2026-11-13.
+
+**The mechanism.** U271 taught the cloud battery to count every test that
+reported and the driver to refuse a battery record whose count of tests run
+differs from its collected count. The driver's own plugin in
+`scripts/mutate.py` (`PLUGIN_SOURCE`, read by `run_pytest`) counts what was
+collected and what failed, and nothing that ran, so a run of its own that
+stopped early with tests unrun, and no failure among those that did run,
+would read as green. Since U271 the null control is the only full run in the
+driver's own environment whenever the full baseline is read, so it carries
+more weight than it did.
+
+**Measured cost.** Not driven to a cost. Round two drove three candidates and
+none produces an early stopped run with no failure: `pytest.exit` under the
+repository's xdist exits 3, which `run_pytest` raises as a measurement
+failure; `-x` arrives only through `PYTEST_ADDOPTS`, which the driver scrubs,
+and stops on a failure, which is a death; a worker crash with its restarts
+spent files the crash as a failure. Predates U271.
+
+**Closes when:** the driver's plugin counts the node ids that reported, as the
+battery's does, and `run_pytest` raises a measurement failure when that count
+differs from the collected count. Ledger only.
+
+---
+
+## R-1680. Setup says it is checking a Discogs token it then refuses to send for its shape, and a relink's last note drops an earlier refusal
+
+**Found:** at the review of #799, U283, 2026-11-13.
+
+**The mechanism.** `_link_discogs` writes "Checking the token with Discogs..."
+before `searchers.check_discogs_token`, which refuses a token that is not one
+printable word without a request, so the line precedes a refusal that says
+it was not sent. Separately, when one try is refused with a 401 and a later
+try meets an outage on a relink, the final note names the outage only.
+
+**Measured cost.** Driven by round two's reviewer with "two words", "x y"
+and "a b": each printed the line and then "it was not sent to Discogs".
+Nothing stored, nothing leaked; a wording cost only.
+
+**Closes when:** the line is written only for a token that will be sent, and
+a relink's final note names any earlier refusal. Ledger only.
+
+---
+
+## R-1681. A Discogs answer whose remaining count header runs past Python's integer digit limit raises ValueError out of a tag sweep's search
+
+**Found:** at the review of #799, U283, 2026-11-13.
+
+**The mechanism.** `searchers._remaining` reads `x-discogs-ratelimit-remaining`
+with `int(raw)` whenever the text is ASCII digits. A header of more than 4300
+digits makes `int` raise `ValueError`, which `DiscogsAsker._read` does not
+catch, and a sweep's `search` catches only `CratekitError`. Setup's token
+check meets the same raise and, since U283's first fix round, notes it as a
+FAIL with nothing stored; the sweep is older than this branch and unchanged.
+
+**Measured cost.** Driven by round two's reviewer:
+`discogs_asker(token, fetch=<a 5000 digit header>).ask(...)` raised
+`ValueError: Exceeds the limit (4300 digits)`. Not driven through a tag run.
+The only producer is a server posing as api.discogs.com; Discogs sends a
+count under a hundred.
+
+**Closes when:** `_remaining` returns None for a header longer than a handful
+of digits, with a test. Ledger only: no realistic producer.
+
+---
+
+## R-1682. With the environment credential opt in set, a Discogs token setup links or relinks is reported linked while the environment's token is the one every read returns
+
+**Found:** at the review of #799, U283, 2026-11-13.
+
+**The mechanism.** `secrets.get` prefers the environment variable when
+`CRATE_ALLOW_ENV_CREDENTIALS=1` and the token's variable are set. Setup's
+Discogs step checks and stores the typed token in the keychain and says
+"linked: Discogs accepted the token", and a later tag run reads the
+environment's token instead. `crate login discogs-token --from-file` already
+behaves the same way, and the brief required storing exactly as login does,
+so the step kept the shared store's precedence.
+
+**Measured cost.** Driven by the round one reviewer with both variables set
+and `--relink-discogs`: the note said linked while `secrets.get` returned the
+environment's value. Reachable only on a headless machine that opted in by
+name; nobody on the Mac sets the opt in.
+
+**Closes when:** setup and login both say, when the environment fallback is
+on and names this credential, that the environment's value is the one used.
+Ledger only: a maintainer's opt in, no data lost.

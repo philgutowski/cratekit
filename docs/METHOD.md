@@ -187,6 +187,22 @@ the subset as the test files importing the mutated module. A death on a subset
 is a real death. A zero on a subset is not yet a zero, so promote it to a full
 run before you report it.
 
+**The full baseline may be read, never the rest**, decided by Phillip on
+2026-11-13 (U271). On a cloud container `cloud_battery.py compare` and
+`baseline` leave a run record, `.cloud-battery/verdict.json`, and the driver
+given `--known-failures` reads its full baseline from it instead of running
+the suite again, but only when the record is for this HEAD's commit, the tree
+was clean throughout that run and is clean now, the host, the boot, the
+checkout and the interpreter are this run's, the known failures file is the
+same file by its sha256, and that run ran every test it collected with no
+`PYTEST_ADDOPTS` editing it. Any difference and the driver
+measures, naming why. A red record refuses the batch as a red baseline does.
+Every subset baseline is still measured, and the null control still runs the
+full suite in the driver's own environment, held to the read collected count.
+The table says which baseline was read and which measured; `--measure-baseline`
+measures regardless. So the rows are committed and `compare` run on that head
+before the driver, which is then one full run cheaper.
+
 **A zero death row on a guard with a USER FACING surface is acceptable only
 when a composite shows what it does hold.** Pair it with a mutation of the thing
 it guards and report both counts. A prose argument is not evidence.
@@ -534,7 +550,10 @@ every failing id whole: the battery reads them off pytest's own reports
 rather than its summary lines, whose ids it once cut at their first space so
 that one parametrized test failing for the machine excused a sibling failing
 for the branch, and both refuse a baseline whose header does not end `ids
-whole`, which is measured again (U268). Both name where the run kept
+whole`, which is measured again (U268). Each run of the battery that reaches
+its reading leaves a record of what it measured, which the mutation driver may read in place of
+its own full baseline for the same commit (U271, The mutation table above).
+Both name where the run kept
 its temporary files, `disk` or `memory` (U273): `baseline` runs on disk
 unless `--temp memory` asks for the memory filesystem, the header records
 the place, `compare` runs in the baseline's place and refuses a `--temp`

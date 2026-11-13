@@ -2115,9 +2115,10 @@ def test_the_wizard_offers_every_credential_the_profile_needs_and_records_it(con
     wizard = setup_verb._Wizard({}, Scripted(["yes", "yes", "yes", "yes"], values))
     setup_verb._capture_credentials(wizard, configured)
 
-    # OFFERED AND NOT REQUIRED (U244): the tagging verbs spend a Discogs token
-    # when there is one, so the wizard offers it to a profile that has them.
-    assert secrets.exists(str(secrets.Credential.DISCOGS_TOKEN))
+    # THE DISCOGS TOKEN IS ITS OWN STEP since U283, ``_link_discogs``, which
+    # checks it with Discogs before storing it; ``tests/test_setup_discogs.py``
+    # drives it. The loop passes it over so it is never asked for twice.
+    assert not secrets.exists(str(secrets.Credential.DISCOGS_TOKEN))
     assert secrets.exists(str(secrets.Credential.PROVIDER_SESSION))
     assert secrets.exists(str(secrets.Credential.IDENTIFY_KEY))
     assert all(note.status is doctor.Status.OK for note in wizard.notes)

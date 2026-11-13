@@ -50,6 +50,21 @@ wrote nothing or its counts disagree with pytest's summary line. The header's
 last field is `ids whole`, and `compare` and the driver refuse a baseline
 without it, which is every baseline measured before U268.
 
+Each run that reaches its reading leaves a record the mutation driver may read
+in place of its own full baseline (U271, Phillip's answer of 2026-11-13): `.cloud-battery/verdict.json`,
+written by `compare` and by `baseline`. It names the commit the run measured,
+read before the run, and whether the tree was clean throughout, read by
+`git status --porcelain --untracked-files=all` before and after it, with HEAD
+unmoved; the host and
+the kernel's boot id, since every cloud container is called `vm`; the checkout
+and the interpreter; the sha256 of the known failures file the run was read
+against; any `PYTEST_ADDOPTS` the run inherited; the verdict; and what the run
+measured: the collected count, how many of those tests ran, pytest's exit
+code, the failing ids and the collection errors. `scripts/mutate.py` reads
+it only when every one of those keys is its own, and measures otherwise.
+`last-compare.txt`, the line `release.py cut` reads, takes its commit from
+before the run too and says `dirty` when the tree moved during it.
+
 Every run keeps its temporary files in one named place (U273), `memory` or
 `disk`, chosen by `baseline` and written into its header, since the suite
 writes about 2 GB of scratch files a run and a container's disk makes it wait
@@ -71,11 +86,19 @@ lists the tests it ran on disk, and `scripts/mutate.py --known-failures`
 reads both and runs its own children the same way. A baseline that names no
 place, every one measured before U273, is refused with the command that
 measures it again.
+
+A run in memory writes the run record U271 reads like any other: its failing
+ids are the ones after the rerun on disk, and its collected and ran counts
+are the memory run's, which ran every test. The record names the known
+failures file by digest, and that file's header names the place, so the
+driver never reads a run made in one place against a baseline made in the
+other.
 """
 
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import os
 import re
@@ -86,12 +109,24 @@ import tempfile
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import datetime, timezone
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
 STATE = ROOT / ".cloud-battery"
 BASELINE = STATE / "baseline.txt"
 VERDICT = STATE / "last-compare.txt"
+#: The run record's file name, inside ``STATE``, and the format the mutation
+#: driver reads (U271). The name and the format are repeated in
+#: ``scripts/mutate.py`` as ``BATTERY_VERDICT`` and ``BATTERY_VERDICT_FORMAT``,
+#: and a test holds the two scripts to the same values.
+RUN_RECORD_NAME = "verdict.json"
+RUN_RECORD_FORMAT = 1
+#: Linux's id for this boot of the kernel. Every cloud container is called
+#: `vm`, so the host name alone names no machine; the boot id does, and it is
+#: the same key `scripts/mutate.py` reads. Absent on macOS, where both read it
+#: as empty.
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
 PYTHON = ROOT / ".venv" / "bin" / "python"
 RUFF = ROOT / ".venv" / "bin" / "ruff"
 
@@ -149,9 +184,39 @@ REPORT_VARIABLE = "CLOUD_BATTERY_REPORT_PATH"
 # failures those lines named, each by its whole `nodeid`. It writes on the xdist
 # controller only, which receives every worker's reports; a worker has
 # `workerinput` and writes nothing.
+#
+# It also writes the collected count, how many of those tests reported at all,
+# and which errors were collection errors (U271), which the mutation driver
+# reads from the run record: a run that stopped early can exit 1 like a
+# complete red one (under xdist, a worker crash with its restarts spent; run
+# serially, `-x` or `pytest.exit(returncode=1)`), and only the count of tests
+# that reported tells the two apart. A skipped test, an xfail that never runs
+# and a setup error each report, so each counts as run. The count is
+# read as the driver's own plugin reads it: off the hook xdist fires on the
+# controller when a worker finishes collecting, since the controller collects
+# nothing itself, and off the session's items in a run without workers.
 PLUGIN_SOURCE = '''
 import json
 import os
+
+import pytest
+
+_COLLECTED = {"count": None}
+_RAN = set()
+
+
+def pytest_collection_finish(session):
+    if session.items:
+        _COLLECTED["count"] = len(session.items)
+
+
+@pytest.hookimpl(optionalhook=True)
+def pytest_xdist_node_collection_finished(node, ids):
+    _COLLECTED["count"] = len(ids)
+
+
+def pytest_runtest_logreport(report):
+    _RAN.add(report.nodeid)
 
 
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
@@ -161,7 +226,12 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     if not out:
         return
     passed = terminalreporter.stats.get("passed", [])
-    found = {"passed": {"ids": [getattr(report, "nodeid", None) for report in passed]}}
+    found = {
+        "collected": _COLLECTED["count"],
+        "ran": len(_RAN),
+        "collect_errors": [],
+        "passed": {"ids": [getattr(report, "nodeid", None) for report in passed]},
+    }
     for category in ("failed", "error"):
         reports = terminalreporter.stats.get(category, [])
         found[category] = {
@@ -170,6 +240,11 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
                 1 for report in reports if getattr(report, "count_towards_summary", True)
             ),
         }
+        found["collect_errors"] += [
+            getattr(report, "nodeid", None)
+            for report in reports
+            if getattr(report, "when", None) == "collect"
+        ]
     with open(out, "w", encoding="utf-8") as handle:
         json.dump(found, handle)
 '''
@@ -347,8 +422,17 @@ def refusal_for(place: str) -> str | None:
 
 
 @contextmanager
-def run_directory(place: str) -> Iterator[tuple[Path, Path]]:
-    """A fresh workspace in ``place`` and the temporary directory inside it, removed after."""
+def run_directory(place: str | None) -> Iterator[tuple[Path, Path | None]]:
+    """A fresh workspace in ``place`` and the temporary directory inside it, removed after.
+
+    No place is the run as it was before U273: the workspace in the inherited
+    temporary directory, and no ``TMPDIR`` for the suite. ``cmd_baseline`` and
+    ``cmd_compare`` always name one.
+    """
+    if place is None:
+        with tempfile.TemporaryDirectory(prefix="cloud-battery-") as tmp:
+            yield Path(tmp), None
+        return
     root, why = place_root(place)
     if root is None:
         raise SystemExit(f"temporary files: REFUSED, {why}")
@@ -359,8 +443,8 @@ def run_directory(place: str) -> Iterator[tuple[Path, Path]]:
         yield workspace, temp
 
 
-def _run_suite(place: str, extra: tuple[str, ...] = ()) -> tuple[dict, str]:
-    """One suite run in ``place``: its report and its summary line."""
+def _run_suite(place: str | None, extra: tuple[str, ...] = ()) -> tuple[dict, str, int]:
+    """One suite run in ``place``: its report, its summary line and pytest's exit code."""
     with run_directory(place) as (workspace, temp):
         (workspace / f"{PLUGIN_MODULE}.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
         report_path = workspace / "report.json"
@@ -368,7 +452,8 @@ def _run_suite(place: str, extra: tuple[str, ...] = ()) -> tuple[dict, str]:
         # fresh one would measure a different run.
         env = os.environ.copy()
         env[REPORT_VARIABLE] = str(report_path)
-        env["TMPDIR"] = str(temp)
+        if temp is not None:
+            env["TMPDIR"] = str(temp)
         env["PYTHONPATH"] = os.pathsep.join([str(workspace), env.get("PYTHONPATH", "")]).rstrip(
             os.pathsep
         )
@@ -388,18 +473,65 @@ def _run_suite(place: str, extra: tuple[str, ...] = ()) -> tuple[dict, str]:
                 "pytest wrote no report of its failing tests, so the run cannot be read"
             )
         report = json.loads(report_path.read_text(encoding="utf-8"))
-    return report, summary
+    return report, summary, result.returncode
 
 
 @dataclass(frozen=True)
-class Run:
-    """A measured run: its failing ids, its summary, and where its files were."""
+class SuiteRun:
+    """What one run of the suite measured.
 
-    ids: set[str]
+    ``collected``, ``ran`` and ``collect_errors`` are None when the run did
+    not say; ``ran`` counts the tests that reported at all, every one of the
+    collected in a run that was not stopped early,
+    and ``exit_code`` is
+    pytest's own, so a reader can tell a complete run (0 or 1) from an
+    interrupted one. ``place`` is where it kept its temporary files (U273),
+    None for the inherited temporary directory; ``on_disk`` names the tests
+    a run in memory ran again on disk, whose outcome there ``ids`` holds.
+    """
+
+    ids: frozenset[str]
     summary: str
-    place: str
+    collected: int | None
+    collect_errors: frozenset[str] | None
+    exit_code: int
+    ran: int | None = None
+    place: str | None = None
     on_disk: tuple[str, ...] = ()
     on_disk_summary: str = ""
+
+
+def failing_ids() -> tuple[set[str], str]:
+    """Run the suite and return the failing and erroring ids with the summary line."""
+    suite = measure_suite()
+    return set(suite.ids), suite.summary
+
+
+def measure_suite(place: str | None = None) -> SuiteRun:
+    """Run the suite in ``place`` and read every failing id whole, with what else it measured.
+
+    In memory, the tests on ``ON_DISK`` then run a second time on disk, and
+    their outcome there replaces their outcome in memory; the counts stay the
+    memory run's, which ran every test.
+    """
+    report, summary, exit_code = _run_suite(place)
+    ids = read_report(report, summary)
+    collect_errors = _read_collect_errors(report, ids)
+    listed = tuple(ON_DISK) if place == MEMORY else ()
+    on_disk_summary = ""
+    if listed:
+        ids, on_disk_summary = _rerun_on_disk(ids, listed)
+    return SuiteRun(
+        ids=frozenset(ids),
+        summary=summary,
+        collected=_read_count(report, "collected"),
+        collect_errors=collect_errors,
+        exit_code=exit_code,
+        ran=_read_count(report, "ran"),
+        place=place,
+        on_disk=listed,
+        on_disk_summary=on_disk_summary,
+    )
 
 
 def _ran(report: dict) -> set[str]:
@@ -416,20 +548,14 @@ def _ran(report: dict) -> set[str]:
     return ran
 
 
-def failing_ids(place: str) -> Run:
-    """Run the suite in ``place`` and return its failing and erroring ids.
+def _rerun_on_disk(ids: set[str], listed: tuple[str, ...]) -> tuple[set[str], str]:
+    """The ids with the listed tests' outcome read from a second run on disk.
 
-    In memory, the tests on ``ON_DISK`` then run a second time on disk, and
-    their outcome there replaces their outcome in memory. That run is refused
-    unless every listed test ran in it and nothing else did, apart from the
-    collection error of a listed test's file, which is read as its failure.
+    That run is refused unless every listed test ran in it and nothing else
+    did, apart from the collection error of a listed test's file, which is read
+    as its failure.
     """
-    report, summary = _run_suite(place)
-    ids = read_report(report, summary)
-    listed = tuple(ON_DISK) if place == MEMORY else ()
-    if not listed:
-        return Run(ids, summary, place)
-    disk_report, disk_summary = _run_suite(DISK, listed)
+    disk_report, disk_summary, _ = _run_suite(DISK, listed)
     disk_ids = read_report(disk_report, disk_summary)
     ran = _ran(disk_report)
     unread = {
@@ -444,7 +570,32 @@ def failing_ids(place: str) -> Run:
             f"on disk, so it cannot stand for them: not run {sorted(unread)}, "
             f"run unlisted {sorted(stray)}"
         )
-    return Run((ids - set(listed)) | disk_ids, summary, place, listed, disk_summary)
+    return (ids - set(listed)) | disk_ids, disk_summary
+
+
+def _read_count(report: dict, key: str) -> int | None:
+    """One of the report's counts, or None when it holds no count it could have read."""
+    count = report.get(key)
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        return count
+    return None
+
+
+def _read_collect_errors(report: dict, ids: set[str]) -> frozenset[str] | None:
+    """The collection errors, or None when the report does not say which they were.
+
+    Each must be one of the ids already read whole. A report that lists none of
+    its own, or one it does not list as failing or erroring, is not read: the
+    run itself is still read for `compare`, and the record says the collection
+    errors are unknown, which the mutation driver refuses to stand for its
+    baseline.
+    """
+    listed = report.get("collect_errors")
+    if not isinstance(listed, list) or not all(
+        isinstance(nodeid, str) and nodeid in ids for nodeid in listed
+    ):
+        return None
+    return frozenset(listed)
 
 
 def _summary_count(summary: str, pattern: str) -> int:
@@ -508,10 +659,13 @@ def cmd_baseline(args) -> int:
         return 1
     if not static_checks():
         return 1
-    measured = failing_ids(place)
+    at = head()
+    before = tree_state()
+    measured = measure_suite(place)
+    tree = measured_tree(before, tree_state())
     STATE.mkdir(exist_ok=True)
     lines = [
-        f"# commit {head()} host {socket.gethostname()} {TEMP_FIELD} {place} "
+        f"# commit {at} host {socket.gethostname()} {TEMP_FIELD} {place} "
         f"{FULL_HISTORY} {WHOLE_IDS}",
         f"# {measured.summary}",
         *(f"# on disk test {one}" for one in measured.on_disk),
@@ -522,13 +676,16 @@ def cmd_baseline(args) -> int:
         "".join(f"{line}\n" for line in lines) + "".join(f"{i}\n" for i in sorted(measured.ids)),
         encoding="utf-8",
     )
-    print(f"baseline at {head()}: {measured.summary}")
+    # Its own failures are the known ones by construction, so the verdict is
+    # clean against the file just written; the release reads compare's only.
+    record_run("baseline", "clean", measured, tree, file_digest(BASELINE))
+    print(f"baseline at {at}: {measured.summary}")
     print(_place_line(measured))
     print(f"{len(measured.ids)} machine bound failure(s) recorded in {BASELINE.relative_to(ROOT)}")
     return 0
 
 
-def _place_line(measured: Run) -> str:
+def _place_line(measured: SuiteRun) -> str:
     line = f"temporary files: {measured.place}"
     if measured.on_disk:
         line += (
@@ -612,16 +769,21 @@ def cmd_compare(args) -> int:
             f"and this machine cannot now: {why}"
         )
         return 2
+    # Read beside the ids it holds, so the record names the file they came from.
+    known_digest = file_digest(BASELINE)
     if not full_history_or_refuse():
         return 1
     if not static_checks():
         return 1
-    measured = failing_ids(base.place)
+    at = head()
+    before = tree_state()
+    measured = measure_suite(base.place)
+    tree = measured_tree(before, tree_state())
     ids = measured.ids
     still = sorted(ids & base.ids)
     new = sorted(ids - base.ids)
     gone = sorted(base.ids - ids)
-    print(f"branch at {head()}: {measured.summary}")
+    print(f"branch at {at}: {measured.summary}")
     print(f"baseline at {base.commit}: {len(base.ids)} failing")
     print(_place_line(measured))
     if measured.on_disk != base.on_disk:
@@ -637,22 +799,120 @@ def cmd_compare(args) -> int:
     print(f"NEWLY FAILING, yours: {len(new)}")
     for i in new:
         print(f"  {i}")
-    record_verdict("red" if new else "clean")
+    verdict = "red" if new else "clean"
+    record_verdict(verdict, tree)
+    record_run("compare", verdict, measured, tree, known_digest)
     return 1 if new else 0
 
 
-def record_verdict(verdict: str) -> None:
+@dataclass(frozen=True)
+class TreeState:
+    """The checkout as git reads it: HEAD's full sha, and whether nothing differs from it.
+
+    ``commit`` is empty and ``clean`` is False whenever git could not say,
+    because no answer is not an empty status.
+    """
+
+    commit: str
+    clean: bool
+
+
+def tree_state() -> TreeState:
+    """Read HEAD and the status of the checkout, untracked files included."""
+    sha = run(["git", "rev-parse", "HEAD"])
+    commit = sha.stdout.strip() if sha.returncode == 0 else ""
+    if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
+        commit = ""
+    # Untracked files listed whatever the checkout's own git config says, since
+    # `status.showUntrackedFiles=no` would otherwise hide a test file nobody
+    # committed from both this reading and the driver's.
+    status = run(["git", "status", "--porcelain", "--untracked-files=all"])
+    clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
+    return TreeState(commit=commit, clean=clean)
+
+
+def measured_tree(before: TreeState, after: TreeState) -> TreeState:
+    """The tree a run measured: the commit read before it, clean only if nothing moved.
+
+    A commit made while the suite ran is not what the suite measured, and a
+    file changed and put back while it ran may have been read changed, so a
+    change seen at either end, or a HEAD that moved, makes the run unclean.
+    """
+    clean = before.clean and after.clean and before.commit == after.commit
+    return TreeState(commit=before.commit, clean=clean)
+
+
+def file_digest(path: Path) -> str:
+    """The sha256 of a file's bytes, or empty when it cannot be read."""
+    try:
+        return hashlib.sha256(path.read_bytes()).hexdigest()
+    except OSError:
+        return ""
+
+
+def boot_id() -> str:
+    """This boot's id, or empty where the kernel keeps none (macOS)."""
+    try:
+        return BOOT_ID.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def record_verdict(verdict: str, tree: TreeState) -> None:
     """Write the verdict for the commit just measured, for `release.py cut` (U159).
 
     The full sha, so a release refuses a verdict from any other commit, and
-    `dirty` in place of the verdict when the tree carried uncommitted changes,
-    since then the run measured something no commit holds.
+    `dirty` in place of the verdict when the tree was not clean throughout the
+    run, since then the run measured something no commit holds. The sha is the
+    one read before the run (U271): read after it, a commit made while the
+    suite ran was named as the commit it measured.
     """
-    sha = run(["git", "rev-parse", "HEAD"]).stdout.strip()
-    if run(["git", "status", "--porcelain"]).stdout.strip():
+    if not tree.clean:
         verdict = "dirty"
     STATE.mkdir(exist_ok=True)
-    VERDICT.write_text(f"{sha} {verdict}\n")
+    VERDICT.write_text(f"{tree.commit} {verdict}\n")
+
+
+def record_run(
+    source: str, verdict: str, suite: SuiteRun, tree: TreeState, known_digest: str
+) -> None:
+    """Write the run record `scripts/mutate.py` may read in place of its full baseline (U271).
+
+    Written at the end of every run that reached its reading, a dirty or
+    interrupted one included, and the driver reads the keys and refuses the
+    record unless each is its own. A run stopped before that, by a red ruff or
+    scan or a report it could not read, leaves the previous record in place,
+    which still names the commit and the tree it measured. Written to a
+    temporary file and moved into place, so a reader never meets half of one.
+    """
+    record = {
+        "format": RUN_RECORD_FORMAT,
+        "source": source,
+        "commit": tree.commit,
+        "clean_tree": tree.clean,
+        "host": socket.gethostname(),
+        "boot_id": boot_id(),
+        "root": str(ROOT),
+        "python": str(PYTHON),
+        "known_failures_sha256": known_digest,
+        "verdict": verdict,
+        "summary": suite.summary,
+        "collected": suite.collected,
+        "ran": suite.ran,
+        "exit_code": suite.exit_code,
+        # The suite inherits the caller's environment, and a value here edits
+        # the run (a deselection, `-x`); the driver scrubs it from its own runs
+        # and reads no record of a run it edited.
+        "pytest_addopts": os.environ.get("PYTEST_ADDOPTS", ""),
+        "failing": sorted(suite.ids),
+        "collect_errors": None if suite.collect_errors is None else sorted(suite.collect_errors),
+        "when": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),
+    }
+    STATE.mkdir(exist_ok=True)
+    target = STATE / RUN_RECORD_NAME
+    partial = STATE / f".{RUN_RECORD_NAME}.partial"
+    partial.write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+    os.replace(partial, target)
 
 
 def main(argv: list[str]) -> int:

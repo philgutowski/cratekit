@@ -48,7 +48,13 @@ Nothing merges until all three are clean:
   fails on tests the branch newly breaks, and stops first on a red ruff or
   scan or a missing baseline. It compares whole node ids, and refuses a
   baseline measured before U268, whose ids were cut at their first space;
-  measure that one again. Each run keeps its temporary files in a fresh
+  measure that one again. Each run that reaches its reading leaves
+  `.cloud-battery/verdict.json`,
+  which `scripts/mutate.py --known-failures` reads in place of its own full
+  baseline when it is for the same commit, on a clean tree, on this machine,
+  with the same known failures file (U271); `--measure-baseline` measures
+  regardless.
+  Each run keeps its temporary files in a fresh
   directory of one place, disk unless `baseline --temp memory` names the
   memory filesystem, and `compare` runs where the baseline did, refusing a
   `--temp` naming the other; a baseline naming no place, measured before

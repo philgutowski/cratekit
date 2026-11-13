@@ -388,6 +388,56 @@ def _not_flushed(record: Capture, manifest: Path, exc: OSError) -> CratekitError
     )
 
 
+#: What a capture's walk records of one entry: a file's size and modification
+#: time, or None for a directory, whose own times move whenever an entry is
+#: added inside it and so say nothing about what it held.
+_Identity = tuple[int, int] | None
+
+
+def _walked(capture_root: Path) -> dict[Path, _Identity]:
+    """Every file and directory under a capture, with what identifies it.
+
+    DERIVED BY WALKING, as :func:`_harden` and :func:`_flush` are (P3), so it
+    covers what the writer copied, the coupled half and whatever is copied
+    next without a list. Raises the first :class:`OSError` the walk meets.
+    """
+    found: dict[Path, _Identity] = {}
+    for current, directories, files in os.walk(capture_root, onerror=_raise_walk_error):
+        here = Path(current)
+        for name in directories:
+            found[here / name] = None
+        for name in files:
+            status = (here / name).lstat()
+            found[here / name] = (status.st_size, status.st_mtime_ns)
+    return found
+
+
+def _changed_by_the_check(before: Mapping[Path, _Identity], capture_root: Path) -> list[str]:
+    """What the check removed or rewrote of the capture it was asked about.
+
+    THE CHECK READS, AND A CAPTURE IS WHAT WAS COPIED (R-1665). The real check
+    once opened the capture itself, and closing its handle folded the log into
+    the captured database and deleted the captured log and its index, which
+    the record already listed; the restore then refused the capture as missing
+    them. So a verdict counts only when everything the copy left is still
+    there as it was. Something the check ADDS is not asked about: it is in no
+    record, a restore never reads it, and the flush after the check covers it.
+    A walk that cannot finish answers as a change, since what it could not
+    read is what it cannot vouch for.
+    """
+    try:
+        after = _walked(capture_root)
+    except OSError as exc:
+        return [f"the capture could not be walked again: {exc}"]
+    changed: list[str] = []
+    for path, identity in before.items():
+        if path not in after:
+            changed.append(f"{path} was removed")
+        elif after[path] != identity:
+            changed.append(f"{path} was rewritten")
+    return changed
+
+
 def _verify(database: Path, verifier: Verifier | None) -> bool:
     """Run the integrity check, failing CLOSED on anything unexpected.
 
@@ -796,7 +846,28 @@ def capture(
         integrity_verified=False,
         sources=tuple(captured),
     )
-    verdict = _verify(record.database, verifier) if record.database is not None else False
+    # The capture as copied, read before the check and asked again after it,
+    # so the verdict is about the bytes the record lists and nothing the check
+    # did to them (R-1665). A capture that cannot be walked has no verdict.
+    try:
+        copied = _walked(destination)
+    except OSError as exc:
+        logger.warning("the capture at %s could not be walked before its check: %s", destination, exc)
+        copied = None
+    verdict = (
+        _verify(record.database, verifier)
+        if record.database is not None and copied is not None
+        else False
+    )
+    if verdict and copied is not None:
+        changed = _changed_by_the_check(copied, destination)
+        if changed:
+            logger.warning(
+                "the integrity check changed the capture at %s, so it is not verified: %s",
+                destination,
+                "; ".join(changed[:20]),
+            )
+            verdict = False
     record = Capture(
         stamp=record.stamp,
         root=record.root,
@@ -810,8 +881,10 @@ def capture(
     # through the page cache, so it passes whether or not the bytes reached the
     # drive. The manifest goes through the synced atomic writer, so without this
     # a power cut inside the write back window could leave a manifest saying
-    # verified beside a copy that is short or empty. After the check, because
-    # the check opens the copy and may leave the engine's files changed.
+    # verified beside a copy that is short or empty. After the check, so that
+    # whatever a check leaves behind is flushed with the rest; the real check
+    # reads a throwaway copy and changes nothing here (R-1665), and a check
+    # that changed what the copy left was refused its verdict above.
     manifest = destination / MANIFEST_NAME
     try:
         _flush(destination, destination_root)
