@@ -1497,7 +1497,8 @@ def test_every_ambiguous_shape_writes_no_genre_off_a_row_that_reads_it_one_way(
 # The property: names the naming verb renders find their own row and no other.
 
 #: Titles no two of which a catalogue could take for one recording, none a
-#: version word, a head or an artist's name.
+#: version word, a head or an artist's name, and one of bracket groups alone
+#: (review round one's F6).
 GENERATED_TITLES = (
     "Sunrise Mood",
     "Glass Hour",
@@ -1511,6 +1512,7 @@ GENERATED_TITLES = (
     "Shout It Out",
     "Make Luv",
     "Burning Bridges",
+    "(Intro)",
 )
 
 #: (artist tag, the credit as a name writes it).
@@ -1598,21 +1600,50 @@ WHOLE_NAME_NOT = [
     (ARTIST, "08A - 124 - Interlude", "08A - 124 - (Intro)"),
     # A tempo is a title only before nothing but a version.
     (ARTIST, "124 - Dub - Sunrise Mood", "124"),
+    # Review round one: a track number read past the marker across a dash
+    # (F1), and a bracket group shed across a dash (F2), each left the
+    # artist's name alone.
+    (ARTIST, f"[MP3] 01 - {ARTIST} - (Intro)", ARTIST),
+    (ARTIST, f"[MP3] 01 - {ARTIST} - Vocal (Live)", ARTIST),
+    (ARTIST, f"{ARTIST} - (Intro)", ARTIST),
+    (ARTIST, f"{ARTIST} - (Intro) (Live)", ARTIST),
+    (ARTIST, f"01A - 150 - (Intro) - {ARTIST} - Night Shapes", ARTIST),
+    # And the first part naming the artist only as featured is read as a
+    # title only where main read it, with no head before it (F3).
+    ("Tide", f"08A - 124 - {ARTIST} feat. Tide - Sunrise Mood", ARTIST),
 ]
 WHOLE_NAME_STILL = [
     # The first part names the artist only as featured: a title featuring them.
     ("Tide", "Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood"),
-    ("Tide", "08A - 124 - Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood"),
     # A number in a tempo's range before a version alone is a title too.
     (ARTIST, "100 - Original Mix", "100"),
     (ARTIST, "124 - Interlude", "Interlude"),
     (ARTIST, "124 - Interlude", "124"),
+    # A track number glued to a title past the marker is still shed.
+    (ARTIST, "[MP3] 01 Sunrise Mood", "Sunrise Mood"),
+    (ARTIST, f"{ARTIST} - (Intro)", "Intro"),
+    (ARTIST, f"[MP3] 01 - {ARTIST} - (Intro)", "(Intro)"),
 ]
 
 
 @pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_NOT)
 def test_a_whole_name_is_never_shed_across_its_dashes(artist, title, row):
     assert not searchers._title_matches(title, row, artist=artist)
+
+
+def test_a_lossy_file_named_with_a_track_number_takes_no_self_titled_genre(tmp_path, silence):
+    """Review round one's F1, through the naming verb and tag_one: a lossy
+    file with no key and no tempo is titled "[MP3] 01 - Artist - (Intro)",
+    and the track number read past the marker across a dash left the
+    artist's name, so the self titled row wrote its genre."""
+    rendered = render_all(NameSpec(stem=f"01 - {ARTIST} - (Intro)", suffix=".flac", lossy=True), template=_TEMPLATE)
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": rendered.title_tag})
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(ARTIST, 57)))
+
+    assert rendered.title_tag == f"[MP3] 01 - {ARTIST} - (Intro)"
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
 
 
 @pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_STILL)

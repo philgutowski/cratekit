@@ -137,13 +137,19 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   re-expressed `main` exactly (no difference over 394,160 names) before any
   rule moved. Then make each deliberate change alone and classify every
   difference it makes against the commit before it, by which change
-  explains it; a difference no change explains is a defect. And no shedding
-  crosses a dash: a feature credit or a version shed from a whole name cuts
-  through parts that are not the title, which is how "Artist feat. Tide -
-  X" collapsed to the artist, and how "08A - 124 - Interlude" met "08A - 124
-  - (Intro)" on the head's words alone. What that shedding found rightly, a
-  first part naming the artist only as featured and a tempo alone before a
-  version alone, is now a title candidate the parse names. A property over
+  explains it; a difference no change explains is a defect. And keep
+  shedding inside the title: a feature credit, a version or a bracket group
+  shed from a whole name cuts through parts that are not the title, which is
+  how "Artist feat. Tide - X" and "Artist - (Intro)" collapsed to the
+  artist, and how "08A - 124 - Interlude" met "08A - 124 - (Intro)" on the
+  head's words alone. The whole name is compared as written, never shed of
+  a feature credit or a version, and a bracket group is shed only from the
+  part that carries it; the
+  review's first round found the bracket case and a track number read past
+  the marker across a dash, both shapes of the same rule. What that shedding found rightly, a
+  first part naming the artist only as featured (with no head before it, as
+  `main` read it) and a tempo alone before a version alone, is now a title
+  candidate the parse names. A property over
   names the naming verb renders found two misses `main` shared, a marker
   before a lone track number and before a title of its own brackets.
 - **What the new rule cannot tell apart, it refuses.** "How Does It Feel"

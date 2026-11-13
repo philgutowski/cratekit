@@ -335,8 +335,9 @@ crate route pending
   ambiguous, and so is the same name with a featured artist after the
   version or with more than one of the artist's own credits before it: it
   matches only a row that writes the same title and version apart, "Sunrise
-  Mood (Extended Mix)" or "Artist (Vocal Mix)", or the whole name word for
-  word, and is otherwise a miss, so
+  Mood (Extended Mix)" or "Artist (Vocal Mix)", or the whole name as
+  written, its last part's own trailing brackets aside, and is otherwise a
+  miss, so
   no catalogue genre is written and the file is left for another source or
   for hand tagging; a title is never matched by words that sit
   only inside the other title's brackets, so "Intro" is never "Sunrise Mood
