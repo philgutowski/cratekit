@@ -48,7 +48,8 @@ U195's rewording, and not U199's mutant. Five tests of
 Since U200 the battery does this itself: `cloud_battery.py baseline` and
 `compare` run `git fetch --unshallow origin main` on a shallow clone and
 refuse when it stays shallow, the baseline's header says `history full` (and,
-since U268, ends `ids whole`), and `compare` and `mutate.py --known-failures`
+since U268, ends `ids whole`, and since U273 names the place of its
+temporary files before them), and `compare` and `mutate.py --known-failures`
 refuse a baseline without it; the
 driver also refuses on a shallow clone. By hand, the step is the same:
 `git fetch --unshallow origin main`. Then a

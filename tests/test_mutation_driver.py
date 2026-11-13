@@ -241,6 +241,42 @@ def test_that_fails(case):
 '''
 
 
+#: A test that passes only when its temporary directory is not in the memory
+#: root the environment names, as the inode test needs a real disk (U273), and
+#: that a row dropping the clamp guard kills wherever it runs. It writes where
+#: each run put it.
+TEST_PLACED = '''import os
+import tempfile
+
+import pytest
+from fixtpkg.guards import clamp
+
+
+@pytest.fixture
+def placed_resource():
+    if os.environ.get("PLACED_ERROR_IN_MEMORY") == "1" and os.path.realpath(
+        tempfile.gettempdir()
+    ).startswith(os.environ["PLACED_MEMORY"] + os.sep):
+        raise RuntimeError("cannot be set up in memory")
+    return True
+
+
+def test_needs_a_disk():
+    where = os.path.realpath(tempfile.gettempdir())
+    with open(os.environ["PLACED_LOG"], "a", encoding="utf-8") as log:
+        log.write(where + "\\n")
+    assert clamp(50) == 10
+    assert not where.startswith(os.environ["PLACED_MEMORY"] + os.sep)
+
+
+def test_errors_in_memory(placed_resource):
+    assert placed_resource
+'''
+
+PLACED_ID = "tests/test_placed.py::test_needs_a_disk"
+PLACED_ERRORING_ID = "tests/test_placed.py::test_errors_in_memory"
+
+
 def _build_fixture(
     root: Path,
     *,
@@ -249,6 +285,7 @@ def _build_fixture(
     sandbox: bool = False,
     leaky: bool = False,
     red_spaced: bool = False,
+    placed: bool = False,
 ) -> Path:
     """A committed git repository holding a four test package."""
     (root / "src" / "fixtpkg").mkdir(parents=True)
@@ -271,6 +308,8 @@ def _build_fixture(
         (root / "tests" / "test_sandbox.py").write_text(TEST_SANDBOX, encoding="utf-8")
     if leaky:
         (root / "tests" / "test_leak.py").write_text(TEST_LEAK, encoding="utf-8")
+    if placed:
+        (root / "tests" / "test_placed.py").write_text(TEST_PLACED, encoding="utf-8")
     _git(root, "init", "-q", "-b", "main")
     _git(root, "add", "-A")
     _git(root, "commit", "-q", "-m", "fixture")
@@ -312,6 +351,47 @@ def red_spaced_repo(red_spaced_template, tmp_path) -> Path:
     target = tmp_path / "red-spaced-repo"
     shutil.copytree(red_spaced_template, target)
     return target
+
+
+@pytest.fixture(scope="session")
+def placed_template(tmp_path_factory) -> Path:
+    return _build_fixture(tmp_path_factory.mktemp("placed-template"), placed=True)
+
+
+@pytest.fixture
+def places(tmp_path, monkeypatch) -> tuple[Path, Path]:
+    """The driver's places read off a mount table of the test's own (U273).
+
+    ``places/shm`` is a tmpfs and everything else ext4, so the places are the
+    same on the container, where this file may itself run in memory, and on
+    the Mac, which has no mount table.
+    """
+    battery = mutate.BATTERY
+    root = tmp_path / "places"
+    memory, disk = root / "shm", root / "disk"
+    memory.mkdir(parents=True)
+    disk.mkdir(parents=True)
+    table = root / "mounts"
+    table.write_text(
+        f"/dev/vda / ext4 rw 0 0\ntmpfs {os.path.realpath(memory)} tmpfs rw 0 0\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(battery, "MOUNTS", table)
+    monkeypatch.setattr(battery, "MEMORY_ROOT", memory)
+    monkeypatch.setattr(battery, "MEMORY_FLOOR", 0)
+    monkeypatch.setattr(battery, "disk_root", lambda: disk)
+    return memory, disk
+
+
+@pytest.fixture
+def placed_repo(placed_template, tmp_path, monkeypatch, places) -> tuple[Path, Path]:
+    """The placed fixture in its own copy, its log, and the synthetic places."""
+    target = tmp_path / "placed-repo"
+    shutil.copytree(placed_template, target)
+    log = tmp_path / "placed.log"
+    monkeypatch.setenv("PLACED_LOG", str(log))
+    monkeypatch.setenv("PLACED_MEMORY", os.path.realpath(places[0]))
+    return target, log
 
 
 @pytest.fixture(scope="session")
@@ -700,7 +780,7 @@ def test_a_red_baseline_is_refused_and_the_failures_are_named(red_repo):
         )
 
 
-def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, tmp_path):
+def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, tmp_path, places):
     """A Linux container fails about 170 of this suite's tests for want of a Mac.
 
     Those ids, measured on the base commit by the cloud battery, are subtracted
@@ -711,7 +791,7 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
     red_id = "tests/test_red.py::test_that_fails"
     known = tmp_path / "baseline.txt"
     known.write_text(
-        f"# commit abc host here history full ids whole\n{red_id}\n", encoding="utf-8"
+        f"# commit abc host here temp disk history full ids whole\n{red_id}\n", encoding="utf-8"
     )
     read = mutate.read_known_failures(known)
     assert read == frozenset({red_id})
@@ -725,6 +805,7 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
     )
     assert batch.valid, batch.invalid_reason
     assert batch.known_failures == 1
+    assert "Temporary files: on disk, the place" in mutate.render_markdown(batch)
     row = batch.results[0]
     assert row.status == "killed"
     assert row.killed == ["tests/test_guards.py::test_clamp_caps_at_the_limit"]
@@ -740,7 +821,9 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
         )
 
 
-def test_a_known_failure_whose_id_holds_a_space_is_subtracted_whole(red_spaced_repo, tmp_path):
+def test_a_known_failure_whose_id_holds_a_space_is_subtracted_whole(
+    red_spaced_repo, tmp_path, places
+):
     """U268: the battery now stores ids whole, and the driver subtracts them whole.
 
     The same ids cut at their first space, as the battery kept them before,
@@ -752,7 +835,7 @@ def test_a_known_failure_whose_id_holds_a_space_is_subtracted_whole(red_spaced_r
     }
     known = tmp_path / "baseline.txt"
     known.write_text(
-        "# commit abc host here history full ids whole\n# 2 failed\n"
+        "# commit abc host here temp disk history full ids whole\n# 2 failed\n"
         + "".join(f"{i}\n" for i in sorted(whole)),
         encoding="utf-8",
     )
@@ -824,7 +907,8 @@ def test_a_zero_row_promoted_on_a_known_red_suite_stays_a_zero(red_repo):
 def test_known_failures_ignore_indented_comments_and_refuse_a_missing_file(tmp_path, capsys):
     listed = tmp_path / "known.txt"
     listed.write_text(
-        "# commit abc host here history full ids whole\n  # indented\n\n  tests/a.py::t  \n",
+        "# commit abc host here temp disk history full ids whole\n  # indented\n\n"
+        "  tests/a.py::t  \n",
         encoding="utf-8",
     )
     assert mutate.read_known_failures(listed) == frozenset({"tests/a.py::t"})
@@ -896,7 +980,8 @@ def test_known_failures_are_refused_on_a_shallow_clone(repo, tmp_path, capsys):
     assert done.returncode == 0, done.stderr
     listed = tmp_path / "known.txt"
     listed.write_text(
-        "# commit abc host here history full ids whole\ntests/a.py::t\n", encoding="utf-8"
+        "# commit abc host here temp disk history full ids whole\ntests/a.py::t\n",
+        encoding="utf-8",
     )
     spec = tmp_path / "rows.toml"
     spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
@@ -922,6 +1007,243 @@ def test_known_failures_are_refused_on_a_shallow_clone(repo, tmp_path, capsys):
     )
     assert code == 2
     assert "shallow" in capsys.readouterr().err
+
+
+# ---------------------------------------------------------------------------
+# The place the known failures were measured in, U273
+# ---------------------------------------------------------------------------
+
+
+def _known_file(tmp_path: Path, place: str, *ids: str, on_disk=()) -> Path:
+    listed = tmp_path / "known.txt"
+    listed.write_text(
+        f"# commit abc host here temp {place} history full ids whole\n# 1 failed\n"
+        + "".join(f"# on disk test {one}\n" for one in on_disk)
+        + "# on disk summary 1 passed in 0.01s\n" * bool(on_disk)
+        + "".join(f"{one}\n" for one in ids),
+        encoding="utf-8",
+    )
+    return listed
+
+
+def test_known_failures_carry_their_place_and_their_tests_on_disk(tmp_path):
+    listed = _known_file(
+        tmp_path, "memory", "tests/a.py::t", on_disk=("tests/b.py::u[a disk]", "tests/c.py::v")
+    )
+    read = mutate.read_known_failures(listed)
+    assert read == frozenset({"tests/a.py::t"})
+    assert read.place == "memory"
+    assert read.on_disk == ("tests/b.py::u[a disk]", "tests/c.py::v")
+    assert mutate.read_known_failures(_known_file(tmp_path, "disk", "tests/a.py::t")).on_disk == ()
+
+
+@pytest.mark.parametrize(
+    "header",
+    [
+        "# commit abc host here history full ids whole",
+        "# commit abc host here temp history full ids whole",
+        "# commit abc host here temp tmpfs history full ids whole",
+        "# commit abc host here memory history full ids whole",
+    ],
+    ids=["before-u273", "no-place", "not-a-place", "no-field"],
+)
+def test_known_failures_naming_no_place_are_refused_with_the_command(header, tmp_path, capsys):
+    listed = tmp_path / "known.txt"
+    listed.write_text(f"{header}\ntests/a.py::t\n", encoding="utf-8")
+    with pytest.raises(mutate.DriverRefusal, match="U273"):
+        mutate.read_known_failures(listed)
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+    argv = ["mutate.py", str(spec), "--known-failures", str(listed)]
+    argv += ["--repo-root", str(tmp_path), "--out-dir", str(tmp_path / "out")]
+    assert mutate.main(argv) == 2
+    err = capsys.readouterr().err
+    assert "temporary files" in err
+    assert "scripts/cloud_battery.py baseline" in err
+
+
+def test_a_place_this_machine_cannot_give_is_refused_before_anything_runs(
+    repo, tmp_path, monkeypatch, places, capsys
+):
+    monkeypatch.setattr(mutate.BATTERY, "MEMORY_FLOOR", 2**80)
+    listed = _known_file(tmp_path, "memory", "tests/a.py::t")
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+
+    def must_not_run(*_a, **_k):
+        raise AssertionError("the batch ran in a place the machine cannot give")
+
+    monkeypatch.setattr(mutate, "measure_batch", must_not_run)
+    argv = ["mutate.py", str(spec), "--known-failures", str(listed)]
+    argv += ["--repo-root", str(repo), "--out-dir", str(tmp_path / "out")]
+    assert mutate.main(argv) == 2
+    assert "cannot now give a run with temporary files in memory" in capsys.readouterr().err
+
+
+def test_a_disk_the_rerun_cannot_have_is_refused_before_anything_runs(
+    repo, tmp_path, monkeypatch, places, capsys
+):
+    """Round one of the review: a memory run whose disk rerun is refused only
+    after the whole memory run is a full run spent, so it is refused first."""
+    memory, _ = places
+    monkeypatch.setattr(mutate.BATTERY, "disk_root", lambda: memory)
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+
+    def must_not_run(*_a, **_k):
+        raise AssertionError("the batch ran without the disk its rerun needs")
+
+    monkeypatch.setattr(mutate, "measure_batch", must_not_run)
+    argv = ["mutate.py", str(spec), "--repo-root", str(repo), "--out-dir", str(tmp_path / "o")]
+    listed = _known_file(tmp_path, "memory", "tests/a.py::t", on_disk=(PLACED_ID,))
+    assert mutate.main([*argv, "--known-failures", str(listed)]) == 2
+    err = capsys.readouterr().err
+    assert "run again on disk" in err and "memory filesystem" in err
+
+    # With no test to run on disk, the memory run needs no disk and is not refused.
+    class Measured(Exception):
+        """Raised where the batch would start: every refusal is behind it."""
+
+    def reached(*_a, **_k):
+        raise Measured
+
+    monkeypatch.setattr(mutate, "measure_batch", reached)
+    nothing_on_disk = _known_file(tmp_path, "memory", "tests/a.py::t")
+    with pytest.raises(Measured):
+        mutate.main([*argv, "--known-failures", str(nothing_on_disk)])
+
+
+def test_a_child_whose_place_is_gone_is_refused_rather_than_run_elsewhere(
+    placed_repo, places, monkeypatch
+):
+    """Round two of the review: a place lost after main's check refuses the run,
+    never falls back to the inherited temporary directory."""
+    repo, log = placed_repo
+    memory, _ = places
+    monkeypatch.setattr(mutate.BATTERY, "disk_root", lambda: memory)
+    known = mutate.KnownFailures(place="memory", on_disk=(PLACED_ID,))
+    gone = "its tests on disk cannot keep its temporary files on disk"
+    with pytest.raises(mutate.DriverRefusal, match=gone):
+        mutate.run_pytest(repo, None, known=known, label="the row R1")
+    monkeypatch.setattr(mutate.BATTERY, "MEMORY_FLOOR", 2**80)
+    log.unlink()
+    with pytest.raises(mutate.DriverRefusal, match="temporary files in memory"):
+        mutate.run_pytest(repo, None, known=known, label="the row R1")
+    assert not log.exists(), "a refused run ran nothing"
+
+
+def _where(log: Path) -> list[str]:
+    return log.read_text(encoding="utf-8").splitlines()
+
+
+def test_a_child_runs_in_the_known_failures_place_and_the_listed_test_again_on_disk(
+    placed_repo, places
+):
+    repo, log = placed_repo
+    memory, disk = (os.path.realpath(one) for one in places)
+    known = mutate.KnownFailures(place="memory", on_disk=(PLACED_ID,))
+
+    result = mutate.run_pytest(repo, None, known=known)
+
+    # It failed in memory and passed on disk, and the disk run is what stands.
+    assert result.is_green, result
+    first, second = _where(log)
+    assert first.startswith(memory + os.sep)
+    assert second.startswith(disk + os.sep)
+    # Every run's workspace is gone when it returns, so nothing is left in memory.
+    assert list(Path(memory).iterdir()) == [] and list(Path(disk).iterdir()) == []
+
+    without = mutate.run_pytest(repo, None, known=mutate.KnownFailures(place="memory"))
+    assert without.failure_ids() == [PLACED_ID]
+
+
+def test_a_run_on_disk_runs_once_and_one_with_no_place_inherits_the_temporary_directory(
+    placed_repo, places, monkeypatch, tmp_path
+):
+    repo, log = placed_repo
+    disk = os.path.realpath(places[1])
+    result = mutate.run_pytest(repo, None, known=mutate.KnownFailures(place="disk"))
+    assert result.is_green
+    assert [w.startswith(disk + os.sep) for w in _where(log)] == [True]
+
+    log.unlink()
+    inherited = tmp_path / "inherited"
+    inherited.mkdir()
+    monkeypatch.setenv("TMPDIR", str(inherited))
+    assert mutate.run_pytest(repo, None).is_green
+    assert _where(log) == [os.path.realpath(inherited)]
+
+
+def test_a_listed_test_erroring_in_memory_and_passing_on_disk_is_read_passing(
+    placed_repo, places, monkeypatch
+):
+    """The disk run replaces a listed test's error as well as its failure."""
+    repo, _log = placed_repo
+    monkeypatch.setenv("PLACED_ERROR_IN_MEMORY", "1")
+    unlisted = mutate.run_pytest(
+        repo, None, known=mutate.KnownFailures(place="memory", on_disk=(PLACED_ID,))
+    )
+    assert unlisted.errored == (PLACED_ERRORING_ID,)
+
+    known = mutate.KnownFailures(place="memory", on_disk=(PLACED_ID, PLACED_ERRORING_ID))
+    assert mutate.run_pytest(repo, None, known=known).is_green
+
+
+def test_a_subset_that_does_not_collect_the_listed_test_runs_nothing_on_disk(
+    placed_repo, places
+):
+    repo, log = placed_repo
+    known = mutate.KnownFailures(place="memory", on_disk=(PLACED_ID,))
+    result = mutate.run_pytest(repo, ["tests/test_guards.py"], known=known)
+    assert result.is_green
+    assert not log.exists()
+
+
+@pytest.mark.parametrize(
+    ("nodeid", "paths", "runs"),
+    [
+        ("tests/a.py::t", None, True),
+        ("tests/a.py::t", [], True),
+        ("tests/a.py::t", ["tests/a.py"], True),
+        ("tests/a.py::t", ["tests"], True),
+        ("tests/a.py::t", ["tests/"], True),
+        ("tests/a.py::t[x y]", ["tests/a.py::t"], True),
+        ("tests/a.py::t", ["tests/a.py::t"], True),
+        ("tests/a.py::t", ["tests/b.py"], False),
+        ("tests/ab.py::t", ["tests/a"], False),
+        ("tests/a.py::tt", ["tests/a.py::t"], False),
+    ],
+)
+def test_a_listed_test_is_rerun_only_by_a_run_that_collects_it(nodeid, paths, runs):
+    assert mutate.runs_node(nodeid, paths) is runs
+
+
+def test_a_batch_in_memory_reads_the_listed_test_on_disk_and_says_so(placed_repo, places):
+    """The whole batch: a baseline red in memory is green net of the disk run,
+    and a row killing the listed test is credited with it, read on disk."""
+    repo, _log = placed_repo
+    known = mutate.KnownFailures(place="memory", on_disk=(PLACED_ID,))
+    batch = mutate.measure_batch(
+        repo,
+        "placed",
+        [_row("K1", "if value > limit:", "if value > 10000:")],
+        known=known,
+    )
+    assert batch.valid, batch.invalid_reason
+    (row,) = batch.results
+    assert row.status == "killed"
+    assert PLACED_ID in row.killed
+    markdown = mutate.render_markdown(batch)
+    assert "Temporary files: in memory" in markdown
+    assert "1 test(s) the baseline ran on disk" in markdown
+
+    with pytest.raises(mutate.DriverRefusal, match="BASELINE IS NOT GREEN"):
+        mutate.measure_batch(
+            repo,
+            "placed-unlisted",
+            [_row("K1", "if value > limit:", "if value > 10000:")],
+            known=mutate.KnownFailures(place="memory"),
+        )
 
 
 def test_the_child_inherits_the_callers_environment(env_repo, monkeypatch):
@@ -1902,7 +2224,8 @@ def test_the_command_line_reads_the_verdict_and_measures_on_request(judged, caps
 
 
 def test_the_driver_and_the_battery_name_one_record():
-    """Neither script imports the other, so the shared keys are held equal here."""
+    """The driver names the record's keys itself rather than reading them off the
+    battery it loads for its places (U273), so the shared keys are held equal here."""
     assert mutate.BATTERY_VERDICT == Path(".cloud-battery") / battery.RUN_RECORD_NAME
     assert battery.STATE.name == mutate.BATTERY_VERDICT.parent.as_posix()
     assert mutate.BATTERY_VERDICT_FORMAT == battery.RUN_RECORD_FORMAT
