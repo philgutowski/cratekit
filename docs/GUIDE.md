@@ -859,7 +859,8 @@ crate login cyanite-key --from-file PATH
   over the cap refuses before anything is sent.
 - Only MP3s are sent, which is what Cyanite's API takes; other files are
   listed as not sent. Audio leaves your machine, so choose the tracks.
-- `trial.tsv` has a row per file: its genre tag, the folder that genre files
+- `trial.tsv` has a row per file sent (a second copy of the same audio is
+  listed as not sent): its genre tag, the folder that genre files
   it in today, Cyanite's four answers, the folder Cyanite's words name (a
   `[vocabulary.cyanite]` table in your taxonomy copy answers first, the
   buckets' aliases otherwise), and whether the two agree. `trial-agreement.tsv`
@@ -868,9 +869,10 @@ crate login cyanite-key --from-file PATH
   It never asks Cyanite for a tempo or a key. An output already there is never
   overwritten; `--resume` with the same `--output` carries on a run cut short,
   uploading only the files with no answer yet. Files are known by their audio,
-  so moving the folder between the two runs costs nothing, and a file whose
-  analysis was still running when the run ended is asked about again rather
-  than uploaded again.
+  not their tags or their path, so moving the folder or retagging a file
+  between the two runs costs nothing, and a file whose track Cyanite had made
+  and named when the run ended, however it ended, is asked about again rather than
+  uploaded again.
 - Exit 0 done, or the plan; 1 stopped partway with the rows kept; 2 refused
   with no audio uploaded.
 

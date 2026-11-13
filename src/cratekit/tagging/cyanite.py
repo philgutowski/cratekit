@@ -59,10 +59,13 @@ the run goes on.
 
 THE TABLE IS WRITTEN ROW BY ROW, so a run cut short keeps what it paid for, and
 a resumed run reads it back and uploads only the files it has no answer for.
-A file is known by the SHA-256 of its audio, not by its path, so a folder moved
-or renamed between the two runs is not paid for again. A file whose analysis
-did not finish, or whose run ended while waiting on it, however it ended, is
-written with its library track and asked about again without a second upload.
+A file is known by the SHA-256 of its audio, not by its path or its tags, so a
+folder moved or a file retagged between the two runs is not paid for again.
+The moment Cyanite answers the create, the file's row is written with its
+library track, ahead of the wait, so a run that ends while waiting, by an
+error, an interrupt or a signal, has kept it, and a resumed run asks about it
+again without a second upload. What is not kept is a run killed between
+Cyanite making the track and its answer reaching here (a residual).
 
 Layer: modules.
 """
@@ -307,9 +310,11 @@ class CyaniteAsker:
 
     ``rejected`` is why the key was refused, after which it is never sent again
     in this process. ``made`` is the library track the last :meth:`analyse`
-    created, empty until Cyanite answers the create, so a run that ends while
-    waiting on it, however it ends, can still write the track down rather than
-    pay for the upload again.
+    created, empty until Cyanite answers the create, and ``on_made`` is told
+    it the moment it is known, before the wait, so the run writes the track
+    down AHEAD of waiting on it: a run killed by a signal mid wait, which no
+    handler sees, has still kept it, and a resumed run asks about it rather
+    than paying for the upload again.
     """
 
     key: str = field(repr=False)
@@ -319,6 +324,7 @@ class CyaniteAsker:
     poll_attempts: int = POLL_ATTEMPTS
     rejected: str | None = None
     made: str = ""
+    on_made: Callable[[str], None] | None = field(default=None, repr=False)
 
     def scrub(self, text: str) -> str:
         return text.replace(self.key, _SCRUBBED) if self.key else text
@@ -432,6 +438,8 @@ class CyaniteAsker:
         if kind != "LibraryTrackCreateSuccess" or not isinstance(track_id, str):
             raise TrialStopped("Cyanite's answer to the create names no library track")
         self.made = track_id
+        if self.on_made is not None:
+            self.on_made(track_id)
         return self.wait(track_id)
 
     def wait(self, track_id: str) -> Analysis:
@@ -549,9 +557,6 @@ UNREADABLE_SHOWN = "(tag unreadable)"
 #: The summary's last row, over every folder.
 ALL_FOLDERS = "(all folders)"
 
-#: How a file is read to hash it, a piece at a time.
-_HASH_CHUNK = 1 << 20
-
 
 @dataclass(frozen=True, slots=True)
 class Planned:
@@ -562,13 +567,36 @@ class Planned:
     why_not: str = ""
 
 
+def _audio_span(data: bytes) -> tuple[int, int]:
+    """Where an MP3's audio lies: past every ID3v2 tag ahead of it, short of an ID3v1 tag.
+
+    Each ID3v2 tag says its own size, ten bytes of header and four synchsafe
+    bytes, and a footer of ten more when its flags say so. An ID3v1 tag is the
+    last 128 bytes, opening ``TAG``. An APE tag is not stripped (a residual).
+    """
+    start = 0
+    while data[start : start + 3] == b"ID3" and len(data) >= start + 10:
+        size = 0
+        for byte in data[start + 6 : start + 10]:
+            size = (size << 7) | (byte & 0x7F)
+        footer = 10 if data[start + 5] & 0x10 else 0
+        start += 10 + size + footer
+    end = len(data)
+    if end - start >= 128 and data[end - 128 : end - 125] == b"TAG":
+        end -= 128
+    return min(start, end), end
+
+
 def audio_digest(path: Path) -> str:
-    """The SHA-256 of a file's bytes, what a table knows the file by."""
-    digest = hashlib.sha256()
-    with path.open("rb") as handle:
-        for chunk in iter(lambda: handle.read(_HASH_CHUNK), b""):
-            digest.update(chunk)
-    return digest.hexdigest()
+    """The SHA-256 of a file's audio, its tags left out: what a table knows it by.
+
+    THE TAGS ARE LEFT OUT so a file retagged between two runs, a genre edited
+    by hand or by a verb, is still the track the table answered, and is not
+    uploaded and paid for again.
+    """
+    data = path.read_bytes()
+    start, end = _audio_span(data)
+    return hashlib.sha256(data[start:end]).hexdigest()
 
 
 def plan_files(paths: Iterable[Path]) -> list[Planned]:
@@ -784,7 +812,7 @@ def summarise(rows: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
 
 
 def _write_summary(path: Path, lines: Sequence[Mapping[str, str]], *, fresh: bool) -> None:
-    with path.open("x" if fresh else "w", encoding="utf-8") as handle:
+    with path.open("x" if fresh else "w", encoding="utf-8", errors="backslashreplace") as handle:
         handle.write(_line(SUMMARY_COLUMNS))
         for line in lines:
             handle.write(_line(line[name] for name in SUMMARY_COLUMNS))
@@ -869,13 +897,15 @@ def run(
     )
     for entry in skipped:
         say(f"  {entry.path.name}: {entry.why_not}")
-    if settings.price is not None and math.isfinite(settings.price):
+    if settings.price is None:
+        say("no --price-per-track was given, so there is no estimate of the cost")
+    elif math.isfinite(settings.price):
         say(
             f"estimated cost: {len(upload)} upload(s) at {settings.price:g} each, "
             f"{len(upload) * settings.price:.2f} in your plan's currency"
         )
     else:
-        say("no --price-per-track was given, so there is no estimate of the cost")
+        say("--price-per-track is not a number, so there is no estimate of the cost")
 
     if not settings.send:
         say("nothing was sent: this is the plan. Add --send-to-cyanite to send it")
@@ -940,16 +970,21 @@ def _ask(
 ) -> Ran:
     """Ask about every file, writing each row as it is answered.
 
-    A TRACK CYANITE MADE IS WRITTEN DOWN WHATEVER ENDS ITS FILE. A stop, a
-    rejected key, an interrupt while waiting on its analysis: the row is
-    written with its library track before the run ends, so a resumed run asks
-    about it again and never uploads it a second time.
+    A TRACK CYANITE MADE IS WRITTEN DOWN BEFORE IT IS WAITED ON. The asker
+    tells the run the moment the create answers, and the row is written then,
+    pending, with its library track, so whatever ends the wait, a stop, an
+    interrupt or a signal no handler sees, a resumed run asks about the track
+    again and never uploads it a second time.
     """
     uploaded = 0
     asked = 0
     stopped = ""
     fresh = not settings.resume
-    with settings.output.open("x" if fresh else "a", encoding="utf-8") as handle:
+    # BACKSLASHREPLACE: a cell the encoding cannot carry, a lone surrogate in an
+    # answer, is written escaped rather than losing a paid row.
+    with settings.output.open(
+        "x" if fresh else "a", encoding="utf-8", errors="backslashreplace"
+    ) as handle:
         if fresh:
             handle.write(_line(COLUMNS))
             handle.flush()
@@ -967,25 +1002,38 @@ def _ask(
                     )
                 else:
                     uploaded += 1
+                    asker.on_made = _ahead(declared, entry, rows, handle, asker)
                     try:
                         analysis = asker.analyse(entry.path, audio, entry.path.stem)
-                    except BaseException as exc:
-                        if asker.made:
-                            held = Analysis(
-                                track=asker.made,
-                                pending=True,
-                                note=(
-                                    f"the run ended ({type(exc).__name__}) before Cyanite's "
-                                    f"analysis was read; a run with --resume asks again "
-                                    f"without uploading"
-                                ),
-                            )
-                            _keep(declared, entry, held, rows, handle, asker, say)
-                        raise
+                    finally:
+                        asker.on_made = None
                 _keep(declared, entry, analysis, rows, handle, asker, say)
         except (TrialStopped, secrets.CredentialRejected) as exc:
             stopped = asker.scrub(str(exc))
     return Ran(dry=False, uploaded=uploaded, asked_again=asked, stopped=stopped)
+
+
+def _ahead(
+    declared: Taxonomy,
+    entry: Planned,
+    rows: dict[str, dict[str, str]],
+    handle: TextIO,
+    asker: CyaniteAsker,
+) -> Callable[[str], None]:
+    """What the run does the moment Cyanite has made a file's track: write it down."""
+
+    def made(track: str) -> None:
+        held = Analysis(
+            track=track,
+            pending=True,
+            note=(
+                "Cyanite made the track and its analysis was not read before the run "
+                "ended; a run with --resume asks again without uploading"
+            ),
+        )
+        _keep(declared, entry, held, rows, handle, asker, lambda _line: None)
+
+    return made
 
 
 def _keep(
@@ -999,9 +1047,11 @@ def _keep(
 ) -> None:
     """Write one row, every cell scrubbed of the key, and say it."""
     row = {name: asker.scrub(value) for name, value in row_for(declared, entry, analysis).items()}
-    rows[row["audio_sha256"]] = row
+    # WRITTEN BEFORE IT IS REMEMBERED, so the summary never counts a row the
+    # table could not take.
     handle.write(_line(row[name] for name in COLUMNS))
     handle.flush()
+    rows[row["audio_sha256"]] = row
     say(
         f"  {entry.path.name}: {row['agreement']}, filed {row['filed_folder']}, "
         f"Cyanite {row['cyanite_folder'] or NONE_SHOWN}"

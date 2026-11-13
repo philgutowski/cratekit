@@ -176,8 +176,11 @@ def probe_mp3(tmp_path_factory):
 def _track(probe: Path, target: Path, genre: str | None) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(probe, target)
-    # A TITLE OF ITS OWN, so no two fixtures hold the same bytes: the trial
-    # sends one audio once, and two copies would be one track.
+    # AUDIO OF ITS OWN, bytes after the frames, so no two fixtures hold the same
+    # audio: the trial knows a file by its audio and its tags not at all, so
+    # two copies of the probe would be one track.
+    with target.open("ab") as handle:
+        handle.write(target.stem.encode())
     assert tags.write_tags(target, {"title": target.stem})
     if genre is None:
         tags.clear_tags(target, ("genre",))
@@ -839,7 +842,7 @@ def test_an_interrupt_while_waiting_keeps_the_track_and_the_resume_does_not_uplo
     assert set(rows) == {"deep.mp3", "jazzy.mp3"}
     assert rows["jazzy.mp3"]["library_track"] == "lt-2"
     assert rows["jazzy.mp3"]["agreement"] == cyanite.NOT_READ
-    assert "KeyboardInterrupt" in rows["jazzy.mp3"]["note"]
+    assert "its analysis was not read before the run ended" in rows["jazzy.mp3"]["note"]
     assert cyanite.summary_path(out).is_file(), "the summary is written whatever ends the run"
 
     later = Recorded(processing=0)
@@ -872,7 +875,8 @@ def test_a_tab_or_a_line_break_in_an_answer_stays_in_its_cell(chosen, tmp_path, 
     out = tmp_path / "t.tsv"
     _run(_settings(chosen, out, **SEND), declared, Recorded(said=said))
     assert _rows(out)["deep.mp3"]["cyanite_moods"] == "dark and broody"
-    assert len(out.read_text().splitlines()) == 5
+    # The header, a row written ahead of each wait and the answered row after it.
+    assert len(out.read_text().splitlines()) == 1 + 4 + 4
 
 
 def test_an_output_folder_that_is_not_there_refuses_before_any_request(chosen, tmp_path, declared, keyed):
@@ -929,3 +933,109 @@ def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, te
                         "--taxonomy", str(template), "--s", "--cap", "10",
                         "--price-per-track", "0.5"])
     assert not (tmp_path / "t.tsv").exists()
+
+
+# ---------------------------------------------------------------------------
+# Review round two
+# ---------------------------------------------------------------------------
+
+
+def test_the_made_track_is_written_before_the_wait_so_a_signal_cannot_lose_it(chosen, tmp_path, declared, keyed):
+    """A signal ends the process with no handler run, so what matters is what is
+    on disk when the wait begins: the row, with its library track."""
+    out = tmp_path / "t.tsv"
+    seen: list[dict[str, dict[str, str]]] = []
+
+    class Watching(Recorded):
+        def __call__(self, request):
+            if request.method == "POST" and "CratekitTrialTrack" in json.loads(request.body)["query"]:
+                if json.loads(request.body)["variables"]["id"] == "lt-1":
+                    seen.append(_rows(out))
+            return super().__call__(request)
+
+    _run(_settings(chosen, out, **SEND), declared, Watching())
+    assert seen, "the wait asked about lt-1"
+    first = seen[0]["deep.mp3"]
+    assert first["library_track"] == "lt-1" and first["agreement"] == cyanite.NOT_READ
+
+
+def test_a_file_retagged_between_two_runs_is_not_paid_for_again(chosen, tmp_path, declared, keyed):
+    out = tmp_path / "t.tsv"
+    _run(_settings(chosen, out, **SEND), declared, Recorded())
+    assert tags.write_genre(chosen / "deep.mp3", "Tech House")
+    assert tags.write_tags(chosen / "tech.mp3", {"title": "a new title", "artist": "someone"})
+    again = Recorded()
+    ran = _run(_settings(chosen, out, resume=True, send=True, cap=0, price=0.25), declared, again)
+    assert ran.uploaded == 0 and again.requests == []
+    assert _summary(out)[-1]["tracks"] == "4"
+
+
+def test_the_audio_span_leaves_out_every_id3_tag():
+    header = b"ID3\x04\x00\x00" + bytes([0, 0, 0, 5]) + b"abcde"
+    footed = b"ID3\x04\x00\x10" + bytes([0, 0, 0, 2]) + b"xy" + b"3DI" + b"\x00" * 7
+    audio = b"\xff\xfbFRAMES"
+    trailer = b"TAG" + b"\x00" * 125
+    data = header + footed + audio + trailer
+    start, end = cyanite._audio_span(data)
+    assert data[start:end] == audio
+    assert cyanite._audio_span(audio) == (0, len(audio))
+
+
+def test_an_echoed_key_in_a_track_id_alone_never_reaches_the_table(chosen, tmp_path, declared, keyed):
+    class Echoing(Recorded):
+        def __call__(self, request):
+            reply = super().__call__(request)
+            if request.method == "POST" and "CratekitTrialCreate" in json.loads(request.body)["query"]:
+                body = json.loads(reply.text)
+                body["data"]["libraryTrackCreate"]["createdLibraryTrack"]["id"] = f"lt{KEY}"
+                return cyanite.Reply(200, json.dumps(body))
+            return reply
+
+    out = tmp_path / "t.tsv"
+    _run(_settings(chosen, out, **SEND), declared, Echoing())
+    text = out.read_text()
+    assert KEY not in text and "lt[key]" in text
+
+
+def test_a_cell_opening_with_a_quote_reads_back_whole(chosen, tmp_path, declared, keyed):
+    said = {**SAID, "deep": {**SAID["deep"], "moodTags": ['"quoted', "dark"]}}
+    out = tmp_path / "t.tsv"
+    _run(_settings(chosen, out, **SEND), declared, Recorded(said=said))
+    rows = _rows(out)
+    assert set(rows) == {"deep.mp3", "tech.mp3", "jazzy.mp3", "vague.mp3"}
+    assert rows["deep.mp3"]["cyanite_moods"] == '"quoted, dark'
+
+
+def test_a_cell_the_encoding_cannot_carry_keeps_its_row(chosen, tmp_path, declared, keyed):
+    said = {**SAID, "deep": {**SAID["deep"], "moodTags": ["dark\udc80"]}}
+    out = tmp_path / "t.tsv"
+    ran = _run(_settings(chosen, out, **SEND), declared, Recorded(said=said))
+    assert not ran.stopped
+    rows = _rows(out)
+    assert rows["deep.mp3"]["agreement"] == cyanite.SAME_FOLDER
+    assert _summary(out)[-1]["tracks"] == str(len(rows)) == "4"
+
+
+def test_an_mp3_that_cannot_be_read_is_listed_and_not_sent(chosen, tmp_path, declared, keyed, monkeypatch):
+    real = cyanite.audio_digest
+
+    def unreadable(path):
+        if path.name == "tech.mp3":
+            raise PermissionError("no")
+        return real(path)
+
+    monkeypatch.setattr(cyanite, "audio_digest", unreadable)
+    fake = Recorded()
+    events: list = []
+    _run(_settings(chosen, tmp_path / "t.tsv", **SEND), declared, fake, events)
+    assert len(fake.uploaded()) == 3
+    lines = [event[1] for event in events if event[0] == "say"]
+    assert any("tech.mp3: not sent: it could not be read (PermissionError)" in line for line in lines)
+
+
+def test_a_price_that_is_not_a_number_is_said_as_such_in_the_plan(chosen, tmp_path, declared):
+    said: list = []
+    cyanite.run(_settings(chosen, tmp_path / "t.tsv", price=float("nan")), declared,
+                send=refused_send, say=said.append)
+    assert any("--price-per-track is not a number" in line for line in said)
+    assert not any("estimated cost" in line for line in said)
