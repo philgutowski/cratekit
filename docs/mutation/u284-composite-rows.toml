@@ -1,0 +1,25 @@
+name = "u284-composite"
+pass_kind = "light"
+
+[[rows]]
+id = "C3x_unread_discogs_and_outage_named"
+description = "tagging.cli._refused_out: the composite for C3's zero, both the Discogs was read guard and the every other catalogue refused guard removed, so any file left with no genre is named as one the catalogues refused"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''    if said.get(searchers.DISCOGS) not in (searchers.Answer.MISS.value, searchers.Answer.MATCHED.value):
+        return ()
+    others = [
+        source
+        for source in searchers.SOURCES
+        if source != searchers.DISCOGS and source in said and said[source] != searchers.NOT_ASKED
+    ]
+    if not others or any(said[source] != searchers.Answer.BLOCKED.value for source in others):
+        return ()'''
+new = '''    others = [
+        source
+        for source in searchers.SOURCES
+        if source != searchers.DISCOGS and source in said and said[source] != searchers.NOT_ASKED
+    ]
+    if not others:
+        return ()'''
