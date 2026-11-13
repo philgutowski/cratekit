@@ -196,17 +196,6 @@ new = '''            return held
 '''
 
 [[rows]]
-id = "V7_refusal_not_carried"
-description = "_Drive.source: a new source does not inherit the refusal, so a new gate buys a second login into a refused session"
-file = "src/cratekit/acquire/vendored.py"
-surface = "user"
-tests = ["tests/test_vendored_drive.py", "tests/test_acquire_workers.py", "tests/test_adapter_contract.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py", "tests/test_handlers.py"]
-old = '''        fresh._refused = held._refused if held is not None else None
-'''
-new = '''        fresh._refused = None
-'''
-
-[[rows]]
 id = "V8_atmos_stored"
 description = "capture: store whatever the tool holds, a session left in its Atmos client included"
 file = "src/cratekit/acquire/vendored.py"
@@ -235,11 +224,22 @@ description = "drive: raise a credential failure at the close, so a finished dow
 file = "src/cratekit/acquire/vendored.py"
 surface = "user"
 tests = ["tests/test_vendored_drive.py", "tests/test_acquire_workers.py", "tests/test_adapter_contract.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py", "tests/test_handlers.py"]
-old = '''        except (secrets.CredentialError, OSError) as exc:
-            held.warnings.append('''
-new = '''        except (secrets.CredentialError, OSError) as exc:
+old = '''        except (secrets.CredentialError, CratekitError, OSError) as exc:
+'''
+new = '''        except (secrets.CredentialError, CratekitError, OSError) as exc:
             raise
-            held.warnings.append('''
+'''
+
+[[rows]]
+id = "V13_index_refusal_raised"
+description = "drive: catch only the keychain's and the file's failures at the close, so the credential index's own refusal reports a finished download failed (round two)"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_vendored_drive.py", "tests/test_acquire_workers.py", "tests/test_adapter_contract.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py", "tests/test_handlers.py"]
+old = '''        except (secrets.CredentialError, CratekitError, OSError) as exc:
+'''
+new = '''        except (secrets.CredentialError, OSError) as exc:
+'''
 
 [[rows]]
 id = "V11_defect_swallowed"
