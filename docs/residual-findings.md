@@ -51606,3 +51606,172 @@ table, `docs/mutation/r1636.md`, reads what the rows kill.
 **Closes when:** the title start rules are pinned by a generated table, every
 name shape the naming verb renders crossed with the artist written each way a
 credit is, checked against what the plain title matches. Ledger only.
+
+---
+
+## R-1648. The test that a catalogue row's dash tail is a version before it splits the row kills nothing
+
+**Found:** at the mutation table of #788, R-1646, 2026-11-13.
+
+**The mechanism.** `_row_splits` in `tagging/searchers.py` splits a row
+before a dash tail only when the tail reads as a version
+(`_a_tail_to_shed`). With the test removed (row M15 of
+`docs/mutation/r1646.md`) no test fails. Round one of the review argued it,
+and three more of the diff's guards (`_identifies(mix)` in
+`_beatport_readings`, the `<` in `_row_splits`, `head in artists` in the
+shape), equivalent: a file split's version is never empty and always ends in
+a version word.
+
+**Measured cost.** None found. Six candidates were driven against the branch
+and the mutant ("Kerri Chandler (Remix 2014)" against "Kerri Chandler Remix
+(2014)", "Vocal - Mix", "Sunrise - Mood Extended Mix" and three more) and none
+tells them apart: a tail whose words equal a file split's version ends in a
+version word itself, or the unshed whole name meets it first. `head in
+artists` has a composite (`docs/mutation/r1646-composite.md`).
+
+**Closes when:** the guard is removed or a case it decides is found and
+pinned. Ledger only, a maintainer facing guard.
+
+---
+
+## R-1649. A Bandcamp heading crediting the artist by initials no longer meets a name written with the same initials and a version part
+
+**Found:** at the review of #788, R-1646, round two, 2026-11-13.
+
+**The mechanism.** R-1646 reads the whole name of a file whose first part is
+the artist's own credit unshed (`_readings`, `_credits_before_featuring`), so
+a feature credit cut from it never leaves the artist's name. Bandcamp drops a
+heading's head only when `_artist_matches` reads it as the artist, which an
+initial does not satisfy, so a heading "B. Badie - Sunrise Mood" is read
+whole, while the file "B. Badie - Sunrise Mood - Extended Mix", tagged
+"Bernard Badie", now credits the artist by `_names_the_artist`'s initials and
+is read unshed. The two met on `main` through the shed whole name and no
+longer do.
+
+**Measured cost.** A miss, driven at round two through the Bandcamp parser:
+True on `main` and on round one's head, False on the branch. Bandcamp is no
+longer asked by `tag folder` (it answers every search with a bot check), so
+no shipped verb reaches it. No producer of the heading was driven.
+
+**Closes when:** Bandcamp's heading test and `_names_the_artist` read an
+artist's credit the same way. Ledger only.
+
+---
+
+## R-1650. A name crediting the artist before a version with no version word in it is still read as a title
+
+**Found:** at the build of #788, R-1646, 2026-11-12.
+
+**The mechanism.** R-1646 reads "Artist - X" by its splits only when X ends
+in a word of `core.tombstone.VERSION_WORDS` (`_title_starts`, through
+`_a_tail_to_shed`). A version written with no such word, "Bernard Badie -
+Vocal" or "Bernard Badie - Beats", is read as a title X by the artist, as
+every "Artist - Title" name is, so a row "Vocal" by the artist matches it.
+This is the list failing open in the one direction R-1646 leaves to it: the
+alternative, reading every "Artist - Title" name by its splits, would refuse
+nearly every untagged file asked by its name.
+
+**Measured cost.** Driven through `tagging.searchers._title_matches`: "Bernard
+Badie - Vocal" matches a row "Vocal", on `main` and on the branch alike. A
+wrong genre only for a self titled track whose name writes its version as
+bare words with no version word among them. Not measured: how many files are
+named so.
+
+**Closes when:** a version is told from a title without a list, or Phillip
+decides that an untagged "Artist - W" name is asked by its splits. Ledger
+only: no rule closes it without refusing the common case.
+
+---
+
+## R-1651. A name the shape or the credit rules do not recognise is still read one way, as on main
+
+**Found:** at the review of #788, R-1646, rounds one and two, 2026-11-13.
+
+**The mechanism.** R-1646 reads "Artist - X" by its splits only when
+`_title_starts` recognises the shape: the first part after the head credits
+the searched artist (`_names_the_artist`) and the next ends in a version word
+(`_a_tail_to_shed`). Names it does not recognise are read as `main` reads
+them:
+- a trailing credit hides the version ending: "Bernard Badie - Vocal Mix
+  feat. Tide" matches a row "Vocal";
+- two artist parts make the title the head: "Bernard Badie - Tide - Sunrise
+  Mood Extended Mix", tagged "Bernard Badie & Tide", matches the self titled
+  row "Bernard Badie";
+- a tag that does not name the first part as written, "DJ Bernard Badie" or
+  "Badie", leaves "Bernard Badie feat. Tide - Sunrise Mood" read shed of its
+  feature credit, so it matches the self titled row "Bernard Badie".
+
+**Measured cost.** Driven through `_title_matches` on the branch and through
+`tag_one` at round two: each writes the wrong genre on `main` and on the
+branch alike. No producer of these names was driven; the naming verb writes
+"Artist - Title" from the tags, so the third needs a tag that disagrees with
+the name.
+
+**Closes when:** the matcher reads a name's parts as typed fields with an
+ambiguous outcome (U280, #791), or each
+shape gets its own rule. Ledger only: no worse than `main`, and the redesign
+card carries it.
+
+---
+
+## R-1652. A name crediting the artist before a part ending in a version finds only a row that writes the same split, so the file's own row under another mix or with no version is a miss
+
+**Found:** at the build of #788, R-1646, and its review round one, 2026-11-12.
+
+**The mechanism.** Since R-1646 a file's title "[KEY - BPM -] Artist - X",
+X ending in a version word, is read in `tagging/searchers.py` by its whole
+name and its two splits into a title and a version (`_name_splits`), and a
+catalogue row matches it only by writing one of those splits itself
+(`_row_splits`, `_beatport_readings`). So these, all found on `main`, are now
+a miss:
+- "Bernard Badie - Vocal Mix" against its own self titled row listed as
+  "Bernard Badie" under another mix or with none;
+- "Bernard Badie - Sunrise Mood Extended Mix" against a plain "Sunrise Mood"
+  row, or one under another mix, on every source but Beatport's mix field;
+  "08A - 124 - Bernard Badie - Sunrise Mood Original Mix" against a Discogs
+  "Sunrise Mood" track (review round one);
+- either side carrying one more bracket group than the other, "Sunrise Mood
+  (Extended Mix) [Remastered]";
+- "Bernard Badie - 01 Vocal Mix" against "Bernard Badie (Vocal Mix)", and a
+  Beatport name "Sunrise Mood (feat. Tide)" with mix "Extended Mix";
+- a Discogs single titled "Bernard Badie" whose tracks are named by their
+  versions, "Vocal Mix", "Dub".
+Each was found on `main` by the same both ways reading that also wrote a
+"Vocal" row's or a self titled row's genre. The card's brief asked for the
+first to be found and the self titled row of the second refused, which no
+rule but a list of version words tells apart.
+
+**Measured cost.** A miss, never a wrong genre: no catalogue genre is
+written and the file is left for another source or hand tagging. The
+author's differential of `main` against the branch over 2,336 suite titles,
+16 name shapes and 4 artists lost 206,448 of 410 million pairs, most in the
+card's shape and most of those in the differential's own synthetic shapes
+("Artist - Title Extended Mix"); Beatport's scorer over 2.67 million sampled
+pairs lost 7,800, all in the shape. Not measured: how many files in a real
+library are named this way.
+
+**Closes when:** Phillip answers the Question for Phillip on #788 (option 1,
+this behaviour, recommended); a Discogs single's release title beside its
+version named tracks could confirm the self titled split without a list.
+Ledger only: a miss loses no data and says nothing false.
+
+---
+
+## R-1653. A name whose first two parts both credit the artist is still read both ways
+
+**Found:** at the build of #788, R-1646, 2026-11-12.
+
+**The mechanism.** R-1636's ledger entry R-1646 named a second both ways
+reading beside the version shape: "Tide & Aurora Bloom - Aurora Bloom", two
+parts that both credit the artist, is "Title - Artist" for a self titled
+track or "Artist - Title" for a track titled as a credit, so `_title_starts`
+reads both parts. R-1646 left it as it was: no list of version words is
+involved, and the card's goal names only the version shape.
+
+**Measured cost.** Not driven to a wrong genre: a row matching the first
+part is a track titled as a collaboration credit by one of its own artists,
+which no fixture or catalogue page in the suite carries. Not measured on a
+library.
+
+**Closes when:** a wrong genre is driven through it, or U280 (#791) reads a
+name's parts as typed fields. Ledger only.
