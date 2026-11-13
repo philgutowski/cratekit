@@ -1094,13 +1094,19 @@ def _credits_before_featuring(part: str, artist: str) -> bool:
     """Whether a part credits the searched artist before any feature credit
     it carries: "Aurora Bloom feat. Tide" does for "Aurora Bloom", and
     "Sunrise Mood feat. Tide" does not for "Tide", whose name is only in the
-    feature (R-1646, round two). Only the first is a name that shedding its
-    feature credit would cut down to the artist's."""
-    words = _words(_LEADING_GROUPS.sub("", part))
-    lead = _without_featuring(words)
-    if lead is None:
+    feature (R-1646, round two), and neither does "(Dub Mix) feat. Tide",
+    a title of brackets. The part is cut at the feature word as written, so
+    the marker strip :func:`_names_the_artist` makes never takes a title's
+    own brackets. Only the first is a name that shedding its feature credit
+    would cut down to the artist's."""
+    found = list(_WORD.finditer(part))
+    cut = next(
+        (word.start() for index, word in enumerate(found) if index and word.group() in _FEATURING),
+        None,
+    )
+    if cut is None:
         return True
-    return _names_the_artist(" ".join(lead), _artist_names(artist), first=True)
+    return _names_the_artist(part[:cut], _artist_names(artist), first=True)
 
 
 def _name_splits(parts: list[str], head: int, title: int) -> frozenset[TitleSplit]:
