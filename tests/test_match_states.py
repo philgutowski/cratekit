@@ -5944,7 +5944,7 @@ def test_the_scorer_is_capped_at_the_same_number_the_offer_is(cfg, music, tmp_pa
     assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
     assert len(row["candidates"]) == match.APPROXIMATE_LIMIT
     assert row["candidates_withheld"] == 0, (
-        "more recordings reached the candidate builder than the scorer limit allows"
+        "more recordings reached the candidate builder than the recording cap allows"
     )
     assert [
         warning for warning in envelope["warnings"]

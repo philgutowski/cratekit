@@ -401,8 +401,9 @@ TOMBSTONE_KIND = "version"
 UNCREDITED_KIND = "version-uncredited"
 
 #: The score at or above which an approximate recording hit is worth SHOWING a
-#: person. Deliberately generous: everything above it becomes a question and
-#: nothing above it becomes a match, so the cost of a low floor is noise in the
+#: person. Deliberately generous: nothing above it becomes a match, and
+#: everything above it becomes a question unless its title alone falls under
+#: :data:`APPROXIMATE_TITLE_FLOOR` (U286), so the cost of a low floor is noise in the
 #: queue and the cost of a high one is a track reported missing that the library
 #: already holds under a slightly different spelling.
 #:
@@ -422,8 +423,9 @@ APPROXIMATE_FLOOR = 82
 
 #: How many approximate CANDIDATES are offered for one wanted track. A person
 #: choosing between five candidates is choosing; a person choosing between forty
-#: is scrolling. Spent twice on purpose: once as the recording limit the scorer
-#: is given, and again as a truncation of the candidate list, because one
+#: is scrolling. Spent twice on purpose: once as the number of recordings
+#: :func:`_resembling` keeps, after the title test and never before it (U286),
+#: and again as a truncation of the candidate list, because one
 #: recording can be held as several versions at several keys and a limit on
 #: recordings alone promises a number it does not deliver.
 #:
@@ -431,11 +433,11 @@ APPROXIMATE_FLOOR = 82
 #: justification with nothing behind it: multiplying the scorer's limit by four
 #: left the whole suite green. The two spends are observable apart, and the thing
 #: that separates them is the WITHHELD COUNT. Eight resembling recordings held as
-#: one version each: with the scorer capped here, five candidates are built and
+#: one version each: with the recordings capped here, five candidates are built and
 #: nothing is withheld; with the cap raised, eight are built, five are shown and
 #: three are reported kept back. So a run that says "3 further candidates were
-#: never shown" over a library of one-version recordings is a run whose scorer
-#: limit is not this constant, and
+#: never shown" over a library of one-version recordings is a run whose
+#: recording cap is not this constant, and
 #: ``test_the_scorer_is_capped_at_the_same_number_the_offer_is`` asserts the
 #: number is spent in both places.
 APPROXIMATE_LIMIT = 5
