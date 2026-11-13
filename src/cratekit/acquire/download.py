@@ -840,6 +840,10 @@ def _failed(
 def acquire_paced(adapter: BaseAdapter, requests: Iterable[TrackRequest], **options) -> DownloadRun:
     """Drive a built adapter through the pool, credential live only for the run.
 
+    The run's credential is the adapter's own session scope. Inside a drive of
+    a download job the vendored adapter's scope is the drive's (U274), so the
+    session outlives this call and is erased when the drive closes.
+
     This reaches into ``BaseAdapter``'s session scope and source hooks on
     purpose. ``download`` is part of the adapter framework rather than a client
     of it: it is the paced replacement for the sequential loop that

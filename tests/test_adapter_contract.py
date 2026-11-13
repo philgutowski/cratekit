@@ -1221,10 +1221,12 @@ def test_the_vendored_source_escalates_a_dead_session_but_not_a_dead_track(
     )
     source = vendored._VendoredSource(settings, tmp_path / "token.json", session=session)
 
-    with pytest.raises(AdapterAuthFailed):
-        source.offer(TrackRequest(key="expired"))
+    # The dead track first: since U274 a source that met a dead session is
+    # never asked again, so the order of the two calls is the test's.
     with pytest.raises(NotFoundError):
         source.offer(TrackRequest(key="delisted"))
+    with pytest.raises(AdapterAuthFailed):
+        source.offer(TrackRequest(key="expired"))
 
 
 def test_a_download_the_tool_silently_skipped_is_not_reported_as_a_file():

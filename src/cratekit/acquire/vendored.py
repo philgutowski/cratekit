@@ -18,7 +18,9 @@ FOUR THINGS THIS FILE OWNS, and each is a failure the source system had:
 2. **The credential is materialised and erased (R4).** The wrapped tool persists
    its own plaintext session beside its settings and refreshes it silently. It is
    pointed at a private short-lived file instead, and the refreshed session goes
-   back to the keychain.
+   back to the keychain. A download job holds one file and one login for a whole
+   drive of the job rather than one a track (U274, :func:`drive`), and the
+   session the tool holds in memory is written back when the drive closes.
 3. **Failures are translated into the contract.** The tool raises whatever its
    client raises. An authentication rejection becomes an invocation-level
    AUTH_FAILED naming the replacement path (AE9), not a pile of missing tracks.
@@ -40,8 +42,9 @@ from __future__ import annotations
 import functools
 import inspect
 import sys
-from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager
+from collections.abc import Callable, Iterator, Mapping
+from contextlib import AbstractContextManager, ExitStack, contextmanager, nullcontext
+from contextvars import ContextVar
 from pathlib import Path
 from threading import Event
 from typing import Any
@@ -61,7 +64,8 @@ from cratekit.acquire.adapter import (
     TrackSource,
     verify_applied,
 )
-from cratekit.core import binaries, provider_gate
+from cratekit.core import binaries, config, provider_gate, secrets
+from cratekit.core.cause import CratekitError
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -315,8 +319,70 @@ class _VendoredSource:
         #: provable without an account. Only the deferred import below is left
         #: unreachable offline, instead of the whole of ``fetch``.
         self._downloader: Any = downloader
+        #: The refusal this source met, at its login or from a call the
+        #: provider answered as a dead session (U274). A source a drive holds
+        #: serves every track of a job, so once the provider has refused the
+        #: session it is never logged into or asked again: a second login into
+        #: a refused session is the lockout the worker parks to avoid.
+        self._refused: AdapterAuthFailed | None = None
+
+    @property
+    def settings(self) -> AdapterSettings:
+        return self._settings
+
+    def rebind(self, settings: AdapterSettings) -> None:
+        """Serve the next track under its own settings (U274).
+
+        A drive reuses one logged in source for every track, and each track has
+        its own staging directory and the frozen policy, so the next
+        ``authenticate`` pushes and verifies these, exactly as a new source
+        would. The gate is not rebuilt: :class:`_Drive` hands out a new source
+        when the gate settings differ.
+        """
+        self._settings = settings
+
+    def capture(self, scope: provider_session.SessionScope) -> None:
+        """Write the logged in session into the scope's token file (U274).
+
+        The tool refreshes an expired access token in memory and writes no
+        file, so without this a refresh during a drive never reaches the
+        keychain. Nothing is written for a source that never logged in, and a
+        session the tool holds unchanged is written back as the stored value,
+        which :func:`provider_session.write_back` then leaves alone.
+        """
+        if self._tidal is None:
+            return
+        # A SESSION LEFT IN THE TOOL'S DOLBY ATMOS CLIENT IS NOT OURS TO STORE.
+        # The tool swaps its session to another client's credentials for an
+        # Atmos track and back afterwards; the keychain holds the PKCE session
+        # and nothing else.
+        if getattr(self._tidal, "is_atmos_session", False):
+            return
+        refreshed = provider_session.captured(self._session, scope.stored)
+        if refreshed is None:
+            return
+        config.atomic_write_bytes(
+            provider_session.JSON.dumps(refreshed), scope.path, mode=config.PRIVATE_FILE_MODE
+        )
+
+    def _refuse_if_refused(self) -> None:
+        """Raise the refusal this source met again, making no call (U274)."""
+        if self._refused is not None:
+            raise AdapterAuthFailed(str(self._refused), remedy=self._refused.remedy)
 
     def authenticate(self) -> None:
+        # A REFUSED SESSION IS NEVER ASKED AGAIN (U274), before the gate and
+        # before anything is built, so a source held across a drive makes no
+        # call at all after the provider refused it. ``offer`` and ``fetch``
+        # ask the same first, whoever calls them next.
+        self._refuse_if_refused()
+        try:
+            self._authenticate()
+        except AdapterAuthFailed as refused:
+            self._refused = refused
+            raise
+
+    def _authenticate(self) -> None:
         # THE GATE IS ASKED BEFORE ANYTHING IS BUILT OR LOGGED IN (R-705). A
         # download started inside the cooldown a rate limited sweep left behind
         # refuses here, naming the time it lifts, and makes no call; the worker
@@ -397,15 +463,28 @@ class _VendoredSource:
         the client publishes several lossless tiers and adding one upstream must
         not silently start refusing tracks under strict policy.
         """
+        self._refuse_if_refused()
         try:
             track = self._session.track(request.key)
         except Exception as exc:
-            raise_if_session_dead(exc)
+            try:
+                raise_if_session_dead(exc)
+            except AdapterAuthFailed as dead:
+                self._refused = dead
+                raise
             raise
         quality = str(getattr(track, "audio_quality", "") or "")
         return Offer(lossless="LOSSLESS" in quality.upper(), detail=quality)
 
     def fetch(self, request: TrackRequest, destination: Path) -> Path:
+        self._refuse_if_refused()
+        try:
+            return self._fetch(request, destination)
+        except AdapterAuthFailed as dead:
+            self._refused = dead
+            raise
+
+    def _fetch(self, request: TrackRequest, destination: Path) -> Path:
         from cratekit._vendor.downloader.constants import MediaType  # noqa: PLC0415
 
         event_abort, event_run = download_events()
@@ -831,15 +910,145 @@ def _render(args: tuple[object, ...]) -> str:
     return text
 
 
+class _Drive:
+    """One drive of one download job: one token file, one login, one write back.
+
+    U274, Phillip's answer on the card: the session is materialised, validated
+    and written back once per drive of one job, and the private token file is
+    removed when the drive ends or fails. Before it every track built its own
+    scope and source, so every track read the keychain, wrote a token file and
+    logged in again (``sessions``, then ``users/<id>``), two of the six provider
+    calls a track spent.
+
+    NOTHING HAPPENS UNTIL A TRACK ASKS. A drive refused at the driver lock, or
+    one with nothing left to claim, reads no keychain and writes no file.
+
+    What is held is the logged in source and the scope its file lives in. Each
+    track still builds its own adapter, takes its own paced acquisition and asks
+    the gate before anything: the reuse branch of ``authenticate`` asks the
+    gate first, then pushes and verifies the track's own settings. A refusal is
+    remembered by the source, so a drive never logs in again over a session the
+    provider refused, and the worker still parks the job on it.
+    """
+
+    def __init__(self) -> None:
+        self._stack = ExitStack()
+        self._scope: provider_session.SessionScope | None = None
+        self._source: _VendoredSource | None = None
+        #: What the close could not do, as envelope warnings, for the engine to
+        #: put on the verb's report (see :func:`drive`).
+        self.warnings: list[dict[str, str]] = []
+
+    def source(self, settings: AdapterSettings) -> _VendoredSource:
+        """The drive's source, under this track's settings. The first call
+        materialises the session; a keychain that cannot answer raises the
+        adapter failure ``materialised_session`` translates it to, and the next
+        track asks again, as a new scope would."""
+        if self._scope is None:
+            self._scope = self._stack.enter_context(
+                provider_session.materialised_session(filename=TOKEN_FILENAME)
+            )
+        held = self._source
+        if held is not None and held.settings.gate == settings.gate:
+            held.rebind(settings)
+            return held
+        fresh = _VendoredSource(settings, self._scope.path)
+        # A REFUSAL OUTLIVES THE SOURCE IT WAS MET ON, so a new gate never
+        # buys a second login into a session this drive saw refused.
+        fresh._refused = held._refused if held is not None else None
+        self._source = fresh
+        return fresh
+
+    def close(self) -> None:
+        """Write back what the provider gave this drive, then erase the file.
+
+        The erase is ``materialised_session``'s own, in its ``finally``, so it
+        runs whether the capture or the write back raised or not.
+        """
+        try:
+            if self._scope is not None and self._source is not None:
+                self._source.capture(self._scope)
+        finally:
+            self._stack.close()
+
+
+#: The warning a drive's report carries when the session it refreshed could
+#: not be stored at its close (U274, round one).
+SESSION_NOT_STORED = "provider-session-not-stored"
+
+#: The drive this thread of control is inside, if any (U274).
+_DRIVE: ContextVar[_Drive | None] = ContextVar("cratekit_vendored_drive", default=None)
+
+
+@contextmanager
+def drive() -> Iterator[_Drive]:
+    """Hold one session for every track a job's drive acquires (U274).
+
+    Entered by the job engine around one drive of a download job, through the
+    worker's ``per_drive`` attribute, so it closes on every way out of the
+    drive: finished, parked, interrupted, the engine's no evidence raise, or a
+    defect. The write back runs on each of them, because a refresh during a
+    drive that then failed is still the session the keychain should hold. The
+    token directory goes on each of them too, whatever the write back did.
+
+    A WRITE BACK THAT FAILS NEVER REPLACES THE DRIVE'S OWN ANSWER (round one).
+    A keychain that cannot take the session, the product's own opt in for a
+    machine with none among them, or a credential index it cannot read after
+    the keychain took it, would otherwise turn a finished download into a
+    failure and a parked one's ``auth-failed`` into another cause. The stored
+    session is left as it was, its refresh token still logs in, and the
+    failure becomes :data:`SESSION_NOT_STORED` on the drive's result, which a
+    verb that finished reports; a verb that parked or failed reports its own
+    cause instead, as it does every other warning. On a way out by an exception
+    nothing reaches a report, so it is dropped and the drive's own error is the
+    one raised. Anything else the close raises after a drive that returned is
+    a defect, and raises.
+    """
+    held = _Drive()
+    entered = _DRIVE.set(held)
+    finished = False
+    try:
+        yield held
+        finished = True
+    finally:
+        _DRIVE.reset(entered)
+        try:
+            held.close()
+        except (secrets.CredentialError, CratekitError, OSError) as exc:
+            # The class and not the words: a credential refusal's words are
+            # written for the person setting one up, and here they are not.
+            held.warnings.append(
+                {
+                    "code": SESSION_NOT_STORED,
+                    "message": (
+                        f"the provider session this download refreshed could not be "
+                        f"stored ({type(exc).__name__}); the stored session is left "
+                        f"as it was, and the next run logs in from it"
+                    ),
+                }
+            )
+        except Exception:
+            if finished:
+                raise
+
+
 class VendoredAdapter(BaseAdapter):
     """The default adapter: the vendored downloader behind the declared contract."""
 
     name = "vendored"
 
     def _session_scope(self) -> AbstractContextManager[object]:
+        # INSIDE A DRIVE THE DRIVE'S SCOPE IS USED (U274), and its source hands
+        # out the one logged in source. Outside one, a scope per invocation,
+        # as every adapter has.
+        held = _DRIVE.get()
+        if held is not None:
+            return nullcontext(held)
         return provider_session.materialised_session(filename=TOKEN_FILENAME)
 
     def _source(self, scope: object) -> TrackSource:
+        if isinstance(scope, _Drive):
+            return scope.source(self.settings)
         token_path = getattr(scope, "path", None)
         if token_path is None:  # pragma: no cover - only a misconfigured scope
             raise AdapterBroken(
@@ -855,6 +1064,7 @@ __all__ = [
     "MP4_LOSSLESS_CODECS",
     "QUALITY_BY_POLICY",
     "REAUTHORISE_HINT",
+    "SESSION_NOT_STORED",
     "STAGING_TEMPLATE",
     "TOKEN_FILENAME",
     "VendoredAdapter",
@@ -862,6 +1072,7 @@ __all__ = [
     "codec_of",
     "describe_cause",
     "disabled_progress",
+    "drive",
     "download_events",
     "is_authentication_failure",
     "is_rate_limit",

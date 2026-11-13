@@ -705,6 +705,14 @@ an orphaned claim once, checks for interrupts, makes artifacts durable before
 done, records total failure as failed. Not the mutation driver
 (`scripts/mutate.py`).
 
+### Drive
+One pass of the driver over one job, from taking its lock to its last item,
+park or interrupt. A worker may hold something for the whole drive by naming it
+as its **`per_drive`** (`cli/handlers.py`, U274), entered around the drive and
+closed on every way out of it. The download worker holds the vendored
+adapter's session: one token file and one login for every track the drive
+acquires. A resume is a new drive.
+
 ## Sync
 
 ### Sync watermark

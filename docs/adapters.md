@@ -101,7 +101,13 @@ reads instead of the exit code.
 The OS keychain holds the provider session. For one invocation the adapter
 writes it to a private file in a private directory, hands the tool that path,
 writes back a refreshed session only if it parses as one and differs from the
-session it read, and erases the file on every exit path. The label catalogue
+session it read, and erases the file on every exit path. A download job's
+invocation is one drive of the job: the vendored adapter writes the file and
+logs in once for every track the drive acquires, never again after the
+provider refuses the session, and writes back the session the tool holds when
+the drive ends or fails, so a ten track job spends two login calls and four a
+track rather than six a track. Each directory is named for its process, and
+every new one first removes those a killed process left. The label catalogue
 and the outbound account share one login per process. A catalogue open reuses
 it only while the keychain still holds the session it was opened from; the
 account keeps the adapter it opened until the provider refuses the session,
