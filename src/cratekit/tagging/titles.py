@@ -149,6 +149,18 @@ def without_trailing_groups(value: str) -> str:
     return text
 
 
+def own_core(value: str) -> tuple[str, bool]:
+    """:func:`title_core`, never across a dash: the bracket groups a title of
+    several dash parts ends with are its last part's own, so when that part
+    is brackets alone they are kept. "Artist - (Intro)" is never "artist"
+    (U280 review round one's F2), in the shared match and in Beatport's
+    ranking alike (round two)."""
+    text = value.strip()
+    if DASH in text and not identifies(without_trailing_groups(text.split(DASH)[-1])):
+        return text, False
+    return title_core(text)
+
+
 def _unbracketed(value: str) -> str:
     """The title with its round brackets taken out and its spaces collapsed, so
     "(Not Just) Knee Deep" and "Not Just Knee Deep" compare equal."""
@@ -328,13 +340,7 @@ def read_title(
     """
     if not identifies(text):
         return None
-    parts = text.split(DASH)
-    core, exact = title_core(text)
-    if not identifies(without_trailing_groups(parts[-1])):
-        # The bracket groups a stretch ends with are its last part's own, and
-        # never shed across a dash: "Artist - (Intro)" is never "artist"
-        # (review round one's F2).
-        core, exact = (core, exact) if len(parts) == 1 else (text.strip(), False)
+    core, exact = own_core(text)
     forms = _shed if shed else _as_written
     bare: set[Words] = set()
     if exact:
@@ -347,14 +353,23 @@ def read_title(
             rest = core[lead.end() :]
             if identifies(rest):
                 bare = forms(words(rest))
-    if numbered:
-        # A track number is its first part's, so the title is read past it,
-        # "02 (Intro) (Extended Mix)" as "(Intro) (Extended Mix)".
-        number = _WORD.search(text)
-        past = read_title(text[number.end() :], shed=shed, after_title=after_title, in_head=in_head) if number else None
-        if past is not None:
-            names |= past.names
-            bare |= past.bare
+    if numbered and not exact:
+        # A track number is its first part's own, as the layout tells one
+        # (:func:`_opens_with_a_track_number`): before more words, "01
+        # Sunrise Mood", the title is the rest of the core; before brackets
+        # alone it is a lone "01" to "09", and the title is read past it,
+        # "02 (Intro) (Extended Mix)" as "(Intro) (Extended Mix)", while "007
+        # (Intro)" is a title (review round two).
+        found = words(core)
+        if len(found) > 1:
+            names |= forms(found[1:])
+        elif _a_track_number(found[0]):
+            number = _WORD.search(text)
+            assert number is not None
+            past = read_title(text[number.end() :], shed=shed, after_title=after_title, in_head=in_head)
+            if past is not None:
+                names |= past.names
+                bare |= past.bare
 
     def can_be_a_title(found: Words) -> bool:
         if in_head and all(map(_a_head_word, found)):

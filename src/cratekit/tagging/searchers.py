@@ -737,7 +737,7 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
     if not _identifies(title_normalized):
         return None
     proper = titles.without_head(title_normalized)
-    whole_title = _words(titles.title_core(proper)[0])
+    whole_title = _words(titles.own_core(proper)[0])
     searched_title = titles.read_file(title_normalized, artist)
     searched = _artist_parts(artist, r"[,&]")
 

@@ -1513,6 +1513,7 @@ GENERATED_TITLES = (
     "Make Luv",
     "Burning Bridges",
     "(Intro)",
+    "007 (Interlude)",
 )
 
 #: (artist tag, the credit as a name writes it).
@@ -1611,6 +1612,11 @@ WHOLE_NAME_NOT = [
     # And the first part naming the artist only as featured is read as a
     # title only where main read it, with no head before it (F3).
     ("Tide", f"08A - 124 - {ARTIST} feat. Tide - Sunrise Mood", ARTIST),
+    # Review round two: a number of three figures before brackets is the
+    # title's own, never a track number read past.
+    (ARTIST, "007 (Intro)", "Intro"),
+    (ARTIST, "010 (Intro)", "(Intro)"),
+    (ARTIST, f"08A - 124 - {ARTIST} - 007 (Intro)", "Intro"),
 ]
 WHOLE_NAME_STILL = [
     # The first part names the artist only as featured: a title featuring them.
@@ -1644,6 +1650,19 @@ def test_a_lossy_file_named_with_a_track_number_takes_no_self_titled_genre(tmp_p
     assert rendered.title_tag == f"[MP3] 01 - {ARTIST} - (Intro)"
     assert result.genre_written is None
     assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize(
+    "title", [f"{ARTIST} - (Intro)", f"{ARTIST} - (Intro) (Live)", f"{ARTIST} - [Intro]", "007 (Intro)"]
+)
+def test_beatport_ranks_no_row_by_brackets_shed_across_a_dash(title):
+    """Review round two: Beatport's middle tier read the title's core across
+    a dash, so "Artist - (Intro)" scored the self titled row above the file's
+    own, in either order on the page."""
+    rows = [_beatport_track(ARTIST, ARTIST, "Techno"), _beatport_track(ARTIST, "Intro", BUCKET_GENRE)]
+    for page in (rows, rows[::-1]):
+        assert _beatport_hit(title, page).genre in (BUCKET_GENRE, None)
+    assert _beatport_answer(_beatport_hit(title, rows[:1])) == "miss"
 
 
 @pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_STILL)
