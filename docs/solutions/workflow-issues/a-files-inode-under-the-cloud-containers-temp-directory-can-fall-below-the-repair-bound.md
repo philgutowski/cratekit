@@ -53,3 +53,16 @@ spreads to another block group with high inodes: `mkdir /mtprobe` then run
 the driver with `TMPDIR=/mtprobe`. The test then passes alone, the baseline is
 green, and nothing in the suite or the baseline file was edited. Never add
 the test to `.cloud-battery/baseline.txt` by hand.
+
+## Since U273
+
+The battery names this test on its `ON_DISK` list. `cloud_battery.py
+baseline --temp memory` runs the suite on the memory filesystem, where a
+file's inode is in the thousands and the test always fails, then runs the
+listed tests again on disk, and their disk outcome is the one recorded; the
+driver does the same for any run that collects them. Measured on 2026-11-13:
+run alone on the container's disk the test failed 4 of 4 times, a fresh
+file under `/tmp` getting inode 620,000 or so; it passes in a full run on
+disk only after the run has written gigabytes. So the battery's default stays
+disk while Phillip decides (#702), and with `--temp memory` this test reads
+as the machine's in both the baseline and the compare.
