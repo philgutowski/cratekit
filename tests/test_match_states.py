@@ -6592,16 +6592,16 @@ def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeyp
     index, rows = _u265_library(11)
     recordings = len(index.by_recording)
     for wanted in rows:
-        match._approximate(wanted, index)
+        match._approximate(wanted, index, limit=match.APPROXIMATE_LIMIT)
     assert len(calls) == recordings + len(rows)
 
     calls.clear()
     again, _rows = _u265_library(12)
-    match._approximate(rows[0], again)
+    match._approximate(rows[0], again, limit=match.APPROXIMATE_LIMIT)
     assert len(calls) == len(again.by_recording) + 1
 
     calls.clear()
-    assert match._approximate(rows[0], match.LibraryIndex(by_recording={})) == ()
+    assert match._approximate(rows[0], match.LibraryIndex(by_recording={}), limit=None) == ()
     assert calls == [], "an empty index sorts nothing and asks the scorer nothing"
 
 
@@ -6759,18 +6759,27 @@ def _index_of_owned(*held: match.Owned) -> match.LibraryIndex:
     return match.LibraryIndex(by_recording={k: tuple(v) for k, v in grouped.items()})
 
 
-@pytest.mark.parametrize(("wanted", "held"), [("!!!", "???"), ("Sun Path", "!!!"), ("!!!", "Sun Path")])
+#: An artist long enough that a title of one short word, or of none, still
+#: clears the discovery floor, so a title that folds to nothing reaches the
+#: title test at all.
+LONG_ARTIST = "Aurora Bloom and the Harbour Lights Orchestra"
+
+
+@pytest.mark.parametrize(("wanted", "held"), [("!!!", "Sun"), ("Sun", "!!!")])
 def test_a_title_that_folds_to_nothing_is_offered_as_before(wanted, held):
     """A title with no letter or digit cannot be read, so the title test says
     nothing about it and the discovery score decides, as it did before U286.
     Read as sharing nothing it would download a record the library may hold."""
-    owned = match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=held, version="", key=None)
+    owned = match.Owned(path=Path("x.flac"), artist=LONG_ARTIST, title=held, version="", key=None)
     index = _index_of_owned(owned)
-    asked = one(title=wanted)
-    if match._approximate(asked, index, limit=None):
-        found = resolve([asked], index).matches[0]
-        assert found.why is match.Why.TITLE_APPROXIMATE
-    assert match._title_resembles(asked, owned)
+    asked = one(artist=LONG_ARTIST, title=wanted)
+    assert match._approximate(asked, index, limit=None) == (owned,), (
+        "the pair no longer clears the discovery floor, so it tests nothing here"
+    )
+    found = resolve([asked], index).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert [c.title for c in found.candidates] == [held]
 
 
 def test_a_one_letter_title_is_judged_by_the_same_rule(music):
@@ -6830,3 +6839,67 @@ def test_the_title_floor_is_pinned_from_both_sides_by_the_nearest_score_either_w
     assert match._title_resembles(one(title=high_asked), owned(high_held))
     # And the highest of the card's live pairs sits under it.
     assert fuzz.token_set_ratio("get out", "agenou") < match.APPROXIMATE_TITLE_FLOOR
+
+
+@pytest.mark.parametrize("seed", [265, 2650, 26500])
+def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
+    """THE REFERENCE, WRITTEN APART FROM THE CODE: the shipped scorer's every
+    hit over the floor, in its order, each recording kept when its folded
+    title, or both halves crossed, reaches the title floor by
+    ``token_set_ratio``, or when either title folds to nothing, then the first
+    five. And U265's identity where nothing is dropped: a row whose shipped
+    five all pass is offered exactly the shipped five, every candidate and
+    order unchanged. The generated libraries are asserted to carry rows of
+    both kinds, and rows where a dropped hit makes room for a sixth."""
+    from rapidfuzz import fuzz
+
+    def passes(wanted, held):
+        asked, found = match.fold(wanted.title), match.fold(held.title)
+        if not asked or not found:
+            return True
+        floor = match.APPROXIMATE_TITLE_FLOOR
+        if fuzz.token_set_ratio(asked, found) >= floor:
+            return True
+        crossed = fuzz.token_set_ratio(asked, match.fold(held.artist)) >= floor
+        return crossed and fuzz.token_set_ratio(match.fold(wanted.artist), found) >= floor
+
+    def by_recording(rows):
+        grouped: dict[str, list[match.Owned]] = {}
+        for held in rows:
+            grouped.setdefault(held.recording, []).append(held)
+        return list(grouped.values())
+
+    generated, rows = _u265_library(seed)
+    # THE CARD'S SHAPE BESIDE U265'S: short titles by one artist, related and
+    # not, so rows drop hits and a drop makes room for a hit past the five.
+    short = ("Joy", "Jay", "Joys", "Box", "Cox", "Fox", "Lox", "Pox", "Sox",
+             "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye")
+    held = [owned for versions in generated.by_recording.values() for owned in versions]
+    held += [
+        match.Owned(path=Path(f"s{n:03d}.flac"), artist=artist, title=title, version="", key=None)
+        for n, (artist, title) in enumerate(
+            [(a, t) for a in ("Aurora Bloom", "Nova Reef") for t in short]
+            + [("Aurora Bloom Band", "Joy"), ("Nova Reef Band", "Wow")]
+        )
+    ]
+    index = _index_of_owned(*held)
+    rows = rows + [
+        one(artist=artist, title=title)
+        for artist in ("Aurora Bloom", "Nova Reef")
+        for title in ("Joy", "Wow", "Mana", "Rea", "Get Out", "A")
+    ]
+    unchanged = dropped = refilled = 0
+    for wanted in rows:
+        every = by_recording(_shipped_approximate(wanted, index, limit=None))
+        kept = [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
+        expected = tuple(held for group in kept for held in group)
+        assert match._resembling(wanted, index) == expected, wanted.recording
+
+        shipped = by_recording(_shipped_approximate(wanted, index))
+        if all(passes(wanted, group[0]) for group in shipped):
+            assert match._resembling(wanted, index) == _shipped_approximate(wanted, index)
+            unchanged += bool(shipped)
+        else:
+            dropped += 1
+            refilled += len(kept) > len([g for g in shipped if passes(wanted, g[0])])
+    assert unchanged and dropped and refilled, (unchanged, dropped, refilled)
