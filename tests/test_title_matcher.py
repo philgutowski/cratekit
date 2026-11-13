@@ -1617,6 +1617,12 @@ WHOLE_NAME_NOT = [
     (ARTIST, "007 (Intro)", "Intro"),
     (ARTIST, "010 (Intro)", "(Intro)"),
     (ARTIST, f"08A - 124 - {ARTIST} - 007 (Intro)", "Intro"),
+    # The mutation table's zeros, pinned: a track number past the marker is
+    # its first part's own (M29), and a square group is read past only where
+    # the naming verb writes its marker, so two leading groups never meet on
+    # what is left (M06).
+    (ARTIST, "[MP3] 01 - Original Mix", "Original Mix"),
+    (ARTIST, f"{ARTIST} - [Love] Is The Message", "(Hate) Is The Message"),
 ]
 WHOLE_NAME_STILL = [
     # The first part names the artist only as featured: a title featuring them.
@@ -1629,6 +1635,9 @@ WHOLE_NAME_STILL = [
     (ARTIST, "[MP3] 01 Sunrise Mood", "Sunrise Mood"),
     (ARTIST, f"{ARTIST} - (Intro)", "Intro"),
     (ARTIST, f"[MP3] 01 - {ARTIST} - (Intro)", "(Intro)"),
+    # A part naming the artist only as featured is no credit among several,
+    # so the name is no ambiguous shape and its title is read (M11).
+    (f"{ARTIST} & Tide", f"08A - 124 - Sunrise Mood (feat. Tide) - {ARTIST} - Vocal Mix", "Sunrise Mood"),
 ]
 
 
