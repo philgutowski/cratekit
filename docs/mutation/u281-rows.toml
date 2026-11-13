@@ -1,0 +1,262 @@
+name = "u281"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_beatport_reads_no_refusal"
+description = "_search_beatport: drop the shared refusal check, so a 403 is unreachable and a 200 challenge a parse break, as before the card"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py"]
+old = '''    tracks = None if page.text is None else _beatport_tracks(page.text)
+    if tracks is None:
+        refused = unread_outcome(BEATPORT, page)
+        if refused is not None:
+            return refused
+        return SourceOutcome('''
+new = '''    if page.text is None:
+        return SourceOutcome(BEATPORT, Answer.UNREACHABLE, note=page.note)
+    tracks = _beatport_tracks(page.text)
+    if tracks is None:
+        return SourceOutcome('''
+
+[[rows]]
+id = "S8_refusal_check_before_the_payload"
+description = "_search_beatport: run the refusal check before the parse again, round one's order, so a results page carrying Cloudflare's script reads as a refusal"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''    tracks = None if page.text is None else _beatport_tracks(page.text)
+    if tracks is None:
+        refused = unread_outcome(BEATPORT, page)'''
+new = '''    refused = unread_outcome(BEATPORT, page)
+    if refused is not None:
+        return refused
+    tracks = None if page.text is None else _beatport_tracks(page.text)
+    if tracks is None:
+        refused = unread_outcome(BEATPORT, page)'''
+
+[[rows]]
+id = "S2_challenge_header_unread"
+description = "_refusal_note: never read Cf-Mitigated, so a Cloudflare 403 is only HTTP 403 and the warning cannot name the challenge"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tag_workers.py", "tests/test_published_genre.py"]
+old = '''    if mitigated.strip().lower() == _CF_CHALLENGE:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S3_challenge_header_case"
+description = "_refusal_note: compare the header's value as sent, so ' Challenge ' is not named one"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py"]
+old = '''    if mitigated.strip().lower() == _CF_CHALLENGE:'''
+new = '''    if mitigated == _CF_CHALLENGE:'''
+
+[[rows]]
+id = "S4_any_mitigation_is_a_challenge"
+description = "_refusal_note: name any Cf-Mitigated value a challenge, so a block is called a challenge"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py"]
+old = '''    if mitigated.strip().lower() == _CF_CHALLENGE:'''
+new = '''    if mitigated:'''
+
+[[rows]]
+id = "S5_title_not_named_cloudflare"
+description = "unread_outcome: never name a Cloudflare title page a Cloudflare challenge"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''        named = f", a {CLOUDFLARE_CHALLENGE}" if _CLOUDFLARE_TITLE.match(title) else ""'''
+new = '''        named = ""'''
+
+[[rows]]
+id = "S6_every_title_named_cloudflare"
+description = "unread_outcome: name every challenge title Cloudflare's, Bandcamp's own Client Challenge included"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''        named = f", a {CLOUDFLARE_CHALLENGE}" if _CLOUDFLARE_TITLE.match(title) else ""'''
+new = '''        named = f", a {CLOUDFLARE_CHALLENGE}"'''
+
+[[rows]]
+id = "S7_body_note_reworded"
+description = "unread_outcome: the challenge script's note loses the Cloudflare challenge words the summary counts by"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''            note=f"the catalogue answered with a {CLOUDFLARE_CHALLENGE} page",'''
+new = '''            note="the catalogue answered with Cloudflare's challenge page",'''
+
+[[rows]]
+id = "R1_stop_after_four"
+description = "Refusals.stopped: stop only once the count passes the limit, so four refusals are sent, not three"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''        if self.running.get(source, 0) < self.limit:'''
+new = '''        if self.running.get(source, 0) <= self.limit:'''
+
+[[rows]]
+id = "R2_limit_two"
+description = "REFUSALS_BEFORE_STOP: two rather than three, a moment's challenge stops the run"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''REFUSALS_BEFORE_STOP = 3'''
+new = '''REFUSALS_BEFORE_STOP = 2'''
+
+[[rows]]
+id = "R3_stopped_reads_miss"
+description = "Refusals.stopped: answer a stopped catalogue MISS, the card's merge blocker, a refused file recorded as one no catalogue carries"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''        return SourceOutcome(
+            source,
+            Answer.BLOCKED,
+            note=(
+                f"{NOT_SENT}{source} refused'''
+new = '''        return SourceOutcome(
+            source,
+            Answer.MISS,
+            note=(
+                f"{NOT_SENT}{source} refused'''
+
+[[rows]]
+id = "R4_stopped_note_unmarked"
+description = "Refusals.stopped: the note loses its not sent head, so the summary counts the unsent files as sent"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''                f"{NOT_SENT}{source} refused this client on its last {self.limit} "'''
+new = '''                f"{source} refused this client on its last {self.limit} "'''
+
+[[rows]]
+id = "R5_no_reset"
+description = "Refusals.heard: an answer that is not a refusal never ends the run of them, so a catalogue that answered can be stopped"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''        else:
+            self.running.pop(outcome.source, None)
+            self.last.pop(outcome.source, None)'''
+new = '''        else:
+            pass'''
+
+[[rows]]
+id = "R6_outage_keeps_the_count"
+description = "Refusals.heard: only a match or a miss resets, so refused, refused, down, refused stops the run"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''        else:
+            self.running.pop(outcome.source, None)'''
+new = '''        elif outcome.answer in (Answer.MISS, Answer.MATCHED):
+            self.running.pop(outcome.source, None)'''
+
+[[rows]]
+id = "R7_one_count_for_every_catalogue"
+description = "Refusals.heard: count every catalogue's refusals under one key, so a refusing fallback stops Beatport too"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''        if self.running.get(source, 0) < self.limit:'''
+new = '''        if sum(self.running.values()) < self.limit:'''
+
+[[rows]]
+id = "W1_searcher_never_counts"
+description = "catalogue_searcher: never tell the count what a catalogue answered, so nothing ever stops"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''                    counted.heard(outcome)'''
+new = '''                    pass'''
+
+[[rows]]
+id = "W2_searcher_ignores_the_handed_count"
+description = "catalogue_searcher: build its own count whatever it is handed, so a worker's per file searcher starts again every file"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''    counted = Refusals() if refusals is None else refusals'''
+new = '''    counted = Refusals()'''
+
+[[rows]]
+id = "W4_binder_drops_the_count"
+description = "for_taxonomy: hand the searcher no count, so the worker's run count never reaches it"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''    return catalogue_searcher(declared, discogs=for_discogs(), refusals=refusals)'''
+new = '''    return catalogue_searcher(declared, discogs=for_discogs(), refusals=None)'''
+
+[[rows]]
+id = "W5_run_never_changes"
+description = "for_run: keep the first run's count for every later run, so the next sweep never asks a stopped catalogue"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_beatport_refusal.py", "tests/test_tag_workers.py"]
+old = '''    if not _run_refusals or _run_refusals[0][0] != run:'''
+new = '''    if not _run_refusals:'''
+
+[[rows]]
+id = "W7_worker_run_key_without_attempt"
+description = "tagging.cli.handle: name the run by the job alone, so a resumed run inherits the last run's stop"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_beatport_refusal.py"]
+old = '''            declared, refusals=searchers.for_run(f"{job.job_id}@{job.attempts}")'''
+new = '''            declared, refusals=searchers.for_run(f"{job.job_id}")'''
+
+[[rows]]
+id = "C1_refusal_said_as_blocked"
+description = "_unread_phrase: say a refusal as 'blocked on N' again, the wording the card replaces"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py", "tests/test_beatport_refusal.py"]
+old = '''    if word != searchers.Answer.BLOCKED.value:
+        return f"{source} {word} on {count}"'''
+new = '''    if True:
+        return f"{source} {word} on {count}"'''
+
+[[rows]]
+id = "C2_challenge_never_named"
+description = "_summary: never count a Cloudflare challenge, so the warning cannot name one"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''                if searchers.CLOUDFLARE_CHALLENGE in note:
+                    challenged[source] += 1'''
+new = '''                if False:
+                    challenged[source] += 1'''
+
+[[rows]]
+id = "C3_unsent_never_counted"
+description = "_summary: never count a file a catalogue was not sent"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''                if note.startswith(searchers.NOT_SENT):
+                    not_sent[source] += 1'''
+new = '''                if False:
+                    not_sent[source] += 1'''
+
+[[rows]]
+id = "C4_source_blocked_counts_unsent_as_sent"
+description = "_unread_warnings: count the unsent files among the searches sent, so the warning claims searches never made"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''        sent = asked - held'''
+new = '''        sent = asked'''
+
+[[rows]]
+id = "C5_partial_challenge_called_whole"
+description = "_unread_phrase: call every refusal a challenge when any one was"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_tag_workers.py"]
+old = '''    if challenged >= count:'''
+new = '''    if challenged:'''

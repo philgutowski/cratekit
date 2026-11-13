@@ -94,6 +94,7 @@ repository already refuses for its CI dependency list and its extras table.
 from __future__ import annotations
 
 import copy
+import errno
 import hashlib
 import math
 import os
@@ -112,6 +113,11 @@ import platformdirs
 import tomli_w
 
 from cratekit.core import profiles
+
+try:
+    import fcntl as _fcntl_module
+except ImportError:  # pragma: no cover - Windows has no fcntl
+    _fcntl_module = None  # type: ignore[assignment]
 
 # ---------------------------------------------------------------------------
 # Schema version and the file name
@@ -4884,6 +4890,81 @@ def append_durable_bytes(payload: bytes, path: Path) -> None:
         os.close(fd)
 
 
+#: The request that empties the drive's OWN write cache as well as the
+#: operating system's, on the platforms that have one, and None where a plain
+#: sync is the strongest flush on offer. Read from the platform, never spelled.
+#:
+#: On macOS ``fsync`` hands the bytes to the drive and returns; the drive may
+#: still hold them in its cache, and a pulled cable or a power cut loses them.
+#: ``F_FULLFSYNC`` asks the drive to write its cache out before answering. A
+#: capture asks for it, decided in U272 as the conservative reading of
+#: Phillip's answer of 2026-11-13, because the restore point lives under the
+#: library root and on most libraries that is an external drive.
+_FULL_FLUSH: int | None = getattr(_fcntl_module, "F_FULLFSYNC", None)
+
+#: What a filesystem answers when it has no full flush to give: the request is
+#: not supported, not a request it knows, or not one its descriptor takes.
+#: Every other error is a flush that failed, and raises.
+_FULL_FLUSH_UNSUPPORTED = frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY})
+
+
+def _full_flush(fd: int, operation: int) -> None:
+    """Ask for the full flush on one descriptor. A seam, so the suite drives both answers."""
+    _fcntl_module.fcntl(fd, operation)
+
+
+def flush_to_disk(path: Path) -> None:
+    """Flush one file's or one directory's contents and entries to the device, or raise.
+
+    The third durability primitive, beside :func:`atomic_write_bytes` and
+    :func:`append_durable_bytes`, for bytes another writer put on disk: a copy
+    taken with ``shutil``, which writes and never syncs (U272). A directory is
+    flushed through the same call, because a file created in it is an entry in
+    the directory, and an unflushed directory loses the entry exactly as an
+    unflushed file loses its bytes.
+
+    THE FULL FLUSH WHERE THE PLATFORM HAS ONE, see ``_FULL_FLUSH``. A
+    filesystem that answers it does not support one gets the plain sync, which
+    is the strongest flush it has, as SQLite does; refusing there would leave
+    every write on such a drive with no restore point at all.
+
+    NOTHING IS SWALLOWED. Every other error, from either flush or from opening
+    the path, raises, because the caller records a verdict on the strength of
+    this returning, and a flush that failed quietly is a verdict about bytes
+    that may not be there. Not to be confused with the directory flush in
+    ``core/jobs.py``, which ignores its errors for a reason that does not hold
+    here.
+    """
+    if os.name == "nt" and Path(path).is_dir():  # pragma: no cover - needs Windows
+        # A directory cannot be opened for a flush on Windows, and NTFS
+        # journals the entries a flush of one would make durable.
+        return
+    fd = os.open(path, os.O_RDONLY)
+    try:
+        _flush_descriptor(fd)
+    except OSError as exc:
+        # A flush is asked of a descriptor, so its error names no file, and a
+        # refusal that cannot say which file of a capture failed is one a
+        # person cannot act on.
+        if exc.filename is not None:
+            raise
+        raise OSError(exc.errno, exc.strerror or str(exc), str(path)) from exc
+    finally:
+        os.close(fd)
+
+
+def _flush_descriptor(fd: int) -> None:
+    """The full flush where there is one, the plain sync where it is unsupported."""
+    if _FULL_FLUSH is not None:
+        try:
+            _full_flush(fd, _FULL_FLUSH)
+            return
+        except OSError as exc:
+            if exc.errno not in _FULL_FLUSH_UNSUPPORTED:
+                raise
+    os.fsync(fd)
+
+
 class _exclusive_lock:
     """An exclusive advisory lock that REFUSES rather than proceeding unlocked.
 
@@ -5004,6 +5085,7 @@ __all__ = [
     "config_path",
     "coupled_state_files",
     "current_adapter_name",
+    "flush_to_disk",
     "from_dict",
     "installation_state_dir",
     "library_coupled_dir",
