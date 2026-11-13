@@ -281,3 +281,51 @@ surface = "user"
 tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
 old = '''    if record.verified and record.database is not None and record.database.exists():'''
 new = '''    if record.database is not None and record.database.exists():'''
+
+[[rows]]
+id = "S16_flush_before_check"
+description = "capture: flush before the integrity check rather than after it, so what the check leaves is not flushed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''    verdict = _verify(record.database, verifier) if record.database is not None else False
+    record = Capture(
+        stamp=record.stamp,
+        root=record.root,
+        database=record.database,
+        integrity_verified=verdict,
+        sources=record.sources,
+    )
+
+    # THE COPY REACHES THE DISK BEFORE THE RECORD THAT VOUCHES FOR IT (U272).
+    # ``shutil`` writes and never syncs, and the check above reads the copy back
+    # through the page cache, so it passes whether or not the bytes reached the
+    # drive. The manifest goes through the synced atomic writer, so without this
+    # a power cut inside the write back window could leave a manifest saying
+    # verified beside a copy that is short or empty. After the check, because
+    # the check opens the copy and may leave the engine's files changed.
+    manifest = destination / MANIFEST_NAME
+    try:
+        _flush(destination, destination_root)
+'''
+new = '''    _flush(destination, destination_root)
+    verdict = _verify(record.database, verifier) if record.database is not None else False
+    record = Capture(
+        stamp=record.stamp,
+        root=record.root,
+        database=record.database,
+        integrity_verified=verdict,
+        sources=record.sources,
+    )
+
+    # THE COPY REACHES THE DISK BEFORE THE RECORD THAT VOUCHES FOR IT (U272).
+    # ``shutil`` writes and never syncs, and the check above reads the copy back
+    # through the page cache, so it passes whether or not the bytes reached the
+    # drive. The manifest goes through the synced atomic writer, so without this
+    # a power cut inside the write back window could leave a manifest saying
+    # verified beside a copy that is short or empty. After the check, because
+    # the check opens the copy and may leave the engine's files changed.
+    manifest = destination / MANIFEST_NAME
+    try:
+        pass
+'''

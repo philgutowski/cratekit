@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import errno
 import os
+import sys
 from pathlib import Path
 
 import pytest
@@ -175,6 +176,32 @@ def test_the_manifest_is_followed_by_a_flush_of_the_directory_that_holds_it(cfg,
     after = reached[reached.index(_identity(record.manifest)) + 1 :]
     assert _identity(record.root) in after
     assert _identity(record.root.parent) in after
+
+
+def test_the_flush_follows_the_check_so_what_the_check_leaves_is_flushed(cfg, monkeypatch):
+    """The check opens the copy, and closing a database can change its files.
+
+    Driven with the real check on a database with an open log, closing it
+    folds the log into the main file and removes the engine's companion files
+    from the capture. So the flush runs after the check, over what is there
+    then. Pinned here with a check that leaves a file of its own behind: a
+    flush moved ahead of the check would not have reached it.
+    """
+    left: list[Path] = []
+
+    def leaves_a_file(database):
+        changed = Path(database).with_name("left-by-the-check")
+        changed.write_bytes(b"changed")
+        left.append(changed)
+        return True
+
+    reached = _trace_flushes(monkeypatch)
+
+    record = snapshot.capture(cfg, verifier=leaves_a_file)
+
+    assert left, "the check did not run"
+    before = set(reached[: reached.index(_identity(record.manifest))])
+    assert _identity(left[0]) in before, "the flush ran before the check"
 
 
 def test_an_unverified_capture_is_flushed_in_the_same_order(cfg, monkeypatch):
@@ -400,9 +427,17 @@ def test_a_path_that_is_not_there_raises(tmp_path):
 
 
 def test_the_platforms_full_flush_is_the_one_asked_for():
-    """Read from the platform, never spelled: macOS has it, Linux has none."""
-    expected = getattr(fcntl, "F_FULLFSYNC", None) if fcntl is not None else None
-    assert config._FULL_FLUSH == expected
+    """macOS asks the drive to empty its own cache; elsewhere there is no such request.
+
+    Stated per platform rather than by reading the platform the way the code
+    does, which would compare a value with itself. On a Mac a capture that
+    stopped asking for the full flush fails here; on Linux there is none to ask.
+    """
+    if sys.platform == "darwin":  # pragma: no cover - the Mac battery
+        assert config._FULL_FLUSH is not None
+        assert config._FULL_FLUSH == fcntl.F_FULLFSYNC
+    else:
+        assert config._FULL_FLUSH is None
 
 
 def test_a_capture_outside_the_configured_store_is_flushed_too(cfg, tmp_path, monkeypatch):

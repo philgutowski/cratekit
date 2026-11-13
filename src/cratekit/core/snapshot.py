@@ -170,9 +170,12 @@ class Capture:
     a gate.
 
     It is true only when the check passed AND every file and directory of the
-    capture was then flushed to the disk (U272). A flush that failed records it
-    false, so a manifest that says verified is never beside a copy that may
-    still be only in memory.
+    capture was then flushed to the disk (U272). A flush that failed before the
+    manifest records it false, so a manifest that says verified is never beside
+    a copy that may still be only in memory. A failure of the flush AFTER the
+    manifest rewrites it false where the disk still takes the write; where it
+    does not, the manifest says verified about a copy that was flushed, and the
+    capture refuses all the same, so nothing commits behind it.
     """
 
     stamp: str
