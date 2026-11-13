@@ -2118,6 +2118,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'tagging/searchers.py': [
         'catalogue-parse-broken',
         'catalogue-unreachable',
+        # 2026-11-13, U281: the Cloudflare header a refusal's note is named by.
+        'cf-mitigated',
         'credential-missing',  # 2026-11-12, U244: a token Discogs rejected
         'not-asked',
         'parse-break',

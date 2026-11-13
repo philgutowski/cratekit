@@ -1142,6 +1142,72 @@ def test_the_next_sweep_asks_a_refusing_beatport_again_from_its_first_file(
     assert _beatport_asked(seen) == 6
 
 
+def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
+    cfg, folder, silence, monkeypatch
+):
+    """The count is the RUN's, not the job's: a retried job driven again in
+    the same process is a new drive, and asks Beatport its first three lookups
+    again. With no Discogs token every file fails ``catalogue-unreachable``,
+    retryable, which is the shape a retry re-arms."""
+    from tests.test_discogs_searcher import results
+
+    for name in ("a", "b", "c", "d", "e"):
+        place(folder, silence, name)
+    seen: list[str] = []
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            return BEATPORT_CHALLENGE
+        return searchers.Fetched(text=results(), status=200)
+
+    asker = searchers.discogs_asker(token=None, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    drive(resume_argv(job.job_id))
+    assert _beatport_asked(seen) == 3
+    assert set(item_causes(job.job_id).values()) == {searchers.UNREACHABLE_REASON}
+
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+    drive(resume_argv(job.job_id))
+
+    assert _beatport_asked(seen) == 6
+
+
+def test_a_sweep_some_of_whose_refusals_were_a_challenge_says_how_many():
+    """Named whole only when every refusal counted was a challenge."""
+    summary = {
+        "challenged": {searchers.BEATPORT: 2},
+        "not_sent": {searchers.BEATPORT: 1},
+    }
+
+    said = tag_cli._unread_phrase(summary, searchers.BEATPORT, "blocked", 4)
+    whole = tag_cli._unread_phrase(
+        {"challenged": {searchers.BEATPORT: 4}}, searchers.BEATPORT, "blocked", 4
+    )
+    plain = tag_cli._unread_phrase({}, searchers.BEATPORT, "blocked", 4)
+
+    assert said == (
+        "beatport refused this client on 4 (Cloudflare challenge on 2), "
+        "1 of them not asked once it had refused this client"
+    )
+    assert whole == "beatport refused this client (Cloudflare challenge) on 4"
+    assert plain == "beatport refused this client on 4"
+    assert tag_cli._unread_phrase({}, searchers.BEATPORT, "unreachable", 4) == (
+        "beatport unreachable on 4"
+    )
+
+
 def test_an_outage_keeps_its_own_word_in_the_sweeps_warning(cfg, folder, silence, monkeypatch):
     """A Beatport that is down is unreachable, said so, and asked on every file."""
     from tests.test_discogs_searcher import SENT, results
