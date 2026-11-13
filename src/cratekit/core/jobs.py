@@ -1500,6 +1500,9 @@ class DriveResult:
     declined: int = 0
     interrupted: bool = False
     drifted: tuple[str, ...] = field(default_factory=tuple)
+    #: Warnings for the verb's report from what a worker held for the drive
+    #: (U274): a provider session refreshed and not stored, say.
+    warnings: tuple[dict[str, str], ...] = field(default_factory=tuple)
 
 
 def _failure_verdict(

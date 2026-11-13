@@ -305,7 +305,11 @@ crate acquire audit                # files that break the lossless policy
 
 `acquire download` fetches into download staging through the configured
 adapter, paced. A track refused for good is skipped and named in an
-`acquire-refused` warning.
+`acquire-refused` warning. The vendored adapter logs in to the provider once
+for each run of a job, not once a track, and stores a session the provider
+refreshed when the run ends; a keychain that cannot take it is said in a
+`provider-session-not-stored` warning, and the next run logs in from the
+session the keychain still holds.
 
 Then the tail and the landing, in this order (`sync land`, `label sync --go`
 and `sync bandcamp` run it for you):

@@ -353,11 +353,17 @@ def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) ->
     # WHAT THE WORKER HOLDS FOR THE WHOLE DRIVE (U274), around the drive and
     # nothing else, so it is opened once whatever the item count and closed on
     # every way out, a park and the no evidence raise included.
+    # What it could not do when it closed comes back as warnings, read AFTER
+    # the close, since the close is where a write back happens.
     held = per_drive_of(handler)
-    with held() if held is not None else nullcontext():
-        return jobs.drive(
+    with held() if held is not None else nullcontext() as holding:
+        result = jobs.drive(
             store, job.job_id, handle, root=root, current_config=current, batch=batching
         )
+    noted = tuple(getattr(holding, "warnings", None) or ())
+    if noted:
+        result.warnings = (*result.warnings, *noted)
+    return result
 
 
 __all__ = [

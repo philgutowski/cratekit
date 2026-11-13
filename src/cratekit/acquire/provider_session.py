@@ -131,7 +131,9 @@ def _gone(pid: int) -> bool:
         os.kill(pid, 0)
     except ProcessLookupError:
         return True
-    except OSError:
+    except (OSError, OverflowError, ValueError):
+        # Another account's process, or an id no process can have, which only
+        # a directory someone else named could carry: never proven gone.
         return False
     return False
 
@@ -153,14 +155,12 @@ def sweep_orphans(root: Path | None = None) -> tuple[Path, ...]:
         entries = list(base.iterdir())
     except OSError:
         return ()
-    me, account = os.getpid(), os.getuid()
+    account = os.getuid()
     removed: list[Path] = []
     for entry in entries:
         owned = _OWNED_BY.match(entry.name)
-        if owned is None:
-            continue
-        pid = int(owned.group(1))
-        if pid == me or not _gone(pid):
+        # This process's own directories are alive by the same lookup.
+        if owned is None or not _gone(int(owned.group(1))):
             continue
         try:
             info = entry.lstat()

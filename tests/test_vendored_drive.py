@@ -168,6 +168,7 @@ class Tool:
     def __init__(self, provider: Provider) -> None:
         self.session = ToolSession(provider)
         self.built = 0
+        self.tidal: Any = None
         #: Every token file the adapter pointed the tool at, and its mode then.
         self.token_files: list[tuple[Path, int, int]] = []
         #: Called in the middle of a named track's download.
@@ -186,16 +187,22 @@ class Tool:
         class Tidal:
             def __init__(self, _settings: Any) -> None:
                 tool.built += 1
+                tool.tidal = self
                 self.session = tool.session
+                self.is_atmos_session = False
                 self.data: Any = None
                 self.file_path = self.path_base = ""
                 self.token_from_storage = False
 
             def read(self, path: str) -> bool:
                 try:
-                    self.data = SimpleNamespace(**json.loads(Path(path).read_text()))
+                    data = json.loads(Path(path).read_text())
                 except (OSError, ValueError):
                     return False
+                # The real token model types the expiry a float, so a stored
+                # ``1700000000`` comes back ``1700000000.0``.
+                data["expiry_time"] = float(data.get("expiry_time") or 0.0)
+                self.data = SimpleNamespace(**data)
                 file = Path(path)
                 tool.token_files.append(
                     (file, stat.S_IMODE(file.stat().st_mode), stat.S_IMODE(file.parent.stat().st_mode))
@@ -875,3 +882,169 @@ def test_a_refusal_outlives_the_source_it_was_met_on(cfg, tool, provider, stored
         with pytest.raises(vendored.AdapterAuthFailed):
             fresh.authenticate()
     assert provider.count("sessions") == 1
+
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. Round one: what the close cannot do never replaces the drive's answer
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def no_keychain(monkeypatch) -> None:
+    """The product's own opt in for a machine with no keychain: the session is
+    read from the environment, and keyring's real fail backend refuses a write."""
+    from keyring.backends import fail
+
+    monkeypatch.setenv(secrets.ENV_ALLOW_ENV_CREDENTIALS, "1")
+    monkeypatch.setenv(
+        secrets.ENV_CREDENTIAL_PREFIX + "PROVIDER_SESSION", json.dumps(STORED)
+    )
+    backend = fail.Keyring()
+    monkeypatch.setattr(keyring, "set_password", backend.set_password)
+    monkeypatch.setattr(keyring, "get_password", backend.get_password)
+
+
+def test_a_refresh_the_keychain_cannot_take_is_a_warning_on_a_finished_download(
+    cfg, library, tool, provider, temporary, monkeypatch
+):
+    tracks = keys(3)
+    tool.session.refresh_at = tracks[0]
+    job_id = queued(library, tracks)
+    no_keychain(monkeypatch)
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    assert set(states(job_id).values()) == {jobs.ItemState.DONE}
+    noted = [w for w in envelope["warnings"] if w["code"] == vendored.SESSION_NOT_STORED]
+    assert len(noted) == 1, envelope["warnings"]
+    assert "FAKE-value" not in json.dumps(envelope)
+    assert token_directories(temporary) == []
+
+
+def test_a_refresh_the_keychain_cannot_take_leaves_a_park_its_own_cause(
+    cfg, library, tool, provider, temporary, monkeypatch
+):
+    tracks = keys(4)
+    tool.session.refresh_at = tracks[0]
+    provider.withdraw_at = 2 + 4 * 2
+    job_id = queued(library, tracks)
+    no_keychain(monkeypatch)
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert job_of(job_id).state is jobs.JobState.BLOCKED
+    assert envelope["cause"]["reason"] == "auth-failed", envelope
+    assert code == int(ExitCode.UPSTREAM_AUTH), envelope
+    assert token_directories(temporary) == []
+
+
+def test_an_unchanged_session_needs_no_keychain_write_at_all(
+    cfg, library, tool, provider, temporary, monkeypatch
+):
+    """The tool reads the expiry back as a float; by value it is the stored one,
+    so a drive that refreshed nothing asks the keychain to take nothing."""
+    job_id = queued(library, keys(2))
+    no_keychain(monkeypatch)
+
+    code, envelope = drive(resume_argv(job_id))
+
+    assert code == int(ExitCode.OK), envelope
+    assert vendored.SESSION_NOT_STORED not in {w["code"] for w in envelope["warnings"]}
+
+
+def test_a_defect_at_the_close_of_a_finished_drive_is_raised(
+    cfg, library, tool, provider, stored, temporary, monkeypatch
+):
+    def broken(self, scope):
+        raise TypeError("a defect in the capture")
+
+    monkeypatch.setattr(vendored._VendoredSource, "capture", broken)
+    job_id = queued(library, keys(1))
+
+    with jobs.open_store() as store, pytest.raises(TypeError):
+        handlers.run_job(store, jobs.get(store, job_id))
+    assert token_directories(temporary) == []
+
+
+def test_a_session_left_in_the_atmos_client_is_not_stored(
+    cfg, library, tool, provider, keychain
+):
+    tracks = keys(2)
+    tool.session.refresh_at = tracks[0]
+    tool.during[tracks[1]] = lambda: setattr(tool.tidal, "is_atmos_session", True)
+
+    drive(resume_argv(queued(library, tracks)))
+
+    assert keychain.session_writes == []
+    assert stored_now() == STORED
+
+
+def test_a_session_refused_mid_track_is_never_asked_again(cfg, tmp_path, tool, provider, stored):
+    """The refusal met in ``offer`` or ``fetch`` is remembered as one met at the
+    login is, whoever asks the source next."""
+    settings = vendored.AdapterSettings.from_config(cfg)
+    with vendored.drive() as held:
+        source = held.source(settings)
+        source.authenticate()
+        provider.withdraw_at = len(provider.asked)
+        with pytest.raises(vendored.AdapterAuthFailed):
+            source.offer(vendored.TrackRequest(key="1"))
+        asked = len(provider.asked)
+        with pytest.raises(vendored.AdapterAuthFailed):
+            held.source(settings).authenticate()
+        with pytest.raises(vendored.AdapterAuthFailed):
+            source.fetch(vendored.TrackRequest(key="2"), tmp_path / "staging")
+    assert len(provider.asked) == asked
+    assert provider.count("sessions") == 1
+
+
+def test_a_fetch_that_meets_a_dead_session_is_remembered(cfg, tmp_path, tool, provider, stored):
+    settings = vendored.AdapterSettings.from_config(cfg)
+    with vendored.drive() as held:
+        source = held.source(settings)
+        source.authenticate()
+        provider.withdraw_at = len(provider.asked)
+        with pytest.raises(vendored.AdapterAuthFailed):
+            source.fetch(vendored.TrackRequest(key="1"), tmp_path / "staging")
+        asked = len(provider.asked)
+        with pytest.raises(vendored.AdapterAuthFailed):
+            source.authenticate()
+    assert len(provider.asked) == asked
+
+
+@pytest.mark.parametrize("shape", ["file", "symlink"])
+def test_the_sweep_reports_only_what_it_removed(temporary, shape):
+    dead = subprocess.run([sys.executable, "-c", "import os; print(os.getpid())"],
+                          capture_output=True, text=True, check=True)
+    left = temporary / f"cratekit-session-{int(dead.stdout)}-abc123"
+    if shape == "file":
+        left.write_text("not a directory")
+    else:
+        (temporary / "elsewhere").mkdir()
+        left.symlink_to(temporary / "elsewhere")
+
+    assert provider_session.sweep_orphans() == ()
+
+
+def test_the_sweep_leaves_a_directory_whose_process_it_cannot_see(temporary, monkeypatch):
+    """Another account's process answers a permission refusal: alive."""
+    left = temporary / "cratekit-session-4242-abc123"
+    left.mkdir()
+
+    def refused(pid, sig):
+        raise PermissionError("operation not permitted")
+
+    monkeypatch.setattr(os, "kill", refused)
+    assert provider_session.sweep_orphans() == ()
+    assert left.exists()
+
+
+def test_a_process_id_no_process_can_have_is_left_and_does_not_raise(temporary, stored):
+    left = temporary / "cratekit-session-99999999999999999999-abc123"
+    left.mkdir()
+
+    with provider_session.materialised_session():
+        pass
+
+    assert left.exists()

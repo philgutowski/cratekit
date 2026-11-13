@@ -64,7 +64,7 @@ from cratekit.acquire.adapter import (
     TrackSource,
     verify_applied,
 )
-from cratekit.core import binaries, config, provider_gate
+from cratekit.core import binaries, config, provider_gate, secrets
 
 #: Cratekit's quality vocabulary to the wrapped tool's. The tool takes the
 #: streaming client's own enum VALUE as a string, and its factory default is the
@@ -351,6 +351,12 @@ class _VendoredSource:
         """
         if self._tidal is None:
             return
+        # A SESSION LEFT IN THE TOOL'S DOLBY ATMOS CLIENT IS NOT OURS TO STORE.
+        # The tool swaps its session to another client's credentials for an
+        # Atmos track and back afterwards; the keychain holds the PKCE session
+        # and nothing else.
+        if getattr(self._tidal, "is_atmos_session", False):
+            return
         refreshed = provider_session.captured(self._session, scope.stored)
         if refreshed is None:
             return
@@ -358,12 +364,17 @@ class _VendoredSource:
             provider_session.JSON.dumps(refreshed), scope.path, mode=config.PRIVATE_FILE_MODE
         )
 
+    def _refuse_if_refused(self) -> None:
+        """Raise the refusal this source met again, making no call (U274)."""
+        if self._refused is not None:
+            raise AdapterAuthFailed(str(self._refused), remedy=self._refused.remedy)
+
     def authenticate(self) -> None:
         # A REFUSED SESSION IS NEVER ASKED AGAIN (U274), before the gate and
         # before anything is built, so a source held across a drive makes no
-        # call at all after the provider refused it.
-        if self._refused is not None:
-            raise AdapterAuthFailed(str(self._refused), remedy=self._refused.remedy)
+        # call at all after the provider refused it. ``offer`` and ``fetch``
+        # ask the same first, whoever calls them next.
+        self._refuse_if_refused()
         try:
             self._authenticate()
         except AdapterAuthFailed as refused:
@@ -451,6 +462,7 @@ class _VendoredSource:
         the client publishes several lossless tiers and adding one upstream must
         not silently start refusing tracks under strict policy.
         """
+        self._refuse_if_refused()
         try:
             track = self._session.track(request.key)
         except Exception as exc:
@@ -464,6 +476,7 @@ class _VendoredSource:
         return Offer(lossless="LOSSLESS" in quality.upper(), detail=quality)
 
     def fetch(self, request: TrackRequest, destination: Path) -> Path:
+        self._refuse_if_refused()
         try:
             return self._fetch(request, destination)
         except AdapterAuthFailed as dead:
@@ -921,6 +934,9 @@ class _Drive:
         self._stack = ExitStack()
         self._scope: provider_session.SessionScope | None = None
         self._source: _VendoredSource | None = None
+        #: What the close could not do, as envelope warnings, for the engine to
+        #: put on the verb's report (see :func:`drive`).
+        self.warnings: list[dict[str, str]] = []
 
     def source(self, settings: AdapterSettings) -> _VendoredSource:
         """The drive's source, under this track's settings. The first call
@@ -955,6 +971,10 @@ class _Drive:
             self._stack.close()
 
 
+#: The warning a drive's report carries when the session it refreshed could
+#: not be stored at its close (U274, round one).
+SESSION_NOT_STORED = "provider-session-not-stored"
+
 #: The drive this thread of control is inside, if any (U274).
 _DRIVE: ContextVar[_Drive | None] = ContextVar("cratekit_vendored_drive", default=None)
 
@@ -967,9 +987,18 @@ def drive() -> Iterator[_Drive]:
     worker's ``per_drive`` attribute, so it closes on every way out of the
     drive: finished, parked, interrupted, the engine's no evidence raise, or a
     defect. The write back runs on each of them, because a refresh during a
-    drive that then failed is still the session the keychain should hold. On a
-    way out by an exception, a write back that raises is dropped so the drive's
-    own error is the one reported; the token directory goes either way.
+    drive that then failed is still the session the keychain should hold. The
+    token directory goes on each of them too, whatever the write back did.
+
+    A WRITE BACK THAT FAILS NEVER REPLACES THE DRIVE'S OWN ANSWER (round one).
+    A keychain that cannot take the session, the product's own opt in for a
+    machine with none among them, would otherwise turn a finished download
+    into a defect report and a parked one's ``auth-failed`` into the same. The
+    keychain keeps the session it had, whose refresh token still logs in, and
+    the failure becomes :data:`SESSION_NOT_STORED` on the verb's report. On a
+    way out by an exception nothing reaches a report, so it is dropped and the
+    drive's own error is the one raised. Anything else the close raises after a
+    drive that returned is a defect, and raises.
     """
     held = _Drive()
     entered = _DRIVE.set(held)
@@ -979,13 +1008,22 @@ def drive() -> Iterator[_Drive]:
         finished = True
     finally:
         _DRIVE.reset(entered)
-        if finished:
+        try:
             held.close()
-        else:
-            try:
-                held.close()
-            except Exception:  # noqa: BLE001 - the drive's own error is reported
-                pass
+        except (secrets.CredentialError, OSError) as exc:
+            held.warnings.append(
+                {
+                    "code": SESSION_NOT_STORED,
+                    "message": (
+                        f"the provider session this download refreshed could not be "
+                        f"stored ({exc}); the keychain keeps the session it had, and "
+                        f"the next run logs in from it"
+                    ),
+                }
+            )
+        except Exception:
+            if finished:
+                raise
 
 
 class VendoredAdapter(BaseAdapter):
@@ -1020,6 +1058,7 @@ __all__ = [
     "MP4_LOSSLESS_CODECS",
     "QUALITY_BY_POLICY",
     "REAUTHORISE_HINT",
+    "SESSION_NOT_STORED",
     "STAGING_TEMPLATE",
     "TOKEN_FILENAME",
     "VendoredAdapter",
