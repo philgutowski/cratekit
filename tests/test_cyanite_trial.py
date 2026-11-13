@@ -76,7 +76,8 @@ class Recorded:
 
     def __init__(self, events=None, *, said=None, processing=1, preflight=None,
                  create_errors=None, upload_status=200, never_start=False,
-                 graphql_status=200):
+                 graphql_status=200, upload_host=UPLOAD_HOST, interrupt_on_poll=None,
+                 echo=None):
         self.events = events if events is not None else []
         self.requests: list[cyanite.Request] = []
         self.said = said if said is not None else SAID
@@ -86,6 +87,10 @@ class Recorded:
         self.upload_status = upload_status
         self.never_start = never_start
         self.graphql_status = graphql_status
+        self.upload_host = upload_host
+        self.interrupt_on_poll = interrupt_on_poll
+        self.echo = echo
+        self.bodies: list[str] = []
         self.uploads: dict[str, str] = {}
         self.tracks: dict[str, str] = {}
         self.polls: dict[str, int] = {}
@@ -98,6 +103,7 @@ class Recorded:
         assert request.url == cyanite.GRAPHQL
         sent = json.loads(request.body)
         query, variables = sent["query"], sent["variables"]
+        self.bodies.append(query)
         self.events.append(("query", query.split()[1]))
         if self.graphql_status != 200:
             return cyanite.Reply(self.graphql_status, "")
@@ -105,7 +111,7 @@ class Recorded:
             number = f"up-{len(self.uploads) + 1}"
             self.uploads[number] = ""
             return self._data({"fileUploadRequest": {
-                "id": number, "uploadUrl": f"{UPLOAD_HOST}{number}?X-Amz-Signature=sig"}})
+                "id": number, "uploadUrl": f"{self.upload_host}{number}?X-Amz-Signature=sig"}})
         if "CratekitTrialCreate" in query:
             title = variables["input"]["title"]
             if title in self.create_errors:
@@ -129,7 +135,11 @@ class Recorded:
             return self._data({"libraryTrack": {
                 "__typename": "LibraryTrackNotFoundError", "message": "not found"}})
         self.polls[track] = self.polls.get(track, 0) + 1
-        if self.never_start:
+        if self.interrupt_on_poll == (track, self.polls[track]):
+            raise KeyboardInterrupt
+        if self.echo is not None:
+            state = {"__typename": self.echo}
+        elif self.never_start:
             state = {"__typename": "AudioAnalysisV6NotStarted"}
         elif self.polls[track] <= self.processing:
             state = {"__typename": "AudioAnalysisV6Processing"}
@@ -166,6 +176,9 @@ def probe_mp3(tmp_path_factory):
 def _track(probe: Path, target: Path, genre: str | None) -> Path:
     target.parent.mkdir(parents=True, exist_ok=True)
     shutil.copy2(probe, target)
+    # A TITLE OF ITS OWN, so no two fixtures hold the same bytes: the trial
+    # sends one audio once, and two copies would be one track.
+    assert tags.write_tags(target, {"title": target.stem})
     if genre is None:
         tags.clear_tags(target, ("genre",))
     else:
@@ -213,7 +226,7 @@ def _run(settings, declared, fake, events=None, **kw):
 
 
 def _rows(path: Path) -> dict[str, dict[str, str]]:
-    return {Path(name).name: row for name, row in cyanite.read_table(path).items()}
+    return {Path(row["file"]).name: row for row in cyanite.read_table(path).values()}
 
 
 # ---------------------------------------------------------------------------
@@ -348,8 +361,10 @@ def test_a_query_cyanite_refuses_stops_before_any_upload(chosen, tmp_path, decla
 @pytest.mark.parametrize("status", [403, 429, 500])
 def test_a_block_or_an_outage_at_the_preflight_stops_before_any_upload(chosen, tmp_path, declared, keyed, status):
     fake = Recorded(graphql_status=status)
-    with pytest.raises(cyanite.TrialStopped, match=f"HTTP {status}"):
+    words = "a block or a rate limit" if status in (403, 429) else "could not be read"
+    with pytest.raises(cyanite.TrialStopped, match=f"HTTP {status}.*|{words}") as caught:
         _run(_settings(chosen, tmp_path / "t.tsv", **SEND), declared, fake)
+    assert words in str(caught.value) and f"HTTP {status}" in str(caught.value)
     assert fake.uploaded() == []
 
 
@@ -389,10 +404,37 @@ def test_the_key_is_in_no_note_row_refusal_or_repr(chosen, tmp_path, declared, k
 
 
 def test_a_failed_create_and_a_failed_analysis_are_scrubbed_of_the_key():
-    fake = Recorded(create_errors={"deep": ("fileUploadNotFound", f"upload {KEY} missing")})
+    fake = Recorded(create_errors={"deep": (f"fileUploadNotFound{KEY}", f"upload {KEY} missing")})
     asker = cyanite.CyaniteAsker(key=KEY, send=fake, sleep=lambda _s: None)
     analysis = asker.analyse(Path("deep.mp3"), b"audio", "deep")
     assert KEY not in analysis.note and "fileUploadNotFound" in analysis.note
+
+    class Failing(Recorded):
+        def __call__(self, request):
+            reply = super().__call__(request)
+            if request.method == "POST" and "CratekitTrialTrack" in json.loads(request.body)["query"]:
+                body = json.loads(reply.text)
+                track = body["data"]["libraryTrack"]
+                if track.get("__typename") == "LibraryTrack":
+                    track["audioAnalysisV6"] = {"__typename": "AudioAnalysisV6Failed",
+                                                "error": {"message": f"bad {KEY}"}}
+                    return cyanite.Reply(200, json.dumps(body))
+            return reply
+
+    failed = cyanite.CyaniteAsker(key=KEY, send=Failing(), sleep=lambda _s: None)
+    analysis = failed.analyse(Path("deep.mp3"), b"audio", "deep")
+    assert analysis.words is None and "analysis failed: bad [key]" in analysis.note
+    assert KEY not in analysis.note
+
+
+def test_an_echoed_key_in_a_state_or_a_track_never_reaches_the_table(chosen, tmp_path, declared, keyed):
+    fake = Recorded(echo=f"Weird{KEY}")
+    out = tmp_path / "t.tsv"
+    events: list = []
+    _run(_settings(chosen, out, **SEND), declared, fake, events)
+    text = out.read_text() + cyanite.summary_path(out).read_text()
+    assert KEY not in text and "Weird[key]" in text
+    assert all(KEY not in str(event[1]) for event in events if event[0] == "say")
 
 
 def test_a_transport_failure_is_said_by_its_type_never_its_text(monkeypatch):
@@ -418,6 +460,14 @@ def test_no_query_asks_for_a_tempo_or_a_key():
         assert not cyanite.TEMPO_SHAPED.search(query), query
     assert not any(cyanite.TEMPO_SHAPED.search(name) for name in cyanite.READ_FIELDS)
     assert "bpm" not in cyanite.TRACK_QUERY.lower()
+
+
+def test_no_request_sent_on_the_wire_asks_for_a_tempo_or_a_key(chosen, tmp_path, declared, keyed):
+    fake = Recorded()
+    _run(_settings(chosen, tmp_path / "t.tsv", **SEND), declared, fake)
+    assert len(fake.bodies) > 4
+    for query in fake.bodies:
+        assert not cyanite.TEMPO_SHAPED.search(query), query
 
 
 def test_no_column_of_either_table_is_tempo_shaped():
@@ -493,9 +543,12 @@ def test_a_run_writes_each_files_folder_beside_cyanites_and_the_agreement(chosen
     assert summary["Deep House"]["tracks"] == "2"
     assert summary["Deep House"]["same_folder"] == "1"
     assert summary["Deep House"]["no_folder"] == "1"
-    assert summary["Deep House"]["agreement"] == "1 of 2"
+    # A FILE CYANITE PLACED NOWHERE IS NOT A DISAGREEMENT: it is counted as no
+    # folder and left out of the share.
+    assert summary["Deep House"]["agreement"] == "1 of 1"
     assert summary["Jazz"]["different_folder"] == "1"
-    assert summary["(all folders)"]["agreement"] == "2 of 4"
+    assert summary["(all folders)"]["agreement"] == "2 of 3"
+    assert "Cyanite answered no genre or sub genre words" not in vague["note"]
 
 
 def _summary(out: Path) -> list[dict[str, str]]:
@@ -742,3 +795,137 @@ def test_a_run_with_nothing_to_send_leaves_an_empty_table_and_asks_nothing(tmp_p
     assert ran.uploaded == 0 and not ran.stopped
     assert cyanite.read_table(out) == {}
     assert _summary(out)[-1]["tracks"] == "0"
+
+
+# ---------------------------------------------------------------------------
+# Review round one: what a resume must never pay for twice, and the rest
+# ---------------------------------------------------------------------------
+
+
+def test_a_folder_moved_between_two_runs_is_not_paid_for_again(chosen, tmp_path, declared, keyed):
+    out = tmp_path / "t.tsv"
+    _run(_settings(chosen, out, **SEND), declared, Recorded())
+    moved = chosen.rename(tmp_path / "moved")
+    again = Recorded()
+    events: list = []
+    ran = _run(_settings(moved, out, resume=True, send=True, cap=0, price=0.25), declared,
+               again, events)
+    assert ran.uploaded == 0 and again.requests == []
+    lines = [event[1] for event in events if event[0] == "say"]
+    assert lines[0].startswith("0 file(s) to upload") and "4 already answered" in lines[0]
+    assert _summary(out)[-1]["tracks"] == "4"
+
+
+def test_two_files_holding_the_same_audio_are_sent_once(tmp_path, probe_mp3, declared, keyed):
+    root = tmp_path / "chosen"
+    _track(probe_mp3, root / "deep.mp3", "Deep House")
+    shutil.copy2(root / "deep.mp3", root / "deep copy.mp3")
+    fake = Recorded(said={**SAID, "deep copy": SAID["deep"]})
+    events: list = []
+    _run(_settings(root, tmp_path / "t.tsv", **SEND), declared, fake, events)
+    assert len(fake.uploaded()) == 1
+    lines = [event[1] for event in events if event[0] == "say"]
+    assert any("not sent: the same audio as" in line for line in lines)
+
+
+def test_an_interrupt_while_waiting_keeps_the_track_and_the_resume_does_not_upload_it(
+    chosen, tmp_path, declared, keyed
+):
+    out = tmp_path / "t.tsv"
+    first = Recorded(processing=5, interrupt_on_poll=("lt-2", 2))
+    with pytest.raises(KeyboardInterrupt):
+        _run(_settings(chosen, out, **SEND), declared, first)
+    rows = _rows(out)
+    assert set(rows) == {"deep.mp3", "jazzy.mp3"}
+    assert rows["jazzy.mp3"]["library_track"] == "lt-2"
+    assert rows["jazzy.mp3"]["agreement"] == cyanite.NOT_READ
+    assert "KeyboardInterrupt" in rows["jazzy.mp3"]["note"]
+    assert cyanite.summary_path(out).is_file(), "the summary is written whatever ends the run"
+
+    later = Recorded(processing=0)
+    later.tracks = dict(first.tracks)
+    ran = _run(_settings(chosen, out, resume=True, send=True, cap=2, price=0.25), declared, later)
+    assert ran.asked_again == 1 and ran.uploaded == 2
+    assert sorted(later.tracks.values()) == ["deep", "jazzy", "tech", "vague"]
+    assert len(later.uploaded()) == 2
+    assert _rows(out)["jazzy.mp3"]["agreement"] == cyanite.DIFFERENT
+
+
+def test_a_stop_after_a_track_was_made_keeps_the_track(chosen, tmp_path, declared, keyed):
+    out = tmp_path / "t.tsv"
+    fake = Recorded(never_start=True)
+    ran = _run(_settings(chosen, out, **SEND), declared, fake)
+    assert "analysis limit" in ran.stopped
+    deep = _rows(out)["deep.mp3"]
+    assert deep["library_track"] == "lt-1" and deep["agreement"] == cyanite.NOT_READ
+
+
+def test_an_upload_address_that_is_not_https_stops_before_the_upload(chosen, tmp_path, declared, keyed):
+    fake = Recorded(upload_host="http://uploads.example.test/")
+    ran = _run(_settings(chosen, tmp_path / "t.tsv", **SEND), declared, fake)
+    assert "not an https address" in ran.stopped
+    assert fake.uploaded() == []
+
+
+def test_a_tab_or_a_line_break_in_an_answer_stays_in_its_cell(chosen, tmp_path, declared, keyed):
+    said = {**SAID, "deep": {**SAID["deep"], "moodTags": ["dark\tand\nbroody"]}}
+    out = tmp_path / "t.tsv"
+    _run(_settings(chosen, out, **SEND), declared, Recorded(said=said))
+    assert _rows(out)["deep.mp3"]["cyanite_moods"] == "dark and broody"
+    assert len(out.read_text().splitlines()) == 5
+
+
+def test_an_output_folder_that_is_not_there_refuses_before_any_request(chosen, tmp_path, declared, keyed):
+    with pytest.raises(cyanite.TrialRefused, match="is not a folder"):
+        cyanite.run(_settings(chosen, tmp_path / "missing" / "t.tsv", **SEND), declared,
+                    send=refused_send, say=lambda _l: None)
+
+
+def test_an_unreadable_tag_is_shown_as_unreadable_not_as_no_folder(chosen, tmp_path, declared, keyed, monkeypatch):
+    real = tags.read_tags_checked
+
+    def damaged(path, fields):
+        if path.name == "tech.mp3":
+            raise tags.TagReadFailed("damaged")
+        return real(path, fields)
+
+    monkeypatch.setattr(tags, "read_tags_checked", damaged)
+    out = tmp_path / "t.tsv"
+    _run(_settings(chosen, out, **SEND), declared, Recorded())
+    tech = _rows(out)["tech.mp3"]
+    assert tech["filed_folder"] == "(tag unreadable)" and tech["agreement"] == cyanite.NOT_FILED
+    assert "(tag unreadable)" in {line["filed_folder"] for line in _summary(out)}
+
+
+def test_a_finished_analysis_with_no_genre_words_says_so(tmp_path, probe_mp3, declared, keyed):
+    root = tmp_path / "chosen"
+    _track(probe_mp3, root / "deep.mp3", "Deep House")
+    said = {"deep": {"genreTags": [], "subgenreTags": [], "moodTags": [], "energyLevel": None}}
+    out = tmp_path / "t.tsv"
+    _run(_settings(root, out, **SEND), declared, Recorded(said=said))
+    deep = _rows(out)["deep.mp3"]
+    assert deep["agreement"] == cyanite.NO_FOLDER
+    assert "Cyanite answered no genre or sub genre words" in deep["note"]
+
+
+def test_resume_refuses_a_table_that_is_not_text(chosen, tmp_path, declared, keyed):
+    out = tmp_path / "t.tsv"
+    out.write_bytes(b"\xff\xfe\x00binary")
+    with pytest.raises(cyanite.TrialRefused, match="could not be read as a table"):
+        cyanite.run(_settings(chosen, out, resume=True, **SEND), declared,
+                    send=refused_send, say=lambda _l: None)
+
+
+@pytest.mark.parametrize("price", [float("nan"), float("inf")])
+def test_a_price_that_is_not_a_number_refuses(chosen, tmp_path, declared, keyed, price):
+    with pytest.raises(cyanite.TrialRefused, match="a number not below zero"):
+        cyanite.run(_settings(chosen, tmp_path / "t.tsv", send=True, cap=10, price=price),
+                    declared, send=refused_send, say=lambda _l: None)
+
+
+def test_the_script_takes_the_opt_in_by_its_whole_name_only(chosen, tmp_path, template, keyed, capsys):
+    with pytest.raises(SystemExit):
+        _script().main([str(chosen), "--output", str(tmp_path / "t.tsv"),
+                        "--taxonomy", str(template), "--s", "--cap", "10",
+                        "--price-per-track", "0.5"])
+    assert not (tmp_path / "t.tsv").exists()

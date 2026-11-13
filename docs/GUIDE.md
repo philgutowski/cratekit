@@ -867,9 +867,12 @@ crate login cyanite-key --from-file PATH
 - It writes those two files and nothing else: no tag, no record, no library.
   It never asks Cyanite for a tempo or a key. An output already there is never
   overwritten; `--resume` with the same `--output` carries on a run cut short,
-  sending only the files with no answer yet.
-- Exit 0 done, or the plan; 1 stopped partway with the rows kept; 2 refused,
-  nothing sent.
+  uploading only the files with no answer yet. Files are known by their audio,
+  so moving the folder between the two runs costs nothing, and a file whose
+  analysis was still running when the run ended is asked about again rather
+  than uploaded again.
+- Exit 0 done, or the plan; 1 stopped partway with the rows kept; 2 refused
+  with no audio uploaded.
 
 ### Keep the library tidy
 

@@ -59,8 +59,10 @@ the run goes on.
 
 THE TABLE IS WRITTEN ROW BY ROW, so a run cut short keeps what it paid for, and
 a resumed run reads it back and uploads only the files it has no answer for.
-A file whose analysis did not finish is asked again by its library track,
-without a second upload.
+A file is known by the SHA-256 of its audio, not by its path, so a folder moved
+or renamed between the two runs is not paid for again. A file whose analysis
+did not finish, or whose run ended while waiting on it, however it ended, is
+written with its library track and asked about again without a second upload.
 
 Layer: modules.
 """
@@ -68,7 +70,9 @@ Layer: modules.
 from __future__ import annotations
 
 import csv
+import hashlib
 import json
+import math
 import re
 import time
 from collections.abc import Callable, Iterable, Mapping, Sequence
@@ -302,7 +306,10 @@ class CyaniteAsker:
     """One run's way of asking Cyanite, the key held out of its ``repr``.
 
     ``rejected`` is why the key was refused, after which it is never sent again
-    in this process.
+    in this process. ``made`` is the library track the last :meth:`analyse`
+    created, empty until Cyanite answers the create, so a run that ends while
+    waiting on it, however it ends, can still write the track down rather than
+    pay for the upload again.
     """
 
     key: str = field(repr=False)
@@ -311,8 +318,9 @@ class CyaniteAsker:
     poll_wait_s: float = POLL_WAIT_S
     poll_attempts: int = POLL_ATTEMPTS
     rejected: str | None = None
+    made: str = ""
 
-    def _scrub(self, text: str) -> str:
+    def scrub(self, text: str) -> str:
         return text.replace(self.key, _SCRUBBED) if self.key else text
 
     def _headers(self) -> dict[str, str]:
@@ -349,7 +357,7 @@ class CyaniteAsker:
         if reply.status != 200 or reply.text is None:
             said = f"HTTP {reply.status}" if reply.status is not None else reply.note
             raise TrialStopped(
-                self._scrub(f"Cyanite could not be read ({said}), so nothing more was sent")
+                self.scrub(f"Cyanite could not be read ({said}), so nothing more was sent")
             )
         try:
             payload = json.loads(reply.text)
@@ -379,7 +387,7 @@ class CyaniteAsker:
                 raise self._reject("Cyanite refused the key this installation records")
             messages.append(text or "an error with no message")
         raise TrialStopped(
-            self._scrub(
+            self.scrub(
                 "Cyanite refused the query, so nothing more was sent: " + "; ".join(messages)
             )
         )
@@ -392,6 +400,7 @@ class CyaniteAsker:
 
     def analyse(self, path: Path, audio: bytes, title: str) -> Analysis:
         """Upload one file, make its library track, and wait for its analysis."""
+        self.made = ""
         asked = self.query(UPLOAD_REQUEST).get("fileUploadRequest")
         upload_id = asked.get("id") if isinstance(asked, dict) else None
         address = asked.get("uploadUrl") if isinstance(asked, dict) else None
@@ -411,8 +420,8 @@ class CyaniteAsker:
         kind = created.get("__typename") if isinstance(created, dict) else None
         if kind == "LibraryTrackCreateError":
             assert isinstance(created, dict)
-            code = str(created.get("code") or "")
-            message = self._scrub(str(created.get("message") or ""))
+            code = self.scrub(str(created.get("code") or ""))
+            message = self.scrub(str(created.get("message") or ""))
             if code == LIBRARY_FULL:
                 raise TrialStopped(
                     f"Cyanite's library is full ({message or code}), so no more files were sent"
@@ -422,6 +431,7 @@ class CyaniteAsker:
         track_id = track.get("id") if isinstance(track, dict) else None
         if kind != "LibraryTrackCreateSuccess" or not isinstance(track_id, str):
             raise TrialStopped("Cyanite's answer to the create names no library track")
+        self.made = track_id
         return self.wait(track_id)
 
     def wait(self, track_id: str) -> Analysis:
@@ -437,7 +447,8 @@ class CyaniteAsker:
                 )
             assert isinstance(found, dict)
             analysis = found.get("audioAnalysisV6")
-            state = analysis.get("__typename", "") if isinstance(analysis, dict) else ""
+            kind = analysis.get("__typename") if isinstance(analysis, dict) else None
+            state = self.scrub(kind) if isinstance(kind, str) else ""
             if state == "AudioAnalysisV6Finished":
                 assert isinstance(analysis, dict)
                 return Analysis(track=track_id, words=read_words(analysis.get("result")))
@@ -447,11 +458,11 @@ class CyaniteAsker:
                 message = error.get("message") if isinstance(error, dict) else ""
                 return Analysis(
                     track=track_id,
-                    note=self._scrub(f"Cyanite's analysis failed: {message or 'no reason'}"),
+                    note=self.scrub(f"Cyanite's analysis failed: {message or 'no reason'}"),
                 )
         if state == "AudioAnalysisV6NotStarted":
             raise TrialStopped(
-                f"Cyanite never started analysing library track {track_id}, which it "
+                f"Cyanite never started analysing library track {self.scrub(track_id)}, which it "
                 f"does when the account's analysis limit is spent, so no more files "
                 f"were sent"
             )
@@ -486,8 +497,11 @@ def recorded_key() -> str:
 # ---------------------------------------------------------------------------
 
 #: The table's columns, one row per file asked about. Nothing tempo shaped.
+#: ``audio_sha256`` is what a resumed run knows a file by, so a folder moved or
+#: renamed between two runs is not paid for twice.
 COLUMNS: tuple[str, ...] = (
     "file",
+    "audio_sha256",
     "filed_genre",
     "filed_folder",
     "cyanite_genres",
@@ -518,7 +532,8 @@ SUMMARY_COLUMNS: tuple[str, ...] = (
 SAME_FOLDER = "same folder"
 SAME_BUCKET = "same bucket"
 DIFFERENT = "different folder"
-#: Cyanite answered and none of its words names a folder.
+#: Cyanite answered and none of its words names a folder, which is a word this
+#: taxonomy cannot place and not a disagreement, so the share leaves it out.
 NO_FOLDER = "no folder"
 #: The file's own genre names no folder, so there is nothing to agree with.
 NOT_FILED = "not filed"
@@ -526,19 +541,34 @@ NOT_FILED = "not filed"
 NOT_READ = "not read"
 AGREEMENTS: tuple[str, ...] = (SAME_FOLDER, SAME_BUCKET, DIFFERENT, NO_FOLDER, NOT_FILED, NOT_READ)
 
-#: What the folder columns say when there is no folder to name.
+#: What the folder columns say when there is no folder to name, and when the
+#: file's genre tag could not be read, which is not the same as having none.
 NONE_SHOWN = "(none)"
+UNREADABLE_SHOWN = "(tag unreadable)"
 
 #: The summary's last row, over every folder.
 ALL_FOLDERS = "(all folders)"
 
+#: How a file is read to hash it, a piece at a time.
+_HASH_CHUNK = 1 << 20
+
 
 @dataclass(frozen=True, slots=True)
 class Planned:
-    """One file the trial was given, and why it is not sent when it is not."""
+    """One file the trial was given: its audio's hash, and why it is not sent."""
 
     path: Path
+    digest: str = ""
     why_not: str = ""
+
+
+def audio_digest(path: Path) -> str:
+    """The SHA-256 of a file's bytes, what a table knows the file by."""
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(_HASH_CHUNK), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
 
 
 def plan_files(paths: Iterable[Path]) -> list[Planned]:
@@ -546,9 +576,11 @@ def plan_files(paths: Iterable[Path]) -> list[Planned]:
 
     A folder is read whole, beneath it included, in name order. A file whose
     name starts with a dot is passed over unlisted: a volume's resource fork
-    files are not tracks. A path that is not there refuses the run.
+    files are not tracks. A path that is not there refuses the run. Two files
+    holding the same audio are one track, sent once.
     """
     seen: set[Path] = set()
+    digests: dict[str, Path] = {}
     planned: list[Planned] = []
     for given in paths:
         if given.is_dir():
@@ -565,13 +597,32 @@ def plan_files(paths: Iterable[Path]) -> list[Planned]:
                 continue
             seen.add(whole)
             suffix = found.suffix.lower()
-            why = (
-                ""
-                if suffix in UPLOADABLE
-                else f"not sent: Cyanite's API takes MP3 only, and this is "
-                f"{suffix or 'a file with no suffix'}"
-            )
-            planned.append(Planned(whole, why))
+            if suffix not in UPLOADABLE:
+                planned.append(
+                    Planned(
+                        whole,
+                        why_not=f"not sent: Cyanite's API takes MP3 only, and this is "
+                        f"{suffix or 'a file with no suffix'}",
+                    )
+                )
+                continue
+            try:
+                digest = audio_digest(whole)
+            except OSError as exc:
+                planned.append(
+                    Planned(whole, why_not=f"not sent: it could not be read ({type(exc).__name__})")
+                )
+                continue
+            if digest in digests:
+                planned.append(
+                    Planned(
+                        whole,
+                        why_not=f"not sent: the same audio as {digests[digest].name}",
+                    )
+                )
+                continue
+            digests[digest] = whole
+            planned.append(Planned(whole, digest))
     return planned
 
 
@@ -632,16 +683,22 @@ def agreement(
     return SAME_FOLDER if said.sub_id == filed.sub_id else SAME_BUCKET
 
 
-def row_for(declared: Taxonomy, path: Path, analysis: Analysis) -> dict[str, str]:
+def row_for(declared: Taxonomy, entry: Planned, analysis: Analysis) -> dict[str, str]:
     """One table row: the file's folder today beside what Cyanite said."""
-    genre, filed, tag_note = filed_place(declared, path)
+    genre, filed, tag_note = filed_place(declared, entry.path)
     words = analysis.words or Words()
     word, said = cyanite_place(declared, words) if analysis.words is not None else ("", None)
-    notes = "; ".join(note for note in (analysis.note, tag_note) if note)
+    silent = (
+        "Cyanite answered no genre or sub genre words"
+        if analysis.words is not None and not (words.genres or words.subgenres)
+        else ""
+    )
+    notes = "; ".join(note for note in (analysis.note, silent, tag_note) if note)
     return {
-        "file": str(path),
+        "file": str(entry.path),
+        "audio_sha256": entry.digest,
         "filed_genre": genre,
-        "filed_folder": _shown(filed, declared),
+        "filed_folder": UNREADABLE_SHOWN if tag_note else _shown(filed, declared),
         "cyanite_genres": ", ".join(words.genres),
         "cyanite_subgenres": ", ".join(words.subgenres),
         "cyanite_moods": ", ".join(words.moods),
@@ -659,35 +716,43 @@ def _flat(value: str) -> str:
     return re.sub(r"[\t\r\n]+", " ", value)
 
 
+def _line(cells: Iterable[str]) -> str:
+    """One line of a table, tab separated.
+
+    WRITTEN BY HAND, NOT BY ``csv``. The package builds no csv writer, since
+    R12's anti-pattern is a file a person is asked to edit by hand. This table
+    is a report nobody edits, read back only by a resumed run, and a cell
+    carries no tab or line break (:func:`_flat`), so a line is its cells joined.
+    """
+    return "\t".join(_flat(cell) for cell in cells) + "\n"
+
+
 def read_table(path: Path) -> dict[str, dict[str, str]]:
-    """The rows of a table this trial wrote, the last one for each file kept."""
+    """The rows of a table this trial wrote, by audio hash, the last one for each kept."""
     try:
         with path.open(newline="", encoding="utf-8") as handle:
-            reader = csv.DictReader(handle, delimiter="\t")
+            reader = csv.DictReader(handle, delimiter="\t", quoting=csv.QUOTE_NONE)
             if tuple(reader.fieldnames or ()) != COLUMNS:
                 raise TrialRefused(
                     f"{path} is not a table this trial wrote, so it was not resumed "
                     f"and nothing was sent"
                 )
-            return {row["file"]: {name: row.get(name) or "" for name in COLUMNS} for row in reader}
-    except OSError as exc:
+            rows = [{name: row.get(name) or "" for name in COLUMNS} for row in reader]
+    except (OSError, ValueError, csv.Error) as exc:
         raise TrialRefused(
-            f"{path} could not be read ({type(exc).__name__}), so nothing was sent"
+            f"{path} could not be read as a table ({type(exc).__name__}), so it was not "
+            f"resumed and nothing was sent"
         ) from exc
-
-
-def _write_row(handle: TextIO, row: Mapping[str, str]) -> None:
-    csv.writer(handle, delimiter="\t", lineterminator="\n").writerow(
-        [_flat(row.get(name, "")) for name in COLUMNS]
-    )
-    handle.flush()
+    return {row["audio_sha256"]: row for row in rows if row["audio_sha256"]}
 
 
 def summarise(rows: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
     """The agreement per folder the files are filed in, and over all of them.
 
     ``agreement`` is the files Cyanite put in the same folder out of those it
-    answered about and that are filed in a folder, the share a person reads.
+    placed in a folder, the share a person reads. A file Cyanite answered with
+    words this taxonomy places nowhere is counted as ``no_folder`` and left out
+    of the share, since it says nothing about whether Cyanite agrees.
     """
     counts: dict[str, dict[str, int]] = {}
     total = dict.fromkeys(AGREEMENTS, 0)
@@ -695,14 +760,12 @@ def summarise(rows: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
         said = row.get("agreement", "")
         if said not in total:
             continue
-        folder = counts.setdefault(
-            row.get("filed_folder") or NONE_SHOWN, dict.fromkeys(AGREEMENTS, 0)
-        )
-        folder[said] += 1
+        folder = row.get("filed_folder") or NONE_SHOWN
+        counts.setdefault(folder, dict.fromkeys(AGREEMENTS, 0))[said] += 1
         total[said] += 1
 
     def line(name: str, tally: Mapping[str, int]) -> dict[str, str]:
-        compared = sum(tally[said] for said in (SAME_FOLDER, SAME_BUCKET, DIFFERENT, NO_FOLDER))
+        placed = sum(tally[said] for said in (SAME_FOLDER, SAME_BUCKET, DIFFERENT))
         return {
             "filed_folder": name,
             "tracks": str(sum(tally.values())),
@@ -712,7 +775,7 @@ def summarise(rows: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
             "no_folder": str(tally[NO_FOLDER]),
             "not_filed": str(tally[NOT_FILED]),
             "not_read": str(tally[NOT_READ]),
-            "agreement": f"{tally[SAME_FOLDER]} of {compared}",
+            "agreement": f"{tally[SAME_FOLDER]} of {placed}",
         }
 
     lines = [line(name, counts[name]) for name in sorted(counts)]
@@ -721,11 +784,10 @@ def summarise(rows: Iterable[Mapping[str, str]]) -> list[dict[str, str]]:
 
 
 def _write_summary(path: Path, lines: Sequence[Mapping[str, str]], *, fresh: bool) -> None:
-    with path.open("x" if fresh else "w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle, delimiter="\t", lineterminator="\n")
-        writer.writerow(SUMMARY_COLUMNS)
+    with path.open("x" if fresh else "w", encoding="utf-8") as handle:
+        handle.write(_line(SUMMARY_COLUMNS))
         for line in lines:
-            writer.writerow([_flat(line[name]) for name in SUMMARY_COLUMNS])
+            handle.write(_line(line[name] for name in SUMMARY_COLUMNS))
 
 
 @dataclass(frozen=True, slots=True)
@@ -761,13 +823,13 @@ def run(
 ) -> Ran:
     """Plan the trial, say what it would send and cost, and send only when asked.
 
-    Refusals raise :class:`TrialRefused`, or a ``secrets`` credential error,
-    and every one of them is raised before anything is sent. A stop after the
-    first upload is returned in :attr:`Ran.stopped`, with the table kept.
+    Refusals raise :class:`TrialRefused`, :class:`TrialStopped` or a
+    ``secrets`` credential error, every one of them before any audio is
+    uploaded; the preflight's own refusals come after one free request. A stop
+    after the first upload is returned in :attr:`Ran.stopped`, the table kept.
     """
     output = settings.output
     summary = summary_path(output)
-    planned = plan_files(settings.paths)
     if settings.resume:
         if not output.is_file():
             raise TrialRefused(f"--resume names {output}, which is not there, so nothing was sent")
@@ -783,20 +845,22 @@ def run(
         if not output.parent.is_dir():
             raise TrialRefused(f"{output.parent} is not a folder, so nothing was sent")
         prior = {}
+    planned = plan_files(settings.paths)
 
     skipped = [entry for entry in planned if entry.why_not]
-    sendable = [entry.path for entry in planned if not entry.why_not]
-    done: list[Path] = []
-    again: list[tuple[Path, str]] = []
-    upload: list[Path] = []
-    for path in sendable:
-        before = prior.get(str(path))
+    done: list[Planned] = []
+    again: list[tuple[Planned, str]] = []
+    upload: list[Planned] = []
+    for entry in planned:
+        if entry.why_not:
+            continue
+        before = prior.get(entry.digest)
         if before is not None and before["agreement"] != NOT_READ:
-            done.append(path)
+            done.append(entry)
         elif before is not None and before["library_track"]:
-            again.append((path, before["library_track"]))
+            again.append((entry, before["library_track"]))
         else:
-            upload.append(path)
+            upload.append(entry)
 
     say(
         f"{len(upload)} file(s) to upload to Cyanite, {len(again)} to ask about again "
@@ -805,7 +869,7 @@ def run(
     )
     for entry in skipped:
         say(f"  {entry.path.name}: {entry.why_not}")
-    if settings.price is not None:
+    if settings.price is not None and math.isfinite(settings.price):
         say(
             f"estimated cost: {len(upload)} upload(s) at {settings.price:g} each, "
             f"{len(upload) * settings.price:.2f} in your plan's currency"
@@ -825,8 +889,8 @@ def run(
             "--send-to-cyanite needs --price-per-track, your plan's price for one "
             "track, so the cost is estimated before anything is sent"
         )
-    if settings.price < 0:
-        raise TrialRefused("--price-per-track cannot be below zero")
+    if not math.isfinite(settings.price) or settings.price < 0:
+        raise TrialRefused("--price-per-track is a price, a number not below zero")
     if len(upload) > settings.cap:
         raise TrialRefused(
             f"{len(upload)} file(s) would be uploaded and the cap is {settings.cap}, so "
@@ -840,13 +904,19 @@ def run(
             key=key_reader(), send=_requests_send if send is None else send, sleep=sleep
         )
         asker.preflight()
-        ran = _ask(settings, declared, asker, again, upload, rows, say)
-    elif not settings.resume:
-        # A run with nothing to send still leaves its table, so the output a
-        # person named is there for a later --resume to read.
-        with output.open("x", newline="", encoding="utf-8") as handle:
-            csv.writer(handle, delimiter="\t", lineterminator="\n").writerow(COLUMNS)
-    _write_summary(summary, summarise(rows.values()), fresh=not summary.exists())
+        try:
+            ran = _ask(settings, declared, asker, again, upload, rows, say)
+        finally:
+            # WHATEVER ENDS THE RUN, an interrupt included, the summary is
+            # written over what the table holds, so the two never disagree.
+            _write_summary(summary, summarise(rows.values()), fresh=not summary.exists())
+    else:
+        if not settings.resume:
+            # A run with nothing to send still leaves its table, so the output a
+            # person named is there for a later --resume to read.
+            with output.open("x", encoding="utf-8") as handle:
+                handle.write(_line(COLUMNS))
+        _write_summary(summary, summarise(rows.values()), fresh=not summary.exists())
     for line in summarise(rows.values()):
         say(
             f"{line['filed_folder']}: {line['agreement']} in the same folder "
@@ -863,56 +933,78 @@ def _ask(
     settings: Settings,
     declared: Taxonomy,
     asker: CyaniteAsker,
-    again: Sequence[tuple[Path, str]],
-    upload: Sequence[Path],
+    again: Sequence[tuple[Planned, str]],
+    upload: Sequence[Planned],
     rows: dict[str, dict[str, str]],
     say: Callable[[str], None],
 ) -> Ran:
-    """Ask about every file, writing each row as it is answered."""
+    """Ask about every file, writing each row as it is answered.
+
+    A TRACK CYANITE MADE IS WRITTEN DOWN WHATEVER ENDS ITS FILE. A stop, a
+    rejected key, an interrupt while waiting on its analysis: the row is
+    written with its library track before the run ends, so a resumed run asks
+    about it again and never uploads it a second time.
+    """
     uploaded = 0
     asked = 0
     stopped = ""
     fresh = not settings.resume
-    with settings.output.open("x" if fresh else "a", newline="", encoding="utf-8") as handle:
+    with settings.output.open("x" if fresh else "a", encoding="utf-8") as handle:
         if fresh:
-            csv.writer(handle, delimiter="\t", lineterminator="\n").writerow(COLUMNS)
+            handle.write(_line(COLUMNS))
             handle.flush()
         try:
-            for path, track in again:
+            for entry, track in again:
                 analysis = asker.wait(track)
                 asked += 1
-                _keep(declared, path, analysis, rows, handle, say)
-            for path in upload:
+                _keep(declared, entry, analysis, rows, handle, asker, say)
+            for entry in upload:
                 try:
-                    audio = path.read_bytes()
+                    audio = entry.path.read_bytes()
                 except OSError as exc:
                     analysis = Analysis(
                         note=f"the file could not be read ({type(exc).__name__}), so it was not sent"
                     )
                 else:
                     uploaded += 1
-                    analysis = asker.analyse(path, audio, path.stem)
-                _keep(declared, path, analysis, rows, handle, say)
-        except TrialStopped as exc:
-            stopped = str(exc)
-        except secrets.CredentialRejected as exc:
-            stopped = str(exc)
+                    try:
+                        analysis = asker.analyse(entry.path, audio, entry.path.stem)
+                    except BaseException as exc:
+                        if asker.made:
+                            held = Analysis(
+                                track=asker.made,
+                                pending=True,
+                                note=(
+                                    f"the run ended ({type(exc).__name__}) before Cyanite's "
+                                    f"analysis was read; a run with --resume asks again "
+                                    f"without uploading"
+                                ),
+                            )
+                            _keep(declared, entry, held, rows, handle, asker, say)
+                        raise
+                _keep(declared, entry, analysis, rows, handle, asker, say)
+        except (TrialStopped, secrets.CredentialRejected) as exc:
+            stopped = asker.scrub(str(exc))
     return Ran(dry=False, uploaded=uploaded, asked_again=asked, stopped=stopped)
 
 
 def _keep(
     declared: Taxonomy,
-    path: Path,
+    entry: Planned,
     analysis: Analysis,
     rows: dict[str, dict[str, str]],
     handle: TextIO,
+    asker: CyaniteAsker,
     say: Callable[[str], None],
 ) -> None:
-    row = row_for(declared, path, analysis)
-    rows[row["file"]] = row
-    _write_row(handle, row)
+    """Write one row, every cell scrubbed of the key, and say it."""
+    row = {name: asker.scrub(value) for name, value in row_for(declared, entry, analysis).items()}
+    rows[row["audio_sha256"]] = row
+    handle.write(_line(row[name] for name in COLUMNS))
+    handle.flush()
     say(
-        f"  {path.name}: {row['agreement']}, filed {row['filed_folder']}, Cyanite {row['cyanite_folder'] or NONE_SHOWN}"
+        f"  {entry.path.name}: {row['agreement']}, filed {row['filed_folder']}, "
+        f"Cyanite {row['cyanite_folder'] or NONE_SHOWN}"
     )
 
 
@@ -939,6 +1031,7 @@ __all__ = [
     "TrialStopped",
     "Words",
     "agreement",
+    "audio_digest",
     "cyanite_place",
     "filed_place",
     "plan_files",

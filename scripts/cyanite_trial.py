@@ -23,8 +23,9 @@ keeps its rows; run it again with --resume and the same --output to send only
 what has no answer. The folders are read through the library's active
 taxonomy, or through --taxonomy PATH.
 
-Exit codes: 0 done, or the plan; 1 stopped partway, rows kept; 2 refused,
-nothing sent.
+Exit codes: 0 done, or the plan; 1 stopped partway, rows kept; 2 refused
+with no audio uploaded (a refusal of the key or the query comes after one
+free request to Cyanite).
 """
 
 from __future__ import annotations
@@ -40,7 +41,8 @@ if SRC.is_dir() and str(SRC) not in sys.path:
 
 
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
+    # NO ABBREVIATIONS: sending is opted into by its whole name, never by --s.
+    parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0], allow_abbrev=False)
     parser.add_argument("paths", nargs="+", type=Path, help="MP3 files, or folders of them")
     parser.add_argument("--output", type=Path, required=True, help="the new table to write, a .tsv")
     parser.add_argument(
@@ -111,7 +113,7 @@ def main(argv: list[str] | None = None) -> int:
     ) as exc:
         # Every one of these is raised before the first upload: a stop after it
         # is returned on the run, never raised.
-        print(f"refused: {exc}", file=sys.stderr)
+        print(f"refused, no audio was uploaded: {exc}", file=sys.stderr)
         return 2
     except OSError as exc:
         print(
