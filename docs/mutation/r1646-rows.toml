@@ -1,0 +1,280 @@
+name = "r1646"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_shape_read_title_alone"
+description = '''_title_starts: the card's shape is not told, so X is read alone as the title, a "Vocal" row matches'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        return head, title, artists - {title}, later, (), True
+'''
+new = '''        pass
+'''
+
+[[rows]]
+id = "M02_shape_read_both_ways"
+description = '''_title_starts: the card's shape read both ways again, as R-1636 left it'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        return head, title, artists - {title}, later, (), True
+'''
+new = '''        return head, title, artists - {title}, later, (title, head), False
+'''
+
+[[rows]]
+id = "M03_shape_ignores_track_number"
+description = '''_title_starts: a track numbered title after a version ending album still makes the shape'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        and not numbered
+'''
+new = ''''''
+
+[[rows]]
+id = "M04_shape_any_tail"
+description = '''_title_starts: any part after the artist's makes the shape, a plain title too'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        and _a_tail_to_shed(parts[title], searched=False)
+    ):'''
+new = '''    ):'''
+
+[[rows]]
+id = "M05_shape_without_artist"
+description = '''_title_starts: the shape without the artist's part, any "Title - X Mix"'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        and head in artists
+        and not numbered'''
+new = '''        and not numbered'''
+
+[[rows]]
+id = "M06_splits_never_meet"
+description = '''_meet: splits never meet, so no confirming row matches the shape'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        or left_splits & right_splits
+'''
+new = ''''''
+
+[[rows]]
+id = "M07_splits_meet_readings"
+description = '''_meet: a file's split meets a row's plain reading of its title part'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        or left_splits & right_splits
+'''
+new = '''        or left_splits & right_splits
+        or {title for title, _ in left_splits} & right_read
+'''
+
+[[rows]]
+id = "M08_no_self_titled_split"
+description = '''_name_splits: no self titled split, "Artist (Vocal Mix)" never confirms'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    splits = {(credit, every) for credit in _credit_words(parts[head])}
+'''
+new = '''    splits: set[TitleSplit] = set()
+'''
+
+[[rows]]
+id = "M09_no_title_split"
+description = '''_name_splits: no title split, "Sunrise Mood (Extended Mix)" never confirms'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        splits.add((plain, every[len(plain) :]))
+    return frozenset(splits)
+
+
+def _row_splits'''
+new = '''        pass
+    return frozenset(splits)
+
+
+def _row_splits'''
+
+[[rows]]
+id = "M10_title_split_version_whole"
+description = '''_name_splits: the title split's version is all of X, never only its tail'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        splits.add((plain, every[len(plain) :]))
+    return frozenset(splits)
+
+
+def _row_splits'''
+new = '''        splits.add((plain, every))
+    return frozenset(splits)
+
+
+def _row_splits'''
+
+[[rows]]
+id = "M11_title_split_keeps_brackets"
+description = '''_name_splits: X's own trailing groups stay in its title split's core'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    plain = _without_version(_words(_without_trailing_groups(tail)))
+'''
+new = '''    plain = _without_version(_words(tail))
+'''
+
+[[rows]]
+id = "M12_credit_no_marker_strip"
+description = '''_credit_words: the artist's part keeps its [MP3] marker'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    bare = _words(_LEADING_GROUPS.sub("", part))
+'''
+new = '''    bare = _words(part)
+'''
+
+[[rows]]
+id = "M13_credit_no_track_number"
+description = '''_credit_words: the artist's part keeps its leading track number'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if len(bare) > 1 and _TRACK_NUMBER.fullmatch(bare[0]):
+        found.add(bare[1:])
+'''
+new = ''''''
+
+[[rows]]
+id = "M14_credit_no_feature_shed"
+description = '''_credit_words: the artist's part keeps its feature credit'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        if credited:
+            found.add(credited)
+'''
+new = '''        pass
+'''
+
+[[rows]]
+id = "M15_row_any_dash_split"
+description = '''_row_splits: any dash part is a version, so "Vocal - Mix Tape" splits'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        if last < len(parts) and not _a_tail_to_shed(_DASH.join(parts[last:]), searched=False):
+            continue
+'''
+new = ''''''
+
+[[rows]]
+id = "M16_row_no_dash_split"
+description = '''_row_splits: a dash version tail is never a split, only brackets'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        if last < len(parts) and not _a_tail_to_shed(_DASH.join(parts[last:]), searched=False):
+            continue
+'''
+new = '''        if last < len(parts):
+            continue
+'''
+
+[[rows]]
+id = "M17_row_no_bracket_split"
+description = '''_row_splits: trailing groups are not taken off, so "Sunrise Mood (Extended Mix)" writes no split'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        core = _words(_without_trailing_groups(_DASH.join(parts[:last])))
+'''
+new = '''        core = _words(_DASH.join(parts[:last]))
+'''
+
+[[rows]]
+id = "M18_row_plain_splits_itself"
+description = '''_row_splits: a row with no structure splits as itself and nothing, "Vocal Mix" read as a split'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        if core and len(core) < len(every):
+'''
+new = '''        if core:
+            splits.add((core[:-1], core[-1:]))
+        if core and len(core) < len(every):
+'''
+
+[[rows]]
+id = "M19_beatport_no_mix_split"
+description = '''_beatport_readings: the mix never splits with the name'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if _identifies(mix):
+        splits |= _row_splits(f"{name} ({mix})")
+'''
+new = ''''''
+
+[[rows]]
+id = "M20_beatport_mix_in_readings"
+description = '''_beatport_readings: the mix reaches the name's readings too, so "Vocal" with "Mix" reads "vocal mix"'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    read, shed, splits = _readings(name, searched=False)
+    if _identifies(mix):'''
+new = '''    read, shed, splits = _readings(f"{name} {mix}", searched=False)
+    if _identifies(mix):'''
+
+[[rows]]
+id = "M21_whole_shed_again"
+description = '''_readings: the whole name crediting the artist is shed again, round one's B1'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+'''
+new = '''            shed_of = _shed
+'''
+
+[[rows]]
+id = "M22_every_run_unshed"
+description = '''_readings: every run of a name crediting the artist is read unshed, so a title's version is never shed'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+'''
+new = '''            shed_of = _unshed if head in artists else _shed
+'''
+
+[[rows]]
+id = "M23_whole_unshed_always"
+description = '''_readings: every whole name is read unshed, a catalogue's and a plain title's too'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+'''
+new = '''            shed_of = _unshed if (first, last) == whole else _shed
+'''
+
+[[rows]]
+id = "M24_shape_returns_no_splits"
+description = '''_readings: the shape's splits are never read, so it matches nothing but its whole name'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        splits = _name_splits(parts, head, title) if split else frozenset()
+'''
+new = '''        splits = frozenset()
+'''
