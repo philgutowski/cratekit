@@ -582,3 +582,38 @@ def test_the_walk_raises_on_a_directory_it_cannot_read(tmp_path, monkeypatch):
         snapshot._walked(tmp_path / "capture")
     monkeypatch.setattr(snapshot.os, "walk", real)
     assert snapshot._walked(tmp_path / "capture") == {}
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# The restore's side: a capture that lost a file after its verdict
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize("suffix", W.restored_sidecar_suffixes())
+def test_a_capture_that_lost_its_log_after_the_verdict_is_refused_by_the_plan(cfg, suffix):
+    """A restore never accepts a capture missing data it records.
+
+    The verdict is true and the database is still there, so only
+    ``assert_sources_present`` stands between the plan and a restore that would
+    put the database back without the log its newest rows live in.
+    """
+    database = _database(cfg)
+    live = sqlite3.connect(database)
+    try:
+        live.execute("PRAGMA wal_autocheckpoint=0")
+        _retitle(live, _first_id(database), "only in the log")
+        captured = snapshot.capture(cfg)
+    finally:
+        live.close()
+    assert captured.verified
+    lost = _sidecar(captured.database, suffix)
+    lost.unlink()
+    record = _close_into_a_session(cfg, captured)
+
+    acknowledge(cfg)
+    with restore.recovery_session(cfg, **gate_seams(cfg)) as held:
+        with pytest.raises(CratekitError) as excinfo:
+            restore.plan(cfg, record.session_id, held=held)
+
+    assert excinfo.value.cause.reason == "snapshot-integrity-failed"
+    assert str(lost) in str(excinfo.value)
