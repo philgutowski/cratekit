@@ -1,0 +1,259 @@
+name = "u283"
+pass_kind = "light"
+
+[[rows]]
+id = "S1_loop_offers_discogs_again"
+description = "_capture_credentials: drop the pass over the Discogs check, so the bare loop offers and stores the token unchecked beside the step"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''        if key == DISCOGS_CHECK:
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "S2_step_ignores_offered"
+description = "_link_discogs: drop the doctor offered question, so a profile whose verbs spend no token is asked anyway"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    if not doctor.offered(DISCOGS_CHECK, membership):
+        return
+    name = str(secrets.Credential.DISCOGS_TOKEN)'''
+new = '''    if False:
+        return
+    name = str(secrets.Credential.DISCOGS_TOKEN)'''
+
+[[rows]]
+id = "S3_relink_flag_ignored"
+description = "_link_discogs: a recorded token is acknowledged even with --relink-discogs, so the flag replaces nothing"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    if already and not relink:'''
+new = '''    if already:'''
+
+[[rows]]
+id = "S4_recorded_never_acknowledged"
+description = "_link_discogs: a recorded token is not acknowledged, so every run asks for it again and may replace it"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    if already and not relink:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S5_rejected_falls_through_to_store"
+description = "_link_discogs: a token Discogs rejected is not asked again but falls through to the store"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''            wizard.prompter.write(f"  Not linked: {check.note}. Nothing was recorded.\n")
+            continue'''
+new = '''            wizard.prompter.write(f"  Not linked: {check.note}. Nothing was recorded.\n")'''
+
+[[rows]]
+id = "S6_relink_stores_unchecked"
+description = "_link_discogs: drop the round one guard, so a replacement Discogs could not check overwrites the recorded token"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''        if already and check.verdict is not searchers.TokenVerdict.ACCEPTED:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "S7_accepted_note_swapped"
+description = "_link_discogs: an accepted token is noted as unchecked and an unchecked one as accepted"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''        if check.verdict is searchers.TokenVerdict.ACCEPTED:
+            wizard.note('''
+new = '''        if check.verdict is not searchers.TokenVerdict.ACCEPTED:
+            wizard.note('''
+
+[[rows]]
+id = "S8_more_tries"
+description = "DISCOGS_TRIES: five tries rather than the prompter's three"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''DISCOGS_TRIES = prompt.MAX_ATTEMPTS'''
+new = '''DISCOGS_TRIES = 5'''
+
+[[rows]]
+id = "S9_default_no"
+description = "_link_discogs: the question defaults to no, so pressing return skips linking"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    if not wizard.optional(question, default=True):'''
+new = '''    if not wizard.optional(question, default=False):'''
+
+[[rows]]
+id = "S10_any_raise_escapes"
+description = "_link_discogs: the bare except catches only arithmetic errors, so a check raising anything else escapes setup after the configuration is saved"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''        except Exception as exc:  # noqa: BLE001
+            wizard.note(
+                key,
+                title,
+                doctor.Status.FAIL,
+                f"the token could not be checked ({type(exc).__name__}), so it was "'''
+new = '''        except ArithmeticError as exc:  # noqa: BLE001
+            wizard.note(
+                key,
+                title,
+                doctor.Status.FAIL,
+                f"the token could not be checked ({type(exc).__name__}), so it was "'''
+
+[[rows]]
+id = "S11_vocabulary_never_noted"
+description = "_discogs_vocabulary: never notes a copy without the Discogs table"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    if searchers.DISCOGS not in found.missing_vocabularies:
+        return'''
+new = '''    if True:
+        return'''
+
+[[rows]]
+id = "S12_vocabulary_always_noted"
+description = "_discogs_vocabulary: notes every copy, the table present or not"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    if searchers.DISCOGS not in found.missing_vocabularies:
+        return'''
+new = '''    if False:
+        return'''
+
+[[rows]]
+id = "S13_linked_copy_not_checked"
+description = "_link_discogs: a token already recorded does not look at the copy's Discogs table"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''                f"as it is; crate setup {RELINK_FLAG} offers to replace it"
+            ),
+        )
+        _discogs_vocabulary(wizard, cfg)'''
+new = '''                f"as it is; crate setup {RELINK_FLAG} offers to replace it"
+            ),
+        )'''
+
+[[rows]]
+id = "S14_no_explanation"
+description = "_link_discogs: the explanation is not written before the question"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    wizard.prompter.write(DISCOGS_INTRO)'''
+new = '''    pass'''
+
+[[rows]]
+id = "S15_nothing_entered_fails"
+description = "_link_discogs: an empty entry is a FAIL rather than the skip note"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''            wizard.note(key, title, doctor.Status.INFO, f"nothing was entered; {unlinked}")'''
+new = '''            wizard.note(key, title, doctor.Status.FAIL, f"nothing was entered; {unlinked}")'''
+
+[[rows]]
+id = "S16_refusal_line_leaks"
+description = "_link_discogs: the refusal line written to the terminal carries the token"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''            wizard.prompter.write(f"  Not linked: {check.note}. Nothing was recorded.\n")'''
+new = '''            wizard.prompter.write(f"  Not linked: {check.note} {token}. Nothing was recorded.\n")'''
+
+[[rows]]
+id = "S17_verb_skips_step"
+description = "setup: the verb no longer runs the Discogs step"
+file = "src/cratekit/cli/setup.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_doctor.py"]
+old = '''    _link_discogs(wizard, cfg, relink=bool(args.relink_discogs))'''
+new = '''    pass'''
+
+[[rows]]
+id = "D1_shape_sent"
+description = "identity: a token that is not one printable word is sent rather than refused"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''        if not _TOKEN_SHAPE.fullmatch(self.token):
+            return TokenCheck('''
+new = '''        if False:
+            return TokenCheck('''
+
+[[rows]]
+id = "D2_401_unchecked"
+description = "identity: a 401 is read as unchecked, so a rejected token is stored with a note"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''            return TokenCheck(TokenVerdict.REJECTED, "Discogs answered 401, it does not accept this token")'''
+new = '''            return TokenCheck(TokenVerdict.UNCHECKED, "Discogs answered 401, it does not accept this token")'''
+
+[[rows]]
+id = "D3_reraise_swallowed"
+description = "identity: a refusal that is not a 401 is read as a rejection rather than raised"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''            if self.rejected is None:
+                raise'''
+new = '''            if False:
+                raise'''
+
+[[rows]]
+id = "D4_any_object_accepted"
+description = "identity: any JSON object is acceptance, an account named or not"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''        if type(read.get("id")) is not int:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D5_id_truthy"
+description = "identity: an id that is present in any type is acceptance, a nearby value"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''        if type(read.get("id")) is not int:'''
+new = '''        if read.get("id") is None:'''
+
+[[rows]]
+id = "D6_said_unscrubbed"
+description = "_said: a note is no longer scrubbed of the token, the check's only scrub since round one"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''        return SourceOutcome(DISCOGS, answer, note=self._scrub(note))'''
+new = '''        return SourceOutcome(DISCOGS, answer, note=note)'''
+
+[[rows]]
+id = "D7_check_unpaced_sleep"
+description = "check_discogs_token: the caller's sleep is not handed to the asker, so the pacer sleeps for real and is not the caller's"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''    return discogs_asker(token=token, fetch=fetch, sleep=sleep).identity()'''
+new = '''    return discogs_asker(token=token, fetch=fetch).identity()'''
+
+[[rows]]
+id = "D8_identity_address"
+description = "DISCOGS_IDENTITY: the user endpoint rather than the identity one"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_setup_discogs.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py"]
+old = '''DISCOGS_IDENTITY = f"{DISCOGS_API}/oauth/identity"'''
+new = '''DISCOGS_IDENTITY = f"{DISCOGS_API}/users/identity"'''

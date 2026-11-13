@@ -1634,23 +1634,44 @@ def integrity_ok(snapshot_database: Path | str, *, unlock: bool | None = None) -
     nothing about whether the copy is intact. ``unlock`` is passed through
     unanswered, so the copy is asked for its key the way the open asks the
     original.
+
+    IT NEVER OPENS THE FILE IT IS GIVEN (R-1665). The file set, the database
+    and every companion the state schema declares, is copied into a private
+    throwaway directory through the one loop the capture uses, and the check
+    opens the copy. The verdict is therefore about exactly the given bytes,
+    log included, and what the close does is done to the copy: the last close
+    of a database in write ahead log mode folds the log into the main file and
+    deletes the log and its index, and when that close was of the capture
+    itself it removed the files the capture's record lists, so the restore
+    refused the capture as missing them. A copy that cannot be made answers
+    False, like an unreadable snapshot: a check that could not run has not
+    passed. The throwaway directory is removed whatever the check answered.
     """
     from sqlalchemy import text
 
     try:
-        db = open_db(snapshot_database, check_app_version=False, unlock=unlock)
-    except RekordboxUnavailable:
+        with disposable_copy(snapshot_database) as checked:
+            try:
+                db = open_db(checked, check_app_version=False, unlock=unlock)
+            except RekordboxUnavailable:
+                return False
+            try:
+                result = db.session.execute(text("PRAGMA quick_check")).scalar()
+                return str(result).lower() == "ok"
+            except Exception:  # noqa: BLE001 - an unreadable snapshot is a failed snapshot
+                return False
+            finally:
+                # The full release, not the binding's session close: the
+                # throwaway directory is removed next, and a pooled connection
+                # left open would hold its files while it goes.
+                close_db(db)
+    except OSError as exc:
+        logger.warning(
+            "the integrity check could not copy %s to check it, so it did not pass: %s",
+            snapshot_database,
+            exc,
+        )
         return False
-    try:
-        result = db.session.execute(text("PRAGMA quick_check")).scalar()
-        return str(result).lower() == "ok"
-    except Exception:  # noqa: BLE001 - an unreadable snapshot is a failed snapshot
-        return False
-    finally:
-        # The full release, not the binding's session close: this function is
-        # called immediately before a session that may go on to restore the very
-        # file it just verified.
-        close_db(db)
 
 
 def restore_from_snapshot(

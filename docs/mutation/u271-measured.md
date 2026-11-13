@@ -1,0 +1,693 @@
+# Mutation table: u271-measured
+
+Measured by `scripts/mutate.py` on 2026-11-13 18:48 UTC, branch `cloud/700-mutate-reads-battery-verdict` at `1c1d4e6b`. Pass kind: light.
+
+Baseline: green, 20417 collected. pytest invocations for this batch: 29.
+
+Full baseline: measured by this driver (--measure-baseline was passed).
+
+Subset baselines: 3, each measured by this driver.
+
+Known failures: 161 node ids whose failure is this machine's and not the tree's, read from `.cloud-battery/baseline.txt` and subtracted from every run, the baselines and the rows alike. The baseline is green net of them, and a death among them is not counted. This is a Linux measure of a macOS suite; the full battery is owed on a Mac.
+
+Environment: inherited from the calling shell, then added to. Added: PYTHONDONTWRITEBYTECODE=1; PYTHONPATH (the plugin's temp directory, prepended); MUTATE_REPORT_PATH (the plugin's output file); the installation state sandbox: CRATEKIT_CONFIG_DIR, CRATEKIT_PROVIDER_GATE_DIR, CRATEKIT_STATE_DIR, HOME, USERPROFILE, XDG_CACHE_HOME, XDG_CONFIG_HOME, XDG_DATA_HOME, XDG_STATE_HOME (all pointed inside the run's workspace, R-343). Removed: PYTEST_ADDOPTS (an inherited value would edit the command after the driver built it); PYTEST_XDIST_WORKER (the reporting plugin reads it to tell a worker from the controller, so a driver started from inside a parallel worker would hand its child a controller that believes it is a worker and writes no report; xdist sets it afresh in each worker the child starts); PYTEST_XDIST_WORKER_COUNT (the same inherited worker identity, scrubbed with it); PYTEST_XDIST_TESTRUNUID (the same inherited worker identity, scrubbed with it). Nothing else was scrubbed, because a hand built environment is how a missing binary reddens a baseline and every row after it.
+
+Installation state: the watched roots are unchanged. Fingerprinted before the first child this run started and after every one of them: ~/.config/cratekit (0 entries); ~/.local/state/cratekit (0 entries). A change would have stopped the batch at the child that was running. Every child ran with its own throwaway installation state, so a test that undoes the suite's isolation lands there rather than on this machine (R-343). Only those roots are watched; the sandbox also redirects HOME and the data root, and a child reaching one of those is not seen by this guard.
+
+Null control `NULL_CONTROL`: killed 0, collected 20417 against 20417. The control is a semantically empty change, so a zero here is what makes every other number in this table believable.
+
+## Summary
+
+| id | file | surface | subset | collected | kills | status |
+| --- | --- | --- | --- | --- | --- | --- |
+| `D1_commit_unchecked` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 2 | killed |
+| `D2_run_cleanliness_unchecked` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D3_tree_now_unchecked` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 2 | killed |
+| `D4_unreadable_status_read_as_clean` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D5_boot_unchecked` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D6_checkout_unchecked` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D7_interpreter_unchecked` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D8_known_file_unchecked` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D9_interrupted_run_read` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D10_empty_count_read` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D11_verdict_disagreement_read` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 2 | killed |
+| `D12_red_record_read_green` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D13_no_known_file_layer` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `D14_read_named_measured` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 3 | killed |
+| `B1_run_cleanliness_at_the_end_only` | `scripts/cloud_battery.py` | maintainer | 2 file(s) | 158 | 2 | killed |
+| `B2_commit_read_after_the_run` | `scripts/cloud_battery.py` | maintainer | 2 file(s) | 158 | 1 | killed |
+| `B3_status_unread` | `scripts/cloud_battery.py` | maintainer | 2 file(s) | 158 | 3 | killed |
+| `B4_release_line_never_dirty` | `scripts/cloud_battery.py` | maintainer | 3 file(s) | 218 | 3 | killed |
+| `B5_collection_errors_unlisted` | `scripts/cloud_battery.py` | maintainer | 2 file(s) | 158 | 1 | killed |
+| `B6_count_unread_under_workers` | `scripts/cloud_battery.py` | maintainer | 2 file(s) | 158 | 2 | killed |
+| `B7_boot_unrecorded` | `scripts/cloud_battery.py` | maintainer | 2 file(s) | 158 | 15 | killed |
+| `D15_early_stop_read` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 2 | killed |
+| `D16_edited_run_read` | `scripts/mutate.py` | maintainer | 1 file(s) | 108 | 1 | killed |
+| `B8_ran_uncounted` | `scripts/cloud_battery.py` | maintainer | 2 file(s) | 158 | 11 | killed |
+
+## Row definitions
+
+### `D1_commit_unchecked`
+
+read_battery_verdict: drop the commit key, so a verdict for another commit is read
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_for_another_commit_is_not_read`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[no-commit]`
+
+Old text:
+
+```
+            bool(commit) and recorded == commit,
+```
+
+New text:
+
+```
+            True,
+```
+
+### `D2_run_cleanliness_unchecked`
+
+read_battery_verdict: drop the key saying the tree was clean throughout the battery's run
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[dirty-during-the-run]`
+
+Old text:
+
+```
+        (record.get("clean_tree") is True, "the tree was not clean throughout the battery's run"),
+```
+
+New text:
+
+```
+        (True, "the tree was not clean throughout the battery's run"),
+```
+
+### `D3_tree_now_unchecked`
+
+read_battery_verdict: drop the check that this tree is clean now
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_is_not_read_over_a_tree_with_changes`
+  - `tests/test_mutation_driver.py::test_untracked_files_hidden_by_git_config_still_make_the_tree_unclean`
+
+Old text:
+
+```
+        (clean_now is True, "this tree has uncommitted or untracked changes"),
+```
+
+New text:
+
+```
+        (True, "this tree has uncommitted or untracked changes"),
+```
+
+### `D4_unreadable_status_read_as_clean`
+
+tree_state in the driver: drop the None for a status git could not read, so an empty failed status reads clean
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_status_git_cannot_read_is_never_a_clean_tree`
+
+Old text:
+
+```
+    if not commit or status.returncode != 0:
+        return commit, None
+```
+
+New text:
+
+```
+    if not commit:
+        return commit, None
+```
+
+### `D5_boot_unchecked`
+
+read_battery_verdict: key the machine on the host name alone, which every cloud container shares
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[another-boot]`
+
+Old text:
+
+```
+            record.get("host") == socket.gethostname() and record.get("boot_id") == boot_id(),
+```
+
+New text:
+
+```
+            record.get("host") == socket.gethostname(),
+```
+
+### `D6_checkout_unchecked`
+
+read_battery_verdict: drop the checkout key
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[another-checkout]`
+
+Old text:
+
+```
+        (record.get("root") == str(repo_root.resolve()), "it was measured in another checkout"),
+```
+
+New text:
+
+```
+        (True, "it was measured in another checkout"),
+```
+
+### `D7_interpreter_unchecked`
+
+read_battery_verdict: drop the interpreter key
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[another-interpreter]`
+
+Old text:
+
+```
+        (record.get("python") == sys.executable, "it was measured with another interpreter"),
+```
+
+New text:
+
+```
+        (True, "it was measured with another interpreter"),
+```
+
+### `D8_known_file_unchecked`
+
+read_battery_verdict: drop the known failures file's digest key
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[another-known-failures-file]`
+
+Old text:
+
+```
+            record.get("known_failures_sha256") == known_digest,
+```
+
+New text:
+
+```
+            True,
+```
+
+### `D9_interrupted_run_read`
+
+read_battery_verdict: accept pytest's exit 2, an interrupted run
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[an-interrupted-run]`
+
+Old text:
+
+```
+record["exit_code"] in {0, 1},
+```
+
+New text:
+
+```
+record["exit_code"] in {0, 1, 2},
+```
+
+### `D10_empty_count_read`
+
+read_battery_verdict: accept a record that collected nothing
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[nothing-collected]`
+
+Old text:
+
+```
+record["collected"] > 0,
+```
+
+New text:
+
+```
+record["collected"] >= 0,
+```
+
+### `D11_verdict_disagreement_read`
+
+read_battery_verdict: drop the check that the verdict agrees with the ids it lists
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[a-collection-error-read-clean]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[a-verdict-its-ids-contradict]`
+
+Old text:
+
+```
+    if green != (record["verdict"] == "clean"):
+```
+
+New text:
+
+```
+    if False:
+```
+
+### `D12_red_record_read_green`
+
+read_battery_verdict: build the read baseline with no failures, so a red verdict reads green
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_red_verdict_for_this_commit_refuses_the_batch`
+
+Old text:
+
+```
+        failed=tuple(beyond),
+```
+
+New text:
+
+```
+        failed=(),
+```
+
+### `D13_no_known_file_layer`
+
+read_battery_verdict: drop the refusal of a run with no known failures file, the layer before the digest key
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_no_known_failures_file_means_the_verdict_is_not_read`
+
+Old text:
+
+```
+    if not known_digest:
+```
+
+New text:
+
+```
+    if False:
+```
+
+### `D14_read_named_measured`
+
+measure_batch: record a read baseline as measured, so the table names the wrong one
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 3 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_clean_verdict_for_this_commit_stands_for_the_full_baseline`
+  - `tests/test_mutation_driver.py::test_the_command_line_reads_the_verdict_and_measures_on_request`
+  - `tests/test_mutation_driver.py::test_the_table_says_the_full_baseline_was_read_and_what_was_measured`
+
+Old text:
+
+```
+        header["baseline_source"] = "read"
+```
+
+New text:
+
+```
+        header["baseline_source"] = "measured"
+```
+
+### `B1_run_cleanliness_at_the_end_only`
+
+measured_tree: read cleanliness after the run only, so a change made before it and a moved HEAD are missed
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`
+- Collected: 158 against a baseline of 158
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_cloud_battery.py::test_a_commit_made_during_the_run_is_never_recorded_as_measured`
+  - `tests/test_cloud_battery.py::test_the_baseline_header_names_the_commit_read_before_the_run`
+
+Old text:
+
+```
+    clean = before.clean and after.clean and before.commit == after.commit
+```
+
+New text:
+
+```
+    clean = after.clean
+```
+
+### `B2_commit_read_after_the_run`
+
+measured_tree: name the commit read after the run, as last-compare.txt did before U271
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`
+- Collected: 158 against a baseline of 158
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_cloud_battery.py::test_a_commit_made_during_the_run_is_never_recorded_as_measured`
+
+Old text:
+
+```
+    return TreeState(commit=before.commit, clean=clean)
+```
+
+New text:
+
+```
+    return TreeState(commit=after.commit, clean=clean)
+```
+
+### `B3_status_unread`
+
+tree_state in the battery: read only git's exit, so a tree with changes reads clean
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`
+- Collected: 158 against a baseline of 158
+- Kills: 3 (killed)
+- Killed:
+  - `tests/test_cloud_battery.py::test_a_change_to_the_tree_marks_the_run_unclean[before]`
+  - `tests/test_cloud_battery.py::test_a_change_to_the_tree_marks_the_run_unclean[during]`
+  - `tests/test_cloud_battery.py::test_an_untracked_file_hidden_by_git_config_is_still_seen`
+
+Old text:
+
+```
+    clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
+    return TreeState(commit=commit, clean=clean)
+```
+
+New text:
+
+```
+    clean = bool(commit) and status.returncode == 0
+    return TreeState(commit=commit, clean=clean)
+```
+
+### `B4_release_line_never_dirty`
+
+record_verdict: never write dirty, so the release reads a moved tree as clean
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`, `tests/test_release.py`
+- Collected: 218 against a baseline of 218
+- Kills: 3 (killed)
+- Killed:
+  - `tests/test_cloud_battery.py::test_a_change_to_the_tree_marks_the_run_unclean[before]`
+  - `tests/test_cloud_battery.py::test_a_change_to_the_tree_marks_the_run_unclean[during]`
+  - `tests/test_cloud_battery.py::test_a_commit_made_during_the_run_is_never_recorded_as_measured`
+
+Old text:
+
+```
+    if not tree.clean:
+        verdict = "dirty"
+```
+
+New text:
+
+```
+    if False:
+        verdict = "dirty"
+```
+
+### `B5_collection_errors_unlisted`
+
+the reporting plugin: list no collection errors
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`
+- Collected: 158 against a baseline of 158
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_cloud_battery.py::test_the_suite_run_reads_the_collected_count_and_the_collection_errors`
+
+Old text:
+
+```
+            if getattr(report, "when", None) == "collect"
+```
+
+New text:
+
+```
+            if getattr(report, "when", None) == "never"
+```
+
+### `B6_count_unread_under_workers`
+
+the reporting plugin: drop the xdist hook, so a run with workers records no collected count
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`
+- Collected: 158 against a baseline of 158
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_cloud_battery.py::test_a_skip_an_unrun_xfail_and_a_setup_error_each_count_as_run[workers]`
+  - `tests/test_cloud_battery.py::test_the_collected_count_is_read_under_the_repositorys_distribution`
+
+Old text:
+
+```
+def pytest_xdist_node_collection_finished(node, ids):
+    _COLLECTED["count"] = len(ids)
+```
+
+New text:
+
+```
+def pytest_xdist_node_collection_finished(node, ids):
+    pass
+```
+
+### `B7_boot_unrecorded`
+
+record_run: record no boot id, which the driver then reads as another machine
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`
+- Collected: 158 against a baseline of 158
+- Kills: 15 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_clean_verdict_for_this_commit_stands_for_the_full_baseline`
+  - `tests/test_mutation_driver.py::test_a_red_verdict_for_this_commit_refuses_the_batch`
+  - `tests/test_mutation_driver.py::test_a_run_that_stopped_early_with_exit_one_is_not_read`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[a-collection-error-read-clean]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[a-verdict-its-ids-contradict]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[an-edited-run]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[an-interrupted-run]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[another-checkout]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[another-interpreter]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[another-known-failures-file]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[fewer-ran-than-collected]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[no-count-of-what-ran]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[nothing-collected]`
+  - `tests/test_mutation_driver.py::test_the_command_line_reads_the_verdict_and_measures_on_request`
+  - `tests/test_mutation_driver.py::test_the_table_says_the_full_baseline_was_read_and_what_was_measured`
+
+Old text:
+
+```
+        "boot_id": boot_id(),
+```
+
+New text:
+
+```
+        "boot_id": "",
+```
+
+### `D15_early_stop_read`
+
+read_battery_verdict: drop the check that every collected test reported, so a run stopped early reads complete
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 2 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_run_that_stopped_early_with_exit_one_is_not_read`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[fewer-ran-than-collected]`
+
+Old text:
+
+```
+record["ran"] == record["collected"],
+```
+
+New text:
+
+```
+record["ran"] <= record["collected"],
+```
+
+### `D16_edited_run_read`
+
+read_battery_verdict: drop the refusal of a run that inherited PYTEST_ADDOPTS
+
+- File: `scripts/mutate.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_mutation_driver.py`
+- Collected: 108 against a baseline of 108
+- Kills: 1 (killed)
+- Killed:
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[an-edited-run]`
+
+Old text:
+
+```
+            record.get("pytest_addopts") == "",
+```
+
+New text:
+
+```
+            True,
+```
+
+### `B8_ran_uncounted`
+
+the reporting plugin: count no test as having reported
+
+- File: `scripts/cloud_battery.py`
+- Surface: maintainer
+- Subset: explicit subset from the row
+- Ran: `tests/test_cloud_battery.py`, `tests/test_mutation_driver.py`
+- Collected: 158 against a baseline of 158
+- Kills: 11 (killed)
+- Killed:
+  - `tests/test_cloud_battery.py::test_a_complete_run_records_what_it_collected_and_pytests_exit`
+  - `tests/test_cloud_battery.py::test_a_skip_an_unrun_xfail_and_a_setup_error_each_count_as_run[serial]`
+  - `tests/test_cloud_battery.py::test_a_skip_an_unrun_xfail_and_a_setup_error_each_count_as_run[workers]`
+  - `tests/test_cloud_battery.py::test_compare_records_every_key_the_driver_reads`
+  - `tests/test_mutation_driver.py::test_a_clean_verdict_for_this_commit_stands_for_the_full_baseline`
+  - `tests/test_mutation_driver.py::test_a_red_verdict_for_this_commit_refuses_the_batch`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[a-collection-error-read-clean]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[a-verdict-its-ids-contradict]`
+  - `tests/test_mutation_driver.py::test_a_verdict_that_differs_in_any_key_is_not_read[an-edited-run]`
+  - `tests/test_mutation_driver.py::test_the_command_line_reads_the_verdict_and_measures_on_request`
+  - `tests/test_mutation_driver.py::test_the_table_says_the_full_baseline_was_read_and_what_was_measured`
+
+Old text:
+
+```
+    _RAN.add(report.nodeid)
+```
+
+New text:
+
+```
+    pass
+```
+

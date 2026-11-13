@@ -48,7 +48,12 @@ Nothing merges until all three are clean:
   fails on tests the branch newly breaks, and stops first on a red ruff or
   scan or a missing baseline. It compares whole node ids, and refuses a
   baseline measured before U268, whose ids were cut at their first space;
-  measure that one again.
+  measure that one again. Each run that reaches its reading leaves
+  `.cloud-battery/verdict.json`,
+  which `scripts/mutate.py --known-failures` reads in place of its own full
+  baseline when it is for the same commit, on a clean tree, on this machine,
+  with the same known failures file (U271); `--measure-baseline` measures
+  regardless.
 - `scripts/scan_repo.py` scans every tracked file, the vendored tree included,
   for personal literals (home directories, volumes, accounts, machine names)
   and credential-shaped content.

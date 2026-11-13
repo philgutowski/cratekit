@@ -1269,6 +1269,8 @@ def _search_bandcamp(
 DISCOGS_API = "https://api.discogs.com"
 DISCOGS_SEARCH = f"{DISCOGS_API}/database/search"
 DISCOGS_RELEASE = f"{DISCOGS_API}/releases/"
+#: Who a token belongs to, the one call setup spends to check one (U283).
+DISCOGS_IDENTITY = f"{DISCOGS_API}/oauth/identity"
 
 #: How many search results are asked for, and how many of the releases they
 #: name are read. Each release is a paced request, so three is the cost a miss
@@ -1336,6 +1338,26 @@ def discogs_headers(token: str) -> dict[str, str]:
         "Accept": "application/json",
         "Authorization": f"Discogs token={token}",
     }
+
+
+class TokenVerdict(Enum):
+    """What Discogs said about a token setup was given (U283)."""
+
+    #: Discogs named the account the token belongs to.
+    ACCEPTED = "accepted"
+    #: Discogs answered 401, or the token could not be sent at all.
+    REJECTED = "rejected"
+    #: Discogs said nothing about the token: a block, an outage, or an answer
+    #: that was not the identity.
+    UNCHECKED = "unchecked"
+
+
+@dataclass(frozen=True, slots=True)
+class TokenCheck:
+    """One token check's verdict, and a note that never carries the token."""
+
+    verdict: TokenVerdict
+    note: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -1517,6 +1539,48 @@ class DiscogsAsker:
             self.refused = said
         return said
 
+    def identity(self) -> TokenCheck:
+        """Whether Discogs accepts this asker's token, by one identity call (U283).
+
+        THE SAME CLIENT A SWEEP ASKS THROUGH: :meth:`_read`, so the agent, the
+        header the token rides in, the pacer, the remaining count and the rate
+        limit ladder are the searcher's own, and a 401 is read by the one line
+        that reads it for a search. A token that is not one printable word is
+        rejected without a request, as a search rejects it.
+
+        THREE VERDICTS, because "Discogs refused the token" and "Discogs could
+        not be asked" send a person to different places: a rejection is a token
+        to make again, and nothing may store it; an unchecked token is one
+        Discogs said nothing about, a block, an outage or an answer that is not
+        the identity, which the caller may store and say so. Only a JSON object
+        naming the account by number is acceptance. The name Discogs answers is
+        not kept, and every note is scrubbed of the token.
+        """
+        if self.token is None:
+            return TokenCheck(TokenVerdict.REJECTED, "no token was given, so Discogs was not asked")
+        if not _TOKEN_SHAPE.fullmatch(self.token):
+            return TokenCheck(
+                TokenVerdict.REJECTED,
+                "the token is not one printable word, so it was not sent to Discogs",
+            )
+        try:
+            read = self._read(DISCOGS_IDENTITY, release=False)
+        except CratekitError:
+            if self.rejected is None:
+                raise
+            return TokenCheck(TokenVerdict.REJECTED, "Discogs answered 401, it does not accept this token")
+        if isinstance(read, SourceOutcome):
+            # Built by ``_said``, which scrubs the token from every note.
+            return TokenCheck(TokenVerdict.UNCHECKED, read.note)
+        assert isinstance(read, dict)
+        if type(read.get("id")) is not int:
+            return TokenCheck(
+                TokenVerdict.UNCHECKED,
+                "Discogs answered and the answer did not name an account, so the "
+                "token was neither accepted nor refused",
+            )
+        return TokenCheck(TokenVerdict.ACCEPTED, "Discogs accepted the token")
+
     def _scrub(self, text: str) -> str:
         return text.replace(self.token, _SCRUBBED) if self.token else text
 
@@ -1697,6 +1761,22 @@ def discogs_asker(
         sent = discogs_headers(token) if token is not None else {}
         fetch = default_fetch(sleep=naps, headers=sent)
     return DiscogsAsker(token=token, fetch=fetch, pacer=pacer, unasked=unasked)
+
+
+def check_discogs_token(
+    token: str,
+    *,
+    fetch: Fetch | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> TokenCheck:
+    """Whether Discogs accepts ``token``, asked through the searcher's own client.
+
+    A fresh asker for this one token, built exactly as a sweep builds one, so
+    the shipped fetch sends :func:`discogs_headers` under the shared timeout and
+    rate limit ladder. Never the process's shared asker: that one holds the
+    recorded token, and this one is checked before anything is recorded.
+    """
+    return discogs_asker(token=token, fetch=fetch, sleep=sleep).identity()
 
 
 def _recorded_token() -> tuple[str | None, str]:
@@ -2379,6 +2459,7 @@ __all__ = [
     "DISCOGS",
     "DISCOGS_API",
     "DISCOGS_CREDENTIAL",
+    "DISCOGS_IDENTITY",
     "DISCOGS_LOGIN_STEPS",
     "DISCOGS_NO_TOKEN",
     "DISCOGS_RELEASE",
@@ -2419,7 +2500,10 @@ __all__ = [
     "Pacer",
     "Refusals",
     "SourceOutcome",
+    "TokenCheck",
+    "TokenVerdict",
     "catalogue_searcher",
+    "check_discogs_token",
     "choose_word",
     "default_fetch",
     "default_image_fetch",
