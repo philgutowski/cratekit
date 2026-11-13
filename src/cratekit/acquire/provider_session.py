@@ -44,7 +44,8 @@ take :func:`session_for`, which logs in once and hands every later opener the
 same client while the keychain still holds the session it was opened from; a
 refusal from the provider, or a forget, drops it for every opener at once.
 A refresh the keychain cannot take never fails that login (R-1694): the client
-goes on, the keychain keeps what it held, and the verb's report says so.
+goes on, the next run logs in again from whatever the keychain holds, and the
+verb's report says so.
 """
 
 from __future__ import annotations
@@ -237,8 +238,9 @@ def materialised_session(
 
     ``unstored``, when given, is handed a write back at the close that failed
     with one of :data:`STORE_FAILURES`, in place of raising it (R-1694): the
-    caller goes on with what the scope gave it, the keychain keeps what it
-    held, and the caller says so. Only the write back is inside that catch. An
+    caller goes on with what the scope gave it and says so. The keychain
+    holds what it held, unless only the index refused after the keychain
+    took the refresh, as ``secrets.set`` says it can. Only the write back is inside that catch. An
     exception raised in the body, a provider's rejection, a gate's refusal, a
     login that could not be asked, is thrown at the ``yield`` and never reaches
     it, whatever its class. Without it a write back failure raises, as it
@@ -364,8 +366,10 @@ def client_session(
     device flow session on the same account was served lossy audio (R-210).
 
     A REFRESH THE KEYCHAIN CANNOT TAKE IS NOT A FAILED LOGIN (R-1694). The
-    client is logged in, so it is returned; the keychain keeps the session it
-    held, whose refresh token still logs in, and the failure's class is noted
+    client is logged in, so it is returned; the keychain holds a session
+    whose refresh token still logs in, the one it held or, when only the
+    index refused after the keychain took it, the refresh, and the failure's
+    class is noted
     (:func:`unstored`) for the verb's report to say the session was not stored
     and the next run logs in again. Only a failure to store is taken so: a
     rejected or expired session raises as it always did, and so does a defect.
@@ -391,8 +395,10 @@ def _login(name: str, gate: provider_gate.Gate) -> tuple[Any, dict]:
     """:func:`client_session`'s login, and the session the keychain holds for
     the client it returns once the scope has closed: the stored one, or the
     refresh the scope wrote back over it. A refresh that could not be stored
-    leaves the stored one there, so that is the one returned, and a later
-    reuse compares the keychain against what it really holds (R-1694)."""
+    is taken to leave the stored one there, so that is the one returned, and a
+    later reuse compares the keychain against it (R-1694). When only the index
+    refused, after the keychain took the refresh, that reuse finds the
+    keychain changed and logs in afresh, one login more, never a refused one."""
     gate.assert_open()
     failed: list[BaseException] = []
     with materialised_session(name, unstored=failed.append) as scope:
@@ -644,7 +650,8 @@ def session_for(
     save a refresh the keychain could not take, which is noted rather than
     raised (R-1694): the client is held over the session the keychain still
     holds, so a later use reuses it and neither logs in nor fails to store
-    again.
+    again; when only the index refused after the keychain took the refresh,
+    the keychain no longer matches and the later use logs in afresh.
 
     A LATER USE MAKES NO REQUEST, and is still asked three things first. The
     gate, so a verb started inside a cooldown refuses here as a first open

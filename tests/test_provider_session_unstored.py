@@ -380,3 +380,26 @@ def test_a_failure_in_the_body_never_reaches_the_tolerance(monkeypatch):
             with provider_session.materialised_session(unstored=seen.append):
                 raise raised
     assert seen == []
+
+
+def test_two_failed_stores_in_one_verb_make_one_warning_naming_the_class_once(
+    installed, monkeypatch
+):
+    """Round one: a verb whose two logins both failed to store says so once."""
+    from cratekit.label import tidal_catalogue
+
+    use(monkeypatch, Factory(refresh_to=REFRESHED))
+    no_keychain(monkeypatch)
+    original = tidal_catalogue.open_catalogue
+
+    def opening(cfg=None):
+        provider_session.client_session(gate=quick_gate())
+        return original(cfg)
+
+    monkeypatch.setattr(tidal_catalogue, "open_catalogue", opening)
+
+    _, envelope = drive(HARVEST)
+
+    said = not_stored(envelope)
+    assert len(said) == 1, envelope["warnings"]
+    assert said[0].count("CredentialBackendUnavailable") == 1
