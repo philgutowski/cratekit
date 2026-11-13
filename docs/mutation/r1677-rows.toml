@@ -1,0 +1,270 @@
+name = "r1677"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_no_measure"
+description = "capture: never measure the throwaway's room, so a full temporary volume reads as a failed check again (the card's defect)"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py", "tests/test_intake_land_rehearse.py"]
+old = '''    if verifier is None:
+        assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))'''
+new = '''    if False:
+        assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))'''
+
+[[rows]]
+id = "C3_store_not_passed"
+description = "capture: measure the throwaway without the store, so a shared volume is asked for the throwaway alone"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_intake_land_rehearse.py"]
+old = '''        assert_room_for_check(database_paths(cfg)[0], store=(destination_root, estimate))'''
+new = '''        assert_room_for_check(database_paths(cfg)[0], store=None)'''
+
+[[rows]]
+id = "C4_sum_dropped"
+description = "assert_room_for_check: never add the capture's estimate on a shared volume"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_intake_land_rehearse.py"]
+old = '''    total = needed + (store[1] if store is not None and shared else 0)'''
+new = '''    total = needed'''
+
+[[rows]]
+id = "C5_never_shared"
+description = "_same_volume: answer separate for any two paths"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_intake_land_rehearse.py"]
+old = '''        return _device(Path(first)) == _device(Path(second))'''
+new = '''        return False'''
+
+[[rows]]
+id = "C6_unknown_is_separate"
+description = "_same_volume: an unreadable device counts as separate, the direction that asks for less room"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''        return _device(Path(first)) == _device(Path(second))
+    except OSError:
+        return True'''
+new = '''        return _device(Path(first)) == _device(Path(second))
+    except OSError:
+        return False'''
+
+[[rows]]
+id = "C7_no_ancestor_walk"
+description = "_device: stat the path itself, so a store not yet made has no device and counts as shared"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py", "tests/test_snapshot_wal_r1665.py"]
+old = '''    while not probe.exists() and probe.parent != probe:'''
+new = '''    while False:'''
+
+[[rows]]
+id = "C8_no_headroom"
+description = "assert_room_for_check: require the bare estimate, without the capture's headroom"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''    available = free_bytes if free_bytes is not None else _free_bytes(scratch)
+    required = int(total * headroom)'''
+new = '''    available = free_bytes if free_bytes is not None else _free_bytes(scratch)
+    required = int(total)'''
+
+[[rows]]
+id = "C9_boundary"
+description = "assert_room_for_check: refuse exactly enough room, the boundary moved by one"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''    if available >= required:
+        return needed
+    sharing = ('''
+new = '''    if available > required:
+        return needed
+    sharing = ('''
+
+[[rows]]
+id = "C10_unreadable_passes"
+description = "assert_room_for_check: a volume that will not report its room passes rather than refusing"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''    if available is None:
+        raise refuse(
+            "snapshot-check-temp-full",
+            f"the free space on the volume holding the temporary directory {scratch} "'''
+new = '''    if available is None:
+        return needed
+        raise refuse(
+            "snapshot-check-temp-full",
+            f"the free space on the volume holding the temporary directory {scratch} "'''
+
+[[rows]]
+id = "C11_database_only"
+description = "assert_room_for_check: measure the database alone, leaving out its companions and the playlist file the copy takes"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''    needed = sum(_allocated_size(member) for member in rb_writer.file_set(database))'''
+new = '''    needed = _allocated_size(Path(database))'''
+
+[[rows]]
+id = "R1_raise_after_copy"
+description = "integrity_ok: raise the copy failure for any OSError, after the copy too, so an open that fails is told as no room"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        if raise_copy_failure and not copied:'''
+new = '''        if raise_copy_failure:'''
+
+[[rows]]
+id = "R3_copied_never_set"
+description = "integrity_ok: never mark the copy made, so an error after it raises as a copy failure"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        with disposable_copy(snapshot_database) as checked:
+            copied = True'''
+new = '''        with disposable_copy(snapshot_database) as checked:
+            copied = False'''
+
+[[rows]]
+id = "R5_file_set_drops_playlist"
+description = "_copy_file_set: copy the companions but not the playlist file, so the measured list and the copied list drift"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_rb_writer_db.py", "tests/test_rb_snapshot.py", "tests/test_restore.py"]
+old = '''    for companion in companions:
+        if companion.exists():'''
+new = '''    for companion in companions[:-1]:
+        if companion.exists():'''
+
+[[rows]]
+id = "V1_verify_swallows"
+description = "_verify: let the copy failure fall into the catch all, so it is a plain unverified capture again"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py"]
+old = '''    except rb_writer.IntegrityCheckCopyFailed:
+        # No verdict at all, which the capture names rather than folding into a
+        # failed one (R-1677); it still records the capture unverified.
+        raise'''
+new = '''    except rb_writer.IntegrityCheckCopyFailed:
+        return False'''
+
+[[rows]]
+id = "V2_verify_does_not_ask"
+description = "_verify: call the real check without asking for the copy failure, so a full volume answers False"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py"]
+old = '''            return bool(rb_writer.integrity_ok(database, raise_copy_failure=True))'''
+new = '''            return bool(rb_writer.integrity_ok(database, raise_copy_failure=False))'''
+
+[[rows]]
+id = "K1_room_path_unrecorded"
+description = "capture: refuse for no room without first rewriting the manifest unverified"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py"]
+old = '''            _record_unverified(record, manifest)
+            raise no_room from failed'''
+new = '''            raise no_room from failed'''
+
+[[rows]]
+id = "K2_room_path_silent"
+description = "capture: a copy with no room is a plain unverified capture, not refused under the room slug"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py"]
+old = '''            _record_unverified(record, manifest)
+            raise no_room from failed'''
+new = '''            verdict = False'''
+
+[[rows]]
+id = "K3_other_copy_failure_verified"
+description = "capture: a copy that failed for another reason is recorded VERIFIED, the merge blocker the card names"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_restore.py"]
+old = '''        logger.warning("the capture integrity check could not run, so it did not pass: %s", failed)
+        verdict = False'''
+new = '''        logger.warning("the capture integrity check could not run, so it did not pass: %s", failed)
+        verdict = True'''
+
+[[rows]]
+id = "N1_every_failure_is_room"
+description = "check_had_no_room: read every copy failure as no room, so a permission error is told as a full volume"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_intake_land_rehearse.py"]
+old = '''    if code not in _NO_ROOM_ERRNOS:
+        return None'''
+new = '''    if False:
+        return None'''
+
+[[rows]]
+id = "N2_quota_dropped"
+description = "_NO_ROOM_ERRNOS: leave out a reached quota, so it is a plain unverified capture"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_intake_land_rehearse.py"]
+old = '''    code for code in (errno.ENOSPC, getattr(errno, "EDQUOT", None)) if code is not None'''
+new = '''    code for code in (errno.ENOSPC,) if code is not None'''
+
+[[rows]]
+id = "L1_rehearsal_unmeasured"
+description = "land_cli: the rehearsal's own check is not measured before its copy"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''    snapshot.assert_room_for_check(area.database)
+    try:'''
+new = '''    try:'''
+
+[[rows]]
+id = "L2_rehearsal_room_silent"
+description = "land_cli: a rehearsal check whose copy found no room is told as a failed integrity check"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''        if no_room is not None:
+            raise no_room from failed
+        sound = False'''
+new = '''        sound = False'''
+
+[[rows]]
+id = "L3_rehearsal_other_failure_sound"
+description = "land_cli: a rehearsal check whose copy failed for another reason is reported sound, integrity ok without a check"
+file = "src/cratekit/intake/land_cli.py"
+surface = "user"
+tests = ["tests/test_intake_land_rehearse.py", "tests/test_intake_land_native.py"]
+old = '''            raise no_room from failed
+        sound = False'''
+new = '''            raise no_room from failed
+        sound = True'''
+
+[[rows]]
+id = "C12_always_shared"
+description = "_same_volume: answer shared for any two paths, so a separate temporary volume is asked for the capture's room too"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py", "tests/test_snapshot_wal_r1665.py"]
+old = '''        return _device(Path(first)) == _device(Path(second))'''
+new = '''        return True'''
+
+[[rows]]
+id = "C13_no_temporary_directory_passes"
+description = "assert_room_for_check: no temporary directory at all passes the measure, so the capture is taken and left unverified"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_check_room_r1677.py", "tests/test_snapshot.py"]
+old = '''        scratch = rb_writer.disposable_root()
+    except OSError as exc:
+        raise refuse('''
+new = '''        scratch = rb_writer.disposable_root()
+    except OSError as exc:
+        return 0
+        raise refuse('''
