@@ -108,8 +108,9 @@ inferred mark. Answers are the searcher's five or `no-isrc`. After one
 
 ### Vocabulary
 A source's own word table in the taxonomy, `[vocabulary.NAME]` with
-`words = [{ word, tag }]`; `deezer` (the general catalogue) and, since U244,
-`discogs` are accepted. It
+`words = [{ word, tag }]`; `deezer` (the general catalogue), since U244
+`discogs`, and since U245 `cyanite`, read by the Cyanite trial and shipped by
+no template, are accepted. It
 is asked first; a word with no row falls through to the buckets' aliases. Every
 `tag` must name a folder (exact declaration, routing alias or bucket name, not
 too coarse, and a row of its own in a source genre bucket), so a bare bucket

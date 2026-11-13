@@ -39,6 +39,7 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
+| `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
 | `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
@@ -850,6 +851,42 @@ repeatable, plans just those steps; a side with no kind named is not asked.
   unmatched.
 - A dated label playlist older than `labels.new_playlist_age_days` (30) is
   listed; `label heard` merges it.
+
+### Try Cyanite on a few filed tracks
+
+Cyanite is a paid service that listens to the audio and answers genre, sub
+genre, mood and energy words. Before it is ever asked by the tagging verbs,
+a trial measures it against folders you filed by hand (U245):
+
+```bash
+crate login cyanite-key --from-file PATH
+.venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv --price-per-track 0.10
+.venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv \
+    --send-to-cyanite --cap 40 --price-per-track 0.10
+```
+
+- Without `--send-to-cyanite` it sends nothing: it lists the files, how many
+  it would upload and, with your plan's `--price-per-track`, the estimated
+  cost. With it, `--cap` and `--price-per-track` are both needed and a count
+  over the cap refuses before anything is sent.
+- Only MP3s are sent, which is what Cyanite's API takes; other files are
+  listed as not sent. Audio leaves your machine, so choose the tracks.
+- `trial.tsv` has a row per file sent (a second copy of the same audio is
+  listed as not sent): its genre tag, the folder that genre files
+  it in today, Cyanite's four answers, the folder Cyanite's words name (a
+  `[vocabulary.cyanite]` table in your taxonomy copy answers first, the
+  buckets' aliases otherwise), and whether the two agree. `trial-agreement.tsv`
+  beside it is the agreement per folder.
+- It writes those two files and nothing else: no tag, no record, no library.
+  It never asks Cyanite for a tempo or a key. An output already there is never
+  overwritten; `--resume` with the same `--output` carries on a run cut short,
+  uploading only the files with no answer yet. Files are known by their audio,
+  not their tags or their path, so moving the folder or retagging a file
+  between the two runs costs nothing, and a file whose track Cyanite had made
+  and named when the run ended, however it ended, is asked about again rather than
+  uploaded again.
+- Exit 0 done, or the plan; 1 stopped partway with the rows kept; 2 refused
+  with no audio uploaded.
 
 ### Keep the library tidy
 

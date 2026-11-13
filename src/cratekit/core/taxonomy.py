@@ -107,15 +107,17 @@ SIGNAL_PLAYLIST = "playlist"
 SIGNALS = frozenset({SIGNAL_VOX, SIGNAL_PLAYLIST})
 
 # The sources whose words are read through a table of their own (R-799), by the
-# name a file's record gives each. TWO: the general catalogue, and Discogs,
-# whose collector styles are a vocabulary of their own (U244). The record shops
+# name a file's record gives each. THREE: the general catalogue, Discogs, whose
+# collector styles are a vocabulary of their own (U244), and Cyanite, whose
+# words the Cyanite trial resolves (U245); the shipped template declares no
+# table for Cyanite, so a copy that wants one writes it. The record shops
 # asked by page are not here: their words are resolved by the buckets' aliases,
 # which were written for them, and a table declared for one would be read by
 # nothing. A name outside this tuple is refused at load for the same reason,
 # since a misspelled table loads clean and changes nothing, with nothing said.
 # The tagging package owns the names and cannot be imported from here, so the
 # two are pinned equal by a test, as the tree depth below is.
-VOCABULARY_SOURCES: tuple[str, ...] = ("deezer", "discogs")
+VOCABULARY_SOURCES: tuple[str, ...] = ("deezer", "discogs", "cyanite")
 
 # How many levels a declared routing tree may nest: a root child, a folder, and a
 # sub-playlist (KTD14). Named here rather than written as a literal in the check
