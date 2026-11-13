@@ -17,8 +17,11 @@ is where three of them meet.
 whose single item is the whole playlist would redo every track when one write
 failed, which throws away the engine's resume guarantee, and it could never be
 empty however empty the playlist was, which throws away the zero item rule. The
-cost of the per item shape is that the collection document is read once per item;
-``modules.outbound.source`` memoizes it per process for exactly that reason.
+cost of the per item shape was a request and a ledger write per track, so since
+U270 the driver hands :func:`handle_batch` a hundred items at a time and their
+tracks go to the account in one add, each item still settled on its own. The
+collection document is read once per batch, and ``modules.outbound.source``
+memoizes it per process besides.
 
 **THE CONFIRM DIGEST COVERS THE EXPORT DOCUMENT, NOT JUST THE NAME.** R34 makes
 this gate answerable only by a separate act recorded against a run, so the

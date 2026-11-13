@@ -8,7 +8,7 @@ component: tooling
 severity: high
 root_cause: wrong_api
 resolution_type: code_fix
-tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220, u231, u255, reparse, hold, pending]
+tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220, u231, u255, u270, reparse, hold, pending, batch]
 applies_when:
   - "Anything moves, removes or adds tracks on a playlist on the streaming account"
   - "A write on the account is answered 412, or its read back does not show it"
@@ -124,6 +124,23 @@ the reading its positions came from, is for a move or a removal.
   never reused.
 - The client's read after each write (point three of U231 above) is now
   what the next add relies on for its tag and its position.
+
+## Changed by U270, the export adds through `add_tracks`
+
+`export playlist` no longer adds through the held playlist. The driver hands
+its worker a hundred items at a time and the worker sends the tracks the
+playlist lacks in one `add_tracks`, which opens the playlist afresh, so
+every batch carries the tag and the length of an open made just before it
+and a person's write between two batches is read rather than met with a
+412. The first batch to a recorded playlist costs five GETs, one tracks
+read and one POST however many tracks it carries, and each batch after it
+in the same run three GETs and one POST. `add_to_playlist` and its held object, above, have no caller in
+`src` after U270; the rules about them stand for whatever calls them next.
+The export records a batch's rows as `sending` in the ledger before the
+request and as `added` once the answer, or the adapter's one read back,
+names them, and the next export of the playlist records any `sending` row
+its read of the playlist holds, so a stop between the request and the
+record no longer leaves a landed track the ledger never names (R-1543).
 
 ## Still unmeasured
 

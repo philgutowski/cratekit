@@ -264,7 +264,8 @@ def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) ->
     """Run one job's queued items to completion. The ONE caller of ``jobs.drive``.
 
     Three steps and nothing else. Resolve the handler, read the frozen
-    configuration ONCE and bind it, then delegate. The loop's shape is the
+    configuration ONCE and bind it, to its batch form too when the worker
+    names one (:data:`BATCH_ATTRIBUTE`, U270), then delegate. The loop's shape is the
     engine's contract and is documented on :func:`cratekit.core.jobs.drive`: the
     driver lock first, orphaned claims released once, the interrupt flag checked
     between items and before a commit, an artifact durable before its row flips to

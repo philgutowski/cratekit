@@ -24,7 +24,8 @@ flushes before replacing. An atomic rename guarantees that a reader sees the old
 file or the new one; it guarantees nothing about either having reached the
 device. ``commit_artifact`` closes that, and the ORDER it enforces is the point:
 the artifact is durable BEFORE the row that claims it flips to done, so a kill in
-the gap costs one item and can never produce a false success.
+the gap costs the items claimed, one, or one batch for a handler that takes
+several (U270), and can never produce a false success.
 
 **Why a total failure raises.** Recorded in the source repository as a real
 incident: a phase where every lookup failed returned an empty list, downstream
@@ -178,8 +179,9 @@ class Item:
 
     ``item_id`` is a stable identifier supplied by whatever queued the job, never
     a display name (R19). ``ordinal`` fixes the claim order so a resumed run
-    walks the same sequence, which is what makes "exactly one item reprocessed" a
-    checkable property rather than a hope.
+    walks the same sequence, which is what makes "exactly one item reprocessed",
+    or one batch for a handler that takes several (U270), a checkable property
+    rather than a hope.
     """
 
     job_id: str
@@ -1142,8 +1144,8 @@ def release_claims(store: JobStore, job_id: str, *, driver: str | None = None) -
 
     Called when a job is re-driven after its previous driver died. A claimed item
     was started and not finished, so it is redone: that is the "exactly one item
-    reprocessed" cost of a kill, and it is bounded by design because everything
-    already flipped to done stays done.
+    reprocessed" cost of a kill, one batch for a batched handler (U270), and it
+    is bounded by design because everything already flipped to done stays done.
     """
     with store.immediate() as conn:
         if driver is None:

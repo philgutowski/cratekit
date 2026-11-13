@@ -105,8 +105,8 @@ class ExportReport:
     already: tuple[str, ...]
     unmatched: tuple[Unmatched, ...]
     #: The key the recorded remote playlist was moved from BY THIS CALL, or
-    #: empty. Set once per job under the per item shape: the first item moves
-    #: the record and the rest find it under their own key.
+    #: empty. Set once per job: the first batch moves the record and every
+    #: later one finds it under its own key.
     adopted_from: str = ""
     #: Why a playlist this call created is not in the ``Exports`` folder, or
     #: empty (U131). ``crate organize`` files one left at the root.
