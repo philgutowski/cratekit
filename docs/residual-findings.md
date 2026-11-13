@@ -53004,3 +53004,149 @@ back remains, not driven. No session is refused, lost or reused.
 **Closes when:** the login reads the keychain back after a store failure and
 holds what it reads, and the warning tells an index refusal from a keychain
 refusal. Ledger only.
+
+---
+
+## R-1704. A short title a letter or two away from an unrelated one by the same artist is still offered as approximate
+
+**Found:** at the review of #830, U286, 2026-11-13.
+
+**The mechanism.** U286's title test, `token_set_ratio` of the folded titles
+against `APPROXIMATE_TITLE_FLOOR = 66` in `acquire/match.py`, keeps every one
+letter change of a three letter title, which scores 66.67. Unrelated short
+titles one or two letters apart score as high: `Joy` against `Boy`, `Tique`
+against `Time`, `Love` against `Alive`, `Light` against `High`, `Gold`
+against `Glide`.
+
+**Measured cost.** Driven through `match run` at round one: each is still
+held `title-approximate` beside an unrelated song, the card's original cost,
+a question a person rejects. Over 110 common single word titles under 8
+artists, 1,088 pairs sharing no word and clearing the discovery floor are
+still offered. The base offered every one of them too, so U286 narrows the
+class rather than causing it.
+
+**Closes when:** a floor that scales with the title's length separates a
+one letter change in a three letter title from two letters changed in a
+four or five letter one, measured on the same pairs. Ledger only: a question
+a person can reject costs no file and no row.
+
+---
+
+## R-1705. A short title spelled in slang or numerals, Luv U for Love You or 4 U for For You, reads missing and is downloaded again
+
+**Found:** at the review of #830, U286, 2026-11-13.
+
+**The mechanism.** U286 offers an approximate hit only when its folded title
+resembles the wanted one on its own (`_title_resembles` in
+`acquire/match.py`). A title written with a numeral or slang for whole words
+shares no word with the spelled out title and scores on its letters alone:
+`Luv U` against `Love You` scores 61.5 and `4 U` against `For You` 40.0, both
+under the floor of 66. `Luv U` scores exactly what `Get Out` against `Agenou`
+scores, so no floor separates them. A longer title sharing other words,
+`I Would Die 4 U` against `I Would Die For You`, still passes.
+
+**Measured cost.** Driven through `match run` at round one: both pairs were
+offered `title-approximate` on the base and read `missing`, `not-in-library`,
+on the branch, with an acquisition option, so the pass downloads a record the
+library may already hold and reports it missing. Whether such a pair is the
+same record is a judgement the matcher cannot make from the letters.
+
+**Closes when:** a short vocabulary of numeral and slang spellings (`4` and
+`for`, `2` and `to`, `u` and `you`, `luv` and `love`) is folded into the title
+test's comparison, or Phillip decides these are rare enough to download, which
+the card's Question for Phillip asks. Earns an issue: the product reports a
+held track missing and fetches it again.
+
+---
+
+## R-1706. A title split differently and changed once more, Every Day against Everday, reads missing and is downloaded again
+
+**Found:** at the review of #830, U286, 2026-11-13.
+
+**The mechanism.** U286 keeps a hit whose folded title is one string with the
+wanted one once their spaces are gone, by equality, in `_agree` in
+`acquire/match.py`, because a ratio over the joined forms lets `Get Out` and
+`Agenou` in at 66.67. One more edit on top of the split loses the equality,
+and the split titles share no word, so they score on their letters alone,
+under the floor.
+
+**Measured cost.** Driven at round two through `resolve_all`, base against
+branch: `Every Day` against `Everday` (also through `match run`, exit 12 to
+exit 0), `O.K.` against `Okay`, `Good Bye` against `Goodby` and `D.N.A.`
+against `DNA Song` were offered on the base and read missing on the branch,
+so the pass downloads a record the library may hold. Each is two edits at
+once; no producer of these exact pairs was driven, so reachability is
+unmeasured.
+
+**Closes when:** the joined forms are compared by a ratio with a floor of
+their own, measured so that `getout` against `agenou` stays under it, or
+Phillip accepts the class. Ledger only while its reachability is unmeasured.
+
+---
+
+## R-1707. The approximate offer's reference test restates the title rule it checks, so it catches drift and not a wrong rule
+
+**Found:** at the review of #830, U286, 2026-11-13.
+
+**The mechanism.** `test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped`
+in `tests/test_match_states.py` builds its expected offer from the shipped
+scorer and a `passes` predicate written in the test, which states the same
+rule `_title_resembles` states and reads the module's own floor.
+
+**Measured cost.** None to a person. It proves the filter, its order and the
+cap against the shipped scorer, and that a row losing no hit is offered the
+shipped five exactly, but a wrong rule written the same way in both places
+passes it. The rule itself is held by the named pairs and the floor's
+neighbours, which are computed, and the mutation table.
+
+Round two found the mirror's spaces removed line unreached by its corpus;
+the fix round added split titles to the corpus and the test now asserts a row
+kept by that equality, but the mirror stands.
+
+**Closes when:** ledger only. A maintainer reading the test is told so here.
+
+---
+
+## R-1708. The swap allowance offers two unrelated titles when each is a word of the artist's own name
+
+**Found:** at the review of #830, U286, 2026-11-13.
+
+**The mechanism.** `_title_resembles` in `acquire/match.py` keeps a hit whose
+artist and title cross the row's, for a listing pasted title first. An
+artist whose name is two words, each a title of theirs, crosses itself:
+the wanted title agrees with the held artist and the wanted artist with the
+held title.
+
+**Measured cost.** Driven at round two through `resolve_all`: `Floating
+Points - Floating` against the held `Floating Points - Points` is offered
+on the base and the branch (discovery 82.6), one question beside an
+unrelated song, the card's original cost. Built by hand; `Chemical Brothers`
+and `Kings Of Tomorrow` pairs did not reproduce, so reachability is
+unmeasured.
+
+**Closes when:** the swap is refused when the two artists already agree, so a
+crossing that the shared artist makes on its own offers nothing. Ledger only.
+
+---
+
+## R-1709. Two different titles that fold to nothing by one artist are one recording, so a wanted emoji title is called owned
+
+**Found:** while building #830, U286, 2026-11-13.
+
+**The mechanism.** `fold` in `acquire/match.py` keeps letters, digits and
+word breaks and drops everything else, so a title of emoji or marks alone
+folds to the empty string and `recording_token` gives every such title by
+one artist the same token. `resolve_one`'s exact branch then calls any of
+them owned by any other.
+
+**Measured cost.** Driven on a disposable directory: a library holding
+`Aurora Bloom - 🔥` and a text list asking for `Aurora Bloom - 💧` resolve
+`matched`, `exact`, with the held file as the match's path, so the wanted
+track is never downloaded and nothing says so. Not caused by U286, whose
+title test keeps today's offer for a title that folds to nothing; met while
+building its allowance. How many live titles fold to nothing is unmeasured.
+
+**Closes when:** a title that folds to nothing is compared by its unfolded
+text, or never read as exact, with a test that two different emoji titles by
+one artist do not match. Earns an issue: the product calls a track owned
+that the library does not hold, and skips it.
