@@ -52001,3 +52001,100 @@ page rather than carrying a Next payload.
 **Closes when:** `_beatport_tracks` answers None for any payload whose steps
 are not the shapes it reads, so the searcher answers a parse break, or
 blocked when the page is a challenge. Ledger only: no producer measured.
+
+---
+
+## R-1663. A capture asks the drive for a full flush once per file and per directory, and falls back to the plain sync without a word
+
+**Found:** at the review of #701, U272, 2026-11-13.
+
+**The mechanism.** `snapshot._flush` calls `config.flush_to_disk` on every file
+and every directory of a capture, deepest first, then the store, and the
+capture directory and the store again after the manifest: ten calls for the
+suite's fixture capture. On macOS each is `F_FULLFSYNC`, which empties the
+drive's whole write cache, so a plain sync per file followed by one full flush
+at the end would give the same guarantee for less. Where a filesystem answers
+that it has no full flush, `flush_to_disk` takes the plain sync, the strongest
+flush it has, and says nothing, so a restore point on such a drive is weaker
+than on the Mac's own disk with no line in any log saying so.
+
+**Measured cost.** Not driven: the container has no full flush to ask for. The
+seconds one flushed capture of the real database costs on the library's drive
+are owed on the Mac as an attended card, and the same sitting answers whether
+a directory flush there returns an error outside the unsupported set, which
+would refuse every guarded write.
+
+**Closes when:** the Mac measurement is in, and if it is more than a second
+or two, the per file flushes become plain syncs with one full flush last; and
+the fallback logs once per capture. Ledger only.
+
+---
+
+## R-1664. A capture that cannot be flushed exits as an internal error while its remedy says to check the library drive
+
+**Found:** at the review of #701, U272, 2026-11-13.
+
+**The mechanism.** A flush failure refuses with `snapshot-integrity-failed`,
+the slug the commit gate already refuses an unverified capture with, so the
+two refusals of one capture read alike. `cause.REASONS` maps that slug to the
+internal band ("an unexpected failure"), while the flush refusal's remedy is
+`mount-library-volume`, so a pulled drive mid capture reports as an internal
+error that tells the person to mount the volume.
+
+**Measured cost.** The message names the file and the operating system's
+error, and the remedy is right; only the exit code's band is off. Chosen on
+purpose in U272 so the gate's refusal class did not grow a second slug.
+
+**Closes when:** a library band slug for a capture the drive would not take
+is declared and used here, or the pairing is recorded as intended. Ledger only.
+
+---
+
+## R-1665. Closing the integrity check's handle removes the log files a capture of an open database records, and the restore then refuses the capture
+
+**Found:** at the review of #701, U272, 2026-11-13, driven on main at b09e0da.
+
+**The mechanism.** `snapshot.capture` records which of the database's
+companion files landed in the capture by looking for them before the check
+runs. The check, `rb_writer.integrity_ok`, opens the copy through `open_db`
+and closes it through `close_db`; for a database in write ahead log mode,
+the last connection's close folds the log into the main file and deletes the
+log and its shared memory index from the capture directory. The manifest
+still lists both as captured, so `snapshot.assert_sources_present`, which
+`restore.plan` asks, refuses: "records 2 files it no longer holds".
+
+**Measured cost.** Driven by the U272 review on `main` at `b09e0da`: a write
+ahead log database with its handle open, captured with the real check and
+attached to a closed session; `restore.plan` refused the capture. No test
+combines the real check with a restore, since the suite's captures use a stand
+in verifier. Whether rekordbox's own database is in this mode, and so whether
+every capture of the real library is one the restore refuses, was not
+measured. If it is, a DJ's undo of any guarded write cannot run.
+
+**Closes when:** the real database's journal mode is read at an attended
+sitting, and the capture records what is in the directory after the check (or
+the check runs on a copy of the copy), with a test that captures with the real
+check and restores. Earns an issue: if reachable, a workflow a DJ needs, the
+restore, cannot finish.
+
+---
+
+## R-1666. board.py cloud counts a card with a freshly relayed answer as a hold, so its lane alarm fires with lanes free
+
+**Found:** at the start of #701, U272, 2026-11-13.
+
+**The mechanism.** At 15:59 on 2026-11-13 the orchestrator relayed Phillip's
+answers onto #700, #702 and #707 within a minute. `board.py cloud` listed each
+as `underway` with "phillip's answer" and counted it toward the five lanes, so
+with four sessions holding cards it printed "MORE CARDS ARE HELD THAN THERE
+ARE LANES (7 for 5)" and told every later holder, this card's thread among
+them, to withdraw. The skill's Orient step tells a thread to obey that line.
+
+**Measured cost.** None here: the coordinator assigned the card and counts
+lanes by its own threads, as METHOD says, so the thread built it. A thread
+that followed the skill to the letter would have withdrawn a card it was
+assigned, and the lane would have sat empty until the next hourly fill.
+
+**Closes when:** the lane count leaves out a card whose latest comment is a
+relayed answer with no hold after it, or the skill says the coordinator's
+assignment wins over the alarm. Ledger only.
