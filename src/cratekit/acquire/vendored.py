@@ -935,8 +935,12 @@ class _Drive:
         if held is not None and held.settings.gate == settings.gate:
             held.rebind(settings)
             return held
-        self._source = _VendoredSource(settings, self._scope.path)
-        return self._source
+        fresh = _VendoredSource(settings, self._scope.path)
+        # A REFUSAL OUTLIVES THE SOURCE IT WAS MET ON, so a new gate never
+        # buys a second login into a session this drive saw refused.
+        fresh._refused = held._refused if held is not None else None
+        self._source = fresh
+        return fresh
 
     def close(self) -> None:
         """Write back what the provider gave this drive, then erase the file.

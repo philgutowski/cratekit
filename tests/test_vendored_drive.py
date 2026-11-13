@@ -23,6 +23,7 @@ Nothing here reaches a network, a real keychain or a real library.
 from __future__ import annotations
 
 import contextlib
+import dataclasses
 import json
 import os
 import signal
@@ -857,3 +858,20 @@ def test_the_engine_opens_a_workers_drive_once_and_closes_it_on_a_park(
     assert claimed == ["1", "2"]
     assert opened == ["open", "close"]
     assert state is jobs.JobState.BLOCKED
+
+
+def test_a_refusal_outlives_the_source_it_was_met_on(cfg, tool, provider, stored):
+    """A drive hands out a new source only for other gate settings, which a
+    frozen configuration never has; even then the refusal carries over."""
+    provider.reject_login = True
+    settings = vendored.AdapterSettings.from_config(cfg)
+    other = dataclasses.replace(
+        settings, gate=dataclasses.replace(settings.gate, min_interval_s=0.002)
+    )
+    with vendored.drive() as held:
+        with pytest.raises(vendored.AdapterAuthFailed):
+            held.source(settings).authenticate()
+        fresh = held.source(other)
+        with pytest.raises(vendored.AdapterAuthFailed):
+            fresh.authenticate()
+    assert provider.count("sessions") == 1
