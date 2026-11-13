@@ -1306,7 +1306,9 @@ taxonomy tree of that name. Doctor says whether DEADCA7 is installed, when it
 last pushed, and warns when that push is newer than your last database backup:
 run `crate backup run` then. Both tools need rekordbox closed; do not push
 from DEADCA7 while a verb runs, or the verb's next commit refuses. A folder
-named DEADCA7 below the top level is yours.
+named DEADCA7 below the top level is yours. DEADCA7 dates the rows it pushes
+`0001-01-01`; Cratekit reads them in any time zone (as 2 January of year 1)
+and never rewrites them.
 
 ## When something refuses or stalls
 

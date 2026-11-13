@@ -2,7 +2,7 @@
 title: The binding reads a datetime column back naive and already local, not aware at UTC
 date: 2026-10-03
 category: integration-issues
-module: "src/cratekit/intake/rotate.py, src/cratekit/write/collection_export.py"
+module: "src/cratekit/intake/rotate.py, src/cratekit/write/collection_export.py, src/cratekit/core/rb_dates.py"
 problem_type: integration_issue
 component: database
 severity: low
@@ -19,6 +19,8 @@ tags:
   - "datetime"
   - "timezone"
   - "created-at"
+  - "deadca7"
+  - "overflow"
 ---
 
 # The binding reads a datetime column back naive and local
@@ -43,3 +45,16 @@ binding, and the evening test pins the local day through the binding.
 **The rule.** Before acting on a claim about what the binding returns, read it
 off a row in the suite. `collection_export.py` converts only an aware value for
 the same reason.
+
+## The calendar's edge, U285
+
+The conversion to local time is also where a stamp at the edge of the
+calendar fails. DEADCA7 writes `0001-01-01T00:00:00Z`; west of UTC its local
+time falls before year 1, so `astimezone()` raises `OverflowError` and the
+whole row fails to load. East of UTC it loads as `0001-01-01 09:00`, which a
+reader converting it again cannot convert either. `core/rb_dates.py` wraps
+the binding's `tables.string_to_datetime`, installed by `open_db`, so such a
+stamp reads as `FLOOR` (`0001-01-02`) or `CEILING` (`9999-12-30`), a day
+inside the calendar and convertible in any zone. **A test of this must set the
+process west of UTC** (`deadca7_fixtures.west_of_utc()`): the container and CI
+run at UTC, where the binding never overflows and the test passes by accident.
