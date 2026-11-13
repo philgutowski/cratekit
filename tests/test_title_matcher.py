@@ -1,4 +1,4 @@
-"""R-1534 and R-1631: a title matches only its own recording, in every source.
+"""R-1534, R-1631, R-1636 and R-1646: a title matches only its own recording, in every source.
 
 THE DEFECTS. The shared matcher stripped a trailing bracket from the first "("
 to the last ")" and then compared the two titles by raw substring. A title that
@@ -18,7 +18,9 @@ groups from the end; a catalogue row's dash tail; the file's head, the
 ``KEY - BPM - `` the live library writes into the title tag, and every dash
 part of it that is not its title, the searched artist's name, a version, an
 album (R-1636); a feature credit; a trailing run of the domain's version words; its
-leading bracket groups. Nothing is compared by characters, and a word read only
+leading bracket groups. A name "Artist - X" with X ending in a version, a
+title X or the artist's self titled track in that version, is read neither
+way alone and matches only a row writing the same split (R-1646). Nothing is compared by characters, and a word read only
 inside the other title's brackets is never its title. A side with no letter or
 digit matches nothing, and a number is part of the title. The tables below
 drive the shapes the matcher must keep on every source, the headed title
@@ -871,15 +873,20 @@ def test_an_untagged_file_named_with_its_artist_as_written_takes_its_own_genre(
     assert tags.read_genre_from_file(path) == BUCKET_GENRE
 
 
-def test_a_self_titled_tracks_dash_version_the_list_lacks_still_finds_its_own_row(tmp_path, silence):
-    """Round one's B1: "Artist - Vocal Mix" is either a title "Vocal Mix" or a
-    self titled track and its version, and nothing but a list tells them
-    apart, so both are read, as on main. The file's own row listed first wins,
-    as it did on main, and the self titled reading is never taken when the
-    other part does not end in a version."""
+def test_a_self_titled_tracks_dash_version_the_list_lacks_finds_its_own_row_only_when_it_writes_the_version(
+    tmp_path, silence
+):
+    """Round one's B1 of R-1636, as R-1646 settles it: "Artist - Vocal Mix"
+    is either a title "Vocal Mix" or a self titled track and its version, and
+    nothing but a list tells them apart. Neither is read alone, so the file's
+    own row under another mix and the "Vocal" row are both a miss, on page
+    order or not, and the self titled reading is never taken when the other
+    part does not end in a version. The known cost is the own row under
+    another mix, recorded for Phillip on #788."""
     title = f"08A - 124 - {ARTIST} - Vocal Mix"
-    assert _matches(title, ARTIST)
-    assert _matches(title, f"{ARTIST} (Extended Mix)")
+    assert not _matches(title, ARTIST)
+    assert not _matches(title, f"{ARTIST} (Extended Mix)")
+    assert _matches(title, f"{ARTIST} (Vocal Mix)")
     assert not _matches(f"08A - 124 - {ARTIST} - Sun Path", ARTIST)
     path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
     rows = [
@@ -890,7 +897,8 @@ def test_a_self_titled_tracks_dash_version_the_list_lacks_still_finds_its_own_ro
 
     result = tag.tag_one(path, searcher=searcher(fetch))
 
-    assert result.genre_written == BUCKET_GENRE
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
 
 
 @pytest.mark.parametrize(
@@ -1012,3 +1020,362 @@ def test_each_way_a_credit_is_written_is_known(artist, title, own):
 )
 def test_what_is_not_the_artists_credit_is_never_passed_over(artist, title, other):
     assert not searchers._title_matches(title, other, artist=artist)
+
+
+# ---------------------------------------------------------------------------
+# I. R-1646: "Artist - X" with X ending in a version is read neither way alone
+# ---------------------------------------------------------------------------
+
+#: (file title, a row) pairs in the card's shape: the searched artist's part,
+#: then a part ending in a version word. The name is a title X by the artist,
+#: or the artist's self titled track in its version X, and only a list of
+#: version words could say which ("vocal" is a version, "sunrise mood" a
+#: title), so a row that reads one way only is a miss. Since R-1636 both were
+#: read, and a "Vocal" row, a Discogs "Vocal Mix" track, or a self titled row
+#: wrote its genre.
+SPLIT_UNCONFIRMED = [
+    (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal"),
+    (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal Mix"),
+    (f"08A - 124 - {ARTIST} - Vocal Mix", ARTIST),
+    (f"08A - 124 - {ARTIST} - Vocal Mix", f"{ARTIST} (Extended Mix)"),
+    (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal (Original Mix)"),
+    (f"{ARTIST} - Vocal Mix", "Vocal"),
+    (f"{ARTIST} - Vocal Mix", ARTIST),
+    (f"08A - 124 - {ARTIST} - Vocal Mix (Radio Edit)", "Vocal Mix (Radio Edit)"),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", ARTIST),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", f"{ARTIST} (Original Mix)"),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood"),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood Extended Mix"),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood (Original Mix)"),
+    (f"08A - 124 - {ARTIST} - Kerri Chandler Remix", "Kerri Chandler"),
+    (f"08A - 124 - {ARTIST} - Kerri Chandler Remix", ARTIST),
+    (f"{ARTIST} & Tide - Vocal Mix", "Vocal"),
+    (f"[MP3] {ARTIST} - Vocal Dub", "Vocal"),
+]
+
+#: (file title, a row) pairs in the same shape where the row writes the same
+#: split itself, its title and its version apart: the catalogue, never a
+#: list, says which reading holds.
+SPLIT_CONFIRMED = [
+    (f"08A - 124 - {ARTIST} - Vocal Mix", f"{ARTIST} (Vocal Mix)"),
+    (f"08A - 124 - {ARTIST} - Vocal Mix", f"{ARTIST} - Vocal Mix"),
+    (f"{ARTIST} - Vocal Mix", f"{ARTIST} [Vocal Mix]"),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood (Extended Mix)"),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood - Extended Mix"),
+    (f"{ARTIST} - Sunrise Mood Extended Mix", f"{ARTIST} (Sunrise Mood Extended Mix)"),
+    (f"08A - 124 - {ARTIST} - Kerri Chandler Remix", f"{ARTIST} (Kerri Chandler Remix)"),
+    (f"08A - 124 - {ARTIST} - Sunrise Mood 2011 Remaster", "Sunrise Mood (2011 Remaster)"),
+    (f"08A - 124 - {ARTIST} - Vocal Mix (Radio Edit)", f"{ARTIST} (Vocal Mix) (Radio Edit)"),
+    (f"{ARTIST} & Tide - Vocal Mix", f"{ARTIST} & Tide (Vocal Mix)"),
+    (f"[MP3] {ARTIST} - Vocal Dub", f"{ARTIST} (Vocal Dub)"),
+]
+
+#: The same artist's part before a part that does not end in a version, or a
+#: version alone, or a version in brackets: one reading only, as before.
+SPLIT_NOT_THE_SHAPE = [
+    (f"{ARTIST} - Sunrise Mood (Extended Mix)", "Sunrise Mood", ARTIST),
+    (f"{ARTIST} - Sunrise Mood", "Sunrise Mood", ARTIST),
+    (f"{ARTIST} - Original Mix", ARTIST, "Original Mix"),
+    (f"08A - 124 - {ARTIST} - Extended Mix", f"{ARTIST} (Original Mix)", "Extended Mix"),
+    ("08A - 124 - Other Song - Vocal Mix", "Other Song", "Vocal"),
+    (f"{ARTIST} - Sun Path - 02 Tide Extended Mix", "Tide", "Sun Path"),
+]
+
+
+@pytest.mark.parametrize(("searched", "found"), SPLIT_UNCONFIRMED)
+def test_artist_then_a_version_ending_part_matches_no_row_that_reads_one_way(searched, found):
+    assert not _matches(searched, found)
+    assert _traxsource_hit(searched, found).genre is None
+    assert _bandcamp_hit(searched, found).genre is None
+    assert _bandcamp_hit(searched, f"{ARTIST} - {found}").genre is None
+    assert discogs_answer(_discogs_hit(searched, found)).answer == "miss"
+    for mix in ("", "Original Mix", "Radio Edit"):
+        hit = _beatport_hit(searched, [_beatport_track(ARTIST, found, BUCKET_GENRE, mix=mix)])
+        assert _beatport_answer(hit) == "miss"
+
+
+@pytest.mark.parametrize(("searched", "found"), SPLIT_CONFIRMED)
+def test_artist_then_a_version_ending_part_matches_a_row_that_writes_the_same_split(searched, found):
+    assert _matches(searched, found)
+    assert _traxsource_hit(searched, found).genre == BUCKET_GENRE
+    assert _bandcamp_hit(searched, f"{ARTIST} - {found}").genre == BUCKET_GENRE
+    assert discogs_answer(_discogs_hit(searched, found)).answer == "matched"
+    hit = _beatport_hit(searched, [_beatport_track(ARTIST, found, BUCKET_GENRE)])
+    assert hit.genre == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("searched", "name", "mix"),
+    [
+        (f"08A - 124 - {ARTIST} - Vocal Mix", ARTIST, "Vocal Mix"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood", "Extended Mix"),
+        (f"08A - 124 - {ARTIST} - Kerri Chandler Remix", ARTIST, "Kerri Chandler Remix"),
+    ],
+)
+def test_beatport_reads_a_rows_name_and_mix_as_its_split(searched, name, mix):
+    hit = _beatport_hit(searched, [_beatport_track(ARTIST, name, BUCKET_GENRE, mix=mix)])
+    assert hit.genre == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("searched", "name", "mix"),
+    [
+        (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal", "Original Mix"),
+        (f"08A - 124 - {ARTIST} - Vocal Mix", ARTIST, "Original Mix"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", ARTIST, "Extended Mix"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood", "Original Mix"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood Extended Mix", "Original Mix"),
+    ],
+)
+def test_beatport_reads_no_row_whose_name_and_mix_split_it_otherwise(searched, name, mix):
+    hit = _beatport_hit(searched, [_beatport_track(ARTIST, name, BUCKET_GENRE, mix=mix)])
+    assert _beatport_answer(hit) == "miss"
+
+
+@pytest.mark.parametrize(("searched", "own", "other"), SPLIT_NOT_THE_SHAPE)
+def test_the_artists_part_before_any_other_part_reads_as_it_did(searched, own, other):
+    assert _matches(searched, own)
+    assert not _matches(searched, other)
+
+
+def _split_page(rows: list[tuple[str, str, str]], tracks: list[str], number: int):
+    beatport = searchers.Fetched(
+        text=_beatport_page([_beatport_track(ARTIST, name, genre, mix=mix) for name, mix, genre in rows]),
+        status=200,
+    )
+    listed = [{"position": f"A{index}", "type_": "track", "title": track} for index, track in enumerate(tracks, 1)]
+    return routed(search=results(number), releases={number: release(number, tracks=listed)}, beatport=beatport)
+
+
+@pytest.mark.parametrize(
+    ("title", "rows", "tracks"),
+    [
+        # The card's first scenario: a Beatport "Vocal" row and a Discogs
+        # "Vocal Mix" track are another recording by the artist.
+        (f"08A - 124 - {ARTIST} - Vocal Mix", [("Vocal", "Original Mix", BUCKET_GENRE)], ["Vocal Mix"]),
+        (f"08A - 124 - {ARTIST} - Vocal Mix", [("Vocal", "", BUCKET_GENRE)], ["Vocal"]),
+        # The second: a self titled row is another recording.
+        (f"{ARTIST} - Sunrise Mood Extended Mix", [(ARTIST, "Original Mix", BUCKET_GENRE)], [ARTIST]),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", [(ARTIST, "Extended Mix", BUCKET_GENRE)], [f"{ARTIST} (Extended Mix)"]),
+        # The recorded cost: the self titled track's own row under another
+        # mix reads one way only, so it is a miss rather than a guess.
+        (f"08A - 124 - {ARTIST} - Vocal Mix", [(ARTIST, "Extended Mix", BUCKET_GENRE)], [ARTIST]),
+    ],
+)
+def test_no_genre_is_written_off_a_row_that_reads_the_name_one_way(tmp_path, silence, title, rows, tracks):
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
+
+    result = tag.tag_one(path, searcher=searcher(_split_page(rows, tracks, 51)))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize("order", [1, -1])
+@pytest.mark.parametrize(
+    ("title", "own", "other"),
+    [
+        (f"08A - 124 - {ARTIST} - Vocal Mix", (ARTIST, "Vocal Mix"), ("Vocal", "Original Mix")),
+        (f"08A - 124 - {ARTIST} - Vocal Mix", (ARTIST, "Vocal Mix"), (ARTIST, "Extended Mix")),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", ("Sunrise Mood", "Extended Mix"), (ARTIST, "Original Mix")),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", ("Sunrise Mood", "Extended Mix"), ("Sunrise Mood", "Original Mix")),
+    ],
+)
+def test_the_row_that_writes_the_same_split_wins_on_a_page_in_either_order(
+    tmp_path, silence, title, own, other, order
+):
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
+    rows = [(*own, BUCKET_GENRE), (*other, "Techno")][::order]
+
+    result = tag.tag_one(path, searcher=searcher(_split_page(rows, [], 52)))
+
+    assert result.genre_written == BUCKET_GENRE
+    assert tags.read_genre_from_file(path) == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("title", "own", "other"),
+    [
+        (f"08A - 124 - {ARTIST} - Vocal Mix", f"{ARTIST} (Vocal Mix)", "Vocal Mix"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", "Sunrise Mood (Extended Mix)", ARTIST),
+    ],
+)
+def test_discogs_takes_the_track_that_writes_the_same_split(tmp_path, silence, title, own, other):
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": title})
+
+    result = tag.tag_one(path, searcher=searcher(_split_page([], [other, own], 53)))
+
+    assert result.genre_written is not None
+    assert tags.read_genre_from_file(path) == result.genre_written
+
+
+@pytest.mark.parametrize(
+    ("name", "other"),
+    [
+        (f"08A - 124 - {ARTIST} - Vocal Mix", "Vocal"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix", ARTIST),
+    ],
+)
+def test_an_untagged_file_in_the_shape_writes_no_genre_off_a_row_that_reads_it_one_way(
+    tmp_path, silence, name, other
+):
+    path = _file(tmp_path, silence, name, {"artist": ARTIST})
+    assert tags.read_tag(path, "title") is None
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(other, 54)))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+# ---------------------------------------------------------------------------
+# J. R-1646, review round one: the whole title never collapses onto the
+#    artist's part, and the split guards each hold
+# ---------------------------------------------------------------------------
+
+#: (file title, the self titled row it must not match): a feature credit in
+#: the artist's part cut the whole title reading down to the artist's name
+#: (round one's B1), in the card's shape and, as on main, outside it.
+FEATURED_ARTIST = [
+    f"{ARTIST} feat. Tide - Sunrise Mood Extended Mix",
+    f"{ARTIST} ft. Tide - Sunrise Mood Extended Mix",
+    f"{ARTIST} featuring Tide - Kerri Chandler Remix",
+    f"{ARTIST} (feat. Tide) - Sunrise Mood Extended Mix",
+    f"[MP3] {ARTIST} feat. Tide - Sunrise Mood Extended Mix",
+    f"01 {ARTIST} feat. Tide - Sunrise Mood Extended Mix",
+    f"{ARTIST} feat. Tide - Vocal Mix",
+    f"{ARTIST} feat. Tide - Sunrise Mood",
+]
+
+
+@pytest.mark.parametrize("title", FEATURED_ARTIST)
+def test_a_featured_artists_part_never_reads_the_name_as_the_self_titled_track(title):
+    assert not _matches(title, ARTIST)
+    assert not _matches(title, f"{ARTIST} (Original Mix)")
+    assert _traxsource_hit(title, ARTIST).genre is None
+    assert discogs_answer(_discogs_hit(title, ARTIST)).answer == "miss"
+    for mix in ("", "Original Mix", "Extended Mix"):
+        hit = _beatport_hit(title, [_beatport_track(ARTIST, ARTIST, BUCKET_GENRE, mix=mix)])
+        assert _beatport_answer(hit) == "miss"
+
+
+@pytest.mark.parametrize("tagged", [True, False])
+@pytest.mark.parametrize("order", [1, -1])
+def test_a_featured_artists_name_takes_no_self_titled_genre_on_a_mixed_page(
+    tmp_path, silence, tagged, order
+):
+    """Round one drove it: the branch dropped the title reading and kept the
+    collapse, so the self titled row won in either order, tagged or not."""
+    name = f"{ARTIST} feat. Tide - Sunrise Mood Extended Mix"
+    wanted = {"artist": ARTIST, "title": name} if tagged else {"artist": ARTIST}
+    path = _file(tmp_path, silence, name, wanted)
+    rows = [("Sunrise Mood", "Extended Mix", BUCKET_GENRE), (ARTIST, "Original Mix", "Techno")][::order]
+
+    result = tag.tag_one(path, searcher=searcher(_split_page(rows, [], 55)))
+
+    assert result.genre_written == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    ("searched", "found"),
+    [
+        (f"{ARTIST} feat. Tide - Sunrise Mood Extended Mix", f"{ARTIST} (Sunrise Mood Extended Mix)"),
+        (f"{ARTIST} feat. Tide - Sunrise Mood Extended Mix", "Sunrise Mood (Extended Mix)"),
+        (f"{ARTIST} feat. Tide - Sunrise Mood", "Sunrise Mood"),
+        (f"{ARTIST} - Sunrise Mood Extended Mix (Tide Edit)", "Sunrise Mood (Extended Mix) (Tide Edit)"),
+        (f"{ARTIST} - Sunrise Mood Remix (2014)", "Sunrise Mood (Remix) (2014)"),
+    ],
+)
+def test_a_split_reads_past_a_feature_credit_and_the_files_own_brackets(searched, found):
+    assert _matches(searched, found)
+
+
+@pytest.mark.parametrize(
+    ("searched", "name", "mix"),
+    [
+        # The marker and the track number the artist's part is read past.
+        (f"[MP3] {ARTIST} - Vocal Dub", ARTIST, "Vocal Dub"),
+        (f"01 {ARTIST} - Vocal Mix", ARTIST, "Vocal Mix"),
+    ],
+)
+def test_the_self_titled_split_reads_the_artists_part_past_its_marker(searched, name, mix):
+    hit = _beatport_hit(searched, [_beatport_track(ARTIST, name, BUCKET_GENRE, mix=mix)])
+    assert hit.genre == BUCKET_GENRE
+    assert _matches(searched, f"{name} ({mix})")
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        f"{ARTIST} - Summer Mix - 01 Sunrise Mood Extended Mix",
+        f"{ARTIST} - Summer Mix - 01 - Sunrise Mood",
+    ],
+)
+def test_a_track_numbered_title_after_a_version_ending_album_is_still_the_title(title):
+    """A track numbered part is the title, so the part before it, though it
+    ends in a version, is the album and the name is not the card's shape."""
+    assert _matches(title, "Sunrise Mood")
+    assert not _matches(title, ARTIST)
+    assert not _matches(title, "Summer")
+
+
+# ---------------------------------------------------------------------------
+# K. R-1646, review round two: only the artist's own name before a feature
+#    credit keeps the whole name unshed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood (feat. Tide) - Bernard Badie"],
+)
+def test_a_title_crediting_a_featured_artist_is_still_read_without_the_credit(title):
+    """Round two: a file searched by the featured artist alone, its first part
+    a title with the credit after it, lost "sunrise mood" when the whole name
+    was read unshed, so the self titled row of the other artist won."""
+    assert searchers._title_matches(title, "Sunrise Mood", artist="Tide")
+
+
+def test_a_title_crediting_a_featured_artist_takes_its_own_genre_listed_first(tmp_path, silence):
+    """As on main: listed first, the file's own row wins. Listed second, the
+    other artist's self titled row ties with it and wins on page order, as it
+    did on main (R-1636's residual on the artist's part read as a title)."""
+    path = _file(tmp_path, silence, "a", {"artist": "Tide", "title": "Sunrise Mood feat. Tide - Bernard Badie"})
+    rows = [("Sunrise Mood", "Original Mix", BUCKET_GENRE), (ARTIST, "Original Mix", "Techno")]
+    beatport = searchers.Fetched(
+        text=_beatport_page(
+            [
+                {**_beatport_track(ARTIST, name, genre, mix=mix), "artists": [{"artist_name": ARTIST}, {"artist_name": "Tide"}]}
+                for name, mix, genre in rows
+            ]
+        ),
+        status=200,
+    )
+    fetch = routed(search=results(), beatport=beatport)
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    "searched",
+    [f"[MP3] {ARTIST} feat. Tide - Vocal Mix", f"01 {ARTIST} feat. Tide - Vocal Mix"],
+)
+def test_the_self_titled_split_reads_past_a_marker_and_a_feature_credit_together(searched):
+    assert _matches(searched, f"{ARTIST} (Vocal Mix)")
+    assert not _matches(searched, ARTIST)
+
+
+@pytest.mark.parametrize(
+    ("title", "own"),
+    [
+        (f"(Dub Mix) feat. {ARTIST} - Tide", "Dub Mix"),
+        (f"(Intro) feat. {ARTIST} - Tide - Album", "(Intro)"),
+    ],
+)
+def test_a_bracketed_title_before_a_feature_is_read_without_the_credit(title, own):
+    """Found by the differential after fix round two: the marker strip took
+    the title's brackets too, so the feature word led the part and the whole
+    name was kept unshed, losing the title's own row."""
+    assert _matches(title, own)

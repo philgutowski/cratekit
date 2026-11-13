@@ -1,0 +1,26 @@
+name = "r1646-composite"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_m05_with_title_after_head"
+description = '''The composite for M05_shape_without_artist in r1646.md, what it holds behind the title start: the shape needs neither the artist's part nor a title after the head, so any title ending in a version, "Sunrise Mood Extended Mix", is read by its splits only'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        title > head
+        and head in artists
+        and not numbered'''
+new = '''        True
+        and not numbered'''
+
+[[rows]]
+id = "C2_title_after_head_alone"
+description = '''The other half of C1: the shape keeps the artist's part but not a title after the head, so a self titled first part before nothing is the shape'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        title > head
+        and head in artists
+        and not numbered'''
+new = '''        head in artists
+        and not numbered'''

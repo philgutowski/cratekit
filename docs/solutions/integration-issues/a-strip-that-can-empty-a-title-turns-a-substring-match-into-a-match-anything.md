@@ -87,10 +87,7 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   "Bernard Badie Theme": round two drove that looser test to wrong genres.
   The test is a credit, the part's names split on the joins a credit is
   written with ("&", ",", "x", "feat"), one of them the artist's name, accents
-  folded; "and" and "with" join nothing, since titles hold them. And some
-  shapes no rule tells apart without a list: "Artist - Vocal Mix" is a title
-  "Vocal Mix" or a self titled track's version, so it is read both ways, as
-  before, rather than either way alone, which lost a row on page order. A
+  folded; "and" and "with" join nothing, since titles hold them. A
   differential that wraps titles only in the exact artist string is a
   measurement on a fixture: wrap them in the artist as names write it, and
   put the artist's name inside titles too. Bound the head
@@ -99,8 +96,29 @@ and Beatport's own scoring, which strips separately from the shared matcher.
   Artist - Album" and moved the title onto the album. And the artist is the
   title only when nothing else can be, judged by version words alone, never
   by a part that merely ends in one: "Artist - Sunrise Mood Extended Mix" is
-  "sunrise mood", found only by wrapping every suite title in each name shape
-  and comparing it with the plain title's own matches.
+  never the artist alone, found only by wrapping every suite title in each
+  name shape and comparing it with the plain title's own matches.
+- **A shape only a list could tell apart is read by the row's own structure
+  (R-1646).** "Artist - Vocal Mix" is a title "Vocal Mix" or the artist's
+  self titled track in its vocal mix, and "Artist - Sunrise Mood Extended
+  Mix" is the same shape the other way; R-1636 read both ways, so a "Vocal"
+  row or a self titled row wrote its genre. Reading either way alone loses a
+  row on page order, and a list deciding which words are versions fails open
+  on every word it lacks. So the name is read only as its two splits into a
+  title and a version (`_name_splits`), and a row matches it only by writing
+  one of them itself, its title and version apart in brackets, after a dash,
+  or in Beatport's name and mix (`_row_splits`, `_beatport_readings`). A
+  plain row "Vocal Mix" confirms nothing, since Discogs lists a single's
+  versions as its track titles. The cost is a miss on the file's own row
+  written under another mix, with no version, or with one more bracket
+  group, asked of Phillip on #788. When the brief's scenarios want both
+  readings to win in turn, check whether anything but a list tells them
+  apart before building either. And drop a reading in one place only after
+  checking every other reading of the same name: round one of the review
+  found the whole title reading, shed of a feature credit, still collapsing
+  "Artist feat. Tide - Sunrise Mood Extended Mix" to the artist's name, so
+  the self titled row won where `main` had at least ranked the title's own
+  row. A whole name whose first part credits the artist is now read unshed.
 - **What the new rule cannot tell apart, it refuses.** "How Does It Feel"
   against "Untitled (How Does It Feel)" has the same evidence as "Intro"
   against "Sunrise Mood (Intro)", so both are refused; that loss is pinned as
