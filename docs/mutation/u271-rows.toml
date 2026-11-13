@@ -1,0 +1,233 @@
+name = "u271"
+pass_kind = "light"
+
+# The driver's reader: each key the battery's verdict must share with this
+# run, removed one at a time, and the green or refuse rule over a read record.
+
+[[rows]]
+id = "D1_commit_unchecked"
+description = "read_battery_verdict: drop the commit key, so a verdict for another commit is read"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            bool(commit) and recorded == commit,'''
+new = '''            True,'''
+
+[[rows]]
+id = "D2_run_cleanliness_unchecked"
+description = "read_battery_verdict: drop the key saying the tree was clean throughout the battery's run"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        (record.get("clean_tree") is True, "the tree was not clean throughout the battery's run"),'''
+new = '''        (True, "the tree was not clean throughout the battery's run"),'''
+
+[[rows]]
+id = "D3_tree_now_unchecked"
+description = "read_battery_verdict: drop the check that this tree is clean now"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        (clean_now, "this tree has uncommitted or untracked changes"),'''
+new = '''        (True, "this tree has uncommitted or untracked changes"),'''
+
+[[rows]]
+id = "D4_untracked_read_as_clean"
+description = "tree_state in the driver: read only git's exit, so a tree with changes reads clean"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
+    return commit, clean'''
+new = '''    clean = bool(commit) and status.returncode == 0
+    return commit, clean'''
+
+[[rows]]
+id = "D5_boot_unchecked"
+description = "read_battery_verdict: key the machine on the host name alone, which every cloud container shares"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            record.get("host") == socket.gethostname() and record.get("boot_id") == boot_id(),'''
+new = '''            record.get("host") == socket.gethostname(),'''
+
+[[rows]]
+id = "D6_checkout_unchecked"
+description = "read_battery_verdict: drop the checkout key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        (record.get("root") == str(repo_root.resolve()), "it was measured in another checkout"),'''
+new = '''        (True, "it was measured in another checkout"),'''
+
+[[rows]]
+id = "D7_interpreter_unchecked"
+description = "read_battery_verdict: drop the interpreter key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        (record.get("python") == sys.executable, "it was measured with another interpreter"),'''
+new = '''        (True, "it was measured with another interpreter"),'''
+
+[[rows]]
+id = "D8_known_file_unchecked"
+description = "read_battery_verdict: drop the known failures file's digest key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            record.get("known_failures_sha256") == known_digest,'''
+new = '''            True,'''
+
+[[rows]]
+id = "D9_interrupted_run_read"
+description = "read_battery_verdict: accept pytest's exit 2, an interrupted run"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''record["exit_code"] in {0, 1},'''
+new = '''record["exit_code"] in {0, 1, 2},'''
+
+[[rows]]
+id = "D10_empty_count_read"
+description = "read_battery_verdict: accept a record that collected nothing"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''record["collected"] > 0,'''
+new = '''record["collected"] >= 0,'''
+
+[[rows]]
+id = "D11_verdict_disagreement_read"
+description = "read_battery_verdict: drop the check that the verdict agrees with the ids it lists"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    if green != (record["verdict"] == "clean"):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D12_red_record_read_green"
+description = "read_battery_verdict: build the read baseline with no failures, so a red verdict reads green"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        failed=tuple(beyond),'''
+new = '''        failed=(),'''
+
+[[rows]]
+id = "D13_no_known_file_layer"
+description = "read_battery_verdict: drop the refusal of a run with no known failures file, the layer before the digest key"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    if not known_digest:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "D14_read_named_measured"
+description = "measure_batch: record a read baseline as measured, so the table names the wrong one"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        header["baseline_source"] = "read"'''
+new = '''        header["baseline_source"] = "measured"'''
+
+# The battery's writer: what it records for each key.
+
+[[rows]]
+id = "B1_run_cleanliness_at_the_end_only"
+description = "measured_tree: read cleanliness after the run only, so a change made before it and a moved HEAD are missed"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '''    clean = before.clean and after.clean and before.commit == after.commit'''
+new = '''    clean = after.clean'''
+
+[[rows]]
+id = "B2_commit_read_after_the_run"
+description = "measured_tree: name the commit read after the run, as last-compare.txt did before U271"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '''    return TreeState(commit=before.commit, clean=clean)'''
+new = '''    return TreeState(commit=after.commit, clean=clean)'''
+
+[[rows]]
+id = "B3_status_unread"
+description = "tree_state in the battery: read only git's exit, so a tree with changes reads clean"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '''    clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
+    return TreeState(commit=commit, clean=clean)'''
+new = '''    clean = bool(commit) and status.returncode == 0
+    return TreeState(commit=commit, clean=clean)'''
+
+[[rows]]
+id = "B4_release_line_never_dirty"
+description = "record_verdict: never write dirty, so the release reads a moved tree as clean"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py", "tests/test_release.py"]
+old = '''    if not tree.clean:
+        verdict = "dirty"'''
+new = '''    if False:
+        verdict = "dirty"'''
+
+[[rows]]
+id = "B5_collection_errors_unlisted"
+description = "the reporting plugin: list no collection errors"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '''            if getattr(report, "when", None) == "collect"'''
+new = '''            if getattr(report, "when", None) == "never"'''
+
+[[rows]]
+id = "B6_count_unread_under_workers"
+description = "the reporting plugin: drop the xdist hook, so a run with workers records no collected count"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '''def pytest_xdist_node_collection_finished(node, ids):
+    _COLLECTED["count"] = len(ids)'''
+new = '''def pytest_xdist_node_collection_finished(node, ids):
+    pass'''
+
+[[rows]]
+id = "B7_boot_unrecorded"
+description = "record_run: record no boot id, which the driver then reads as another machine"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '''        "boot_id": boot_id(),'''
+new = '''        "boot_id": "",'''
+
+# From review round one: the run must have run what it collected, unedited.
+
+[[rows]]
+id = "D15_early_stop_read"
+description = "read_battery_verdict: drop the check that every collected test reported, so a run stopped early reads complete"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''record["ran"] == record["collected"],'''
+new = '''record["ran"] <= record["collected"],'''
+
+[[rows]]
+id = "D16_edited_run_read"
+description = "read_battery_verdict: drop the refusal of a run that inherited PYTEST_ADDOPTS"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            record.get("pytest_addopts") == "",'''
+new = '''            True,'''
+
+[[rows]]
+id = "B8_ran_uncounted"
+description = "the reporting plugin: count no test as having reported"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py", "tests/test_mutation_driver.py"]
+old = '''    _RAN.add(report.nodeid)'''
+new = '''    pass'''
