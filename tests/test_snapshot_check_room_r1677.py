@@ -171,6 +171,29 @@ def test_one_byte_short_on_the_temporary_volume_refuses(cfg, scratch, monkeypatc
     assert refused.value.cause.reason == ROOM
 
 
+def test_the_measure_counts_every_file_the_check_copies_not_the_database_alone(
+    cfg, scratch, monkeypatch
+):
+    """The playlist file and any companion ride along with the copy, so they are measured.
+
+    Room for the database alone, with the file the binding saves beside it
+    left out, is a copy that runs out part way.
+    """
+    database = _database(cfg)
+    (database.parent / W.MASTER_PLAYLIST_XML).write_bytes(b"<playlists/>" * 8192)
+    alone = int(snapshot._allocated_size(database) * snapshot.CAPACITY_HEADROOM)
+    whole = int(_check_needs(cfg) * snapshot.CAPACITY_HEADROOM)
+    assert whole - 1 > alone, "the playlist file is too small to tell the two apart"
+    _separate_volumes(monkeypatch)
+    _free_on(monkeypatch, scratch, whole - 1)
+
+    with pytest.raises(CratekitError) as refused:
+        snapshot.capture(cfg)
+
+    assert refused.value.cause.reason == ROOM
+    assert refused.value.cause.detail["estimated_bytes"] == _check_needs(cfg)
+
+
 def test_a_temporary_volume_with_room_captures_verified_and_leaves_nothing(cfg, scratch):
     """Unchanged where there is room: the real check ran, passed, and cleaned up."""
     captured = snapshot.capture(cfg)
