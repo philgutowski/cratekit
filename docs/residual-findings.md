@@ -52645,3 +52645,107 @@ was driven, and the cost to `crate doctor` or a provider call is unmeasured.
 
 **Closes when:** the gate's readers read such a file as one that does not
 parse. Ledger only.
+
+---
+
+## R-1690. A branch that renames or deletes a test on the battery's on disk list cannot be measured in memory
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** `ON_DISK` in `scripts/cloud_battery.py` names whole node
+ids, and after a run in memory both the battery and the driver rerun every
+listed id the run's paths cover (`runs_node` in `scripts/mutate.py` reads a
+full run as covering all). A branch that renames or deletes the inode bound
+test asks pytest for an id that no longer exists: the battery refuses the
+run (pinned by the `not-collected` case), and the driver raises
+`MeasurementFailure` on pytest's exit 4 (not driven).
+
+**Measured cost.** Driven by round two of the review: with `ON_DISK` naming a
+missing id, alone or beside a real one, `failing_ids("memory")` refused with
+"pytest printed no summary line, so the run cannot be read", only after the
+whole memory run, with pytest's own "ERROR: not found" naming the id above
+it; nothing names `ON_DISK` as the line to edit. The driver's `run_pytest`
+raised `MeasurementFailure` on pytest's exit 4. Only a memory run meets it,
+and the default place is disk.
+
+**Closes when:** the rerun takes only the listed ids the memory run itself
+collected, or the refusal names `ON_DISK` as the line to edit.
+
+---
+
+## R-1691. A run that times out or is killed can leave its temporary files in /dev/shm, and the timeout reads as a cleanup error
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** U273 moved a run's `TMPDIR` inside the workspace that
+`tempfile.TemporaryDirectory` removes, in `scripts/mutate.py` `run_pytest`
+and `scripts/cloud_battery.py` `run_directory`. When `subprocess.run` times
+out it kills the controller, but xdist workers still writing race the
+removal, so the rmtree can fail with `Directory not empty` and leave the
+directory behind; that `OSError` then replaces the `TimeoutExpired`, so the
+row's note names the wrong reason. A SIGTERM to the battery leaves its
+directory too, since nothing turns the signal into a clean exit. In memory
+the files left hold RAM until removed by hand.
+
+**Measured cost.** Driven by the review on a synthetic suite under `-n 2`
+with `run_pytest(timeout=2)`: the branch leaked 2 of 7 runs in memory and 3
+of 6 on disk, the base 0 of 6 (its `TMPDIR` was outside the workspace). A real
+row past the driver's 3600 s timeout was not driven. Today the default place
+is disk, so only a session that names memory meets it in RAM.
+
+**Closes when:** the child runs in its own session and the whole group is
+killed on a timeout, the cleanup is retried and never replaces the timeout,
+and the battery turns SIGTERM into a clean exit, each with a test that times
+a writing suite out and finds nothing left in the place.
+
+---
+
+## R-1692. Merging U271 with U273 must keep the battery's place and its on disk rerun in the verdict U271 records
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** U271 (#700, `cloud/700-mutate-reads-battery-verdict`)
+replaces `failing_ids()` with its own `measure_suite` and states that neither
+script imports the other; U273 calls `failing_ids(place)` and loads the
+battery into the driver by path (`_load_battery` in `scripts/mutate.py`).
+A dry merge conflicts loudly in both scripts, the battery's tests, METHOD
+and DEVELOPING, and U271's verdict is keyed on a digest of the baseline
+file, whose header now names the place, so a verdict and a driver run in
+different places cannot silently match. A resolution that takes U271's side
+of `measure_suite` would drop the place and the rerun; U273's tests catch it.
+
+**Measured cost.** Not a defect on either branch alone; a merge hazard,
+measured by the review with `git merge-tree` in a scratch clone.
+
+**Closes when:** whichever lands second keeps `failing_ids(place)`, builds
+the verdict's ids from the ids after the rerun and its counts from the
+memory run, and corrects U271's claim that neither script imports the other.
+
+---
+
+## R-1693. Seven guards of U273's places and on disk rerun kill no test
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** Reverted one at a time by the review, each left
+`tests/test_cloud_battery.py` and `tests/test_mutation_driver.py` green:
+in `scripts/cloud_battery.py`, the `stray` half of the on disk run's
+acceptance (no input the review drove reaches it without `unread` firing
+too), the collection error exemption in `unread`, the `os.access` write
+check on the memory root, and the floor's value (halved to 3 GiB); in
+`scripts/mutate.py`, the `again.collected` check after the rerun (a listed
+id that is gone exits pytest 4 first), the `collect_errors` merge from the
+rerun, and the `place == MEMORY` condition on the rerun widened to any
+place (a disk run's rerun is a second disk run and agrees). Round one named
+nine; two are pinned since, the errored replacement by
+`test_a_listed_test_erroring_in_memory_and_passing_on_disk_is_read_passing`
+and `run_pytest`'s own refusal of a place it cannot have by
+`test_a_child_whose_place_is_gone_is_refused_rather_than_run_elsewhere`, and
+so is the driver's `and known.on_disk` condition, which round two found
+unpinned.
+
+**Measured cost.** None driven: each is a defence behind another guard or a
+measure no run on this container reaches. Maintainer facing.
+
+**Closes when:** each has a test that fails without it, or is removed as
+unreachable with the reason in the code.
