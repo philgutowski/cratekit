@@ -206,7 +206,7 @@ def test_a_stop_between_the_request_and_the_record_adds_nothing_twice_and_record
 
 def test_a_stop_before_the_request_landed_sends_the_batch_again_and_records_it_once(cfg):
     """The request never reached the provider: nothing is on the playlist,
-    nothing is recorded from the sending rows, and the next apply sends it."""
+    nothing is recorded, and the next apply sends it."""
     account = outbound_fakes.FakeAccount(fail_on={"t2"}, transient=True)
     ledger.reserve_playlist(cfg, KEY, lambda: account.create_playlist("Crate One"))
 
@@ -222,6 +222,38 @@ def test_a_stop_before_the_request_landed_sends_the_batch_again_and_records_it_o
     assert account.playlists["pl-1"] == ["t1", "t2"]
     assert [one for _pl, one in account.added] == ["t1", "t2"]
     assert _recorded(cfg)[KEY]["added"] == ["t1", "t2"]
+
+
+def test_the_ledger_never_notes_a_row_for_a_track_it_does_not_hold_as_added(cfg):
+    """The ledger's own guard, driven alone (round two's fourth finding): a row
+    named for a track the record does not hold as added, a person's, is not
+    written, whatever the caller passes."""
+    account = outbound_fakes.FakeAccount()
+    ledger.reserve_playlist(cfg, KEY, lambda: account.create_playlist("Crate One"))
+    ledger.record_playlist_tracks(cfg, KEY, landed={"row-t1": "t1"})
+
+    ledger.record_playlist_tracks(cfg, KEY, landed={}, rows={"row-x": "theirs", "row-y": "t1"})
+
+    record = _recorded(cfg)[KEY]
+    assert record["added"] == ["t1"]
+    assert record["rows"] == {"row-t1": "t1", "row-y": "t1"}
+
+
+def test_a_re_export_names_the_rows_of_tracks_recorded_before_rows_were_kept(cfg):
+    """Round two's third finding: a record written before R-836 holds its
+    tracks and no rows, and an export that writes nothing new still names
+    each recorded track's row, in one write."""
+    account = outbound_fakes.FakeAccount()
+    ledger.reserve_playlist(cfg, KEY, lambda: account.create_playlist("Crate One"))
+    ledger.record_playlist_track(cfg, KEY, "t1")
+    ledger.record_playlist_track(cfg, KEY, "t2")
+    account.playlists["pl-1"].extend(["t1", "t2"])
+
+    report = export.apply(cfg, account, _plan(*_rows("t1", "t2")))
+
+    assert report.already == ("t1", "t2")
+    assert account.chunks == []
+    assert _recorded(cfg)[KEY]["rows"] == {"row-t1": "t1", "row-t2": "t2"}
 
 
 def test_a_person_who_took_a_track_off_between_batches_is_not_overwritten(cfg):

@@ -153,6 +153,13 @@ added by hand, and a prune would then take theirs off. A stop between the
 request and the record therefore still leaves the landed tracks unrecorded,
 a batch where it was one track (R-1543).
 
+The adapter's own read back, which settles an answer naming part of a
+chunk, has the same blind spot and is kept, since it is the read Phillip's
+answer named: a track a person adds by hand while an export runs, if a later
+batch of the same run sends it, is skipped as a duplicate, found by the read
+back and recorded as the export's. `main` did the same a track at a time;
+U270 files it rather than closing it.
+
 ## Still unmeasured
 
 How long the provider's reads lag its writes, so the pauses (1, 2 and 4
