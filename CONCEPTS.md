@@ -490,11 +490,21 @@ featured credit: the same version with credit groups removed, kind
 against a real listing that credits nobody. Written and lifted with its
 tombstone.
 
+### Bare title
+A title's own text when it folds to nothing, emoji or marks alone
+(`match.bare_title`): NFKC, casefolded, with spacing, variation selectors and
+invisible format characters taken out; empty for every other title. The
+recording token cannot tell two such titles apart, so every comparison that
+reads two titles as one recording asks `match.same_title`, the fold and the
+bare title together. Identities still hash the token alone.
+
+*Avoid:* folding it into `fold` or the token; that moves every recorded answer.
+
 ### Credited list rule
-The second rule of `LibraryIndex.held` (`acquire/match.py`): a file whose folded
-title matches and whose comma separated artist tag has the row's primary artist
-as a whole member. Reason `credited-exact`. Asked after the ISRC and the
-recording token.
+The second rule of `LibraryIndex.held` (`acquire/match.py`): a file whose title
+matches by `same_title` and whose comma separated artist tag has the row's
+primary artist as a whole member. Reason `credited-exact`. Asked after the ISRC
+and the recording token.
 
 *Avoid:* reading the split as identity; a provider artist is never split.
 

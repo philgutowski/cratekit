@@ -295,8 +295,10 @@ crate match run /path/to/tracklist.txt
   for `OK` is still offered, but a short title like `Joy` beside the same
   artist's `Goodbye` reads missing and is listed for download. A short title
   one letter away, `Joy` beside `Boy`, is still offered; two letters away,
-  `Joy` beside `Boys`, reads missing. It downloads nothing and writes nothing
-  to the account.
+  `Joy` beside `Boys`, reads missing. A title of emoji or marks alone is
+  owned only by a file with the same symbols (width, spacing and an emoji's
+  presentation aside), so the artist's `💧` beside a held `🔥` is offered,
+  never called owned. It downloads nothing and writes nothing to the account.
 - `intake file` plans one file. On the xml bridge it writes only with
   `--export`; once the intake tree is native it takes no export, plans one
   collection row and one INBOX playlist for the file where it sits (it must be
