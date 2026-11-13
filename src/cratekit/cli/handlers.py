@@ -46,6 +46,7 @@ Layer: cli.
 from __future__ import annotations
 
 import importlib
+from contextlib import AbstractContextManager, nullcontext
 from pathlib import Path
 from typing import Callable, Mapping
 
@@ -80,6 +81,21 @@ ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | 
 #: resolved: a substituted worker carries no batch form and is driven one item
 #: at a time, the way it was written to be.
 BATCH_ATTRIBUTE = "batched"
+
+#: U274. The attribute a worker carries when something must be held for one
+#: whole drive of a job rather than built per item: a callable taking nothing
+#: and answering a context manager, which :func:`run_job` enters around the
+#: drive and which therefore closes on every way out of it, finished, parked,
+#: interrupted or raised. The download worker names the vendored adapter's
+#: drive, which holds one token file and one login for every track of a job.
+#:
+#: AN ATTRIBUTE OF THE RESOLVED WORKER, for the batch form's reason: a
+#: substituted worker carries none, and is driven the way it was written to be.
+#: The job engine has no per drive setup seam of its own; the intake worker's
+#: one library index per drive is a module cache keyed by the drive for that
+#: reason, and a held credential cannot be, because it must be erased when the
+#: drive ends.
+PER_DRIVE_ATTRIBUTE = "per_drive"
 
 #: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
 HANDLERS: Mapping[str, str] = {
@@ -260,6 +276,23 @@ def batching_of(handler: object) -> "tuple[Callable[..., Mapping[str, object]], 
     return function, size
 
 
+def per_drive_of(handler: object) -> "Callable[[], AbstractContextManager[object]] | None":
+    """What a worker holds for a whole drive, checked, or None when it names nothing (U274)."""
+    named = getattr(handler, PER_DRIVE_ATTRIBUTE, None)
+    if named is None:
+        return None
+    if not callable(named):
+        raise refuse(
+            "internal-error",
+            f"a worker names {named!r} as what it holds for a drive, which is not "
+            f"a callable answering a context manager",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("cli.handlers",),
+            detail={"handler": getattr(handler, "__qualname__", repr(handler))},
+        )
+    return named
+
+
 def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) -> jobs.DriveResult:
     """Run one job's queued items to completion. The ONE caller of ``jobs.drive``.
 
@@ -317,19 +350,32 @@ def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) ->
     except (config.ConfigError, OSError):
         current = None
 
-    return jobs.drive(
-        store, job.job_id, handle, root=root, current_config=current, batch=batching
-    )
+    # WHAT THE WORKER HOLDS FOR THE WHOLE DRIVE (U274), around the drive and
+    # nothing else, so it is opened once whatever the item count and closed on
+    # every way out, a park and the no evidence raise included.
+    # What it could not do when it closed comes back as warnings, read AFTER
+    # the close, since the close is where a write back happens.
+    held = per_drive_of(handler)
+    with held() if held is not None else nullcontext() as holding:
+        result = jobs.drive(
+            store, job.job_id, handle, root=root, current_config=current, batch=batching
+        )
+    noted = tuple(getattr(holding, "warnings", None) or ())
+    if noted:
+        result.warnings = (*result.warnings, *noted)
+    return result
 
 
 __all__ = [
     "BATCH_ATTRIBUTE",
     "HANDLERS",
     "HANDLERS_NOT_YET_BOUND",
+    "PER_DRIVE_ATTRIBUTE",
     "ItemHandler",
     "batching_of",
     "drift_warnings",
     "is_known",
+    "per_drive_of",
     "resolve",
     "run_job",
     "unbound_reason",
