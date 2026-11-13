@@ -277,7 +277,8 @@ measured before that, whose ids were cut at their first space, with the
 command that measures it again. It runs on disk unless `--temp memory` is
 given (U273) and names the place in its header; `compare` and the driver
 run in that place, and a baseline naming none is measured again the same
-way. Run it as a tracked
+way. Leave it on disk: until #702 is answered a memory baseline reads the
+inode bound test as the machine's. Run it as a tracked
 background job with a two hour timeout from the start (a background job in a
 cloud thread is stopped at 30 minutes otherwise) before the first edit, so it measures the base and not your
 work in progress, and edit nothing under `src` or `tests` until it reports.

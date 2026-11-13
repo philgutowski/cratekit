@@ -543,8 +543,9 @@ failures name. In memory the tests on the battery's `ON_DISK` list, the
 inode bound test alone today, run a second time on disk and their disk
 outcome stands. Disk stays the default while Phillip decides (#702): that
 test fails on the container's disk whenever it runs alone, so a memory
-baseline would read it as the machine's. A baseline naming no place is
-measured again. Nothing
+baseline would read it as the machine's, so `--temp memory` is not for a
+merge battery until #702 is answered. A baseline naming no place is measured
+again. Nothing
 is skipped or marked, a newly failing test is the branch's, and a test that
 fails only under a parallel run on ext4 is rerun alone before it is called
 either. The macOS battery is owed on a Mac and named in each record's OWED

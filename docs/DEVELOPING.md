@@ -52,7 +52,9 @@ Nothing merges until all three are clean:
   directory of one place, disk unless `baseline --temp memory` names the
   memory filesystem, and `compare` runs where the baseline did, refusing a
   `--temp` naming the other; a baseline naming no place, measured before
-  U273, is measured again.
+  U273, is measured again. Memory is not for a merge battery until #702 is
+  answered: the inode bound test fails on the container's disk alone, so a
+  memory baseline reads it as the machine's.
 - `scripts/scan_repo.py` scans every tracked file, the vendored tree included,
   for personal literals (home directories, volumes, accounts, machine names)
   and credential-shaped content.
