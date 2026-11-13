@@ -3301,7 +3301,7 @@ def test_at_most_the_declared_number_of_approximate_candidates_is_offered(music)
             hold(music, f"0{number + 1}A - 124 - Aurora Bloom - {recording} ({version})")
     found = resolve([one(title="Sun Pathwayss")], index_of(music)).matches[0]
     assert found.why is match.Why.TITLE_APPROXIMATE
-    assert len(match._approximate(one(title="Sun Pathwayss"), index_of(music))) > (
+    assert len(match._resembling(one(title="Sun Pathwayss"), index_of(music))) > (
         match.APPROXIMATE_LIMIT
     ), "the fixture no longer over-produces, so the cap is not being tested"
     assert 0 < len(found.candidates) <= match.APPROXIMATE_LIMIT
@@ -6395,8 +6395,13 @@ def test_no_residual_is_cited_by_number_anywhere_in_this_unit():
 # order, rather than close to it.
 
 
-def _shipped_approximate(wanted, index):
-    """THE SCORER AS SHIPPED BEFORE U265, kept as the reference it is held to."""
+def _shipped_approximate(wanted, index, *, limit=match.APPROXIMATE_LIMIT):
+    """THE SCORER AS SHIPPED BEFORE U265, kept as the reference it is held to.
+
+    ``limit`` is the shipped call's, the offer limit, unless a caller asks for
+    every recording over the floor, which is how the resolver has called
+    discovery since U286 filters the hits by title before it caps them.
+    """
     from rapidfuzz import fuzz, process
 
     if not index.by_recording:
@@ -6406,7 +6411,7 @@ def _shipped_approximate(wanted, index):
         tuple(index.by_recording),
         scorer=fuzz.token_sort_ratio,
         score_cutoff=match.APPROXIMATE_FLOOR,
-        limit=match.APPROXIMATE_LIMIT,
+        limit=limit,
     )
     return tuple(held for token, _score, _position in found for held in index.versions(token))
 
@@ -6465,8 +6470,9 @@ def _u265_library(seed: int) -> tuple[match.LibraryIndex, list[match.Wanted]]:
     return index, rows
 
 
+@pytest.mark.parametrize("limit", [match.APPROXIMATE_LIMIT, None])
 @pytest.mark.parametrize("seed", [265, 2650, 26500])
-def test_the_approximate_pass_answers_exactly_as_the_shipped_scorer(seed):
+def test_the_approximate_pass_answers_exactly_as_the_shipped_scorer(seed, limit):
     """Every row's candidates, in their order, equal the shipped scorer's.
 
     The comparison is on the whole ``Owned`` tuple, so a different candidate, a
@@ -6480,9 +6486,9 @@ def test_the_approximate_pass_answers_exactly_as_the_shipped_scorer(seed):
     index, rows = _u265_library(seed)
     over_the_limit = tied_inside = nothing = 0
     for wanted in rows:
-        assert match._approximate(wanted, index) == _shipped_approximate(wanted, index), (
-            wanted.recording
-        )
+        assert match._approximate(wanted, index, limit=limit) == _shipped_approximate(
+            wanted, index, limit=limit
+        ), wanted.recording
         every = process.extract(
             wanted.recording,
             tuple(index.by_recording),
@@ -6597,3 +6603,230 @@ def test_each_name_is_sorted_once_for_the_index_and_each_row_once_a_call(monkeyp
     calls.clear()
     assert match._approximate(rows[0], match.LibraryIndex(by_recording={})) == ()
     assert calls == [], "an empty index sorts nothing and asks the scorer nothing"
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# U286: the artist agreeing is necessary for an approximate offer, never
+# sufficient. The discovery score above reads artist and title together, so
+# with a short title the shared artist carried an unrelated song over the
+# floor: Monkey Safari, Joy scored 84.2 against the library's Monkey Safari,
+# Goodbye and was held for review rather than downloaded. Four more of the
+# five open title-approximate items at sitting 99 had the same shape.
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: The card's five pairs, each a short wanted title against an unrelated held
+#: one by the same artist, every one of them over the discovery floor.
+U286_UNRELATED = (
+    ("Monkey Safari", "Joy", "Goodbye"),
+    ("Paul Deep (AR)", "Rea", "Tique"),
+    ("Hot Since 82", "Wow", "Wild"),
+    ("Alex Kaminski", "Mana", "Nebula"),
+    ("Traumer", "Get Out", "Agenou"),
+)
+
+
+def _discovery_score(wanted_artist, wanted_title, held_artist, held_title):
+    """The shipped discovery score, computed rather than remembered."""
+    from rapidfuzz import fuzz
+
+    return fuzz.token_sort_ratio(
+        match.recording_token(wanted_artist, wanted_title),
+        match.recording_token(held_artist, held_title),
+    )
+
+
+@pytest.mark.parametrize(("artist", "wanted", "held"), U286_UNRELATED)
+def test_a_short_title_sharing_nothing_with_the_held_one_settles_missing(
+    music, artist, wanted, held
+):
+    """Each pair clears the discovery floor, so it reaches the title test, and
+    the title test drops it: the row reads missing and the pass downloads it."""
+    assert _discovery_score(artist, wanted, artist, held) >= match.APPROXIMATE_FLOOR, (
+        "the pair no longer clears the discovery floor, so it no longer tests the title"
+    )
+    hold(music, f"08A - 124 - {artist} - {held}")
+    found = resolve([one(artist=artist, title=wanted)], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MISSING
+    assert found.why is match.Why.NOT_IN_LIBRARY
+    assert found.candidates == ()
+    assert found.acquisitions, "a missing row with nothing to acquire downloads nothing"
+
+
+def test_joy_against_goodbye_is_downloaded_through_the_real_verb(cfg, music, tmp_path):
+    """The sitting's own row, through ``match run``: missing, not offered."""
+    hold(music, "07A - 124 - Monkey Safari - Goodbye")
+    path = write_list(tmp_path, "Monkey Safari - Joy\n", "joy.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK)
+    assert envelope["data"]["needs_review"] == []
+    (missing,) = envelope["data"]["missing"]
+    assert missing["why"] == str(match.Why.NOT_IN_LIBRARY)
+
+
+#: Real near matches, each still offered: (wanted title, held title).
+U286_NEAR = (
+    ("Midnight Harbour Lights", "Midnight Harbor Lights"),  # one letter dropped
+    ("Midnight Harbour Lights", "Midnight Harbour Light"),  # one letter at the end
+    ("Midnight Harbour Lights", "Midnight Harbour Lighte"),  # one letter changed
+    ("Midnight Harbour Lights", "Midnight Lights"),  # a word dropped
+    ("Lights Midnight", "Midnight Lights"),  # the words reordered
+    ("Sun Path", "Sun Pathx"),  # the module's own near miss
+    ("Sun Path", "Sun Path Alt"),  # the module's own near miss
+    ("Joy", "Jay"),  # one letter changed in a three letter title
+    ("Joy", "Joys"),  # one letter added to a three letter title
+)
+
+
+@pytest.mark.parametrize(("wanted", "held"), U286_NEAR)
+def test_a_real_near_match_is_still_offered(music, wanted, held):
+    assert _discovery_score("Aurora Bloom", wanted, "Aurora Bloom", held) >= (
+        match.APPROXIMATE_FLOOR
+    ), "the pair no longer clears the discovery floor, so it tests nothing here"
+    hold(music, f"08A - 124 - Aurora Bloom - {held}")
+    found = resolve([one(title=wanted)], index_of(music)).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert [candidate.title for candidate in found.candidates] == [held]
+
+
+def test_an_unrelated_title_by_another_artist_is_still_not_offered(music):
+    hold(music, "08A - 124 - Nova Reef - Goodbye")
+    hold(music, "08A - 124 - Nova Reef - Joy")
+    found = resolve([one(artist="Monkey Safari", title="Joy")], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MISSING
+
+
+def test_of_two_near_hits_only_the_one_whose_title_resembles_is_offered(music):
+    """FILTERED BEFORE THE CANDIDATES ARE BUILT. The failing recording is held
+    as five versions, so a filter applied to the candidates, or to nothing,
+    would build six and report one withheld beside an offer of five."""
+    hold(music, "08A - 124 - Aurora Bloom - Joys")
+    for number, version in enumerate(("A", "B", "C", "D", "E"), start=1):
+        hold(music, f"0{number}A - 124 - Aurora Bloom - Goodbye (Mix {version})")
+    near = match._approximate(one(title="Joy"), index_of(music), limit=None)
+    assert {held.title for held in near} == {"Joys", "Goodbye"}, (
+        "discovery no longer returns both, so the filter is not being tested"
+    )
+    found = resolve([one(title="Joy")], index_of(music)).matches[0]
+    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert [candidate.title for candidate in found.candidates] == ["Joys"]
+    assert found.withheld == 0
+
+
+def test_unrelated_titles_scoring_higher_do_not_push_a_real_near_match_out(music):
+    """FILTERED BEFORE THE CAP, NOT AFTER IT. Six unrelated three letter titles
+    by the same artist each outscore the real near match, so the best five
+    recordings hold none it would offer: filtered after the cap, the row
+    would read missing and download a record the library holds."""
+    unrelated = ("Box", "Cox", "Fox", "Lox", "Pox", "Sox")
+    for title in unrelated:
+        hold(music, f"08A - 124 - Aurora Bloom - {title}")
+    hold(music, "08A - 124 - Aurora Bloom Band - Joy")
+    near_score = _discovery_score("Aurora Bloom", "Joy", "Aurora Bloom Band", "Joy")
+    assert all(
+        _discovery_score("Aurora Bloom", "Joy", "Aurora Bloom", title) > near_score
+        for title in unrelated
+    ), "the unrelated titles no longer outscore the near match"
+    assert len(unrelated) > match.APPROXIMATE_LIMIT
+    found = resolve([one(title="Joy")], index_of(music)).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert [(c.artist, c.title) for c in found.candidates] == [("Aurora Bloom Band", "Joy")]
+
+
+def test_a_file_whose_artist_and_title_are_the_rows_swapped_is_still_offered(music):
+    """The word sort reads a swapped listing as one string at 100, and it is
+    the same record, so the title test lets each half stand for the other."""
+    hold(music, "08A - 124 - Sun Path - Aurora Bloom")
+    found = resolve([one()], index_of(music)).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert [(c.artist, c.title) for c in found.candidates] == [("Sun Path", "Aurora Bloom")]
+
+
+def test_a_swap_is_offered_only_when_both_halves_cross():
+    """One half crossing is not a swap: the title has to resemble the held
+    artist AND the artist the held title."""
+    held = match.Owned(path=Path("x.flac"), artist="Sun Path", title="Tide Line", version="", key=None)
+    assert not match._title_resembles(one(), held)
+    held = match.Owned(path=Path("x.flac"), artist="Nova Reef", title="Aurora Bloom", version="", key=None)
+    assert not match._title_resembles(one(), held)
+
+
+def _index_of_owned(*held: match.Owned) -> match.LibraryIndex:
+    grouped: dict[str, list[match.Owned]] = {}
+    for owned in held:
+        grouped.setdefault(owned.recording, []).append(owned)
+    return match.LibraryIndex(by_recording={k: tuple(v) for k, v in grouped.items()})
+
+
+@pytest.mark.parametrize(("wanted", "held"), [("!!!", "???"), ("Sun Path", "!!!"), ("!!!", "Sun Path")])
+def test_a_title_that_folds_to_nothing_is_offered_as_before(wanted, held):
+    """A title with no letter or digit cannot be read, so the title test says
+    nothing about it and the discovery score decides, as it did before U286.
+    Read as sharing nothing it would download a record the library may hold."""
+    owned = match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=held, version="", key=None)
+    index = _index_of_owned(owned)
+    asked = one(title=wanted)
+    if match._approximate(asked, index, limit=None):
+        found = resolve([asked], index).matches[0]
+        assert found.why is match.Why.TITLE_APPROXIMATE
+    assert match._title_resembles(asked, owned)
+
+
+def test_a_one_letter_title_is_judged_by_the_same_rule(music):
+    """No special case offers everything by the artist to a one letter title:
+    A against B shares nothing and settles missing, A against A is owned."""
+    assert _discovery_score("Aurora Bloom", "A", "Aurora Bloom", "B") >= match.APPROXIMATE_FLOOR
+    hold(music, "08A - 124 - Aurora Bloom - B")
+    found = resolve([one(title="A")], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MISSING
+    hold(music, "08A - 124 - Aurora Bloom - A")
+    found = resolve([one(title="A")], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MATCHED
+
+
+def test_an_isrc_hit_on_an_abbreviated_title_is_still_asked_about(music, tmp_path):
+    """Sitting 9's Stefan Ringer ``SO``, the library's ``Sexual Obsession``: an
+    approximate hold that was right. It scores far under the discovery floor,
+    so it never came from the scored pass, and the ISRC branch that asks it is
+    untouched by the title test."""
+    assert _discovery_score("Stefan Ringer", "SO", "Stefan Ringer", "Sexual Obsession") < (
+        match.APPROXIMATE_FLOOR
+    )
+    credited(
+        music, tmp_path, "05A - 122 - Stefan Ringer - Sexual Obsession",
+        artist="Stefan Ringer", title="05A - 122 - Sexual Obsession", isrc="USNRS2644599",
+    )
+    found = resolve(
+        [row(artist="Stefan Ringer", title="SO", isrc="USNRS2644599")], index_of(music)
+    ).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.TITLE_APPROXIMATE
+
+
+#: THE TWO TITLE PAIRS EITHER SIDE OF THE TITLE FLOOR, scores computed below:
+#: ``Burning Sunlight`` against ``Morning Starlight Rising`` scores 65.0, and
+#: ``Joy`` against ``Jay``, one letter changed in a three letter title, 66.67,
+#: the lowest score a single changed letter can give a title of three letters
+#: or more. 66 is the one integer floor between them.
+TITLE_FLOOR_NEIGHBOURS = (("Burning Sunlight", "Morning Starlight Rising"), ("Joy", "Jay"))
+
+
+def test_the_title_floor_is_pinned_from_both_sides_by_the_nearest_score_either_way():
+    from rapidfuzz import fuzz
+
+    below, above = (
+        fuzz.token_set_ratio(match.fold(asked), match.fold(held))
+        for asked, held in TITLE_FLOOR_NEIGHBOURS
+    )
+    assert below < match.APPROXIMATE_TITLE_FLOOR <= above, (below, above)
+    assert int(above) - int(below) <= 1
+    (low_asked, low_held), (high_asked, high_held) = TITLE_FLOOR_NEIGHBOURS
+
+    def owned(title: str) -> match.Owned:
+        return match.Owned(path=Path("x.flac"), artist="Aurora Bloom", title=title, version="", key=None)
+
+    assert not match._title_resembles(one(title=low_asked), owned(low_held))
+    assert match._title_resembles(one(title=high_asked), owned(high_held))
+    # And the highest of the card's live pairs sits under it.
+    assert fuzz.token_set_ratio("get out", "agenou") < match.APPROXIMATE_TITLE_FLOOR
