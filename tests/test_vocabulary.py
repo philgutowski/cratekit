@@ -28,7 +28,7 @@ import pytest
 from cratekit.core import routing, taxonomy
 from cratekit.core.routing import Decline, Match
 from cratekit.core.taxonomy import TaxonomyError, build_taxonomy, default_taxonomy
-from cratekit.tagging import published, searchers
+from cratekit.tagging import cyanite, published, searchers
 from cratekit.tagging.searchers import Fetched
 from cratekit.tagging.tag import SearchHit, SourceAnswer
 from tests.test_catalogue_searcher import _all_three, _beatport_page, _beatport_track
@@ -410,9 +410,10 @@ def test_a_table_nothing_would_read_is_refused_and_not_ignored(default_raw, name
 
 def test_the_sources_the_loader_knows_are_the_ones_the_tagger_reads_a_table_for():
     """The loader cannot import the tagging package, so its tuple is pinned to
-    the names the chooser passes the resolver: the general catalogue's, and
-    Discogs' since U244. No record shop asked by page has one."""
-    assert taxonomy.VOCABULARY_SOURCES == (published.SOURCE, searchers.DISCOGS)
+    the names the chooser passes the resolver: the general catalogue's,
+    Discogs' since U244, and Cyanite's since U245, whose trial resolves its
+    words through one. No record shop asked by page has one."""
+    assert taxonomy.VOCABULARY_SOURCES == (published.SOURCE, searchers.DISCOGS, cyanite.CYANITE)
     assert published.SOURCE == CATALOGUE
     assert not set(taxonomy.VOCABULARY_SOURCES) & set(searchers.SCRAPED_WALK)
 

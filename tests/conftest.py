@@ -332,6 +332,28 @@ def _no_live_general_catalogue():
 
 
 @pytest.fixture(autouse=True)
+def _no_live_cyanite():
+    """Refuse the Cyanite trial's shipped send in every test, structurally.
+
+    U245. The trial uploads audio to a paid service, and its seam is read off
+    the module at call time, so a test that records a key in the isolated
+    keychain and forgets to hand the run a recorded send would otherwise
+    upload a fixture to the real service with the battery green.
+    """
+    from cratekit.tagging import cyanite
+
+    def refused(request):
+        raise AssertionError(
+            f"a test reached the shipped Cyanite send, {request.method} "
+            f"{request.url}; hand the run a recorded send"
+        )
+
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(cyanite, "_requests_send", refused)
+        yield
+
+
+@pytest.fixture(autouse=True)
 def _forget_cover_memory():
     """Start and end every test with no remembered picture and no shared fetch.
 
