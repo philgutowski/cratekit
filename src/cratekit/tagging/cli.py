@@ -255,6 +255,13 @@ def _summary(
     (R-791). A report committed before the answers were recorded counts under
     none of them, for the art repair's reason.
 
+    ``challenged`` AND ``not_sent`` COUNT A RECORD SHOP'S REFUSALS TWO MORE
+    WAYS (U281), zero filled over every source: the ``blocked`` answers whose
+    note names a Cloudflare challenge, and those the catalogue was never sent
+    because it had already refused this client in the run, read off the
+    searcher's own :data:`cratekit.tagging.searchers.NOT_SENT` head. Both are
+    counted within ``blocked``, never apart from it.
+
     THE GENERAL CATALOGUE IS COUNTED BESIDE THE THREE, over its own answers
     (R-796). Its set is the record shops' and ``no-isrc``, the one answer only a
     catalogue asked by ISRC can give, so the three do not gain a count that can
@@ -290,6 +297,8 @@ def _summary(
     answer_values = (*(answer.value for answer in searchers.Answer), searchers.NOT_ASKED)
     answers = {source: dict.fromkeys(answer_values, 0) for source in searchers.SOURCES}
     answers[published.SOURCE] = dict.fromkeys(published.ANSWERS, 0)
+    challenged = dict.fromkeys(searchers.SOURCES, 0)
+    not_sent = dict.fromkeys(searchers.SOURCES, 0)
     tagged_by = dict.fromkeys(answers, 0)
     tagged_by[tag_engine.LABEL_GENRE] = 0
     label_genres: dict[str, int] = {}
@@ -349,6 +358,17 @@ def _summary(
             word = str(said.get("answer") or "")
             if counted is not None and word in counted:
                 counted[word] += 1
+            # A REFUSAL IS COUNTED BY WHAT REFUSED AND WHETHER IT WAS SENT
+            # (U281), off the note words the searcher wrote it with, so the
+            # warning names a Cloudflare challenge and the files a catalogue
+            # was not asked about after it refused this client.
+            source = str(said.get("source") or "")
+            if word == searchers.Answer.BLOCKED.value and source in challenged:
+                note = str(said.get("note") or "")
+                if searchers.CLOUDFLARE_CHALLENGE in note:
+                    challenged[source] += 1
+                if note.startswith(searchers.NOT_SENT):
+                    not_sent[source] += 1
             # A FILE SEARCHED ONLY FOR ITS PICTURE is not one Discogs' genre was
             # owed to, so it is not counted (U244's review): it already has one.
             if (
@@ -386,6 +406,8 @@ def _summary(
         "unresolved": unresolved,
         "off_taxonomy": off_taxonomy,
         "answers": answers,
+        "challenged": challenged,
+        "not_sent": not_sent,
         "discogs_without_token": discogs_without_token,
         "art_repair": art_repair,
         "art_fetch": art_fetch,
@@ -467,7 +489,7 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
     unread = (summary.get("skipped") or {}).get(tag_engine.SOURCES_UNREAD, 0)
     if unread:
         seen = "; ".join(
-            f"{source} {word} on {counted[word]}"
+            _unread_phrase(summary, source, word, counted[word])
             for source, counted in answers.items()
             for word in searchers.UNREAD_ANSWERS
             if counted.get(word)
@@ -509,22 +531,59 @@ def _unread_warnings(summary: dict) -> tuple[dict[str, str], ...]:
     # naming it under this code as well would say one fact in two wordings.
     for source in searchers.SOURCES:
         counted = answers.get(source) or {}
+        # SENT, NOT ONLY ANSWERED (U281): a file answered from the run's memory
+        # of a refusal was never a search this catalogue was sent.
+        held = int((summary.get("not_sent") or {}).get(source) or 0)
         asked = sum(count for word, count in counted.items() if word != searchers.NOT_ASKED)
-        if asked and counted.get(searchers.Answer.BLOCKED.value, 0) == asked:
+        sent = asked - held
+        if sent > 0 and counted.get(searchers.Answer.BLOCKED.value, 0) - held == sent:
             warnings.append(
                 {
                     "code": SOURCE_BLOCKED,
                     "message": (
-                        f"{source} refused every one of the {asked} searches it "
+                        f"{source} refused every one of the {sent} searches it "
                         f"was sent, with a bot check, a block page or a rate "
                         f"limit that outlasted the backoff, rather than a result, "
-                        f"so it contributed nothing to this run. This tool does "
-                        f"not try to get past one; {source} stays unread until "
-                        f"it answers this machine again"
+                        f"so it contributed nothing to this run"
+                        + (
+                            f", and was not asked about {held} more file(s) once "
+                            f"it had refused this client"
+                            if held
+                            else ""
+                        )
+                        + f". This tool does not try to get past one; {source} "
+                        f"stays unread until it answers this machine again"
                     ),
                 }
             )
     return tuple(warnings)
+
+
+def _unread_phrase(summary: dict, source: str, word: str, count: int) -> str:
+    """One catalogue's unread answer in the sweep's tally, a refusal named as one (U281).
+
+    ``beatport unreachable on 3`` for an outage, and for a refusal ``beatport
+    refused this client (Cloudflare challenge) on 190, 187 of them not asked
+    once it had refused this client``: a refusal read as ``unreachable`` sent a
+    person to their network over a block no network check moves. The challenge
+    is named when every refusal counted was one, and counted when some were.
+    """
+    if word != searchers.Answer.BLOCKED.value:
+        return f"{source} {word} on {count}"
+    challenged = int((summary.get("challenged") or {}).get(source) or 0)
+    held = int((summary.get("not_sent") or {}).get(source) or 0)
+    if challenged >= count:
+        said = f"{source} refused this client ({searchers.CLOUDFLARE_CHALLENGE}) on {count}"
+    elif challenged:
+        said = (
+            f"{source} refused this client on {count} "
+            f"({searchers.CLOUDFLARE_CHALLENGE} on {challenged})"
+        )
+    else:
+        said = f"{source} refused this client on {count}"
+    if held:
+        said += f", {held} of them not asked once it had refused this client"
+    return said
 
 
 def _discogs_warnings(summary: dict) -> tuple[dict[str, str], ...]:
@@ -1276,7 +1335,13 @@ def handle(job, item, cfg) -> jobs.Produced:
     declared = active_taxonomy.load(cfg)
     result = tag_engine.tag_one(
         path,
-        searcher=searchers.for_taxonomy(declared),
+        # THE RUN'S REFUSALS IN A ROW, found by the run's identity (U281): the
+        # job and the drive's attempt, so a catalogue that refused this run
+        # three times in a row is not asked by its later files, and a new
+        # sweep or a resumed run asks it again from its first file.
+        searcher=searchers.for_taxonomy(
+            declared, refusals=searchers.for_run(f"{job.job_id}@{job.attempts}")
+        ),
         fetch_image=searchers.for_images(),
         published=published.for_taxonomy(declared),
         label_genre=_label_seam(payload),

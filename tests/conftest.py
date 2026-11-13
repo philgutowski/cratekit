@@ -340,14 +340,17 @@ def _forget_cover_memory():
     fetch built while one test had replaced the HTTP getter would carry that
     getter into every later test in the worker, and a picture one test's fake
     host answered would answer the next test's address without a request.
+    The run whose refusals are counted (U281) is forgotten on the same rule.
     """
     from cratekit.core import art
     from cratekit.tagging import searchers
 
     searchers.reset_images()
+    searchers.reset_runs()
     art.reset_cache()
     yield
     searchers.reset_images()
+    searchers.reset_runs()
     art.reset_cache()
 
 
