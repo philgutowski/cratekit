@@ -241,7 +241,7 @@ description = '''_readings: the whole name crediting the artist is shed again, r
 file = "src/cratekit/tagging/searchers.py"
 surface = "user"
 tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
-old = '''            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+old = '''            shed_of = _unshed if (first, last) == whole and credited else _shed
 '''
 new = '''            shed_of = _shed
 '''
@@ -252,9 +252,9 @@ description = '''_readings: every run of a name crediting the artist is read uns
 file = "src/cratekit/tagging/searchers.py"
 surface = "user"
 tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
-old = '''            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+old = '''            shed_of = _unshed if (first, last) == whole and credited else _shed
 '''
-new = '''            shed_of = _unshed if head in artists else _shed
+new = '''            shed_of = _unshed if credited else _shed
 '''
 
 [[rows]]
@@ -263,7 +263,7 @@ description = '''_readings: every whole name is read unshed, a catalogue's and a
 file = "src/cratekit/tagging/searchers.py"
 surface = "user"
 tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
-old = '''            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+old = '''            shed_of = _unshed if (first, last) == whole and credited else _shed
 '''
 new = '''            shed_of = _unshed if (first, last) == whole else _shed
 '''
@@ -277,4 +277,16 @@ tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tes
 old = '''        splits = _name_splits(parts, head, title) if split else frozenset()
 '''
 new = '''        splits = frozenset()
+'''
+
+[[rows]]
+id = "M25_featured_title_unshed"
+description = '''_credits_before_featuring: any credit in the first part keeps the whole unshed, round two's regression'''
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if cut is None:
+        return True
+'''
+new = '''    return True
 '''
