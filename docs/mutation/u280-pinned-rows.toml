@@ -1,0 +1,35 @@
+name = "u280-pinned"
+pass_kind = "light"
+
+[[rows]]
+id = "M06_marker_read_anywhere"
+description = '''read_title: a square bracketed group is read past at any part, not only where the naming verb writes its marker'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    found = _MARKER.match(text) if marker else None
+'''
+new = '''    found = _MARKER.match(text)
+'''
+
+[[rows]]
+id = "M11_ambiguity_featured_credits"
+description = '''_only_a_list_reads: a part naming the artist only as featured counts among several credits'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if len(credits) > 1 and not all(_credits_before_featuring(parts[index], names) for index in credits):
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M29_marker_number_from_all_words"
+description = '''read_title: past the marker a track number is decided from all remaining words, "[MP3] 01 - Artist - (Intro)" (round one's BLOCKING F1, as a row)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            numbered=_numbered(words(text[found.end() :].split(DASH)[0])),
+'''
+new = '''            numbered=_numbered(words(text[found.end() :])),
+'''

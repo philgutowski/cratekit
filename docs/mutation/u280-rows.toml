@@ -1,0 +1,279 @@
+name = "u280"
+pass_kind = "light"
+
+[[rows]]
+id = "M01_ambiguous_read_as_titled"
+description = '''matches: an ambiguous name is matched as a titled one, by its whole name only, so no row writing its split confirms it'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if file.outcome is Outcome.AMBIGUOUS:
+        return bool(file.splits & row.splits) or _any_same(whole, row.titles)
+'''
+new = '''    if file.outcome is Outcome.AMBIGUOUS:
+        return _any_same(whole, row.titles)
+'''
+
+[[rows]]
+id = "M03_bare_names_dropped"
+description = '''Title.same: a bare name of one title no longer meets the other's names, "(Not Just) Knee Deep" misses "Knee Deep"'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            self.names & other.names or self.names & other.bare or self.bare & other.names
+'''
+new = '''            self.names & other.names or self.names & other.bare
+'''
+
+[[rows]]
+id = "M04_bare_meets_bare"
+description = '''Title.same: two bare names meet, "(Love) Is The Message" meets "(Hate) Is The Message"'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            self.names & other.names or self.names & other.bare or self.bare & other.names
+'''
+new = '''            self.names & other.names or self.names & other.bare or self.bare & other.names or self.bare & other.bare
+'''
+
+[[rows]]
+id = "M05_marker_not_read_past"
+description = '''read_title: the naming verb's marker is never read past, "[MP3] (Not Just) Knee Deep" misses its row'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    found = _MARKER.match(text) if marker else None
+'''
+new = '''    found = None
+'''
+
+[[rows]]
+id = "M06_marker_read_anywhere"
+description = '''read_title: a square bracketed group is read past at any part, not only where the naming verb writes its marker'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    found = _MARKER.match(text) if marker else None
+'''
+new = '''    found = _MARKER.match(text)
+'''
+
+[[rows]]
+id = "M07_version_alone_after_title"
+description = '''read_title: a title read after the artist's credit or a track number may be version words alone'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        return not (after_title and _version_alone(found))
+'''
+new = '''        return True
+'''
+
+[[rows]]
+id = "M09_ambiguity_ignores_feature"
+description = '''_only_a_list_reads: a feature credit after the version hides the shape again (R-1651's first shape)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    cut = _before_featuring(parts[first])
+'''
+new = '''    cut = parts[first]
+'''
+
+[[rows]]
+id = "M10_ambiguity_one_credit_only"
+description = '''_only_a_list_reads: more than one credit hides the shape again (R-1651's second shape)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if first >= layout.end or layout.numbered or not credits:
+'''
+new = '''    if first >= layout.end or layout.numbered or len(credits) != 1:
+'''
+
+[[rows]]
+id = "M11_ambiguity_featured_credits"
+description = '''_only_a_list_reads: a part naming the artist only as featured counts among several credits'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if len(credits) > 1 and not all(_credits_before_featuring(parts[index], names) for index in credits):
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M12_ambiguity_version_alone"
+description = '''_only_a_list_reads: X of version words alone is ambiguous too, "Artist - Original Mix" no longer the self titled track'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if _version_alone(words(title_core(cut)[0])) or not _ends_in_version(cut):
+'''
+new = '''    if not _ends_in_version(cut):
+'''
+
+[[rows]]
+id = "M13_ambiguity_track_numbered"
+description = '''_only_a_list_reads: a track numbered later title no longer makes X its album'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if first >= layout.end or layout.numbered or not credits:
+'''
+new = '''    if first >= layout.end or not credits:
+'''
+
+[[rows]]
+id = "M15_splits_without_feature_cut"
+description = '''_name_splits: X is split only as written, never without its feature credit'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    for tail in dict.fromkeys((parts[ambiguous], _before_featuring(parts[ambiguous]).rstrip())):
+'''
+new = '''    for tail in (parts[ambiguous],):
+'''
+
+[[rows]]
+id = "M17_featured_part_never"
+description = '''_featured_first_part: a first part naming the artist only as featured is never read as a title'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if head != 0 or head == layout.title or head not in layout.credits:
+'''
+new = '''    if True:
+'''
+
+[[rows]]
+id = "M18_featured_part_own_credit"
+description = '''_featured_first_part: the artist's own credit is read as a title too, "Artist feat. Tide" as "artist"'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if _credits_before_featuring(parts[head], names):
+        return None
+'''
+new = ''''''
+
+[[rows]]
+id = "M19_tempo_never_title"
+description = '''_tempo_as_title: a tempo alone before a version alone is never read as a title'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if layout.body != 1 or naming.is_camelot(words(parts[0])[0]):
+'''
+new = '''    if True:
+'''
+
+[[rows]]
+id = "M20_tempo_before_anything"
+description = '''_tempo_as_title: a tempo alone is a title whatever follows it'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if not _version_alone(words(title_core(cut)[0])[1:]):
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M22_whole_name_shed"
+description = '''read_file: the whole name is shed across its dashes again'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    whole = read_title(text, shed=False, numbered=_numbered(words(parts[0])))
+'''
+new = '''    whole = read_title(text, shed=True, numbered=_numbered(words(parts[0])))
+'''
+
+[[rows]]
+id = "M24_track_number_past_marker"
+description = '''_a_track_number: a lone track number is not read past a marker, "[MP3] 01 - Ame - Title" is titled "01"'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return _LONE_TRACK_NUMBER.fullmatch(_LEADING_GROUPS.sub("", part).strip()) is not None
+'''
+new = '''    return _LONE_TRACK_NUMBER.fullmatch(part.strip()) is not None
+'''
+
+[[rows]]
+id = "M25_row_reads_a_head_tail"
+description = '''read_row: a row's dash tail that is a head is shed as a file's is, a row "Sun Path - 08A - 124" read as "sun path"'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        if last == len(parts) or _a_tail_to_shed(DASH.join(parts[last:]), file=False)
+'''
+new = '''        if last == len(parts) or _a_tail_to_shed(DASH.join(parts[last:]), file=True)
+'''
+
+[[rows]]
+id = "M26_brackets_shed_across_a_dash"
+description = '''own_core: a last part of brackets alone is shed across the dash again, "Artist - (Intro)" read as "artist" (round one's F2)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if DASH in text and not identifies(without_trailing_groups(text.split(DASH)[-1])):
+'''
+new = '''    if False:
+'''
+
+[[rows]]
+id = "M27_leading_groups_across_a_dash"
+description = '''read_title: the groups a stretch opens with are shed when they are its whole first part, "(Intro) - Original Mix" read as "original mix" (F2)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        if lead is not None and identifies(core.split(DASH)[0][lead.end() :]):
+'''
+new = '''        if lead is not None:
+'''
+
+[[rows]]
+id = "M28_any_number_read_past"
+description = '''read_title: any first word flagged as a number is read past before brackets, "007 (Intro)" as "(Intro)" (round two's BLOCKING, as a row)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''        elif _a_track_number(found[0]):
+'''
+new = '''        else:
+'''
+
+[[rows]]
+id = "M29_marker_number_from_all_words"
+description = '''read_title: past the marker a track number is decided from all remaining words, "[MP3] 01 - Artist - (Intro)" (round one's BLOCKING F1, as a row)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''            numbered=_numbered(words(text[found.end() :].split(DASH)[0])),
+'''
+new = '''            numbered=_numbered(words(text[found.end() :])),
+'''
+
+[[rows]]
+id = "M30_featured_after_a_head"
+description = '''_featured_first_part: fires after a head too, "08A - 124 - Artist feat. Tide - Title" tagged "Tide" (round one's F3)'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    if head != 0 or head == layout.title or head not in layout.credits:
+'''
+new = '''    if head == layout.title or head not in layout.credits:
+'''
+
+[[rows]]
+id = "M31_bracketed_later_title_unread"
+description = '''_opens_with_a_track_number: "02 (Intro)" after an album is no later title, and "(Intro)" is never read'''
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_discogs_searcher.py", "tests/test_tagging_engine.py", "tests/test_tag_workers.py", "tests/test_bandcamp.py"]
+old = '''    return _numbered(core) or (len(core) == 1 and _a_track_number(core[0]) and len(words(part)) > 1)
+'''
+new = '''    return _numbered(core)
+'''

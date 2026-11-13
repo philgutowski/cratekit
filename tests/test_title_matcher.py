@@ -30,18 +30,28 @@ only inside the other's trailing brackets ("How Does It Feel" against
 "Intro" against "Sunrise Mood (Intro)", pinned below as a known cost, and some
 shapes of a file with no title tag, asked by its name.
 
+HOW IT IS READ, SINCE U280. The matcher is `cratekit.tagging.titles`: a
+file's title or name is read once into its parts, each with its role and how
+that was told, and an outcome, titled, ambiguous or unreadable; a row is read
+by its own structure; and the tables above hold as they were written. Section
+L pins the parse itself, the shapes R-1651 named that are ambiguous now, the
+whole name read as written, and a property over names the naming verb
+renders.
+
 NOTHING HERE OPENS A SOCKET. Pages are synthetic text in the shapes the
 parsers read, handed to the injected fetch seam.
 """
 
 from __future__ import annotations
 
+import random
 from pathlib import Path
 
 import pytest
 
 from cratekit.core import tags
-from cratekit.tagging import searchers, tag
+from cratekit.core.naming import MarkerRule, NameSpec, NameTemplate, render_all
+from cratekit.tagging import searchers, tag, titles
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import (
     ARTIST,
@@ -1379,3 +1389,291 @@ def test_a_bracketed_title_before_a_feature_is_read_without_the_credit(title, ow
     the title's brackets too, so the feature word led the part and the whole
     name was kept unshed, losing the title's own row."""
     assert _matches(title, own)
+
+
+# ---------------------------------------------------------------------------
+# L. U280: a title read once into typed parts, ambiguity an outcome
+# ---------------------------------------------------------------------------
+
+#: (artist tag, file title, each part's role, the outcome): the parse says what
+#: each dash part is, and a name only a list of version words could read is
+#: ambiguous rather than read both ways.
+PARSED = [
+    (ARTIST, "08A - 124 - Sunrise Mood", "head head title", "titled"),
+    (ARTIST, f"08A - 124 - {ARTIST} - Sun Path - Original Mix", "head head credit title after", "titled"),
+    (ARTIST, f"{ARTIST} - Sun Path - 02 Tide", "credit album title", "titled"),
+    (ARTIST, f"{ARTIST} - Sun Path - 02 - Tide", "credit album number title", "titled"),
+    (ARTIST, f"01 - {ARTIST} - Sun Path", "number credit title", "titled"),
+    (ARTIST, f"{ARTIST} - Original Mix", "title after", "titled"),
+    (ARTIST, f"{ARTIST} - {ARTIST} - Sun Path", "title credit after", "titled"),
+    (ARTIST, "Sun Path - 08A - 124", "title head head", "titled"),
+    (ARTIST, f"Tide - {ARTIST} - Sun Path", "title credit after", "titled"),
+    (ARTIST, f"{ARTIST} - Vocal Mix", "credit title", "ambiguous"),
+    (ARTIST, f"08A - 124 - {ARTIST} - Sunrise Mood Extended Mix", "head head credit title", "ambiguous"),
+    # R-1651: a feature credit after the version, and two parts crediting
+    # the artist before it, hide the shape no longer.
+    (ARTIST, f"{ARTIST} - Vocal Mix feat. Tide", "credit title", "ambiguous"),
+    (f"{ARTIST} & Tide", f"{ARTIST} - Tide - Sunrise Mood Extended Mix", "credit credit title", "ambiguous"),
+    (ARTIST, "()", "", "unreadable"),
+]
+
+_ROLE_WORDS = {
+    titles.Role.HEAD: "head",
+    titles.Role.NUMBER: "number",
+    titles.Role.CREDIT: "credit",
+    titles.Role.TITLE: "title",
+    titles.Role.ALBUM: "album",
+    titles.Role.LATER: "after",
+}
+
+
+@pytest.mark.parametrize(("artist", "name", "roles", "outcome"), PARSED)
+def test_a_name_is_read_once_into_its_parts(artist, name, roles, outcome):
+    read = titles.read_file(name, artist)
+    assert " ".join(_ROLE_WORDS[part.role] for part in read.parts) == roles
+    assert read.outcome.value == outcome
+
+
+def test_each_part_says_how_its_role_was_told():
+    read = titles.read_file(f"08A - 124 - {ARTIST} - Vocal Mix", ARTIST)
+    assert [part.told for part in read.parts] == [
+        titles.Told.SHAPE,
+        titles.Told.SHAPE,
+        titles.Told.CREDIT,
+        titles.Told.LIST,
+    ]
+    titled = titles.read_file(f"{ARTIST} - Sun Path - 02 Tide", ARTIST)
+    assert [part.told for part in titled.parts] == [titles.Told.CREDIT, titles.Told.POSITION, titles.Told.POSITION]
+
+
+def test_a_titled_name_says_where_each_title_it_reads_comes_from():
+    read = titles.read_file("08A - 124 - Sunrise Mood - Original Mix", ARTIST)
+    assert len(read.titles) == len(read.why) > 0
+    assert all(why.startswith("parts ") for why in read.why)
+
+
+#: (artist tag, file title, a row only one reading of the name fits, a row
+#: writing the same split): R-1651's first two shapes, which main read one
+#: way, are ambiguous now, so the row that reads them one way writes nothing
+#: and the row writing the split still does.
+R1651 = [
+    (ARTIST, f"{ARTIST} - Vocal Mix feat. Tide", "Vocal", f"{ARTIST} (Vocal Mix)"),
+    (ARTIST, f"08A - 124 - {ARTIST} - Vocal Mix feat. Tide", "Vocal Mix", f"{ARTIST} (Vocal Mix feat. Tide)"),
+    (f"{ARTIST} & Tide", f"{ARTIST} - Tide - Sunrise Mood Extended Mix", ARTIST, "Sunrise Mood (Extended Mix)"),
+    (f"{ARTIST} & Tide", f"{ARTIST} - Tide - Sunrise Mood Extended Mix", "Tide", "Sunrise Mood - Extended Mix"),
+    (ARTIST, f"{ARTIST} - {ARTIST} - Vocal Mix", ARTIST, f"{ARTIST} (Vocal Mix)"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "one_way", "split"), R1651)
+def test_a_name_hiding_the_shape_is_ambiguous_too(artist, title, one_way, split):
+    assert not searchers._title_matches(title, one_way, artist=artist)
+    assert searchers._title_matches(title, split, artist=artist)
+
+
+@pytest.mark.parametrize("source", ["beatport", "discogs"])
+@pytest.mark.parametrize(
+    ("artist", "title", "one_way"),
+    [(artist, title, one_way) for artist, title, one_way, _ in R1651]
+    + [(ARTIST, searched, found) for searched, found in SPLIT_UNCONFIRMED],
+)
+def test_every_ambiguous_shape_writes_no_genre_off_a_row_that_reads_it_one_way(
+    tmp_path, silence, source, artist, title, one_way
+):
+    path = _file(tmp_path, silence, "a", {"artist": artist, "title": title})
+    if source == "beatport":
+        rows = [_beatport_track(artist, one_way, BUCKET_GENRE, mix=mix) for mix in ("", "Original Mix")]
+        fetch = routed(search=results(), beatport=searchers.Fetched(text=_beatport_page(rows), status=200))
+    else:
+        tracks = [{"position": "A1", "type_": "track", "title": one_way}]
+        fetch = routed(search=results(56), releases={56: release(56, tracks=tracks)})
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+# The property: names the naming verb renders find their own row and no other.
+
+#: Titles no two of which a catalogue could take for one recording, none a
+#: version word, a head or an artist's name, and one of bracket groups alone
+#: (review round one's F6).
+GENERATED_TITLES = (
+    "Sunrise Mood",
+    "Glass Hour",
+    "Corner Talk",
+    "(Not Just) Knee Deep",
+    "909",
+    "Kitchen Session 2",
+    "Summer 1999",
+    "Love Is The Message",
+    "Riding The Tide",
+    "Shout It Out",
+    "Make Luv",
+    "Burning Bridges",
+    "(Intro)",
+    "007 (Interlude)",
+)
+
+#: (artist tag, the credit as a name writes it).
+GENERATED_CREDITS = (
+    (ARTIST, ARTIST),
+    (ARTIST, f"{ARTIST} & Tide"),
+    (ARTIST, f"Tide & {ARTIST}"),
+    (ARTIST, "B. Badie"),
+    ("The Black Madonna", "Black Madonna"),
+    ("Âme", "Ame"),
+    ("Tide", "Tide"),
+)
+
+#: The file's version, written after its title, and a catalogue's.
+GENERATED_VERSIONS = ("", " (Extended Mix)", " (Kerri Chandler Remix)", " - Original Mix", " [Dub Mix]")
+ROW_VERSIONS = ("", " (Extended Mix)", " - Original Mix", " (Original Mix)")
+ALBUMS = ("Sun Path", "Night Shapes", "Summer Mix")
+
+#: The bodies a file's name or title tag is written with.
+BODIES = (
+    "{credit} - {title}",
+    "{title} - {credit}",
+    "{title} - {credit} - {album}",
+    "{credit} - {album} - {number} {title}",
+    "{credit} - {album} - {number} - {title}",
+    "{number} - {credit} - {title}",
+    "{title}",
+)
+
+_TEMPLATE = NameTemplate(markers=(MarkerRule(field="lossy", literal="[MP3]"),))
+
+
+def _rendered(chance) -> tuple[str, str, str, str]:
+    """One name the naming verb renders, as the tag reader asks it: (artist
+    tag, the searched title, its title, its album)."""
+    artist, credit = chance.choice(GENERATED_CREDITS)
+    title = chance.choice(GENERATED_TITLES)
+    album = chance.choice(ALBUMS)
+    body = chance.choice(BODIES).format(
+        credit=credit,
+        title=title + chance.choice(GENERATED_VERSIONS),
+        album=album,
+        number=f"0{chance.randint(1, 9)}",
+    )
+    headed = chance.random() < 0.7
+    tagged = chance.random() < 0.5
+    spec = NameSpec(
+        stem=body,
+        suffix=".flac",
+        key=chance.choice(["8A", "11B", "1A"]) if headed else None,
+        bpm=chance.randint(70, 180) if headed else None,
+        title=body if tagged and "{credit}" not in body else None,
+        lossy=chance.random() < 0.3,
+    )
+    rendered = render_all(spec, template=_TEMPLATE)
+    searched = rendered.title_tag if tagged else rendered.filename.removesuffix(".flac")
+    return artist, searched, title, album
+
+
+def test_every_name_the_naming_verb_renders_finds_its_own_row_and_no_other():
+    """The card's property: names rendered from the naming verb's own grammar,
+    with random heads, markers, credits, titles, versions, albums and track
+    numbers, each match their own title's row however a catalogue writes its
+    version, and no other title's, nor the artist's self titled row, nor the
+    album, nor a version alone."""
+    chance = random.Random(791)
+    for _ in range(3000):
+        artist, searched, title, album = _rendered(chance)
+        for version in ROW_VERSIONS:
+            assert searchers._title_matches(searched, title + version, artist=artist), (searched, title + version)
+        others = [other for other in GENERATED_TITLES if other != title]
+        wrong = [*(other + chance.choice(ROW_VERSIONS) for other in others), album, "Original Mix", "Extended Mix"]
+        wrong += [name for name in ("Bernard Badie", "Tide", "Black Madonna", "Ame") if name not in title]
+        for row in wrong:
+            assert not searchers._title_matches(searched, row, artist=artist), (searched, row)
+
+
+#: (artist tag, file title, a row): a whole name is read as written, never shed
+#: across its dashes, so a feature credit cut from it never leaves the
+#: artist's name alone (R-1646 round one's class, here in a name of two
+#: credits), and what main found only that way is read by the parse instead.
+WHOLE_NAME_NOT = [
+    (f"{ARTIST} & Tide", f"{ARTIST} feat. Someone - Tide - Vocal Mix", ARTIST),
+    (f"{ARTIST} & Tide", f"{ARTIST} - Tide feat. Someone - Sunrise Mood Extended Mix", ARTIST),
+    (ARTIST, "08A - 124 - Interlude", "08A - 124 - (Intro)"),
+    # A tempo is a title only before nothing but a version.
+    (ARTIST, "124 - Dub - Sunrise Mood", "124"),
+    # Review round one: a track number read past the marker across a dash
+    # (F1), and a bracket group shed across a dash (F2), each left the
+    # artist's name alone.
+    (ARTIST, f"[MP3] 01 - {ARTIST} - (Intro)", ARTIST),
+    (ARTIST, f"[MP3] 01 - {ARTIST} - Vocal (Live)", ARTIST),
+    (ARTIST, f"{ARTIST} - (Intro)", ARTIST),
+    (ARTIST, f"{ARTIST} - (Intro) (Live)", ARTIST),
+    (ARTIST, f"01A - 150 - (Intro) - {ARTIST} - Night Shapes", ARTIST),
+    # And the first part naming the artist only as featured is read as a
+    # title only where main read it, with no head before it (F3).
+    ("Tide", f"08A - 124 - {ARTIST} feat. Tide - Sunrise Mood", ARTIST),
+    # Review round two: a number of three figures before brackets is the
+    # title's own, never a track number read past.
+    (ARTIST, "007 (Intro)", "Intro"),
+    (ARTIST, "010 (Intro)", "(Intro)"),
+    (ARTIST, f"08A - 124 - {ARTIST} - 007 (Intro)", "Intro"),
+    # The mutation table's zeros, pinned: a track number past the marker is
+    # its first part's own (M29), and a square group is read past only where
+    # the naming verb writes its marker, so two leading groups never meet on
+    # what is left (M06).
+    (ARTIST, "[MP3] 01 - Original Mix", "Original Mix"),
+    (ARTIST, f"{ARTIST} - [Love] Is The Message", "(Hate) Is The Message"),
+]
+WHOLE_NAME_STILL = [
+    # The first part names the artist only as featured: a title featuring them.
+    ("Tide", "Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood"),
+    # A number in a tempo's range before a version alone is a title too.
+    (ARTIST, "100 - Original Mix", "100"),
+    (ARTIST, "124 - Interlude", "Interlude"),
+    (ARTIST, "124 - Interlude", "124"),
+    # A track number glued to a title past the marker is still shed.
+    (ARTIST, "[MP3] 01 Sunrise Mood", "Sunrise Mood"),
+    (ARTIST, f"{ARTIST} - (Intro)", "Intro"),
+    (ARTIST, f"[MP3] 01 - {ARTIST} - (Intro)", "(Intro)"),
+    # A part naming the artist only as featured is no credit among several,
+    # so the name is no ambiguous shape and its title is read (M11).
+    (f"{ARTIST} & Tide", f"08A - 124 - Sunrise Mood (feat. Tide) - {ARTIST} - Vocal Mix", "Sunrise Mood"),
+]
+
+
+@pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_NOT)
+def test_a_whole_name_is_never_shed_across_its_dashes(artist, title, row):
+    assert not searchers._title_matches(title, row, artist=artist)
+
+
+def test_a_lossy_file_named_with_a_track_number_takes_no_self_titled_genre(tmp_path, silence):
+    """Review round one's F1, through the naming verb and tag_one: a lossy
+    file with no key and no tempo is titled "[MP3] 01 - Artist - (Intro)",
+    and the track number read past the marker across a dash left the
+    artist's name, so the self titled row wrote its genre."""
+    rendered = render_all(NameSpec(stem=f"01 - {ARTIST} - (Intro)", suffix=".flac", lossy=True), template=_TEMPLATE)
+    path = _file(tmp_path, silence, "a", {"artist": ARTIST, "title": rendered.title_tag})
+
+    result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(ARTIST, 57)))
+
+    assert rendered.title_tag == f"[MP3] 01 - {ARTIST} - (Intro)"
+    assert result.genre_written is None
+    assert tags.read_genre_from_file(path) is None
+
+
+@pytest.mark.parametrize(
+    "title", [f"{ARTIST} - (Intro)", f"{ARTIST} - (Intro) (Live)", f"{ARTIST} - [Intro]", "007 (Intro)"]
+)
+def test_beatport_ranks_no_row_by_brackets_shed_across_a_dash(title):
+    """Review round two: Beatport's middle tier read the title's core across
+    a dash, so "Artist - (Intro)" scored the self titled row above the file's
+    own, in either order on the page."""
+    rows = [_beatport_track(ARTIST, ARTIST, "Techno"), _beatport_track(ARTIST, "Intro", BUCKET_GENRE)]
+    for page in (rows, rows[::-1]):
+        assert _beatport_hit(title, page).genre in (BUCKET_GENRE, None)
+    assert _beatport_answer(_beatport_hit(title, rows[:1])) == "miss"
+
+
+@pytest.mark.parametrize(("artist", "title", "row"), WHOLE_NAME_STILL)
+def test_what_the_whole_name_found_the_parse_still_reads(artist, title, row):
+    assert searchers._title_matches(title, row, artist=artist)
