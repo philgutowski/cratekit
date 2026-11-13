@@ -418,6 +418,86 @@ def test_deadca7s_folder_is_named_once_as_foreign_and_a_full_apply_leaves_it_as_
     assert rekordbox.FOREIGN_FACT in again["facts"]
 
 
+@pytest.fixture
+def eastern():
+    """The process west of UTC for the whole test, the world built in it too (U285)."""
+    with deadca7_fixtures.west_of_utc():
+        yield
+
+
+def _readings() -> dict[str, object]:
+    """What organize's report, converge and doctor answer, minus what moves per run.
+
+    Organize's rekordbox area without the foreign fact, which is the one line
+    a push adds; each converge check and each doctor check by key, status and
+    detail.
+    """
+    area = dict(_report()["data"]["summary"]["areas"][rekordbox.AREA])
+    area["facts"] = {
+        key: value for key, value in area["facts"].items() if key != rekordbox.FOREIGN_FACT
+    }
+    readings: dict[str, object] = {"organize": area}
+    for verb in ("converge", "doctor"):
+        code, envelope = drive([verb])
+        readings[verb] = (
+            code,
+            [
+                (check["key"], check["status"], check.get("detail"))
+                for check in envelope["data"]["checks"]
+            ],
+        )
+    return readings
+
+
+def test_a_push_stamped_with_the_zero_date_reads_as_no_push_at_all_west_of_utc(eastern, world):
+    """U285, from sitting 98. DEADCA7 stamps its rows ``0001-01-01T00:00:00Z``.
+
+    West of UTC the binding read that as the year before year 1 and raised
+    ``OverflowError``, so ``organize`` and ``converge`` failed INTERNAL over a
+    real push. Over the producer's own value, every verb that reads the tree
+    answers exactly as it did before the push, organize names the folder once
+    as another app's, a full apply leaves every row the push wrote byte for
+    byte, its dates included, and a second report reads it the same way.
+    """
+    cfg, _fake, _held, _inbox, _ids = world
+    before_push = _readings()
+    pushed = deadca7_fixtures.push(
+        cfg.library.db_path, ("r-one", "r-two"), stamp=deadca7_fixtures.ZERO_STAMP
+    )
+    written = deadca7_fixtures.written(cfg.library.db_path, pushed)
+    nodes = (pushed.folder_id, *pushed.playlist_ids)
+    stamps = _query(
+        cfg,
+        "SELECT created_at, updated_at FROM djmdPlaylist WHERE ID IN (?, ?, ?) "
+        "UNION ALL SELECT created_at, updated_at FROM djmdSongPlaylist "
+        "WHERE PlaylistID IN (?, ?, ?)",
+        *nodes,
+        *nodes,
+    )
+    assert len(stamps) == 3 + 2 * len(pushed.content_ids)
+    assert set(stamps) == {(deadca7_fixtures.ZERO_STAMP, deadca7_fixtures.ZERO_STAMP)}
+
+    after_push = _readings()
+    assert after_push == before_push
+    # The readings read the database: converge compared a governed tree, which
+    # walks every playlist row through the binding.
+    _code, checks = after_push["converge"]
+    statuses = {status for key, status, _detail in checks if key.startswith("tree.")}
+    assert statuses & {"matching", "differing"}, checks
+    area = _report()["data"]["summary"]["areas"][rekordbox.AREA]
+    assert deadca7_fixtures.FOLDER not in {one["name"] for one in area["yours"]}
+    assert area["facts"][rekordbox.FOREIGN_FACT].startswith(f"{deadca7_fixtures.FOLDER} at")
+    for name in deadca7_fixtures.PLAYLISTS.values():
+        assert name not in str(area)
+
+    code, done, _first = _answered()
+    assert code == int(ExitCode.OK), done
+    assert deadca7_fixtures.written(cfg.library.db_path, pushed) == written
+    again = _report()["data"]["summary"]["areas"][rekordbox.AREA]
+    assert deadca7_fixtures.FOLDER not in {one["name"] for one in again["yours"]}
+    assert rekordbox.FOREIGN_FACT in again["facts"]
+
+
 def test_approving_rekordbox_and_aborting_the_account_writes_only_rekordbox(world):
     cfg, _fake, held, inbox, ids = world
     assert _filed(cfg) == []

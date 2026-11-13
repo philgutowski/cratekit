@@ -64,6 +64,7 @@ the normal home it reads the real, empty one.
 
 DEADCA7 writes `created_at` and `updated_at` as `0001-01-01T00:00:00Z` on its
 folder, playlist and membership rows, which the test fixtures never did (their
-stamp is an ordinary 2026 date). That value breaks pyrekordbox's date reading in
-a time zone west of UTC; U283 (#800) carries it. A fixture written beside a fix
-is not the producer's value: drive the real push.
+stamp is an ordinary 2026 date). That value broke pyrekordbox's date reading in
+a time zone west of UTC. U285 (#800, filed as U283) reads it as a bound at the
+open seam, `core/rb_dates.py`, and the fixture now writes `ZERO_STAMP` exactly.
+A fixture written beside a fix is not the producer's value: drive the real push.
