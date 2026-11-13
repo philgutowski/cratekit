@@ -706,7 +706,7 @@ def test_a_mount_table_is_read_by_its_longest_mount_point(tmp_path, monkeypatch)
     assert battery.filesystem_of(Path("/srv/with space/x")) == "tmpfs"
     assert battery.filesystem_of(Path("/srv/x")) == "ext4"
     assert battery.filesystem_of(Path("/data/x")) == "tmpfs", "the later mount covers the earlier"
-    assert battery.filesystem_of(Path("/home/x")) == "ext4"
+    assert battery.filesystem_of(Path("/opt/x")) == "ext4"
     monkeypatch.setattr(battery, "MOUNTS", tmp_path / "absent")
     assert battery.filesystem_of(Path("/dev/shm/x")) is None
 
