@@ -197,6 +197,7 @@ def test_a_temporary_volume_shared_with_the_store_must_hold_both(cfg, scratch, m
 
     assert refused.value.cause.reason == ROOM
     assert refused.value.cause.detail["required_bytes"] == both
+    assert refused.value.cause.detail["shares_volume_with"] == str(snapshot.store_root(cfg))
     assert "also holds the capture store" in refused.value.cause.message
     assert _stores(cfg) == []
 
@@ -234,6 +235,29 @@ def test_a_store_not_yet_made_is_read_as_the_volume_of_its_nearest_parent(tmp_pa
     """
     assert snapshot._device(tmp_path / "not" / "yet" / "made") == os.stat(tmp_path).st_dev
     assert snapshot._device(tmp_path) == os.stat(tmp_path).st_dev
+
+
+def test_two_volumes_with_different_devices_are_separate(tmp_path, monkeypatch):
+    """The direction that lets a write proceed: a separate temporary volume is not asked for both."""
+    devices = {tmp_path / "scratch": 7, tmp_path / "store": 8}
+    monkeypatch.setattr(snapshot, "_device", lambda path: devices[Path(path)])
+    assert not snapshot._same_volume(tmp_path / "scratch", tmp_path / "store")
+    devices[tmp_path / "store"] = 7
+    assert snapshot._same_volume(tmp_path / "scratch", tmp_path / "store")
+
+
+def test_no_temporary_directory_at_all_refuses_before_anything_is_written(cfg, monkeypatch):
+    def none_usable():
+        raise FileNotFoundError(errno.ENOENT, "No usable temporary directory found")
+
+    monkeypatch.setattr(W, "disposable_root", none_usable)
+
+    with pytest.raises(CratekitError) as refused:
+        snapshot.capture(cfg)
+
+    assert refused.value.cause.reason == ROOM
+    assert "no temporary directory could be found" in refused.value.cause.message
+    assert _stores(cfg) == []
 
 
 def test_a_volume_whose_device_cannot_be_read_counts_as_shared(tmp_path, monkeypatch):
