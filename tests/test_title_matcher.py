@@ -1365,3 +1365,17 @@ def test_a_title_crediting_a_featured_artist_takes_its_own_genre_listed_first(tm
 def test_the_self_titled_split_reads_past_a_marker_and_a_feature_credit_together(searched):
     assert _matches(searched, f"{ARTIST} (Vocal Mix)")
     assert not _matches(searched, ARTIST)
+
+
+@pytest.mark.parametrize(
+    ("title", "own"),
+    [
+        (f"(Dub Mix) feat. {ARTIST} - Tide", "Dub Mix"),
+        (f"(Intro) feat. {ARTIST} - Tide - Album", "(Intro)"),
+    ],
+)
+def test_a_bracketed_title_before_a_feature_is_read_without_the_credit(title, own):
+    """Found by the differential after fix round two: the marker strip took
+    the title's brackets too, so the feature word led the part and the whole
+    name was kept unshed, losing the title's own row."""
+    assert _matches(title, own)
