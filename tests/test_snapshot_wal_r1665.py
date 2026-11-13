@@ -314,23 +314,52 @@ def test_the_check_changes_nothing_in_the_file_set_it_is_given(cfg, tmp_path, en
     assert _digests(copied.parent) == before
 
 
-def test_a_damaged_copy_still_fails_the_check(cfg, tmp_path):
-    """The throwaway copy carries the damage, so the verdict is still about these bytes."""
-    copied = W.snapshot_db(_database(cfg), stamp="s", root=tmp_path / "snaps")
+def _damage_page(copied: Path, name: str) -> None:
+    """Give the b-tree named ``name`` an empty leaf page whose header SQLite rejects."""
     conn = sqlite3.connect(copied)
     try:
         (size,) = conn.execute("PRAGMA page_size").fetchone()
         (root,) = conn.execute(
-            "SELECT rootpage FROM sqlite_master WHERE name = 'djmdContent'"
+            "SELECT rootpage FROM sqlite_master WHERE name = ?", (name,)
         ).fetchone()
     finally:
         conn.close()
     raw = bytearray(copied.read_bytes())
-    # The table's root page given a type byte no b-tree page carries.
-    raw[(root - 1) * size] = 0x07
+    raw[(root - 1) * size : root * size] = b"\x0a" + bytes(size - 1)
     copied.write_bytes(bytes(raw))
 
+
+def test_a_damaged_copy_still_fails_the_check(cfg, tmp_path):
+    """The throwaway copy carries the damage, so the verdict is still about these bytes.
+
+    A table's root page, which the open's own canary already refuses.
+    """
+    copied = W.snapshot_db(_database(cfg), stamp="s", root=tmp_path / "snaps")
+    _damage_page(copied, "djmdContent")
+
     assert W.integrity_ok(copied) is False
+
+
+def test_damage_only_the_consistency_check_sees_fails_the_check(cfg, tmp_path, monkeypatch):
+    """An index page damaged, so the open succeeds and ``quick_check`` alone refuses.
+
+    The test above stops at the open's canary, so it holds no verdict of the
+    check itself; this one asserts the open succeeded first.
+    """
+    copied = W.snapshot_db(_database(cfg), stamp="s", root=tmp_path / "snaps")
+    _damage_page(copied, "sqlite_autoindex_djmdSongPlaylist_1")
+    opened: list[Path] = []
+    real = W.open_db
+
+    def recorded(path, **kwargs):
+        handle = real(path, **kwargs)
+        opened.append(Path(path))
+        return handle
+
+    monkeypatch.setattr(W, "open_db", recorded)
+
+    assert W.integrity_ok(copied) is False
+    assert opened, "the open refused, so this did not reach the consistency check"
 
 
 def test_a_check_whose_copy_cannot_be_made_has_not_passed(cfg, tmp_path, monkeypatch):
@@ -383,7 +412,7 @@ def _hermetic(tmp_path, monkeypatch):
     return resolved
 
 
-@pytest.mark.parametrize("suffix", ["-wal", "-shm"])
+@pytest.mark.parametrize("suffix", W.db_sidecar_suffixes())
 def test_a_check_that_removes_a_captured_companion_is_not_recorded_verified(
     tmp_path, monkeypatch, suffix
 ):
@@ -446,3 +475,70 @@ def test_a_check_that_leaves_the_capture_alone_is_recorded_verified(tmp_path, mo
 
     assert captured.verified
     assert snapshot.read_manifest(captured.root).integrity_verified is True
+
+
+def test_a_check_that_rewrites_the_database_at_its_own_size_is_not_recorded_verified(
+    tmp_path, monkeypatch
+):
+    """The modification time is half of the identity, not the size alone."""
+    resolved = _hermetic(tmp_path, monkeypatch)
+
+    def rewrites(database):
+        path = Path(database)
+        status = path.stat()
+        path.write_bytes(bytes(reversed(path.read_bytes())))
+        os.utime(path, ns=(status.st_atime_ns, status.st_mtime_ns + 1_000_000_000))
+        return True
+
+    captured = snapshot.capture(resolved, verifier=rewrites)
+
+    assert not captured.verified
+
+
+def test_a_check_that_removes_an_empty_captured_directory_is_not_recorded_verified(
+    tmp_path, monkeypatch
+):
+    """A directory is part of what was copied even when it holds nothing."""
+    resolved = _hermetic(tmp_path, monkeypatch)
+    coupled = config.library_coupled_dir(resolved)
+    (coupled / "empty").mkdir(parents=True)
+    removed: list[Path] = []
+
+    def removes(database):
+        for empty in Path(database).parent.rglob("empty"):
+            empty.rmdir()
+            removed.append(empty)
+        return True
+
+    captured = snapshot.capture(resolved, verifier=removes)
+
+    assert removed, "the capture held no empty directory"
+    assert not captured.verified
+
+
+@pytest.mark.parametrize("which", ["before", "after"])
+def test_a_capture_that_cannot_be_walked_around_its_check_is_not_recorded_verified(
+    tmp_path, monkeypatch, which
+):
+    """A walk that fails, before the check or after it, leaves no verdict to record."""
+    resolved = _hermetic(tmp_path, monkeypatch)
+    real = snapshot._walked
+    calls: list[int] = []
+
+    def walked(root):
+        calls.append(1)
+        if (which == "before") == (len(calls) == 1):
+            raise PermissionError(13, "Permission denied", str(root))
+        return real(root)
+
+    monkeypatch.setattr(snapshot, "_walked", walked)
+    checked: list[Path] = []
+
+    def passes(database):
+        checked.append(Path(database))
+        return True
+
+    captured = snapshot.capture(resolved, verifier=passes)
+
+    assert not captured.verified
+    assert snapshot.read_manifest(captured.root).integrity_verified is False
