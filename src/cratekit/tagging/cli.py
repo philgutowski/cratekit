@@ -90,7 +90,8 @@ OFF_TAXONOMY = "tag-folder-off-taxonomy"
 SOURCES_UNREAD = "tag-folder-sources-unread"
 
 #: The warning that names a catalogue which refused this machine with a bot
-#: check or a block page on every file it was asked about. Apart from the count
+#: check or a block page on every search it was sent, and counts the files it
+#: was not sent once it had refused (U281). Apart from the count
 #: above because the next move differs: a whole catalogue contributed nothing to
 #: the run, which a person needs to know before they trust any decline in it.
 SOURCE_BLOCKED = "tag-folder-source-blocked"
