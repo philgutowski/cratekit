@@ -28,19 +28,19 @@ description = "read_battery_verdict: drop the check that this tree is clean now"
 file = "scripts/mutate.py"
 surface = "maintainer"
 tests = ["tests/test_mutation_driver.py"]
-old = '''        (clean_now, "this tree has uncommitted or untracked changes"),'''
+old = '''        (clean_now is True, "this tree has uncommitted or untracked changes"),'''
 new = '''        (True, "this tree has uncommitted or untracked changes"),'''
 
 [[rows]]
-id = "D4_untracked_read_as_clean"
-description = "tree_state in the driver: read only git's exit, so a tree with changes reads clean"
+id = "D4_unreadable_status_read_as_clean"
+description = "tree_state in the driver: drop the None for a status git could not read, so an empty failed status reads clean"
 file = "scripts/mutate.py"
 surface = "maintainer"
 tests = ["tests/test_mutation_driver.py"]
-old = '''    clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
-    return commit, clean'''
-new = '''    clean = bool(commit) and status.returncode == 0
-    return commit, clean'''
+old = '''    if not commit or status.returncode != 0:
+        return commit, None'''
+new = '''    if not commit:
+        return commit, None'''
 
 [[rows]]
 id = "D5_boot_unchecked"
