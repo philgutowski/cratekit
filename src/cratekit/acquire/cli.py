@@ -56,7 +56,7 @@ from pathlib import Path
 from typing import Any
 
 from cratekit import acquire
-from cratekit.acquire import download, match, match_cli
+from cratekit.acquire import download, match, match_cli, vendored
 from cratekit.acquire.adapter import (
     FAILED_INVOCATIONS,
     AdapterSettings,
@@ -782,6 +782,15 @@ def handle(job, item, cfg) -> jobs.Produced:
         if refused_for_good(exc.cause):
             raise jobs.Declined(exc.cause) from exc
         raise
+
+
+#: ONE SESSION A DRIVE, NOT ONE A TRACK (U274). The engine enters the vendored
+#: adapter's drive around each drive of a download job (see
+#: :data:`cratekit.cli.handlers.PER_DRIVE_ATTRIBUTE`), so the token file is
+#: written, the session logged in and written back once for the whole job, and
+#: the file is erased when the drive ends or fails. Another adapter keeps its
+#: own scope per invocation.
+handle.per_drive = vendored.drive  # type: ignore[attr-defined]
 
 
 def refused_for_good(cause: Cause) -> bool:

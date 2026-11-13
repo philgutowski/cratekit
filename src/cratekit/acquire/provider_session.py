@@ -44,7 +44,10 @@ refusal from the provider, or a forget, drops it for every opener at once.
 from __future__ import annotations
 
 import json
+import os
+import re
 import shutil
+import stat
 import tempfile
 import tomllib
 from collections.abc import Callable, Iterator
@@ -95,12 +98,75 @@ TOML = Codec(name="toml", dumps=lambda payload: tomli_w.dumps(payload).encode("u
 
 @dataclass(frozen=True, slots=True)
 class SessionScope:
-    """The live, private token file for one invocation."""
+    """The live, private token file for one invocation, or one drive (U274)."""
 
     #: The private directory holding it. Erased whole when the scope closes.
     directory: Path
     #: The file the wrapped tool reads and rewrites.
     path: Path
+    #: The session the keychain held when the scope opened, which the write
+    #: back compares against. Never in a repr: it is the token.
+    stored: Any = field(default=None, repr=False, compare=False)
+
+
+#: The name every token directory starts with. The process id follows it, so a
+#: directory a killed process left behind can be told from a live one's (U274).
+SESSION_PREFIX = "cratekit-session-"
+
+#: A token directory this build made: the prefix, the owning process id, and
+#: what ``mkdtemp`` added. A directory named any other way, one a build before
+#: U274 made among them, is never swept.
+_OWNED_BY = re.compile(rf"^{re.escape(SESSION_PREFIX)}([1-9][0-9]*)-[A-Za-z0-9_]+$")
+
+
+def _gone(pid: int) -> bool:
+    """Whether no process has this id. Only a lookup the kernel answered with
+    "no such process" is gone; a process of another account, or any other
+    answer, is read as alive, so the sweep never removes a live run's file."""
+    try:
+        os.kill(pid, 0)
+    except ProcessLookupError:
+        return True
+    except OSError:
+        return False
+    return False
+
+
+def sweep_orphans(root: Path | None = None) -> tuple[Path, ...]:
+    """Remove token directories whose process is gone, and return them (U274).
+
+    A SIGKILL, a power cut or a crash of the interpreter runs no exit path, so
+    the erase below cannot run for it, and since U274 a download holds its
+    token file for a whole drive of a job rather than for one track. This is
+    the erase for that case, run before every new scope is made: a directory
+    is removed only when its name is this build's form, it is a directory and
+    not a link, this account owns it, and the process its name records is
+    gone. This process's own directories are never touched, and nothing else
+    in the temporary directory is read past its name.
+    """
+    base = Path(root) if root is not None else Path(tempfile.gettempdir())
+    try:
+        entries = list(base.iterdir())
+    except OSError:
+        return ()
+    me, account = os.getpid(), os.getuid()
+    removed: list[Path] = []
+    for entry in entries:
+        owned = _OWNED_BY.match(entry.name)
+        if owned is None:
+            continue
+        pid = int(owned.group(1))
+        if pid == me or not _gone(pid):
+            continue
+        try:
+            info = entry.lstat()
+        except OSError:
+            continue
+        if not stat.S_ISDIR(info.st_mode) or info.st_uid != account:
+            continue
+        shutil.rmtree(entry, ignore_errors=True)
+        removed.append(entry)
+    return tuple(removed)
 
 
 def _to_auth_failure(exc: secrets.CredentialError) -> AdapterAuthFailed | AdapterBroken:
@@ -138,14 +204,17 @@ def materialised_session(
     except secrets.CredentialError as exc:
         raise _to_auth_failure(exc) from exc
 
+    # What a killed process left behind goes first (U274), then this scope's
+    # own directory is named for this process so a later one can tell.
+    sweep_orphans()
     # mkdtemp creates at 0700 already; the private writer below re-asserts both
     # the directory and the file mode so the guarantee does not depend on the
     # standard library's default staying what it is today (P1).
-    directory = Path(tempfile.mkdtemp(prefix="cratekit-session-"))
+    directory = Path(tempfile.mkdtemp(prefix=f"{SESSION_PREFIX}{os.getpid()}-"))
     path = directory / filename
     try:
         config.atomic_write_bytes(codec.dumps(payload), path, mode=config.PRIVATE_FILE_MODE)
-        yield SessionScope(directory=directory, path=path)
+        yield SessionScope(directory=directory, path=path, stored=payload)
         write_back(name, path, codec=codec, stored=payload)
     finally:
         # Unconditional. The run that raised is the run most likely to have left
@@ -553,6 +622,33 @@ def session_for(
     return opened
 
 
+def captured(client: Any, stored: Any) -> dict | None:
+    """The stored session with the client's token fields over it (U274).
+
+    For a scope that outlives its login, a drive of a download job: the client
+    library refreshes an expired access token in memory and writes no file, so
+    the scope writes the client's session into the token file before it closes,
+    and :func:`write_back` takes it from there. A field is taken only where the
+    client holds a value and it differs from the stored one by value, so a
+    login that refreshed nothing hands back the stored session unchanged (an
+    expiry the tool read back as ``1700000000.0`` is the stored ``1700000000``)
+    and the keychain is not written. An expiry the client holds as a datetime
+    is stored as the epoch, as :func:`client_session`'s login stores it. None
+    when there is no stored session to lay the fields over.
+    """
+    if not isinstance(stored, dict):
+        return None
+    refreshed = dict(stored)
+    for name in SESSION_FIELDS:
+        value = getattr(client, name, None)
+        if value is None:
+            continue
+        value = _epoch(value)
+        if value != stored.get(name):
+            refreshed[name] = value
+    return refreshed
+
+
 def _canonical(payload: Any) -> str | None:
     """The bytes ``secrets.set_json`` would store for ``payload``, or None when
     it cannot be encoded, which then compares equal to nothing."""
@@ -616,7 +712,9 @@ __all__ = [
     "Codec",
     "ProviderUnavailable",
     "SessionScope",
+    "SESSION_PREFIX",
     "answered_status",
+    "captured",
     "catalogue_client",
     "client_session",
     "drop",
@@ -625,5 +723,6 @@ __all__ = [
     "held",
     "materialised_session",
     "session_for",
+    "sweep_orphans",
     "write_back",
 ]
