@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "cratekit"
-version = "0.16.0"
+version = "0.17.0"
 description = "Acquisition and curation for rekordbox DJs: slim core, toggleable feature modules, guarded library writes"
 # KTD19: supported Python is 3.12 and 3.13, bounded by the vendored downloader.
 # The upper bound is deliberate — an unbounded floor lets a resolver drag the
