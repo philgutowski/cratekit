@@ -18,8 +18,13 @@ copy of it. It composes:
 3. one verification of the captured database, whose verdict is part of the
    returned record because no session may commit behind a capture that did not
    verify;
-4. one manifest recording exactly what was taken, because a restore has to know
+4. one flush of everything captured to the disk, the full flush where the
+   platform has one, before the manifest is written (U272), because the check
+   reads the copy back through the page cache and passes whether or not the
+   bytes reached the drive;
+5. one manifest recording exactly what was taken, because a restore has to know
    what it may replace and, just as importantly, what was legitimately absent.
+   A capture whose flush failed is recorded as not verified and refuses.
 
 THE CAPTURE SET IS DERIVED AND IS NEVER LISTED HERE. Every path comes from the
 state inventory. A companion list maintained beside that inventory is the drift
@@ -163,6 +168,11 @@ class Capture:
     written; asking again later would answer about a file that has had time to
     change, and a gate whose input can move between the check and its use is not
     a gate.
+
+    It is true only when the check passed AND every file and directory of the
+    capture was then flushed to the disk (U272). A flush that failed records it
+    false, so a manifest that says verified is never beside a copy that may
+    still be only in memory.
     """
 
     stamp: str
@@ -298,6 +308,81 @@ def _copy(source: Path, destination: Path) -> CapturedSource:
         shutil.copy2(source, destination)
         return CapturedSource(source=source, captured=destination, directory=False)
     return CapturedSource(source=source, captured=None, directory=False)
+
+
+def _raise_walk_error(error: OSError) -> None:
+    """``os.walk`` reports an unreadable directory to this and otherwise skips it.
+
+    A skipped directory is a directory not flushed, so it raises.
+    """
+    raise error
+
+
+def _flush(capture_root: Path, store: Path) -> None:
+    """Put everything a capture holds on the disk, deepest first, then its store.
+
+    DERIVED BY WALKING, as :func:`_harden` is, never by listing what was copied
+    (P3): the database the writer took, the files the engine keeps beside it,
+    rekordbox's legacy playlist file and the coupled half, and whatever the
+    writer learns to copy next. Each file is flushed before the directory that
+    holds it, every directory before its parent, and the store last, because
+    the capture directory is an entry in the store.
+
+    Raises the first :class:`OSError` a flush or the walk meets. Nothing is
+    skipped, because the caller records a verdict on the strength of this
+    returning (U272).
+    """
+    for current, _directories, files in os.walk(
+        capture_root, topdown=False, onerror=_raise_walk_error
+    ):
+        here = Path(current)
+        for name in files:
+            config.flush_to_disk(here / name)
+        config.flush_to_disk(here)
+    config.flush_to_disk(store)
+
+
+def _write_manifest(record: Capture, manifest: Path) -> None:
+    config.atomic_write_bytes(
+        json.dumps(record.to_json(), indent=2, sort_keys=True).encode("utf-8") + b"\n", manifest
+    )
+
+
+def _not_flushed(record: Capture, manifest: Path, exc: OSError) -> CratekitError:
+    """Record the capture as NOT verified, then the refusal the caller raises.
+
+    The manifest is rewritten unverified first, so a capture whose flush failed
+    is never on disk as one anything may commit behind. If even that write
+    fails, the refusal still stands: it is the guard, and a capture with no
+    manifest is one a restore already refuses to use.
+    """
+    unverified = Capture(
+        stamp=record.stamp,
+        root=record.root,
+        database=record.database,
+        integrity_verified=False,
+        sources=record.sources,
+    )
+    try:
+        _write_manifest(unverified, manifest)
+    except OSError as written:
+        logger.warning(
+            "the capture at %s could not record that it is not verified: %s", record.root, written
+        )
+    return refuse(
+        "snapshot-integrity-failed",
+        f"the capture at {record.root} could not be flushed to the disk ({exc}), so it "
+        f"is recorded as not verified and there is no recovery point for this session "
+        f"to commit behind",
+        remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+        scope=Scope.SESSION,
+        detail={
+            "stamp": record.stamp,
+            "root": str(record.root),
+            "path": str(getattr(exc, "filename", None) or ""),
+            "errno": getattr(exc, "errno", None),
+        },
+    )
 
 
 def _verify(database: Path, verifier: Verifier | None) -> bool:
@@ -717,10 +802,29 @@ def capture(
         sources=record.sources,
     )
 
+    # THE COPY REACHES THE DISK BEFORE THE RECORD THAT VOUCHES FOR IT (U272).
+    # ``shutil`` writes and never syncs, and the check above reads the copy back
+    # through the page cache, so it passes whether or not the bytes reached the
+    # drive. The manifest goes through the synced atomic writer, so without this
+    # a power cut inside the write back window could leave a manifest saying
+    # verified beside a copy that is short or empty. After the check, because
+    # the check opens the copy and may leave the engine's files changed.
     manifest = destination / MANIFEST_NAME
-    config.atomic_write_bytes(
-        json.dumps(record.to_json(), indent=2, sort_keys=True).encode("utf-8") + b"\n", manifest
-    )
+    try:
+        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc
+
+    _write_manifest(record, manifest)
+
+    # And the record itself, before anything commits behind it: the atomic
+    # writer syncs the manifest's bytes and renames it into place, and the
+    # rename is an entry in this directory that an unflushed directory loses.
+    try:
+        config.flush_to_disk(destination)
+        config.flush_to_disk(destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc
     return Capture(
         stamp=record.stamp,
         root=record.root,
