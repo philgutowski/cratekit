@@ -25,7 +25,25 @@ answered 200 with a "Client Challenge" page carrying no rows. The second read as
 a MISS, so a Beatport miss turned every such file into a clean ``no-hit`` and
 the two fallbacks vanished from the record. A fallback page recognised as a
 challenge or a block is BLOCKED, and nothing here tries to get past one: no
-header trick, no browser, no solver. Beatport is read exactly as it was.
+header trick, no browser, no solver.
+
+BEATPORT'S REFUSAL IS READ THE SAME WAY SINCE U281. R-791 left Beatport out of
+the check because it was answering then. From 2026-11-13 it answered every
+lookup from the author's machine with a 403 carrying ``Cf-Mitigated:
+challenge``, which read as ``unreachable`` and sent a person to their network,
+so a Beatport page with no payload to parse, a refusal or a challenge page,
+goes through :func:`unread_outcome`, and a 200 challenge page from it is
+BLOCKED rather than a parse break (R-794). A page that carries the payload is
+read as results whatever script it carries.
+
+A RUN STOPS ASKING A CATALOGUE THAT REFUSED IT THREE TIMES IN A ROW (U281).
+:class:`Refusals` counts one run's refusals in a row per catalogue, and once a
+catalogue reaches :data:`REFUSALS_BEFORE_STOP` the walk sends it nothing more
+in that run: each later file records it BLOCKED with a note saying it was not
+asked and why, so it stays among the unread sources and the file stays
+askable. Any other answer from it ends the run of refusals, the next run asks
+again from its first file, and Discogs keeps its own memory and is asked
+whatever Beatport said.
 
 ``no-hit`` NEEDS EVERY SOURCE ASKED TO HAVE SAID MISS. One MISS beside a source
 that could not be read is not an absence, because the unread one may carry the
@@ -244,9 +262,36 @@ _CHALLENGE_TITLE = re.compile(
     re.IGNORECASE,
 )
 
+#: The two titles above that are Cloudflare's own pages, rather than a shop's.
+_CLOUDFLARE_TITLE = re.compile(r"just a moment|attention required", re.IGNORECASE)
+
+#: The words a note carries when what refused this client was Cloudflare's
+#: challenge, spelled once so the tag summary counts those refusals by the same
+#: string the note was written with (U281).
+CLOUDFLARE_CHALLENGE = "Cloudflare challenge"
+
+#: The header Cloudflare names its mitigation in, and the value it gives for a
+#: challenge. Read only to say what refused this client; nothing answers it.
+_CF_MITIGATED = "cf-mitigated"
+_CF_CHALLENGE = "challenge"
+
+#: The head of the note on an answer a catalogue was never sent, because it had
+#: already refused this client in the run (U281, and Discogs' memory since
+#: U244). The answer is BLOCKED, so the file stays unread and askable, and the
+#: summary tells a refusal sent from one remembered by this head.
+NOT_SENT = "not asked: "
+
+#: How many refusals in a row from one catalogue stop a run asking it (U281).
+#: Three, because one refusal can be a moment's challenge and three in a row
+#: is a catalogue refusing this client, which every further request only
+#: confirms at a paced second and a half each.
+REFUSALS_BEFORE_STOP = 3
+
 #: Cloudflare's own challenge machinery, present in the body of the interstitial
-#: measured on 2026-10-01 whatever its title says. Script paths and a global this
-#: product's catalogues never put on a results page.
+#: measured on 2026-10-01 whatever its title says. Script paths and a global a
+#: bot managed site may also put on an ordinary page, so Beatport reads it only
+#: when its page carries no payload (U281); the fallbacks read it first, R-791's
+#: order, and their residual says so.
 _CHALLENGE_BODY = re.compile(r"/cdn-cgi/challenge-platform/|window\._cf_chl_opt")
 
 #: What the per source record says about a catalogue the walk never reached,
@@ -364,6 +409,55 @@ class Pacer:
         return delay
 
 
+@dataclass
+class Refusals:
+    """One run's refusals in a row, per catalogue, and when to stop asking (U281).
+
+    Held BESIDE THE PACER, and like it handed to a searcher rather than kept in
+    one, because a worker builds its searcher per file and a count that lived
+    in the searcher would start again at every file. A run's worker hands in
+    the run's own, :func:`for_run`; a searcher built with none gets a fresh
+    one, which lasts as long as that searcher.
+
+    PER CATALOGUE, so a catalogue that refuses never stops another being asked,
+    and IN A ROW, so any answer that is not a refusal, a match, a miss, an
+    outage or a parse break, ends the run of refusals: only
+    :data:`REFUSALS_BEFORE_STOP` refusals with nothing between them stop it.
+
+    A STOPPED CATALOGUE IS ANSWERED BLOCKED, NEVER MISS. The file was not
+    asked about and nothing is known of the track, so the answer is the one
+    its last refusal gave, with a note saying it was not sent and quoting that
+    refusal, and the file stays among the unread and askable.
+    """
+
+    limit: int = REFUSALS_BEFORE_STOP
+    running: dict[str, int] = field(default_factory=dict)
+    last: dict[str, SourceOutcome] = field(default_factory=dict)
+
+    def stopped(self, source: str) -> SourceOutcome | None:
+        """The answer for a catalogue this run no longer asks, or None to ask it."""
+        if self.running.get(source, 0) < self.limit:
+            return None
+        return SourceOutcome(
+            source,
+            Answer.BLOCKED,
+            note=(
+                f"{NOT_SENT}{source} refused this client on its last {self.limit} "
+                f"lookups in this sweep, so it is not asked again until the next "
+                f"sweep. Then, {self.last[source].note}"
+            ),
+        )
+
+    def heard(self, outcome: SourceOutcome) -> None:
+        """Count a refusal ``outcome.source`` answered, or end its run of them."""
+        if outcome.answer is Answer.BLOCKED:
+            self.running[outcome.source] = self.running.get(outcome.source, 0) + 1
+            self.last[outcome.source] = outcome
+        else:
+            self.running.pop(outcome.source, None)
+            self.last.pop(outcome.source, None)
+
+
 # ---------------------------------------------------------------------------
 # The default fetch, and the only function that names ``requests``
 # ---------------------------------------------------------------------------
@@ -463,9 +557,22 @@ def _answered(
                 status,
             )
         if status != 200:
-            return None, f"HTTP {status}", status
+            return None, _refusal_note(response, status), status
         return response, "", status
     return None, "rate limited, attempts spent", 429
+
+
+def _refusal_note(response: Any, status: object) -> str:
+    """``HTTP <status>``, named a Cloudflare challenge when the answer says it is one.
+
+    Read off the ``Cf-Mitigated`` header Cloudflare sends with its challenge,
+    measured on Beatport's 403 on 2026-11-13 (U281). The header is only read,
+    to say what refused this client; nothing is sent differently because of it.
+    """
+    mitigated = _headers_of(response).get(_CF_MITIGATED, "")
+    if mitigated.strip().lower() == _CF_CHALLENGE:
+        return f"{CLOUDFLARE_CHALLENGE}, HTTP {status}"
+    return f"HTTP {status}"
 
 
 def default_image_fetch(
@@ -785,10 +892,18 @@ def _search_beatport(
 ) -> SourceOutcome:
     pacer.wait()
     page = fetch(f"{BEATPORT_SEARCH}?q={_query(artist, title)}")
-    if page.text is None:
-        return SourceOutcome(BEATPORT, Answer.UNREACHABLE, note=page.note)
-    tracks = _beatport_tracks(page.text)
+    # A PAYLOAD IS READ FIRST, AND THE REFUSAL CHECK THE FALLBACKS USE ONLY
+    # WHEN THERE IS NONE (U281). A 403 or a spent 429 has no text, so it is
+    # always checked: a refusal of this client and not an outage. A 200
+    # challenge page carries no payload, so without the check it would read as
+    # a parser defect (R-794). A page that does carry Beatport's payload is a
+    # results page whatever script Cloudflare added to it, so the challenge
+    # script's mark is never read over one (U281's review).
+    tracks = None if page.text is None else _beatport_tracks(page.text)
     if tracks is None:
+        refused = unread_outcome(BEATPORT, page)
+        if refused is not None:
+            return refused
         return SourceOutcome(
             BEATPORT,
             Answer.PARSE_BREAK,
@@ -814,11 +929,17 @@ def unread_outcome(source: str, page: Fetched) -> SourceOutcome | None:
     whose title is a known challenge. UNREACHABLE for every other page with no
     text. None for a page that is worth parsing.
 
-    THE FALLBACKS AND THE GENERAL CATALOGUE, NEVER BEATPORT. Beatport's read is
-    unchanged by R-791 and still treats every non 200 as unreachable; widening
-    this to it would change a source the finding measured as answering. The
-    general catalogue in :mod:`cratekit.tagging.published` reads its refusals
-    through this one check (R-796), which is why the name is public.
+    EVERY CATALOGUE THIS MODULE SCRAPES, BEATPORT INCLUDED SINCE U281, AND THE
+    GENERAL CATALOGUE. R-791 kept Beatport out because it was answering then;
+    its 403 on every lookup from 2026-11-13 is the refusal this check exists
+    for. The general catalogue in :mod:`cratekit.tagging.published` reads its
+    refusals through this one check (R-796), which is why the name is public.
+    A 5xx, a timeout or a failed name lookup stays UNREACHABLE: those are an
+    outage, and the two send a person to different places.
+
+    A CLOUDFLARE CHALLENGE IS NAMED, with :data:`CLOUDFLARE_CHALLENGE` in the
+    note, when the refusal's header, one of Cloudflare's two page titles or its
+    challenge script said so, so the sweep's warning can say what refused it.
 
     RECOGNISED AND SAID, NEVER ANSWERED. Nothing here retries a challenge, alters
     a header or solves anything. The note names what was seen so a person reading
@@ -834,16 +955,18 @@ def unread_outcome(source: str, page: Fetched) -> SourceOutcome | None:
         return SourceOutcome(source, Answer.UNREACHABLE, note=page.note)
     challenge = _CHALLENGE_TITLE.search(page.text)
     if challenge:
+        title = challenge.group(1)
+        named = f", a {CLOUDFLARE_CHALLENGE}" if _CLOUDFLARE_TITLE.match(title) else ""
         return SourceOutcome(
             source,
             Answer.BLOCKED,
-            note=f"the catalogue answered with a bot check page, {challenge.group(1)!r}",
+            note=f"the catalogue answered with a bot check page, {title!r}{named}",
         )
     if _CHALLENGE_BODY.search(page.text):
         return SourceOutcome(
             source,
             Answer.BLOCKED,
-            note="the catalogue answered with Cloudflare's challenge page",
+            note=f"the catalogue answered with a {CLOUDFLARE_CHALLENGE} page",
         )
     return None
 
@@ -1331,7 +1454,7 @@ class DiscogsAsker:
                 DISCOGS,
                 Answer.BLOCKED,
                 note=(
-                    f"not asked: Discogs refused this client earlier in this run and "
+                    f"{NOT_SENT}Discogs refused this client earlier in this run and "
                     f"is not asked again in it. Then, {self.refused.note}"
                 ),
             )
@@ -1797,6 +1920,7 @@ def catalogue_searcher(
     pacing: Pacer | None = None,
     walk: Sequence[str] = WALK,
     discogs: DiscogsAsker | None = None,
+    refusals: Refusals | None = None,
 ) -> Searcher:
     """Build the searcher that asks the walk's catalogues, in order.
 
@@ -1814,6 +1938,11 @@ def catalogue_searcher(
     An explicit ``pacing`` keeps its OWN sleep. Passing both is a caller saying
     two different things about one schedule, and the more specific object is the
     one that meant it.
+
+    ``refusals`` is the run's :class:`Refusals`, beside the pacer (U281). A
+    catalogue it says to stop asking is answered from it without a wait or a
+    request. Discogs is never under it: its asker remembers its own refusal,
+    and it is asked whatever Beatport answered.
     """
     order = tuple(walk)
     unknown = [source for source in order if source not in SOURCES]
@@ -1825,6 +1954,7 @@ def catalogue_searcher(
     pacer = Pacer(sleep=naps) if pacing is None else pacing
     touch = default_fetch(sleep=naps) if fetch is None else fetch
     asker = discogs_asker(token=None, sleep=naps) if discogs is None else discogs
+    counted = Refusals() if refusals is None else refusals
 
     def search(artist: str, title: str) -> SearchHit | None:
         outcomes: list[SourceOutcome] = []
@@ -1837,9 +1967,14 @@ def catalogue_searcher(
                     continue
                 outcome = said
             else:
-                outcome = _SEARCHES[source](
-                    artist, title, fetch=touch, pacer=pacer, declared=declared
-                )
+                stopped = counted.stopped(source)
+                if stopped is None:
+                    outcome = _SEARCHES[source](
+                        artist, title, fetch=touch, pacer=pacer, declared=declared
+                    )
+                    counted.heard(outcome)
+                else:
+                    outcome = stopped
             outcomes.append(outcome)
             if outcome.answer is Answer.MATCHED:
                 return replace(
@@ -1852,7 +1987,7 @@ def catalogue_searcher(
     return search
 
 
-def for_taxonomy(declared: Taxonomy) -> Searcher:
+def for_taxonomy(declared: Taxonomy, *, refusals: Refusals | None = None) -> Searcher:
     """The searcher a worker should use, looked up rather than constructed.
 
     ``ItemHandler`` is a fixed callable, so a worker that built its own searcher
@@ -1868,8 +2003,41 @@ def for_taxonomy(declared: Taxonomy) -> Searcher:
     ``declared`` is required and is the library's active taxonomy (R-685); a
     shipped default reached for here tagged by a declaration the library does
     not hold.
+
+    ``refusals`` is the run's count of refusals in a row, :func:`for_run`'s,
+    handed in by a sweep's worker so a catalogue that refused the run three
+    times is not asked by its later files (U281). A caller that hands none
+    gets a count that lasts this one searcher.
     """
-    return catalogue_searcher(declared, discogs=for_discogs())
+    return catalogue_searcher(declared, discogs=for_discogs(), refusals=refusals)
+
+
+#: The run whose refusals this process is counting, and the count (U281). One
+#: slot: a process drives one run at a time, and a run that is not this one
+#: starts its own count, so nothing lingers past the run that made it.
+_run_refusals: list[tuple[str, Refusals]] = []
+
+
+def for_run(run: str) -> Refusals:
+    """The refusal count of the run named ``run``, looked up rather than kept by a worker.
+
+    THE RUN OWNS ITS COUNT. The job engine hands a handler the job and the item
+    and no scope of the run, and a worker builds its searcher per file, so the
+    count is found by the run's identity: the same name returns the same
+    count, and any other name a fresh one. A sweep's worker names its run by
+    the job and the drive's attempt, which only ever grows, so a new sweep and
+    a resumed run each ask a refusing catalogue again from their first file,
+    as U281 asks. A test replaces this attribute, as it does
+    :func:`for_taxonomy`; :func:`reset_runs` forgets the count.
+    """
+    if not _run_refusals or _run_refusals[0][0] != run:
+        _run_refusals[:] = [(run, Refusals())]
+    return _run_refusals[0][1]
+
+
+def reset_runs() -> None:
+    """Forget the run whose refusals were being counted."""
+    _run_refusals.clear()
 
 
 #: The one image fetch this process asks through, built on first use (U260).
@@ -1909,6 +2077,7 @@ __all__ = [
     "BEATPORT",
     "BEATPORT_IMAGE_EDGE",
     "BEATPORT_SEARCH",
+    "CLOUDFLARE_CHALLENGE",
     "DISCOGS",
     "DISCOGS_API",
     "DISCOGS_CREDENTIAL",
@@ -1928,10 +2097,12 @@ __all__ = [
     "JITTER_FRACTION",
     "MIN_INTERVAL_S",
     "NOT_ASKED",
+    "NOT_SENT",
     "PARSE_BREAK_REASON",
     "SCRAPED_WALK",
     "RATE_LIMIT_ATTEMPTS",
     "RATE_LIMIT_BASE_WAIT_S",
+    "REFUSALS_BEFORE_STOP",
     "REQUEST_TIMEOUT_S",
     "SOURCES",
     "TRAXSOURCE",
@@ -1945,6 +2116,7 @@ __all__ = [
     "Fetched",
     "NotAsked",
     "Pacer",
+    "Refusals",
     "SourceOutcome",
     "catalogue_searcher",
     "choose_word",
@@ -1954,8 +2126,10 @@ __all__ = [
     "discogs_headers",
     "for_discogs",
     "for_images",
+    "for_run",
     "for_taxonomy",
     "remembering",
     "reset_images",
+    "reset_runs",
     "unread_outcome",
 ]
