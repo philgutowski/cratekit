@@ -31,8 +31,10 @@ BEATPORT'S REFUSAL IS READ THE SAME WAY SINCE U281. R-791 left Beatport out of
 the check because it was answering then. From 2026-11-13 it answered every
 lookup from the author's machine with a 403 carrying ``Cf-Mitigated:
 challenge``, which read as ``unreachable`` and sent a person to their network,
-so Beatport's page goes through :func:`unread_outcome` before it is parsed,
-and a 200 challenge page from it is BLOCKED rather than a parse break (R-794).
+so a Beatport page with no payload to parse, a refusal or a challenge page,
+goes through :func:`unread_outcome`, and a 200 challenge page from it is
+BLOCKED rather than a parse break (R-794). A page that carries the payload is
+read as results whatever script it carries.
 
 A RUN STOPS ASKING A CATALOGUE THAT REFUSED IT THREE TIMES IN A ROW (U281).
 :class:`Refusals` counts one run's refusals in a row per catalogue, and once a
@@ -286,8 +288,10 @@ NOT_SENT = "not asked: "
 REFUSALS_BEFORE_STOP = 3
 
 #: Cloudflare's own challenge machinery, present in the body of the interstitial
-#: measured on 2026-10-01 whatever its title says. Script paths and a global this
-#: product's catalogues never put on a results page.
+#: measured on 2026-10-01 whatever its title says. Script paths and a global a
+#: bot managed site may also put on an ordinary page, so Beatport reads it only
+#: when its page carries no payload (U281); the fallbacks read it first, R-791's
+#: order, and their residual says so.
 _CHALLENGE_BODY = re.compile(r"/cdn-cgi/challenge-platform/|window\._cf_chl_opt")
 
 #: What the per source record says about a catalogue the walk never reached,
