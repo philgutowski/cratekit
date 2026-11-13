@@ -54,8 +54,9 @@ Every run keeps its temporary files in one named place (U273), `memory` or
 `disk`, chosen by `baseline` and written into its header, since the suite
 writes about 2 GB of scratch files a run and a container's disk makes it wait
 on them. `baseline` runs on disk unless `--temp memory` asks for the memory
-filesystem, `/dev/shm`, which it refuses unless that is a `tmpfs` with room
-for a run. `compare` runs in the baseline's place and refuses a `--temp`
+filesystem, `/dev/shm`, which it refuses unless that is a memory filesystem
+with room for a run (a `tmpfs`; a `ramfs` reports no size and so never has
+room, though a disk run whose temporary directory is on one is refused). `compare` runs in the baseline's place and refuses a `--temp`
 naming the other, so the base and the branch are always measured on the same
 machine. A run in either place gets a fresh directory there as `TMPDIR`,
 removed when it ends, and a disk run whose temporary directory is itself on a
@@ -327,6 +328,24 @@ def place_root(place: str) -> tuple[Path | None, str]:
     return None, f"{place!r} is not a place for temporary files; name one of {', '.join(PLACES)}"
 
 
+def places_needed(place: str) -> tuple[str, ...]:
+    """The places a run in ``place`` uses: memory runs the listed tests on disk too."""
+    return (MEMORY, DISK) if place == MEMORY and ON_DISK else (place,)
+
+
+def refusal_for(place: str) -> str | None:
+    """Why this machine cannot give a run in ``place`` every place it uses, or None.
+
+    Checked before the suite runs, so a disk this machine cannot give for the
+    on disk rerun refuses a run in memory at its start rather than after it.
+    """
+    for needed in places_needed(place):
+        root, why = place_root(needed)
+        if root is None:
+            return why if needed == place else f"the tests run again on disk cannot be: {why}"
+    return None
+
+
 @contextmanager
 def run_directory(place: str) -> Iterator[tuple[Path, Path]]:
     """A fresh workspace in ``place`` and the temporary directory inside it, removed after."""
@@ -481,8 +500,8 @@ def _requested_place(args) -> str | None:
 
 def cmd_baseline(args) -> int:
     place = _requested_place(args) or DEFAULT_PLACE
-    root, why = place_root(place)
-    if root is None:
+    why = refusal_for(place)
+    if why is not None:
         print(f"temporary files: REFUSED, {why}")
         return 1
     if not full_history_or_refuse():
@@ -586,8 +605,8 @@ def cmd_compare(args) -> int:
             f"the baseline again with `--temp {requested}`"
         )
         return 2
-    root, why = place_root(base.place)
-    if root is None:
+    why = refusal_for(base.place)
+    if why is not None:
         print(
             f"temporary files: REFUSED, the baseline kept its temporary files in {base.place} "
             f"and this machine cannot now: {why}"

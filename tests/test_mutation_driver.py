@@ -248,7 +248,17 @@ def test_that_fails(case):
 TEST_PLACED = '''import os
 import tempfile
 
+import pytest
 from fixtpkg.guards import clamp
+
+
+@pytest.fixture
+def placed_resource():
+    if os.environ.get("PLACED_ERROR_IN_MEMORY") == "1" and os.path.realpath(
+        tempfile.gettempdir()
+    ).startswith(os.environ["PLACED_MEMORY"] + os.sep):
+        raise RuntimeError("cannot be set up in memory")
+    return True
 
 
 def test_needs_a_disk():
@@ -257,9 +267,14 @@ def test_needs_a_disk():
         log.write(where + "\\n")
     assert clamp(50) == 10
     assert not where.startswith(os.environ["PLACED_MEMORY"] + os.sep)
+
+
+def test_errors_in_memory(placed_resource):
+    assert placed_resource
 '''
 
 PLACED_ID = "tests/test_placed.py::test_needs_a_disk"
+PLACED_ERRORING_ID = "tests/test_placed.py::test_errors_in_memory"
 
 
 def _build_fixture(
@@ -1061,7 +1076,28 @@ def test_a_place_this_machine_cannot_give_is_refused_before_anything_runs(
     argv = ["mutate.py", str(spec), "--known-failures", str(listed)]
     argv += ["--repo-root", str(repo), "--out-dir", str(tmp_path / "out")]
     assert mutate.main(argv) == 2
-    assert "cannot give that place" in capsys.readouterr().err
+    assert "cannot now give a run with temporary files in memory" in capsys.readouterr().err
+
+
+def test_a_disk_the_rerun_cannot_have_is_refused_before_anything_runs(
+    repo, tmp_path, monkeypatch, places, capsys
+):
+    """Round one of the review: a memory run whose disk rerun is refused only
+    after the whole memory run is a full run spent, so it is refused first."""
+    memory, _ = places
+    monkeypatch.setattr(mutate.BATTERY, "disk_root", lambda: memory)
+    spec = tmp_path / "rows.toml"
+    spec.write_text(ONE_ROW_SPEC, encoding="utf-8")
+
+    def must_not_run(*_a, **_k):
+        raise AssertionError("the batch ran without the disk its rerun needs")
+
+    monkeypatch.setattr(mutate, "measure_batch", must_not_run)
+    argv = ["mutate.py", str(spec), "--repo-root", str(repo), "--out-dir", str(tmp_path / "o")]
+    listed = _known_file(tmp_path, "memory", "tests/a.py::t", on_disk=(PLACED_ID,))
+    assert mutate.main([*argv, "--known-failures", str(listed)]) == 2
+    err = capsys.readouterr().err
+    assert "run again on disk" in err and "memory filesystem" in err
 
 
 def _where(log: Path) -> list[str]:
@@ -1104,6 +1140,21 @@ def test_a_run_on_disk_runs_once_and_one_with_no_place_inherits_the_temporary_di
     monkeypatch.setenv("TMPDIR", str(inherited))
     assert mutate.run_pytest(repo, None).is_green
     assert _where(log) == [os.path.realpath(inherited)]
+
+
+def test_a_listed_test_erroring_in_memory_and_passing_on_disk_is_read_passing(
+    placed_repo, places, monkeypatch
+):
+    """The disk run replaces a listed test's error as well as its failure."""
+    repo, _log = placed_repo
+    monkeypatch.setenv("PLACED_ERROR_IN_MEMORY", "1")
+    unlisted = mutate.run_pytest(
+        repo, None, known=mutate.KnownFailures(place="memory", on_disk=(PLACED_ID,))
+    )
+    assert unlisted.errored == (PLACED_ERRORING_ID,)
+
+    known = mutate.KnownFailures(place="memory", on_disk=(PLACED_ID, PLACED_ERRORING_ID))
+    assert mutate.run_pytest(repo, None, known=known).is_green
 
 
 def test_a_subset_that_does_not_collect_the_listed_test_runs_nothing_on_disk(

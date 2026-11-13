@@ -734,6 +734,26 @@ def test_disk_is_refused_when_the_temporary_directory_is_itself_in_memory(places
     assert battery.place_root("elsewhere")[0] is None
 
 
+def test_a_memory_run_whose_disk_rerun_cannot_be_given_is_refused_before_it_runs(
+    places, tmp_path, monkeypatch, capsys
+):
+    """Round one of the review: the disk the rerun needs is checked first, so a
+    refusal never comes after a whole run in memory."""
+    memory, _ = places
+    monkeypatch.setattr(battery, "disk_root", lambda: memory)
+    monkeypatch.setattr(battery, "ensure_full_history", _must_not_run)
+    monkeypatch.setattr(battery, "failing_ids", _must_not_run)
+    assert battery.main(["baseline", "--temp", "memory"]) == 1
+    assert "run again on disk" in capsys.readouterr().out
+
+    _baseline_file(tmp_path, monkeypatch, "memory")
+    assert battery.main(["compare"]) == 2
+    assert "run again on disk" in capsys.readouterr().out
+
+    monkeypatch.setattr(battery, "ON_DISK", ())
+    assert battery.refusal_for("memory") is None
+
+
 def test_a_baseline_in_a_place_the_machine_cannot_give_is_refused(places, monkeypatch, capsys):
     monkeypatch.setattr(battery, "MEMORY_FLOOR", 2**80)
     monkeypatch.setattr(battery, "ensure_full_history", _must_not_run)

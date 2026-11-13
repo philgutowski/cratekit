@@ -303,6 +303,8 @@ ADDED_ENV = (
     "PYTHONDONTWRITEBYTECODE=1",
     "PYTHONPATH (the plugin's temp directory, prepended)",
     "MUTATE_REPORT_PATH (the plugin's output file)",
+    "TMPDIR, with a known failures file only (a fresh directory in the place its "
+    "baseline was measured in, U273)",
     "the installation state sandbox: "
     + ", ".join(sorted(SANDBOXED_ENV))
     + " (all pointed inside the run's workspace, R-343)",
@@ -973,8 +975,11 @@ def run_pytest(
     place = getattr(known, "place", "")
     root = None
     if place:
-        refuse_a_place_this_machine_cannot_give(known)
-        root, _ = BATTERY.place_root(place)
+        root, why = BATTERY.place_root(place)
+        if root is None:
+            raise DriverRefusal(
+                f"{label} cannot keep its temporary files in {place} on this machine: {why}"
+            )
     with tempfile.TemporaryDirectory(prefix="mutate-run-", dir=root) as tmp:
         workspace = Path(tmp)
         (workspace / f"{PLUGIN_MODULE}.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
@@ -1766,7 +1771,9 @@ def build_parser() -> argparse.ArgumentParser:
             "a file of whole node ids that fail on this machine and not for the tree, one "
             "a line, # comments allowed, as scripts/cloud_battery.py baseline writes "
             "it with full history and whole ids; subtracted from every run, and refused "
-            "on a shallow clone"
+            "on a shallow clone. It also names where its temporary files were, memory or "
+            "disk: every child keeps its own there, the tests it ran on disk run again on "
+            "disk after a run in memory, and a file naming no place is refused"
         ),
     )
     return parser
@@ -1851,13 +1858,23 @@ def refuse_a_shallow_clone(repo_root: Path) -> None:
 
 
 def refuse_a_place_this_machine_cannot_give(known: KnownFailures) -> None:
-    """Before anything runs: the known failures' place must be one this machine can give."""
-    root, why = BATTERY.place_root(known.place)
-    if root is None:
-        raise DriverRefusal(
-            f"the known failures were measured with their temporary files in {known.place}, "
-            f"and this machine cannot give that place now: {why}"
-        )
+    """Before anything runs: every place a run in the known failures' place uses
+    must be one this machine can give, the disk for the tests rerun there included."""
+    needed = [known.place]
+    if known.place == BATTERY.MEMORY and known.on_disk:
+        needed.append(BATTERY.DISK)
+    for place in needed:
+        root, why = BATTERY.place_root(place)
+        if root is None:
+            run = (
+                f"temporary files in {place}"
+                if place == known.place
+                else "the tests the baseline ran on disk run again on disk"
+            )
+            raise DriverRefusal(
+                f"the known failures were measured with their temporary files in "
+                f"{known.place}, and this machine cannot now give a run with {run}: {why}"
+            )
 
 
 def main(argv: list[str]) -> int:
