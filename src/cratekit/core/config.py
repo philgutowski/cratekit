@@ -895,6 +895,33 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="catalogue_refusals",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="catalogue_refusals.json",
+        why=(
+            "When each record shop began refusing this client, and its latest "
+            "refusal (U284), so a sweep's report and the refusal a sync pass "
+            "stops on can say how long a catalogue has refused. A fact about "
+            "this machine's client, not about a library. Losing it costs the "
+            "date and nothing else: the next refusal starts it again."
+        ),
+    ),
+    StateFile(
+        key="catalogue_refusals_lock",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="catalogue_refusals.lock",
+        why=(
+            "A sibling lock serializing the read, merge and replace of the "
+            "catalogue refusal record beside it, so two sweeps never lose each "
+            "other's dates. It follows its file to the same root by necessity, "
+            "for the ISRC cache lock's reason."
+        ),
+    ),
+    StateFile(
         key="identify_cache",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,

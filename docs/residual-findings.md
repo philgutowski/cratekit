@@ -52493,3 +52493,259 @@ name; nobody on the Mac sets the opt in.
 **Closes when:** setup and login both say, when the environment fallback is
 on and names this credential, that the environment's value is the one used.
 Ledger only: a maintainer's opt in, no data lost.
+
+---
+
+## R-1683. crate doctor does not report a catalogue that has been refusing this client, or since when
+
+**Found:** at the build of #790, U284, 2026-11-13.
+
+**The mechanism.** U284 keeps when each record shop began refusing this
+client in `catalogue_refusals.json` (`src/cratekit/tagging/refused.py`), and a
+sweep's report and a pass's stop read it. `crate doctor` does not: a person
+asking the health check learns nothing of a Beatport that has refused every
+lookup for days until a sweep or a pass says so. The card's first requirements,
+written for its option 1, asked doctor to report a catalogue refusing on its
+last N lookups with the date it began; Phillip chose option 3, whose answer
+names no doctor check, so the build left it out.
+
+**Measured cost.** Not driven: no verb is blocked and nothing false is said,
+the date reaches a person at the sweep and at the pass.
+
+**Closes when:** doctor reads the record and reports each refusing catalogue
+with its `since` and `last`, never failing on it. Ledger only.
+
+---
+
+## R-1684. The refusal record keeps no date for Discogs, and tag retag and tag suggest never move it
+
+**Found:** at the build of #790, U284, 2026-11-13.
+
+**The mechanism.** The record of when a catalogue began refusing is written
+only through `searchers.Refusals(record=True)`, the `tag folder` worker's run
+count (`searchers.for_run`). Discogs is never under that count (U244 keeps its
+own memory of a refusal in the asker), so a Discogs that refuses too is named
+in a pass's stop with no date. `tag retag` builds a searcher per file and `tag
+suggest --catalogue` a count of its own, neither recording, so a catalogue
+that answers or refuses there leaves the record as the last sweep left it.
+
+**Measured cost.** Driven in `tests/test_sync_refused.py`
+(`test_with_a_token_discogs_refusing_too_stops_and_names_both`): Discogs is
+named refusing with no date. A stale date after a retag that met an answering
+Beatport was not driven; the next sweep's first answer clears it.
+
+**Closes when:** the Discogs asker's refusals and answers move the record, and
+the retag and suggest searchers record through a run count of their own.
+Ledger only.
+
+---
+
+## R-1685. A pass stopped by one file every catalogue refused and another no catalogue could reach explains only the refusal
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** A sweep with no Discogs token where one file meets
+Beatport's refusal and another a Beatport timeout fails both items. The
+sweep's report lists the first under `refusal_stop` and the tail adds its
+words and steps to the pass's stop; the second is counted in the job's
+"failed 2" and explained nowhere on the pass's stop, which carries no network
+step for it. Before U284 the pass's stop carried no network step either: the
+job's own refusal counts its failures, and the network step lives only on each
+item's cause.
+
+**Measured cost.** Driven at review round one (probe P1 in the reviewer's
+scratch copy): the stop names a.flac as refused and says nothing of b.flac's
+outage. Nothing false is said; a person reading the item causes or `job show`
+learns the outage.
+
+**Closes when:** the pass's stop at its tag step names the files no catalogue
+could be read for, with the network step, beside those every catalogue
+refused. Ledger only.
+
+---
+
+## R-1686. A pass with a Discogs token stops when Discogs refuses too, built as the conservative call while Phillip's answer is open
+
+**Found:** at the build of #790, U284, 2026-11-13.
+
+**The mechanism.** Phillip's answer on #790 lets a pass carry on past refusing
+catalogues only with a Discogs token recorded. The build carries a file on
+only when Discogs READ it (a miss, or a match whose styles name no folder).
+When Discogs refuses too (its rate limit spent, a 403, a token it rejects),
+every catalogue asked refused, the item fails as before, and the pass stops
+at its tag step naming each refusing catalogue. The question is on the card
+under Question for Phillip, three options, the built one recommended.
+
+**Measured cost.** Driven in `tests/test_sync_refused.py`
+(`test_with_a_token_discogs_refusing_too_stops_and_names_both`). A Discogs
+outage of its own holds a batch in staging until a catalogue answers.
+
+**Closes when:** Phillip answers the card's question; option 1 closes it as
+built, option 2 or 3 is a card of its own changing `_refused_by_all` and
+`tagging.cli._refused_out`. Ledger only.
+
+---
+
+## R-1687. A sweep mixing a Discogs refusal and a rejected token words every stopped file as the token's, and drops the wait step
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** `tagging.cli._refusal_stop` reads one Discogs note for the
+whole sweep, the first non-empty one among the stopped files. In a sweep where
+Discogs answers one file with a 403 (read, refused, retryable) and a later file
+with a 401 (the token rejected, permanent), the stop says Discogs was not read
+since it refused the recorded token, for both, and drops "run the pass or the
+sweep again later" although the first file would mend by waiting.
+
+**Measured cost.** Driven at review round two with fakes, a.flac 403 and b.flac
+401 beside a refusing Beatport: the only step is recording a working token.
+Recording one and running again mends both files; only the wording for the
+first is wrong. A real Discogs answering 403 then 401 in one run was not
+driven.
+
+**Closes when:** the stop groups its files by why Discogs went unread and says
+each group's words and steps. Ledger only.
+
+---
+
+## R-1688. Two guards of U284's refusal record and refusal words are reached by no shipped caller and kill no test
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** `refused._change` catches `RecursionError` beside `OSError`
+and `ValueError`, but `read` already absorbs a record nested past the parser's
+depth inside `_parse`, and `_write` writes a flat document, so the catch is
+never reached. `searchers._beside_refusals` returns the token's refusal
+unchanged when no outcome was gathered, which only a walk naming Discogs alone
+produces, and only a direct caller can name one.
+
+**Measured cost.** Mutations at review round two: removing either kills no
+test. One candidate driven for each (a nested record; the default walk), and
+neither reaches the guard. No user facing cost.
+
+**Closes when:** the dead catch is removed or a producer is found and pinned.
+Ledger only.
+
+---
+
+## R-1689. The provider gate's readers raise RecursionError on a state file nested past the parser's depth
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** `core/provider_gate.py`'s `read_spend`, `read_standing` and
+`spend` catch `OSError` and `ValueError` around their JSON read, and the gate's
+docstring promises that a corrupt counter reads as fresh. A file of
+`"[" * 200000` raises `RecursionError` out of each. U284's refusal record had
+the same shape and catches it since review round one; the gate is the same
+class one file over, not made by U284.
+
+**Measured cost.** Driven at review round two in a scratch copy: all three
+raise. Only a hand edit or a damaged disk writes such a file, so no producer
+was driven, and the cost to `crate doctor` or a provider call is unmeasured.
+
+**Closes when:** the gate's readers read such a file as one that does not
+parse. Ledger only.
+
+---
+
+## R-1690. A branch that renames or deletes a test on the battery's on disk list cannot be measured in memory
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** `ON_DISK` in `scripts/cloud_battery.py` names whole node
+ids, and after a run in memory both the battery and the driver rerun every
+listed id the run's paths cover (`runs_node` in `scripts/mutate.py` reads a
+full run as covering all). A branch that renames or deletes the inode bound
+test asks pytest for an id that no longer exists: the battery refuses the
+run (pinned by the `not-collected` case), and the driver raises
+`MeasurementFailure` on pytest's exit 4 (not driven).
+
+**Measured cost.** Driven by round two of the review: with `ON_DISK` naming a
+missing id, alone or beside a real one, `failing_ids("memory")` refused with
+"pytest printed no summary line, so the run cannot be read", only after the
+whole memory run, with pytest's own "ERROR: not found" naming the id above
+it; nothing names `ON_DISK` as the line to edit. The driver's `run_pytest`
+raised `MeasurementFailure` on pytest's exit 4. Only a memory run meets it,
+and the default place is disk.
+
+**Closes when:** the rerun takes only the listed ids the memory run itself
+collected, or the refusal names `ON_DISK` as the line to edit.
+
+---
+
+## R-1691. A run that times out or is killed can leave its temporary files in /dev/shm, and the timeout reads as a cleanup error
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** U273 moved a run's `TMPDIR` inside the workspace that
+`tempfile.TemporaryDirectory` removes, in `scripts/mutate.py` `run_pytest`
+and `scripts/cloud_battery.py` `run_directory`. When `subprocess.run` times
+out it kills the controller, but xdist workers still writing race the
+removal, so the rmtree can fail with `Directory not empty` and leave the
+directory behind; that `OSError` then replaces the `TimeoutExpired`, so the
+row's note names the wrong reason. A SIGTERM to the battery leaves its
+directory too, since nothing turns the signal into a clean exit. In memory
+the files left hold RAM until removed by hand.
+
+**Measured cost.** Driven by the review on a synthetic suite under `-n 2`
+with `run_pytest(timeout=2)`: the branch leaked 2 of 7 runs in memory and 3
+of 6 on disk, the base 0 of 6 (its `TMPDIR` was outside the workspace). A real
+row past the driver's 3600 s timeout was not driven. Today the default place
+is disk, so only a session that names memory meets it in RAM.
+
+**Closes when:** the child runs in its own session and the whole group is
+killed on a timeout, the cleanup is retried and never replaces the timeout,
+and the battery turns SIGTERM into a clean exit, each with a test that times
+a writing suite out and finds nothing left in the place.
+
+---
+
+## R-1692. Merging U271 with U273 must keep the battery's place and its on disk rerun in the verdict U271 records
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** U271 (#700, `cloud/700-mutate-reads-battery-verdict`)
+replaces `failing_ids()` with its own `measure_suite` and states that neither
+script imports the other; U273 calls `failing_ids(place)` and loads the
+battery into the driver by path (`_load_battery` in `scripts/mutate.py`).
+A dry merge conflicts loudly in both scripts, the battery's tests, METHOD
+and DEVELOPING, and U271's verdict is keyed on a digest of the baseline
+file, whose header now names the place, so a verdict and a driver run in
+different places cannot silently match. A resolution that takes U271's side
+of `measure_suite` would drop the place and the rerun; U273's tests catch it.
+
+**Measured cost.** Not a defect on either branch alone; a merge hazard,
+measured by the review with `git merge-tree` in a scratch clone.
+
+**Closes when:** whichever lands second keeps `failing_ids(place)`, builds
+the verdict's ids from the ids after the rerun and its counts from the
+memory run, and corrects U271's claim that neither script imports the other.
+
+---
+
+## R-1693. Seven guards of U273's places and on disk rerun kill no test
+
+**Found:** at the review of #702, U273, 2026-11-13.
+
+**The mechanism.** Reverted one at a time by the review, each left
+`tests/test_cloud_battery.py` and `tests/test_mutation_driver.py` green:
+in `scripts/cloud_battery.py`, the `stray` half of the on disk run's
+acceptance (no input the review drove reaches it without `unread` firing
+too), the collection error exemption in `unread`, the `os.access` write
+check on the memory root, and the floor's value (halved to 3 GiB); in
+`scripts/mutate.py`, the `again.collected` check after the rerun (a listed
+id that is gone exits pytest 4 first), the `collect_errors` merge from the
+rerun, and the `place == MEMORY` condition on the rerun widened to any
+place (a disk run's rerun is a second disk run and agrees). Round one named
+nine; two are pinned since, the errored replacement by
+`test_a_listed_test_erroring_in_memory_and_passing_on_disk_is_read_passing`
+and `run_pytest`'s own refusal of a place it cannot have by
+`test_a_child_whose_place_is_gone_is_refused_rather_than_run_elsewhere`, and
+so is the driver's `and known.on_disk` condition, which round two found
+unpinned.
+
+**Measured cost.** None driven: each is a defence behind another guard or a
+measure no run on this container reaches. Maintainer facing.
+
+**Closes when:** each has a test that fails without it, or is removed as
+unreachable with the reason in the code.

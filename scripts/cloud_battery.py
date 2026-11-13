@@ -64,6 +64,35 @@ code, the failing ids and the collection errors. `scripts/mutate.py` reads
 it only when every one of those keys is its own, and measures otherwise.
 `last-compare.txt`, the line `release.py cut` reads, takes its commit from
 before the run too and says `dirty` when the tree moved during it.
+
+Every run keeps its temporary files in one named place (U273), `memory` or
+`disk`, chosen by `baseline` and written into its header, since the suite
+writes about 2 GB of scratch files a run and a container's disk makes it wait
+on them. `baseline` runs on disk unless `--temp memory` asks for the memory
+filesystem, `/dev/shm`, which it refuses unless that is a memory filesystem
+with room for a run (a `tmpfs`; a `ramfs` reports no size and so never has
+room, though a disk run whose temporary directory is on one is refused).
+`compare` runs in the baseline's place and refuses a `--temp` naming the
+other, so the base and the branch are always measured on the same machine. A run in either place gets a fresh directory there as `TMPDIR`,
+removed when it ends, and a disk run whose temporary directory is itself on a
+memory filesystem is refused, so neither place is ever a name only.
+
+A few tests need a real disk, named in `ON_DISK` (one today: a file on a
+memory filesystem gets an inode far below the bound the test reads). In
+memory the whole suite runs, these included, and then the named tests run a
+second time on disk, and for them the disk run's outcome is the one recorded.
+Nothing is skipped or deselected. The header names the place, the baseline
+lists the tests it ran on disk, and `scripts/mutate.py --known-failures`
+reads both and runs its own children the same way. A baseline that names no
+place, every one measured before U273, is refused with the command that
+measures it again.
+
+A run in memory writes the run record U271 reads like any other: its failing
+ids are the ones after the rerun on disk, and its collected and ran counts
+are the memory run's, which ran every test. The record names the known
+failures file by digest, and that file's header names the place, so the
+driver never reads a run made in one place against a baseline made in the
+other.
 """
 
 from __future__ import annotations
@@ -77,6 +106,8 @@ import socket
 import subprocess
 import sys
 import tempfile
+from collections.abc import Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -104,6 +135,41 @@ FULL_HISTORY = "history full"
 #: The header's last field, saying every id was stored whole (U268). `compare`
 #: and the mutation driver require both.
 WHOLE_IDS = "ids whole"
+
+#: The header field naming where the run kept its temporary files (U273).
+TEMP_FIELD = "temp"
+MEMORY = "memory"
+DISK = "disk"
+PLACES = (MEMORY, DISK)
+
+#: The memory filesystem a run in memory makes its directory in, the filesystem
+#: types read as memory, and the free space it must have before a run starts.
+#: A run writes about 2 GB; a container whose `/dev/shm` is small, Docker's
+#: default is 64 MB, would fill it partway and fail tests for want of space,
+#: and a failure in the baseline is subtracted unread from every compare.
+MEMORY_ROOT = Path("/dev/shm")
+MEMORY_FILESYSTEMS = frozenset({"tmpfs", "ramfs"})
+MEMORY_FLOOR = 6 * 2**30
+MOUNTS = Path("/proc/self/mounts")
+
+#: The tests that need a real disk, run a second time on disk after a run in
+#: memory, each by its whole node id. Keep it short: a test on it is measured
+#: twice, and only the disk run counts for it.
+ON_DISK: tuple[str, ...] = (
+    # A memory filesystem hands a new file an inode in the thousands, and the
+    # test needs one above the repair bound of 2,000,000, which the Mac's APFS
+    # counter and, usually, the container's ext4 give.
+    "tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random",
+)
+
+#: Where `baseline` runs when `--temp` names no place. Disk, decided by U273 as
+#: the conservative call while Phillip decides: on the container a file on disk
+#: gets an inode near 600,000 unless a busy run has already written gigabytes,
+#: so the one test on `ON_DISK` fails when it runs there alone, and a baseline
+#: in memory would read it as the machine's where the disk battery mostly
+#: passes it. A test newly read as the machine's is never traded for speed
+#: without his say.
+DEFAULT_PLACE = DISK
 
 #: The command that measures a baseline again, named in every refusal of one.
 REMEASURE = "`.venv/bin/python scripts/cloud_battery.py baseline` on origin/main"
@@ -159,7 +225,13 @@ def pytest_terminal_summary(terminalreporter, exitstatus, config):
     out = os.environ.get("CLOUD_BATTERY_REPORT_PATH")
     if not out:
         return
-    found = {"collected": _COLLECTED["count"], "ran": len(_RAN), "collect_errors": []}
+    passed = terminalreporter.stats.get("passed", [])
+    found = {
+        "collected": _COLLECTED["count"],
+        "ran": len(_RAN),
+        "collect_errors": [],
+        "passed": {"ids": [getattr(report, "nodeid", None) for report in passed]},
+    }
     for category in ("failed", "error"):
         reports = terminalreporter.stats.get(category, [])
         found[category] = {
@@ -267,46 +339,125 @@ def suite_command() -> list[str]:
     ]
 
 
-@dataclass(frozen=True)
-class SuiteRun:
-    """What one run of the suite measured.
+def _unescape_mount(field: str) -> str:
+    """A mount table path, whose spaces and the like are written as octal escapes."""
+    return re.sub(r"\\([0-7]{3})", lambda m: chr(int(m.group(1), 8)), field)
 
-    ``collected``, ``ran`` and ``collect_errors`` are None when the run did
-    not say; ``ran`` counts the tests that reported at all, every one of the
-    collected in a run that was not stopped early,
-    and ``exit_code`` is
-    pytest's own, so a reader can tell a complete run (0 or 1) from an
-    interrupted one.
+
+def filesystem_of(path: Path) -> str | None:
+    """The type of the filesystem holding ``path``, read off the mount table.
+
+    The longest mount point holding the path wins, and the later of two at the
+    same point, which is the one mounted over the other. None when there is no
+    mount table to read, which is every machine but Linux.
     """
+    try:
+        lines = MOUNTS.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return None
+    target = os.path.realpath(path)
+    best, kind = "", None
+    for line in lines:
+        fields = line.split()
+        if len(fields) < 3:
+            continue
+        point = _unescape_mount(fields[1])
+        inside = point == "/" or target == point or target.startswith(point.rstrip("/") + "/")
+        if inside and len(point) >= len(best):
+            best, kind = point, fields[2]
+    return kind
 
-    ids: frozenset[str]
-    summary: str
-    collected: int | None
-    collect_errors: frozenset[str] | None
-    exit_code: int
-    ran: int | None = None
+
+def disk_root() -> Path:
+    """Where a run on disk makes its directory: the temporary directory this process was given."""
+    return Path(tempfile.gettempdir())
 
 
-def failing_ids() -> tuple[set[str], str]:
-    """Run the suite and return the failing and erroring ids with the summary line."""
-    suite = measure_suite()
-    return set(suite.ids), suite.summary
+def place_root(place: str) -> tuple[Path | None, str]:
+    """The directory a run in ``place`` makes its own in, or None and why it cannot."""
+    if place == MEMORY:
+        root = MEMORY_ROOT
+        kind = filesystem_of(root)
+        if kind not in MEMORY_FILESYSTEMS:
+            return None, f"{root} is not a memory filesystem here ({kind or 'no mount table'})"
+        if not os.access(root, os.W_OK):
+            return None, f"{root} cannot be written"
+        stats = os.statvfs(root)
+        free = stats.f_bavail * stats.f_frsize
+        if free < MEMORY_FLOOR:
+            return None, (
+                f"{root} has {free / 2**30:.1f} GiB free, under the "
+                f"{MEMORY_FLOOR / 2**30:.0f} GiB a run needs, and a run that fills it fails "
+                f"tests for want of space"
+            )
+        return root, ""
+    if place == DISK:
+        root = disk_root()
+        kind = filesystem_of(root)
+        if kind in MEMORY_FILESYSTEMS:
+            return None, (
+                f"the temporary directory {root} is on a memory filesystem ({kind}), so a run "
+                f"there is not on disk; point TMPDIR at a directory on disk"
+            )
+        return root, ""
+    return None, f"{place!r} is not a place for temporary files; name one of {', '.join(PLACES)}"
 
 
-def measure_suite() -> SuiteRun:
-    """Run the suite and read every failing id whole, with what else the run measured."""
-    with tempfile.TemporaryDirectory(prefix="cloud-battery-") as tmp:
+def places_needed(place: str) -> tuple[str, ...]:
+    """The places a run in ``place`` uses: memory runs the listed tests on disk too."""
+    return (MEMORY, DISK) if place == MEMORY and ON_DISK else (place,)
+
+
+def refusal_for(place: str) -> str | None:
+    """Why this machine cannot give a run in ``place`` every place it uses, or None.
+
+    Checked before the suite runs, so a disk this machine cannot give for the
+    on disk rerun refuses a run in memory at its start rather than after it.
+    """
+    for needed in places_needed(place):
+        root, why = place_root(needed)
+        if root is None:
+            return why if needed == place else f"the tests run again on disk cannot be: {why}"
+    return None
+
+
+@contextmanager
+def run_directory(place: str | None) -> Iterator[tuple[Path, Path | None]]:
+    """A fresh workspace in ``place`` and the temporary directory inside it, removed after.
+
+    No place is the run as it was before U273: the workspace in the inherited
+    temporary directory, and no ``TMPDIR`` for the suite. ``cmd_baseline`` and
+    ``cmd_compare`` always name one.
+    """
+    if place is None:
+        with tempfile.TemporaryDirectory(prefix="cloud-battery-") as tmp:
+            yield Path(tmp), None
+        return
+    root, why = place_root(place)
+    if root is None:
+        raise SystemExit(f"temporary files: REFUSED, {why}")
+    with tempfile.TemporaryDirectory(prefix="cloud-battery-", dir=root) as tmp:
         workspace = Path(tmp)
+        temp = workspace / "tmp"
+        temp.mkdir()
+        yield workspace, temp
+
+
+def _run_suite(place: str | None, extra: tuple[str, ...] = ()) -> tuple[dict, str, int]:
+    """One suite run in ``place``: its report, its summary line and pytest's exit code."""
+    with run_directory(place) as (workspace, temp):
         (workspace / f"{PLUGIN_MODULE}.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
         report_path = workspace / "report.json"
         # Inherit, then add: the suite reads the caller's environment, and a
         # fresh one would measure a different run.
         env = os.environ.copy()
         env[REPORT_VARIABLE] = str(report_path)
+        if temp is not None:
+            env["TMPDIR"] = str(temp)
         env["PYTHONPATH"] = os.pathsep.join([str(workspace), env.get("PYTHONPATH", "")]).rstrip(
             os.pathsep
         )
-        result = run(suite_command(), env=env)
+        result = run(suite_command() + list(extra), env=env)
         summary = ""
         for line in result.stdout.splitlines():
             if " passed" in line or " failed" in line or " error" in line:
@@ -322,15 +473,104 @@ def measure_suite() -> SuiteRun:
                 "pytest wrote no report of its failing tests, so the run cannot be read"
             )
         report = json.loads(report_path.read_text(encoding="utf-8"))
+    return report, summary, result.returncode
+
+
+@dataclass(frozen=True)
+class SuiteRun:
+    """What one run of the suite measured.
+
+    ``collected``, ``ran`` and ``collect_errors`` are None when the run did
+    not say; ``ran`` counts the tests that reported at all, every one of the
+    collected in a run that was not stopped early,
+    and ``exit_code`` is
+    pytest's own, so a reader can tell a complete run (0 or 1) from an
+    interrupted one. ``place`` is where it kept its temporary files (U273),
+    None for the inherited temporary directory; ``on_disk`` names the tests
+    a run in memory ran again on disk, whose outcome there ``ids`` holds.
+    """
+
+    ids: frozenset[str]
+    summary: str
+    collected: int | None
+    collect_errors: frozenset[str] | None
+    exit_code: int
+    ran: int | None = None
+    place: str | None = None
+    on_disk: tuple[str, ...] = ()
+    on_disk_summary: str = ""
+
+
+def failing_ids() -> tuple[set[str], str]:
+    """Run the suite and return the failing and erroring ids with the summary line."""
+    suite = measure_suite()
+    return set(suite.ids), suite.summary
+
+
+def measure_suite(place: str | None = None) -> SuiteRun:
+    """Run the suite in ``place`` and read every failing id whole, with what else it measured.
+
+    In memory, the tests on ``ON_DISK`` then run a second time on disk, and
+    their outcome there replaces their outcome in memory; the counts stay the
+    memory run's, which ran every test.
+    """
+    report, summary, exit_code = _run_suite(place)
     ids = read_report(report, summary)
+    collect_errors = _read_collect_errors(report, ids)
+    listed = tuple(ON_DISK) if place == MEMORY else ()
+    on_disk_summary = ""
+    if listed:
+        ids, on_disk_summary = _rerun_on_disk(ids, listed)
     return SuiteRun(
         ids=frozenset(ids),
         summary=summary,
         collected=_read_count(report, "collected"),
-        collect_errors=_read_collect_errors(report, ids),
-        exit_code=result.returncode,
+        collect_errors=collect_errors,
+        exit_code=exit_code,
         ran=_read_count(report, "ran"),
+        place=place,
+        on_disk=listed,
+        on_disk_summary=on_disk_summary,
     )
+
+
+def _ran(report: dict) -> set[str]:
+    ran: set[str] = set()
+    for category in ("passed", "failed", "error"):
+        entry = report.get(category)
+        listed = entry.get("ids") if isinstance(entry, dict) else None
+        if not isinstance(listed, list):
+            raise SystemExit(
+                f"the on disk run's report has no list of {category} tests, so whether each "
+                f"listed test ran there cannot be read: {entry!r}"
+            )
+        ran.update(listed)
+    return ran
+
+
+def _rerun_on_disk(ids: set[str], listed: tuple[str, ...]) -> tuple[set[str], str]:
+    """The ids with the listed tests' outcome read from a second run on disk.
+
+    That run is refused unless every listed test ran in it and nothing else
+    did, apart from the collection error of a listed test's file, which is read
+    as its failure.
+    """
+    disk_report, disk_summary, _ = _run_suite(DISK, listed)
+    disk_ids = read_report(disk_report, disk_summary)
+    ran = _ran(disk_report)
+    unread = {
+        one
+        for one in set(listed) - ran
+        if not any(one.startswith(f"{path}::") for path in disk_ids)
+    }
+    stray = ran - set(listed) - {path for path in disk_ids if "::" not in path}
+    if unread or stray:
+        raise SystemExit(
+            f"the on disk run ({disk_summary}) did not run exactly the tests listed to run "
+            f"on disk, so it cannot stand for them: not run {sorted(unread)}, "
+            f"run unlisted {sorted(stray)}"
+        )
+    return (ids - set(listed)) | disk_ids, disk_summary
 
 
 def _read_count(report: dict, key: str) -> int | None:
@@ -405,48 +645,88 @@ def read_report(report: dict, summary: str) -> set[str]:
     return ids
 
 
-def cmd_baseline(_args) -> int:
+def _requested_place(args) -> str | None:
+    return getattr(args, "temp", None)
+
+
+def cmd_baseline(args) -> int:
+    place = _requested_place(args) or DEFAULT_PLACE
+    why = refusal_for(place)
+    if why is not None:
+        print(f"temporary files: REFUSED, {why}")
+        return 1
     if not full_history_or_refuse():
         return 1
     if not static_checks():
         return 1
     at = head()
     before = tree_state()
-    suite = measure_suite()
+    measured = measure_suite(place)
     tree = measured_tree(before, tree_state())
-    ids, summary = suite.ids, suite.summary
     STATE.mkdir(exist_ok=True)
+    lines = [
+        f"# commit {at} host {socket.gethostname()} {TEMP_FIELD} {place} "
+        f"{FULL_HISTORY} {WHOLE_IDS}",
+        f"# {measured.summary}",
+        *(f"# on disk test {one}" for one in measured.on_disk),
+    ]
+    if measured.on_disk:
+        lines.append(f"# on disk summary {measured.on_disk_summary}")
     BASELINE.write_text(
-        f"# commit {at} host {socket.gethostname()} {FULL_HISTORY} {WHOLE_IDS}\n"
-        f"# {summary}\n" + "".join(f"{i}\n" for i in sorted(ids)),
+        "".join(f"{line}\n" for line in lines) + "".join(f"{i}\n" for i in sorted(measured.ids)),
         encoding="utf-8",
     )
     # Its own failures are the known ones by construction, so the verdict is
     # clean against the file just written; the release reads compare's only.
-    record_run("baseline", "clean", suite, tree, file_digest(BASELINE))
-    print(f"baseline at {at}: {summary}")
-    print(f"{len(ids)} machine bound failure(s) recorded in {BASELINE.relative_to(ROOT)}")
+    record_run("baseline", "clean", measured, tree, file_digest(BASELINE))
+    print(f"baseline at {at}: {measured.summary}")
+    print(_place_line(measured))
+    print(f"{len(measured.ids)} machine bound failure(s) recorded in {BASELINE.relative_to(ROOT)}")
     return 0
 
 
-def read_baseline() -> tuple[set[str], str] | None:
+def _place_line(measured: SuiteRun) -> str:
+    line = f"temporary files: {measured.place}"
+    if measured.on_disk:
+        line += (
+            f", then {len(measured.on_disk)} test(s) again on disk, whose outcome there "
+            f"stands: {measured.on_disk_summary}"
+        )
+    return line
+
+
+@dataclass(frozen=True)
+class Baseline:
+    ids: set[str]
+    commit: str
+    place: str
+    on_disk: tuple[str, ...]
+
+
+ON_DISK_PREFIX = "# on disk test "
+
+
+def read_baseline() -> Baseline | None:
     if not BASELINE.exists():
         return None
     lines = BASELINE.read_text(encoding="utf-8").splitlines()
     header = lines[0] if lines else ""
-    match = re.match(r"# commit (\S+) host (\S+)(?: (history \S+))?(?: (ids \S+))?$", header)
+    match = re.match(
+        rf"# commit (\S+) host (\S+)(?: {TEMP_FIELD} (\S+))?(?: (history \S+))?(?: (ids \S+))?$",
+        header,
+    )
     if not match:
         return None
     if match.group(2) != socket.gethostname():
         print(f"the baseline was measured on {match.group(2)}, not this machine; measure it again")
         return None
-    if match.group(3) != FULL_HISTORY:
+    if match.group(4) != FULL_HISTORY:
         print(
             "the baseline does not say it was measured with full history, so a test a "
             "shallow clone held red may be in it; measure it again"
         )
         return None
-    if match.group(4) != WHOLE_IDS:
+    if match.group(5) != WHOLE_IDS:
         print(
             "the baseline does not say its ids are whole: it was measured before U268, "
             "which kept each failing id only up to its first space, so a new failure "
@@ -454,16 +734,41 @@ def read_baseline() -> tuple[set[str], str] | None:
             f"{REMEASURE}"
         )
         return None
+    if match.group(3) not in PLACES:
+        print(
+            "the baseline does not say where its temporary files were: it was measured "
+            "before U273, and a run in memory is never read against one whose place is "
+            f"unknown; measure it again with {REMEASURE}"
+        )
+        return None
     ids = {line for line in lines if line and not line.startswith("#")}
-    return ids, match.group(1)
+    on_disk = tuple(
+        line[len(ON_DISK_PREFIX) :] for line in lines if line.startswith(ON_DISK_PREFIX)
+    )
+    return Baseline(ids, match.group(1), match.group(3), on_disk)
 
 
-def cmd_compare(_args) -> int:
+def cmd_compare(args) -> int:
     base = read_baseline()
     if base is None:
         print("no baseline for this machine: run `cloud_battery.py baseline` on origin/main first")
         return 2
-    base_ids, base_commit = base
+    requested = _requested_place(args)
+    if requested is not None and requested != base.place:
+        print(
+            f"temporary files: REFUSED, the baseline kept its temporary files in {base.place} "
+            f"and this compare asks for {requested}, and a run one way is never read against "
+            f"a baseline measured the other; compare with `--temp {base.place}`, or measure "
+            f"the baseline again with `--temp {requested}`"
+        )
+        return 2
+    why = refusal_for(base.place)
+    if why is not None:
+        print(
+            f"temporary files: REFUSED, the baseline kept its temporary files in {base.place} "
+            f"and this machine cannot now: {why}"
+        )
+        return 2
     # Read beside the ids it holds, so the record names the file they came from.
     known_digest = file_digest(BASELINE)
     if not full_history_or_refuse():
@@ -472,14 +777,20 @@ def cmd_compare(_args) -> int:
         return 1
     at = head()
     before = tree_state()
-    suite = measure_suite()
+    measured = measure_suite(base.place)
     tree = measured_tree(before, tree_state())
-    ids, summary = suite.ids, suite.summary
-    still = sorted(ids & base_ids)
-    new = sorted(ids - base_ids)
-    gone = sorted(base_ids - ids)
-    print(f"branch at {at}: {summary}")
-    print(f"baseline at {base_commit}: {len(base_ids)} failing")
+    ids = measured.ids
+    still = sorted(ids & base.ids)
+    new = sorted(ids - base.ids)
+    gone = sorted(base.ids - ids)
+    print(f"branch at {at}: {measured.summary}")
+    print(f"baseline at {base.commit}: {len(base.ids)} failing")
+    print(_place_line(measured))
+    if measured.on_disk != base.on_disk:
+        print(
+            f"the tests run on disk differ from the baseline's: now {list(measured.on_disk)}, "
+            f"then {list(base.on_disk)}"
+        )
     print()
     print(f"still failing, the machine's: {len(still)}")
     print(f"no longer failing: {len(gone)}")
@@ -490,7 +801,7 @@ def cmd_compare(_args) -> int:
         print(f"  {i}")
     verdict = "red" if new else "clean"
     record_verdict(verdict, tree)
-    record_run("compare", verdict, suite, tree, known_digest)
+    record_run("compare", verdict, measured, tree, known_digest)
     return 1 if new else 0
 
 
@@ -607,12 +918,24 @@ def record_run(
 def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n")[0])
     sub = parser.add_subparsers(dest="cmd", required=True)
-    sub.add_parser("baseline", help="measure the machine's failures on this commit").set_defaults(
-        func=cmd_baseline
+    baseline = sub.add_parser("baseline", help="measure the machine's failures on this commit")
+    baseline.add_argument(
+        "--temp",
+        choices=PLACES,
+        default=None,
+        help="where the run keeps its temporary files; disk unless memory is named, and "
+        "memory only on a memory filesystem with room for a run",
     )
-    sub.add_parser("compare", help="run the suite and diff it against the baseline").set_defaults(
-        func=cmd_compare
+    baseline.set_defaults(func=cmd_baseline)
+    compare = sub.add_parser("compare", help="run the suite and diff it against the baseline")
+    compare.add_argument(
+        "--temp",
+        choices=PLACES,
+        default=None,
+        help="where the run keeps its temporary files; the baseline's place, and refused "
+        "when it names the other",
     )
+    compare.set_defaults(func=cmd_compare)
     args = parser.parse_args(argv)
     return args.func(args)
 
