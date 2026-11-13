@@ -1815,9 +1815,10 @@ class _Resolved:
 #: a fifty track set walks the library fifty times. The key is the job and the
 #: attempt the engine stamped on it, so a resume walks again and sees what the
 #: previous drive's offers changed. Single entry: a driver runs one job. This
-#: is a module global standing in for a per drive setup seam the job engine
-#: does not have, which is recorded rather than hidden; ``reset_cache`` is
-#: what a suite calls between libraries, the same hook adoption exposes.
+#: is a module global that predates the job engine's per drive seam (U274,
+#: ``cli.handlers.PER_DRIVE_ATTRIBUTE``), which is recorded rather than hidden;
+#: ``reset_cache`` is what a suite calls between libraries, the same hook
+#: adoption exposes.
 #:
 #: EACH DRIVE STILL WALKS, but since U249 a walk opens only a file it cannot
 #: answer from memory: the index reader remembers each file's tags for the

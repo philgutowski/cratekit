@@ -934,22 +934,27 @@ def _acquire(job, item, cfg) -> jobs.Produced:
         refusal = _refused_invocation(run, request)
         if invocation.outcome is InvocationOutcome.AUTH_FAILED:
             # PARKED, NOT FAILED, and only this one of the two. This worker
-            # builds an adapter and authenticates inside every item, so failing
-            # the item lets the driver claim the next one, which logs in again:
-            # a two hundred track list against an expired session becomes two
-            # hundred failed logins into one account, and repeated failed logins
-            # are what triggers the lockout the module docstring records as
-            # unrecoverable. A dead credential is also a fact about the RUN and
-            # never about the track, so nothing is lost by stopping. The item is
-            # released and the job records why, so one resume after fixing the
-            # credential redoes the whole remainder.
+            # builds an adapter for every item, so failing the item lets the
+            # driver claim the next one, which asks again: a two hundred track
+            # list against an expired session would be two hundred failed
+            # logins into one account, and repeated failed logins are what
+            # triggers the lockout the module docstring records as
+            # unrecoverable. Since U274 the vendored adapter's drive also
+            # remembers the refusal and makes no call after it, so the park is
+            # no longer the only thing between a dead session and a lockout. A
+            # dead credential is also a fact about the RUN and never about the
+            # track, so nothing is lost by stopping. The item is released and
+            # the job records why, so one resume after fixing the credential
+            # redoes the whole remainder.
             raise jobs.Parked(refusal.cause)
         # A BROKEN ADAPTER STILL FAILS THE ITEM, deliberately and asymmetrically.
         # A tool that crashed mid transfer may have crashed on this track, and
         # the unit's brief asks for exactly that: the item fails, the job stays
         # resumable, and the resume redoes only it. The rebuild it costs per item
         # is recorded rather than fixed by parking, because parking here would
-        # end a fifty track sync on one bad file.
+        # end a fifty track sync on one bad file (R-293). Since U274 a drive of
+        # the vendored adapter keeps its login across a track the tool broke
+        # on, so the next item rebuilds the adapter and not the session.
         raise refusal
     result = next((r for r in invocation.results if r.key == request.key), None)
     if result is None:

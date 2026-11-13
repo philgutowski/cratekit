@@ -18,7 +18,9 @@ FOUR THINGS THIS FILE OWNS, and each is a failure the source system had:
 2. **The credential is materialised and erased (R4).** The wrapped tool persists
    its own plaintext session beside its settings and refreshes it silently. It is
    pointed at a private short-lived file instead, and the refreshed session goes
-   back to the keychain.
+   back to the keychain. A download job holds one file and one login for a whole
+   drive of the job rather than one a track (U274, :func:`drive`), and the
+   session the tool holds in memory is written back when the drive closes.
 3. **Failures are translated into the contract.** The tool raises whatever its
    client raises. An authentication rejection becomes an invocation-level
    AUTH_FAILED naming the replacement path (AE9), not a pile of missing tracks.

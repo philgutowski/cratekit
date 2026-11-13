@@ -10,7 +10,9 @@ the credential that actually matters.
 WHAT THIS DOES INSTEAD. The keychain is the system of record. For the life of ONE
 invocation the adapter materialises the stored session into a private runtime
 file, hands the wrapped tool that path, takes back whatever the tool refreshed,
-writes it to the keychain, and erases the file. Between invocations there is no
+writes it to the keychain, and erases the file. A download job's invocation is
+one drive of the job, every track it acquires (U274, Phillip's answer on the
+card): one file, one login, one write back. Between invocations there is no
 token on disk at all.
 
 THREE PROPERTIES, EACH LOAD-BEARING:
@@ -22,7 +24,9 @@ THREE PROPERTIES, EACH LOAD-BEARING:
   module's own chmod, so there is one implementation of "private" (P1).
 * **The erase runs on every exit path.** A run that raised is exactly the run
   most likely to leave a token behind, so the cleanup is in a ``finally`` and is
-  not conditional on success.
+  not conditional on success. A process killed outright runs no exit path, so
+  each directory is named for its process and every new scope first sweeps the
+  ones whose process is gone (:func:`sweep_orphans`, U274).
 * **The write-back is validated before it replaces the keychain entry.** A tool
   killed mid-write leaves a truncated file, and copying that over the stored
   session destroys the only good copy. An unreadable file is left alone and the
