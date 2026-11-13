@@ -304,7 +304,7 @@ ADDED_ENV = (
     "PYTHONPATH (the plugin's temp directory, prepended)",
     "MUTATE_REPORT_PATH (the plugin's output file)",
     "TMPDIR, with a known failures file only (a fresh directory in the place its "
-    "baseline was measured in, U273)",
+    "baseline was measured in, or on disk for the tests rerun there, U273)",
     "the installation state sandbox: "
     + ", ".join(sorted(SANDBOXED_ENV))
     + " (all pointed inside the run's workspace, R-343)",
@@ -978,7 +978,8 @@ def run_pytest(
         root, why = BATTERY.place_root(place)
         if root is None:
             raise DriverRefusal(
-                f"{label} cannot keep its temporary files in {place} on this machine: {why}"
+                f"{label} cannot keep its temporary files "
+                f"{'in memory' if place == BATTERY.MEMORY else 'on disk'} on this machine: {why}"
             )
     with tempfile.TemporaryDirectory(prefix="mutate-run-", dir=root) as tmp:
         workspace = Path(tmp)

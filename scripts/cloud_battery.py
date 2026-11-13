@@ -56,9 +56,9 @@ writes about 2 GB of scratch files a run and a container's disk makes it wait
 on them. `baseline` runs on disk unless `--temp memory` asks for the memory
 filesystem, `/dev/shm`, which it refuses unless that is a memory filesystem
 with room for a run (a `tmpfs`; a `ramfs` reports no size and so never has
-room, though a disk run whose temporary directory is on one is refused). `compare` runs in the baseline's place and refuses a `--temp`
-naming the other, so the base and the branch are always measured on the same
-machine. A run in either place gets a fresh directory there as `TMPDIR`,
+room, though a disk run whose temporary directory is on one is refused).
+`compare` runs in the baseline's place and refuses a `--temp` naming the
+other, so the base and the branch are always measured on the same machine. A run in either place gets a fresh directory there as `TMPDIR`,
 removed when it ends, and a disk run whose temporary directory is itself on a
 memory filesystem is refused, so neither place is ever a name only.
 

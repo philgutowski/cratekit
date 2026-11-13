@@ -1099,6 +1099,37 @@ def test_a_disk_the_rerun_cannot_have_is_refused_before_anything_runs(
     err = capsys.readouterr().err
     assert "run again on disk" in err and "memory filesystem" in err
 
+    # With no test to run on disk, the memory run needs no disk and is not refused.
+    class Measured(Exception):
+        """Raised where the batch would start: every refusal is behind it."""
+
+    def reached(*_a, **_k):
+        raise Measured
+
+    monkeypatch.setattr(mutate, "measure_batch", reached)
+    nothing_on_disk = _known_file(tmp_path, "memory", "tests/a.py::t")
+    with pytest.raises(Measured):
+        mutate.main([*argv, "--known-failures", str(nothing_on_disk)])
+
+
+def test_a_child_whose_place_is_gone_is_refused_rather_than_run_elsewhere(
+    placed_repo, places, monkeypatch
+):
+    """Round two of the review: a place lost after main's check refuses the run,
+    never falls back to the inherited temporary directory."""
+    repo, log = placed_repo
+    memory, _ = places
+    monkeypatch.setattr(mutate.BATTERY, "disk_root", lambda: memory)
+    known = mutate.KnownFailures(place="memory", on_disk=(PLACED_ID,))
+    gone = "its tests on disk cannot keep its temporary files on disk"
+    with pytest.raises(mutate.DriverRefusal, match=gone):
+        mutate.run_pytest(repo, None, known=known, label="the row R1")
+    monkeypatch.setattr(mutate.BATTERY, "MEMORY_FLOOR", 2**80)
+    log.unlink()
+    with pytest.raises(mutate.DriverRefusal, match="temporary files in memory"):
+        mutate.run_pytest(repo, None, known=known, label="the row R1")
+    assert not log.exists(), "a refused run ran nothing"
+
 
 def _where(log: Path) -> list[str]:
     return log.read_text(encoding="utf-8").splitlines()
