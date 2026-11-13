@@ -94,9 +94,19 @@ from typing import TYPE_CHECKING, Any
 
 from cratekit.cli import doctor, output, prompt, registry, render
 from cratekit.cli.output import Envelope
-from cratekit.core import config, preflight, processes, profiles, rb_writer, secrets, taxonomy
+from cratekit.core import (
+    config,
+    preflight,
+    processes,
+    profiles,
+    rb_writer,
+    secrets,
+    taxonomy,
+    taxonomy_upgrade,
+)
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation, Scope
 from cratekit.core.exit_codes import Remedy
+from cratekit.tagging import searchers
 
 if TYPE_CHECKING:  # pragma: no cover - import cycle avoidance for typing only
     from cratekit.cli import Context
@@ -172,6 +182,15 @@ def build(parser: argparse.ArgumentParser, entry: registry.Entry) -> None:
     parser.add_argument(
         "--backup-remote",
         help="the rclone remote the three destinations name, replacing a recorded one",
+    )
+    # ASKED FOR, NEVER OFFERED UNPROMPTED (U283). A recorded Discogs token is
+    # acknowledged and left alone; this flag is how a person asks to replace
+    # it, and a replacement Discogs does not accept leaves the recorded one.
+    parser.add_argument(
+        RELINK_FLAG,
+        dest="relink_discogs",
+        action="store_true",
+        help="offer to replace the recorded Discogs token, checking the new one first",
     )
     parser.set_defaults(_handler=setup)
 
@@ -1421,7 +1440,8 @@ def _propose_prefix_map(wizard: _Wizard, document: dict[str, Any], cfg: config.C
 
 
 def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
-    """Offer to record each credential this profile's verbs will or may spend.
+    """Offer to record each credential this profile's verbs will or may spend,
+    except Discogs' token, which :func:`_link_discogs` offers as its own step.
 
     Read through ``cli/prompt``'s secret reader, so the value is never echoed,
     never reaches a command line, and never reaches a shell history. What is
@@ -1440,9 +1460,11 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
     """
     membership = profiles.resolve(cfg.profile.name, dict(cfg.modules.explicit))
     for key in sorted(doctor.CREDENTIALS_BY_CHECK):
-        # OFFERED, NOT ONLY REQUIRED (U244): a credential a switched on verb
-        # spends when there is one, Discogs' token, is offered too, and a no
-        # here is a note, as for any other.
+        # DISCOGS IS ITS OWN STEP (U283), :func:`_link_discogs`, which says what
+        # the token is for, checks it with Discogs and only then stores it. A
+        # bare offer here as well would ask for the same token twice.
+        if key == DISCOGS_CHECK:
+            continue
         if not doctor.offered(key, membership):
             continue
         # Keyed by the CREDENTIAL rather than by the check that groups it. One
@@ -1475,7 +1497,6 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
                 continue
             try:
                 value = wizard.prompter.secret(f"Value for {name}")
-                secrets.set(str(name), value)
             except prompt.NothingEntered:
                 # An offer accepted and then left empty is the same fact as a
                 # no: nothing recorded, doctor reports it. A FAIL here failed the
@@ -1496,43 +1517,306 @@ def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
                     Remedy.SET_CREDENTIAL,
                 )
                 continue
-            except secrets.CredentialError as exc:
-                # The remedy travels ON the exception and the three subclasses
-                # carry three different ones: no backend, no entry, and a rejected
-                # entry need opposite acts. Substituting one here would be the
-                # collapse the secrets module declares three types to avoid.
+            if _store(wizard, f"setup.credential.{name}", f"credential {name}", str(name), value):
                 wizard.note(
                     f"setup.credential.{name}",
                     f"credential {name}",
-                    doctor.Status.FAIL,
-                    f"{name} could not be recorded: {exc}",
-                    Remedy(str(exc.remedy)),
+                    doctor.Status.OK,
+                    f"{name} recorded in the OS keychain",
                 )
-                continue
-            except CratekitError as exc:
-                # THE SAME REFUSAL AS THE PROBE ABOVE, REACHED THROUGH THE WRITE.
-                # ``secrets.set`` notes the name in the presence index after the
-                # keychain write, through the same reader, so an index it cannot
-                # use refuses here too. A leg of its own because the three above
-                # cannot see it: ``CredentialError`` is not a ``CratekitError``,
-                # so catching one does not catch the other, and the window is a
-                # person typing a secret, which is as wide as windows get.
-                cause = exc.cause
-                wizard.note(
-                    f"setup.credential.{name}",
-                    f"credential {name}",
-                    doctor.Status.FAIL,
-                    f"{name} could not be recorded, {cause.message}",
-                    cause.remediation.remedy,
-                    error=exc,
-                )
-                continue
+
+
+def _store(wizard: _Wizard, key: str, title: str, name: str, value: str) -> bool:
+    """Record ``value`` under ``name``, or note why it could not be. True when stored.
+
+    Shared by the credential loop and the Discogs step, so a credential reaches
+    the keychain one way from this verb, through ``secrets.set``, as
+    ``crate login`` records it. The value is in no note: each sentence is the
+    store's own refusal, which names the credential and never its value.
+    """
+    try:
+        secrets.set(name, value)
+    except secrets.CredentialError as exc:
+        # The remedy travels ON the exception and the three subclasses
+        # carry three different ones: no backend, no entry, and a rejected
+        # entry need opposite acts. Substituting one here would be the
+        # collapse the secrets module declares three types to avoid.
+        wizard.note(
+            key,
+            title,
+            doctor.Status.FAIL,
+            f"{name} could not be recorded: {exc}",
+            Remedy(str(exc.remedy)),
+        )
+        return False
+    except CratekitError as exc:
+        # THE SAME REFUSAL AS THE PRESENCE PROBE, REACHED THROUGH THE WRITE.
+        # ``secrets.set`` notes the name in the presence index after the
+        # keychain write, through the same reader, so an index it cannot
+        # use refuses here too. A leg of its own because the one above
+        # cannot see it: ``CredentialError`` is not a ``CratekitError``,
+        # so catching one does not catch the other, and the window is a
+        # person typing a secret, which is as wide as windows get.
+        cause = exc.cause
+        wizard.note(
+            key,
+            title,
+            doctor.Status.FAIL,
+            f"{name} could not be recorded, {cause.message}",
+            cause.remediation.remedy,
+            error=exc,
+        )
+        return False
+    return True
+
+
+# ---------------------------------------------------------------------------
+# Discogs, its own step (U283)
+# ---------------------------------------------------------------------------
+
+#: The doctor check that groups the Discogs token. The credential loop above
+#: passes it over, since linking Discogs is the step below.
+DISCOGS_CHECK = "credential.discogs"
+
+#: How many tokens a person may type before the step gives up for this run:
+#: the prompter's own bound on re-asking, for the reason it gives.
+DISCOGS_TRIES = prompt.MAX_ATTEMPTS
+
+#: What the step says before it asks, so a new user need not leave setup to
+#: learn what the token buys, what it costs or where it comes from.
+DISCOGS_INTRO = (
+    "\n"
+    "Discogs\n"
+    "  Genre tagging asks Discogs first for a track's genre and style, and\n"
+    "  Beatport only when Discogs has none. Without Discogs, a track Beatport\n"
+    "  does not carry stays untagged.\n"
+    "  Linking it is free. It needs a Discogs account and a personal access token:\n"
+    "  sign in at discogs.com, open discogs.com/settings/developers and press\n"
+    "  Generate new token. Setup checks the token with Discogs and keeps it in\n"
+    "  this computer's keychain. It is not shown as you type or paste it.\n"
+)
+
+#: What leaving Discogs unlinked costs, and how to link it later, said in
+#: every note that leaves it unlinked.
+DISCOGS_UNLINKED = (
+    "Discogs is not linked, so genre tagging asks Beatport alone: a track "
+    "Beatport does not carry stays untagged, and a later run asks it again. To "
+    f"link it later, run crate setup again, or {searchers.DISCOGS_LOGIN_STEPS}"
+)
+
+#: The flag that offers to replace a token already recorded.
+RELINK_FLAG = "--relink-discogs"
+
+
+def _link_discogs(
+    wizard: _Wizard,
+    cfg: config.Config,
+    *,
+    relink: bool = False,
+    fetch: searchers.Fetch | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> None:
+    """Link Discogs: say why, take the token, check it, and only then store it.
+
+    ITS OWN STEP, NOT A LINE IN THE CREDENTIAL LOOP (U283). Discogs is the
+    catalogue a new user's genre tagging asks first, and a bare "record the
+    credential discogs-token" told nobody what it buys or where it comes from.
+    Offered where the loop offered it, to a profile with a tagging verb on.
+
+    THE TOKEN TRAVELS ONE ROAD. Read through ``Prompter.secret``, never echoed;
+    checked by the searcher's own Discogs client with one identity call through
+    the fetch seam, ``searchers.check_discogs_token``; stored by :func:`_store`,
+    which is ``secrets.set`` under ``discogs-token``, where ``crate login
+    discogs-token`` stores it. It is in no note and no written line: every
+    sentence here is a constant or the client's note, which is scrubbed of it.
+    ``fetch`` and ``sleep`` are the client's seams, handed through for a test.
+
+    A REJECTED TOKEN IS NEVER STORED. It is said plainly and asked again, at
+    most :data:`DISCOGS_TRIES` times, and on a relink the token already
+    recorded stays. A token Discogs could not be asked about, a block or an
+    outage, is stored with a note saying it was not checked, as the brief
+    rules: nothing said it was wrong, and a sweep says so if Discogs refuses
+    it. Not on a relink, where it would overwrite a token that may work: a
+    replacement is stored only once Discogs accepts it. A check that raises
+    is no verdict, so nothing is stored then either.
+
+    A REFUSAL HERE IS A NOTE AND NEVER A RAISE, for the reason
+    :func:`_capture_credentials` gives: this runs after the configuration is
+    saved. Leaving Discogs unlinked is an INFO note, never a FAIL, as doctor
+    never fails on it.
+    """
+    membership = profiles.resolve(cfg.profile.name, dict(cfg.modules.explicit))
+    if not doctor.offered(DISCOGS_CHECK, membership):
+        return
+    name = str(secrets.Credential.DISCOGS_TOKEN)
+    key, title = f"setup.credential.{name}", "Discogs"
+    try:
+        already = secrets.exists(name)
+    except CratekitError as exc:
+        cause = exc.cause
+        wizard.note(
+            key,
+            title,
+            doctor.Status.FAIL,
+            f"whether {name} is recorded could not be answered, {cause.message}",
+            cause.remediation.remedy,
+            error=exc,
+        )
+        return
+    if already and not relink:
+        wizard.note(
+            key,
+            title,
+            doctor.Status.OK,
+            (
+                f"linked: a Discogs token is recorded as {name}, and setup left it "
+                f"as it is; crate setup {RELINK_FLAG} offers to replace it"
+            ),
+        )
+        _discogs_vocabulary(wizard, cfg)
+        return
+    # What stays true whatever this run does: on a relink, the recorded token.
+    unlinked = (
+        f"the Discogs token already recorded as {name} was kept"
+        if already
+        else DISCOGS_UNLINKED
+    )
+    wizard.prompter.write(DISCOGS_INTRO)
+    question = "Replace the recorded Discogs token now?" if already else "Link Discogs now?"
+    if not wizard.optional(question, default=True):
+        wizard.note(key, title, doctor.Status.INFO, unlinked)
+        return
+    refused: list[str] = []
+    for _ in range(DISCOGS_TRIES):
+        try:
+            token = wizard.prompter.secret("Discogs personal access token")
+        except prompt.NothingEntered:
+            wizard.note(key, title, doctor.Status.INFO, f"nothing was entered; {unlinked}")
+            return
+        except prompt.PromptUnavailable as exc:
             wizard.note(
-                f"setup.credential.{name}",
-                f"credential {name}",
-                doctor.Status.OK,
-                f"{name} recorded in the OS keychain",
+                key,
+                title,
+                doctor.Status.FAIL,
+                f"{name} was offered and nothing could be read: {exc}; {unlinked}",
+                Remedy.SET_CREDENTIAL,
             )
+            return
+        # SAID BEFORE THE CALL: a rate limited Discogs is waited on, up to a
+        # minute and a half, and a silent terminal after a paste reads as hung.
+        wizard.prompter.write("  Checking the token with Discogs...\n")
+        try:
+            check = searchers.check_discogs_token(token, fetch=fetch, sleep=sleep)
+        except CratekitError as exc:
+            cause = exc.cause
+            wizard.note(
+                key,
+                title,
+                doctor.Status.FAIL,
+                f"the token could not be checked, so it was not recorded: "
+                f"{cause.message}; {unlinked}",
+                cause.remediation.remedy,
+                error=exc,
+            )
+            return
+        # A bare except, on purpose (round one): the configuration is already
+        # saved, and anything a server posing as Discogs can make the client
+        # raise would otherwise lose the whole report. No verdict, no store.
+        except Exception as exc:  # noqa: BLE001
+            wizard.note(
+                key,
+                title,
+                doctor.Status.FAIL,
+                f"the token could not be checked ({type(exc).__name__}), so it was "
+                f"not recorded; {unlinked}",
+                Remedy.REPORT_DEFECT,
+            )
+            return
+        if check.verdict is searchers.TokenVerdict.REJECTED:
+            refused.append(check.note)
+            wizard.prompter.write(f"  Not linked: {check.note}. Nothing was recorded.\n")
+            continue
+        if already and check.verdict is not searchers.TokenVerdict.ACCEPTED:
+            # A REPLACEMENT MUST BE ACCEPTED (round one). The recorded token may
+            # be a working one, and a mistyped replacement checked against an
+            # outage would overwrite it with nothing to say it was wrong.
+            wizard.note(
+                key,
+                title,
+                doctor.Status.INFO,
+                (
+                    f"the new token was not recorded, because it could not be "
+                    f"checked: {check.note}; {unlinked}. Run crate setup "
+                    f"{RELINK_FLAG} again once Discogs answers, or record it "
+                    f"unchecked: {searchers.DISCOGS_LOGIN_STEPS}"
+                ),
+                Remedy.SET_CREDENTIAL,
+            )
+            return
+        if not _store(wizard, key, title, name, token):
+            return
+        if check.verdict is searchers.TokenVerdict.ACCEPTED:
+            wizard.note(
+                key,
+                title,
+                doctor.Status.OK,
+                f"linked: Discogs accepted the token, recorded in the OS keychain as {name}",
+            )
+        else:
+            wizard.note(
+                key,
+                title,
+                doctor.Status.INFO,
+                (
+                    f"recorded in the OS keychain as {name} without being checked, "
+                    f"because {check.note}. A tag run asks Discogs with it and says "
+                    f"so if Discogs refuses it"
+                ),
+            )
+        _discogs_vocabulary(wizard, cfg)
+        return
+    wizard.note(
+        key,
+        title,
+        doctor.Status.INFO,
+        (
+            f"Discogs refused all {len(refused)} tokens entered, the last because "
+            f"{refused[-1]}, so none was recorded; {unlinked}"
+        ),
+        Remedy.SET_CREDENTIAL,
+    )
+
+
+def _discogs_vocabulary(wizard: _Wizard, cfg: config.Config) -> None:
+    """Note a linked Discogs whose styles this library's copy has nowhere to file.
+
+    Discogs' styles reach a folder through the taxonomy's
+    ``[vocabulary.discogs]`` table. The shipped template has it and a copy
+    setup makes today carries it; a copy made before U244 does not, and
+    ``crate taxonomy upgrade`` adds it. Read through the upgrade's own planner,
+    so this says what the upgrade would add and nothing else.
+
+    SILENT WHEN IT COULD NOT LOOK, and only because doctor looks in the same
+    run: its ``taxonomy.active`` and ``taxonomy.schema`` lines report a copy
+    that is absent, unreadable or not comparable, in the report this note
+    joins. No copy at all routes by the shipped template, which has the table.
+    """
+    try:
+        _, found = taxonomy_upgrade.planned(cfg)
+    except CratekitError:
+        return
+    if searchers.DISCOGS not in found.missing_vocabularies:
+        return
+    wizard.note(
+        "setup.discogs.vocabulary",
+        "Discogs styles",
+        doctor.Status.INFO,
+        (
+            f"this library's taxonomy copy has no [vocabulary.discogs] table, so a "
+            f"Discogs style files only where an alias or a rule already names it. "
+            f"{taxonomy_upgrade.remedy(found)}"
+        ),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -1678,6 +1962,7 @@ def setup(ctx: "Context") -> Envelope:
 
     _seed_taxonomy(wizard, cfg, machine)
     _capture_credentials(wizard, cfg)
+    _link_discogs(wizard, cfg, relink=bool(args.relink_discogs))
 
     report = doctor.run(cfg, probes=machine)
     findings = tuple(wizard.notes) + report.findings
