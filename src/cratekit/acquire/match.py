@@ -155,6 +155,8 @@ import unicodedata
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from enum import StrEnum
+from itertools import groupby
+from operator import attrgetter
 from pathlib import Path
 from typing import Any
 
@@ -399,8 +401,9 @@ TOMBSTONE_KIND = "version"
 UNCREDITED_KIND = "version-uncredited"
 
 #: The score at or above which an approximate recording hit is worth SHOWING a
-#: person. Deliberately generous: everything above it becomes a question and
-#: nothing above it becomes a match, so the cost of a low floor is noise in the
+#: person. Deliberately generous: nothing above it becomes a match, and
+#: everything above it becomes a question unless its title alone falls under
+#: :data:`APPROXIMATE_TITLE_FLOOR` (U286), so the cost of a low floor is noise in the
 #: queue and the cost of a high one is a track reported missing that the library
 #: already holds under a slightly different spelling.
 #:
@@ -420,8 +423,9 @@ APPROXIMATE_FLOOR = 82
 
 #: How many approximate CANDIDATES are offered for one wanted track. A person
 #: choosing between five candidates is choosing; a person choosing between forty
-#: is scrolling. Spent twice on purpose: once as the recording limit the scorer
-#: is given, and again as a truncation of the candidate list, because one
+#: is scrolling. Spent twice on purpose: once as the number of recordings
+#: :func:`_resembling` keeps, after the title test and never before it (U286),
+#: and again as a truncation of the candidate list, because one
 #: recording can be held as several versions at several keys and a limit on
 #: recordings alone promises a number it does not deliver.
 #:
@@ -429,14 +433,35 @@ APPROXIMATE_FLOOR = 82
 #: justification with nothing behind it: multiplying the scorer's limit by four
 #: left the whole suite green. The two spends are observable apart, and the thing
 #: that separates them is the WITHHELD COUNT. Eight resembling recordings held as
-#: one version each: with the scorer capped here, five candidates are built and
+#: one version each: with the recordings capped here, five candidates are built and
 #: nothing is withheld; with the cap raised, eight are built, five are shown and
 #: three are reported kept back. So a run that says "3 further candidates were
-#: never shown" over a library of one-version recordings is a run whose scorer
-#: limit is not this constant, and
+#: never shown" over a library of one-version recordings is a run whose
+#: recording cap is not this constant, and
 #: ``test_the_scorer_is_capped_at_the_same_number_the_offer_is`` asserts the
 #: number is spent in both places.
 APPROXIMATE_LIMIT = 5
+
+#: The score the TITLE ALONE must reach for a recording the discovery score
+#: found to be offered as a resemblance (U286). The discovery score reads the
+#: artist and the title together, so with a short title the shared artist
+#: carries an unrelated song over :data:`APPROXIMATE_FLOOR`: ``Monkey Safari,
+#: Joy`` scored 84.2 against the library's ``Monkey Safari, Goodbye`` and was
+#: held for review rather than downloaded. The artist agreeing is necessary for
+#: an offer and never sufficient, so each hit's folded title is scored against
+#: the wanted one with ``token_set_ratio`` and must reach this floor too.
+#:
+#: MEASURED, NOT CHOSEN. The five pairs sitting 99 found in the review queue
+#: score 25.0 to 61.5 (``Get Out`` against ``Agenou`` the highest). One letter
+#: changed in a title of three letters scores 66.67, the lowest a single
+#: changed letter can give a title of three letters or more, and a dropped
+#: word, an added word or the words reordered score 100. 66 is the highest
+#: integer floor that keeps every one letter change of a three letter title.
+#: A two letter title with one letter changed scores 50 and a one letter title
+#: against another 0, so both settle missing by the same rule, as U286 asks.
+#: ``test_the_title_floor_is_pinned_from_both_sides_by_the_nearest_score_either_way``
+#: holds the value between its nearest neighbours.
+APPROXIMATE_TITLE_FLOOR = 66
 
 
 # ---------------------------------------------------------------------------
@@ -2597,7 +2622,9 @@ def _same_recording(wanted: Wanted, held: Owned, token: str) -> bool:
     return fold(wanted.artist) in held.members or _carries(held, token)
 
 
-def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
+def _approximate(
+    wanted: Wanted, index: LibraryIndex, *, limit: int | None
+) -> tuple[Owned, ...]:
     """Recordings that merely RESEMBLE the wanted one. Discovery, never identity.
 
     Scored on the folded recording token, so the artist and the title are both
@@ -2618,7 +2645,13 @@ def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     and the wanted token once here, gives the same float for every pair, and
     the same ``extract`` over the same positions gives the same candidates in
     the same order with the same ties, floor and limit. The suite keeps the
-    shipped call as the reference and holds this one equal to it.
+    shipped call as the reference and holds this one equal to it, at the
+    offer limit and with none.
+
+    ``limit`` caps the RECORDINGS returned, ``None`` returning every one over
+    the floor. The resolver asks for every one through :func:`_resembling`,
+    which drops the hits whose title does not resemble before it caps them
+    (U286), so an unrelated song cannot take a place a real one needed.
     """
     if not index.by_recording:
         return ()
@@ -2630,7 +2663,7 @@ def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
         sorted_choices,
         scorer=fuzz.ratio,
         score_cutoff=APPROXIMATE_FLOOR,
-        limit=APPROXIMATE_LIMIT,
+        limit=limit,
     )
     # BEST SCORE FIRST, and the order is load-bearing from here on. ``extract``
     # returns descending, ties in position order, and everything downstream
@@ -2639,6 +2672,82 @@ def _approximate(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     return tuple(
         held for _sorted, _score, position in found for held in index.versions(recordings[position])
     )
+
+
+def _title_resembles(wanted: Wanted, held: Owned) -> bool:
+    """Whether ``held``'s TITLE resembles the wanted one on its own (U286).
+
+    ``token_set_ratio`` of the two folded titles against
+    :data:`APPROXIMATE_TITLE_FLOOR`: a set measure, so a dropped or added word
+    and reordered words score 100 and a typo scores as a typo, while two
+    titles sharing no word score on their letters alone.
+
+    THREE ALLOWANCES, each keeping the offer U286 found, and each because the
+    cost of a wrong drop is a duplicate downloaded where the cost of a wrong
+    offer is one question. A title that folds to nothing on either side holds
+    no letter or digit to read, so this says nothing about it and the
+    discovery score decides, as it always did. Two titles that are one string
+    once their spaces are gone, ``O.K.`` and ``OK``, ``Good Bye`` and
+    ``Goodbye``, are one title split differently: :func:`fold` turns a dot
+    into a space, so they share no word and score on their letters alone,
+    under the floor (review round one's finding). EQUALITY AND NOT A RATIO:
+    ``getout`` against ``agenou`` scores 66.67, which would let one of the
+    card's unrelated pairs back in. And a file whose artist and
+    title are the row's swapped, a listing pasted title first or a file named
+    the wrong way round, is the same record, which the word sort scores as one
+    string at 100: each half then has to agree with the other side's other
+    half by the same test, the equality included, so a dotted artist,
+    ``M.I.A.`` against ``MIA``, crosses as a dotted title does (review round
+    two's finding).
+    """
+    asked, found = fold(wanted.title), fold(held.title)
+    if not asked or not found:
+        return True
+    if _agree(asked, found):
+        return True
+    return _agree(asked, fold(held.artist)) and _agree(fold(wanted.artist), found)
+
+
+def _agree(one: str, other: str) -> bool:
+    """Whether two folded names agree for :func:`_title_resembles`: one string
+    once their spaces are gone, or ``token_set_ratio`` at or over
+    :data:`APPROXIMATE_TITLE_FLOOR`. An empty side agrees with nothing here;
+    the caller decides what a title that folds to nothing means."""
+    from rapidfuzz import fuzz
+
+    if one and one.replace(" ", "") == other.replace(" ", ""):
+        return True
+    return fuzz.token_set_ratio(one, other) >= APPROXIMATE_TITLE_FLOOR
+
+
+def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
+    """What the approximate pass offers: the recordings discovery finds whose
+    title resembles too, best score first, at most :data:`APPROXIMATE_LIMIT`.
+
+    FILTERED BEFORE THE CAP, NOT AFTER IT (U286). Discovery returns every
+    recording over the floor and the title test runs on each in score order,
+    so a prolific artist's unrelated short titles, each outscoring a real near
+    match through the shared artist, cannot fill the five and push it out:
+    filtered after the cap, that row would read missing and download a record
+    the library holds. And filtered before :func:`_candidates_for`, so a
+    dropped hit never reaches the offer or the withheld count.
+
+    One recording's versions are adjacent in discovery's answer and share one
+    folded artist and title, so the first version answers for them all.
+    """
+    kept: list[Owned] = []
+    recordings = 0
+    for _recording, versions in groupby(
+        _approximate(wanted, index, limit=None), key=attrgetter("recording")
+    ):
+        held = tuple(versions)
+        if not _title_resembles(wanted, held[0]):
+            continue
+        kept.extend(held)
+        recordings += 1
+        if recordings == APPROXIMATE_LIMIT:
+            break
+    return tuple(kept)
 
 
 def standing_tombstone(
@@ -2868,7 +2977,7 @@ def resolve_one(
             candidates=_candidates_for(wanted, held),
         )
 
-    near = _approximate(wanted, index)
+    near = _resembling(wanted, index)
     if near:
         offered = _candidates_for(wanted, near)
         return TrackMatch(
@@ -3069,6 +3178,7 @@ def apply_verdict(
 __all__ = [
     "APPROXIMATE_FLOOR",
     "APPROXIMATE_LIMIT",
+    "APPROXIMATE_TITLE_FLOOR",
     "ASKS_ABOUT_KEY",
     "ASKS_ABOUT_READING",
     "ASKS_ABOUT_RECORDING",
