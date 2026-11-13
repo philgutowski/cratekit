@@ -351,9 +351,11 @@ crate route pending
   with a bot check, are no longer asked. A catalogue that refuses this
   machine, with a 403, a spent rate limit or Cloudflare's challenge page, is
   recorded `blocked` and never a miss, so the file stays untagged and is asked
-  again by the next run; after three refusals in a row from one catalogue a
-  sweep stops sending it requests until the next sweep, and says so in each
-  later file's record. The sweep's warning names such a catalogue as having
+  again by the next run; after three refusals in a row from Beatport (or a
+  record shop on an older walk) a sweep stops sending it requests until the
+  next sweep, and says so in each later file's record, while Discogs, once it
+  refuses, is not asked again in the run. `tag suggest --catalogue` stops the
+  same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps
   no genre. A file's label is its label

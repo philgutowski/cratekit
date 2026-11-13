@@ -168,6 +168,30 @@ def test_a_200_page_carrying_only_cloudflares_script_is_blocked():
     assert searchers.CLOUDFLARE_CHALLENGE in said.note
 
 
+def test_a_results_page_carrying_cloudflares_script_is_read_as_results():
+    """A page that carries Beatport's payload is a results page, whatever
+    script Cloudflare put on it, so a match or a miss is never read as a
+    refusal (U281's review): a bot managed site can carry the detection
+    script on every ordinary page."""
+    script = '<script src="/cdn-cgi/challenge-platform/scripts/jsd/main.js"></script>'
+    found = _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)]) + script
+    empty = _beatport_page([]) + script
+
+    matched = _searcher(_over_the_wire(_Response(200, found)))(ARTIST, TITLE)
+    missed = _searcher(_over_the_wire(_Response(200, empty)))(ARTIST, TITLE)
+
+    assert _beatport(matched).answer == "matched"
+    assert matched.genre == BUCKET_GENRE
+    assert _beatport(missed).answer == "miss"
+
+
+def test_a_200_page_with_no_payload_and_no_challenge_is_still_a_parse_break():
+    hit_or_raise = _searcher(_over_the_wire(_Response(200, "<html><title>x</title></html>")))
+    hit = hit_or_raise(ARTIST, TITLE)
+
+    assert _beatport(hit).answer == "parse-break"
+
+
 def test_a_200_challenge_beside_an_unread_discogs_refuses_as_unreachable_not_parse_broken():
     with pytest.raises(CratekitError) as raised:
         _searcher(

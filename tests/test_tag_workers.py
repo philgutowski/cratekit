@@ -1184,6 +1184,54 @@ def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
     assert _beatport_asked(seen) == 6
 
 
+def test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sent(
+    cfg, folder, silence, monkeypatch
+):
+    """Discogs remembers its first refusal and sends nothing more in the run,
+    recording each later file blocked and unsent, so the source blocked
+    warning counts the one search it was sent and names the files it was not
+    (U281's review)."""
+    for name in ("a", "b", "c", "d"):
+        place(folder, silence, name)
+    seen: list[str] = []
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            return searchers.Fetched(text=beatport_page([]), status=200)
+        return searchers.Fetched(note="HTTP 403", status=403)
+
+    from tests.test_discogs_searcher import SENT
+
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert sum(url.startswith(searchers.DISCOGS_SEARCH) for url in seen) == 1
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["answers"][searchers.DISCOGS]["blocked"] == 4
+    assert tagging["not_sent"][searchers.DISCOGS] == 3
+    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    assert (
+        "discogs refused this client on 4, 3 of them not asked once it had "
+        "refused this client"
+    ) in warnings[tag_cli.SOURCES_UNREAD]
+    blocked = warnings[tag_cli.SOURCE_BLOCKED]
+    assert blocked.startswith("discogs refused every one of the 1 searches it was sent")
+    assert "and was not asked about 3 more file(s) once it had refused this client" in blocked
+
+
 def test_a_sweep_some_of_whose_refusals_were_a_challenge_says_how_many():
     """Named whole only when every refusal counted was a challenge."""
     summary = {

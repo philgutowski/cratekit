@@ -888,17 +888,18 @@ def _search_beatport(
 ) -> SourceOutcome:
     pacer.wait()
     page = fetch(f"{BEATPORT_SEARCH}?q={_query(artist, title)}")
-    # THE REFUSAL CHECK THE FALLBACKS USE, BEFORE THE PARSE (U281). A 403 or a
-    # spent 429 is a refusal of this client and not an outage, and a 200
-    # challenge page carries no payload, so parsing it first would call a
-    # refusal a parser defect (R-794).
-    refused = unread_outcome(BEATPORT, page)
-    if refused is not None:
-        return refused
-    # ``unread_outcome`` answered for every page with no text, so this is the page.
-    assert page.text is not None
-    tracks = _beatport_tracks(page.text)
+    # A PAYLOAD IS READ FIRST, AND THE REFUSAL CHECK THE FALLBACKS USE ONLY
+    # WHEN THERE IS NONE (U281). A 403 or a spent 429 has no text, so it is
+    # always checked: a refusal of this client and not an outage. A 200
+    # challenge page carries no payload, so without the check it would read as
+    # a parser defect (R-794). A page that does carry Beatport's payload is a
+    # results page whatever script Cloudflare added to it, so the challenge
+    # script's mark is never read over one (U281's review).
+    tracks = None if page.text is None else _beatport_tracks(page.text)
     if tracks is None:
+        refused = unread_outcome(BEATPORT, page)
+        if refused is not None:
+            return refused
         return SourceOutcome(
             BEATPORT,
             Answer.PARSE_BREAK,

@@ -86,8 +86,9 @@ token (U244). Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
 limit, never got past) or a parse break; Beatport's 403 is `blocked` too since
-U281, and a catalogue blocked three times in a row is not asked again in that
-sweep, recorded `blocked` with a note saying so. Only a miss can make a decline. With no
+U281, and Beatport, or a record shop on an older walk, blocked three times in a
+row is not asked again in that sweep, recorded `blocked` with a note saying so;
+Discogs is not asked again in a run once it refuses. Only a miss can make a decline. With no
 source answered it refuses, failing that item and leaving the job resumable.
 A decline is `no-hit` only when every source asked missed (or the general
 catalogue knew the track and gave no genre); a miss beside an unread source is
