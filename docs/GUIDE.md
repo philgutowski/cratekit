@@ -58,7 +58,10 @@ crate login NAME --from-file PATH
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
-outage to wait out; the session is kept.
+outage to wait out; the session is kept. A session the provider refreshed at
+sign in that the keychain cannot take is not stored, and the verb goes on: it
+says so in a `provider-session-not-stored` warning beside its own answer, and
+the next run signs in again from the session the keychain holds.
 
 ## How it works
 
