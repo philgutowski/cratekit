@@ -85,6 +85,25 @@ def test_the_calendars_last_moment_reads_as_the_ceiling(unwrapped, zone):
         assert read("9999-12-31T23:59:59Z") == rb_dates.CEILING == datetime(9999, 12, 30)
 
 
+@pytest.mark.parametrize("zone", ZONES)
+@pytest.mark.parametrize(
+    ("text", "bound"),
+    [
+        ("0001-01-01 00:00:00", "FLOOR"),
+        ("0001-01-01 00:00:00.000", "FLOOR"),
+        ("9999-12-31 23:00:00", "CEILING"),
+    ],
+)
+def test_an_edge_stamp_with_no_offset_reads_as_its_bound(unwrapped, zone, text, bound):
+    """With no offset the binding fails with ValueError rather than OverflowError,
+    in every zone, and the brief asks for any value the conversion cannot place."""
+    read = rb_dates.placeable(unwrapped)
+    with dc7.west_of_utc(zone):
+        with pytest.raises(ValueError, match="out of range"):
+            unwrapped(text)
+        assert read(text) == getattr(rb_dates, bound)
+
+
 def test_an_ordinary_stamp_reads_exactly_as_the_binding_reads_it(unwrapped):
     read = rb_dates.placeable(unwrapped)
     with dc7.west_of_utc(WEST):
@@ -103,7 +122,15 @@ def test_each_bound_converts_back_in_every_zone(zone):
 
 @pytest.mark.parametrize(
     "text",
-    ["not a date", "0001-13-01T00:00:00Z", "2026-02-30 00:00:00.000 +00:00", "0000-01-01T00:00:00Z"],
+    [
+        "not a date",
+        "0001-13-01T00:00:00Z",
+        "0001-13-01 00:00:00",
+        "9999-02-30 00:00:00",
+        "2026-02-30 00:00:00.000 +00:00",
+        "0000-01-01T00:00:00Z",
+        "0000-01-01 00:00:00",
+    ],
 )
 def test_text_the_binding_cannot_parse_still_fails_as_it_did(unwrapped, text):
     """Never a hidden error: only the calendar's edge reads as a bound, and text

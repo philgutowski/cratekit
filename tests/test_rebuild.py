@@ -859,8 +859,11 @@ def test_a_second_rebuild_writes_nothing(cfg, gates_pass, db, adopted_root, decl
 def pushed(request, cfg, monkeypatch):
     """The disposable database with a DEADCA7 push of both tracks, opened after it.
 
-    Twice: with an ordinary stamp, and with the zero date the real app writes
-    read west of UTC, where the binding could not place it (U285).
+    Twice: with an ordinary stamp, and with the zero date the real app writes,
+    west of UTC (U285). The rebuild and its check never read the pushed rows'
+    dates through the binding, so the second kills no mutation of the date
+    seam; it pins that the rebuild's writes leave the producer's own value
+    byte for byte.
     """
     zero = request.param != "ordinary"
     stamp = deadca7_fixtures.ZERO_STAMP if zero else deadca7_fixtures.STAMP

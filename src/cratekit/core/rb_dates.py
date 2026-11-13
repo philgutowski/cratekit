@@ -17,22 +17,33 @@ The binding's ``DateTime`` column looks the function up in its module at every
 row it reads, so a wrapper installed after an earlier query is still the one
 called; a test pins that through a real handle.
 
-WHAT IT ANSWERS. A stamp the conversion places at least a day inside the
-calendar is answered exactly as the binding answers it. One it cannot place,
-because local time would fall before year 1 or after year 9999, or one it
-places within a day of either end, is answered as :data:`FLOOR` or
-:data:`CEILING`. Both are naive like every other value the binding answers,
-and both are a day inside the calendar, so a reader that converts them again
-(``astimezone()``, ``timestamp()``) cannot overflow in any zone. So the zero
-date reads as :data:`FLOOR` in every zone, west or east.
+WHAT IT ANSWERS. A stamp the conversion places between :data:`FLOOR` and
+:data:`CEILING` is answered exactly as the binding answers it. One it places
+before :data:`FLOOR` or after :data:`CEILING`, or cannot place at all because
+local time would fall before year 1 or after year 9999, is answered as the
+bound on its side. The conversion fails in two ways at the edge: an aware stamp
+(``Z`` or an offset, as DEADCA7 writes) raises ``OverflowError``, and a stamp
+with no offset raises ``ValueError`` saying year 0 or year 10000 is out of
+range. Both bounds are naive like every other value the binding answers, and
+both lie at least a day inside the calendar, so a reader that converts them
+again (``astimezone()``, ``timestamp()``) cannot overflow in any zone. So the
+zero date reads as :data:`FLOOR` in every zone, west or east.
 
 WHAT IT NEVER DOES. It writes nothing: a read value is the object mapper's
 committed state, and an attribute nobody assigns is never in an update, so the
 stored text stays exactly what the other app wrote (and U185's guard refuses
 any write to its folder anyway). It never hides an error that is not the
-calendar's edge: text the binding cannot parse still raises its own
-``ValueError``, and an ``OverflowError`` from a stamp whose year is neither 1
+calendar's edge: text the binding cannot parse still raises its own error,
+a ``ValueError`` is answered as a bound only when it says the year past that
+very edge is out of range, and a failure from a stamp whose year is neither 1
 nor 9999 is raised as it came.
+
+WHAT IT DOES NOT REACH. The binding's ``commit`` also reads
+``masterPlaylists6.xml``, whose ``Timestamp`` it converts with
+``datetime.fromtimestamp`` and then sets to each playlist's ``updated_at``.
+That file is not read through this conversion, and what DEADCA7 writes in it
+is unmeasured; the residual filed with this unit and the attended recheck
+carry it.
 """
 
 from __future__ import annotations
@@ -52,6 +63,11 @@ CEILING = datetime(9999, 12, 30)
 _MARK = "_cratekit_placeable"
 
 _YEAR = re.compile(r"\s*(\d{4})-")
+
+#: What the conversion says of a stamp with no offset that local time pushes
+#: past the calendar's edge, by the bound on that side. Text the binding cannot
+#: parse says something else, so it is never read as a bound.
+_PAST_THE_EDGE = {FLOOR: "year 0 is out of range", CEILING: "year 10000 is out of range"}
 
 
 def _edge(value: str) -> datetime | None:
@@ -79,9 +95,11 @@ def placeable(convert: Callable[[str], datetime]) -> Callable[[str], datetime]:
     def string_to_datetime(value: str) -> datetime:
         try:
             moment = convert(value)
-        except OverflowError:
+        except (OverflowError, ValueError) as exc:
             edge = _edge(value)
             if edge is None:
+                raise
+            if isinstance(exc, ValueError) and str(exc) != _PAST_THE_EDGE[edge]:
                 raise
             return edge
         if moment.tzinfo is not None:
