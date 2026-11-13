@@ -52311,3 +52311,64 @@ no false report: the cover arrives as before.
 **Closes when:** the searcher is told what the file needs, a keyword on the
 shipped searcher or a second binder for a picture-only question, and a
 picture-only file asks the record shops alone. Ledger only.
+
+---
+
+## R-1676. The integrity check's answer for a consistency check that raises after a good open is held by no test that runs on Linux
+
+**Found:** at the review of #804, R-1665, 2026-11-13.
+
+**The mechanism.** `rb_writer.integrity_ok` answers False when `PRAGMA
+quick_check` raises after the open succeeded (`except Exception: return
+False`). Mutated to answer True, the only tests that fail are the two sealed
+database tests in `tests/test_rb_writer_db.py`, which fail on the Linux
+container anyway because it runs as root, so on Linux the branch is held by
+nothing. The guard predates R-1665; the round two review found it while
+checking that R-1665's new damage test reaches the consistency check's own
+verdict, which it does.
+
+**Measured cost.** None driven. Four damaged copies were tried (a truncated
+tail, an index cell count of 0xffff, a garbage index body, a garbage root of
+an empty table) and none made `quick_check` raise after a good open, so the
+input that would reach this branch is unmeasured.
+
+**Closes when:** a damaged copy that opens and then makes `quick_check`
+raise is found and pinned, or the macOS battery is confirmed to kill the
+mutant through the sealed database tests. Ledger only: no producer is known.
+
+---
+
+## R-1677. The integrity check's throwaway copy needs room on the temporary volume that nothing measures, and a full one refuses the write as a failed check
+
+**Found:** at the review of #804, R-1665, 2026-11-13.
+
+**The mechanism.** Since R-1665, `rb_writer.integrity_ok` copies the file set
+it checks (the database, its log and index, the legacy playlist file) into a
+private directory under the system's temporary directory and checks the copy,
+so the capture itself is never opened. `snapshot.assert_room_for_capture`
+measures only the capture store, on the library volume, so nothing asks
+whether the temporary volume can hold a second copy of the database. When it
+cannot, the copy raises, `integrity_ok` answers False with a log warning
+naming the error, the capture records itself not verified, and every guarded
+write refuses through `snapshot.assert_verified` with "did not pass its
+integrity check" and the `report-defect` remedy. The true cause, no space on
+the temporary volume, is in the log only.
+
+**Measured cost.** Fails closed: nothing commits behind a capture that was
+not checked, so no data is at risk. The review drove `snapshot.capture` with
+the temporary directory on a 256 KiB tmpfs: the branch recorded the capture
+not verified and refused, the temporary directory was left empty, and the
+base recorded it verified. At verb level (`test_inbox_rotate` with the
+temporary directory on tmpfs of 128 KiB to 800 KiB) base and branch failed and
+passed at the same sizes, because SQLite's own temporary files already need
+that much on the suite's small fixture. Whether a window exists on a full size
+library, where the database is hundreds of megabytes and SQLite's own needs
+are far smaller, is unmeasured; if it does, a DJ is told the capture failed
+its check and to report a defect, when the disk is full.
+
+**Closes when:** the room the throwaway copy needs is measured before the
+capture and refused under the room slug with a remedy naming the temporary
+volume, or the throwaway copy is placed on the store's volume and counted in
+`assert_room_for_capture`, with a test that fills the temporary volume and
+asserts the refusal names it. Earns an issue: a person is told something false
+(board bar b) on the path every guarded write takes.
