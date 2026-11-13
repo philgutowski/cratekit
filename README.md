@@ -73,6 +73,9 @@ crate doctor
 keeps earlier answers when re-run and ends by running `crate doctor`, which
 writes nothing. Each doctor line is `ok`, `fail` (blocks a verb, names the fix)
 or `note` (no action). [`docs/GUIDE.md`](docs/GUIDE.md) says what setup records.
+Setup also offers to link Discogs, which genre tagging asks first: it says
+where to make the free token, checks it with Discogs, and keeps it in the
+keychain only once Discogs accepts it.
 
 `crate login NAME --from-file PATH` records a credential in the keychain.
 Signing in to the streaming account is set out in

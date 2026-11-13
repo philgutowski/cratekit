@@ -1440,7 +1440,8 @@ def _propose_prefix_map(wizard: _Wizard, document: dict[str, Any], cfg: config.C
 
 
 def _capture_credentials(wizard: _Wizard, cfg: config.Config) -> None:
-    """Offer to record each credential this profile's verbs will or may spend.
+    """Offer to record each credential this profile's verbs will or may spend,
+    except Discogs' token, which :func:`_link_discogs` offers as its own step.
 
     Read through ``cli/prompt``'s secret reader, so the value is never echoed,
     never reaches a command line, and never reaches a shell history. What is
