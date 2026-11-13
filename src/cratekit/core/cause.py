@@ -2158,6 +2158,16 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # argument: the cure is the file's, which is named, and a second run
         # plans only what still carries the word.
         "taxonomy-word-unwritten": ExitCode.PRECONDITION,
+        # ── R-1677's one, appended for the same reason ─────────────────────────
+        #
+        # The integrity check's throwaway copy of a capture has no room on the
+        # temporary volume, measured before the capture or met by the copy
+        # itself. The capture is refused, never recorded verified, and the
+        # refusal names the volume rather than reading as a capture that failed
+        # its check, which told a person to report a defect when nothing was
+        # wrong with the library. PRECONDITION, with STEPS rather than a remedy
+        # token, for the reason ``snapshot-store-full`` gives.
+        "snapshot-check-temp-full": ExitCode.PRECONDITION,
     }
 )
 
