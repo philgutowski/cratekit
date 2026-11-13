@@ -421,3 +421,18 @@ def test_a_capture_outside_the_configured_store_is_flushed_too(cfg, tmp_path, mo
     before = set(reached[: reached.index(_identity(record.manifest))])
     assert _identity(record.database) in before
     assert _identity(elsewhere) in before
+
+
+def test_a_capture_directory_the_walk_cannot_read_raises_rather_than_being_skipped(tmp_path):
+    """``os.walk`` skips what it cannot read unless told otherwise.
+
+    A directory skipped is a directory not flushed, and the capture would then
+    record a verdict about it. Driven with a capture directory that is gone by
+    the time the flush walks it, the one unreadable shape a root container can
+    produce.
+    """
+    store = tmp_path / "store"
+    store.mkdir()
+
+    with pytest.raises(FileNotFoundError):
+        snapshot._flush(store / "gone", store)

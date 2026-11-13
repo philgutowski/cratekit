@@ -1,0 +1,283 @@
+name = "u272"
+pass_kind = "light"
+
+[[rows]]
+id = "C1_no_flush"
+description = "flush_to_disk: open and close the path and flush nothing"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''    try:
+        _flush_descriptor(fd)
+    except OSError as exc:'''
+new = '''    try:
+        pass
+    except OSError as exc:'''
+
+[[rows]]
+id = "C2_full_flush_error_swallowed"
+description = "_flush_descriptor: fall back to the plain sync on every error of the full flush, an I/O error included"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''            if exc.errno not in _FULL_FLUSH_UNSUPPORTED:
+                raise'''
+new = '''            if False:
+                raise'''
+
+[[rows]]
+id = "C3_full_flush_then_sync"
+description = "_flush_descriptor: drop the return after a full flush, so the plain sync runs as well"
+file = "src/cratekit/core/config.py"
+surface = "maintainer"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''            _full_flush(fd, _FULL_FLUSH)
+            return'''
+new = '''            _full_flush(fd, _FULL_FLUSH)'''
+
+[[rows]]
+id = "C4_full_flush_never_asked"
+description = "_flush_descriptor: never ask for the full flush, the plain sync on every platform"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''    if _FULL_FLUSH is not None:
+        try:'''
+new = '''    if False:
+        try:'''
+
+[[rows]]
+id = "C5_eio_counts_as_unsupported"
+description = "_FULL_FLUSH_UNSUPPORTED: count an I/O error as a filesystem without the full flush"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY})'''
+new = '''frozenset({errno.ENOTSUP, errno.EOPNOTSUPP, errno.EINVAL, errno.ENOTTY, errno.EIO})'''
+
+[[rows]]
+id = "C6_no_plain_sync"
+description = "_flush_descriptor: drop the plain sync, so a platform without the full flush flushes nothing"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''                raise
+    os.fsync(fd)
+'''
+new = '''                raise
+'''
+
+[[rows]]
+id = "C7_error_names_no_path"
+description = "flush_to_disk: raise a flush error as it came, naming no file"
+file = "src/cratekit/core/config.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        if exc.filename is not None:
+            raise
+        raise OSError(exc.errno, exc.strerror or str(exc), str(path)) from exc'''
+new = '''        raise'''
+
+[[rows]]
+id = "S1_no_capture_flush"
+description = "capture: skip the walk and flush before the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        _flush(destination, destination_root)
+    except OSError as exc:'''
+new = '''        pass
+    except OSError as exc:'''
+
+[[rows]]
+id = "S2_manifest_before_flush"
+description = "capture: write the manifest before the copy is flushed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc
+
+    _write_manifest(record, manifest)'''
+new = '''        _write_manifest(record, manifest)
+        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc'''
+
+[[rows]]
+id = "S3_swallow_early_failure"
+description = "capture: swallow a flush failure before the manifest and record the verdict as it stood"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc'''
+new = '''        _flush(destination, destination_root)
+    except OSError as exc:
+        pass'''
+
+[[rows]]
+id = "S4_swallow_late_failure"
+description = "capture: swallow a flush failure after the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        config.flush_to_disk(destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc'''
+new = '''        config.flush_to_disk(destination_root)
+    except OSError as exc:
+        pass'''
+
+[[rows]]
+id = "S5_no_late_flush"
+description = "capture: drop the flush of the capture directory and the store after the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''    try:
+        config.flush_to_disk(destination)
+        config.flush_to_disk(destination_root)
+    except'''
+new = '''    try:
+        pass
+    except'''
+
+[[rows]]
+id = "S6_failure_recorded_verified"
+description = "_not_flushed: rewrite the manifest with the verdict as it stood, so a failed flush can say verified"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        integrity_verified=False,
+        sources=record.sources,
+    )
+    try:'''
+new = '''        integrity_verified=record.integrity_verified,
+        sources=record.sources,
+    )
+    try:'''
+
+[[rows]]
+id = "S7_failure_not_recorded"
+description = "_not_flushed: refuse without writing the unverified manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        _write_manifest(unverified, manifest)
+    except OSError as written:'''
+new = '''        pass
+    except OSError as written:'''
+
+[[rows]]
+id = "S8_manifest_error_hides_refusal"
+description = "_not_flushed: let a failed manifest write escape in place of the refusal"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''    except OSError as written:
+        logger.warning('''
+new = '''    except OSError as written:
+        raise
+        logger.warning('''
+
+[[rows]]
+id = "S9_walk_skips_unreadable"
+description = "_flush: let os.walk skip a directory it cannot read"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''capture_root, topdown=False, onerror=_raise_walk_error'''
+new = '''capture_root, topdown=False, onerror=None'''
+
+[[rows]]
+id = "S10_files_not_flushed"
+description = "_flush: flush the directories and none of the files"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        for name in files:
+            config.flush_to_disk(here / name)'''
+new = '''        for name in files:
+            pass'''
+
+[[rows]]
+id = "S11_directories_not_flushed"
+description = "_flush: flush the files and none of the directories under the store"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''            config.flush_to_disk(here / name)
+        config.flush_to_disk(here)'''
+new = '''            config.flush_to_disk(here / name)'''
+
+[[rows]]
+id = "S12_store_not_flushed_first"
+description = "_flush: leave the store out of the flush before the manifest"
+file = "src/cratekit/core/snapshot.py"
+surface = "maintainer"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        config.flush_to_disk(here)
+    config.flush_to_disk(store)'''
+new = '''        config.flush_to_disk(here)'''
+
+[[rows]]
+id = "S13_parents_before_children"
+description = "_flush: walk top down, so a directory is flushed before the files in it"
+file = "src/cratekit/core/snapshot.py"
+surface = "maintainer"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''capture_root, topdown=False, onerror=_raise_walk_error'''
+new = '''capture_root, topdown=True, onerror=_raise_walk_error'''
+
+[[rows]]
+id = "S14_wrong_slug"
+description = "_not_flushed: refuse under internal-error rather than the integrity slug the gate uses"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''    return refuse(
+        "snapshot-integrity-failed",
+        f"the capture at {record.root} could not be flushed'''
+new = '''    return refuse(
+        "internal-error",
+        f"the capture at {record.root} could not be flushed'''
+
+[[rows]]
+id = "S15_wrong_remedy"
+description = "_not_flushed: tell the person to report a defect rather than to check the library drive"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        remedy=Remedy.MOUNT_LIBRARY_VOLUME,
+        scope=Scope.SESSION,
+        detail={
+            "stamp": record.stamp,
+            "root": str(record.root),
+            "path"'''
+new = '''        remedy=Remedy.REPORT_DEFECT,
+        scope=Scope.SESSION,
+        detail={
+            "stamp": record.stamp,
+            "root": str(record.root),
+            "path"'''
+
+[[rows]]
+id = "E1_verified_ignores_verdict"
+description = "existing guard sample, Capture.verified: true whenever a database was captured, whatever the verdict"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''        return self.database is not None and self.integrity_verified'''
+new = '''        return self.database is not None'''
+
+[[rows]]
+id = "E2_gate_trusts_manifest"
+description = "existing guard sample, assert_verified: pass whenever the database file is there"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_flush_u272.py", "tests/test_snapshot.py", "tests/test_config.py", "tests/test_config_test_root.py", "tests/test_write_session.py", "tests/test_restore.py", "tests/test_rb_snapshot.py"]
+old = '''    if record.verified and record.database is not None and record.database.exists():'''
+new = '''    if record.database is not None and record.database.exists():'''
