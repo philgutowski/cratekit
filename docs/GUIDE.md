@@ -40,7 +40,7 @@ crate login NAME --from-file PATH
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
 | `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -323,9 +323,12 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file is asked of Beatport, then of Discogs when Beatport does not
-  carry it and a `discogs-token` is recorded, then of the general catalogue
-  by ISRC. A catalogue's row counts only when its title names the file's own
+  other file is asked of Discogs when a `discogs-token` is recorded, then of
+  Beatport when Discogs gives no genre (it misses, refuses, is not asked for
+  want of a token or for a token it refused, or names only styles no folder
+  holds), then of the general
+  catalogue by ISRC. A Discogs style no folder holds is written nowhere and is
+  the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the
   `KEY - BPM` head are set aside; a file's title is read from where it
   starts, after the head, the `[MP3]` marker the naming verb writes and a
@@ -379,7 +382,9 @@ crate route pending
   `--output json` the summary lists each file by label, by catalogue or not
   at all, with the reason a failed one failed; a sweep that ends in a refusal
   carries the same list in the refusal's detail and counts it in its message.
-  A file with no picture gets the cover the matching catalogue names. The
+  A file with no picture gets the cover the matching catalogue names.
+  Discogs names none, so a file Discogs tagged that has no picture asks
+  Beatport for its cover, and one that has a picture asks Beatport nothing. The
   files of one album name one cover, so while they sit together in the sweep
   it is asked for and resized once and every file of the album gets the same
   picture; a sweep remembers the last four covers, so a folder that
