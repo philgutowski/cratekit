@@ -1601,7 +1601,8 @@ def render_markdown(batch: Batch) -> str:
         )
         add("")
         add(
-            f"Temporary files: in {batch.temp_place}, the place the known failures were "
+            f"Temporary files: {'in memory' if batch.temp_place == 'memory' else 'on disk'}, "
+            "the place the known failures were "
             f"measured in, each run given a fresh directory there as `TMPDIR`{again} (U273)."
         )
     add("")

@@ -805,6 +805,7 @@ def test_a_baseline_red_only_by_the_machines_known_failures_is_green(red_repo, t
     )
     assert batch.valid, batch.invalid_reason
     assert batch.known_failures == 1
+    assert "Temporary files: on disk, the place" in mutate.render_markdown(batch)
     row = batch.results[0]
     assert row.status == "killed"
     assert row.killed == ["tests/test_guards.py::test_clamp_caps_at_the_limit"]
