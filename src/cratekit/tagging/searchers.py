@@ -1,12 +1,26 @@
 """Ask the record catalogues what a track's genre is, or say why nobody answered.
 
-BEATPORT, THEN DISCOGS (U244). Beatport is asked first and carries the cover.
-When it does not match, Discogs is asked through its documented API with a
-person's own token, because the two record shop pages that used to follow,
-Traxsource and Bandcamp, answer this machine with bot challenges on every
-search (R-791). Their parsers stay in the tree and off the walk, so a record
-of what they answered still reads, and a walk that names them still drives
-them. See the Discogs section below for what that source answers and why.
+DISCOGS, THEN BEATPORT (U282). Discogs is asked first, through its documented
+API with a person's own token, because it answers, per release, with styles
+DJs and collectors tagged: in the live trial of 2026-11-13 it matched nine of
+ten untagged files while Beatport refused every lookup. Beatport is asked when
+Discogs gives no genre, by a miss, a decline, a refusal or no token recorded,
+and it still carries the cover, which Discogs never names (the picture section
+below). U244 asked them the other way round. The two record shop pages that
+followed Beatport before U244, Traxsource and Bandcamp, answer this machine
+with bot challenges on every search (R-791). Their parsers stay in the tree
+and off the walk, so a record of what they answered still reads, and a walk
+that names them still drives them. See the Discogs section below for what
+that source answers and why.
+
+A DECLINE FROM DISCOGS GIVES WAY; A RECORD SHOP'S ENDS THE WALK (U282). When
+none of a release's styles names a folder, the walk goes on to Beatport, and
+Discogs' first style names the file only if Beatport writes no genre either:
+beside a Beatport miss the file is ``unmapped-genre`` with that word, and
+beside a Beatport refusal it is the same with Beatport unread, never a
+``no-hit`` and never an outage, since Discogs was read. A record shop's
+decline is its own word for the track and carries its row's picture, and on
+any walk it settles the file as it always has.
 
 WHY THE OUTCOME OF ONE SOURCE HAS FOUR VALUES AND NOT TWO. The obvious shape is
 a genre or nothing, and it is the shape that quietly ruins a library. A source
@@ -43,7 +57,8 @@ in that run: each later file records it BLOCKED with a note saying it was not
 asked and why, so it stays among the unread sources and the file stays
 askable. Any other answer from it ends the run of refusals, the next run asks
 again from its first file, and Discogs keeps its own memory and is asked
-whatever Beatport said.
+whatever Beatport said. A picture's question asks Beatport under the same
+count (U282).
 
 ``no-hit`` NEEDS EVERY SOURCE ASKED TO HAVE SAID MISS. One MISS beside a source
 that could not be read is not an absence, because the unread one may carry the
@@ -126,7 +141,14 @@ as a residual rather than hidden.
 THE PICTURE RIDES THE GENRE'S ROW. A match carries the cover URL off the same
 row that supplied its genre, Beatport's release image or Bandcamp's listing or
 page image, and Traxsource names none, which is parity. Discogs names none
-either: its covers are out of U244's scope, and Beatport stays the art source. The image is fetched
+either: its covers are out of U244's scope, and Beatport stays the art source.
+SO A GENRE DISCOGS DECIDED LEAVES THE PICTURE'S QUESTION OPEN (U282). The hit
+carries it, ``ask_picture``, over the record shops the walk never reached,
+and :func:`cratekit.tagging.tag.tag_one` asks it only for a file with no
+picture, so the cover arrives from the row it arrived from before Discogs was
+asked first, and a file that has one, ``tag suggest`` and ``tag retag`` send
+Beatport nothing after a Discogs match. A Discogs decline beside a Beatport
+row that matched takes that row's picture. The image is fetched
 later, and only for a file with no picture, by :func:`default_image_fetch`,
 which shares this module's pacer shape and rate limit policy. An album's files
 name one address, so the worker's fetch, :func:`for_images`, is one per process
@@ -1185,10 +1207,12 @@ def _search_bandcamp(
 # Discogs, asked through its documented API with a person's own token (U244)
 # ---------------------------------------------------------------------------
 #
-# WHY DISCOGS. Its releases carry a coarse genre and a finer style ("Disco",
-# "Nu-Disco", "Deep House"), mostly tagged by DJs and collectors, so the dance
-# records Beatport does not sell are covered well, and it is an API a person
-# signs up to rather than a page that answers a bot check. Signed in, it allows
+# WHY DISCOGS, AND WHY FIRST. Its releases carry a coarse genre and a finer
+# style ("Disco", "Nu-Disco", "Deep House"), mostly tagged by DJs and
+# collectors, so the dance records Beatport does not sell are covered well, and
+# it is an API a person signs up to rather than a page that answers a bot
+# check. It is asked first since U282, after it matched nine of ten untagged
+# files in the live trial of 2026-11-13. Signed in, it allows
 # about sixty requests a minute.
 #
 # A SEARCH, THEN THE RELEASES IT NAMES. The database search names releases and
@@ -1781,7 +1805,7 @@ def _unread_sources(
     The ones asked that answered blocked, unreachable or unparsable, and the
     ones passed over for want of a credential, since whether those carry the
     track is just as unknown (U244). On a match too, not only on a decline, so
-    a record whose answers show an unreachable Beatport before a Discogs match
+    a record whose answers show an unreachable Discogs before a Beatport match
     says so in ``unread`` as well, and the two fields of one record cannot
     disagree.
     """
@@ -1945,8 +1969,15 @@ def catalogue_searcher(
 
     ``refusals`` is the run's :class:`Refusals`, beside the pacer (U281). A
     catalogue it says to stop asking is answered from it without a wait or a
-    request. Discogs is never under it: its asker remembers its own refusal,
-    and it is asked whatever Beatport answered.
+    request, on the walk and on a picture's question alike. Discogs is never
+    under it: its asker remembers its own refusal, and it is asked whatever
+    Beatport answered.
+
+    A MATCH ENDS THE WALK, SAVE A DECLINE FROM A SOURCE THAT NAMES NO PICTURE
+    (U282). A Discogs match whose styles name no folder is held and the walk
+    goes on; its word names the file only if no later source writes a genre.
+    A genre Discogs decided carries the picture's question over the record
+    shops after it, :func:`_pictured`.
     """
     order = tuple(walk)
     unknown = [source for source in order if source not in SOURCES]

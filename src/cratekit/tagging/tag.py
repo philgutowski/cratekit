@@ -226,7 +226,9 @@ class SearchHit:
     which alias they are missing rather than only that something was unmapped.
 
     ``art_url`` is the picture on the SAME catalogue row as the genre, or empty
-    when that row names none. A URL rather than bytes, because whether the file
+    when that row names none, or, for a genre from a source that names no
+    picture, on the record shop's row that matched the same track (U282). A
+    URL rather than bytes, because whether the file
     needs a picture at all is :func:`tag_one`'s question and a searcher that
     downloaded eagerly would spend a paced fetch on every file that already has
     one.
@@ -243,6 +245,8 @@ class SearchHit:
     picture (R-796), so a hit it became the source of carries the record shop
     whose row matched, or the empty string when no shop's did, and the report
     about the picture is then written about the shops and not about it.
+    Discogs names no picture either, so a hit it decided carries the same
+    (U282).
 
     ``answers`` is every catalogue's answer, so the item's record can say what
     each one said rather than only the disposition they added up to. ``unread``
@@ -693,6 +697,12 @@ def tag_one(
     (R-1476), and
     ``copyright_labels`` reads the label of a file that has neither off its
     copyright line (U240). Without it no line is read.
+
+    A PICTURE LEFT UNASKED IS ASKED HERE, AND ONLY FOR A FILE WITH NONE (U282).
+    A genre Discogs decided reaches here with ``ask_picture`` set, since
+    Discogs names no picture, and the record shop after it is asked for its
+    row's cover only when the file has no picture, after the genre is saved,
+    never raising. A file that has one costs that shop nothing.
 
     THE ART REPAIR RUNS FIRST, before the genre check can return. A file that
     already carries a genre is exactly the file the source system repaired, so a

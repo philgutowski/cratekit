@@ -68,16 +68,17 @@ this track's genre. The album identifier becomes a URL, so it is an integer or
 it is nothing.
 
 THE GENRE IS THE ALBUM'S, NOT THE TRACK'S, and that limit is accepted rather
-than hidden. A dance remix of a non dance artist that Beatport misses files as
-non dance. The author took that on 2026-10-01, and it is why Beatport is asked
-first and a usable answer from it is never replaced.
+than hidden. A dance remix of a non dance artist that the record catalogues
+miss files as non dance. The author took that on 2026-10-01, and it is why the
+record catalogues are asked first and a usable answer from one is never
+replaced.
 
 BEATPORT MUST HAVE ANSWERED BEFORE THIS CATALOGUE IS ASKED. A genre is written
 once, fill if empty, so an album level answer written while Beatport was
 unreachable would stand in for Beatport's for good. When Beatport's answer is
 anything but a match or a miss, this catalogue is recorded as not asked and the
 file stays askable. DISCOGS IS WAITED FOR THE SAME WAY (U244's review): asked
-after Beatport and unread, blocked, unreachable or unparsable, this catalogue
+and unread, blocked, unreachable or unparsable, this catalogue
 is recorded as not asked, since its album word written then would stand in for
 Discogs' style for good. Discogs not asked at all, for want of a token, does
 not hold it back, or a library with no token would never be asked here; nor do
