@@ -1800,6 +1800,11 @@ def _edited_verdict(state: Path, **fields) -> None:
         ({"verdict": "red"}, "disagrees with the ids it lists"),
         ({"failing": "tests/test_red.py::test_that_fails"}, "a record this driver cannot read"),
         ({"commit": "unknown"}, "it is for commit"),
+        ({"ran": 5}, "so the run stopped early"),
+        ({"ran": None}, "so the run stopped early"),
+        ({"pytest_addopts": "-x"}, "inherited PYTEST_ADDOPTS"),
+        ({"collect_errors": None}, "a record this driver cannot read"),
+        ({"collect_errors": ["tests/test_red.py::test_that_fails"]}, "disagrees with the ids"),
     ],
     ids=[
         "dirty-during-the-run",
@@ -1814,6 +1819,11 @@ def _edited_verdict(state: Path, **fields) -> None:
         "a-verdict-its-ids-contradict",
         "ids-not-a-list",
         "no-commit",
+        "fewer-ran-than-collected",
+        "no-count-of-what-ran",
+        "an-edited-run",
+        "collection-errors-unknown",
+        "a-collection-error-read-clean",
     ],
 )
 def test_a_verdict_that_differs_in_any_key_is_not_read(judged, fields, why):
@@ -1897,3 +1907,57 @@ def test_the_driver_and_the_battery_name_one_record():
     assert battery.STATE.name == mutate.BATTERY_VERDICT.parent.as_posix()
     assert mutate.BATTERY_VERDICT_FORMAT == battery.RUN_RECORD_FORMAT
     assert mutate.BOOT_ID == battery.BOOT_ID
+
+
+def test_a_run_that_stopped_early_with_exit_one_is_not_read(red_repo, battery_on):
+    """Review round one: an early stop exits 1, as a complete red run does.
+
+    A test that ends the session stops the run with tests left unrun; the
+    battery's compare still reads it clean, since the one failure is the
+    machine's, and only the count of tests that reported tells it apart.
+    """
+    _ignore_the_battery_state(red_repo)
+    state = battery_on(red_repo)
+    assert battery.cmd_baseline(None) == 0
+    (red_repo / "tests" / "test_zzz_stop.py").write_text(
+        "import pytest\n\n\ndef test_a_stop():\n    pytest.exit('stop', returncode=1)\n\n\n"
+        "def test_b_never_run():\n    assert True\n",
+        encoding="utf-8",
+    )
+    _git(red_repo, "add", "-A")
+    _git(red_repo, "commit", "-q", "-m", "a test that stops the session")
+    assert battery.cmd_compare(None) == 0
+    record = json.loads((state / mutate.BATTERY_VERDICT.name).read_text(encoding="utf-8"))
+    assert record["exit_code"] == 1
+    assert record["ran"] < record["collected"]
+
+    known, digest = _known(state)
+    result, note = mutate.read_battery_verdict(
+        red_repo, state / mutate.BATTERY_VERDICT.name, known=known, known_digest=digest
+    )
+    assert result is None
+    assert "stopped early" in note
+
+
+def test_untracked_files_hidden_by_git_config_still_make_the_tree_unclean(judged):
+    """`status.showUntrackedFiles=no` hides an uncommitted test file from a plain status."""
+    root, state = judged
+    _git(root, "config", "status.showUntrackedFiles", "no")
+    (root / "tests" / "test_uncommitted.py").write_text(
+        "def test_nobody_committed():\n    assert True\n", encoding="utf-8"
+    )
+    batch = _batch(root, state, "hidden")
+    assert batch.baseline_source == "measured"
+    assert "uncommitted or untracked" in batch.baseline_note
+
+
+def test_a_status_git_cannot_read_is_never_a_clean_tree(judged):
+    """Absence is not evidence: a status git could not read is not an empty one."""
+    root, state = judged
+    (root / ".git" / "index").write_bytes(b"not an index")
+    known, digest = _known(state)
+    result, note = mutate.read_battery_verdict(
+        root, state / mutate.BATTERY_VERDICT.name, known=known, known_digest=digest
+    )
+    assert result is None
+    assert "git could not read this tree's status" in note

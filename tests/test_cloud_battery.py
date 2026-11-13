@@ -573,8 +573,9 @@ def test_a_complete_run_records_what_it_collected_and_pytests_exit(spaced, monke
 
     suite = battery.measure_suite()
 
-    # Four cases of test_case and two of test_with_resource.
+    # Four cases of test_case and two of test_with_resource, every one run.
     assert suite.collected == 6
+    assert suite.ran == 6
     assert suite.ids == {f"{SPACED}[one two]"}
     assert suite.collect_errors == set()
     assert suite.exit_code == 1
@@ -636,6 +637,8 @@ def test_compare_records_every_key_the_driver_reads(judged_repo):
     assert record["known_failures_sha256"] == hashlib.sha256(baseline.read_bytes()).hexdigest()
     assert record["verdict"] == "clean"
     assert record["collected"] == 6
+    assert record["ran"] == 6
+    assert record["pytest_addopts"] == ""
     assert record["exit_code"] == 1
     assert record["failing"] == [f"{SPACED}[one two]"]
     assert record["collect_errors"] == []
@@ -723,3 +726,25 @@ def test_a_tree_git_cannot_read_is_never_recorded_clean(tmp_path, monkeypatch):
     state = battery.tree_state()
     assert state.commit == ""
     assert state.clean is False
+
+
+def test_the_record_names_a_pytest_addopts_the_run_inherited(judged_repo, monkeypatch):
+    """The suite inherits it and it edits the run, so the driver must be able to see it."""
+    monkeypatch.setenv("PYTEST_ADDOPTS", "-p no:cacheprovider")
+    assert battery.cmd_baseline(None) == 0
+    assert _record(judged_repo)["pytest_addopts"] == "-p no:cacheprovider"
+
+
+def test_an_untracked_file_hidden_by_git_config_is_still_seen(judged_repo):
+    assert _git(judged_repo, "config", "status.showUntrackedFiles", "no").returncode == 0
+    (judged_repo / "stray.txt").write_text("untracked\n", encoding="utf-8")
+    assert battery.tree_state().clean is False
+
+
+def test_collection_errors_the_report_does_not_list_as_errors_are_unknown():
+    report = {"collect_errors": ["tests/test_broken.py"]}
+    assert battery._read_collect_errors(report, {"tests/test_broken.py"}) == {
+        "tests/test_broken.py"
+    }
+    assert battery._read_collect_errors(report, {"tests/test_other.py"}) is None
+    assert battery._read_collect_errors({}, {"tests/test_broken.py"}) is None
