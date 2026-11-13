@@ -30,6 +30,7 @@ from __future__ import annotations
 
 import errno
 import json
+import os
 import sqlite3
 import tempfile
 from pathlib import Path
@@ -222,6 +223,17 @@ def test_separate_volumes_are_each_asked_only_their_own(cfg, scratch, monkeypatc
 def test_the_store_and_the_temporary_directory_on_this_disk_are_one_volume(tmp_path):
     (tmp_path / "a").mkdir()
     assert snapshot._same_volume(tmp_path / "a", tmp_path / "not" / "yet" / "made")
+
+
+def test_a_store_not_yet_made_is_read_as_the_volume_of_its_nearest_parent(tmp_path):
+    """The first capture's store does not exist yet, and is its parent's volume.
+
+    Without the walk the store would answer no device at all, which counts as
+    shared, and a separate temporary volume would be asked for the capture's
+    room too: a false refusal on the first guarded write.
+    """
+    assert snapshot._device(tmp_path / "not" / "yet" / "made") == os.stat(tmp_path).st_dev
+    assert snapshot._device(tmp_path) == os.stat(tmp_path).st_dev
 
 
 def test_a_volume_whose_device_cannot_be_read_counts_as_shared(tmp_path, monkeypatch):
