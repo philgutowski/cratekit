@@ -51905,3 +51905,99 @@ and a name of this shape needs an album after the artist's part.
 
 **Closes when:** `_layout` reads a featured only credit as the title it
 holds, measured by the differential, or R-1653 is decided. Ledger only.
+
+---
+
+## R-1659. A file every asked catalogue refused fails catalogue-unreachable with "check this machine's network connection" as its first step
+
+**Found:** at the review of #796, U281, 2026-11-13.
+
+**The mechanism.** When Beatport refuses this client and Discogs is not asked
+(no token) or is unread too, `searchers._decide` raises
+`catalogue-unreachable`, whose first step tells the person to check this
+machine's network connection. The refusal is named only in the second step
+and the cause's detail. Every file of such a sweep fails that way, the job
+fails, and the sweep carries no `tag-folder-sources-unread` warning, because
+the files left no report to count. The step text came in with R-791; U281
+only reads Beatport's 403 as a refusal, so this is now the shape a refusing
+Beatport with no Discogs token produces on every file.
+
+**Measured cost.** Driven by U281's review: five files, Beatport answering a
+Cloudflare 403, Discogs with no token. Exit 1, three Beatport requests, all
+five items `catalogue-unreachable`, no warning, step one the network. A person
+is sent to their network over a refusal no network check moves.
+
+**Closes when:** a refusal on every asked catalogue is said as a refusal
+first, and the pass's handling of it is decided. Ledger only: what a pass does
+when every catalogue is blocked is #790's question (U279), which already
+holds a card on the board.
+
+---
+
+## R-1660. tag retag builds its searcher per file, so it asks a refusing Beatport on every file rather than stopping after three
+
+**Found:** at the review of #796, U281, 2026-11-13.
+
+**The mechanism.** U281 handed `tag folder`'s worker the run's count of
+refusals in a row, `searchers.for_run`. `tag retag`'s worker calls
+`searchers.for_taxonomy(declared)` per file with no count, so each file's
+searcher keeps its own and starts again: a Beatport refusing this client is
+asked once per file, at one paced request each. `tag suggest --catalogue`
+builds one searcher for its plan, so it does stop.
+
+**Measured cost.** Not driven through `tag retag`. One paced request a file
+against a catalogue that has already refused, and the answer is the same
+`blocked` either way, so no file is recorded differently.
+
+**Closes when:** `retag_cli` hands `for_taxonomy` the run's count, keyed as
+`tag folder`'s worker keys it. Ledger only: a maintainer facing cost, nothing
+a person reads is false.
+
+---
+
+## R-1661. A Traxsource or Bandcamp results page carrying Cloudflare's detection script reads blocked
+
+**Found:** at the review of #796, U281, round two, 2026-11-13.
+
+**The mechanism.** The two scraped fallbacks, Traxsource and Bandcamp, run
+`searchers.unread_outcome` before they parse, R-791's order, and that check
+reads `/cdn-cgi/challenge-platform/` anywhere in the body as Cloudflare's
+challenge. A bot managed site can put Cloudflare's detection script on every
+ordinary page, so a real results page carrying it reads `blocked`. U281
+moved Beatport's read to parse its payload first and check only a page with
+none; the fallbacks were left as they were.
+
+**Measured cost.** Driven by U281's round two review: a Traxsource results
+page that matched (Deep House) raised `catalogue-unreachable` once the script
+was added. Conservative: the file stays askable and is never a false
+`no-hit`. The producer was not driven: both fallbacks are off the shipped
+walk since U244 (`SCRAPED_WALK` is named nowhere in `src`), and no live page
+was measured carrying the script.
+
+**Closes when:** each fallback parser reads a page's results first and runs
+the challenge body check only on a page with none, as Beatport's does, which
+also closes the absence half R-795 names. Ledger only: off the walk.
+
+---
+
+## R-1662. A Beatport payload whose tracks data is null or a list raises a TypeError rather than reading as a parse break
+
+**Found:** at the review of #796, U281, round two, 2026-11-13.
+
+**The mechanism.** `searchers._beatport_tracks` walks `props.pageProps.
+dehydratedState.queries[].state.data.tracks.data` with `.get` on each step and
+assumes each is a mapping. A `data` or `tracks` of `null`, or a list where a
+mapping is expected, raises `AttributeError` or `TypeError` out of the
+searcher, and the item fails as an internal error rather than as Beatport's
+parse break. Present on `main` before U281; U281 adds one shape, a challenge
+page that also carries a broken `__NEXT_DATA__`, which round one's order read
+as blocked and the fixed order crashes on.
+
+**Measured cost.** Driven on a fake page by U281's round two review, with the
+same raise from `main`'s searcher. The producer was not driven: no Beatport
+page of that shape has been seen, and Cloudflare's interstitial replaces the
+page rather than carrying a Next payload.
+
+**Closes when:** `_beatport_tracks` answers None for any payload whose steps
+are not the shapes it reads, so the searcher answers a parse break, or
+blocked when the page is a challenge. Ledger only: no producer measured.
