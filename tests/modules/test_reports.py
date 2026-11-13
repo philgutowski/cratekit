@@ -1849,6 +1849,8 @@ QUALIFIED_MUTATIONS = frozenset(
         "snapshot._chmod",
         "snapshot._harden",
         "snapshot._not_flushed",
+        # The capture's manifest rewritten unverified before a room refusal.
+        "snapshot._record_unverified",
         "snapshot._verify",
         "snapshot._write_manifest",
         "snapshot.capture",
