@@ -382,7 +382,7 @@ def test_two_isrcs_that_differ_do_not_fold_even_when_the_names_agree():
 
 
 def test_two_emoji_titles_by_one_artist_played_back_to_back_stay_two_rows():
-    """R-1709 here: with no ISRC the recording token decided, and two titles
+    """Two titles that fold to nothing, here: with no ISRC the recording token decided, and two titles
     of emoji alone by one artist fold to one token, so a set playing one after
     the other read as one track."""
     folded = acrcloud.fold(

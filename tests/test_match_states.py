@@ -6959,7 +6959,7 @@ def test_a_swapped_listing_split_differently_is_still_offered(cfg, music, tmp_pa
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# R-1709: a title that folds to nothing is told apart by its own text
+# A title that folds to nothing is told apart by its own text (card 834)
 # ═══════════════════════════════════════════════════════════════════════════
 
 

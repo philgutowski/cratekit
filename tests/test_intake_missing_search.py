@@ -1067,7 +1067,7 @@ def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkey
 
 
 def test_a_search_answered_by_another_emoji_title_is_not_exact():
-    """R-1709 one module over: the exact flag compared recording tokens, and
+    """The same defect one module over: the exact flag compared recording tokens, and
     two emoji titles by one artist fold to one, so a search for ``💧``
     answered only by the artist's ``🔥`` listed it without a person and
     downloaded a record nobody asked for."""

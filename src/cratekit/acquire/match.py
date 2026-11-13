@@ -522,6 +522,56 @@ def fold(text: object) -> str:
     return _RUNS.sub(" ", _MARKS.sub(" ", stripped.casefold())).strip()
 
 
+#: The code points a title's bare text leaves out: characters a
+#: source adds or drops without changing what the title says. The variation
+#: selectors, which pick text or emoji presentation of one symbol, and the
+#: invisible format characters, the zero width space, joiner and non joiner,
+#: the word joiner, the byte order mark, the soft hyphen and the directional
+#: marks and controls. The tag characters, which spell a regional flag, are
+#: format characters too and are KEPT, since two flags are two titles.
+_TAG_CHARACTERS = range(0xE0000, 0xE0080)
+_VARIATION_SELECTORS = (range(0xFE00, 0xFE10), range(0xE0100, 0xE01F0))
+
+
+def _invisible(ch: str) -> bool:
+    point = ord(ch)
+    if any(point in selectors for selectors in _VARIATION_SELECTORS):
+        return True
+    return unicodedata.category(ch) == "Cf" and point not in _TAG_CHARACTERS
+
+
+def bare_title(title: object) -> str:
+    """A title's own text, for the one case :func:`fold` cannot read.
+
+    ``""`` for a title that folds to something, so the pair
+    (``fold(title)``, ``bare_title(title)``) is exactly ``fold`` wherever
+    ``fold`` says anything. For a title that folds to nothing, emoji or marks
+    alone, the text itself: NFKC, which takes one title at another width or a
+    compatibility form to one spelling (``！！！`` is ``!!!``, ``…`` is
+    ``...``), then case, then every space and every invisible character
+    taken out (see :func:`_invisible`), so ``❤`` and ``❤️`` are one title and
+    ``🔥`` and ``💧`` are two.
+
+    WHY NOT FOLD THEM IN. ``fold`` drops every mark on purpose, and the
+    tombstone, the review item and the match identifier all hash through it,
+    so changing it moves every recorded answer. Two titles that fold to
+    nothing were one recording to every comparison, and a wanted ``💧`` was
+    called owned by a held ``🔥`` and never downloaded. The comparisons ask
+    :func:`same_title` instead; the identities are left as they are.
+    """
+    if fold(title):
+        return ""
+    composed = unicodedata.normalize("NFKC", str(title)).casefold()
+    return "".join(ch for ch in composed if not ch.isspace() and not _invisible(ch))
+
+
+def same_title(one: object, other: object) -> bool:
+    """Whether two titles are one title to the matcher: their folds agree and,
+    when those fold to nothing, so does their bare text. For every
+    title that folds to something this is ``fold(one) == fold(other)``."""
+    return fold(one) == fold(other) and bare_title(one) == bare_title(other)
+
+
 def _is_a_credit(inside: str) -> bool:
     """Whether a bracketed group names a PERFORMER rather than an edit.
 
@@ -1332,6 +1382,14 @@ class Wanted:
         return recording_token(self.artist, self.title)
 
     @property
+    def bare(self) -> str:
+        """The title's bare text, ``""`` unless it folds to nothing. See
+        :func:`bare_title`: the recording token cannot tell two such titles
+        apart, so every comparison that reads a token as a recording asks this
+        too."""
+        return bare_title(self.title)
+
+    @property
     def version_key(self) -> str:
         return version_token(self.version)
 
@@ -1910,6 +1968,12 @@ class Owned:
         return recording_token(self.artist, self.title)
 
     @property
+    def bare(self) -> str:
+        """The title's bare text, ``""`` unless it folds to nothing. See
+        :attr:`Wanted.bare`."""
+        return bare_title(self.title)
+
+    @property
     def version_key(self) -> str:
         return version_token(self.version)
 
@@ -1999,13 +2063,22 @@ class LibraryIndex:
         band's own name far more often than a join, ``Above & Beyond``, so
         splitting on it would invent members, and the other two are a
         population of 37 a person can answer from the review queue.
+
+        BOTH RULES READ THE TITLE BY :func:`same_title`. A token and
+        a folded title agree for every title that folds to nothing, so a held
+        ``🔥`` answered for a wanted ``💧`` by the same artist, the row was
+        called owned and never downloaded. Files under the token or the title
+        whose bare text differs from the row's are not this recording.
         """
-        exact = self.versions(recording_token(artist, title))
+        bare = bare_title(title)
+        exact = tuple(
+            one for one in self.versions(recording_token(artist, title)) if one.bare == bare
+        )
         member = fold(artist)
         counted = {one.path for one in exact}
         credited = tuple(
             one for one in self.by_title.get(fold(title), ())
-            if member in one.members and one.path not in counted
+            if one.bare == bare and member in one.members and one.path not in counted
         )
         return exact + credited
 
@@ -2560,9 +2633,18 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     shows ONE key, so every path under it has to be at that key or the value on
     screen is true of some of what the person is accepting.
     """
-    grouped: dict[tuple[str, str, str], list[Owned]] = {}
+    #
+    # AND BY THE BARE TITLE, so two files whose titles fold to
+    # nothing, ``🔥`` and ``❄`` by one artist, are two candidates and not one
+    # titled by whichever came first and carrying the other's path. The
+    # identifier digests the bare title only when it is not empty, so every
+    # candidate whose title folds to something keeps the identifier a recorded
+    # answer names.
+    grouped: dict[tuple[str, str, str, str], list[Owned]] = {}
     for held in owned:
-        grouped.setdefault((held.recording, held.version_key, held.key_key), []).append(held)
+        grouped.setdefault(
+            (held.recording, held.bare, held.version_key, held.key_key), []
+        ).append(held)
     built: list[Candidate] = []
     token = isrc_token(wanted.isrc)
     # INSERTION ORDER, NOT SORTED. Sorting looked harmless and threw away the one
@@ -2573,8 +2655,9 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     # one showed the person five wrong answers and withheld the right one. Every
     # other caller passes rows straight out of the index, whose order is a sorted
     # directory walk, so this is deterministic there too.
-    for recording, version_key, key in grouped:
-        rows = grouped[(recording, version_key, key)]
+    for recording, bare, version_key, key in grouped:
+        rows = grouped[(recording, bare, version_key, key)]
+        named = (recording, version_key, key, bare) if bare else (recording, version_key, key)
         first = rows[0]
         if not _same_recording(wanted, first, token):
             difference = Why.TITLE_APPROXIMATE
@@ -2589,7 +2672,7 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
             difference = key_disagreement(wanted.key, key) or Why.EXACT
         built.append(
             Candidate(
-                candidate_id=f"cd_{_digest(recording, version_key, key)}",
+                candidate_id=f"cd_{_digest(*named)}",
                 artist=first.artist,
                 title=first.title,
                 version=first.version,
@@ -2613,12 +2696,14 @@ def _same_recording(wanted: Wanted, held: Owned, token: str) -> bool:
     :func:`resolve_one` applies, so a credited hit or an ISRC hit at another
     version is reported as the version question it is and not as a scored
     resemblance. ``token`` is the row's folded ISRC, computed once by the
-    caller. An ISRC agrees only WITH the folded title, see :func:`resolve_one`.
+    caller. An ISRC agrees only WITH the title, see :func:`resolve_one`, and
+    the title is read by :func:`same_title`, so two titles that fold to nothing
+    are one recording only when their bare text agrees.
     """
+    if not same_title(held.title, wanted.title):
+        return False
     if held.recording == wanted.recording:
         return True
-    if fold(held.title) != fold(wanted.title):
-        return False
     return fold(wanted.artist) in held.members or _carries(held, token)
 
 
@@ -2888,10 +2973,13 @@ def resolve_one(
     # key is checked over those. A copy matched on text alone at the same
     # version is not appended: the reason says the identity was carried, and it
     # has to be true of every path it stands beside.
-    title = fold(wanted.title)
+    #
+    # THE TITLE IS READ BY :func:`same_title`: two titles that fold
+    # to nothing agree only when their bare text does, so a file carrying the
+    # row's ISRC under another emoji title is doubtful, as another title is.
     carrying = index.held_by_isrc(isrc_token(wanted.isrc))
-    settled = [held for held in carrying if fold(held.title) == title]
-    doubtful = [held for held in carrying if fold(held.title) != title]
+    settled = [held for held in carrying if same_title(held.title, wanted.title)]
+    doubtful = [held for held in carrying if not same_title(held.title, wanted.title)]
     owned = index.held(wanted.artist, wanted.title)
     if settled:
         exact, agreed = settled, Why.ISRC_EXACT
@@ -3211,6 +3299,7 @@ __all__ = [
     "Why",
     "acquisition_options",
     "apply_verdict",
+    "bare_title",
     "credited_members",
     "digest",
     "fold",
@@ -3236,6 +3325,7 @@ __all__ = [
     "recording_token",
     "resolve_all",
     "resolve_one",
+    "same_title",
     "split_ambiguous",
     "split_title",
     "split_version",

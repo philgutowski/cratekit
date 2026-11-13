@@ -194,8 +194,8 @@ def query_title(wanted: match.Wanted) -> str:
     return f"{wanted.title} {wanted.version}".strip() if wanted.version_key else wanted.title
 
 
-def _tokens(wanted: match.Wanted) -> frozenset[tuple[str, str]]:
-    """Every (recording, version) the row reads as, the ambiguous reading too.
+def _tokens(wanted: match.Wanted) -> frozenset[tuple[str, str, str]]:
+    """Every (recording, bare title, version) the row reads as, the ambiguous reading too.
 
     BOTH READINGS MARK A CANDIDATE EXACT, AND NEITHER LISTS IT. A title whose
     dash tail may be a version or the end of the title is two rows to the exact
@@ -204,8 +204,13 @@ def _tokens(wanted: match.Wanted) -> frozenset[tuple[str, str]]:
     reading is for what to OFFER and that nothing identifying is derived from
     it, and the string cannot say which reading is the first, so a row with two
     readings is never listed without a person: see :func:`sole_exact`.
+
+    THE BARE TITLE IS IN IT. Two titles that fold to nothing, ``🔥``
+    and ``💧`` by one artist, share a recording token, so a search for one
+    answered only by the other was exact, listed without a person, and the
+    record nobody asked for downloaded. See :func:`match.bare_title`.
     """
-    return frozenset((one.recording, one.version_key) for one in wanted.readings)
+    return frozenset((one.recording, one.bare, one.version_key) for one in wanted.readings)
 
 
 def _album_of(row: object) -> str:
@@ -236,7 +241,7 @@ def read_answer(wanted: match.Wanted, rows: tuple[Any, ...]) -> Answer:
         candidates.append(
             Candidate(
                 track=track,
-                exact=(track.recording, track.version_key) in exact_tokens,
+                exact=(track.recording, track.bare, track.version_key) in exact_tokens,
                 score=round(float(fuzz.token_sort_ratio(wanted.recording, track.recording)), 1),
                 album=_album_of(row),
             )
