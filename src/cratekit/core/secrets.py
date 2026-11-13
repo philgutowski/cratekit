@@ -111,6 +111,11 @@ class Credential(StrEnum):
     #: of every request the tagging verbs make to Discogs' API and nowhere
     #: else. Optional: without one Discogs is recorded as not asked.
     DISCOGS_TOKEN = "discogs-token"
+    #: A Cyanite integration access token (U245), sent in the Authorization
+    #: header of the Cyanite trial's requests to Cyanite's API and nowhere
+    #: else. Spent only by ``scripts/cyanite_trial.py``, whose uploads cost
+    #: money and are opt in per run.
+    CYANITE_KEY = "cyanite-key"
 
 
 class Remedy(StrEnum):

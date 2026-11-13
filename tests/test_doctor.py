@@ -220,6 +220,7 @@ def test_every_check_key_and_its_place_in_the_run_order_is_written_out():
         "keychain.reachable",
         "credential.bandcamp",
         "credential.catalogue",
+        "credential.cyanite",
         "credential.discogs",
         "credential.provider",
         "credential.recognition",
@@ -8342,6 +8343,20 @@ def test_the_discogs_token_is_reported_never_failed_and_says_how_to_record_it(co
     assert "no verb" not in finding.detail
     recorded = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: True))
     assert doctor._check_credential("credential.discogs", recorded).status is doctor.Status.OK
+
+
+def test_the_cyanite_key_is_reported_never_failed_and_names_the_trial(configured):
+    """U245. No verb spends the key, only the Cyanite trial script, so the
+    finding is INFO naming the script and the login step, never a failure, and
+    setup never offers it."""
+    inputs = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: False))
+    finding = doctor._check_credential("credential.cyanite", inputs)
+    assert finding.status is doctor.Status.INFO
+    assert "scripts/cyanite_trial.py" in finding.detail
+    assert "crate login" in finding.detail
+    recorded = doctor._Inputs(configured, None, probes(credential_recorded=lambda _name: True))
+    assert doctor._check_credential("credential.cyanite", recorded).status is doctor.Status.OK
+    assert not doctor.offered("credential.cyanite", profiles.resolve("full"))
 
 
 def test_setup_offers_the_discogs_token_where_a_tagging_verb_is_switched_on():

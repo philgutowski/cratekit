@@ -39,6 +39,7 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
+| `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
 | `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
@@ -70,7 +71,10 @@ Cratekit reaches your rekordbox library three ways:
 - **The guarded write** is the only path to the live database. It refuses
   unless the recorded library volume is mounted, rekordbox and
   `rekordboxAgent` are both closed, the pinned versions match and a backup
-  acknowledgment is on record. It snapshots first and reads the result back.
+  acknowledgment is on record. It snapshots first, reads the copy back, and
+  flushes it to the library's drive before recording it as verified, so the
+  restore point is on the disk before anything is written; a snapshot that
+  cannot be flushed refuses the write.
 
 Terms:
 
@@ -348,8 +352,17 @@ crate route pending
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the
   common dance styles, Nu-Disco and Techno among them, are declined. Traxsource and Bandcamp, which answer every search
-  with a bot check, are no longer asked. A file no catalogue knows keeps no
-  genre. A file's label is its label
+  with a bot check, are no longer asked. A catalogue that refuses this
+  machine, with a 403, a spent rate limit or Cloudflare's challenge page, is
+  recorded `blocked` and never a miss, so the file stays untagged and is asked
+  again by the next run; after three refusals in a row from Beatport (or a
+  record shop on an older walk) a sweep stops sending it requests until the
+  next sweep, and says so in each later file's record, while Discogs, once it
+  refuses, is not asked again in the run. `tag suggest --catalogue` stops the
+  same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
+  refused this client, and a Cloudflare challenge as one, and keeps
+  `unreachable` for a catalogue that is down. A file no catalogue knows keeps
+  no genre. A file's label is its label
   tag, else `--label`, else the one registered label whose whole `--match`
   needle its copyright line carries, as whole words, so a folder of several
   labels is tagged in one call with every catalogue refusing, as long as each
@@ -843,6 +856,42 @@ repeatable, plans just those steps; a side with no kind named is not asked.
   unmatched.
 - A dated label playlist older than `labels.new_playlist_age_days` (30) is
   listed; `label heard` merges it.
+
+### Try Cyanite on a few filed tracks
+
+Cyanite is a paid service that listens to the audio and answers genre, sub
+genre, mood and energy words. Before it is ever asked by the tagging verbs,
+a trial measures it against folders you filed by hand (U245):
+
+```bash
+crate login cyanite-key --from-file PATH
+.venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv --price-per-track 0.10
+.venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv \
+    --send-to-cyanite --cap 40 --price-per-track 0.10
+```
+
+- Without `--send-to-cyanite` it sends nothing: it lists the files, how many
+  it would upload and, with your plan's `--price-per-track`, the estimated
+  cost. With it, `--cap` and `--price-per-track` are both needed and a count
+  over the cap refuses before anything is sent.
+- Only MP3s are sent, which is what Cyanite's API takes; other files are
+  listed as not sent. Audio leaves your machine, so choose the tracks.
+- `trial.tsv` has a row per file sent (a second copy of the same audio is
+  listed as not sent): its genre tag, the folder that genre files
+  it in today, Cyanite's four answers, the folder Cyanite's words name (a
+  `[vocabulary.cyanite]` table in your taxonomy copy answers first, the
+  buckets' aliases otherwise), and whether the two agree. `trial-agreement.tsv`
+  beside it is the agreement per folder.
+- It writes those two files and nothing else: no tag, no record, no library.
+  It never asks Cyanite for a tempo or a key. An output already there is never
+  overwritten; `--resume` with the same `--output` carries on a run cut short,
+  uploading only the files with no answer yet. Files are known by their audio,
+  not their tags or their path, so moving the folder or retagging a file
+  between the two runs costs nothing, and a file whose track Cyanite had made
+  and named when the run ended, however it ended, is asked about again rather than
+  uploaded again.
+- Exit 0 done, or the plan; 1 stopped partway with the rows kept; 2 refused
+  with no audio uploaded.
 
 ### Keep the library tidy
 

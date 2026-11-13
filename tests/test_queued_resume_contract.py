@@ -220,7 +220,7 @@ def catalogue(monkeypatch):
     def searcher(artist: str, title: str):
         return SearchHit(genre="Deep House", source="beatport", source_genre="Deep House")
 
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None: searcher)
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None, refusals=None: searcher)
     return searcher
 
 

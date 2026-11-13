@@ -1188,9 +1188,13 @@ def test_a_fallback_answering_503_is_still_unreachable_rather_than_blocked():
     assert hit.unread == (searchers.TRAXSOURCE,)
 
 
-def test_beatport_answering_403_is_unreachable_as_it_always_was():
-    """Beatport's read is unchanged by R-791, and a block check that reached it
-    would change a source the finding measured as answering."""
+def test_beatport_answering_403_is_blocked_like_the_fallbacks():
+    """U281 reverses R-791's exclusion: Beatport answered 403 with Cloudflare's
+    challenge on every lookup from 2026-11-13, and reading that as an outage
+    sent a person to their network. A refusal of this client is ``blocked``
+    from Beatport as from any other catalogue, and still not an answer about
+    the track, so a file nobody answered for still refuses rather than
+    declining."""
     with pytest.raises(CratekitError) as raised:
         _over_the_wire(
             {
@@ -1200,7 +1204,10 @@ def test_beatport_answering_403_is_unreachable_as_it_always_was():
             }
         )(ARTIST, TITLE)
 
-    assert raised.value.cause.detail["answers"] == ["unreachable"] * 3
+    cause = raised.value.cause
+    assert cause.reason == searchers.UNREACHABLE_REASON
+    assert cause.detail["answers"] == ["blocked", "unreachable", "unreachable"]
+    assert cause.detail["notes"][0] == "the catalogue refused this client, HTTP 403"
 
 
 def test_three_refusals_raise_unreachable_and_say_the_fallbacks_were_blocked():

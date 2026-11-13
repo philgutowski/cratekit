@@ -62,6 +62,10 @@ Nothing merges until all three are clean:
   reads one of the other two over the same sample. After a change to
   `analysis/detect.py`, `separation.py` or `light.py`, re-run them and replace
   the numbers those modules quote.
+- `scripts/cyanite_trial.py` is U245's Cyanite trial, a person's command
+  rather than a maintainer's, described in the guide. Its suite drives it with
+  recorded answers only; the shipped send is detonated for every test in
+  `tests/conftest.py`.
 
 ## CI
 

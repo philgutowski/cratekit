@@ -1151,6 +1151,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'catalogue-app-id',  # 2026-11-05, U205
         'catalogue-app-key',  # 2026-11-05, U205
         'credential-index-unreadable',
+        'cyanite-key',  # 2026-11-13, U245
         'discogs-token',  # 2026-11-12, U244
         'identify-key',
         'identify-signing-key',
@@ -2039,6 +2040,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tag-folder-unnamed',
     ],
     # 2026-11-01, U172: tag guess joined, its engine and its verb.
+    'tagging/cyanite.py': ['utf-8'],  # 2026-11-13, U245
     'tagging/guess.py': ['tag-guess'],
     'tagging/guess_cli.py': [
         'config-unusable',
@@ -2121,6 +2123,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     'tagging/searchers.py': [
         'catalogue-parse-broken',
         'catalogue-unreachable',
+        # 2026-11-13, U281: the Cloudflare header a refusal's note is named by.
+        'cf-mitigated',
         'credential-missing',  # 2026-11-12, U244: a token Discogs rejected
         'not-asked',
         'parse-break',

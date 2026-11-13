@@ -85,7 +85,10 @@ The injected component that asks the record catalogues for a track's genre,
 token (U244). Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
-limit, never got past) or a parse break. Only a miss can make a decline. With no
+limit, never got past) or a parse break; Beatport's 403 is `blocked` too since
+U281, and Beatport, or a record shop on an older walk, blocked three times in a
+row is not asked again in that sweep, recorded `blocked` with a note saying so;
+Discogs is not asked again in a run once it refuses. Only a miss can make a decline. With no
 source answered it refuses, failing that item and leaving the job resumable.
 A decline is `no-hit` only when every source asked missed (or the general
 catalogue knew the track and gave no genre); a miss beside an unread source is
@@ -105,8 +108,9 @@ inferred mark. Answers are the searcher's five or `no-isrc`. After one
 
 ### Vocabulary
 A source's own word table in the taxonomy, `[vocabulary.NAME]` with
-`words = [{ word, tag }]`; `deezer` (the general catalogue) and, since U244,
-`discogs` are accepted. It
+`words = [{ word, tag }]`; `deezer` (the general catalogue), since U244
+`discogs`, and since U245 `cyanite`, read by the Cyanite trial and shipped by
+no template, are accepted. It
 is asked first; a word with no row falls through to the buckets' aliases. Every
 `tag` must name a folder (exact declaration, routing alias or bucket name, not
 too coarse, and a row of its own in a source genre bucket), so a bare bucket

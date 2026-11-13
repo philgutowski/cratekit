@@ -64,8 +64,10 @@ the binder to building per call and both die.
   does.
 - The searcher's own pacer is rebuilt per file for the same reason. It still
   paces, because every touch waits first, but it cannot honour anything a
-  catalogue said on the previous file. R-791's fallbacks are asked on every
-  file after a block for that reason, at one request each.
+  catalogue said on the previous file. R-791's fallbacks were asked on every
+  file after a block for that reason, at one request each, until U281 handed
+  the searcher the run's count of refusals in a row, `searchers.for_run`, keyed
+  by the job and the drive's attempt so a new sweep starts its own.
 - A detached resume is a fresh process, R-226, so per process memory is also
   the most a binder can promise. Memory across runs is a state file, and
   R-800 records that the one declared for lookups is unused.
