@@ -430,8 +430,10 @@ def test_the_platforms_full_flush_is_the_one_asked_for():
     """macOS asks the drive to empty its own cache; elsewhere there is no such request.
 
     Stated per platform rather than by reading the platform the way the code
-    does, which would compare a value with itself. On a Mac a capture that
-    stopped asking for the full flush fails here; on Linux there is none to ask.
+    does, which would compare a value with itself. It holds the constant: on a
+    Mac, a build that stopped reading the full flush from the platform fails
+    here, and on Linux one that spelled a value does. Whether the flush then
+    ASKS for it is held by the tests above, which drive ``_flush_descriptor``.
     """
     if sys.platform == "darwin":  # pragma: no cover - the Mac battery
         assert config._FULL_FLUSH is not None
