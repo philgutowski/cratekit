@@ -1090,6 +1090,19 @@ def _credit_words(part: str) -> set[tuple[str, ...]]:
     return {words for words in found if words}
 
 
+def _credits_before_featuring(part: str, artist: str) -> bool:
+    """Whether a part credits the searched artist before any feature credit
+    it carries: "Aurora Bloom feat. Tide" does for "Aurora Bloom", and
+    "Sunrise Mood feat. Tide" does not for "Tide", whose name is only in the
+    feature (R-1646, round two). Only the first is a name that shedding its
+    feature credit would cut down to the artist's."""
+    words = _words(_LEADING_GROUPS.sub("", part))
+    lead = _without_featuring(words)
+    if lead is None:
+        return True
+    return _names_the_artist(" ".join(lead), _artist_names(artist), first=True)
+
+
 def _name_splits(parts: list[str], head: int, title: int) -> frozenset[TitleSplit]:
     """The two ways a file's "Artist - X" name splits into a title and its
     version, when X ends in a version (R-1646): the artist's part titled, X
@@ -1149,7 +1162,9 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
     words alone after a title is never a title. Each run is read by its core (:func:`_title_core`) and
     by all its words, brackets or none, so "Sunrise Mood Kerri Chandler Remix"
     reads as "Sunrise Mood (Kerri Chandler Remix)" does, and each reading is
-    shed of a feature credit and a version run (:func:`_shed`). The core with
+    shed of a feature credit and a version run (:func:`_shed`), save the
+    whole name of a file whose first part is the artist's own credit, which
+    shedding would cut down to the artist's name (R-1646). The core with
     its leading groups shed, "knee deep" of "(Not Just) Knee Deep", is kept
     apart, so two titles whose leading groups differ, "(Love) Is The Message"
     and "(Hate) Is The Message", never meet on what is left. The whole title
@@ -1168,10 +1183,12 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
         _, tail_start = _head_parts(parts)
         head, title, artists, later, firsts, split = _title_starts(parts, artist)
         splits = _name_splits(parts, head, title) if split else frozenset()
+        credited = head in artists and _credits_before_featuring(parts[head], artist)
     else:
         tail_start = len(parts)
         head, title, artists, later, firsts = 0, 0, frozenset(), frozenset(), (0,)
         splits = _row_splits(text)
+        credited = False
     readings: set[tuple[str, ...]] = set()
     shed: set[tuple[str, ...]] = set()
     for first in dict.fromkeys((*firsts, 0)):
@@ -1190,11 +1207,11 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
             if not _identifies(part):
                 continue
             core, exact = _title_core(part)
-            # A whole name whose first part credits the artist is read as it
-            # is written, never shed: a feature credit or a version cut from
-            # it leaves the artist's name, "Artist feat. Tide - Title" read as
-            # "artist", which met the self titled row (R-1646, round one).
-            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+            # A whole name whose first part is the artist's own credit is read
+            # as it is written, never shed: a feature credit or a version cut
+            # from it leaves the artist's name, "Artist feat. Tide - Title" read
+            # as "artist", which met the self titled row (R-1646, round one).
+            shed_of = _unshed if (first, last) == whole and credited else _shed
             found = {_words(core)} if exact else shed_of(_words(core)) | shed_of(_words(part))
             if searched and not exact and _numbered(_words(parts[first])):
                 found |= shed_of(_words(core)[1:])
