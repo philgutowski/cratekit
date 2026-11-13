@@ -70,7 +70,10 @@ Cratekit reaches your rekordbox library three ways:
 - **The guarded write** is the only path to the live database. It refuses
   unless the recorded library volume is mounted, rekordbox and
   `rekordboxAgent` are both closed, the pinned versions match and a backup
-  acknowledgment is on record. It snapshots first and reads the result back.
+  acknowledgment is on record. It snapshots first, reads the copy back, and
+  flushes it to the library's drive before recording it as verified, so the
+  restore point is on the disk before anything is written; a snapshot that
+  cannot be flushed refuses the write.
 
 Terms:
 
