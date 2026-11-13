@@ -38,19 +38,25 @@ a ``ValueError`` is answered as a bound only when it says the year past that
 very edge is out of range, and a failure from a stamp whose year is neither 1
 nor 9999 is raised as it came.
 
-WHAT IT DOES NOT REACH. The binding's ``commit`` also reads
-``masterPlaylists6.xml``, whose ``Timestamp`` it converts with
-``datetime.fromtimestamp`` and then sets to each playlist's ``updated_at``.
-That file is not read through this conversion, and what DEADCA7 writes in it
-is unmeasured; the residual filed with this unit and the attended recheck
-carry it.
+A BOUND IS NEVER WRITTEN BACK. After every commit the binding sets each
+playlist node's ``Timestamp`` in ``masterPlaylists6.xml`` to the row's
+``updated_at`` when the two differ. A bound is not a time any row holds, so
+:func:`install` also wraps that update: a bound ``updated_at`` is dropped, and
+an update carrying nothing else changes nothing, so another app's node keeps
+the Timestamp it was given. Before this unit such a commit raised after its
+database write, since the binding could not convert the year 1 value back.
+
+WHAT IT DOES NOT REACH. The binding reads each node's ``Timestamp`` with
+``datetime.fromtimestamp``, which fails on a year 1 Timestamp; what DEADCA7
+writes there is unmeasured, and the residual filed with this unit and the
+attended recheck carry it.
 """
 
 from __future__ import annotations
 
 import re
 from datetime import datetime
-from typing import Callable
+from typing import Any, Callable
 
 #: The earliest moment answered: a day inside the calendar, so every zone can
 #: convert it back.
@@ -65,8 +71,9 @@ _MARK = "_cratekit_placeable"
 _YEAR = re.compile(r"\s*(\d{4})-")
 
 #: What the conversion says of a stamp with no offset that local time pushes
-#: past the calendar's edge, by the bound on that side. Text the binding cannot
-#: parse says something else, so it is never read as a bound.
+#: past the calendar's edge, by the bound on that side. A calendar date the
+#: binding cannot parse says something else; an ISO week date past year 9999
+#: says the same, and names a moment past the calendar too.
 _PAST_THE_EDGE = {FLOOR: "year 0 is out of range", CEILING: "year 10000 is out of range"}
 
 
@@ -118,18 +125,47 @@ def placeable(convert: Callable[[str], datetime]) -> Callable[[str], datetime]:
     return string_to_datetime
 
 
+def keeps_bounds(update: Callable[..., None]) -> Callable[..., None]:
+    """The binding's XML node update, never writing a bound as a Timestamp."""
+    if getattr(update, _MARK, False):
+        return update
+
+    def wrapped(
+        self: Any,
+        playlist_id: Any,
+        parent_id: Any = None,
+        attribute: Any = None,
+        updated_at: Any = None,
+        lib_type: Any = None,
+        check_type: Any = None,
+    ) -> None:
+        if isinstance(updated_at, datetime) and updated_at in (FLOOR, CEILING):
+            updated_at = None
+            if parent_id is None and attribute is None and lib_type is None and check_type is None:
+                return None
+        return update(self, playlist_id, parent_id, attribute, updated_at, lib_type, check_type)
+
+    setattr(wrapped, _MARK, True)
+    wrapped.__wrapped__ = update  # type: ignore[attr-defined]
+    return wrapped
+
+
 def install() -> None:
-    """Wrap the binding's date conversion, once per process."""
-    from pyrekordbox.db6 import tables
+    """Wrap the binding's date conversion and its XML node update, once per process."""
+    from pyrekordbox.db6 import aux_files, tables
 
     tables.string_to_datetime = placeable(tables.string_to_datetime)
+    aux_files.MasterPlaylistXml.update = keeps_bounds(aux_files.MasterPlaylistXml.update)
 
 
 def installed() -> bool:
-    """Whether the binding's conversion is the wrapped one."""
-    from pyrekordbox.db6 import tables
+    """Whether the binding's conversion and its XML node update are the wrapped ones."""
+    from pyrekordbox.db6 import aux_files, tables
 
-    return bool(getattr(tables.string_to_datetime, _MARK, False))
+    return bool(
+        getattr(tables.string_to_datetime, _MARK, False)
+        and getattr(aux_files.MasterPlaylistXml.update, _MARK, False)
+    )
 
 
-__all__ = ["CEILING", "FLOOR", "install", "installed", "placeable"]
+__all__ = ["CEILING", "FLOOR", "install", "installed", "keeps_bounds", "placeable"]

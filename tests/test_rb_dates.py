@@ -46,8 +46,14 @@ def _binding() -> object:
 
 @pytest.fixture
 def unwrapped(monkeypatch):
-    """The binding's conversion as shipped, put back as it was after the test."""
+    """The binding's conversion and XML update as shipped, put back after the test."""
+    from pyrekordbox.db6 import aux_files
+
     monkeypatch.setattr(tables, "string_to_datetime", _binding())
+    update = aux_files.MasterPlaylistXml.update
+    monkeypatch.setattr(
+        aux_files.MasterPlaylistXml, "update", getattr(update, "__wrapped__", update)
+    )
     return tables.string_to_datetime
 
 
@@ -164,12 +170,35 @@ def test_an_aware_answer_is_handed_on_as_it_came():
 
 
 def test_installing_twice_wraps_once(unwrapped):
+    from pyrekordbox.db6 import aux_files
+
+    shipped_update = aux_files.MasterPlaylistXml.update
     rb_dates.install()
     first = tables.string_to_datetime
+    first_update = aux_files.MasterPlaylistXml.update
     rb_dates.install()
     assert tables.string_to_datetime is first
+    assert aux_files.MasterPlaylistXml.update is first_update
     assert first.__wrapped__ is unwrapped
+    assert first_update.__wrapped__ is shipped_update
     assert rb_dates.installed()
+
+
+def test_a_bound_is_never_handed_to_the_xml_update():
+    calls = []
+
+    def update(self, playlist_id, parent_id=None, attribute=None, updated_at=None,
+               lib_type=None, check_type=None):
+        calls.append((playlist_id, parent_id, attribute, updated_at, lib_type, check_type))
+
+    kept = rb_dates.keeps_bounds(update)
+    kept(None, "1", updated_at=rb_dates.FLOOR)
+    kept(None, "2", updated_at=rb_dates.CEILING)
+    assert calls == []
+    kept(None, "3", parent_id="9", updated_at=rb_dates.FLOOR)
+    ordinary = datetime(2026, 11, 13, 12, 0)
+    kept(None, "4", updated_at=ordinary)
+    assert calls == [("3", "9", None, None, None, None), ("4", None, None, ordinary, None, None)]
 
 
 # ---------------------------------------------------------------------------
@@ -266,5 +295,81 @@ def test_a_wrapper_installed_after_a_handle_has_read_is_still_the_one_called(
             db.session.rollback()
             rb_dates.install()
             assert db.get_playlist(ID=pushed.folder_id).created_at == rb_dates.FLOOR
+        finally:
+            db.close()
+
+
+def _playlist_xml(db_path, timestamps: dict[str, int]):
+    """A ``masterPlaylists6.xml`` beside the database, one node per playlist id."""
+    nodes = "".join(
+        f'<NODE Id="{int(node):X}" ParentId="0" Attribute="0" Timestamp="{ms}" '
+        'Lib_Type="0" CheckType="0"/>'
+        for node, ms in timestamps.items()
+    )
+    xml = db_path.parent / "masterPlaylists6.xml"
+    xml.write_text(
+        '<?xml version="1.0" encoding="UTF-8"?><MASTER_PLAYLIST Version="1.0.0" '
+        'AutomaticSync="0"><PRODUCT Name="rekordbox" Version="7.0.0" Company="AlphaTheta"/>'
+        f"<PLAYLISTS>{nodes}</PLAYLISTS></MASTER_PLAYLIST>",
+        encoding="utf-8",
+    )
+    return xml
+
+
+def _node_attributes(xml, node: str) -> dict[str, str]:
+    import xml.etree.ElementTree as ET
+
+    for element in ET.parse(xml).getroot().iter("NODE"):
+        if element.get("Id") == f"{int(node):X}":
+            return dict(element.attrib)
+    raise AssertionError(f"no node {node}")
+
+
+#: DEADCA7's push time at sitting 98, in milliseconds, and a time the library's
+#: own row does not hold, so the binding's sync has something to change.
+PUSHED_MS = 1763050727914
+STALE_MS = 1700000000000
+
+
+@pytest.mark.parametrize("zone", [WEST, "UTC0", EAST])
+def test_a_commit_leaves_the_pushed_nodes_xml_timestamps_and_still_syncs_its_own(
+    unwrapped, zero_pushed, cloud_sync_off, zone  # noqa: F811
+):
+    """Round two of the review: the binding's sync would write the floor's
+    instant into DEADCA7's nodes. A commit now leaves those nodes exactly as
+    they were, while the library's own stale node is still synced to its row."""
+    path, pushed = zero_pushed
+    foreign = (pushed.folder_id, *pushed.playlist_ids)
+    xml = _playlist_xml(path, {**{node: PUSHED_MS for node in foreign}, OWN_ID: STALE_MS})
+    before = {node: _node_attributes(xml, node) for node in foreign}
+    rows = dc7.written(path, pushed)
+    with dc7.west_of_utc(zone):
+        db = W.open_db(path, unlock=False)
+        try:
+            W.ensure_folder(db, "a folder of the product's")
+            W.commit_guarded(db)
+        finally:
+            W.close_db(db)
+        own_ms = int(OWN_EASTERN.timestamp() * 1000) if zone == WEST else None
+    assert {node: _node_attributes(xml, node) for node in foreign} == before
+    own = int(_node_attributes(xml, OWN_ID)["Timestamp"])
+    assert own != STALE_MS
+    if own_ms is not None:
+        assert own == own_ms == 1773090367516
+    assert dc7.written(path, pushed) == rows
+
+
+def test_before_the_seam_such_a_commit_failed_after_its_write(unwrapped, zero_pushed):
+    """The binding alone, at UTC where the row loads: its sync cannot convert
+    the year 1 value back, so the commit raised after the database write."""
+    from pyrekordbox import Rekordbox6Database
+
+    path, pushed = zero_pushed
+    _playlist_xml(path, {node: PUSHED_MS for node in (pushed.folder_id, *pushed.playlist_ids)})
+    with dc7.west_of_utc("UTC0"):
+        db = Rekordbox6Database(path=str(path), unlock=False)
+        try:
+            with pytest.raises(ValueError, match="year 0 is out of range"):
+                db.commit()
         finally:
             db.close()
