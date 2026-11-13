@@ -748,3 +748,65 @@ def test_collection_errors_the_report_does_not_list_as_errors_are_unknown():
     }
     assert battery._read_collect_errors(report, {"tests/test_other.py"}) is None
     assert battery._read_collect_errors({}, {"tests/test_broken.py"}) is None
+
+
+SKIPPING_SUITE = '''import pytest
+
+
+@pytest.fixture
+def broken():
+    raise RuntimeError("cannot be set up")
+
+
+def test_passes():
+    assert True
+
+
+@pytest.mark.skip(reason="skipped")
+def test_skipped():
+    assert False
+
+
+@pytest.mark.xfail(run=False, reason="never run")
+def test_never_run():
+    assert False
+
+
+def test_setup_error(broken):
+    assert broken
+'''
+
+
+@pytest.mark.parametrize("workers", [[], ["-p", "xdist", "-n", "2"]], ids=["serial", "workers"])
+def test_a_skip_an_unrun_xfail_and_a_setup_error_each_count_as_run(tmp_path, monkeypatch, workers):
+    """Review round two: counted only by their call, these would read as unrun,
+    and every suite holding one would never have its record read."""
+    root = tmp_path / "suite"
+    (root / "tests").mkdir(parents=True)
+    addopts = " ".join(["-q", *workers])
+    (root / "pytest.ini").write_text(f"[pytest]\naddopts = {addopts}\n", encoding="utf-8")
+    (root / "tests" / "test_kinds.py").write_text(SKIPPING_SUITE, encoding="utf-8")
+    for name in stealing.INHERITED_RUN_STATE:
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(battery, "ROOT", root)
+    monkeypatch.setattr(battery, "PYTHON", Path(sys.executable))
+
+    suite = battery.measure_suite()
+
+    assert suite.ids == {"tests/test_kinds.py::test_setup_error"}
+    assert suite.collected == 4
+    assert suite.ran == 4
+
+
+def test_the_baseline_header_names_the_commit_read_before_the_run(judged_repo, monkeypatch):
+    measured_head = _head(judged_repo)
+    monkeypatch.setattr(
+        battery, "measure_suite", _committing_during_the_run(judged_repo, battery.measure_suite)
+    )
+
+    assert battery.cmd_baseline(None) == 0
+
+    header = (judged_repo / ".cloud-battery" / "baseline.txt").read_text().splitlines()[0]
+    assert _head(judged_repo) != measured_head
+    assert measured_head.startswith(header.split()[2])
+    assert _record(judged_repo)["clean_tree"] is False

@@ -550,8 +550,8 @@ every failing id whole: the battery reads them off pytest's own reports
 rather than its summary lines, whose ids it once cut at their first space so
 that one parametrized test failing for the machine excused a sibling failing
 for the branch, and both refuse a baseline whose header does not end `ids
-whole`, which is measured again (U268). Each run of the battery leaves a
-record of what it measured, which the mutation driver may read in place of
+whole`, which is measured again (U268). Each run of the battery that reaches
+its reading leaves a record of what it measured, which the mutation driver may read in place of
 its own full baseline for the same commit (U271, The mutation table above).
 Nothing
 is skipped or marked, a newly failing test is the branch's, and a test that

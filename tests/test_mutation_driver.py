@@ -1910,11 +1910,13 @@ def test_the_driver_and_the_battery_name_one_record():
 
 
 def test_a_run_that_stopped_early_with_exit_one_is_not_read(red_repo, battery_on):
-    """Review round one: an early stop exits 1, as a complete red run does.
+    """Review round one: an early stop can exit 1, as a complete red run does.
 
-    A test that ends the session stops the run with tests left unrun; the
-    battery's compare still reads it clean, since the one failure is the
-    machine's, and only the count of tests that reported tells it apart.
+    Run serially, as this fixture is, a test that ends the session stops the
+    run with tests left unrun (under xdist the same call exits 3 and leaves no
+    record, and the exit 1 early stop is a worker crash with its restarts
+    spent). The battery's compare still reads it clean, since the one failure
+    is the machine's, and only the count of tests that reported tells it apart.
     """
     _ignore_the_battery_state(red_repo)
     state = battery_on(red_repo)

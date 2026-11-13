@@ -50,11 +50,12 @@ wrote nothing or its counts disagree with pytest's summary line. The header's
 last field is `ids whole`, and `compare` and the driver refuse a baseline
 without it, which is every baseline measured before U268.
 
-Each run leaves a record the mutation driver may read in place of its own full
-baseline (U271, Phillip's answer of 2026-11-13): `.cloud-battery/verdict.json`,
+Each run that reaches its reading leaves a record the mutation driver may read
+in place of its own full baseline (U271, Phillip's answer of 2026-11-13): `.cloud-battery/verdict.json`,
 written by `compare` and by `baseline`. It names the commit the run measured,
 read before the run, and whether the tree was clean throughout, read by
-`git status --porcelain` before and after it, with HEAD unmoved; the host and
+`git status --porcelain --untracked-files=all` before and after it, with HEAD
+unmoved; the host and
 the kernel's boot id, since every cloud container is called `vm`; the checkout
 and the interpreter; the sha256 of the known failures file the run was read
 against; any `PYTEST_ADDOPTS` the run inherited; the verdict; and what the run
@@ -120,8 +121,11 @@ REPORT_VARIABLE = "CLOUD_BATTERY_REPORT_PATH"
 #
 # It also writes the collected count, how many of those tests reported at all,
 # and which errors were collection errors (U271), which the mutation driver
-# reads from the run record: a run that stopped early, `-x` say, exits 1 like a
-# complete red one, and only the count of tests that ran tells the two apart. The count is
+# reads from the run record: a run that stopped early can exit 1 like a
+# complete red one (under xdist, a worker crash with its restarts spent; run
+# serially, `-x` or `pytest.exit(returncode=1)`), and only the count of tests
+# that reported tells the two apart. A skipped test, an xfail that never runs
+# and a setup error each report, so each counts as run. The count is
 # read as the driver's own plugin reads it: off the hook xdist fires on the
 # controller when a worker finishes collecting, since the controller collects
 # nothing itself, and off the session's items in a run without workers.
