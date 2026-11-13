@@ -1317,3 +1317,51 @@ def test_a_track_numbered_title_after_a_version_ending_album_is_still_the_title(
     assert _matches(title, "Sunrise Mood")
     assert not _matches(title, ARTIST)
     assert not _matches(title, "Summer")
+
+
+# ---------------------------------------------------------------------------
+# K. R-1646, review round two: only the artist's own name before a feature
+#    credit keeps the whole name unshed
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "title",
+    ["Sunrise Mood feat. Tide - Bernard Badie", "Sunrise Mood (feat. Tide) - Bernard Badie"],
+)
+def test_a_title_crediting_a_featured_artist_is_still_read_without_the_credit(title):
+    """Round two: a file searched by the featured artist alone, its first part
+    a title with the credit after it, lost "sunrise mood" when the whole name
+    was read unshed, so the self titled row of the other artist won."""
+    assert searchers._title_matches(title, "Sunrise Mood", artist="Tide")
+
+
+def test_a_title_crediting_a_featured_artist_takes_its_own_genre_listed_first(tmp_path, silence):
+    """As on main: listed first, the file's own row wins. Listed second, the
+    other artist's self titled row ties with it and wins on page order, as it
+    did on main (R-1636's residual on the artist's part read as a title)."""
+    path = _file(tmp_path, silence, "a", {"artist": "Tide", "title": "Sunrise Mood feat. Tide - Bernard Badie"})
+    rows = [("Sunrise Mood", "Original Mix", BUCKET_GENRE), (ARTIST, "Original Mix", "Techno")]
+    beatport = searchers.Fetched(
+        text=_beatport_page(
+            [
+                {**_beatport_track(ARTIST, name, genre, mix=mix), "artists": [{"artist_name": ARTIST}, {"artist_name": "Tide"}]}
+                for name, mix, genre in rows
+            ]
+        ),
+        status=200,
+    )
+    fetch = routed(search=results(), beatport=beatport)
+
+    result = tag.tag_one(path, searcher=searcher(fetch))
+
+    assert result.genre_written == BUCKET_GENRE
+
+
+@pytest.mark.parametrize(
+    "searched",
+    [f"[MP3] {ARTIST} feat. Tide - Vocal Mix", f"01 {ARTIST} feat. Tide - Vocal Mix"],
+)
+def test_the_self_titled_split_reads_past_a_marker_and_a_feature_credit_together(searched):
+    assert _matches(searched, f"{ARTIST} (Vocal Mix)")
+    assert not _matches(searched, ARTIST)
