@@ -1248,11 +1248,14 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
     # ONE kebab literal joined in export/cli.py and nothing left,
     # export-playlist-unfiled, the WARNING code for a new playlist U131 could
     # not file in Exports at creation. Measured on the merged tree; do not
-    # bring back a package-wide total tuple.
+    # bring back a package-wide total tuple. Re-pinned by U270, 2026-11-13:
+    # internal-error joined, the one track export answering nothing for its
+    # track, a defect the batched writer's single item form refuses.
     'export/cli.py': [
         'export-playlist-unfiled',
         'export-playlist-unknown',
         'export-tracks-unmatched',
+        'internal-error',
         'outbound-item-absent',
         'outbound-playlist-adopted',
         'outbound-playlist-adoption-ambiguous',
