@@ -2931,7 +2931,8 @@ PINNED_LITERAL_HOLDERS = {
     'deletion/run.py': ['internal-error', 'review-item-unknown', 'trash-unavailable'],
     'deletion/trash.py': ['trash-unavailable'],
     'deletion/watermark.py': ['deletion-watermark-unusable'],
-    'export/cli.py': ['export-playlist-unknown', 'outbound-item-absent'],
+    # U270, 2026-11-13: internal-error joined, the one track export answering nothing.
+    'export/cli.py': ['export-playlist-unknown', 'internal-error', 'outbound-item-absent'],
     'export/prune_cli.py': ['export-playlist-unknown'],
     # Re-pinned on the merge of main at e686759 into grok/297, 2026-10-10:
     # ONE cause literal joined in export/set_cli.py and nothing left,
