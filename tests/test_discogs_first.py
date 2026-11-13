@@ -27,7 +27,8 @@ from pathlib import Path
 import pytest
 
 from cratekit.core import routing, secrets, tags
-from cratekit.core.cause import CratekitError
+from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.tagging import searchers, tag
 from cratekit.tagging.tag import SearchHit, SourceAnswer
@@ -563,3 +564,28 @@ def test_a_tagged_file_still_gets_its_cover_when_the_token_is_refused(tmp_path, 
     assert result.skipped == tag.HAS_GENRE
     assert result.art_fetch == tag.ART_EMBEDDED
     assert tags.read_genre_from_file(path) == "Somebody's Own Word"
+
+
+def test_a_beatport_decline_beside_a_refused_token_is_a_decline_and_never_raises():
+    fetch = routed(search=results(), beatport=beatport_row(FALLBACK_GENRE))
+    hit = build(fetch, token="two words")(ARTIST, TITLE)
+    assert hit.genre is None
+    assert (hit.source, hit.source_genre) == (searchers.BEATPORT, FALLBACK_GENRE)
+    assert answer_of(hit, searchers.DISCOGS).note.startswith(searchers.DISCOGS_TOKEN_REFUSED)
+
+
+def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propagates():
+    """The asker raises nothing else today; a refusal of another kind is not a
+    token's, and holding it would hide it behind Beatport's answer."""
+
+    class Broken:
+        def ask(self, artist, title):
+            raise refuse("internal-error", "the asker broke", remedy=Remedy.REPORT_DEFECT)
+
+    fetch = routed(search=results(), beatport=beatport_row())
+    searcher = searchers.catalogue_searcher(
+        TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=Broken()
+    )
+    with pytest.raises(CratekitError) as raised:
+        searcher(ARTIST, TITLE)
+    assert raised.value.cause.reason == "internal-error"

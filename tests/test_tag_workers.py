@@ -1942,6 +1942,52 @@ def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, mon
     assert across.index(searchers.DISCOGS) < across.index(searchers.BEATPORT), across
 
 
+def test_a_token_discogs_refuses_is_warned_about_even_when_beatport_settles_every_file(
+    cfg, folder, silence, monkeypatch
+):
+    """U282's review, round two: Discogs answers 401 and Beatport matches all
+    three files. They are tagged by Beatport as before, the token is sent once,
+    and the sweep says Discogs refused it rather than ending clean, without
+    counting the files as having no token."""
+    from tests.test_catalogue_searcher import ARTIST, BUCKET_GENRE, TITLE
+    from tests.test_discogs_searcher import SENT, routed
+
+    for name in ("a", "b", "c"):
+        path = place(folder, silence, name)
+        assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE})
+    seen: list[str] = []
+    fetch = routed(
+        search=searchers.Fetched(note="HTTP 401", status=401),
+        beatport=beatport_page([beatport_track(ARTIST, TITLE, BUCKET_GENRE)]),
+        seen=seen,
+    )
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    assert sum(url.startswith(searchers.DISCOGS_SEARCH) for url in seen) == 1
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["tagged_by"][searchers.BEATPORT] == 3
+    assert tagging["discogs_token_refused"] == 3
+    assert tagging["discogs_without_token"] == 0
+    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    assert tag_cli.DISCOGS_NO_TOKEN_FILES not in warnings
+    refused = warnings[tag_cli.DISCOGS_TOKEN_REFUSED_FILES]
+    assert "refused the recorded token" in refused and "3 file(s)" in refused
+    assert "crate login discogs-token" in refused
+    assert SENT not in json.dumps(resumed)
+
+
 def test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep(
     cfg, folder, silence, monkeypatch
 ):

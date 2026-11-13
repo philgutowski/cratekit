@@ -1286,6 +1286,13 @@ DISCOGS_TOKEN_LOST = (
 )
 DISCOGS_UNASKED_NOTES: tuple[str, ...] = (DISCOGS_NO_TOKEN, DISCOGS_TOKEN_LOST)
 
+#: The head of the ``not-asked`` note for a token Discogs refused, earlier or
+#: on this file (U282's review). The walk goes on to the record shops instead
+#: of stopping there, so this head is what the tag summary counts the files by
+#: and warns about: a person who recorded a token is told it no longer works,
+#: even when Beatport settled every file.
+DISCOGS_TOKEN_REFUSED = f"{NOT_SENT}Discogs refused the recorded token: "
+
 #: A personal token is one printable word. Anything else would make the header
 #: invalid, and a client library that refuses an invalid header names its value
 #: in the error, so a malformed token is refused before it is sent.
@@ -2019,7 +2026,9 @@ def catalogue_searcher(
                     if refusal.cause.reason != _CREDENTIAL_REASON:
                         raise
                     rejected = refusal
-                    passed.append(NotAsked(DISCOGS, f"{NOT_SENT}{refusal.cause.message}"))
+                    passed.append(
+                        NotAsked(DISCOGS, f"{DISCOGS_TOKEN_REFUSED}{refusal.cause.message}")
+                    )
                     continue
                 if isinstance(said, NotAsked):
                     passed.append(said)
@@ -2247,6 +2256,7 @@ __all__ = [
     "DISCOGS_SEARCH",
     "DISCOGS_SLOWDOWN_S",
     "DISCOGS_TOKEN_LOST",
+    "DISCOGS_TOKEN_REFUSED",
     "DISCOGS_UNASKED_NOTES",
     "HEADERS",
     "IMAGE_MEMORY",

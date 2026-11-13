@@ -2023,6 +2023,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tag-folder-absent',
         'tag-folder-copyright-ambiguous',
         'tag-folder-discogs-no-token',  # 2026-11-12, U244
+        'tag-folder-discogs-token-refused',  # 2026-11-13, U282
         'tag-folder-label-no-genre',
         'tag-folder-label-on-resume',
         'tag-folder-label-registry-unread',
