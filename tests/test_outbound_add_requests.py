@@ -480,13 +480,21 @@ def cfg(tmp_path, monkeypatch):
     return built
 
 
-def test_an_export_of_k_tracks_to_a_recorded_playlist_makes_k_plus_two_gets(cfg):
+@pytest.mark.parametrize("count", [1, 12, 100])
+def test_an_export_of_up_to_a_hundred_tracks_to_a_recorded_playlist_makes_seven_requests(
+    cfg, count
+):
     """``export.apply``, the caller the card measured, over the real client:
-    every track recorded, every track added once, in order."""
+    every track recorded, every track added once, in order. U270 sends the
+    tracks the playlist lacks in one ``add_tracks``, so the count no longer
+    grows with the tracks: one open and one tracks read for the membership,
+    then one open, one POST and the client's read after it. U255 left this at
+    K + 2 GETs and K POSTs, 203 requests for 100 tracks.
+    """
     provider = Account("pl0")
     remote = _adapter(provider)
     ledger.reserve_playlist(cfg, "crate-one", lambda: "pl0")
-    wanted = _ids(12)
+    wanted = _ids(count)
     planned = export.ExportPlan(
         playlist_key="crate-one",
         name="Crate One",
@@ -499,13 +507,16 @@ def test_an_export_of_k_tracks_to_a_recorded_playlist_makes_k_plus_two_gets(cfg)
     assert report.created is False
     assert report.added == tuple(wanted)
     assert provider.items["pl0"] == wanted
-    assert provider.gets("pl0") == len(wanted) + 2
-    assert provider.posts("pl0") == len(wanted)
+    assert provider.gets("pl0") == 5
+    assert provider.track_reads("pl0") == 1
+    assert provider.posts("pl0") == 1
+    assert sum(provider.requests.values()) == 7
     recorded = json.loads(config.state_path("outbound_writes", cfg).read_text())
     assert recorded["playlists"]["crate-one"]["remote_id"] == "pl0"
     record = recorded["playlists"]["crate-one"]
     assert record["added"] == wanted
     assert record["rows"] == {f"row-{one}": one for one in wanted}
+    assert "sending" not in record
 
 
 def test_the_owner_the_transport_serves_is_the_session_user():

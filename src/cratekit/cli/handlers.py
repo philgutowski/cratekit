@@ -70,6 +70,17 @@ from cratekit.core.exit_codes import Remedy
 #: and a snapshot is the defect that guard exists for.
 ItemHandler = Callable[[jobs.Job, jobs.Item, "config.Config"], "jobs.Produced | None"]
 
+#: U270. The attribute a worker carries when the driver may hand it several
+#: of a job's items in one call: ``(function, size)``, the function taking the
+#: job, the claimed items, the frozen configuration and the stop callable, and
+#: answering one outcome per item (:data:`cratekit.core.jobs.BatchHandler`).
+#:
+#: AN ATTRIBUTE OF THE RESOLVED WORKER RATHER THAN A SECOND TABLE, so the batch
+#: form can never run where the per item worker it belongs to was not the one
+#: resolved: a substituted worker carries no batch form and is driven one item
+#: at a time, the way it was written to be.
+BATCH_ATTRIBUTE = "batched"
+
 #: ``handler_key`` to ``"dotted.module:function"``. Strings, never functions.
 HANDLERS: Mapping[str, str] = {
     "acquire.download": "cratekit.acquire.cli:handle",
@@ -231,11 +242,30 @@ def resolve(key: str) -> ItemHandler:
     return found
 
 
+def batching_of(handler: object) -> "tuple[Callable[..., Mapping[str, object]], int] | None":
+    """The batch form a worker names for itself, checked, or None when it names none (U270)."""
+    named = getattr(handler, BATCH_ATTRIBUTE, None)
+    if named is None:
+        return None
+    function, size = named if isinstance(named, tuple) and len(named) == 2 else (None, None)
+    if not callable(function) or not isinstance(size, int) or isinstance(size, bool) or size < 1:
+        raise refuse(
+            "internal-error",
+            f"a worker names {named!r} as its batch form, which is not a callable "
+            f"and a size of at least one",
+            remedy=Remedy.REPORT_DEFECT,
+            origin=("cli.handlers",),
+            detail={"handler": getattr(handler, "__qualname__", repr(handler))},
+        )
+    return function, size
+
+
 def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) -> jobs.DriveResult:
     """Run one job's queued items to completion. The ONE caller of ``jobs.drive``.
 
     Three steps and nothing else. Resolve the handler, read the frozen
-    configuration ONCE and bind it, then delegate. The loop's shape is the
+    configuration ONCE and bind it, to its batch form too when the worker
+    names one (:data:`BATCH_ATTRIBUTE`, U270), then delegate. The loop's shape is the
     engine's contract and is documented on :func:`cratekit.core.jobs.drive`: the
     driver lock first, orphaned claims released once, the interrupt flag checked
     between items and before a commit, an artifact durable before its row flips to
@@ -258,6 +288,18 @@ def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) ->
     def handle(driven: jobs.Job, item: jobs.Item) -> "jobs.Produced | None":
         return handler(driven, item, frozen)
 
+    # SEVERAL ITEMS A CALL WHERE THE WORKER SAYS SO (U270), with the same frozen
+    # configuration bound, so a batch is never driven against a fresher one.
+    batching: jobs.Batching | None = None
+    named = batching_of(handler)
+    if named is not None:
+        many, size = named
+
+        def handle_many(driven: jobs.Job, claimed, stop):
+            return many(driven, claimed, frozen, stop)
+
+        batching = jobs.Batching(handle=handle_many, size=size)
+
     # DRIFT IS COMPUTED, NOT ENFORCED. A configuration that cannot be loaded at
     # all is not a reason to refuse to finish work that was already queued and
     # frozen, so the drift report is dropped rather than the run.
@@ -275,13 +317,17 @@ def run_job(store: jobs.JobStore, job: jobs.Job, *, root: Path | None = None) ->
     except (config.ConfigError, OSError):
         current = None
 
-    return jobs.drive(store, job.job_id, handle, root=root, current_config=current)
+    return jobs.drive(
+        store, job.job_id, handle, root=root, current_config=current, batch=batching
+    )
 
 
 __all__ = [
+    "BATCH_ATTRIBUTE",
     "HANDLERS",
     "HANDLERS_NOT_YET_BOUND",
     "ItemHandler",
+    "batching_of",
     "drift_warnings",
     "is_known",
     "resolve",

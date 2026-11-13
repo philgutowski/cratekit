@@ -775,6 +775,11 @@ crate export prune PLAYLIST_KEY --export /path/to/collection-export.xml
 Give the playlist's stable id, never its title. `export playlist` is add only,
 behind `export.playlist.confirm`, and updates the playlist it made before
 (`--new-playlist` forces a new one); read the unmatched tracks it reports.
+It adds the tracks a hundred to a request, each still settled as its own
+item, and a run stopped part way is resumed without adding a track twice.
+A stop asked for while a hundred is being matched writes none of it; one
+asked for during its add lets the add finish, and either way that hundred
+is settled again when the job is resumed.
 `export prune` takes off the remote playlist what the library playlist no
 longer holds.
 

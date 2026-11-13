@@ -1208,7 +1208,9 @@ def test_a_playlist_export_runs_to_done_and_the_ledger_records_every_add(
     # neither touches the visibility the first one set (R-834).
     assert playlist.privates == 1 and playlist.public is False
     assert playlist.members == ["701", "702", "703"]
-    assert playlist.adds == [["701"], ["702"], ["703"]]
+    # ONE ADD FOR THE JOB'S THREE TRACKS (U270): the driver hands the worker
+    # its items as one batch, and the batch goes in one request.
+    assert playlist.adds == [["701", "702", "703"]]
     assert ledger.playlist_remote_id(installed, outbound_fakes.CRATE) == playlist.id
     assert ledger.playlist_added(installed, outbound_fakes.CRATE) == frozenset(
         {"701", "702", "703"}

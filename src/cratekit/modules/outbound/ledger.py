@@ -56,6 +56,7 @@ from __future__ import annotations
 import json
 from collections.abc import Iterable
 from dataclasses import dataclass, field
+from types import MappingProxyType
 from typing import Any, Callable, Mapping
 
 from cratekit.core import config
@@ -842,6 +843,56 @@ def _rows(record: Mapping[str, Any]) -> dict[str, str]:
     if not isinstance(rows, Mapping):
         return {}
     return {str(key): str(value) for key, value in rows.items()}
+
+
+def record_playlist_tracks(
+    cfg: config.Config,
+    playlist_key: str,
+    *,
+    landed: Mapping[str, str],
+    rows: Mapping[str, str] = MappingProxyType({}),
+) -> None:
+    """After one batch's answer, ONE lock and ONE write for the batch (U270).
+
+    Where a per item export took one per track (R-230). ``landed`` is library
+    row to remote track for each row whose track the provider's answer named,
+    or its one read back of the playlist held, and only those are recorded as
+    added. ``rows`` names a library row for a track ALREADY recorded as added,
+    on :func:`record_playlist_row`'s rule: one a person put on the playlist is
+    never claimed by being matched again. Nothing is written when neither
+    changes the record.
+
+    NOTHING IS RECORDED BEFORE THE ANSWER. A batch stopped between its request
+    and this write leaves its landed tracks unrecorded, as one track was before
+    U270 (R-1543): the next export finds them on the playlist and reports them
+    as already there. Recording the rows sent ahead of the request and settling
+    them on that later read was built and taken out at the review, because the
+    read cannot tell a track that landed from the same track a person added by
+    hand meanwhile, and a prune would then take theirs off.
+    """
+    lock = _locked(cfg)
+    try:
+        document = _load(cfg)
+        record = document["playlists"].setdefault(
+            playlist_key, {"remote_id": "", "added": []}
+        )
+        added = _listed(record, "added")
+        known = _rows(record)
+        before = (list(added), dict(known))
+        for row, track in landed.items():
+            if str(track) not in added:
+                added.append(str(track))
+            known[str(row)] = str(track)
+        for row, track in rows.items():
+            if str(track) in added:
+                known[str(row)] = str(track)
+        if (added, known) != before:
+            record["added"] = added
+            if known:
+                record["rows"] = known
+            _write(cfg, document)
+    finally:
+        lock.__exit__(None, None, None)
 
 
 def record_playlist_row(

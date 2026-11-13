@@ -24,6 +24,7 @@ a guard pointed at a key nothing uses.
 from __future__ import annotations
 
 import io
+import json
 import os
 import time
 from dataclasses import replace
@@ -35,8 +36,8 @@ import pytest
 from cratekit import cli
 from cratekit.cli import handlers, registry
 from cratekit.core import config, jobs, locations, tags
-from cratekit.core.cause import CratekitError
-from cratekit.core.exit_codes import ExitCode
+from cratekit.core.cause import CratekitError, refuse
+from cratekit.core.exit_codes import ExitCode, Remedy
 from cratekit.export import cli as export_cli
 from cratekit.favorites import cli as favorites_cli
 from cratekit.modules.outbound import account as account_module
@@ -481,10 +482,12 @@ def test_a_second_export_counts_what_the_playlist_already_held(
 def test_a_resumed_export_counts_across_both_runs_and_each_item_once(
     installed, exported, monkeypatch
 ):
-    """Track 1 settles in the first run, track 3 only in the second.
+    """The first run's one add request fails, so tracks 1 and 3 settle only in
+    the second, and track 2, unmatched, is redone with them (U270: a batch's
+    request carries every matched track, and a refused request adds none).
 
-    Counted per committed artifact, so the first run's item is in the answer
-    the second run gives, and is in it once.
+    Counted per committed artifact, so each item is in the answer the second
+    run gives, and is in it once.
     """
     del installed
     account = outbound_fakes.FakeAccount(
@@ -507,19 +510,39 @@ def test_a_resumed_export_counts_across_both_runs_and_each_item_once(
     assert account.added.count(("pl-1", "tid-1")) == 1
 
 
+def _match_fails_for(account, identity: str, *, transient: bool = True) -> None:
+    """Make ONE track's match fail, which fails that item alone (U270)."""
+    real = account.match_track
+
+    def broken(**asked):
+        if asked["identity"] == identity and account.fail_on:
+            if transient:
+                raise refuse(
+                    "unavailable-transient",
+                    f"interrupted outbound match for {identity}",
+                    remedy=Remedy.RETRY_LATER,
+                    retryable=True,
+                    origin=("test",),
+                )
+            raise RuntimeError(f"interrupted outbound match for {identity}")
+        return real(**asked)
+
+    account.match_track = broken
+
+
 def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(
     installed, exported, monkeypatch
 ):
     """The engine's resume guarantee, through the binding rather than beside it.
 
-    The failed write is TRANSIENT, a dropped connection and not a defect, because
-    a resume is only offered, and since R-390 only performed, over a failure the
-    item itself recorded as retryable.
+    The failure is TRANSIENT and one track's own, met while its batch is
+    planned (U270), so the other two are written in the batch's one request.
+    A resume is only offered, and since R-390 only performed, over a failure
+    the item itself recorded as retryable.
     """
     del installed
-    account = outbound_fakes.FakeAccount(
-        catalog=catalog(1, 2, 3), fail_on={"tid-2"}, transient=True
-    )
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3), fail_on={"armed"})
+    _match_fails_for(account, "2")
     bind(monkeypatch, account)
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
 
@@ -545,7 +568,66 @@ def test_a_failed_item_leaves_the_job_resumable_and_the_resume_redoes_only_it(
     assert after["2"] == str(jobs.ItemState.DONE)
     # The two that already succeeded were not written a second time.
     assert account.added.count(("pl-1", "tid-1")) == 1
+    assert account.added.count(("pl-1", "tid-2")) == 1
     assert account.added.count(("pl-1", "tid-3")) == 1
+    assert account.chunks == [("pl-1", ("tid-1", "tid-3")), ("pl-1", ("tid-2",))]
+
+
+def test_a_track_the_provider_would_not_add_fails_its_item_alone_and_is_never_recorded(
+    installed, exported, monkeypatch
+):
+    """U270. The answer names two of the three, so the third item fails with
+    the cause ``add_to_playlist`` raised for it before, and the ledger records
+    the two the provider named and nothing for the third."""
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3))
+    account.unaddable.add("tid-2")
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    assert _resume(job_id)[0] != int(ExitCode.OK)
+    with jobs.open_store() as store:
+        held = jobs.items(store, job_id)
+    states = {item.item_id: str(item.state) for item in held}
+    cause = {item.item_id: item.cause for item in held}["2"]
+    assert states == {
+        "1": str(jobs.ItemState.DONE),
+        "2": str(jobs.ItemState.FAILED),
+        "3": str(jobs.ItemState.DONE),
+    }
+    assert cause is not None and cause.reason == "unavailable-transient"
+    assert "the provider added nothing for the track 'tid-2'" in cause.message
+    written = json.loads(config.state_path("outbound_writes", installed).read_text())
+    assert [record["added"] for record in written["playlists"].values()] == [
+        ["tid-1", "tid-3"]
+    ]
+    assert "sending" not in next(iter(written["playlists"].values()))
+    assert account.playlists["pl-1"] == ["tid-1", "tid-3"]
+
+
+def test_a_refused_request_fails_every_item_it_carried_and_the_resume_adds_each_once(
+    installed, exported, monkeypatch
+):
+    """U270. One request carries the batch, so a refused one fails each item
+    that was in it, and the resume sends them again: one add each, none twice."""
+    del installed
+    account = outbound_fakes.FakeAccount(
+        catalog=catalog(1, 2, 3), fail_on={"tid-2"}, transient=True
+    )
+    bind(monkeypatch, account)
+    _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
+
+    assert _resume(job_id)[0] != int(ExitCode.OK)
+    with jobs.open_store() as store:
+        states = {item.item_id: str(item.state) for item in jobs.items(store, job_id)}
+    assert set(states.values()) == {str(jobs.ItemState.FAILED)}
+    assert account.added == []
+
+    account.fail_on = frozenset()
+    with jobs.open_store() as store:
+        jobs.retry(store, job_id)
+    assert _drive_job(job_id, exported)[0] == int(ExitCode.OK)
+    assert account.playlists["pl-1"] == ["tid-1", "tid-2", "tid-3"]
+    assert [one for _pl, one in account.added] == ["tid-1", "tid-2", "tid-3"]
 
 
 def test_the_resume_of_a_half_failed_export_does_not_exit_ok(
@@ -559,13 +641,15 @@ def test_the_resume_of_a_half_failed_export_does_not_exit_ok(
     not happen. Every shell calls ``jobs.raise_for_state`` now.
     """
     del installed
-    bind(
-        monkeypatch,
-        outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3), fail_on={"tid-2"}),
-    )
+    account = outbound_fakes.FakeAccount(catalog=catalog(1, 2, 3), fail_on={"armed"})
+    # ONE TRACK'S OWN DEFECT, met while its batch is planned (U270), so the
+    # other two are written and the job is half failed.
+    _match_fails_for(account, "2", transient=False)
+    bind(monkeypatch, account)
     _run, job_id = approve_and_queue(export_verb(exported), "export.playlist.confirm")
     code, resumed = _resume(job_id)
     assert code != int(ExitCode.OK)
+    assert sorted(one for _pl, one in account.added) == ["tid-1", "tid-3"]
     assert resumed["cause"] is not None
     # The fake raises RuntimeError, which the item records as internal-error.
     # The job used to wrap that as unavailable-transient. It now reports the
@@ -1174,7 +1258,7 @@ def test_a_relative_export_argument_still_resumes(
 @pytest.mark.parametrize(
     "verb, gate, module, worker",
     [
-        ("export", "export.playlist.confirm", export_cli, "run_export_item"),
+        ("export", "export.playlist.confirm", export_cli, "run_export_items"),
         ("favorites", "sync.favorites.confirm", favorites_cli, "run_heart_item"),
     ],
     ids=["export.playlist", "sync.favorites"],
@@ -1214,9 +1298,9 @@ def test_the_handler_runs_against_the_frozen_configuration_not_the_current_one(
     seen: list[int] = []
     real = getattr(module, worker)
 
-    def watched(payload, item_id, cfg, remote):
+    def watched(payload, item_id, cfg, remote, *rest):
         seen.append(cfg.reports.intake_stale_days)
-        return real(payload, item_id, cfg, remote)
+        return real(payload, item_id, cfg, remote, *rest)
 
     monkeypatch.setattr(module, worker, watched)
     assert _resume(job_id)[0] == int(ExitCode.OK)

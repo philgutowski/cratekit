@@ -815,7 +815,9 @@ def test_a_deletion_run_triggers_no_outbound_call():
 
 
 def test_an_interrupted_outbound_write_is_rerunnable_without_duplicating(cfg):
-    account = FakeAccount(catalog={"a": "tid-a", "b": "tid-b"}, fail_after=2)
+    # THE SECOND WRITE IS THE ADD (U270): the create, then one request for
+    # both tracks, which fails whole.
+    account = FakeAccount(catalog={"a": "tid-a", "b": "tid-b"}, fail_after=1)
     planned = export.plan(
         [
             export.LocalTrack(identity="a", title="A"),
