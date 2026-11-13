@@ -997,8 +997,8 @@ def drive() -> Iterator[_Drive]:
     machine with none among them, or a credential index it cannot read after
     the keychain took it, would otherwise turn a finished download into a
     failure and a parked one's ``auth-failed`` into another cause. The stored
-    session is left as it was, its refresh token still logs in, and the
-    failure becomes :data:`SESSION_NOT_STORED` on the drive's result, which a
+    session still logs in, the one stored before or, when only the index
+    refused after the keychain took it, the refresh, and the failure becomes :data:`SESSION_NOT_STORED` on the drive's result, which a
     verb that finished reports; a verb that parked or failed reports its own
     cause instead, as it does every other warning. On a way out by an exception
     nothing reaches a report, so it is dropped and the drive's own error is the
@@ -1023,8 +1023,8 @@ def drive() -> Iterator[_Drive]:
                     "code": SESSION_NOT_STORED,
                     "message": (
                         f"the provider session this download refreshed could not be "
-                        f"stored ({type(exc).__name__}); the stored session is left "
-                        f"as it was, and the next run logs in from it"
+                        f"stored ({type(exc).__name__}), so the next run logs in again "
+                        f"from the stored session"
                     ),
                 }
             )

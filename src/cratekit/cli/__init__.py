@@ -718,7 +718,7 @@ def _with_unstored(envelope: Envelope, before: int) -> Envelope:
         "message": (
             f"the provider session this run's login refreshed could not be stored "
             f"({', '.join(dict.fromkeys(met))}), so the next run logs in again from "
-            f"the session the keychain holds"
+            f"the stored session"
         ),
     }
     return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))

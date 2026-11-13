@@ -44,8 +44,8 @@ take :func:`session_for`, which logs in once and hands every later opener the
 same client while the keychain still holds the session it was opened from; a
 refusal from the provider, or a forget, drops it for every opener at once.
 A refresh the keychain cannot take never fails that login (R-1694): the client
-goes on, the next run logs in again from whatever the keychain holds, and the
-verb's report says so.
+goes on, the next run logs in again from the stored session, and the verb's
+report says so.
 """
 
 from __future__ import annotations
@@ -240,7 +240,8 @@ def materialised_session(
     with one of :data:`STORE_FAILURES`, in place of raising it (R-1694): the
     caller goes on with what the scope gave it and says so. The keychain
     holds what it held, unless only the index refused after the keychain
-    took the refresh, as ``secrets.set`` says it can. Only the write back is inside that catch. An
+    took the refresh, as ``secrets.set`` says it can. Only the write back is
+    inside that catch. An
     exception raised in the body, a provider's rejection, a gate's refusal, a
     login that could not be asked, is thrown at the ``yield`` and never reaches
     it, whatever its class. Without it a write back failure raises, as it
@@ -366,13 +367,13 @@ def client_session(
     device flow session on the same account was served lossy audio (R-210).
 
     A REFRESH THE KEYCHAIN CANNOT TAKE IS NOT A FAILED LOGIN (R-1694). The
-    client is logged in, so it is returned; the keychain holds a session
-    whose refresh token still logs in, the one it held or, when only the
-    index refused after the keychain took it, the refresh, and the failure's
-    class is noted
-    (:func:`unstored`) for the verb's report to say the session was not stored
-    and the next run logs in again. Only a failure to store is taken so: a
-    rejected or expired session raises as it always did, and so does a defect.
+    client is logged in, so it is returned; the stored session still logs
+    in (the environment's on the opt in; otherwise the one the keychain held
+    or, when only the index refused after the keychain took it, the refresh),
+    and the failure's class is noted (:func:`unstored`) for the verb's report
+    to say the session was not stored and the next run logs in again. Only a
+    failure to store is taken so: a rejected or expired session raises as it
+    always did, and so does a defect.
 
     THE SCOPE CLOSES BEFORE THE CLIENT IS RETURNED. The client is an in memory
     object and does not need the file, so no token sits on disk for the life of

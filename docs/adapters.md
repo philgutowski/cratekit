@@ -113,9 +113,10 @@ it only while the keychain still holds the session it was opened from; the
 account keeps the adapter it opened until the provider refuses the session,
 the session is no longer recorded, or a catalogue open finds it replaced.
 A refreshed session the keychain or its index cannot take, or a token file
-that cannot be written, never fails the run: the keychain holds a session
-whose refresh token still logs in (the one it held, or the refresh when only
-the index refused after the keychain took it), and the run says so in a
+that cannot be written, never fails the run: the stored session still logs
+in (the environment's on the opt in for a machine with no keychain; otherwise
+the one the keychain held, or the refresh when only the index refused after
+the keychain took it), and the run says so in a
 `provider-session-not-stored` warning. A download says it when its drive
 finishes; a verb that opened the catalogue or the account says it whatever its
 answer, and keeps the logged in client for the rest of the process. A

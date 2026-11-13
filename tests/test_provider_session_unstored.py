@@ -10,8 +10,8 @@ that opens the catalogue or the account failed once the stored access token
 had expired.
 
 1. **The login goes on**: ``client_session`` and ``session_for`` hand back the
-   logged in client, the keychain keeps what it held, and the failure is noted
-   by its class alone.
+   logged in client, the stored session is left to log in the next run, and
+   the failure is noted by its class alone.
 2. **The verb says so**: one ``provider-session-not-stored`` warning on the
    envelope, through the real dispatcher, beside the verb's own answer.
 3. **Nothing else is caught**: an unchanged session writes and warns nothing,
@@ -113,7 +113,7 @@ def test_a_refreshed_login_the_keychain_cannot_take_returns_the_client(monkeypat
     assert client is factory.built[0]
     assert client.access_token == REFRESHED
     assert noted_since(before) == ("CredentialBackendUnavailable",)
-    # The keychain keeps what it held: the environment's session, untouched.
+    # The stored session is untouched: on the opt in, the environment's.
     assert secrets.get_json(SESSION) == STORED
 
 
