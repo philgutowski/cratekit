@@ -274,7 +274,10 @@ R-1191): a test the missing history holds red would otherwise be subtracted by
 its id, and every later failure of it with it. Every failing id is read
 whole off pytest's own reports (U268), and `compare` refuses a baseline
 measured before that, whose ids were cut at their first space, with the
-command that measures it again. Run it as a tracked
+command that measures it again. It runs on disk unless `--temp memory` is
+given (U273) and names the place in its header; `compare` and the driver
+run in that place, and a baseline naming none is measured again the same
+way. Run it as a tracked
 background job with a two hour timeout from the start (a background job in a
 cloud thread is stopped at 30 minutes otherwise) before the first edit, so it measures the base and not your
 work in progress, and edit nothing under `src` or `tests` until it reports.
@@ -339,8 +342,8 @@ nothing else against the tree until it reports:
 The driver subtracts the machine's failures from every run, so its baseline
 is green net of them and its table says so. It refuses a known failures file
 whose header does not end `history full ids whole`, which refuses a baseline
-measured before U268, whose ids were cut at their first space, and refuses on
-a shallow clone, so pass it only a baseline `cloud_battery.py` measured. If it still refuses a red
+measured before U268, whose ids were cut at their first space, or names no
+place for its temporary files (U273), and refuses on a shallow clone, so pass it only a baseline `cloud_battery.py` measured. If it still refuses a red
 baseline, rerun the test it names alone. If it fails alone it is yours: fix
 it. If it passes alone it is intermittent under the parallel run: run the
 driver again, and if the same test reddens the baseline a second time, treat
