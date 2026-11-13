@@ -593,9 +593,6 @@ class Reserved:
     #: Library row to remote track, for the same reason ``added`` rides along:
     #: the caller asks next whether a row is already recorded (R-836).
     rows: Mapping[str, str] = field(default_factory=dict)
-    #: Library row to remote track SENT and not yet answered (U270): a batch
-    #: stopped between its request and its record. See :func:`begin_playlist_tracks`.
-    sending: Mapping[str, str] = field(default_factory=dict)
 
 
 def _moved_on(what: str, **detail: str) -> CratekitError:
@@ -785,7 +782,6 @@ def _settled(
         key=key,
         added=frozenset(_listed(record, "added")),
         rows=_rows(record),
-        sending=_sending(record),
     )
 
 
@@ -810,8 +806,6 @@ def _move(document: dict[str, Any], recorded_key: str, playlist_key: str) -> Non
         record["written"] = stub["written"]
     if _rows(stub):
         record["rows"] = {**_rows(record), **_rows(stub)}
-    if _sending(stub):
-        record["sending"] = {**_sending(record), **_sending(stub)}
     record["formerly"] = [*_listed(record, "formerly"), recorded_key]
     playlists[playlist_key] = record
 
@@ -851,118 +845,52 @@ def _rows(record: Mapping[str, Any]) -> dict[str, str]:
     return {str(key): str(value) for key, value in rows.items()}
 
 
-def _sending(record: Mapping[str, Any]) -> dict[str, str]:
-    """A record's rows sent and not yet answered, or empty when it has none (U270)."""
-    sending = record.get("sending")
-    if not isinstance(sending, Mapping):
-        return {}
-    return {str(key): str(value) for key, value in sending.items()}
-
-
-def _record_of(document: dict[str, Any], playlist_key: str) -> dict[str, Any]:
-    return document["playlists"].setdefault(playlist_key, {"remote_id": "", "added": []})
-
-
-def begin_playlist_tracks(
-    cfg: config.Config,
-    playlist_key: str,
-    *,
-    held: Iterable[str],
-    sending: Mapping[str, str] = MappingProxyType({}),
-    rows: Mapping[str, str] = MappingProxyType({}),
-) -> dict[str, str]:
-    """Before one batch's add: settle what an earlier one left, and say what this one sends.
-
-    ONE LOCK AND ONE WRITE FOR THE BATCH (U270), where a per item export took
-    one per track (R-230). Three things, in this order, and nothing is written
-    when none of them changes the record:
-
-    1. A row an earlier batch left ``sending`` whose track ``held`` (the
-       playlist as just read) carries is RECORDED AS ADDED, row and all. That
-       batch stopped between its request and its record, a park, a kill or a
-       refused read after the add (R-1543), and the read is the provider
-       naming the track. A row whose track the playlist does not carry is
-       left as it is: nothing is recorded for it, and the next batch that
-       sends that row replaces it.
-    2. ``rows`` names a library row for a track ALREADY RECORDED as added, on
-       :func:`record_playlist_row`'s rule: one a person put on the playlist is
-       never claimed by being matched again.
-    3. ``sending`` is the batch about to be sent, row to track, kept until its
-       answer is recorded by :func:`record_playlist_tracks`.
-
-    Returns the rows step 1 recorded, row to track.
-    """
-    on_playlist = {str(one) for one in held}
-    lock = _locked(cfg)
-    try:
-        document = _load(cfg)
-        record = _record_of(document, playlist_key)
-        added = _listed(record, "added")
-        known = _rows(record)
-        pending = _sending(record)
-        before = (list(added), dict(known), dict(pending))
-        settled = {row: track for row, track in pending.items() if track in on_playlist}
-        for row, track in settled.items():
-            if track not in added:
-                added.append(track)
-            known[row] = track
-            del pending[row]
-        for row, track in rows.items():
-            if str(track) in added:
-                known[str(row)] = str(track)
-        pending.update({str(row): str(track) for row, track in sending.items()})
-        if (added, known, pending) != before:
-            record["added"] = added
-            if known:
-                record["rows"] = known
-            if pending:
-                record["sending"] = pending
-            else:
-                record.pop("sending", None)
-            _write(cfg, document)
-        return settled
-    finally:
-        lock.__exit__(None, None, None)
-
-
 def record_playlist_tracks(
     cfg: config.Config,
     playlist_key: str,
     *,
     landed: Mapping[str, str],
-    sent: Mapping[str, str],
+    rows: Mapping[str, str] = MappingProxyType({}),
 ) -> None:
-    """After one batch's answer: the rows it landed recorded as added, its sending cleared.
+    """After one batch's answer, ONE lock and ONE write for the batch (U270).
 
-    ``landed`` is row to track for each row whose track the provider's answer
-    named, or its read back of the playlist held (U270). Only those are
-    recorded. ``sent`` is every row the batch sent, and each is taken off
-    ``sending`` while it still names the track this batch sent for it: the
-    ones that did not land were answered, and nothing is left to settle.
+    Where a per item export took one per track (R-230). ``landed`` is library
+    row to remote track for each row whose track the provider's answer named,
+    or its one read back of the playlist held, and only those are recorded as
+    added. ``rows`` names a library row for a track ALREADY recorded as added,
+    on :func:`record_playlist_row`'s rule: one a person put on the playlist is
+    never claimed by being matched again. Nothing is written when neither
+    changes the record.
+
+    NOTHING IS RECORDED BEFORE THE ANSWER. A batch stopped between its request
+    and this write leaves its landed tracks unrecorded, as one track was before
+    U270 (R-1543): the next export finds them on the playlist and reports them
+    as already there. Recording the rows sent ahead of the request and settling
+    them on that later read was built and taken out at the review, because the
+    read cannot tell a track that landed from the same track a person added by
+    hand meanwhile, and a prune would then take theirs off.
     """
     lock = _locked(cfg)
     try:
         document = _load(cfg)
-        record = _record_of(document, playlist_key)
+        record = document["playlists"].setdefault(
+            playlist_key, {"remote_id": "", "added": []}
+        )
         added = _listed(record, "added")
         known = _rows(record)
+        before = (list(added), dict(known))
         for row, track in landed.items():
             if str(track) not in added:
                 added.append(str(track))
             known[str(row)] = str(track)
-        pending = {
-            row: track
-            for row, track in _sending(record).items()
-            if sent.get(row) != track
-        }
-        record["added"] = added
-        if known:
-            record["rows"] = known
-        if pending:
-            record["sending"] = pending
-        else:
-            record.pop("sending", None)
-        _write(cfg, document)
+        for row, track in rows.items():
+            if str(track) in added:
+                known[str(row)] = str(track)
+        if (added, known) != before:
+            record["added"] = added
+            if known:
+                record["rows"] = known
+            _write(cfg, document)
     finally:
         lock.__exit__(None, None, None)
 

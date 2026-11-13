@@ -136,11 +136,22 @@ and a person's write between two batches is read rather than met with a
 read and one POST however many tracks it carries, and each batch after it
 in the same run three GETs and one POST. `add_to_playlist` and its held object, above, have no caller in
 `src` after U270; the rules about them stand for whatever calls them next.
-The export records a batch's rows as `sending` in the ledger before the
-request and as `added` once the answer, or the adapter's one read back,
-names them, and the next export of the playlist records any `sending` row
-its read of the playlist holds, so a stop between the request and the
-record no longer leaves a landed track the ledger never names (R-1543).
+
+`add_tracks` now follows U255's rule on a failed attempt: it drops the
+object and the retry opens the playlist afresh. Before, it retried on the
+same object, and a POST that landed with its read after refused left that
+object's tag stale, so the retry was driven refused 412 with the whole
+batch on the playlist and the batch failed (U270's review). On a fresh
+object the retry is skipped as duplicates and the answer is read back.
+
+The export records a track as `added` only once the answer, or the
+adapter's one read back, names it. A later read of the playlist is never
+taken as that answer: recording the rows sent before the request and
+settling them on the next read was built and taken out at the review,
+because the read cannot tell a landed add from the same track a person
+added by hand, and a prune would then take theirs off. A stop between the
+request and the record therefore still leaves the landed tracks unrecorded,
+a batch where it was one track (R-1543).
 
 ## Still unmeasured
 

@@ -1099,12 +1099,29 @@ class TidalAccount:
         held = set(members)
         lacking = [one for one in wanted if one not in held]
         if lacking:
-            playlist = self._playlist(playlist_id)
+            # A FAILED ATTEMPT DROPS THE OBJECT AND THE RETRY OPENS AFRESH (U270),
+            # on ``add_to_playlist``'s rule since U255. An add whose POST landed
+            # and whose read after it failed leaves the object's tag stale, and a
+            # retry on it was driven refused 412 with every track of the chunk
+            # on the playlist (U270's review). On a fresh object the retry is
+            # skipped as duplicates and the answer is read back below.
+            opened: list[Any] = [self._playlist(playlist_id)]
             doing = f"add {len(lacking)} tracks to the playlist {playlist_id}"
             unconfirmed = False
+
+            def attempt(chunk: list[str]) -> Any:
+                playlist = opened[0]
+                if playlist is None:
+                    playlist = opened[0] = self._playlist(playlist_id)
+                try:
+                    return playlist.add(chunk)
+                except Exception:
+                    opened[0] = None
+                    raise
+
             for start in range(0, len(lacking), ADD_CHUNK):
                 chunk = lacking[start : start + ADD_CHUNK]
-                added = self._call(doing, lambda chunk=chunk: playlist.add(chunk))
+                added = self._call(doing, lambda chunk=chunk: attempt(chunk))
                 if added is _ABSENT:
                     raise account.provider_failure(
                         LookupError(

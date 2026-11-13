@@ -4,8 +4,7 @@ Unmatched tracks are reported, never dropped silently. A re-export of the
 same local playlist updates the recorded remote playlist rather than
 creating a second one. The tracks a plan lacks go to the account in one
 batched add (U270), and each is recorded once the provider's answer names
-it; the rows sent are recorded as sending first, so an interrupted run
-resumes without duplicating remote state or forgetting what it wrote.
+it, so an interrupted run resumes without duplicating remote state.
 """
 
 from __future__ import annotations
@@ -214,7 +213,7 @@ def apply(
     already_on = set(account.playlist_tracks(remote_id))
     already_recorded = reserved.added
     outcome: dict[int, str] = {}
-    sending: dict[str, str] = {}
+    lacking: dict[str, str] = {}
     noted: dict[str, str] = {}
     for at, (local, remote) in enumerate(planned.matched):
         if remote in already_on or remote in already_recorded:
@@ -225,30 +224,21 @@ def apply(
             if remote in already_recorded and reserved.rows.get(local) != remote:
                 noted[local] = remote
             continue
-        sending[local] = remote
-    # ONE LEDGER WRITE BEFORE THE REQUEST (U270): what an earlier batch left
-    # sending and the playlist holds is recorded, and this batch's rows are
-    # recorded as sending, so a stop after the request and before the record
-    # below is settled by the next read of the playlist (R-1543).
-    if sending or noted or reserved.sending:
-        ledger.begin_playlist_tracks(
-            cfg, reserved.key, held=already_on, sending=sending, rows=noted
-        )
+        lacking[local] = remote
     answered: set[str] = set()
-    if sending:
+    if lacking:
         # ONE REQUEST FOR THE BATCH, the provider's limit per request, through
         # the add the mirror already uses. It opens the playlist afresh, so a
         # person's edit between two batches is read and the batch goes after
         # it. A track is ADDED only when the answer names it, or, for an answer
         # naming part of the batch, when the adapter's one read back holds it.
-        wanted = tuple(dict.fromkeys(sending.values()))
+        wanted = tuple(dict.fromkeys(lacking.values()))
         answered = {str(one) for one in account.add_tracks(remote_id, wanted)}
-        ledger.record_playlist_tracks(
-            cfg,
-            reserved.key,
-            landed={local: remote for local, remote in sending.items() if remote in answered},
-            sent=sending,
-        )
+    landed = {local: remote for local, remote in lacking.items() if remote in answered}
+    # ONE LEDGER WRITE FOR THE BATCH, AFTER THE ANSWER (U270, R-230). See
+    # ``ledger.record_playlist_tracks`` for why nothing is written before it.
+    if landed or noted:
+        ledger.record_playlist_tracks(cfg, reserved.key, landed=landed, rows=noted)
     added: list[str] = []
     already: list[str] = []
     refused: list[str] = []

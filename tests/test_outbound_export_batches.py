@@ -179,21 +179,21 @@ def test_a_track_on_the_playlist_or_recorded_is_not_sent(cfg):
     [RuntimeError("the read after the add died"), jobs.Parked(_transient().cause)],
     ids=["refused-read", "ceiling-park"],
 )
-def test_a_stop_between_the_request_and_the_record_is_settled_by_the_next_read(
+def test_a_stop_between_the_request_and_the_record_adds_nothing_twice_and_records_nothing_unanswered(
     cfg, raising
 ):
-    """The card's third scenario, at the writer: the batch landed and nothing
-    was recorded, and the next apply records every landed track off its read
-    of the playlist, sends nothing, and adds nothing twice (R-1543)."""
+    """The card's third scenario, at the writer: the batch landed and its
+    answer never came back, so nothing is recorded, and the next apply finds
+    every track on the playlist, sends nothing and claims none of them, as one
+    track was left before U270 (R-1543). The review drove why the read is not
+    taken as the answer: it cannot tell our add from a person's."""
     account = LandsThenFails(raising=raising)
     ledger.reserve_playlist(cfg, KEY, lambda: account.create_playlist("Crate One"))
 
     with pytest.raises(type(raising)):
         export.apply(cfg, account, _plan(*_rows("t1", "t2", "t3")))
-    stopped = _recorded(cfg)[KEY]
     assert account.playlists["pl-1"] == ["t1", "t2", "t3"]
-    assert stopped["added"] == []
-    assert stopped["sending"] == {"row-t1": "t1", "row-t2": "t2", "row-t3": "t3"}
+    assert _recorded(cfg)[KEY]["added"] == []
 
     report = export.apply(cfg, account, _plan(*_rows("t1", "t2", "t3")))
 
@@ -201,10 +201,7 @@ def test_a_stop_between_the_request_and_the_record_is_settled_by_the_next_read(
     assert account.playlists["pl-1"] == ["t1", "t2", "t3"]
     assert report.added == ()
     assert report.already == ("t1", "t2", "t3")
-    settled = _recorded(cfg)[KEY]
-    assert settled["added"] == ["t1", "t2", "t3"]
-    assert settled["rows"] == {"row-t1": "t1", "row-t2": "t2", "row-t3": "t3"}
-    assert "sending" not in settled
+    assert _recorded(cfg)[KEY]["added"] == []
 
 
 def test_a_stop_before_the_request_landed_sends_the_batch_again_and_records_it_once(cfg):
@@ -216,7 +213,7 @@ def test_a_stop_before_the_request_landed_sends_the_batch_again_and_records_it_o
     with pytest.raises(CratekitError):
         export.apply(cfg, account, _plan(*_rows("t1", "t2")))
     assert _recorded(cfg)[KEY]["added"] == []
-    assert _recorded(cfg)[KEY]["sending"] == {"row-t1": "t1", "row-t2": "t2"}
+    assert account.playlists["pl-1"] == []
 
     account.fail_on = frozenset()
     report = export.apply(cfg, account, _plan(*_rows("t1", "t2")))
@@ -225,23 +222,6 @@ def test_a_stop_before_the_request_landed_sends_the_batch_again_and_records_it_o
     assert account.playlists["pl-1"] == ["t1", "t2"]
     assert [one for _pl, one in account.added] == ["t1", "t2"]
     assert _recorded(cfg)[KEY]["added"] == ["t1", "t2"]
-    assert "sending" not in _recorded(cfg)[KEY]
-
-
-def test_a_sending_row_the_playlist_does_not_hold_is_never_recorded(cfg):
-    """The ledger never records a track the playlist does not hold: a row left
-    sending whose track never landed stays unrecorded until it is sent again."""
-    account = outbound_fakes.FakeAccount()
-    ledger.reserve_playlist(cfg, KEY, lambda: account.create_playlist("Crate One"))
-    ledger.begin_playlist_tracks(cfg, KEY, held=(), sending={"row-lost": "lost"})
-
-    report = export.apply(cfg, account, _plan(*_rows("t1")))
-
-    assert report.added == ("t1",)
-    record = _recorded(cfg)[KEY]
-    assert record["added"] == ["t1"]
-    assert record["sending"] == {"row-lost": "lost"}
-    assert "row-lost" not in record["rows"]
 
 
 def test_a_person_who_took_a_track_off_between_batches_is_not_overwritten(cfg):
@@ -320,14 +300,30 @@ def test_a_batch_answered_in_part_on_the_real_client_is_settled_by_one_read_back
     assert _recorded(cfg)[KEY]["added"] == ["100", "102"]
 
 
-def test_a_refused_read_after_the_add_on_the_real_client_loses_nothing_and_adds_nothing_twice(
-    cfg,
-):
-    """The card's third scenario on the real client: the POST lands and the
-    reads after it are refused, so the add raises unrecorded; the resume, a
-    fresh adapter as a fresh process has, records every track off its read
-    and sends nothing."""
-    provider = FailsTheReadAfterAdding("pl0", refusals=6)
+def test_one_refused_read_after_a_landed_add_is_retried_on_a_fresh_open_and_recorded(cfg):
+    """Round one's first finding. The POST landed and the client's read after
+    it was refused once: the retry opens the playlist afresh, its add is
+    skipped as duplicates, and the read back records all three. Before the
+    fix the retry sent the stale tag, was refused 412, and failed the batch
+    with every track on the playlist and none recorded."""
+    provider = FailsTheReadAfterAdding("pl0", refusals=1)
+    ledger.reserve_playlist(cfg, KEY, lambda: "pl0")
+    wanted = ("100", "101", "102")
+
+    report = export.apply(cfg, _adapter(provider), _plan(*_rows(*wanted)))
+
+    assert report.added == wanted
+    assert provider.items["pl0"] == list(wanted)
+    assert provider.posts("pl0") == 2
+    assert [tag for _uuid, _form, tag in provider.adds] == ['"1"', '"2"']
+    assert _recorded(cfg)[KEY]["added"] == list(wanted)
+
+
+def test_reads_refused_past_the_retry_fail_the_batch_and_the_resume_adds_nothing_twice(cfg):
+    """The read after the add refused past every retry: the add raises with
+    the batch on the playlist and nothing recorded, and the resume, a fresh
+    adapter as a fresh process has, sends nothing and claims nothing."""
+    provider = FailsTheReadAfterAdding("pl0", refusals=12)
     ledger.reserve_playlist(cfg, KEY, lambda: "pl0")
     wanted = ("100", "101", "102")
 
@@ -343,8 +339,34 @@ def test_a_refused_read_after_the_add_on_the_real_client_loses_nothing_and_adds_
     assert provider.posts("pl0") == sent
     assert provider.items["pl0"] == list(wanted)
     assert report.already == wanted
-    assert _recorded(cfg)[KEY]["added"] == list(wanted)
-    assert "sending" not in _recorded(cfg)[KEY]
+    assert _recorded(cfg)[KEY]["added"] == []
+
+
+def test_a_track_a_person_adds_after_a_refused_add_is_never_claimed(cfg):
+    """Round one's second finding. The add's open is refused, so nothing is
+    sent; a person then adds one of the batch's tracks by hand. The next apply
+    reads it as theirs: it is not recorded as added, so a prune never takes
+    it off, and only the other track is sent."""
+    provider = Account("pl0")
+    remote = _adapter(provider)
+    ledger.reserve_playlist(cfg, KEY, lambda: "pl0")
+    remote.playlist_tracks("pl0")
+    provider.open_fail.extend([503] * 6)
+
+    with pytest.raises(CratekitError):
+        export.apply(cfg, remote, _plan(("row-a", "100"), ("row-b", "101")))
+    assert provider.posts("pl0") == 0
+    provider.open_fail.clear()
+    provider.outside_add("pl0", "101")
+
+    report = export.apply(cfg, _adapter(provider), _plan(("row-a", "100"), ("row-b", "101")))
+
+    assert report.added == ("100",)
+    assert report.already == ("101",)
+    assert provider.items["pl0"] == ["101", "100"]
+    record = _recorded(cfg)[KEY]
+    assert record["added"] == ["100"]
+    assert record["rows"] == {"row-a": "100"}
 
 
 def test_a_person_who_edited_the_playlist_between_two_batches_keeps_their_edit(cfg):
@@ -431,12 +453,13 @@ def test_a_job_of_two_hundred_and_fifty_tracks_makes_fifteen_requests(cfg, monke
     assert all(len(report["added"]) == 1 for report in reports)
 
 
-def test_a_park_between_the_request_and_the_record_blocks_and_the_resume_records_all(
+def test_a_park_between_the_request_and_the_record_blocks_and_the_resume_adds_nothing_twice(
     cfg, monkeypatch
 ):
     """The card's third scenario through the driver: a park after the batch
-    landed releases the batch whole and blocks the job, and the resume records
-    each track off its read, adds nothing twice, and settles every item."""
+    landed releases the batch whole and blocks the job, and the resume adds
+    nothing twice and settles every item, reading the tracks as already there
+    and recording none it has no answer for (R-1543)."""
     account = LandsThenFails(catalog=dict(_catalog(3)), raising=jobs.Parked(_transient().cause))
     _bind(monkeypatch, account)
     job_id = _queue(_crate(cfg, 3))
@@ -446,23 +469,73 @@ def test_a_park_between_the_request_and_the_record_blocks_and_the_resume_records
     with jobs.open_store() as store:
         assert jobs.get(store, job_id).state is jobs.JobState.BLOCKED
         assert {str(item.state) for item in jobs.items(store, job_id)} == {"pending"}
-    record = _recorded(cfg)[outbound_fakes.CRATE]
-    assert record["added"] == []
-    assert sorted(record["sending"].values()) == ["tid-1", "tid-2", "tid-3"]
+    assert _recorded(cfg)[outbound_fakes.CRATE]["added"] == []
 
     code, resumed = _resume(job_id)
 
     assert code == int(ExitCode.OK), resumed
     assert account.playlists["pl-1"] == ["tid-1", "tid-2", "tid-3"]
     assert [one for _pl, one in account.added] == ["tid-1", "tid-2", "tid-3"]
-    record = _recorded(cfg)[outbound_fakes.CRATE]
-    assert record["added"] == ["tid-1", "tid-2", "tid-3"]
-    assert "sending" not in record
+    assert _recorded(cfg)[outbound_fakes.CRATE]["added"] == []
     assert resumed["data"]["progress"]["outbound"]["counts"] == {
         "written": 0,
         "already": 3,
         "unmatched": 0,
     }
+    with jobs.open_store() as store:
+        assert {str(item.state) for item in jobs.items(store, job_id)} == {"done"}
+
+
+def test_one_refused_read_after_a_landed_add_through_the_driver_finishes_the_job(
+    cfg, monkeypatch
+):
+    """Round one's first finding as it was driven: a hundred tracks, the read
+    after the add refused once, and the job succeeds with every track recorded
+    once and nothing told failed."""
+    provider = FailsTheReadAfterAdding("pl0", refusals=1)
+    remote = _adapter(provider)
+    monkeypatch.setattr(
+        remote, "match_track", lambda **asked: str(1000 + int(asked["identity"]))
+    )
+    _bind(monkeypatch, remote)
+    ledger.reserve_playlist(cfg, outbound_fakes.CRATE, lambda: "pl0")
+    job_id = _queue(_crate(cfg, 100))
+
+    code, resumed = _resume(job_id)
+
+    assert code == int(ExitCode.OK), resumed
+    wanted = [str(1000 + n) for n in range(1, 101)]
+    assert provider.items["pl0"] == wanted
+    assert provider.posts("pl0") == 2
+    assert _recorded(cfg)[outbound_fakes.CRATE]["added"] == wanted
+    assert resumed["data"]["progress"]["outbound"]["counts"]["written"] == 100
+
+
+def test_a_stop_asked_while_a_batch_is_planned_writes_none_of_it(cfg, monkeypatch):
+    """Round one's third finding, the guard no test reached: a signal while a
+    batch is matched ends the planning, nothing is sent, and the worker
+    answers that it stopped, so the driver releases the batch whole."""
+    from cratekit.export import cli as export_cli
+
+    account = outbound_fakes.FakeAccount(catalog=dict(_catalog(3)))
+    exported = _crate(cfg, 3)
+    payload = {
+        export_cli.PLAYLIST: outbound_fakes.CRATE,
+        export_cli.NAME: outbound_fakes.CRATE,
+        export_cli.EXPORT: str(exported),
+    }
+    asked: list[int] = []
+
+    def stop() -> bool:
+        asked.append(len(account.matches))
+        return len(account.matches) == 2
+
+    answered = export_cli.run_export_items(payload, ["1", "2", "3"], cfg, account, stop)
+
+    assert answered is None
+    assert asked == [0, 1, 2]
+    assert account.chunks == [] and account.created == []
+    assert _recorded(cfg) == {}
 
 
 def test_a_created_playlist_is_said_once_for_the_batch(cfg, monkeypatch):

@@ -1755,8 +1755,8 @@ def drive(
 
     * the driver lock is taken FIRST, so a second driver refuses before it has
       touched a row;
-    * orphaned claims are released once, so a killed run's single unfinished item
-      is redone and nothing else is;
+    * orphaned claims are released once, so a killed run's single unfinished item,
+      or its unfinished batch under ``batch``, is redone and nothing else is;
     * the interrupt flag is checked BETWEEN items and BEFORE a commit, never
       inside one;
     * an item's artifact is made durable before its row flips to done;
