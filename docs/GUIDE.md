@@ -187,6 +187,23 @@ the two commands that answer and apply it and the rekordbox visit after.
 
 - A tail step that fails ends the pass there; no landing is planned over
   files the tail did not run on.
+- When every genre catalogue but Discogs refuses this machine (Beatport's 403,
+  a bot wall), a pass with a `discogs-token` recorded carries on: a file
+  Discogs searched and could not tag is left with no genre, never recorded
+  `no-hit`, goes through `tag guess`, analysis, naming and the landing, and
+  lands under needs genre unless the guess gave it one; `tag retag` and `tag
+  suggest` ask the catalogues again later. The pass names each such file and
+  the refusing catalogues, with the date each began refusing, in its
+  `refused` row and its summary's `refused` (under `tail` for `label sync
+  --go`). With no token, or with Discogs refusing too, the pass stops at its
+  tag step as before and says which catalogues refused this machine and since
+  when, and, with no token, that `crate login discogs-token` lets it carry on.
+  A file no catalogue could be read for, by a timeout, a failed name lookup or
+  a server error, still fails its item and stops the pass at its tag step; a
+  file Discogs missed beside a Beatport that was down is settled askable and
+  carries on, as it has since a token was first asked for, and is not named
+  among the refused. `label sync --go` and `sync bandcamp` run the same tail
+  and behave the same.
 - A track the download refuses for good (lossy only, gone from the provider)
   is named and skipped. Anything a wait would mend ends the pass.
 - A missing track already staged by an earlier unlanded download is not
@@ -375,7 +392,14 @@ crate route pending
   again by the next run; after three refusals in a row from Beatport (or a
   record shop on an older walk) a sweep stops sending it requests until the
   next sweep, and says so in each later file's record, while Discogs, once it
-  refuses, is not asked again in the run. `tag suggest --catalogue` stops the
+  refuses, is not asked again in the run. A sweep keeps the date each record
+  shop began refusing this machine, cleared by its next match or miss, in
+  `catalogue_refusals.json` in the installation state directory; losing the
+  file loses only the date. A file every catalogue asked refused fails with a
+  refusal naming them and since when, and, when Discogs went unasked for want
+  of a token, how to record one; with `--output json` the summary lists such
+  files under `refusal_stop`, and lists under `refused` the files Discogs
+  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` stops the
   same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps

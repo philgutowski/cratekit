@@ -45,6 +45,15 @@ copy of one recording, with the ISRC; the chain reads the download jobs for it
 and adds the step that names each pass whose download it was, earliest first,
 since the naming verb sits below the download verb and may not read its jobs.
 
+A FILE THE CATALOGUES REFUSED IS NAMED, AND A STOP FOR ONE SAYS WHO (U284).
+With a Discogs token recorded, ``tag folder`` settles a file Discogs searched
+and could not tag while every other catalogue refused, and the chain goes on;
+the tag step's report of those files becomes the chain's ``refused`` row and
+summary, so the pass names each file and the refusing catalogues with the date
+each began refusing. A tag step that stopped because every catalogue asked
+refused carries the sweep's words onto the job's refusal: who refused, since
+when, and the token when Discogs went unasked.
+
 ``name apply``'s CONFIRM IS ANSWERED INLINE, by one argument list. It is not
 explicit, so answering it on the command line is the act a person running the
 tail makes; the plan it answers is the verb's own.
@@ -69,7 +78,7 @@ import dataclasses
 import io
 import json
 import shlex
-from collections.abc import Sequence
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any, Callable
 
@@ -275,6 +284,9 @@ class Chain:
     again: str
     checks: list[dict[str, Any]] = dataclasses.field(default_factory=list)
     warnings: list[dict[str, str]] = dataclasses.field(default_factory=list)
+    #: Each step's last ``--job`` envelope, by step, so a step can read what its
+    #: own verb reported about the job it drove (U284).
+    settled: dict[str, dict[str, Any]] = dataclasses.field(default_factory=dict)
     summary: dict[str, Any] = dataclasses.field(
         default_factory=lambda: {
             "steps": [],
@@ -406,6 +418,7 @@ def settle(chain: Chain, step: str, job: jobs.Job) -> jobs.Job:
         return job
     argv = argv_for(job)
     code, envelope = chain.call(step, argv)
+    chain.settled[step] = envelope
     with jobs.open_store() as store:
         settled = jobs.get(store, job.job_id)
     if settled.is_open() and settled.state is not jobs.JobState.BLOCKED:
@@ -508,8 +521,74 @@ def tail_step(
         job = jobs.get(store, job_id)
     job = settle(chain, step, job)
     if job.state is not jobs.JobState.SUCCEEDED:
-        raise Stop(step, job_error(chain, job))
+        error = job_error(chain, job)
+        raise Stop(step, refused_stop(error, chain.settled.get(step)) if step == TAG else error)
     chain.check(step, "ok", f"crate {' '.join(words)} job {job.job_id} succeeded over {folder}")
+    if step == TAG:
+        refused_files(chain, chain.settled.get(step))
+
+
+def _tagging(section: Any) -> Mapping[str, Any]:
+    """The ``tagging`` report a ``tag folder --job`` envelope carries, or nothing."""
+    found = section.get("tagging") if isinstance(section, Mapping) else None
+    return found if isinstance(found, Mapping) else {}
+
+
+def refused_files(chain: Chain, envelope: Mapping[str, Any] | None) -> None:
+    """Name the files the tag step left with no genre because the catalogues refused (U284).
+
+    PHILLIP'S OPTION 3 ON #790. With a Discogs token recorded, a file Discogs
+    searched and could not tag while every other catalogue refused this client
+    is settled askable by ``tag folder``, so the pass goes on to the guess,
+    analysis, naming and the landing. What it owes the person is the list: the
+    pass's summary and a row of its own name each such file and the refusing
+    catalogues with the date each began refusing, read off the tag step's own
+    report, so the two say one thing.
+    """
+    data = (envelope or {}).get("data")
+    progress = data.get("progress") if isinstance(data, Mapping) else None
+    report = _tagging(progress).get("refused")
+    if not isinstance(report, Mapping) or not report.get("files"):
+        return
+    chain.summary["refused"] = {
+        "files": list(report.get("files") or ()),
+        "catalogues": dict(report.get("catalogues") or {}),
+    }
+    chain.note(
+        "refused",
+        "warn",
+        f"{report.get('said', '')}. They land under needs genre unless tag guess "
+        f"gives them one, and stay askable",
+    )
+
+
+def refused_stop(error: CratekitError, envelope: Mapping[str, Any] | None) -> CratekitError:
+    """The tag step's stop, saying who refused, since when, and the token (U284).
+
+    The chain ends on the job's own refusal, read off the queue, which counts
+    the files and says nothing of why. When every catalogue asked refused, the
+    tag verb's own refusal carries the words under ``tagging``, and they are
+    added here, so a pass and a label go stop saying it as the sweep does.
+    """
+    raw = (envelope or {}).get("cause")
+    detail = raw.get("detail") if isinstance(raw, Mapping) else None
+    stop = _tagging(detail).get("refusal_stop")
+    if not isinstance(stop, Mapping) or not stop.get("said"):
+        return error
+    cause = error.cause
+    head = cause.message.rstrip()
+    steps = tuple(str(step) for step in stop.get("steps") or ())
+    return rebuilt(
+        error,
+        dataclasses.replace(
+            cause,
+            message=f"{head}{'' if head.endswith(('.', '!', '?')) else '.'} {stop['said']}",
+            remediation=dataclasses.replace(
+                cause.remediation,
+                steps=(*steps, *(step for step in cause.remediation.steps if step not in steps)),
+            ),
+        ),
+    )
 
 
 def vocals_unavailable() -> str | None:
@@ -996,6 +1075,8 @@ __all__ = [
     "load_config",
     "name",
     "name_argv",
+    "refused_files",
+    "refused_stop",
     "rehearse",
     "replace_stale",
     "required",

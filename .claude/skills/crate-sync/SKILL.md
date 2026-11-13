@@ -101,7 +101,14 @@ status:
 
 Write down for the report: `data.summary.download_refused` (a lossy only track,
 above all), `data.summary.land_name` (the pass's name, which step 5 marks by),
-and `data.summary.staging`.
+`data.summary.staging`, and `data.summary.refused` when present: the files
+Discogs could not tag while every other catalogue refused this machine, which
+land with no genre under needs genre, and the refusing catalogues with the date
+each began refusing (U284). Name each of them in the report. A pass that
+stopped at its tag step because every catalogue refused says who and since
+when in its refusal, and with no Discogs token that `crate login
+discogs-token` lets the next pass carry on; carry those words into the
+report.
 
 ## 3. The landing, rehearsed, then answered as the session
 
