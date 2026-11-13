@@ -184,12 +184,12 @@ def discogs_answer(hit):
 
 
 # ---------------------------------------------------------------------------
-# A. The walk: Beatport first, Discogs when it does not match
+# A. The walk: Discogs first since U282, Beatport when it gives no genre
 # ---------------------------------------------------------------------------
 
 
-def test_the_default_walk_is_beatport_then_discogs_and_names_no_scraped_shop():
-    assert searchers.WALK == (searchers.BEATPORT, searchers.DISCOGS)
+def test_the_default_walk_is_discogs_then_beatport_and_names_no_scraped_shop():
+    assert searchers.WALK == (searchers.DISCOGS, searchers.BEATPORT)
     assert searchers.TRAXSOURCE not in searchers.WALK
     assert searchers.BANDCAMP not in searchers.WALK
     # Every source a record can name stays countable, the old three included.
@@ -204,18 +204,19 @@ def test_the_scraped_shops_are_never_asked_by_the_default_walk():
         url.startswith((searchers.TRAXSOURCE_SEARCH, searchers.BANDCAMP_SEARCH)) for url in seen
     )
     assert [url.split("?")[0] for url in seen] == [
-        searchers.BEATPORT_SEARCH,
         searchers.DISCOGS_SEARCH,
+        searchers.BEATPORT_SEARCH,
     ]
 
 
-def test_a_beatport_match_never_asks_discogs():
+def test_a_discogs_match_never_asks_beatport():
     seen: list[str] = []
     beatport = _beatport_page([_beatport_track(ARTIST, TITLE, BUCKET_GENRE)])
-    hit = searcher(routed(search=results(1), beatport=beatport, seen=seen))(ARTIST, TITLE)
-    assert hit.source == searchers.BEATPORT
-    assert said(hit) == [(searchers.BEATPORT, "matched"), (searchers.DISCOGS, searchers.NOT_ASKED)]
-    assert not any(url.startswith(searchers.DISCOGS_API) for url in seen)
+    fetch = routed(search=results(1), releases={1: release(1)}, beatport=beatport, seen=seen)
+    hit = searcher(fetch)(ARTIST, TITLE)
+    assert hit.source == searchers.DISCOGS
+    assert said(hit) == [(searchers.DISCOGS, "matched"), (searchers.BEATPORT, searchers.NOT_ASKED)]
+    assert not any(url.startswith(searchers.BEATPORT_SEARCH) for url in seen)
 
 
 def test_a_matched_release_whose_first_style_resolves_is_written():
@@ -227,7 +228,7 @@ def test_a_matched_release_whose_first_style_resolves_is_written():
     assert hit.genre == expected
     assert (hit.source, hit.source_genre) == (searchers.DISCOGS, "Nu-Disco")
     assert hit.off_taxonomy is False
-    assert said(hit) == [(searchers.BEATPORT, "miss"), (searchers.DISCOGS, "matched")]
+    assert said(hit) == [(searchers.DISCOGS, "matched"), (searchers.BEATPORT, searchers.NOT_ASKED)]
     note = discogs_answer(hit).note
     assert "release 7" in note and "Nu-Disco, Disco" in note and "Electronic" in note
     assert hit.unread == ()
@@ -265,7 +266,7 @@ def test_a_matched_release_with_no_style_declines_with_nothing_to_map():
 
 def test_an_empty_result_set_is_a_miss_and_two_misses_are_no_hit():
     hit = searcher(routed(search=results()))(ARTIST, TITLE)
-    assert said(hit) == [(searchers.BEATPORT, "miss"), (searchers.DISCOGS, "miss")]
+    assert said(hit) == [(searchers.DISCOGS, "miss"), (searchers.BEATPORT, "miss")]
     assert hit.genre is None and hit.source == "" and hit.unread == ()
 
 
@@ -827,7 +828,7 @@ def test_for_taxonomy_hands_the_worker_asker_to_the_searcher(monkeypatch):
     monkeypatch.setattr(searchers.Pacer, "wait", lambda self: 0.0)
     hit = searchers.for_taxonomy(TAXONOMY)(ARTIST, TITLE)
     assert calls == [(ARTIST, TITLE)]
-    assert said(hit) == [(searchers.BEATPORT, "miss"), (searchers.DISCOGS, "miss")]
+    assert said(hit) == [(searchers.DISCOGS, "miss"), (searchers.BEATPORT, "miss")]
 
 
 # ---------------------------------------------------------------------------

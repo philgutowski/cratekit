@@ -211,13 +211,17 @@ BANDCAMP = "bandcamp"
 #: Every source a file's record can name, in the order a record lists them.
 #: Readers of records count over this, so a record written before U244, when
 #: the walk was Beatport, Traxsource and Bandcamp, still summarises.
-SOURCES: tuple[str, ...] = (BEATPORT, DISCOGS, TRAXSOURCE, BANDCAMP)
+#: Discogs first, as the walk asks it and the tag summary counts it (U282).
+SOURCES: tuple[str, ...] = (DISCOGS, BEATPORT, TRAXSOURCE, BANDCAMP)
 
-#: The sources asked, in order, unless a caller names another walk (U244).
-#: Beatport carries the richest per track genre field and the cover; Discogs
-#: answers per release, with styles collectors and DJs tagged, and fills the
-#: tracks Beatport does not carry.
-WALK: tuple[str, ...] = (BEATPORT, DISCOGS)
+#: The sources asked, in order, unless a caller names another walk. Discogs
+#: first since U282: it answers per release, with styles collectors and DJs
+#: tagged, and matched nine of ten untagged files in the live trial of
+#: 2026-11-13 while Beatport refused every lookup. Beatport is asked when
+#: Discogs gives no genre, by a miss, a decline, a refusal or no token, and
+#: for the cover of a file Discogs tagged that has none, since Discogs names
+#: no picture. U244 asked them the other way round.
+WALK: tuple[str, ...] = (DISCOGS, BEATPORT)
 
 #: The walk before U244, kept so the two scraped parsers stay driven by the
 #: suite and a person can still name it. Never the default: both shops refuse
@@ -1956,10 +1960,21 @@ def catalogue_searcher(
     asker = discogs_asker(token=None, sleep=naps) if discogs is None else discogs
     counted = Refusals() if refusals is None else refusals
 
+    def shop(source: str, artist: str, title: str) -> SourceOutcome:
+        """One record shop's answer, or the run's word that it is not sent (U281)."""
+        stopped = counted.stopped(source)
+        if stopped is not None:
+            return stopped
+        outcome = _SEARCHES[source](artist, title, fetch=touch, pacer=pacer, declared=declared)
+        counted.heard(outcome)
+        return outcome
+
     def search(artist: str, title: str) -> SearchHit | None:
         outcomes: list[SourceOutcome] = []
         passed: list[NotAsked] = []
-        for source in order:
+        declined: SearchHit | None = None
+        shown: SourceOutcome | None = None
+        for place, source in enumerate(order):
             if source == DISCOGS:
                 said = asker.ask(artist, title)
                 if isinstance(said, NotAsked):
@@ -1967,24 +1982,119 @@ def catalogue_searcher(
                     continue
                 outcome = said
             else:
-                stopped = counted.stopped(source)
-                if stopped is None:
-                    outcome = _SEARCHES[source](
-                        artist, title, fetch=touch, pacer=pacer, declared=declared
-                    )
-                    counted.heard(outcome)
-                else:
-                    outcome = stopped
+                outcome = shop(source, artist, title)
             outcomes.append(outcome)
-            if outcome.answer is Answer.MATCHED:
-                return replace(
-                    _resolved(declared, outcome),
+            if outcome.answer is not Answer.MATCHED:
+                continue
+            if source in _SEARCHES and shown is None:
+                shown = outcome
+            resolved = _resolved(declared, outcome)
+            if resolved.genre is None and source not in _SEARCHES:
+                # A DECLINE FROM A SOURCE THAT NAMES NO PICTURE GIVES WAY (U282).
+                # None of Discogs' styles names a folder, so the walk goes on to
+                # the record shops, and its word names the file only if none of
+                # them writes a genre. A record shop's decline is its own word
+                # for the track, carries its row's picture, and ends the walk as
+                # it always has.
+                declined = declined or resolved
+                continue
+            hit = replace(
+                declined if resolved.genre is None and declined is not None else resolved,
+                answers=_answers(order, outcomes, passed),
+                unread=_unread_sources(outcomes, passed),
+            )
+            if hit.source in _SEARCHES:
+                return hit
+            if hit.genre is None:
+                return _lent(hit, shown)
+            return _pictured(hit, order[place + 1 :], artist, title, shop)
+        if declined is not None:
+            return _lent(
+                replace(
+                    declined,
                     answers=_answers(order, outcomes, passed),
                     unread=_unread_sources(outcomes, passed),
-                )
+                ),
+                shown,
+            )
         return _decide(order, outcomes, passed, artist, title)
 
     return search
+
+
+def _lent(hit: SearchHit, shown: SourceOutcome | None) -> SearchHit:
+    """A hit from a source that names no picture, given the one a record shop's row named.
+
+    THE PICTURE IS THE SHOP'S WHOSE ROW MATCHED, its own ``art_source``, or
+    nobody's, the empty string, when no shop's row did. Never the hit's source,
+    so the report about a missing picture is never written about a catalogue
+    that is not asked for one.
+    """
+    if shown is None:
+        return replace(hit, art_url="", art_source="")
+    return replace(hit, art_url=shown.art_url, art_source=shown.source)
+
+
+def _pictured(
+    hit: SearchHit,
+    rest: Sequence[str],
+    artist: str,
+    title: str,
+    shop: Callable[[str, str, str], SourceOutcome],
+) -> SearchHit:
+    """A genre decided by a source that names no picture, with the picture's question (U282).
+
+    No record shop's row has matched by then, since a shop's match, a genre or
+    a decline, ends the walk. So the shops the walk never reached are the
+    picture's question, carried on the hit as
+    ``ask_picture`` and asked by :func:`cratekit.tagging.tag.tag_one` only for
+    a file that has no picture. Each such shop is recorded ``not-asked`` with
+    a note saying why, until it is.
+
+    THE QUESTION ASKS THE SHOPS IN THE WALK'S ORDER UNTIL ONE MATCHES, the
+    same row the walk would have reached before Discogs was asked first, under
+    the run's count of refusals, so a refusing Beatport is stopped after three
+    whether the walk or a picture asked it. Its answer replaces the
+    ``not-asked``, a refusal or an outage joins ``unread``, and a match's row
+    names the picture whatever its genre: the genre is already decided.
+    """
+    lent = _lent(hit, None)
+    later = tuple(source for source in rest if source in _SEARCHES)
+    if not later:
+        return lent
+    note = (
+        f"{NOT_SENT}{hit.source} gave the genre, and a record shop after it is "
+        f"asked only for the picture of a file that has none"
+    )
+    waiting = tuple(
+        replace(said, note=note) if said.source in later else said for said in lent.answers
+    )
+
+    def ask_picture(current: SearchHit) -> SearchHit:
+        answers = list(current.answers)
+        unread = list(current.unread)
+        for source in later:
+            outcome = shop(source, artist, title)
+            entry = SourceAnswer(
+                source=source,
+                answer=outcome.answer.value,
+                source_genre=outcome.source_genre,
+                note=outcome.note,
+            )
+            answers = [entry if said.source == source else said for said in answers]
+            if outcome.answer.value in UNREAD_ANSWERS and source not in unread:
+                unread.append(source)
+            if outcome.answer is Answer.MATCHED:
+                return replace(
+                    current,
+                    answers=tuple(answers),
+                    unread=tuple(unread),
+                    art_url=outcome.art_url,
+                    art_source=source,
+                )
+        return replace(current, answers=tuple(answers), unread=tuple(unread))
+
+    return replace(lent, answers=waiting, ask_picture=ask_picture)
 
 
 def for_taxonomy(declared: Taxonomy, *, refusals: Refusals | None = None) -> Searcher:

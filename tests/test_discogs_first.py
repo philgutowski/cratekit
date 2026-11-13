@@ -350,7 +350,11 @@ def test_a_picture_ask_beatport_refuses_is_unread_and_counts_toward_the_stop():
     assert pictured.unread == (searchers.BEATPORT,)
 
 
-def test_a_beatport_decline_before_a_discogs_match_on_an_explicit_walk_lends_its_picture():
+def test_a_record_shop_decline_still_ends_an_explicit_walk():
+    """Only a source that names no picture gives way on a decline. A record
+    shop's decline is its own word for the track and carries its row's
+    picture, so on a walk naming Beatport first it settles the file as before
+    and Discogs is not asked."""
     seen: list[str] = []
     fetch = routed(
         search=results(7),
@@ -359,10 +363,11 @@ def test_a_beatport_decline_before_a_discogs_match_on_an_explicit_walk_lends_its
         seen=seen,
     )
     hit = build(fetch, walk=(searchers.BEATPORT, searchers.DISCOGS))(ARTIST, TITLE)
-    assert (hit.source, hit.genre) == (searchers.DISCOGS, discogs_tag("Deep House"))
-    assert (hit.art_url, hit.art_source) == (beatport_row_art(), searchers.BEATPORT)
+    assert hit.genre is None
+    assert (hit.source, hit.source_genre) == (searchers.BEATPORT, FALLBACK_GENRE)
+    assert (hit.art_url, hit.art_source) == (beatport_row_art(), None)
     assert hit.ask_picture is None
-    assert beatport_asked(seen) == 1
+    assert not any(url.startswith(searchers.DISCOGS_API) for url in seen)
 
 
 # ---------------------------------------------------------------------------
