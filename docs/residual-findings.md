@@ -52188,3 +52188,101 @@ twice either way, since every made track is written down before its wait.
 **Closes when:** the attended trial measures the time a track takes, and, if
 it matters, a later card uploads every file first and then polls them
 together. Ledger only.
+
+---
+
+## R-1671. A ceiling or a cooldown met while an export batch is matched writes none of the batch
+
+**Found:** at the build of #699, U270, 2026-11-13.
+
+**The mechanism.** `export.cli.run_export_items` matches each track of a
+batch of up to a hundred before it writes any of them, and a `jobs.Parked`
+raised by the provider gate during that matching releases the whole batch.
+Before U270 each track was matched and written as its own item, so the tracks
+matched before the park were on the playlist and done.
+
+**Measured cost.** Not driven. Reasoned from the code: no track is lost or
+added twice, since nothing of the batch was written, and the resume matches
+the batch again, its ISRC lookups read from the on disk ISRC cache where the
+first run reached them. What is lost is the time of the matches made before
+the park, at most a hundred. Whether a hundred matches can need more than the
+command's ceiling of 500 calls, which would make every resume park at the same
+batch, was not measured; the match makes one ISRC lookup a track and more only
+for a row several releases carry.
+
+**Closes when:** a live export reads its matches per track against the
+ceiling, or a park during matching writes the tracks already matched before
+it stops. Ledger only: the cost is time, never a write.
+
+---
+
+## R-1672. A stop between a landed export batch and its ledger write leaves up to a hundred tracks the ledger never records
+
+**Found:** at the review of #699, U270, 2026-11-13.
+
+**The mechanism.** R-1543 a batch at a time. `export.apply` records a batch's
+tracks once `add_tracks` answers. A kill, or a provider gate park at the
+client's read after the POST, between the request and that write leaves every
+track of the batch on the playlist and none recorded; the resumed batch finds
+them on the playlist and reports them as already there. Recording the rows
+sent before the request and settling them on the next read was built and
+taken out at round one of the review, because that read cannot tell a landed
+add from a person's own add of the same track. A question for Phillip on #699
+asks whether he wants that settle back.
+
+**Measured cost.** Driven by round two of the review with a park after the
+POST through the driver, 100 tracks: 100 on the playlist, none twice, 0
+recorded, counts `written 0, already 100`. A prune after one of those rows
+leaves the crate takes nothing off. Before U270 the same stop cost one track.
+A refused read after the POST no longer reaches it: `add_tracks` reopens and
+reads back on its retry.
+
+**Closes when:** a track a stopped batch sent is recorded on evidence that
+tells it from a person's add, or Phillip answers that the later read is
+evidence enough. Ledger only: the cost is a prune that leaves a track.
+
+---
+
+## R-1673. The adapter's add_to_playlist and its held playlist have no caller in src after U270
+
+**Found:** at the build of #699, U270, 2026-11-13.
+
+**The mechanism.** `export.apply` was the one caller of
+`RemoteAccount.add_to_playlist`, and U270 moves it to `add_tracks`. The held
+playlist U255 built for it (`TidalAccount._held`, `_opened`) is now reached
+only by `add_to_playlist`, which nothing in `src` calls, and by
+`_membership`, which still holds what it opened. The attended card U255 owed,
+A131 (#716), reads the 412s of adds through that held object from a live
+`export playlist`, which no longer makes one.
+
+**Measured cost.** None to a library: the code path is unreached. The cost is
+a maintainer reading U255's held object as the export's path, and an attended
+check that can no longer read what it asks for.
+
+**Closes when:** `add_to_playlist` is given a caller again or is taken out of
+the protocol, the adapter and the fakes, and A131's add checks are rewritten
+to the batched add. Ledger only.
+
+---
+
+## R-1674. The adapter's read back records a track a person added by hand during an export as the export's own
+
+**Found:** at the review of #699, U270, 2026-11-13.
+
+**The mechanism.** `TidalAccount.add_tracks` reads the playlist back when the
+provider's answer leaves out a track it was asked for, and returns every asked
+track the playlist then holds. The membership it decides what to send from is
+read once per playlist per process. A track a person adds by hand while an
+export runs, if a later batch of the same run sends it, is skipped by the
+provider as a duplicate, found by the read back, and recorded by
+`export.apply` as added, row and all.
+
+**Measured cost.** Driven by round two of the review through the driver, 150
+tracks: a person's hand add of a batch two track during batch one is recorded
+as written, and `prune.plan_export` with its row gone takes it off. `main`
+does the same a track at a time, so U270 did not cause it.
+
+**Closes when:** a track the read back holds and the answer did not name is
+reported as already there rather than recorded, or the membership is read
+again before each batch. Ledger only by origin; its cost is a prune taking off
+a person's track, so it is worth a card if it is ever met live.
