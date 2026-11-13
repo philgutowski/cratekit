@@ -58,7 +58,10 @@ crate login NAME --from-file PATH
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
-outage to wait out; the session is kept.
+outage to wait out; the session is kept. A session the provider refreshed at
+sign in that the keychain cannot take is not stored, and the verb goes on: it
+says so in a `provider-session-not-stored` warning beside its own answer, and
+the next run signs in again from the stored session.
 
 ## How it works
 
@@ -343,8 +346,8 @@ crate acquire audit                # files that break the lossless policy
 adapter, paced. A track refused for good is skipped and named in an
 `acquire-refused` warning. The vendored adapter logs in to the provider once
 for each run of a job, not once a track, and stores a session the provider
-refreshed when the run ends. When the session cannot be stored, the stored one
-is left as it was and the next run logs in from it; a run that finished says so
+refreshed when the run ends. When the session cannot be stored, the next run
+logs in again from the stored session; a run that finished says so
 in a `provider-session-not-stored` warning, and a run that parked or failed
 reports its own cause.
 

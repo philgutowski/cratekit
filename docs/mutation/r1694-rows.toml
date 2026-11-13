@@ -1,0 +1,210 @@
+name = "r1694"
+pass_kind = "light"
+
+# Rows target the guards R-1694 added: the login scope's tolerance of a
+# write back the keychain, its index or a file could not take, the login's
+# return of what the keychain holds, the note, and the dispatcher's warning.
+
+[[rows]]
+id = "S1_tolerance_reraises"
+description = "materialised_session: re-raise a store failure handed to the tolerance, so a refreshed login on the opt in fails the verb again"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_vendored_drive.py", "tests/test_provider_gate.py"]
+old = '''            except STORE_FAILURES as exc:
+                unstored(exc)
+'''
+new = '''            except STORE_FAILURES as exc:
+                raise
+'''
+
+[[rows]]
+id = "S2_tolerance_always"
+description = "materialised_session: tolerate a store failure even when no callback was given, so the drive's own catch and streamrip's scope lose their failure"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_vendored_drive.py", "tests/test_provider_gate.py"]
+old = '''        if unstored is None:
+            write_back(name, path, codec=codec, stored=payload)
+        else:
+'''
+new = '''        if False:
+            write_back(name, path, codec=codec, stored=payload)
+        else:
+            unstored = unstored or (lambda exc: None)
+'''
+
+[[rows]]
+id = "S3_catch_everything"
+description = "materialised_session: catch every exception at the write back, so a defect in the write is a warning rather than a raise"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_vendored_drive.py", "tests/test_provider_gate.py"]
+old = '''            except STORE_FAILURES as exc:
+                unstored(exc)
+'''
+new = '''            except Exception as exc:
+                unstored(exc)
+'''
+
+[[rows]]
+id = "S4_failures_no_credential"
+description = "STORE_FAILURES: drop the credential errors, so the keychain's own refusal on the opt in fails the login and the drive"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_vendored_drive.py", "tests/test_provider_gate.py"]
+old = '''    secrets.CredentialError,
+    CratekitError,
+    OSError,
+)'''
+new = '''    CratekitError,
+    OSError,
+)'''
+
+[[rows]]
+id = "S5_failures_no_cratekit"
+description = "STORE_FAILURES: drop CratekitError, so an index the write could not read fails the login"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_vendored_drive.py", "tests/test_provider_gate.py"]
+old = '''    secrets.CredentialError,
+    CratekitError,
+    OSError,
+)'''
+new = '''    secrets.CredentialError,
+    OSError,
+)'''
+
+[[rows]]
+id = "S6_failures_no_oserror"
+description = "STORE_FAILURES: drop OSError, so an index file the write could not make fails the login and the drive"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_vendored_drive.py", "tests/test_provider_gate.py"]
+old = '''    secrets.CredentialError,
+    CratekitError,
+    OSError,
+)'''
+new = '''    secrets.CredentialError,
+    CratekitError,
+)'''
+
+[[rows]]
+id = "L1_login_no_tolerance"
+description = "_login: open the scope with no tolerance, so the login fails as it did before R-1694"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''    with materialised_session(name, unstored=failed.append) as scope:'''
+new = '''    with materialised_session(name) as scope:'''
+
+[[rows]]
+id = "L2_token_file_uncaught"
+description = "_login: let a token file the refresh cannot be written to raise, so a full temporary disk fails the login"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''            except OSError as exc:
+                failed.append(exc)
+    if failed:'''
+new = '''            except ArithmeticError as exc:
+                failed.append(exc)
+    if failed:'''
+
+[[rows]]
+id = "L3_token_file_catches_defect"
+description = "_login: catch every exception at the token file write, so a field the file cannot encode is a warning rather than a defect"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''            except OSError as exc:
+                failed.append(exc)
+    if failed:'''
+new = '''            except Exception as exc:
+                failed.append(exc)
+    if failed:'''
+
+[[rows]]
+id = "L4_rewrite_unchanged"
+description = "_login: rewrite the token file for an unchanged session too, so a file that cannot be written is reported over a session with nothing to store"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''        if _canonical(refreshed) != _canonical(stored):'''
+new = '''        if _canonical(refreshed) is not None:'''
+
+[[rows]]
+id = "L5_hold_the_refresh"
+description = "_login: return the refresh as what the keychain holds after a store failure, so every later resolve logs in again and fails to store again"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''        return client, stored
+    return client, refreshed'''
+new = '''        return client, refreshed
+    return client, refreshed'''
+
+[[rows]]
+id = "L6_no_note"
+description = "_login: note nothing on a store failure, so the verb never says the session was not stored"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''        _UNSTORED.extend(type(exc).__name__ for exc in failed)'''
+new = '''        pass'''
+
+[[rows]]
+id = "L7_note_the_words"
+description = "_login: note the failure's words rather than its class, so a credential refusal's setup advice reaches the warning"
+file = "src/cratekit/acquire/provider_session.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_session_hold.py", "tests/test_provider_gate.py"]
+old = '''        _UNSTORED.extend(type(exc).__name__ for exc in failed)'''
+new = '''        _UNSTORED.extend(str(exc) for exc in failed)'''
+
+[[rows]]
+id = "C1_no_warning"
+description = "dispatcher: never add the warning, so a verb whose login failed to store says nothing"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_gate.py"]
+old = '''    envelope = _with_unstored(envelope, unstored_before)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "C2_every_note"
+description = "_with_unstored: read every note the process holds, so an earlier verb's failure is reported on every later verb"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_gate.py"]
+old = '''    met = module.unstored()[before:]'''
+new = '''    met = module.unstored()[:]'''
+
+[[rows]]
+id = "C3_no_dedupe"
+description = "_with_unstored: name a class once per failure, so two failures of one class repeat it"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_gate.py"]
+old = '''({', '.join(dict.fromkeys(met))})'''
+new = '''({', '.join(met)})'''
+
+[[rows]]
+id = "C4_words_no_next_run"
+description = "_with_unstored: reword the warning so it no longer says the next run logs in again"
+file = "src/cratekit/cli/__init__.py"
+surface = "user"
+tests = ["tests/test_provider_session_unstored.py", "tests/test_provider_gate.py"]
+old = '''so the next run logs in again from '''
+new = '''so a later run signs in afresh from '''
+
+[[rows]]
+id = "V1_drive_failures_narrowed"
+description = "vendored.drive: catch only credential errors at the close, so an index or file failure at a finished drive's close replaces its answer"
+file = "src/cratekit/acquire/vendored.py"
+surface = "user"
+tests = ["tests/test_vendored_drive.py", "tests/test_provider_session_unstored.py", "tests/test_acquire_workers.py"]
+old = '''        except provider_session.STORE_FAILURES as exc:'''
+new = '''        except provider_session.STORE_FAILURES[:1] as exc:'''

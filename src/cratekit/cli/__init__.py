@@ -688,6 +688,42 @@ def _with_isrc_lookups(envelope: Envelope, before: tuple[int, int]) -> Envelope:
     return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))
 
 
+def _unstored() -> int:
+    """How many store failures a login in this process has met so far (R-1694).
+
+    READ OFF THE MODULE ONLY WHEN SOMETHING LOADED IT, as the ISRC count is:
+    a run that never loaded the provider session never logged in.
+    """
+    module = sys.modules.get("cratekit.acquire.provider_session")
+    return 0 if module is None else len(module.unstored())
+
+
+def _with_unstored(envelope: Envelope, before: int) -> Envelope:
+    """The envelope with one line added when this run's login refreshed a
+    session the keychain could not take (R-1694).
+
+    The login went on, so the verb's own answer stands, on every branch: a
+    person on the opt in for a machine with no keychain is told the refresh
+    was not kept, and that the next run logs in again, rather than being
+    blocked from the verb. The failure's class is named and never its words.
+    """
+    module = sys.modules.get("cratekit.acquire.provider_session")
+    if module is None:
+        return envelope
+    met = module.unstored()[before:]
+    if not met:
+        return envelope
+    entry = {
+        "code": module.SESSION_NOT_STORED,
+        "message": (
+            f"the provider session this run's login refreshed could not be stored "
+            f"({', '.join(dict.fromkeys(met))}), so the next run logs in again from "
+            f"the stored session"
+        ),
+    }
+    return dataclasses.replace(envelope, warnings=(*envelope.warnings, entry))
+
+
 def _unhandled_cause(exc: BaseException) -> Cause:
     """The cause for anything that reached the boundary unconverted.
 
@@ -970,6 +1006,7 @@ def _dispatched_in_scope(
     state: gates.RunState | None = None
     spent_before = _provider_spend()
     looked_before = _isrc_lookups()
+    unstored_before = _unstored()
 
     try:
         stub = getattr(args, "_stub", None)
@@ -1121,6 +1158,7 @@ def _dispatched_in_scope(
     # downloads spent calls into a live limit and nothing on the screen said so.
     envelope = _with_provider_spend(envelope, spent_before)
     envelope = _with_isrc_lookups(envelope, looked_before)
+    envelope = _with_unstored(envelope, unstored_before)
     return envelope
 
 

@@ -358,9 +358,9 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'utf-8-sig',
         'verdict-unapplicable',
     ],
-    'acquire/provider_session.py': ['utf-8'],
-    'acquire/vendored.py': [
-        'provider-session-not-stored',  # 2026-11-13, U274: a drive's refreshed session the keychain refused.
+    'acquire/provider_session.py': [
+        'provider-session-not-stored',  # 2026-11-13, R-1694: moved here from vendored.py, which aliases it.
+        'utf-8',
     ],
     'adopt/apply.py': ['adoption-ledger-unusable', 'utf-8'],
     'adopt/apply_cli.py': [

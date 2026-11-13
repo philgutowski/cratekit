@@ -43,6 +43,9 @@ ONE LOGIN PER PROCESS FOR THE CATALOGUE AND THE ACCOUNT (U261). Their openers
 take :func:`session_for`, which logs in once and hands every later opener the
 same client while the keychain still holds the session it was opened from; a
 refusal from the provider, or a forget, drops it for every opener at once.
+A refresh the keychain cannot take never fails that login (R-1694): the client
+goes on, the next run logs in again from the stored session, and the verb's
+report says so.
 """
 
 from __future__ import annotations
@@ -173,6 +176,35 @@ def sweep_orphans(root: Path | None = None) -> tuple[Path, ...]:
     return tuple(removed)
 
 
+#: The warning a report carries when a session the provider refreshed could
+#: not be stored: at the close of a download's drive (U274), and at a
+#: catalogue or account login (R-1694).
+SESSION_NOT_STORED = "provider-session-not-stored"
+
+#: What storing a refreshed session can meet that is not a defect: the
+#: keychain's own refusal (the product's opt in for a machine with no keychain
+#: among them) and the presence index's lock, both ``secrets.CredentialError``;
+#: the index's unreadable refusal, a ``CratekitError``; and a file the write
+#: could not make, an ``OSError``. Anything else is a defect, and raises.
+STORE_FAILURES: tuple[type[BaseException], ...] = (
+    secrets.CredentialError,
+    CratekitError,
+    OSError,
+)
+
+#: The class of each failure a catalogue or account login met storing the
+#: session its client refreshed, in the order met (R-1694). Process wide and
+#: only ever appended to, so the dispatcher reads what one verb added by
+#: reading it before and after; the class and never the words, since a
+#: credential refusal's words are written for a person setting one up.
+_UNSTORED: list[str] = []
+
+
+def unstored() -> tuple[str, ...]:
+    """The class of every store failure a login in this process met, in order."""
+    return tuple(_UNSTORED)
+
+
 def _to_auth_failure(exc: secrets.CredentialError) -> AdapterAuthFailed | AdapterBroken:
     """Translate a credential failure into the adapter vocabulary.
 
@@ -195,6 +227,7 @@ def materialised_session(
     *,
     filename: str = "session.json",
     codec: Codec = JSON,
+    unstored: Callable[[BaseException], None] | None = None,
 ) -> Iterator[SessionScope]:
     """Yield a private, short-lived file holding the stored provider session.
 
@@ -202,6 +235,17 @@ def materialised_session(
     that disagree about both. Forking this module per tool would put the erase,
     the mode, and the write-back guard in two places, and the one that got fixed
     would not be the one running.
+
+    ``unstored``, when given, is handed a write back at the close that failed
+    with one of :data:`STORE_FAILURES`, in place of raising it (R-1694): the
+    caller goes on with what the scope gave it and says so. The keychain
+    holds what it held, unless only the index refused after the keychain
+    took the refresh, as ``secrets.set`` says it can. Only the write back is
+    inside that catch. An
+    exception raised in the body, a provider's rejection, a gate's refusal, a
+    login that could not be asked, is thrown at the ``yield`` and never reaches
+    it, whatever its class. Without it a write back failure raises, as it
+    always has.
     """
     try:
         payload = secrets.get_json(name)
@@ -219,7 +263,13 @@ def materialised_session(
     try:
         config.atomic_write_bytes(codec.dumps(payload), path, mode=config.PRIVATE_FILE_MODE)
         yield SessionScope(directory=directory, path=path, stored=payload)
-        write_back(name, path, codec=codec, stored=payload)
+        if unstored is None:
+            write_back(name, path, codec=codec, stored=payload)
+        else:
+            try:
+                write_back(name, path, codec=codec, stored=payload)
+            except STORE_FAILURES as exc:
+                unstored(exc)
     finally:
         # Unconditional. The run that raised is the run most likely to have left
         # a live refresh token sitting in a temporary directory.
@@ -316,6 +366,15 @@ def client_session(
     that is the path the attended sitting proved against the live provider. A
     device flow session on the same account was served lossy audio (R-210).
 
+    A REFRESH THE KEYCHAIN CANNOT TAKE IS NOT A FAILED LOGIN (R-1694). The
+    client is logged in, so it is returned; the stored session still logs
+    in (the environment's on the opt in; otherwise the one the keychain held
+    or, when only the index refused after the keychain took it, the refresh),
+    and the failure's class is noted (:func:`unstored`) for the verb's report
+    to say the session was not stored and the next run logs in again. Only a
+    failure to store is taken so: a rejected or expired session raises as it
+    always did, and so does a defect.
+
     THE SCOPE CLOSES BEFORE THE CLIENT IS RETURNED. The client is an in memory
     object and does not need the file, so no token sits on disk for the life of
     a long crawl. What that costs is named rather than hidden: a refresh the
@@ -336,9 +395,14 @@ def client_session(
 def _login(name: str, gate: provider_gate.Gate) -> tuple[Any, dict]:
     """:func:`client_session`'s login, and the session the keychain holds for
     the client it returns once the scope has closed: the stored one, or the
-    refresh the scope wrote back over it."""
+    refresh the scope wrote back over it. A refresh that could not be stored
+    is taken to leave the stored one there, so that is the one returned, and a
+    later reuse compares the keychain against it (R-1694). When only the index
+    refused, after the keychain took the refresh, that reuse finds the
+    keychain changed and logs in afresh, one login more, never a refused one."""
     gate.assert_open()
-    with materialised_session(name) as scope:
+    failed: list[BaseException] = []
+    with materialised_session(name, unstored=failed.append) as scope:
         stored = JSON.loads(scope.path.read_text(encoding="utf-8"))
         if not isinstance(stored, dict) or not stored.get("access_token"):
             raise AdapterAuthFailed(
@@ -383,9 +447,20 @@ def _login(name: str, gate: provider_gate.Gate) -> tuple[Any, dict]:
             value = getattr(client, field, None)
             if value is not None:
                 refreshed[field] = _epoch(value)
-        config.atomic_write_bytes(
-            JSON.dumps(refreshed), scope.path, mode=config.PRIVATE_FILE_MODE
-        )
+        # ONLY A CHANGED SESSION IS WRITTEN to the token file, which the
+        # write back would find unchanged anyway, so a file that cannot be
+        # written is never reported over a session with nothing to store. A
+        # field the file cannot encode is a defect and raises here.
+        if _canonical(refreshed) != _canonical(stored):
+            try:
+                config.atomic_write_bytes(
+                    JSON.dumps(refreshed), scope.path, mode=config.PRIVATE_FILE_MODE
+                )
+            except OSError as exc:
+                failed.append(exc)
+    if failed:
+        _UNSTORED.extend(type(exc).__name__ for exc in failed)
+        return client, stored
     return client, refreshed
 
 
@@ -572,7 +647,12 @@ def session_for(
     THE FIRST USE LOGS IN EXACTLY AS :func:`client_session` DOES: the gate is
     asked, the stored session is materialised, the provider validates it, a
     refresh goes back to the keychain, and every failure raises the typed
-    failure it raised before. Nothing is held unless all of that succeeded.
+    failure it raised before. Nothing is held unless all of that succeeded,
+    save a refresh the keychain could not take, which is noted rather than
+    raised (R-1694): the client is held over the session the keychain still
+    holds, so a later use reuses it and neither logs in nor fails to store
+    again; when only the index refused after the keychain took the refresh,
+    the keychain no longer matches and the later use logs in afresh.
 
     A LATER USE MAKES NO REQUEST, and is still asked three things first. The
     gate, so a verb started inside a cooldown refuses here as a first open
@@ -716,7 +796,9 @@ __all__ = [
     "Codec",
     "ProviderUnavailable",
     "SessionScope",
+    "SESSION_NOT_STORED",
     "SESSION_PREFIX",
+    "STORE_FAILURES",
     "answered_status",
     "captured",
     "catalogue_client",
@@ -728,5 +810,6 @@ __all__ = [
     "materialised_session",
     "session_for",
     "sweep_orphans",
+    "unstored",
     "write_back",
 ]
