@@ -1823,6 +1823,125 @@ def test_new_art_reaches_the_file_the_artifact_and_the_summary(
     }
 
 
+def test_a_sweep_discogs_decides_asks_beatport_only_for_missing_covers_and_counts_discogs_first(
+    cfg, folder, silence, monkeypatch
+):
+    """U282 through the verb, with the shipped searcher and a recorded Discogs
+    and Beatport. Three files: no genre and no picture, no genre and a picture,
+    a genre and no picture. Discogs decides both genres; Beatport is asked
+    twice, for the two missing covers, and never for the file whose picture is
+    in place; the file that had a genre keeps it; the summary says Discogs
+    tagged two, Beatport matched twice and was not asked once."""
+    from tests.test_catalogue_searcher import ARTIST, BUCKET_GENRE, TITLE
+    from tests.test_discogs_searcher import SENT, release, results, routed
+    from tests.test_tagging_engine import _jpeg, plant
+
+    names = {"a": None, "b": None, "c": SPECIFIC}
+    for name, genre in names.items():
+        path = place(folder, silence, name, genre=genre)
+        assert tags.write_tags(path, {"artist": ARTIST, "title": TITLE})
+    plant(folder / "b.flac", _jpeg(320, 200), dims=(320, 200, 24))
+
+    cover = "https://geo-media.beatport.com/image_size/1400x1400/cover.jpg"
+    row = beatport_track(ARTIST, TITLE, BUCKET_GENRE)
+    row["release"] = {"release_image_uri": cover}
+    seen: list[str] = []
+    fetch = routed(
+        search=results(7),
+        releases={7: release(7, styles=("Deep House",))},
+        beatport=beatport_page([row]),
+        seen=seen,
+    )
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+
+    def for_taxonomy(declared=None, refusals=None):
+        return searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        )
+
+    monkeypatch.setattr(searchers, "for_taxonomy", for_taxonomy)
+    general(monkeypatch, None)
+    fetched: list[str] = []
+
+    def fetch_image(url: str) -> bytes:
+        fetched.append(url)
+        return _jpeg(1000, 1000)
+
+    monkeypatch.setattr(searchers, "for_images", lambda: fetch_image)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    decided = routing.suggest_tag(TAXONOMY, "Deep House", source=searchers.DISCOGS).tag
+    assert sum(url.startswith(searchers.BEATPORT_SEARCH) for url in seen) == 2
+    assert sum(url.startswith(searchers.DISCOGS_SEARCH) for url in seen) == 3
+    assert len(fetched) == 2
+    assert tags.read_genre_from_file(folder / "a.flac") == decided
+    assert tags.read_genre_from_file(folder / "b.flac") == decided
+    assert tags.read_genre_from_file(folder / "c.flac") == SPECIFIC, "never re-tagged"
+
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert {name: reports[f"{name}.flac"]["art_fetch"] for name in names} == {
+        "a": tag.ART_EMBEDDED,
+        "b": tag.ART_PRESENT,
+        "c": tag.ART_EMBEDDED,
+    }
+    assert reports["a.flac"]["source"] == searchers.DISCOGS
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["tagged_by"][searchers.DISCOGS] == 2
+    assert tagging["tagged_by"][searchers.BEATPORT] == 0
+    assert tagging["answers"][searchers.DISCOGS]["matched"] == 3
+    assert tagging["answers"][searchers.BEATPORT]["matched"] == 2
+    assert tagging["answers"][searchers.BEATPORT][searchers.NOT_ASKED] == 1
+
+
+def test_the_sweeps_unread_warning_names_discogs_first(cfg, folder, silence, monkeypatch):
+    """U282: the summary counts Discogs first, so the sentence a person reads
+    names the catalogues in that order. File a: Discogs times out and Beatport
+    misses. File b: Discogs misses and Beatport refuses. Both stay askable,
+    and the warning names Discogs' outage before Beatport's refusal."""
+    from tests.test_discogs_searcher import SENT, results
+
+    place(folder, silence, "a")
+    place(folder, silence, "b")
+    seen: list[str] = []
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        query = url.split("?", 1)[-1]
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            if query.endswith("+b") or query.endswith("q=b"):
+                return BEATPORT_CHALLENGE
+            return searchers.Fetched(text=beatport_page([]), status=200)
+        if "track=a" in query:
+            return searchers.Fetched(note="timed out")
+        return searchers.Fetched(text=results(), status=200)
+
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert reports["a.flac"]["unread"] == {searchers.DISCOGS: "unreachable"}
+    assert reports["b.flac"]["unread"] == {searchers.BEATPORT: "blocked"}
+    unread = {w["code"]: w["message"] for w in resumed["warnings"]}[tag_cli.SOURCES_UNREAD]
+    across = unread.split("Across the sweep: ", 1)[1]
+    assert across.index(searchers.DISCOGS) < across.index(searchers.BEATPORT), across
+
+
 def test_an_albums_cover_is_asked_for_and_encoded_once_across_the_queued_sweep(
     cfg, folder, silence, monkeypatch
 ):
