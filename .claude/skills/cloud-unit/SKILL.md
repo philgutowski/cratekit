@@ -361,7 +361,11 @@ the table, `docs/mutation/uN.md` and `.json`, and post `Progress`.
     .venv/bin/python scripts/cloud_battery.py compare
 
 Run it on the head the rows were committed on, before the driver, as step 7
-says; a card with no table runs it after the review.
+says; a card with no table runs it after the review. If anything under
+`src`, `tests` or `scripts` changed after that run, a fix for a red baseline
+or a test written to kill a zero row, run it again on the final head before
+step 9: CI does not run the suite, so the last reading must cover every line
+that merges.
 
 Ruff and the scan must be clean. Every test under `NEWLY FAILING, yours` is
 yours: rerun it alone first, since one test here is known to be intermittent

@@ -39,6 +39,11 @@ the tree stayed clean, which is the one thing that went right.
 - **The full baseline is paid on every call.** `measure_batch` runs the whole
   suite at `scripts/mutate.py:957` unconditionally, `--resume` included, and
   `--resume` reuses finished rows and nothing else. The suite was 358 seconds.
+  CORRECTED BY U271: given `--known-failures`, the driver reads the full
+  baseline from the cloud battery's record instead when that record is for
+  the same commit, on a clean tree, on this machine, with the same known
+  failures file, so a call made right after `cloud_battery.py compare` on the
+  same head pays one full run fewer. Any other call still pays it.
 - **The null control IS a second full run, always.** CORRECTED BY U61. This
   bullet first said the control runs on the first Python row's derived importer
   subset. It does not: `measure_batch` passes subset `None` and the label

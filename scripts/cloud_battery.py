@@ -57,8 +57,9 @@ read before the run, and whether the tree was clean throughout, read by
 `git status --porcelain` before and after it, with HEAD unmoved; the host and
 the kernel's boot id, since every cloud container is called `vm`; the checkout
 and the interpreter; the sha256 of the known failures file the run was read
-against; the verdict; and what the run measured: the collected count, pytest's
-exit code, the failing ids and the collection errors. `scripts/mutate.py` reads
+against; any `PYTEST_ADDOPTS` the run inherited; the verdict; and what the run
+measured: the collected count, how many of those tests ran, pytest's exit
+code, the failing ids and the collection errors. `scripts/mutate.py` reads
 it only when every one of those keys is its own, and measures otherwise.
 `last-compare.txt`, the line `release.py cut` reads, takes its commit from
 before the run too and says `dirty` when the tree moved during it.
@@ -117,8 +118,10 @@ REPORT_VARIABLE = "CLOUD_BATTERY_REPORT_PATH"
 # controller only, which receives every worker's reports; a worker has
 # `workerinput` and writes nothing.
 #
-# It also writes the collected count and which errors were collection errors
-# (U271), which the mutation driver reads from the run record. The count is
+# It also writes the collected count, how many of those tests reported at all,
+# and which errors were collection errors (U271), which the mutation driver
+# reads from the run record: a run that stopped early, `-x` say, exits 1 like a
+# complete red one, and only the count of tests that ran tells the two apart. The count is
 # read as the driver's own plugin reads it: off the hook xdist fires on the
 # controller when a worker finishes collecting, since the controller collects
 # nothing itself, and off the session's items in a run without workers.
@@ -129,6 +132,7 @@ import os
 import pytest
 
 _COLLECTED = {"count": None}
+_RAN = set()
 
 
 def pytest_collection_finish(session):
@@ -141,13 +145,17 @@ def pytest_xdist_node_collection_finished(node, ids):
     _COLLECTED["count"] = len(ids)
 
 
+def pytest_runtest_logreport(report):
+    _RAN.add(report.nodeid)
+
+
 def pytest_terminal_summary(terminalreporter, exitstatus, config):
     if hasattr(config, "workerinput"):
         return
     out = os.environ.get("CLOUD_BATTERY_REPORT_PATH")
     if not out:
         return
-    found = {"collected": _COLLECTED["count"], "collect_errors": []}
+    found = {"collected": _COLLECTED["count"], "ran": len(_RAN), "collect_errors": []}
     for category in ("failed", "error"):
         reports = terminalreporter.stats.get(category, [])
         found[category] = {
@@ -259,7 +267,9 @@ def suite_command() -> list[str]:
 class SuiteRun:
     """What one run of the suite measured.
 
-    ``collected`` and ``collect_errors`` are None when the run did not say,
+    ``collected``, ``ran`` and ``collect_errors`` are None when the run did
+    not say; ``ran`` counts the tests that reported at all, every one of the
+    collected in a run that was not stopped early,
     and ``exit_code`` is
     pytest's own, so a reader can tell a complete run (0 or 1) from an
     interrupted one.
@@ -270,6 +280,7 @@ class SuiteRun:
     collected: int | None
     collect_errors: frozenset[str] | None
     exit_code: int
+    ran: int | None = None
 
 
 def failing_ids() -> tuple[set[str], str]:
@@ -311,17 +322,18 @@ def measure_suite() -> SuiteRun:
     return SuiteRun(
         ids=frozenset(ids),
         summary=summary,
-        collected=_read_collected(report),
+        collected=_read_count(report, "collected"),
         collect_errors=_read_collect_errors(report, ids),
         exit_code=result.returncode,
+        ran=_read_count(report, "ran"),
     )
 
 
-def _read_collected(report: dict) -> int | None:
-    """The collected count, or None when the report holds no count it could have read."""
-    collected = report.get("collected")
-    if isinstance(collected, int) and not isinstance(collected, bool) and collected >= 0:
-        return collected
+def _read_count(report: dict, key: str) -> int | None:
+    """One of the report's counts, or None when it holds no count it could have read."""
+    count = report.get(key)
+    if isinstance(count, int) and not isinstance(count, bool) and count >= 0:
+        return count
     return None
 
 
@@ -394,20 +406,21 @@ def cmd_baseline(_args) -> int:
         return 1
     if not static_checks():
         return 1
+    at = head()
     before = tree_state()
     suite = measure_suite()
     tree = measured_tree(before, tree_state())
     ids, summary = suite.ids, suite.summary
     STATE.mkdir(exist_ok=True)
     BASELINE.write_text(
-        f"# commit {head()} host {socket.gethostname()} {FULL_HISTORY} {WHOLE_IDS}\n"
+        f"# commit {at} host {socket.gethostname()} {FULL_HISTORY} {WHOLE_IDS}\n"
         f"# {summary}\n" + "".join(f"{i}\n" for i in sorted(ids)),
         encoding="utf-8",
     )
     # Its own failures are the known ones by construction, so the verdict is
     # clean against the file just written; the release reads compare's only.
     record_run("baseline", "clean", suite, tree, file_digest(BASELINE))
-    print(f"baseline at {head()}: {summary}")
+    print(f"baseline at {at}: {summary}")
     print(f"{len(ids)} machine bound failure(s) recorded in {BASELINE.relative_to(ROOT)}")
     return 0
 
@@ -453,6 +466,7 @@ def cmd_compare(_args) -> int:
         return 1
     if not static_checks():
         return 1
+    at = head()
     before = tree_state()
     suite = measure_suite()
     tree = measured_tree(before, tree_state())
@@ -460,7 +474,7 @@ def cmd_compare(_args) -> int:
     still = sorted(ids & base_ids)
     new = sorted(ids - base_ids)
     gone = sorted(base_ids - ids)
-    print(f"branch at {head()}: {summary}")
+    print(f"branch at {at}: {summary}")
     print(f"baseline at {base_commit}: {len(base_ids)} failing")
     print()
     print(f"still failing, the machine's: {len(still)}")
@@ -494,7 +508,10 @@ def tree_state() -> TreeState:
     commit = sha.stdout.strip() if sha.returncode == 0 else ""
     if not re.fullmatch(r"[0-9a-f]{40}|[0-9a-f]{64}", commit):
         commit = ""
-    status = run(["git", "status", "--porcelain"])
+    # Untracked files listed whatever the checkout's own git config says, since
+    # `status.showUntrackedFiles=no` would otherwise hide a test file nobody
+    # committed from both this reading and the driver's.
+    status = run(["git", "status", "--porcelain", "--untracked-files=all"])
     clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
     return TreeState(commit=commit, clean=clean)
 
@@ -546,9 +563,11 @@ def record_run(
 ) -> None:
     """Write the run record `scripts/mutate.py` may read in place of its full baseline (U271).
 
-    Written whatever the run was, a dirty or interrupted one included, so the
-    record is always the last run's and never an older one's; the driver reads
-    the keys and refuses the record unless each is its own. Written to a
+    Written at the end of every run that reached its reading, a dirty or
+    interrupted one included, and the driver reads the keys and refuses the
+    record unless each is its own. A run stopped before that, by a red ruff or
+    scan or a report it could not read, leaves the previous record in place,
+    which still names the commit and the tree it measured. Written to a
     temporary file and moved into place, so a reader never meets half of one.
     """
     record = {
@@ -564,7 +583,12 @@ def record_run(
         "verdict": verdict,
         "summary": suite.summary,
         "collected": suite.collected,
+        "ran": suite.ran,
         "exit_code": suite.exit_code,
+        # The suite inherits the caller's environment, and a value here edits
+        # the run (a deselection, `-x`); the driver scrubs it from its own runs
+        # and reads no record of a run it edited.
+        "pytest_addopts": os.environ.get("PYTEST_ADDOPTS", ""),
         "failing": sorted(suite.ids),
         "collect_errors": None if suite.collect_errors is None else sorted(suite.collect_errors),
         "when": datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M UTC"),

@@ -133,10 +133,11 @@ WHAT HAPPENS PER ROW, AND WHY EACH STEP IS THERE
 WHAT HAPPENS ONCE PER BATCH
 ---------------------------
 *   A full suite BASELINE, and the batch refuses to start if it is not green,
-    naming the failures. On a cloud container it may be READ instead of run,
-    from the battery's record of its last run (U271): only when that record
-    is for this commit, on a clean tree, on this machine, checkout and
-    interpreter, with the same known failures file, and the run completed.
+    naming the failures. Given a known failures file it may be READ instead
+    of run, from the cloud battery's record of its last run (U271): only when
+    that record is for this commit, on a clean tree, on this machine,
+    checkout and interpreter, with the same known failures file, and that run
+    ran every test it collected with no `PYTEST_ADDOPTS` editing it.
     Any difference and it is measured. A read baseline is held to the same
     green or refuse rule, and the table says which it was. A red baseline makes every row look like a death,
     including rows that cannot possibly kill anything. That exact trap cost a
@@ -1066,17 +1067,20 @@ def boot_id() -> str:
         return ""
 
 
-def tree_state(repo_root: Path) -> tuple[str, bool]:
+def tree_state(repo_root: Path) -> tuple[str, bool | None]:
     """HEAD's full sha and whether the checkout is clean, untracked files included.
 
-    Read only. An empty sha and False whenever git could not say, because no
-    answer is not an empty status.
+    Read only. An empty sha when git could not name HEAD, and None for the
+    cleanliness when git could not read the status, because no answer is not
+    an empty status. Untracked files are listed whatever the checkout's git
+    config says, as the battery lists them.
     """
     sha = _git(repo_root, "rev-parse", "HEAD")
     commit = sha.stdout.decode("utf-8", "replace").strip() if sha.returncode == 0 else ""
-    status = _git(repo_root, "status", "--porcelain")
-    clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
-    return commit, clean
+    status = _git(repo_root, "status", "--porcelain", "--untracked-files=all")
+    if not commit or status.returncode != 0:
+        return commit, None
+    return commit, not status.stdout.strip()
 
 
 def _strings(value: object) -> bool:
@@ -1102,9 +1106,9 @@ def read_battery_verdict(
     difference, or a record that does not say, returns None and the driver
     measures its own baseline as it always has. The machine is the host name,
     the kernel's boot id, the checkout and the interpreter, since a cloud
-    container's host name is `vm` on every one. The run must have completed
-    (pytest exited 0 or 1) and said what it collected, and its verdict must
-    agree with the ids it lists.
+    container's host name is `vm` on every one. The run must have run every
+    test it collected, exited 0 or 1, and inherited no `PYTEST_ADDOPTS`, and
+    its verdict must agree with the ids it lists.
 
     A record that passes is returned as the ``RunResult`` the driver would have
     measured, net of the known failures, and goes through the same "green
@@ -1147,7 +1151,8 @@ def read_battery_verdict(
             f"`{commit[:12] or 'a commit git could not name'}`",
         ),
         (record.get("clean_tree") is True, "the tree was not clean throughout the battery's run"),
-        (clean_now, "this tree has uncommitted or untracked changes"),
+        (clean_now is not None, "git could not read this tree's status"),
+        (clean_now is True, "this tree has uncommitted or untracked changes"),
         (
             record.get("host") == socket.gethostname() and record.get("boot_id") == boot_id(),
             "it was measured on another machine, or before this one last started",
@@ -1165,6 +1170,15 @@ def read_battery_verdict(
         (
             _whole_number(record.get("collected")) and record["collected"] > 0,
             "it records no collected count",
+        ),
+        (
+            _whole_number(record.get("ran")) and record["ran"] == record["collected"],
+            f"{record.get('ran')!r} of its {record.get('collected')!r} collected tests "
+            "reported, so the run stopped early",
+        ),
+        (
+            record.get("pytest_addopts") == "",
+            "that run inherited PYTEST_ADDOPTS, which edits what the suite runs",
         ),
     )
     for ok, why in checks:

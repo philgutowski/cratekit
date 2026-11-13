@@ -194,7 +194,8 @@ given `--known-failures` reads its full baseline from it instead of running
 the suite again, but only when the record is for this HEAD's commit, the tree
 was clean throughout that run and is clean now, the host, the boot, the
 checkout and the interpreter are this run's, the known failures file is the
-same file by its sha256, and the run completed. Any difference and the driver
+same file by its sha256, and that run ran every test it collected with no
+`PYTEST_ADDOPTS` editing it. Any difference and the driver
 measures, naming why. A red record refuses the batch as a red baseline does.
 Every subset baseline is still measured, and the null control still runs the
 full suite in the driver's own environment, held to the read collected count.
