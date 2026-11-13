@@ -40,7 +40,10 @@ It cannot be followed here, and the reason is not in this repository.
 ## What is actually going on
 
 `scripts/mutate.py` runs a full baseline suite before any row, because a row
-measured against a red baseline reads as a death. On this suite that baseline is
+measured against a red baseline reads as a death. (Since U271 it reads that
+baseline from the cloud battery's record of the same commit when every key
+matches, and the null control is still a full run, so the overhead below
+shrinks by one run and the rule stands.) On this suite that baseline is
 about 400 seconds run by hand and longer under the driver, which runs pytest with
 `-o addopts=` and its own report plugin. Add the per subset baselines and the null
 control and the fixed overhead alone is past 600 seconds.
