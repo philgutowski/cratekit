@@ -203,6 +203,7 @@ import hashlib
 import json
 import os
 import shlex
+import socket
 import subprocess
 import sys
 import tempfile
@@ -1034,6 +1035,161 @@ def run_pytest(
 
 
 # ---------------------------------------------------------------------------
+# The full baseline read from the battery's verdict, U271
+# ---------------------------------------------------------------------------
+
+#: Where ``scripts/cloud_battery.py`` leaves the record of its last run, relative
+#: to the repository root, and the record format this driver reads. Repeated
+#: from that script, which this one never imports, and held to it by a test.
+BATTERY_VERDICT = Path(".cloud-battery") / "verdict.json"
+BATTERY_VERDICT_FORMAT = 1
+#: The same boot id the battery records. Every cloud container is called `vm`,
+#: so the host name alone names no machine.
+BOOT_ID = Path("/proc/sys/kernel/random/boot_id")
+
+
+def file_digest(path: Path) -> str:
+    """The sha256 of a file's bytes, the key a battery verdict names its known failures by."""
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def boot_id() -> str:
+    """This boot's id, or empty where the kernel keeps none (macOS)."""
+    try:
+        return BOOT_ID.read_text(encoding="utf-8").strip()
+    except OSError:
+        return ""
+
+
+def tree_state(repo_root: Path) -> tuple[str, bool]:
+    """HEAD's full sha and whether the checkout is clean, untracked files included.
+
+    Read only. An empty sha and False whenever git could not say, because no
+    answer is not an empty status.
+    """
+    sha = _git(repo_root, "rev-parse", "HEAD")
+    commit = sha.stdout.decode("utf-8", "replace").strip() if sha.returncode == 0 else ""
+    status = _git(repo_root, "status", "--porcelain")
+    clean = bool(commit) and status.returncode == 0 and not status.stdout.strip()
+    return commit, clean
+
+
+def _strings(value: object) -> bool:
+    return isinstance(value, list) and all(isinstance(one, str) for one in value)
+
+
+def _whole_number(value: object) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
+def read_battery_verdict(
+    repo_root: Path,
+    path: Path,
+    *,
+    known: frozenset[str],
+    known_digest: str,
+) -> tuple[RunResult | None, str]:
+    """The battery's last run as this batch's full baseline, or None and the reason it is not.
+
+    Phillip's answer of 2026-11-13: the battery's verdict stands for the full
+    baseline only when it is for the same commit, on a clean tree, on this
+    machine, with the same known failures file. Each key is read here and any
+    difference, or a record that does not say, returns None and the driver
+    measures its own baseline as it always has. The machine is the host name,
+    the kernel's boot id, the checkout and the interpreter, since a cloud
+    container's host name is `vm` on every one. The run must have completed
+    (pytest exited 0 or 1) and said what it collected, and its verdict must
+    agree with the ids it lists.
+
+    A record that passes is returned as the ``RunResult`` the driver would have
+    measured, net of the known failures, and goes through the same "green
+    baseline or refuse" check: a red verdict refuses the batch. Nothing here
+    reads a host name or a path into the note, because the note is written into
+    a table this repository publishes.
+    """
+    prefix = "the battery's verdict was not read: "
+    if not known_digest:
+        return None, (
+            prefix + "no known failures file was passed, and the battery's verdict is read "
+            "net of one"
+        )
+    shown = BATTERY_VERDICT.as_posix()
+    if not path.is_file():
+        return None, prefix + f"no battery verdict at `{shown}`"
+    try:
+        record = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, UnicodeDecodeError, ValueError):
+        record = None
+    unreadable = prefix + f"`{shown}` is a record this driver cannot read"
+    if not isinstance(record, dict) or record.get("format") != BATTERY_VERDICT_FORMAT:
+        return None, unreadable
+    failing = record.get("failing")
+    collect_errors = record.get("collect_errors")
+    if not (
+        _strings(failing)
+        and _strings(collect_errors)
+        and isinstance(record.get("commit"), str)
+        and record.get("verdict") in {"clean", "red"}
+    ):
+        return None, unreadable
+
+    commit, clean_now = tree_state(repo_root)
+    recorded = record["commit"]
+    checks = (
+        (
+            bool(commit) and recorded == commit,
+            f"it is for commit `{recorded[:12] or 'none'}`, and this tree is at "
+            f"`{commit[:12] or 'a commit git could not name'}`",
+        ),
+        (record.get("clean_tree") is True, "the tree was not clean throughout the battery's run"),
+        (clean_now, "this tree has uncommitted or untracked changes"),
+        (
+            record.get("host") == socket.gethostname() and record.get("boot_id") == boot_id(),
+            "it was measured on another machine, or before this one last started",
+        ),
+        (record.get("root") == str(repo_root.resolve()), "it was measured in another checkout"),
+        (record.get("python") == sys.executable, "it was measured with another interpreter"),
+        (
+            record.get("known_failures_sha256") == known_digest,
+            "it was read against another known failures file",
+        ),
+        (
+            _whole_number(record.get("exit_code")) and record["exit_code"] in {0, 1},
+            f"pytest exited {record.get('exit_code')!r} in that run, so it did not complete",
+        ),
+        (
+            _whole_number(record.get("collected")) and record["collected"] > 0,
+            "it records no collected count",
+        ),
+    )
+    for ok, why in checks:
+        if not ok:
+            return None, prefix + why
+
+    beyond = sorted(set(failing) - known)
+    green = not beyond and not collect_errors
+    if green != (record["verdict"] == "clean"):
+        return None, prefix + (
+            f"it says {record['verdict']}, which disagrees with the ids it lists"
+        )
+    when = record.get("when") if isinstance(record.get("when"), str) else "an unrecorded time"
+    source = record.get("source") if record.get("source") in {"compare", "baseline"} else "a run"
+    note = (
+        f"read from the battery's verdict, `{shown}`, written by `cloud_battery.py {source}` "
+        f"at {when} for commit `{commit[:12]}`: the same commit on a clean tree, the same "
+        "machine, checkout and interpreter, and the same known failures file"
+    )
+    result = RunResult(
+        collected=record["collected"],
+        failed=tuple(beyond),
+        errored=(),
+        collect_errors=tuple(sorted(collect_errors)),
+        exit_code=record["exit_code"],
+    )
+    return result, note
+
+
+# ---------------------------------------------------------------------------
 # Measuring
 # ---------------------------------------------------------------------------
 
@@ -1191,6 +1347,9 @@ class Batch:
     reused_rows: int = 0
     known_failures: int = 0
     known_source: str = ""
+    baseline_source: str = "measured"
+    baseline_note: str = ""
+    subset_baselines: int = 0
 
     def to_dict(self) -> dict:
         return {
@@ -1208,6 +1367,9 @@ class Batch:
             "reused_rows": self.reused_rows,
             "known_failures": self.known_failures,
             "known_source": self.known_source,
+            "baseline_source": self.baseline_source,
+            "baseline_note": self.baseline_note,
+            "subset_baselines": self.subset_baselines,
             "control": self.control.to_dict() if self.control else None,
             "rows": [one.to_dict() for one in self.results],
             "dropped": [one.__dict__ for one in self.dropped],
@@ -1228,8 +1390,18 @@ def measure_batch(
     guard: StateGuard | None = None,
     known: frozenset[str] = frozenset(),
     known_source: str = "",
+    known_digest: str = "",
+    battery_verdict: Path | None = None,
+    baseline_note: str = "",
 ) -> Batch:
     """Run a whole batch: preflight, baselines, the control, then the rows.
+
+    ``battery_verdict`` names the cloud battery's run record, which stands for
+    the full baseline when ``read_battery_verdict`` finds every key this
+    batch's own (U271); otherwise, or when it is None, the full baseline is
+    measured. ``baseline_note`` says why none was offered, for the table.
+    Every subset baseline is measured either way, and the null control runs
+    the full suite here either way.
 
     ``progress_path`` is rewritten after EVERY row, not at the end. A batch on
     this suite is minutes long, and a sidecar written only on success means an
@@ -1274,10 +1446,34 @@ def measure_batch(
     header["state_guarded"] = guard.describe()
 
     # ---- baselines ------------------------------------------------------
-    full_baseline = run_pytest(
-        repo_root, None, timeout=timeout, guard=guard, label="the full baseline", known=known
-    )
-    runs += 1
+    read: RunResult | None = None
+    if battery_verdict is not None:
+        read, baseline_note = read_battery_verdict(
+            repo_root, battery_verdict, known=known, known_digest=known_digest
+        )
+    if read is not None:
+        full_baseline = read
+        header["baseline_source"] = "read"
+        source = f"{baseline_note}. "
+        hint = (
+            "That run is the battery's own reading of this commit on this machine, so "
+            "the branch is red: fix it, or measure the baseline here with "
+            "--measure-baseline if the reading is in doubt."
+        )
+    else:
+        full_baseline = run_pytest(
+            repo_root, None, timeout=timeout, guard=guard, label="the full baseline", known=known
+        )
+        runs += 1
+        source = ""
+        hint = (
+            "Before suspecting the code, suspect the ENVIRONMENT. A red baseline "
+            "here has twice been a missing binary rather than a broken tree: a "
+            "trimmed PATH dropped ffmpeg and reddened 28 audio tests on the full "
+            "run while every subset row stayed green, which reads as selective "
+            "damage and is not. Run the suite by hand in this shell first."
+        )
+    header["baseline_note"] = baseline_note
     if not full_baseline.is_green:
         detail = ", ".join(full_baseline.failure_ids()[:10]) or ", ".join(
             full_baseline.collect_errors[:10]
@@ -1285,15 +1481,11 @@ def measure_batch(
         raise DriverRefusal(
             f"BASELINE IS NOT GREEN: {full_baseline.deaths} failing, "
             f"{len(full_baseline.collect_errors)} collection errors, "
-            f"{full_baseline.collected} collected. THE BATCH IS INVALID and no row "
-            f"ran. Every row measured against this would read as a death, including "
-            f"rows that cannot kill anything.\n"
+            f"{full_baseline.collected} collected. {source}THE BATCH IS INVALID and no "
+            f"row ran. Every row measured against this would read as a death, "
+            f"including rows that cannot kill anything.\n"
             f"Failing: {detail}\n"
-            f"Before suspecting the code, suspect the ENVIRONMENT. A red baseline "
-            f"here has twice been a missing binary rather than a broken tree: a "
-            f"trimmed PATH dropped ffmpeg and reddened 28 audio tests on the full "
-            f"run while every subset row stayed green, which reads as selective "
-            f"damage and is not. Run the suite by hand in this shell first."
+            f"{hint}"
         )
 
     plans: list[tuple[Row, list[str] | None, str]] = []
@@ -1326,6 +1518,7 @@ def measure_batch(
                     f"Every row measured against it would read as a death."
                 )
             subset_baselines[key] = measured
+    header["subset_baselines"] = len(subset_baselines)
 
     # ---- the control ----------------------------------------------------
     control_result = measure_row(
@@ -1493,6 +1686,18 @@ def render_markdown(batch: Batch) -> str:
         f"Baseline: green, {batch.baseline_collected} collected. "
         f"pytest invocations for this batch: {batch.pytest_runs}."
     )
+    add("")
+    if batch.baseline_source == "read":
+        add(
+            f"Full baseline: READ, not measured by this driver; {batch.baseline_note}. "
+            "The null control below ran the full suite in this driver's own "
+            "environment and was held to that collected count (U271)."
+        )
+    else:
+        why = f" ({batch.baseline_note})" if batch.baseline_note else ""
+        add(f"Full baseline: measured by this driver{why}.")
+    add("")
+    add(f"Subset baselines: {batch.subset_baselines}, each measured by this driver.")
     if batch.known_failures:
         add("")
         add(
@@ -1674,6 +1879,14 @@ def build_parser() -> argparse.ArgumentParser:
             "on a shallow clone"
         ),
     )
+    parser.add_argument(
+        "--measure-baseline",
+        action="store_true",
+        help=(
+            "measure the full baseline here even when the cloud battery's verdict for "
+            "this commit could stand for it (U271)"
+        ),
+    )
     return parser
 
 
@@ -1736,16 +1949,27 @@ def main(argv: list[str]) -> int:
     name = args.name or name
 
     known: frozenset[str] = frozenset()
+    known_digest = ""
     if args.known_failures is not None:
         if not args.known_failures.is_file():
             print(f"refused: no known failures file at {args.known_failures}", file=sys.stderr)
             return 2
         try:
             known = read_known_failures(args.known_failures)
+            known_digest = file_digest(args.known_failures)
             refuse_a_shallow_clone(args.repo_root)
         except DriverRefusal as refusal:
             print(f"refused: {refusal}", file=sys.stderr)
             return 2
+
+    # The battery's verdict is read net of the machine's known failures, so it
+    # is offered only to a run that subtracts them (U271).
+    battery_verdict = None
+    baseline_note = ""
+    if args.measure_baseline:
+        baseline_note = "--measure-baseline was passed"
+    elif args.known_failures is not None:
+        battery_verdict = args.repo_root / BATTERY_VERDICT
 
     prior = None
     sidecar = args.out_dir / f"{name}.json"
@@ -1765,6 +1989,9 @@ def main(argv: list[str]) -> int:
             progress_path=sidecar,
             known=known,
             known_source=str(args.known_failures) if args.known_failures else "",
+            known_digest=known_digest,
+            battery_verdict=battery_verdict,
+            baseline_note=baseline_note,
         )
     except DriverRefusal as refusal:
         print(f"refused: {refusal}", file=sys.stderr)
@@ -1780,6 +2007,10 @@ def main(argv: list[str]) -> int:
         return 5
 
     markdown, written = write_outputs(batch, args.out_dir)
+    print(
+        f"full baseline: {batch.baseline_source}"
+        + (f", {batch.baseline_note}" if batch.baseline_note else "")
+    )
     print(f"table:   {markdown}")
     print(f"sidecar: {written}")
     if not batch.valid:
