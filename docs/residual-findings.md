@@ -52493,3 +52493,155 @@ name; nobody on the Mac sets the opt in.
 **Closes when:** setup and login both say, when the environment fallback is
 on and names this credential, that the environment's value is the one used.
 Ledger only: a maintainer's opt in, no data lost.
+
+---
+
+## R-1683. crate doctor does not report a catalogue that has been refusing this client, or since when
+
+**Found:** at the build of #790, U284, 2026-11-13.
+
+**The mechanism.** U284 keeps when each record shop began refusing this
+client in `catalogue_refusals.json` (`src/cratekit/tagging/refused.py`), and a
+sweep's report and a pass's stop read it. `crate doctor` does not: a person
+asking the health check learns nothing of a Beatport that has refused every
+lookup for days until a sweep or a pass says so. The card's first requirements,
+written for its option 1, asked doctor to report a catalogue refusing on its
+last N lookups with the date it began; Phillip chose option 3, whose answer
+names no doctor check, so the build left it out.
+
+**Measured cost.** Not driven: no verb is blocked and nothing false is said,
+the date reaches a person at the sweep and at the pass.
+
+**Closes when:** doctor reads the record and reports each refusing catalogue
+with its `since` and `last`, never failing on it. Ledger only.
+
+---
+
+## R-1684. The refusal record keeps no date for Discogs, and tag retag and tag suggest never move it
+
+**Found:** at the build of #790, U284, 2026-11-13.
+
+**The mechanism.** The record of when a catalogue began refusing is written
+only through `searchers.Refusals(record=True)`, the `tag folder` worker's run
+count (`searchers.for_run`). Discogs is never under that count (U244 keeps its
+own memory of a refusal in the asker), so a Discogs that refuses too is named
+in a pass's stop with no date. `tag retag` builds a searcher per file and `tag
+suggest --catalogue` a count of its own, neither recording, so a catalogue
+that answers or refuses there leaves the record as the last sweep left it.
+
+**Measured cost.** Driven in `tests/test_sync_refused.py`
+(`test_with_a_token_discogs_refusing_too_stops_and_names_both`): Discogs is
+named refusing with no date. A stale date after a retag that met an answering
+Beatport was not driven; the next sweep's first answer clears it.
+
+**Closes when:** the Discogs asker's refusals and answers move the record, and
+the retag and suggest searchers record through a run count of their own.
+Ledger only.
+
+---
+
+## R-1685. A pass stopped by one file every catalogue refused and another no catalogue could reach explains only the refusal
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** A sweep with no Discogs token where one file meets
+Beatport's refusal and another a Beatport timeout fails both items. The
+sweep's report lists the first under `refusal_stop` and the tail adds its
+words and steps to the pass's stop; the second is counted in the job's
+"failed 2" and explained nowhere on the pass's stop, which carries no network
+step for it. Before U284 the pass's stop carried no network step either: the
+job's own refusal counts its failures, and the network step lives only on each
+item's cause.
+
+**Measured cost.** Driven at review round one (probe P1 in the reviewer's
+scratch copy): the stop names a.flac as refused and says nothing of b.flac's
+outage. Nothing false is said; a person reading the item causes or `job show`
+learns the outage.
+
+**Closes when:** the pass's stop at its tag step names the files no catalogue
+could be read for, with the network step, beside those every catalogue
+refused. Ledger only.
+
+---
+
+## R-1686. A pass with a Discogs token stops when Discogs refuses too, built as the conservative call while Phillip's answer is open
+
+**Found:** at the build of #790, U284, 2026-11-13.
+
+**The mechanism.** Phillip's answer on #790 lets a pass carry on past refusing
+catalogues only with a Discogs token recorded. The build carries a file on
+only when Discogs READ it (a miss, or a match whose styles name no folder).
+When Discogs refuses too (its rate limit spent, a 403, a token it rejects),
+every catalogue asked refused, the item fails as before, and the pass stops
+at its tag step naming each refusing catalogue. The question is on the card
+under Question for Phillip, three options, the built one recommended.
+
+**Measured cost.** Driven in `tests/test_sync_refused.py`
+(`test_with_a_token_discogs_refusing_too_stops_and_names_both`). A Discogs
+outage of its own holds a batch in staging until a catalogue answers.
+
+**Closes when:** Phillip answers the card's question; option 1 closes it as
+built, option 2 or 3 is a card of its own changing `_refused_by_all` and
+`tagging.cli._refused_out`. Ledger only.
+
+---
+
+## R-1687. A sweep mixing a Discogs refusal and a rejected token words every stopped file as the token's, and drops the wait step
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** `tagging.cli._refusal_stop` reads one Discogs note for the
+whole sweep, the first non-empty one among the stopped files. In a sweep where
+Discogs answers one file with a 403 (read, refused, retryable) and a later file
+with a 401 (the token rejected, permanent), the stop says Discogs was not read
+since it refused the recorded token, for both, and drops "run the pass or the
+sweep again later" although the first file would mend by waiting.
+
+**Measured cost.** Driven at review round two with fakes, a.flac 403 and b.flac
+401 beside a refusing Beatport: the only step is recording a working token.
+Recording one and running again mends both files; only the wording for the
+first is wrong. A real Discogs answering 403 then 401 in one run was not
+driven.
+
+**Closes when:** the stop groups its files by why Discogs went unread and says
+each group's words and steps. Ledger only.
+
+---
+
+## R-1688. Two guards of U284's refusal record and refusal words are reached by no shipped caller and kill no test
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** `refused._change` catches `RecursionError` beside `OSError`
+and `ValueError`, but `read` already absorbs a record nested past the parser's
+depth inside `_parse`, and `_write` writes a flat document, so the catch is
+never reached. `searchers._beside_refusals` returns the token's refusal
+unchanged when no outcome was gathered, which only a walk naming Discogs alone
+produces, and only a direct caller can name one.
+
+**Measured cost.** Mutations at review round two: removing either kills no
+test. One candidate driven for each (a nested record; the default walk), and
+neither reaches the guard. No user facing cost.
+
+**Closes when:** the dead catch is removed or a producer is found and pinned.
+Ledger only.
+
+---
+
+## R-1689. The provider gate's readers raise RecursionError on a state file nested past the parser's depth
+
+**Found:** at the review of #790, U284, 2026-11-13.
+
+**The mechanism.** `core/provider_gate.py`'s `read_spend`, `read_standing` and
+`spend` catch `OSError` and `ValueError` around their JSON read, and the gate's
+docstring promises that a corrupt counter reads as fresh. A file of
+`"[" * 200000` raises `RecursionError` out of each. U284's refusal record had
+the same shape and catches it since review round one; the gate is the same
+class one file over, not made by U284.
+
+**Measured cost.** Driven at review round two in a scratch copy: all three
+raise. Only a hand edit or a damaged disk writes such a file, so no producer
+was driven, and the cost to `crate doctor` or a provider call is unmeasured.
+
+**Closes when:** the gate's readers read such a file as one that does not
+parse. Ledger only.
