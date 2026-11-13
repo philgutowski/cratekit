@@ -395,6 +395,40 @@ def test_a_check_that_raises_stores_nothing_and_is_a_note(configured, monkeypatc
     assert "not recorded" in note.detail
 
 
+def test_a_check_that_raises_anything_else_stores_nothing_and_is_a_note(configured, monkeypatch):
+    """Round one: a server posing as Discogs can make the JSON reader raise
+    (deep nesting), and setup runs after the configuration is saved."""
+
+    def raising(token, *, fetch=None, sleep=None):
+        raise RecursionError("maximum recursion depth exceeded")
+
+    monkeypatch.setattr(searchers, "check_discogs_token", raising)
+    person = Person(["yes"], [GOOD])
+    wizard = link(configured, person)
+    assert recorded() is None
+    note = the_note(wizard)
+    assert note.status is doctor.Status.FAIL
+    assert "RecursionError" in note.detail and "not recorded" in note.detail
+
+
+def test_a_refusal_the_fetch_raises_is_no_verdict_and_stores_nothing(configured):
+    """The identity call reads a 401 as a rejection and re-raises any other
+    refusal, which the step notes without storing (round one's unkilled row)."""
+
+    def fetch(_url):
+        raise CratekitError(
+            searchers.refuse("internal-error", "the fetch broke", remedy=Remedy.REPORT_DEFECT).cause
+        )
+
+    with pytest.raises(CratekitError):
+        searchers.check_discogs_token(GOOD, fetch=fetch, sleep=lambda _s: None)
+    person = Person(["yes"], [GOOD])
+    wizard = setup_verb._Wizard({}, person.wizard().prompter)
+    setup_verb._link_discogs(wizard, configured, fetch=fetch, sleep=lambda _s: None)
+    assert recorded() is None
+    assert the_note(wizard).status is doctor.Status.FAIL
+
+
 def test_a_store_that_refuses_is_a_note_and_stores_nothing(configured, monkeypatch):
     def refused(name, value):
         raise secrets.CredentialBackendUnavailable("the keychain is locked", name=name)
@@ -520,6 +554,24 @@ def test_a_declined_relink_keeps_the_recorded_token(configured):
     assert "was kept" in the_note(wizard).detail
 
 
+@pytest.mark.parametrize(
+    "answer",
+    [answered(503), answered(403), searchers.Fetched(note="transport failure: down", status=None)],
+    ids=["outage", "blocked", "transport"],
+)
+def test_a_replacement_discogs_could_not_check_keeps_the_recorded_token(configured, answer):
+    """Round one: an unchecked replacement would overwrite a token that may work."""
+    secrets.set(NAME, GOOD)
+    person = Person(["yes"], [NEW])
+    wizard = link(configured, person, Discogs(answer), relink=True)
+    assert recorded() == GOOD
+    note = the_note(wizard)
+    assert note.status is doctor.Status.INFO
+    assert "new token was not recorded" in note.detail and "was kept" in note.detail
+    assert "--relink-discogs" in note.detail
+    assert NEW not in everything_said(wizard, person)
+
+
 # ---------------------------------------------------------------------------
 # The taxonomy copy's Discogs table
 # ---------------------------------------------------------------------------
@@ -587,10 +639,8 @@ def test_the_credential_loop_no_longer_offers_discogs(configured):
     assert not any("discogs" in line.lower() for line in person.written)
 
 
-def test_the_verb_runs_the_step_with_the_flag_after_the_credentials():
-    """The step runs from the verb, after the loop, handed the flag's answer."""
+def test_the_flag_parses():
     import argparse
-    import inspect
 
     from cratekit.cli import registry
 
@@ -598,7 +648,102 @@ def test_the_verb_runs_the_step_with_the_flag_after_the_credentials():
     setup_verb.build(parser, next(e for e in registry.entries() if e.name == "setup"))
     assert parser.parse_args([]).relink_discogs is False
     assert parser.parse_args(["--relink-discogs"]).relink_discogs is True
-    body = inspect.getsource(setup_verb.setup)
-    loop = body.index("_capture_credentials(wizard, cfg)")
-    step = body.index("_link_discogs(wizard, cfg, relink=bool(args.relink_discogs))")
-    assert loop < step < body.index("doctor.run(")
+
+
+class Reply:
+    def __init__(self, status_code: int, text: str = ""):
+        self.status_code = status_code
+        self.text = text
+        self.headers: dict = {}
+
+
+def _drive_setup(tmp_path, monkeypatch, *, reply, recorded_first=None, relink=False):
+    """The real dispatcher, every answer a flag, a person who says yes only to
+    Discogs, and only the getter under the shipped fetch faked (round one: the
+    wiring was pinned by source text alone)."""
+    import io
+
+    from cratekit import cli
+
+    root = tmp_path / "fresh"
+    (root / "Music").mkdir(parents=True)
+    monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
+    monkeypatch.setattr(doctor, "Probes", lambda: doctor_machines.green())
+    if recorded_first is not None:
+        secrets.set(NAME, recorded_first)
+    sent: list[tuple[str, dict]] = []
+
+    def get(url, *, headers, timeout):
+        sent.append((url, dict(headers)))
+        return reply
+
+    monkeypatch.setattr(searchers, "_requests_get", get)
+    monkeypatch.setattr(searchers.time, "sleep", lambda _s: None)
+    asked: list[str] = []
+    written: list[str] = []
+
+    def write(text):
+        written.append(text)
+        asked.append(text)
+
+    def read_line():
+        question = asked[-1] if asked else ""
+        return "yes\n" if "Discogs" in question else "no\n"
+
+    scripted = prompt.Prompter(
+        read_line=read_line, read_secret=lambda _q: NEW, write=write
+    )
+    monkeypatch.setattr(prompt, "Prompter", lambda: scripted)
+    argv = [
+        "--output", "json", "setup",
+        "--library-root", str(root),
+        "--db-path", str(root / "db" / "master.db"),
+        "--volume-id", doctor_machines.VOLUME,
+        "--staging", str(tmp_path / "staging"),
+        "--profile", "full",
+        "--taxonomy", "default",
+    ]
+    if relink:
+        argv.append("--relink-discogs")
+    out, err = io.StringIO(), io.StringIO()
+    cli.run(argv, stdout=out, stderr=err)
+    envelope = json.loads(out.getvalue())
+    checks = {c["key"]: c for c in envelope["data"]["checks"]}
+    everything = out.getvalue() + err.getvalue() + "".join(written)
+    return checks, sent, everything
+
+
+def test_the_verb_links_discogs_through_the_shipped_client(tmp_path, monkeypatch):
+    checks, sent, everything = _drive_setup(tmp_path, monkeypatch, reply=Reply(200, IDENTITY))
+    assert checks[KEY]["status"] == "ok"
+    assert "Discogs accepted the token" in checks[KEY]["detail"]
+    assert recorded() == NEW
+    assert [url for url, _ in sent] == [searchers.DISCOGS_IDENTITY]
+    assert sent[0][1] == searchers.discogs_headers(NEW)
+    assert NEW not in everything
+    assert checks["credential.discogs"]["status"] == "ok", "doctor reads it linked"
+
+
+def test_the_verb_refuses_a_rejected_token_and_stores_nothing(tmp_path, monkeypatch):
+    checks, sent, everything = _drive_setup(tmp_path, monkeypatch, reply=Reply(401))
+    assert len(sent) == setup_verb.DISCOGS_TRIES
+    assert recorded() is None
+    assert checks[KEY]["status"] == "info"
+    assert NEW not in everything
+
+
+def test_the_verb_hands_the_flag_to_the_step(tmp_path, monkeypatch):
+    checks, sent, _ = _drive_setup(
+        tmp_path, monkeypatch, reply=Reply(200, IDENTITY), recorded_first=GOOD, relink=True
+    )
+    assert recorded() == NEW
+    assert len(sent) == 1
+
+
+def test_the_verb_without_the_flag_leaves_a_recorded_token(tmp_path, monkeypatch):
+    checks, sent, _ = _drive_setup(
+        tmp_path, monkeypatch, reply=Reply(200, IDENTITY), recorded_first=GOOD
+    )
+    assert recorded() == GOOD
+    assert sent == []
+    assert "--relink-discogs" in checks[KEY]["detail"]

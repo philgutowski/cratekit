@@ -1551,7 +1551,8 @@ class DiscogsAsker:
                 raise
             return TokenCheck(TokenVerdict.REJECTED, "Discogs answered 401, it does not accept this token")
         if isinstance(read, SourceOutcome):
-            return TokenCheck(TokenVerdict.UNCHECKED, self._scrub(read.note))
+            # Built by ``_said``, which scrubs the token from every note.
+            return TokenCheck(TokenVerdict.UNCHECKED, read.note)
         assert isinstance(read, dict)
         if type(read.get("id")) is not int:
             return TokenCheck(

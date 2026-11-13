@@ -24,12 +24,12 @@ crate doctor
   token), then asks `Link Discogs now?`. The token is typed or pasted unseen,
   checked with one call to Discogs, and stored in the keychain as
   `discogs-token` once Discogs accepts it. A token Discogs refuses is
-  said so, asked again up to three times, and never stored. If Discogs cannot
+  said so and never stored, and setup asks for one again, three tries in all. If Discogs cannot
   be reached, or refuses the computer rather than the token, the token is
   stored with a note that it was not checked. Saying no, or entering
   nothing, is a note saying what is lost and how to link later. A token
   already recorded is left as it is; `crate setup --relink-discogs` offers to
-  replace it, and keeps the old one if Discogs refuses the new. If your
+  replace it, and keeps the old one unless Discogs accepts the new. If your
   taxonomy copy predates the `[vocabulary.discogs]` table, setup points you
   to `crate taxonomy upgrade`.
 - `doctor` writes nothing. Each line is `ok`, `FAIL` (blocks a verb, names the

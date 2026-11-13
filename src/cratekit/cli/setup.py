@@ -1636,7 +1636,9 @@ def _link_discogs(
     recorded stays. A token Discogs could not be asked about, a block or an
     outage, is stored with a note saying it was not checked, as the brief
     rules: nothing said it was wrong, and a sweep says so if Discogs refuses
-    it. A check that raises is no verdict, so nothing is stored then either.
+    it. Not on a relink, where it would overwrite a token that may work: a
+    replacement is stored only once Discogs accepts it. A check that raises
+    is no verdict, so nothing is stored then either.
 
     A REFUSAL HERE IS A NOTE AND NEVER A RAISE, for the reason
     :func:`_capture_credentials` gives: this runs after the configuration is
@@ -1700,6 +1702,9 @@ def _link_discogs(
                 Remedy.SET_CREDENTIAL,
             )
             return
+        # SAID BEFORE THE CALL: a rate limited Discogs is waited on, up to a
+        # minute and a half, and a silent terminal after a paste reads as hung.
+        wizard.prompter.write("  Checking the token with Discogs...\n")
         try:
             check = searchers.check_discogs_token(token, fetch=fetch, sleep=sleep)
         except CratekitError as exc:
@@ -1714,10 +1719,39 @@ def _link_discogs(
                 error=exc,
             )
             return
+        # A bare except, on purpose (round one): the configuration is already
+        # saved, and anything a server posing as Discogs can make the client
+        # raise would otherwise lose the whole report. No verdict, no store.
+        except Exception as exc:  # noqa: BLE001
+            wizard.note(
+                key,
+                title,
+                doctor.Status.FAIL,
+                f"the token could not be checked ({type(exc).__name__}), so it was "
+                f"not recorded; {unlinked}",
+                Remedy.REPORT_DEFECT,
+            )
+            return
         if check.verdict is searchers.TokenVerdict.REJECTED:
             refused.append(check.note)
             wizard.prompter.write(f"  Not linked: {check.note}. Nothing was recorded.\n")
             continue
+        if already and check.verdict is not searchers.TokenVerdict.ACCEPTED:
+            # A REPLACEMENT MUST BE ACCEPTED (round one). The recorded token may
+            # be a working one, and a mistyped replacement checked against an
+            # outage would overwrite it with nothing to say it was wrong.
+            wizard.note(
+                key,
+                title,
+                doctor.Status.INFO,
+                (
+                    f"the new token was not recorded, because it could not be "
+                    f"checked: {check.note}; {unlinked}. Run crate setup "
+                    f"{RELINK_FLAG} again once Discogs answers"
+                ),
+                Remedy.SET_CREDENTIAL,
+            )
+            return
         if not _store(wizard, key, title, name, token):
             return
         if check.verdict is searchers.TokenVerdict.ACCEPTED:
