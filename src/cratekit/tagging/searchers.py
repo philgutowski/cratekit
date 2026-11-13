@@ -731,6 +731,11 @@ def _shed(words: tuple[str, ...]) -> set[tuple[str, ...]]:
     return readings
 
 
+def _unshed(words: tuple[str, ...]) -> set[tuple[str, ...]]:
+    """The words alone, with nothing shed."""
+    return {words}
+
+
 def _a_year(word: str) -> bool:
     """Whether a word is a year, as a remaster names one: "2014 Remaster"."""
     return _YEAR.fullmatch(word) is not None
@@ -1070,12 +1075,18 @@ def _title_starts(
 def _credit_words(part: str) -> set[tuple[str, ...]]:
     """The words of the artist's part as a self titled title, with and
     without the marker and the track number :func:`_names_the_artist` reads
-    past: "[MP3] Aurora Bloom" is also "aurora bloom"."""
+    past and a feature credit: "[MP3] Aurora Bloom" and "Aurora Bloom feat.
+    Tide" are also "aurora bloom". Each is only ever half of a split, so a
+    row must write the version beside it to meet it."""
     found = {_words(part)}
     bare = _words(_LEADING_GROUPS.sub("", part))
     found.add(bare)
     if len(bare) > 1 and _TRACK_NUMBER.fullmatch(bare[0]):
         found.add(bare[1:])
+    for words in list(found):
+        credited = _without_featuring(words)
+        if credited:
+            found.add(credited)
     return {words for words in found if words}
 
 
@@ -1179,12 +1190,17 @@ def _readings(value: str, *, searched: bool, artist: str = "") -> Readings:
             if not _identifies(part):
                 continue
             core, exact = _title_core(part)
-            found = {_words(core)} if exact else _shed(_words(core)) | _shed(_words(part))
+            # A whole name whose first part credits the artist is read as it
+            # is written, never shed: a feature credit or a version cut from
+            # it leaves the artist's name, "Artist feat. Tide - Title" read as
+            # "artist", which met the self titled row (R-1646, round one).
+            shed_of = _unshed if (first, last) == whole and head in artists else _shed
+            found = {_words(core)} if exact else shed_of(_words(core)) | shed_of(_words(part))
             if searched and not exact and _numbered(_words(parts[first])):
-                found |= _shed(_words(core)[1:])
+                found |= shed_of(_words(core)[1:])
             lead = None if exact else _LEADING_GROUPS.match(core)
             bare = core[lead.end() :] if lead is not None else ""
-            found_shed = _shed(_words(bare)) if _identifies(bare) else set()
+            found_shed = shed_of(_words(bare)) if _identifies(bare) else set()
             for into, these in ((readings, found), (shed, found_shed)):
                 into.update(
                     words
@@ -1247,8 +1263,8 @@ def _title_matches(searched: str, found: str, *, artist: str) -> bool:
     digit matches nothing, on either side (R-1534). The artist tells which of
     the file's dash parts is its title: a part naming the artist is not, and
     no part after the title is (R-1636); "Artist - X" with X ending in a
-    version matches only a row writing the same title and version apart
-    (R-1646). Every reader of a title by artist and
+    version matches only a row writing the same title and version apart, or
+    the whole name word for word (R-1646). Every reader of a title by artist and
     title asks this, Discogs included, and Beatport's scoring reads the same
     readings.
     """

@@ -332,7 +332,8 @@ crate route pending
   "Artist - X" with X ending in a version, which only a list of version
   words could read as a title X or as the artist's self titled track,
   matches only a row that writes the same title and version apart, "Sunrise
-  Mood (Extended Mix)" or "Artist (Vocal Mix)", and is otherwise a miss, so
+  Mood (Extended Mix)" or "Artist (Vocal Mix)", or the whole name word for
+  word, and is otherwise a miss, so
   no catalogue genre is written and the file is left for another source or
   for hand tagging; a title is never matched by words that sit
   only inside the other title's brackets, so "Intro" is never "Sunrise Mood
