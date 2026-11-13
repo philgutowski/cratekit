@@ -133,7 +133,12 @@ WHAT HAPPENS PER ROW, AND WHY EACH STEP IS THERE
 WHAT HAPPENS ONCE PER BATCH
 ---------------------------
 *   A full suite BASELINE, and the batch refuses to start if it is not green,
-    naming the failures. A red baseline makes every row look like a death,
+    naming the failures. On a cloud container it may be READ instead of run,
+    from the battery's record of its last run (U271): only when that record
+    is for this commit, on a clean tree, on this machine, checkout and
+    interpreter, with the same known failures file, and the run completed.
+    Any difference and it is measured. A read baseline is held to the same
+    green or refuse rule, and the table says which it was. A red baseline makes every row look like a death,
     including rows that cannot possibly kill anything. That exact trap cost a
     verifier a full batch on 2026-08-10, when a scratch copy carrying no `.git`
     failed a repository cleanliness test.

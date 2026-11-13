@@ -330,14 +330,21 @@ read only report or a static registry, and none for a unit that changes only
 docs or skill text, whose record says so in one line and skips the rest of
 this step. Rows target the code the unit added, in
 `docs/mutation/uN-rows.toml` in the form of `docs/mutation/u99-b-rows.toml`.
-Commit the rows, then measure them as a tracked background job, given a two
-hour timeout from the start as the baseline is, starting
-nothing else against the tree until it reports:
+Commit the rows, run step 8's `compare` on that head first, then measure
+them as a tracked background job, given a two hour timeout from the start as
+the baseline is, starting nothing else against the tree until it reports:
 
+    .venv/bin/python scripts/cloud_battery.py compare
     .venv/bin/python scripts/mutate.py docs/mutation/uN-rows.toml --known-failures .cloud-battery/baseline.txt
 
-The driver subtracts the machine's failures from every run, so its baseline
-is green net of them and its table says so. It refuses a known failures file
+The driver reads its full baseline from that `compare` run's record (U271),
+one full run of the suite fewer, only when the record is for the same commit
+on a clean tree, this machine, checkout and interpreter, and the same known
+failures file; otherwise it measures its own and the table says why. So edit
+nothing and commit nothing between the two. It still measures every subset
+baseline and runs the null control. The driver subtracts the machine's
+failures from every run, so its baseline is green net of them and its table
+says so. It refuses a known failures file
 whose header does not end `history full ids whole`, which refuses a baseline
 measured before U268, whose ids were cut at their first space, and refuses on
 a shallow clone, so pass it only a baseline `cloud_battery.py` measured. If it still refuses a red
@@ -352,6 +359,9 @@ the table, `docs/mutation/uN.md` and `.json`, and post `Progress`.
 ## 8. The battery
 
     .venv/bin/python scripts/cloud_battery.py compare
+
+Run it on the head the rows were committed on, before the driver, as step 7
+says; a card with no table runs it after the review.
 
 Ruff and the scan must be clean. Every test under `NEWLY FAILING, yours` is
 yours: rerun it alone first, since one test here is known to be intermittent
