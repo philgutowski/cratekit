@@ -52749,3 +52749,75 @@ measure no run on this container reaches. Maintainer facing.
 
 **Closes when:** each has a test that fails without it, or is removed as
 unreachable with the reason in the code.
+
+---
+
+## R-1694. A catalogue or account login that refreshed fails outright when the keychain cannot take the refreshed session
+
+**Found:** at U274's review round two, 2026-11-13, one file over from round one's blocker.
+
+**The mechanism.** `provider_session._login` (U261) writes the client's
+refreshed session back through `materialised_session` before the scope closes,
+and nothing catches a refusal of that write. Under the product's own opt in
+for a machine with no keychain, `CRATE_ALLOW_ENV_CREDENTIALS=1` with the
+session in `CRATEKIT_CREDENTIAL_PROVIDER_SESSION`, keyring's fail backend
+refuses every write, so any login whose access token the client library
+refreshed raises `CredentialBackendUnavailable` out of `client_session`. U274
+made the download's drive warn instead (`provider-session-not-stored`); the
+catalogue and the account still fail.
+
+**Measured cost.** Driven by the review on the branch with the stand in
+client's refresh: `client_session` raises, so every verb that opens the
+catalogue or the account is blocked for a person on the opt in once the
+stored access token has expired, which is every run after its first hour.
+The base has the same write back, so the branch did not cause it.
+
+**Closes when:** the login's write back failure is caught the way the drive's
+close catches it, the login goes on with the refreshed client, and the verb
+says the session was not stored. A test drives the opt in with keyring's fail
+backend and a refresh, through `client_session` and one verb.
+
+---
+
+## R-1695. A drive killed outright leaves its token file until the next provider session scope on the account
+
+**Found:** at U274, 2026-11-13.
+
+**The mechanism.** A drive of a download job now holds its private token file
+for every track it acquires, not for one. SIGINT and SIGTERM are recorded by
+the engine and the drive closes normally, and an exception closes it too, so
+the file goes on each of those. A SIGKILL, a power cut or a crash of the
+interpreter runs no code, so the file stays in its private directory (0700,
+the file 0600) until the next `materialised_session` on the same account
+sweeps it: any later download, catalogue or account open.
+
+**Measured cost.** Driven by the review with a real `kill -9` against a live
+scope: the directory stayed, and the next scope removed it. Before U274 the
+same kill left the same file; the window was one track rather than a drive.
+The file is readable by the account alone.
+
+**Closes when:** nothing short of an erase at boot closes it, which the
+operating system's own temporary directory cleaning does. Ledger only.
+
+---
+
+## R-1696. The provider-session-not-stored warning reaches only a download that finished, and a parked or failed one drops it
+
+**Found:** at U274's review round two, 2026-11-13.
+
+**The mechanism.** The drive's close puts `provider-session-not-stored` on
+the drive's result, and `Context.run_job` hands it to the verb with the drift
+warnings. `acquire.cli.drive_queued` then calls `jobs.raise_for_state`, which
+raises the job's own cause for a parked or failed job, and the warnings go
+with the raise, as `label/go._drive` already says of its own.
+
+**Measured cost.** Driven by the review: a refresh, a keychain that refuses
+it, then a withdrawal (exit 40) or a track the tool broke on (exit 41); the
+envelope carries the job's cause and no word that the refreshed session was
+not stored. Nothing is lost: the stored session is left as it was and its
+refresh token still logs in. `docs/GUIDE.md` says only a finished run carries
+the warning.
+
+**Closes when:** a refusal raised for a job's state carries the drive's
+warnings onto the envelope it becomes. Ledger only: maintainer facing, nothing
+is lost.

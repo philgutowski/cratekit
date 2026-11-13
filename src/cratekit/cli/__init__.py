@@ -137,7 +137,7 @@ class Context:
         from cratekit.cli import handlers
 
         result = handlers.run_job(store, job)
-        return result, handlers.drift_warnings(result.drifted)
+        return result, (*handlers.drift_warnings(result.drifted), *result.warnings)
 
 
 Handler = Callable[[Context], Envelope]
