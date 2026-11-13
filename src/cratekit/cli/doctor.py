@@ -1987,6 +1987,9 @@ CREDENTIALS_BY_CHECK: Mapping[str, tuple[secrets.Credential, ...]] = MappingProx
         # without it every catalogue lookup goes to the account as it always
         # did, and the finding says so and how to move them.
         "credential.catalogue": catalogue_api.CREDENTIALS,
+        # U245. Spent by no verb at all: only the Cyanite trial script sends
+        # it, so it reports and never fails, and setup never offers it.
+        "credential.cyanite": (secrets.Credential.CYANITE_KEY,),
         # U244. Declared by no verb, so it reports and never fails: without a
         # token the tagging verbs record Discogs as not asked and go on.
         "credential.discogs": (secrets.Credential.DISCOGS_TOKEN,),
@@ -2006,6 +2009,7 @@ _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
     {
         "credential.bandcamp": Remedy.AUTHENTICATE_PROVIDER,
         "credential.catalogue": Remedy.SET_CREDENTIAL,
+        "credential.cyanite": Remedy.SET_CREDENTIAL,
         "credential.discogs": Remedy.SET_CREDENTIAL,
         "credential.provider": Remedy.AUTHENTICATE_PROVIDER,
         "credential.recognition": Remedy.SET_CREDENTIAL,
@@ -2018,6 +2022,13 @@ _CREDENTIAL_REMEDY: Mapping[str, Remedy] = MappingProxyType(
 #: "no verb needs it" would be false of every one of these.
 _SPENT_WHEN_ASKED: Mapping[str, tuple[str, ...]] = MappingProxyType(
     {"credential.bandcamp": ("acquire bandcamp", "acquire bandcamp-fetch")}
+)
+
+#: Credentials only a trial script spends, never a verb, and what that script
+#: is (U245). The finding names it, since "no verb needs it" would leave a
+#: person wondering why the credential exists at all.
+_SPENT_BY_TRIAL: Mapping[str, str] = MappingProxyType(
+    {"credential.cyanite": "the Cyanite trial, scripts/cyanite_trial.py"}
 )
 
 #: Credentials no verb needs and some verbs SPEND WHEN THERE IS ONE, by the
@@ -2156,6 +2167,16 @@ def _check_credential(key: str, inputs: _Inputs) -> Finding:
                 f"ask Discogs only with it, and without it record Discogs as not "
                 f"asked and leave those files askable. To record it: "
                 f"{searchers.DISCOGS_LOGIN_STEPS}"
+            ),
+        )
+    if not inputs.required(key) and key in _SPENT_BY_TRIAL:
+        return Finding(
+            key=key,
+            title=title,
+            status=Status.INFO,
+            detail=(
+                f"not recorded ({', '.join(missing)}); no verb uses it, only "
+                f"{_SPENT_BY_TRIAL[key]}, which refuses without it naming crate login"
             ),
         )
     if not inputs.required(key):

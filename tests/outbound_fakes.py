@@ -259,8 +259,16 @@ class FakeAccount:
         self.renamed.append((playlist_id, name))
 
     def add_tracks(self, playlist_id: str, remote_ids: tuple[str, ...]) -> tuple[str, ...]:
-        """Chunked add. One write per call, so ``fail_on`` names the playlist."""
+        """Chunked add. One write per call, so ``fail_on`` names the playlist.
+
+        ``fail_on`` naming an asked TRACK fails the whole call too (U270): one
+        request carries every track of a chunk, and a provider that refuses it
+        has added none of them.
+        """
         self._bump(playlist_id)
+        failing = [one for one in remote_ids if one in self.fail_on]
+        if failing:
+            self._fail(f"interrupted outbound write for {failing[0]}")
         members = self.playlists.setdefault(playlist_id, [])
         fresh = tuple(
             one for one in dict.fromkeys(remote_ids)

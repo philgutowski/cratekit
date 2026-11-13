@@ -39,7 +39,8 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs for a track Beatport does not carry; without it Discogs is recorded as not asked, those files stay askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
+| `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -322,9 +323,12 @@ crate route pending
 
 - `tag folder` writes genre and album art to the files only. A file of a
   registered label with a genre takes that genre with no catalogue asked; any
-  other file is asked of Beatport, then of Discogs when Beatport does not
-  carry it and a `discogs-token` is recorded, then of the general catalogue
-  by ISRC. A catalogue's row counts only when its title names the file's own
+  other file is asked of Discogs when a `discogs-token` is recorded, then of
+  Beatport when Discogs gives no genre (it misses, refuses, is not asked for
+  want of a token or for a token it refused, or names only styles no folder
+  holds), then of the general
+  catalogue by ISRC. A Discogs style no folder holds is written nowhere and is
+  the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the
   `KEY - BPM` head are set aside; a file's title is read from where it
   starts, after the head, the `[MP3]` marker the naming verb writes and a
@@ -378,7 +382,9 @@ crate route pending
   `--output json` the summary lists each file by label, by catalogue or not
   at all, with the reason a failed one failed; a sweep that ends in a refusal
   carries the same list in the refusal's detail and counts it in its message.
-  A file with no picture gets the cover the matching catalogue names. The
+  A file with no picture gets the cover the matching catalogue names.
+  Discogs names none, so a file Discogs tagged that has no picture asks
+  Beatport for its cover, and one that has a picture asks Beatport nothing. The
   files of one album name one cover, so while they sit together in the sweep
   it is asked for and resized once and every file of the album gets the same
   picture; a sweep remembers the last four covers, so a folder that
@@ -774,6 +780,11 @@ crate export prune PLAYLIST_KEY --export /path/to/collection-export.xml
 Give the playlist's stable id, never its title. `export playlist` is add only,
 behind `export.playlist.confirm`, and updates the playlist it made before
 (`--new-playlist` forces a new one); read the unmatched tracks it reports.
+It adds the tracks a hundred to a request, each still settled as its own
+item, and a run stopped part way is resumed without adding a track twice.
+A stop asked for while a hundred is being matched writes none of it; one
+asked for during its add lets the add finish, and either way that hundred
+is settled again when the job is resumed.
 `export prune` takes off the remote playlist what the library playlist no
 longer holds.
 
@@ -850,6 +861,42 @@ repeatable, plans just those steps; a side with no kind named is not asked.
   unmatched.
 - A dated label playlist older than `labels.new_playlist_age_days` (30) is
   listed; `label heard` merges it.
+
+### Try Cyanite on a few filed tracks
+
+Cyanite is a paid service that listens to the audio and answers genre, sub
+genre, mood and energy words. Before it is ever asked by the tagging verbs,
+a trial measures it against folders you filed by hand (U245):
+
+```bash
+crate login cyanite-key --from-file PATH
+.venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv --price-per-track 0.10
+.venv/bin/python scripts/cyanite_trial.py FOLDER --output trial.tsv \
+    --send-to-cyanite --cap 40 --price-per-track 0.10
+```
+
+- Without `--send-to-cyanite` it sends nothing: it lists the files, how many
+  it would upload and, with your plan's `--price-per-track`, the estimated
+  cost. With it, `--cap` and `--price-per-track` are both needed and a count
+  over the cap refuses before anything is sent.
+- Only MP3s are sent, which is what Cyanite's API takes; other files are
+  listed as not sent. Audio leaves your machine, so choose the tracks.
+- `trial.tsv` has a row per file sent (a second copy of the same audio is
+  listed as not sent): its genre tag, the folder that genre files
+  it in today, Cyanite's four answers, the folder Cyanite's words name (a
+  `[vocabulary.cyanite]` table in your taxonomy copy answers first, the
+  buckets' aliases otherwise), and whether the two agree. `trial-agreement.tsv`
+  beside it is the agreement per folder.
+- It writes those two files and nothing else: no tag, no record, no library.
+  It never asks Cyanite for a tempo or a key. An output already there is never
+  overwritten; `--resume` with the same `--output` carries on a run cut short,
+  uploading only the files with no answer yet. Files are known by their audio,
+  not their tags or their path, so moving the folder or retagging a file
+  between the two runs costs nothing, and a file whose track Cyanite had made
+  and named when the run ended, however it ended, is asked about again rather than
+  uploaded again.
+- Exit 0 done, or the plan; 1 stopped partway with the rows kept; 2 refused
+  with no audio uploaded.
 
 ### Keep the library tidy
 

@@ -1,0 +1,243 @@
+name = "u245"
+pass_kind = "light"
+
+[[rows]]
+id = "M00_null_control"
+description = "control: a comment changed and nothing else, which must kill nothing"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "maintainer"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        # NO KEY HERE: the address is presigned, and the key goes to the API only.'''
+new = '''        # NO KEY HERE: the address is presigned; the key goes to the API only.'''
+
+[[rows]]
+id = "M01_opt_in"
+description = "run: drop the opt in check, so a run without --send-to-cyanite reads the key and uploads"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    if not settings.send:
+        say("nothing was sent: this is the plan. Add --send-to-cyanite to send it")
+        return Ran(dry=True)'''
+new = '''    if False:
+        say("nothing was sent: this is the plan. Add --send-to-cyanite to send it")
+        return Ran(dry=True)'''
+
+[[rows]]
+id = "M02_cap_required"
+description = "run: send with no cap, so --send-to-cyanite without --cap uploads everything"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    if settings.cap is None:
+        raise TrialRefused("--send-to-cyanite needs --cap, the most files this run may upload")'''
+new = '''    if settings.cap is None:
+        settings = Settings(settings.paths, settings.output, settings.send, 10**6, settings.price, settings.resume)'''
+
+[[rows]]
+id = "M03_cap_bound"
+description = "run: compare the count to the cap with >= rather than >, an off by one that refuses a run at the cap"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    if len(upload) > settings.cap:'''
+new = '''    if len(upload) >= settings.cap:'''
+
+[[rows]]
+id = "M04_cap_counts_uploads"
+description = "run: read the cap against one fewer than the uploads, so a count one over the cap is sent"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    if len(upload) > settings.cap:'''
+new = '''    if len(upload) - 1 > settings.cap:'''
+
+[[rows]]
+id = "M06_price_required"
+description = "run: send with no price, so the cost is never estimated before the upload"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    if settings.price is None:
+        raise TrialRefused('''
+new = '''    if settings.price is None and False:
+        raise TrialRefused('''
+
+[[rows]]
+id = "M07_digest_without_tags"
+description = "audio_digest: hash the whole file, tags included, so a file retagged between two runs is uploaded and paid for again"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    start, end = _audio_span(data)
+    return hashlib.sha256(data[start:end]).hexdigest()'''
+new = '''    start, end = 0, len(data)
+    return hashlib.sha256(data[start:end]).hexdigest()'''
+
+[[rows]]
+id = "M08_never_overwrite"
+description = "run: drop the refusal of an output already there, so an earlier paid table is overwritten"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''            if taken.exists():'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M09_resume_skips_answered"
+description = "run: read every prior row as unanswered, so a resume uploads and pays for answered files again"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        if before is not None and before["agreement"] != NOT_READ:'''
+new = '''        if before is not None and before["agreement"] == "never":'''
+
+[[rows]]
+id = "M10_resume_asks_again"
+description = "run: upload a pending file again instead of asking about its library track"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        elif before is not None and before["library_track"]:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "M11_track_written_ahead"
+description = "analyse: never tell the run the track Cyanite made before the wait, so a run ended mid wait loses it and a resume pays for it again"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        if self.on_made is not None:
+            self.on_made(track_id)'''
+new = '''        if False:
+            self.on_made(track_id)'''
+
+[[rows]]
+id = "M12_digest_identity"
+description = "read_table: key prior rows by the file's path again, so a moved folder is paid for twice"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    return {row["audio_sha256"]: row for row in rows if row["audio_sha256"]}'''
+new = '''    return {row["file"]: row for row in rows if row["audio_sha256"]}'''
+
+[[rows]]
+id = "M13_same_audio_once"
+description = "plan_files: send two files holding the same audio twice"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''            if digest in digests:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M14_mp3_only"
+description = "plan_files: send every file whatever its suffix"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''            if suffix not in UPLOADABLE:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M15_scrub"
+description = "CyaniteAsker.scrub: return the text unscrubbed, so an echoed key reaches a note, a row and a refusal"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        return text.replace(self.key, _SCRUBBED) if self.key else text'''
+new = '''        return text'''
+
+[[rows]]
+id = "M16_cells_scrubbed"
+description = "_keep: write the row's cells unscrubbed"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    row = {name: asker.scrub(value) for name, value in row_for(declared, entry, analysis).items()}'''
+new = '''    row = dict(row_for(declared, entry, analysis))'''
+
+[[rows]]
+id = "M17_key_to_upload"
+description = "analyse: send the API's headers, the key among them, to the presigned upload address"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''            Request("PUT", address, {"Content-Type": "audio/mpeg"}, audio, UPLOAD_TIMEOUT_S)'''
+new = '''            Request("PUT", address, self._headers(), audio, UPLOAD_TIMEOUT_S)'''
+
+[[rows]]
+id = "M18_rejected_remembered"
+description = "query: forget a rejected key, so it is sent again"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        if self.rejected is not None:
+            raise secrets.CredentialRejected('''
+new = '''        if False:
+            raise secrets.CredentialRejected('''
+
+[[rows]]
+id = "M19_401_rejected"
+description = "query: read a 401 as an outage rather than a rejected key"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        if reply.status == 401:'''
+new = '''        if reply.status == 4010:'''
+
+[[rows]]
+id = "M20_graphql_errors"
+description = "query: ignore GraphQL errors, so a refused query reads as an empty answer"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        if errors:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M21_https_upload"
+description = "analyse: upload to an address that is not https"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        if not address.startswith("https://"):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "M22_library_full_stops"
+description = "analyse: read Cyanite's full library as one file's refusal, so the run goes on uploading"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''            if code == LIBRARY_FULL:'''
+new = '''            if code == "never":'''
+
+[[rows]]
+id = "M23_not_started_stops"
+description = "wait: read an analysis never started as unfinished, so the run goes on uploading past a spent limit"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        if state == "AudioAnalysisV6NotStarted":'''
+new = '''        if state == "never":'''
+
+[[rows]]
+id = "M24_unread_not_a_disagreement"
+description = "agreement: read a file Cyanite gave no words for as no folder rather than not read"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''    if analysis.words is None:
+        return NOT_READ'''
+new = '''    if analysis.words is None:
+        return NO_FOLDER'''
+
+[[rows]]
+id = "M25_share_leaves_out_unplaced"
+description = "summarise: count a word placing nowhere in the share again, as a disagreement"
+file = "src/cratekit/tagging/cyanite.py"
+surface = "user"
+tests = ["tests/test_cyanite_trial.py"]
+old = '''        placed = sum(tally[said] for said in (SAME_FOLDER, SAME_BUCKET, DIFFERENT))'''
+new = '''        placed = sum(tally[said] for said in (SAME_FOLDER, SAME_BUCKET, DIFFERENT, NO_FOLDER))'''

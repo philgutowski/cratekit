@@ -200,7 +200,8 @@ def test_a_200_challenge_beside_an_unread_discogs_refuses_as_unreachable_not_par
 
     cause = raised.value.cause
     assert cause.reason == searchers.UNREACHABLE_REASON
-    assert cause.detail["answers"] == ["blocked", "unreachable"]
+    # Discogs is asked first since U282.
+    assert cause.detail["answers"] == ["unreachable", "blocked"]
 
 
 def test_a_bandcamp_client_challenge_title_is_blocked_and_not_called_cloudflare():
@@ -314,6 +315,8 @@ def test_discogs_is_still_asked_on_every_file_beatport_was_not():
 
 
 def test_a_discogs_match_after_a_stopped_beatport_is_written_and_names_beatport_unread():
+    """Discogs decides before Beatport is reached since U282, and the stopped
+    Beatport is named unread when the file's picture asks it."""
     refusals = searchers.Refusals()
     _sweep([REFUSED] * 3, refusals=refusals)
     seen: list[str] = []
@@ -323,7 +326,12 @@ def test_a_discogs_match_after_a_stopped_beatport_is_written_and_names_beatport_
     assert _beatport_requests(seen) == 0
     assert hit.genre is not None
     assert hit.source == searchers.DISCOGS
-    assert hit.unread == (searchers.BEATPORT,)
+    assert hit.unread == ()
+    assert hit.ask_picture is not None
+    pictured = hit.ask_picture(hit)
+    assert _beatport_requests(seen) == 0, "stopped, so the picture's ask sends nothing"
+    assert _beatport(pictured).note.startswith(searchers.NOT_SENT)
+    assert pictured.unread == (searchers.BEATPORT,)
 
 
 def test_a_stopped_beatport_and_a_discogs_with_no_token_refuse_rather_than_decline():

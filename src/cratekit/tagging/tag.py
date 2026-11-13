@@ -64,7 +64,7 @@ Layer: modules.
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from pathlib import Path
 
 from cratekit.core import art, tags
@@ -226,7 +226,9 @@ class SearchHit:
     which alias they are missing rather than only that something was unmapped.
 
     ``art_url`` is the picture on the SAME catalogue row as the genre, or empty
-    when that row names none. A URL rather than bytes, because whether the file
+    when that row names none, or, for a genre from a source that names no
+    picture, on the record shop's row that matched the same track (U282). A
+    URL rather than bytes, because whether the file
     needs a picture at all is :func:`tag_one`'s question and a searcher that
     downloaded eagerly would spend a paced fetch on every file that already has
     one.
@@ -243,6 +245,8 @@ class SearchHit:
     picture (R-796), so a hit it became the source of carries the record shop
     whose row matched, or the empty string when no shop's did, and the report
     about the picture is then written about the shops and not about it.
+    Discogs names no picture either, so a hit it decided carries the same
+    (U282).
 
     ``answers`` is every catalogue's answer, so the item's record can say what
     each one said rather than only the disposition they added up to. ``unread``
@@ -250,6 +254,16 @@ class SearchHit:
     unreachable or unparsable, or passed over for want of a token (U244). On a decline it is what keeps the file from
     reading as ``no-hit`` (R-791); on a match it only keeps the record's two
     fields agreeing.
+
+    ``ask_picture`` is the picture's question left unasked (U282). A source
+    that names no picture, Discogs, can decide the genre before any record
+    shop that names one was asked, and asking one then would spend a request
+    on every file whether it needs a picture or not. So the hit carries the
+    question, and :func:`tag_one` asks it only for a file with no picture,
+    handing it the hit as it stands and taking back the same hit with that
+    shop's answer, picture and unread state folded in. None when there is
+    nothing left to ask. It is not part of a hit's value, so two hits that say
+    the same thing are equal whatever question either still carries.
 
     All of them default to empty so a caller that predates them, and a fake
     searcher in a suite, keep working unchanged.
@@ -263,6 +277,9 @@ class SearchHit:
     answers: tuple[SourceAnswer, ...] = ()
     unread: tuple[str, ...] = ()
     art_source: str | None = None
+    ask_picture: Callable[[SearchHit], SearchHit] | None = field(
+        default=None, compare=False, repr=False
+    )
 
 
 #: Why a file was passed over. ``HAS_GENRE`` is the fill-if-empty policy this
@@ -529,6 +546,31 @@ def _art_embedded(path: Path, hit: SearchHit | None, fetch_image: FetchImage | N
     return result(ART_EMBEDDED, f"{cdj.width} by {cdj.height} from {pictured_by or url}")
 
 
+def _picture_asked(hit: SearchHit) -> tuple[SearchHit, dict[str, str] | None]:
+    """The hit with its picture's question asked (U282), and the art result if that failed.
+
+    ASKED HERE, AFTER THE GENRE IS SAVED AND ONLY FOR A FILE WITH NO PICTURE,
+    so a file whose picture is in place never spends a record shop's request,
+    and the genre a catalogue already decided is on the file whatever the
+    question costs. NEVER RAISES, for :func:`_art_embedded`'s reason: a picture
+    that cannot be had must not fail an item whose genre was just written. A
+    question that fails leaves the hit as it was and says why the picture is
+    unavailable.
+    """
+    ask = hit.ask_picture
+    assert ask is not None
+    try:
+        return replace(ask(hit), ask_picture=None), None
+    # A bare except, on purpose, as the image fetch's: every way the question
+    # can fail is one fact for this file, the picture could not be had.
+    except Exception as exc:  # noqa: BLE001
+        said = f"{exc.cause.reason}: {exc.cause.message}" if isinstance(exc, CratekitError) else str(exc)
+        return replace(hit, ask_picture=None), {
+            "art_fetch": ART_UNAVAILABLE,
+            "art_fetch_detail": f"the picture could not be asked for: {said}",
+        }
+
+
 @dataclass(frozen=True, slots=True)
 class _Labelled:
     """What the label tier found for one file: its answer, and how it got there."""
@@ -656,6 +698,12 @@ def tag_one(
     ``copyright_labels`` reads the label of a file that has neither off its
     copyright line (U240). Without it no line is read.
 
+    A PICTURE LEFT UNASKED IS ASKED HERE, AND ONLY FOR A FILE WITH NONE (U282).
+    A genre Discogs decided reaches here with ``ask_picture`` set, since
+    Discogs names no picture, and the record shop after it is asked for its
+    row's cover only when the file has no picture, after the genre is saved,
+    never raising. A file that has one costs that shop nothing.
+
     THE ART REPAIR RUNS FIRST, before the genre check can return. A file that
     already carries a genre is exactly the file the source system repaired, so a
     repair placed after that return would never reach it. The repair never
@@ -765,7 +813,15 @@ def tag_one(
     # THE PICTURE IS EMBEDDED AFTER THE GENRE IS SAVED, so the last save a file
     # sees is the one carrying its art, whatever the genre write does to the
     # rest of the tag block.
-    pictured = settled if settled is not None else _art_embedded(path, hit, fetch_image)
+    unasked: dict[str, str] | None = None
+    if settled is None and hit is not None and hit.ask_picture is not None:
+        hit, unasked = _picture_asked(hit)
+    if settled is not None:
+        pictured = settled
+    elif unasked is not None:
+        pictured = unasked
+    else:
+        pictured = _art_embedded(path, hit, fetch_image)
     found = (
         {
             "source": hit.source,
