@@ -52188,3 +52188,187 @@ twice either way, since every made track is written down before its wait.
 **Closes when:** the attended trial measures the time a track takes, and, if
 it matters, a later card uploads every file first and then polls them
 together. Ledger only.
+
+---
+
+## R-1671. A ceiling or a cooldown met while an export batch is matched writes none of the batch
+
+**Found:** at the build of #699, U270, 2026-11-13.
+
+**The mechanism.** `export.cli.run_export_items` matches each track of a
+batch of up to a hundred before it writes any of them, and a `jobs.Parked`
+raised by the provider gate during that matching releases the whole batch.
+Before U270 each track was matched and written as its own item, so the tracks
+matched before the park were on the playlist and done.
+
+**Measured cost.** Not driven. Reasoned from the code: no track is lost or
+added twice, since nothing of the batch was written, and the resume matches
+the batch again, its ISRC lookups read from the on disk ISRC cache where the
+first run reached them. What is lost is the time of the matches made before
+the park, at most a hundred. Whether a hundred matches can need more than the
+command's ceiling of 500 calls, which would make every resume park at the same
+batch, was not measured; the match makes one ISRC lookup a track and more only
+for a row several releases carry.
+
+**Closes when:** a live export reads its matches per track against the
+ceiling, or a park during matching writes the tracks already matched before
+it stops. Ledger only: the cost is time, never a write.
+
+---
+
+## R-1672. A stop between a landed export batch and its ledger write leaves up to a hundred tracks the ledger never records
+
+**Found:** at the review of #699, U270, 2026-11-13.
+
+**The mechanism.** R-1543 a batch at a time. `export.apply` records a batch's
+tracks once `add_tracks` answers. A kill, or a provider gate park at the
+client's read after the POST, between the request and that write leaves every
+track of the batch on the playlist and none recorded; the resumed batch finds
+them on the playlist and reports them as already there. Recording the rows
+sent before the request and settling them on the next read was built and
+taken out at round one of the review, because that read cannot tell a landed
+add from a person's own add of the same track. A question for Phillip on #699
+asks whether he wants that settle back.
+
+**Measured cost.** Driven by round two of the review with a park after the
+POST through the driver, 100 tracks: 100 on the playlist, none twice, 0
+recorded, counts `written 0, already 100`. A prune after one of those rows
+leaves the crate takes nothing off. Before U270 the same stop cost one track.
+A refused read after the POST no longer reaches it: `add_tracks` reopens and
+reads back on its retry.
+
+**Closes when:** a track a stopped batch sent is recorded on evidence that
+tells it from a person's add, or Phillip answers that the later read is
+evidence enough. Ledger only: the cost is a prune that leaves a track.
+
+---
+
+## R-1673. The adapter's add_to_playlist and its held playlist have no caller in src after U270
+
+**Found:** at the build of #699, U270, 2026-11-13.
+
+**The mechanism.** `export.apply` was the one caller of
+`RemoteAccount.add_to_playlist`, and U270 moves it to `add_tracks`. The held
+playlist U255 built for it (`TidalAccount._held`, `_opened`) is now reached
+only by `add_to_playlist`, which nothing in `src` calls, and by
+`_membership`, which still holds what it opened. The attended card U255 owed,
+A131 (#716), reads the 412s of adds through that held object from a live
+`export playlist`, which no longer makes one.
+
+**Measured cost.** None to a library: the code path is unreached. The cost is
+a maintainer reading U255's held object as the export's path, and an attended
+check that can no longer read what it asks for.
+
+**Closes when:** `add_to_playlist` is given a caller again or is taken out of
+the protocol, the adapter and the fakes, and A131's add checks are rewritten
+to the batched add. Ledger only.
+
+---
+
+## R-1674. The adapter's read back records a track a person added by hand during an export as the export's own
+
+**Found:** at the review of #699, U270, 2026-11-13.
+
+**The mechanism.** `TidalAccount.add_tracks` reads the playlist back when the
+provider's answer leaves out a track it was asked for, and returns every asked
+track the playlist then holds. The membership it decides what to send from is
+read once per playlist per process. A track a person adds by hand while an
+export runs, if a later batch of the same run sends it, is skipped by the
+provider as a duplicate, found by the read back, and recorded by
+`export.apply` as added, row and all.
+
+**Measured cost.** Driven by round two of the review through the driver, 150
+tracks: a person's hand add of a batch two track during batch one is recorded
+as written, and `prune.plan_export` with its row gone takes it off. `main`
+does the same a track at a time, so U270 did not cause it.
+
+**Closes when:** a track the read back holds and the answer did not name is
+reported as already there rather than recorded, or the membership is read
+again before each batch. Ledger only by origin; its cost is a prune taking off
+a person's track, so it is worth a card if it is ever met live.
+
+---
+
+## R-1675. A file that needs only its picture asks Discogs first, which never names one
+
+**Found:** at the build of #798, U282, 2026-11-13.
+
+**The mechanism.** `tag.tag_one` asks the searcher about a file that already
+has a genre (its own, or its registered label's) when it has no picture,
+because only its cover is wanted. The searcher's signature is `(artist,
+title)`, so it cannot tell a picture-only file from one that needs a genre,
+and since U282 its walk asks Discogs first. Discogs names no picture, so for
+such a file its answer is spent: a database search and up to three release
+reads, each paced, before Beatport is asked for the cover through the hit's
+`ask_picture`.
+
+**Measured cost.** Driven on fakes: a three file sweep with one picture-only
+file sends Discogs three searches where only the two genre-needing files
+needed one (U282's review, round one). A person pays time, about five seconds
+of pacing per such file, and Discogs' sixty a minute budget. No wrong write,
+no false report: the cover arrives as before.
+
+**Closes when:** the searcher is told what the file needs, a keyword on the
+shipped searcher or a second binder for a picture-only question, and a
+picture-only file asks the record shops alone. Ledger only.
+
+---
+
+## R-1676. The integrity check's answer for a consistency check that raises after a good open is held by no test that runs on Linux
+
+**Found:** at the review of #804, R-1665, 2026-11-13.
+
+**The mechanism.** `rb_writer.integrity_ok` answers False when `PRAGMA
+quick_check` raises after the open succeeded (`except Exception: return
+False`). Mutated to answer True, the only tests that fail are the two sealed
+database tests in `tests/test_rb_writer_db.py`, which fail on the Linux
+container anyway because it runs as root, so on Linux the branch is held by
+nothing. The guard predates R-1665; the round two review found it while
+checking that R-1665's new damage test reaches the consistency check's own
+verdict, which it does.
+
+**Measured cost.** None driven. Four damaged copies were tried (a truncated
+tail, an index cell count of 0xffff, a garbage index body, a garbage root of
+an empty table) and none made `quick_check` raise after a good open, so the
+input that would reach this branch is unmeasured.
+
+**Closes when:** a damaged copy that opens and then makes `quick_check`
+raise is found and pinned, or the macOS battery is confirmed to kill the
+mutant through the sealed database tests. Ledger only: no producer is known.
+
+---
+
+## R-1677. The integrity check's throwaway copy needs room on the temporary volume that nothing measures, and a full one refuses the write as a failed check
+
+**Found:** at the review of #804, R-1665, 2026-11-13.
+
+**The mechanism.** Since R-1665, `rb_writer.integrity_ok` copies the file set
+it checks (the database, its log and index, the legacy playlist file) into a
+private directory under the system's temporary directory and checks the copy,
+so the capture itself is never opened. `snapshot.assert_room_for_capture`
+measures only the capture store, on the library volume, so nothing asks
+whether the temporary volume can hold a second copy of the database. When it
+cannot, the copy raises, `integrity_ok` answers False with a log warning
+naming the error, the capture records itself not verified, and every guarded
+write refuses through `snapshot.assert_verified` with "did not pass its
+integrity check" and the `report-defect` remedy. The true cause, no space on
+the temporary volume, is in the log only.
+
+**Measured cost.** Fails closed: nothing commits behind a capture that was
+not checked, so no data is at risk. The review drove `snapshot.capture` with
+the temporary directory on a 256 KiB tmpfs: the branch recorded the capture
+not verified and refused, the temporary directory was left empty, and the
+base recorded it verified. At verb level (`test_inbox_rotate` with the
+temporary directory on tmpfs of 128 KiB to 800 KiB) base and branch failed and
+passed at the same sizes, because SQLite's own temporary files already need
+that much on the suite's small fixture. Whether a window exists on a full size
+library, where the database is hundreds of megabytes and SQLite's own needs
+are far smaller, is unmeasured; if it does, a DJ is told the capture failed
+its check and to report a defect, when the disk is full.
+
+**Closes when:** the room the throwaway copy needs is measured before the
+capture and refused under the room slug with a remedy naming the temporary
+volume, or the throwaway copy is placed on the store's volume and counted in
+`assert_room_for_capture`, with a test that fills the temporary volume and
+asserts the refusal names it. Earns an issue: a person is told something false
+(board bar b) on the path every guarded write takes.

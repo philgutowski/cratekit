@@ -49,7 +49,7 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import tags
+from cratekit.core import routing, tags
 from cratekit.core.naming import MarkerRule, NameSpec, NameTemplate, render_all
 from cratekit.tagging import searchers, tag, titles
 from tests._containers import synth_container
@@ -64,7 +64,14 @@ from tests.test_catalogue_searcher import (
     _searcher,
     _traxsource_page,
 )
-from tests.test_discogs_searcher import discogs_answer, release, results, routed, searcher
+from tests.test_discogs_searcher import (
+    TAXONOMY,
+    discogs_answer,
+    release,
+    results,
+    routed,
+    searcher,
+)
 
 OTHER = "Sunrise Mood"
 BRACKETED = "(Not Just) Knee Deep (Part 1)"
@@ -758,6 +765,12 @@ def _file(tmp_path: Path, silence: Path, name: str, wanted: dict[str, str]) -> P
     return path
 
 
+#: The genre the file's own row gives when both catalogues carry it. Discogs
+#: is asked first since U282, so its release, styled Nu-Disco by the fixture,
+#: is the row that decides; Beatport's genre was this before.
+OWN_ROWS_GENRE = routing.suggest_tag(TAXONOMY, "Nu-Disco", source=searchers.DISCOGS).tag
+
+
 def _beatport_and_discogs(row: str, number: int):
     beatport = searchers.Fetched(
         text=_beatport_page([_beatport_track(ARTIST, row, BUCKET_GENRE, mix="Original Mix")]),
@@ -817,8 +830,8 @@ def test_an_untagged_file_still_takes_its_own_rows_genre_by_its_name(tmp_path, s
 
     result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(own, 48)))
 
-    assert result.genre_written == BUCKET_GENRE
-    assert tags.read_genre_from_file(path) == BUCKET_GENRE
+    assert result.genre_written == OWN_ROWS_GENRE
+    assert tags.read_genre_from_file(path) == OWN_ROWS_GENRE
 
 
 # ---------------------------------------------------------------------------
@@ -879,8 +892,8 @@ def test_an_untagged_file_named_with_its_artist_as_written_takes_its_own_genre(
 
     result = tag.tag_one(path, searcher=searcher(_beatport_and_discogs(own, 49)))
 
-    assert result.genre_written == BUCKET_GENRE
-    assert tags.read_genre_from_file(path) == BUCKET_GENRE
+    assert result.genre_written == OWN_ROWS_GENRE
+    assert tags.read_genre_from_file(path) == OWN_ROWS_GENRE
 
 
 def test_a_self_titled_tracks_dash_version_the_list_lacks_finds_its_own_row_only_when_it_writes_the_version(

@@ -2,8 +2,9 @@
 
 Unmatched tracks are reported, never dropped silently. A re-export of the
 same local playlist updates the recorded remote playlist rather than
-creating a second one. Each added track is recorded before the next write
-so an interrupted run resumes without duplicating remote state.
+creating a second one. The tracks a plan lacks go to the account in one
+batched add (U270), and each is recorded once the provider's answer names
+it, so an interrupted run resumes without duplicating remote state.
 """
 
 from __future__ import annotations
@@ -80,6 +81,18 @@ class ExportPlan:
     filing: str = ""
 
 
+#: What one matched row came to, in :attr:`ExportReport.outcomes` (U270).
+ADDED = "added"
+ALREADY = "already"
+#: The provider would not add the track: its answer did not name it and the
+#: playlist read back after the add does not hold it.
+REFUSED = "refused"
+
+#: How many of a job's items the driver hands the export worker at once
+#: (U270). The provider's limit on one add request, so a batch is one request.
+BATCH = 100
+
+
 @dataclass(frozen=True, slots=True)
 class ExportReport:
     """What one apply did, including unmatched tracks the brief requires."""
@@ -91,12 +104,18 @@ class ExportReport:
     already: tuple[str, ...]
     unmatched: tuple[Unmatched, ...]
     #: The key the recorded remote playlist was moved from BY THIS CALL, or
-    #: empty. Set once per job under the per item shape: the first item moves
-    #: the record and the rest find it under their own key.
+    #: empty. Set once per job: the first batch moves the record and every
+    #: later one finds it under its own key.
     adopted_from: str = ""
     #: Why a playlist this call created is not in the ``Exports`` folder, or
     #: empty (U131). ``crate organize`` files one left at the root.
     unfiled: str = ""
+    #: Each matched row's outcome, ``(row, track, outcome)`` in plan order,
+    #: the outcome one of :data:`ADDED`, :data:`ALREADY` and :data:`REFUSED`
+    #: (U270). A batch's worker reads its own item's row here.
+    outcomes: tuple[tuple[str, str, str], ...] = ()
+    #: Tracks the provider would not add, which ``added`` does not name (U270).
+    refused: tuple[str, ...] = ()
 
 
 #: The playlist export creates is filed in the account's Exports folder (U131).
@@ -193,20 +212,50 @@ def apply(
     remote_id = reserved.remote_id
     already_on = set(account.playlist_tracks(remote_id))
     already_recorded = reserved.added
-    added: list[str] = []
-    already: list[str] = []
-    for local, remote in planned.matched:
+    outcome: dict[int, str] = {}
+    lacking: dict[str, str] = {}
+    noted: dict[str, str] = {}
+    for at, (local, remote) in enumerate(planned.matched):
         if remote in already_on or remote in already_recorded:
-            already.append(remote)
+            outcome[at] = ALREADY
             # WHICH ROW A WRITTEN TRACK CAME FROM (R-836), kept for a track this
             # product wrote, so a prune can tell a row that left from a match
             # that drifted. A track a person put there is never claimed.
             if remote in already_recorded and reserved.rows.get(local) != remote:
-                ledger.record_playlist_row(cfg, reserved.key, local, remote)
+                noted[local] = remote
             continue
-        account.add_to_playlist(remote_id, remote)
-        ledger.record_playlist_track(cfg, reserved.key, remote, identity=local)
-        added.append(remote)
+        lacking[local] = remote
+    answered: set[str] = set()
+    if lacking:
+        # ONE REQUEST FOR THE BATCH, the provider's limit per request, through
+        # the add the mirror already uses. It opens the playlist afresh, so a
+        # person's edit between two batches is read and the batch goes after
+        # it. A track is ADDED only when the answer names it, or, for an answer
+        # naming part of the batch, when the adapter's one read back holds it.
+        wanted = tuple(dict.fromkeys(lacking.values()))
+        answered = {str(one) for one in account.add_tracks(remote_id, wanted)}
+    landed = {local: remote for local, remote in lacking.items() if remote in answered}
+    # ONE LEDGER WRITE FOR THE BATCH, AFTER THE ANSWER (U270, R-230). See
+    # ``ledger.record_playlist_tracks`` for why nothing is written before it.
+    if landed or noted:
+        ledger.record_playlist_tracks(cfg, reserved.key, landed=landed, rows=noted)
+    added: list[str] = []
+    already: list[str] = []
+    refused: list[str] = []
+    outcomes: list[tuple[str, str, str]] = []
+    for at, (local, remote) in enumerate(planned.matched):
+        said = outcome.get(at) or (ADDED if remote in answered else REFUSED)
+        # TWO ROWS MATCHED TO ONE TRACK are sent once, and the second reads as
+        # already there when the first landed, as a per item run would read it.
+        if said == ADDED and remote in added:
+            said = ALREADY
+        outcomes.append((local, remote, said))
+        if said == ADDED:
+            added.append(remote)
+        elif said == ALREADY:
+            already.append(remote)
+        else:
+            refused.append(remote)
     unfiled = ""
     if reserved.created:
         # FILED AT CREATION (U131), after the tracks, so a refused move leaves a
@@ -230,4 +279,6 @@ def apply(
         already=tuple(already),
         unmatched=planned.unmatched,
         adopted_from=reserved.adopted_from,
+        outcomes=tuple(outcomes),
+        refused=tuple(refused),
     )

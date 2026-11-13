@@ -419,10 +419,17 @@ def test_no_declared_handler_loads_a_fresh_configuration():
         dotted, _, attribute = declaration.partition(":")
         path = SRC_ROOT / (dotted.replace(".", "/") + ".py")
         assert path.is_file(), f"{key} declares {dotted}, which is not a module file"
+        # THE BATCH FORM A WORKER NAMES IS A HANDLER TOO (U270), handed the same
+        # frozen configuration, so it is read by the same guard.
+        names = {attribute}
+        batched = handlers.batching_of(handlers.resolve(key))
+        if batched is not None:
+            assert batched[0].__module__ == dotted, f"{key}'s batch form lives elsewhere"
+            names.add(batched[0].__name__)
         tree = ast.parse(path.read_text())
         aliases = _config_aliases(tree)
         for node in ast.walk(tree):
-            if not isinstance(node, ast.FunctionDef) or node.name != attribute:
+            if not isinstance(node, ast.FunctionDef) or node.name not in names:
                 continue
             for spelling in _reload_calls(node, aliases=aliases):
                 problems.append(f"{key}: {declaration} calls {spelling}")
@@ -470,3 +477,97 @@ def test_the_fresh_configuration_guard_does_not_fire_on_a_handler_that_behaves()
     )
     tree = ast.parse(body)
     assert not _reload_calls(tree, aliases=_config_aliases(tree))
+
+
+# ---------------------------------------------------------------------------
+# U270: a worker that names a batch form of itself is driven in batches
+# ---------------------------------------------------------------------------
+
+
+def _worker_with_batch(seen: list, size: int):
+    def single(job_, item_, cfg_):
+        raise AssertionError("a worker with a batch form is driven through it")
+
+    def many(job_, items, handed, stop):
+        seen.append((tuple(item.item_id for item in items), handed, stop()))
+        return {item.item_id: None for item in items}
+
+    single.batched = (many, size)
+    return single
+
+
+def test_a_worker_naming_a_batch_form_is_driven_in_batches_against_the_frozen_config(
+    cfg, queue, monkeypatch, tmp_path
+):
+    store, root = queue
+    job = jobs.enqueue(
+        store, handler_key="master", payload={}, cfg=cfg, item_ids=("a", "b", "c")
+    )
+    moved = config.from_dict(
+        {
+            **json_roundtrip(cfg),
+            "paths": {"download_staging": str(tmp_path / "somewhere-else")},
+        }
+    )
+    config.save(moved)
+    config.reset_cache()
+    seen: list = []
+    monkeypatch.setattr(handlers, "resolve", lambda key: _worker_with_batch(seen, 2))
+
+    result = handlers.run_job(store, job, root=root)
+
+    assert [ids for ids, _cfg, _stopped in seen] == [("a", "b"), ("c",)]
+    assert all(
+        handed.paths.download_staging == cfg.paths.download_staging
+        for _ids, handed, _stopped in seen
+    )
+    assert not any(stopped for _ids, _cfg, stopped in seen)
+    assert result.processed == 3
+
+
+def test_a_worker_naming_no_batch_form_is_driven_one_item_at_a_time(cfg, queue, monkeypatch):
+    store, root = queue
+    job = jobs.enqueue(store, handler_key="master", payload={}, cfg=cfg, item_ids=("a", "b"))
+    seen: list[str] = []
+
+    def single(job_, item_, cfg_):
+        seen.append(item_.item_id)
+
+    monkeypatch.setattr(handlers, "resolve", lambda key: single)
+    handlers.run_job(store, job, root=root)
+
+    assert seen == ["a", "b"]
+    assert handlers.batching_of(single) is None
+
+
+@pytest.mark.parametrize(
+    "named",
+    [("not callable", 2), (lambda *a: {}, 0), (lambda *a: {}, True), (lambda *a: {},), "x"],
+    ids=["not-callable", "size-zero", "size-bool", "one-element", "not-a-pair"],
+)
+def test_a_batch_form_that_is_not_a_callable_and_a_size_refuses(named):
+    def single(job_, item_, cfg_):
+        return None
+
+    single.batched = named
+    with pytest.raises(CratekitError) as caught:
+        handlers.batching_of(single)
+    assert caught.value.cause.reason == "internal-error"
+
+
+def test_the_export_worker_names_its_batch_form_at_the_providers_add_limit():
+    """The one worker bound to batches, and its size, the provider's limit on
+    one add request, so a batch is one request (U270)."""
+    from cratekit.export import cli as export_cli
+    from cratekit.modules.outbound import export as outbound_export
+    from cratekit.modules.outbound import tidal_account
+
+    named = handlers.batching_of(handlers.resolve("export.playlist"))
+    assert named == (export_cli.handle_batch, outbound_export.BATCH)
+    assert outbound_export.BATCH == tidal_account.ADD_CHUNK == 100
+    batched = {
+        key
+        for key in handlers.HANDLERS
+        if handlers.batching_of(handlers.resolve(key)) is not None
+    }
+    assert batched == {"export.playlist"}

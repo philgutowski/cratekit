@@ -1,0 +1,250 @@
+name = "r1665"
+pass_kind = "light"
+
+[[rows]]
+id = "W1_check_opens_the_capture"
+description = "integrity_ok: open the file it is given rather than its throwaway copy, the defect itself"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''                db = open_db(checked, check_app_version=False, unlock=unlock)'''
+new = '''                db = open_db(snapshot_database, check_app_version=False, unlock=unlock)'''
+
+[[rows]]
+id = "W2_failed_copy_passes"
+description = "integrity_ok: a throwaway copy that cannot be made answers True"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''            exc,
+        )
+        return False'''
+new = '''            exc,
+        )
+        return True'''
+
+[[rows]]
+id = "W3_no_release_of_the_copy"
+description = "integrity_ok: release only the session, leaving the pooled connection on the throwaway copy open while it is removed"
+file = "src/cratekit/core/rb_writer.py"
+surface = "maintainer"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''                # left open would hold its files while it goes.
+                close_db(db)'''
+new = '''                # left open would hold its files while it goes.
+                db.close()'''
+
+[[rows]]
+id = "W4_quick_check_ignored"
+description = "integrity_ok: answer True whatever quick_check says"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''                return str(result).lower() == "ok"'''
+new = '''                return True'''
+
+[[rows]]
+id = "W5_unreadable_check_passes"
+description = "integrity_ok: an exception from quick_check answers True"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''            except Exception:  # noqa: BLE001 - an unreadable snapshot is a failed snapshot
+                return False'''
+new = '''            except Exception:  # noqa: BLE001 - an unreadable snapshot is a failed snapshot
+                return True'''
+
+[[rows]]
+id = "W6_refused_open_passes"
+description = "integrity_ok: an open the gate refuses answers True"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''            except RekordboxUnavailable:
+                return False'''
+new = '''            except RekordboxUnavailable:
+                return True'''
+
+[[rows]]
+id = "W7_copy_drops_the_log"
+description = "_copy_file_set: copy no companion file, so the check and the capture lose the log"
+file = "src/cratekit/core/rb_writer.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''    for suffix in db_sidecar_suffixes():
+        sidecar = source.with_name(source.name + suffix)
+        if sidecar.exists():
+            shutil.copy2(sidecar, destination / sidecar.name)'''
+new = '''    for suffix in ():
+        sidecar = source.with_name(source.name + suffix)
+        if sidecar.exists():
+            shutil.copy2(sidecar, destination / sidecar.name)'''
+
+[[rows]]
+id = "S1_guard_removed"
+description = "capture: never ask whether the check changed the capture"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''    if verdict and copied is not None:
+        changed'''
+new = '''    if False:
+        changed'''
+
+[[rows]]
+id = "S2_guard_ignored"
+description = "capture: log what the check changed and keep the verdict"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''                "; ".join(changed[:20]),
+            )
+            verdict = False'''
+new = '''                "; ".join(changed[:20]),
+            )
+            verdict = verdict'''
+
+[[rows]]
+id = "S3_removal_unseen"
+description = "_changed_by_the_check: a removed entry is not a change"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''            changed.append(f"{path} was removed")'''
+new = '''            pass'''
+
+[[rows]]
+id = "S4_rewrite_unseen"
+description = "_changed_by_the_check: a rewritten entry is not a change"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        elif after[path] != identity:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "S5_size_not_identity"
+description = "_walked: identify a file by its modification time alone"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''(status.st_size, status.st_mtime_ns)'''
+new = '''(0, status.st_mtime_ns)'''
+
+[[rows]]
+id = "S6_mtime_not_identity"
+description = "_walked: identify a file by its size alone"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''(status.st_size, status.st_mtime_ns)'''
+new = '''(status.st_size, 0)'''
+
+[[rows]]
+id = "S7_directories_unwalked"
+description = "_walked: record no directory"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''            found[here / name] = None
+'''
+new = '''            pass
+'''
+
+[[rows]]
+id = "S8_walk_after_fails_open"
+description = "_changed_by_the_check: a walk after the check that fails answers no change"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        return [f"the capture could not be walked again: {exc}"]'''
+new = '''        return []'''
+
+[[rows]]
+id = "S9_walk_before_fails_open"
+description = "capture: verify although the walk before the check failed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        if record.database is not None and copied is not None
+'''
+new = '''        if record.database is not None
+'''
+
+[[rows]]
+id = "S10_walk_before_empty"
+description = "capture: a walk before the check that fails answers an empty capture"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        copied = None
+'''
+new = '''        copied = {}
+'''
+
+[[rows]]
+id = "S11_walk_skips_unreadable"
+description = "_walked: let os.walk skip a directory it cannot read"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''    for current, directories, files in os.walk(capture_root, onerror=_raise_walk_error):'''
+new = '''    for current, directories, files in os.walk(capture_root):'''
+
+[[rows]]
+id = "S12_verify_raises_passes"
+description = "_verify: a check that raises counts as passed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        logger.warning("the capture integrity check could not run, so it did not pass: %s", exc)
+        return False'''
+new = '''        logger.warning("the capture integrity check could not run, so it did not pass: %s", exc)
+        return True'''
+
+[[rows]]
+id = "S13_flush_before_check"
+description = "capture: flush nothing after the check, the U272 order"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''    try:
+        _flush(destination, destination_root)
+    except OSError as exc:
+        raise _not_flushed(record, manifest, exc) from exc
+
+    _write_manifest(record, manifest)'''
+new = '''    _write_manifest(record, manifest)'''
+
+[[rows]]
+id = "S14_sources_unchecked"
+description = "assert_sources_present: never refuse, so a restore accepts a capture missing files"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''    if not absent:
+        return
+    raise refuse('''
+new = '''    if True:
+        return
+    raise refuse('''
+
+[[rows]]
+id = "S15_recorded_before_the_copy_lands"
+description = "capture: record a companion as captured whether or not it landed"
+file = "src/cratekit/core/snapshot.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''                source=path, captured=landed if landed.exists() else None, directory=False'''
+new = '''                source=path, captured=landed, directory=False'''
+
+[[rows]]
+id = "R1_log_not_restored"
+description = "restore._file_steps: never write back a restored companion, so the log's rows are lost"
+file = "src/cratekit/core/restore.py"
+surface = "user"
+tests = ["tests/test_snapshot_wal_r1665.py", "tests/test_snapshot.py", "tests/test_snapshot_flush_u272.py", "tests/test_rb_snapshot.py", "tests/test_restore.py", "tests/test_rb_writer_db.py", "tests/test_intake_land_rehearse.py"]
+old = '''        if entry.source in restored_companions:
+            if entry.captured is not None:'''
+new = '''        if entry.source in restored_companions:
+            if False:'''

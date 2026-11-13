@@ -1,0 +1,264 @@
+# U270, a job's export items written a hundred to a request. Author's rows,
+# measured on Linux with the base's machine bound failures subtracted. Each
+# row names its subset, the test files that drive the engine, the binding,
+# the export writer and the adapter's add; a zero there is promoted to a full
+# run by the driver before it is reported.
+
+name = "u270"
+pass_kind = "light"
+
+[[rows]]
+id = "J1_claim_batch_size_floor"
+description = "claim_batch: accept a batch of zero items, so a size the binding never checks claims nothing and the job reads as finished"
+file = "src/cratekit/core/jobs.py"
+surface = "maintainer"
+tests = ["tests/test_jobs_batch.py", "tests/test_jobs.py", "tests/test_handlers.py"]
+old = '''    if limit < 1:
+        raise refuse(
+            "internal-error",
+            f"a batch of {limit} items was asked for; a batch takes at least one",'''
+new = '''    if limit < 0:
+        raise refuse(
+            "internal-error",
+            f"a batch of {limit} items was asked for; a batch takes at least one",'''
+
+[[rows]]
+id = "J2_claim_batch_order"
+description = "claim_batch: claim the highest ordinals first, so a batch writes its tracks in the reverse of the crate's order"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''            "ORDER BY ordinal LIMIT ?",'''
+new = '''            "ORDER BY ordinal DESC LIMIT ?",'''
+
+[[rows]]
+id = "J3_park_releases_the_batch"
+description = "drive: ignore a Parked among a batch's outcomes, so the batch is settled as failed and the next batch is the second request into a block"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''                if parked is not None:
+                    release_claims(store, job_id, driver=driver)'''
+new = '''                if False:
+                    release_claims(store, job_id, driver=driver)'''
+
+[[rows]]
+id = "J4_signal_releases_the_batch"
+description = "drive: commit a batch answered under a signal, so a stop part way settles what the handler cut short"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''                    return result
+                if interrupt.signalled:
+                    release_claims(store, job_id, driver=driver)
+                    result.interrupted = True
+                    break
+                for item in claimed:'''
+new = '''                    return result
+                for item in claimed:'''
+
+[[rows]]
+id = "J5_declined_outcome"
+description = "drive: settle a declined outcome as failed, so a batch item the worker declined fails the job"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py"]
+old = '''                    if isinstance(outcome, Declined):'''
+new = '''                    if False:'''
+
+[[rows]]
+id = "J6_missing_outcome_fails"
+description = "_batch_outcomes: read an item the handler gave no outcome for as done"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_workers.py"]
+old = '''            outcomes[item.item_id] = _no_outcome(item)'''
+new = '''            outcomes[item.item_id] = None'''
+
+[[rows]]
+id = "J7_raise_is_every_outcome"
+description = "_batch_outcomes: a raise out of the batch handler fails only the first item, and the rest have no outcome"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_outbound_workers.py", "tests/test_outbound_export_batches.py"]
+old = '''        return {item.item_id: exc for item in claimed}'''
+new = '''        return {claimed[0].item_id: exc}'''
+
+[[rows]]
+id = "J8_stop_is_the_signal"
+description = "drive: hand the batch handler a stop that never answers true, so a signal waits for a whole batch's matching"
+file = "src/cratekit/core/jobs.py"
+surface = "user"
+tests = ["tests/test_jobs_batch.py", "tests/test_handlers.py"]
+old = '''                    batch, job, claimed, lambda: interrupt.signalled'''
+new = '''                    batch, job, claimed, lambda: False'''
+
+[[rows]]
+id = "J9_outcome_type_check"
+description = "_batch_outcomes: pass an outcome that is neither produced nor an exception through to the commit"
+file = "src/cratekit/core/jobs.py"
+surface = "maintainer"
+tests = ["tests/test_jobs_batch.py"]
+old = '''        if outcome is not None and not isinstance(outcome, (Produced, Exception)):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "H1_batch_size_floor"
+description = "batching_of: accept a batch form of size zero"
+file = "src/cratekit/cli/handlers.py"
+surface = "maintainer"
+tests = ["tests/test_handlers.py"]
+old = '''isinstance(size, bool) or size < 1:'''
+new = '''isinstance(size, bool) or size < 0:'''
+
+[[rows]]
+id = "H2_run_job_drives_the_batch"
+description = "run_job: never hand the driver the batch form, so the export goes back to a request a track"
+file = "src/cratekit/cli/handlers.py"
+surface = "user"
+tests = ["tests/test_handlers.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''current_config=current, batch=batching'''
+new = '''current_config=current, batch=None'''
+
+[[rows]]
+id = "C1_export_names_its_batch_form"
+description = "export cli: the per item worker names no batch form"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_handlers.py", "tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py", "tests/test_outbound_tidal_account.py"]
+old = '''handle.batched = (handle_batch, BATCH)  # type: ignore[attr-defined]'''
+new = '''handle.unbatched = (handle_batch, BATCH)  # type: ignore[attr-defined]'''
+
+[[rows]]
+id = "C2_stop_while_planning"
+description = "run_export_items: never ask stop while a batch is planned, so a signal still sends the batch's add"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''        if stop():
+            return None'''
+new = '''        if False:
+            return None'''
+
+[[rows]]
+id = "C3_refused_track_fails_its_item"
+description = "run_export_items: report a track the provider would not add as an item done with nothing added"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''        if refused:
+            answered[track_id] = _refused(refused[0], report.remote_id)
+            continue'''
+new = '''        if False:
+            answered[track_id] = _refused(refused[0], report.remote_id)
+            continue'''
+
+[[rows]]
+id = "C4_created_said_once"
+description = "run_export_items: every item of the batch that created the playlist reports the create"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''            "created": report.created and first_said,'''
+new = '''            "created": report.created,'''
+
+[[rows]]
+id = "C5_unfiled_said_once"
+description = "run_export_items: every item of the batch carries the filing warning, one per track in the summary"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py", "tests/test_playlist_kinds.py"]
+old = '''            "unfiled": report.unfiled if first_said else "",'''
+new = '''            "unfiled": report.unfiled,'''
+
+[[rows]]
+id = "C6_one_tracks_failure_is_its_own"
+description = "run_export_items: a plain exception planning one track fails the whole batch"
+file = "src/cratekit/export/cli.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''        except Exception as exc:  # noqa: BLE001 - this track's outcome'''
+new = '''        except CratekitError as exc:  # noqa: BLE001 - this track's outcome'''
+
+[[rows]]
+id = "E1_already_on_the_playlist"
+description = "apply: read only the ledger for what is already there, so a track a person put on the playlist is sent and recorded as ours"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/modules/test_outbound.py", "tests/test_outbound_workers.py", "tests/test_prune.py"]
+old = '''        if remote in already_on or remote in already_recorded:'''
+new = '''        if remote in already_recorded:'''
+
+[[rows]]
+id = "E2_landed_only_what_was_answered"
+description = "apply: record every track sent, answered or not, so the ledger names a track the playlist does not hold"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py", "tests/test_outbound_add_requests.py"]
+old = '''    landed = {local: remote for local, remote in lacking.items() if remote in answered}'''
+new = '''    landed = {local: remote for local, remote in lacking.items()}'''
+
+[[rows]]
+id = "E3_second_row_of_one_track"
+description = "apply: report each row matched to one track as added, so the summary counts the track written twice"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_workers.py"]
+old = '''        if said == ADDED and remote in added:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "E4_row_of_a_recorded_track"
+description = "apply: never note the row of a track already recorded, so a prune cannot tell a row that left from a match that drifted"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/modules/test_outbound.py", "tests/test_prune.py", "tests/test_outbound_workers.py"]
+old = '''                noted[local] = remote'''
+new = '''                pass'''
+
+[[rows]]
+id = "L1_landed_once"
+description = "record_playlist_tracks: append a landed track already recorded, so the ledger names it twice"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "maintainer"
+tests = ["tests/test_outbound_export_batches.py", "tests/modules/test_outbound.py", "tests/test_outbound_workers.py", "tests/test_prune.py"]
+old = '''        for row, track in landed.items():
+            if str(track) not in added:'''
+new = '''        for row, track in landed.items():
+            if True:'''
+
+[[rows]]
+id = "L2_row_only_for_a_recorded_track"
+description = "record_playlist_tracks: note a row for a track not recorded as added, claiming a person's track by its row"
+file = "src/cratekit/modules/outbound/ledger.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/modules/test_outbound.py", "tests/test_outbound_workers.py", "tests/test_prune.py"]
+old = '''            if str(track) in added:
+                known[str(row)] = str(track)'''
+new = '''            if True:
+                known[str(row)] = str(track)'''
+
+[[rows]]
+id = "A1_failed_attempt_reopens"
+description = "add_tracks: keep the object after a failed attempt, so the retry sends its stale tag and is refused 412 (round one's finding)"
+file = "src/cratekit/modules/outbound/tidal_account.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/test_outbound_add_requests.py", "tests/test_outbound_tidal_account.py"]
+old = '''                except Exception:
+                    opened[0] = None
+                    raise
+
+            for start in range(0, len(lacking), ADD_CHUNK):'''
+new = '''                except Exception:
+                    raise
+
+            for start in range(0, len(lacking), ADD_CHUNK):'''
+
+[[rows]]
+id = "E5_noted_rows_are_written"
+description = "apply: write the ledger only when a track landed, so the rows of tracks recorded before R-836 are never named"
+file = "src/cratekit/modules/outbound/export.py"
+surface = "user"
+tests = ["tests/test_outbound_export_batches.py", "tests/modules/test_outbound.py", "tests/test_prune.py"]
+old = '''    if landed or noted:'''
+new = '''    if landed:'''
