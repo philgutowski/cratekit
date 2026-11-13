@@ -2005,9 +2005,22 @@ def catalogue_searcher(
         passed: list[NotAsked] = []
         declined: SearchHit | None = None
         shown: SourceOutcome | None = None
+        rejected: CratekitError | None = None
         for place, source in enumerate(order):
             if source == DISCOGS:
-                said = asker.ask(artist, title)
+                try:
+                    said = asker.ask(artist, title)
+                except CratekitError as refusal:
+                    # A REJECTED TOKEN WAITS FOR THE RECORD SHOPS (U282's review).
+                    # Raised at once it would stop every file before Beatport,
+                    # its genres and its covers; held, it is raised only where
+                    # Discogs was asked after Beatport before, when no shop
+                    # matched, and the file is otherwise Beatport's as it was.
+                    if refusal.cause.reason != _CREDENTIAL_REASON:
+                        raise
+                    rejected = refusal
+                    passed.append(NotAsked(DISCOGS, f"{NOT_SENT}{refusal.cause.message}"))
+                    continue
                 if isinstance(said, NotAsked):
                     passed.append(said)
                     continue
@@ -2017,7 +2030,7 @@ def catalogue_searcher(
             outcomes.append(outcome)
             if outcome.answer is not Answer.MATCHED:
                 continue
-            if source in _SEARCHES and shown is None:
+            if source in _SEARCHES:
                 shown = outcome
             resolved = _resolved(declared, outcome)
             if resolved.genre is None and source not in _SEARCHES:
@@ -2048,6 +2061,8 @@ def catalogue_searcher(
                 ),
                 shown,
             )
+        if rejected is not None:
+            raise rejected
         return _decide(order, outcomes, passed, artist, title)
 
     return search

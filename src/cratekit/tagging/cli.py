@@ -592,7 +592,9 @@ def _discogs_warnings(summary: dict) -> tuple[dict[str, str], ...]:
 
     THOSE FILES ARE NOT NO-HIT. Each rides ``sources-unread`` unless another
     catalogue settled it, and the next run asks again; this says what would let
-    it ask Discogs, once, however many files it was.
+    it ask Discogs, once, however many files it was. Since U282 Discogs is
+    asked first, so with no token this counts every file that needed a genre,
+    those Beatport tagged among them.
     """
     count = int(summary.get("discogs_without_token") or 0)
     if not count:
@@ -603,7 +605,8 @@ def _discogs_warnings(summary: dict) -> tuple[dict[str, str], ...]:
             "message": (
                 f"Discogs was not asked about {count} file(s) because no Discogs "
                 f"token is recorded, or the keychain no longer holds the recorded "
-                f"one; those files were not reported as no-hit. To ask it: "
+                f"one; any of them no other catalogue tagged was not reported as "
+                f"no-hit. To ask it: "
                 f"{searchers.DISCOGS_LOGIN_STEPS}"
             ),
         },

@@ -39,7 +39,7 @@ crate login NAME --from-file PATH
 | `bandcamp-session` | The browser's bandcamp.com cookie, for the Bandcamp verbs. |
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary says how many. Setup offers it; doctor reports it and never fails on it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked; the sweep refuses, naming the token, at the first file Beatport cannot settle. Setup offers it; doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -321,7 +321,8 @@ crate route pending
   registered label with a genre takes that genre with no catalogue asked; any
   other file is asked of Discogs when a `discogs-token` is recorded, then of
   Beatport when Discogs gives no genre (it misses, refuses, is not asked for
-  want of a token, or names only styles no folder holds), then of the general
+  want of a token or for a token it refused, or names only styles no folder
+  holds), then of the general
   catalogue by ISRC. A Discogs style no folder holds is written nowhere and is
   the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the

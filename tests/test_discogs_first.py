@@ -26,7 +26,8 @@ from pathlib import Path
 
 import pytest
 
-from cratekit.core import routing, tags
+from cratekit.core import routing, secrets, tags
+from cratekit.core.cause import CratekitError
 from cratekit.core.taxonomy import default_taxonomy
 from cratekit.tagging import searchers, tag
 from cratekit.tagging.tag import SearchHit, SourceAnswer
@@ -506,3 +507,59 @@ def test_tag_suggest_sends_beatport_nothing_after_a_discogs_match():
     asked = suggest.catalogue_lookup(build(fetch))(ARTIST, TITLE, "")
     assert asked.source_genre == "Deep House"
     assert beatport_asked(seen) == 0
+
+
+# ---------------------------------------------------------------------------
+# D. A rejected token waits for the record shops (round one's finding)
+# ---------------------------------------------------------------------------
+
+
+def test_a_token_refused_on_its_shape_still_lets_beatport_decide_and_lend_its_cover():
+    seen: list[str] = []
+    fetch = routed(search=results(7), releases=matching_release("Deep House"),
+                   beatport=beatport_row(), seen=seen)
+    hit = build(fetch, token="two words")(ARTIST, TITLE)
+    assert (hit.source, hit.genre) == (searchers.BEATPORT, beatport_tag())
+    assert hit.art_url == beatport_row_art()
+    discogs = answer_of(hit, searchers.DISCOGS)
+    assert discogs.answer == searchers.NOT_ASKED
+    assert discogs.note.startswith(searchers.NOT_SENT) and "printable word" in discogs.note
+    assert discogs.note not in searchers.DISCOGS_UNASKED_NOTES, "not counted as no token"
+    assert not any(url.startswith(searchers.DISCOGS_API) for url in seen)
+
+
+def test_a_token_refused_beside_a_beatport_miss_is_still_the_runs_refusal():
+    with pytest.raises(CratekitError) as raised:
+        build(routed(search=results()), token="two words")(ARTIST, TITLE)
+    assert raised.value.cause.reason == "credential-missing"
+    assert isinstance(raised.value.__cause__, secrets.CredentialRejected)
+
+
+def test_a_token_refused_beside_a_refused_beatport_is_still_the_runs_refusal():
+    with pytest.raises(CratekitError) as raised:
+        build(routed(search=results(), beatport=CHALLENGE), token="two words")(ARTIST, TITLE)
+    assert raised.value.cause.reason == "credential-missing"
+
+
+def test_a_401_is_sent_once_and_beatport_decides_every_file():
+    seen: list[str] = []
+    fetch = routed(
+        search=searchers.Fetched(note="HTTP 401", status=401), beatport=beatport_row(), seen=seen
+    )
+    searcher = build(fetch)
+    for _ in range(3):
+        hit = searcher(ARTIST, TITLE)
+        assert (hit.source, hit.genre) == (searchers.BEATPORT, beatport_tag())
+        assert answer_of(hit, searchers.DISCOGS).note.startswith(searchers.NOT_SENT)
+    assert sum(url.startswith(searchers.DISCOGS_SEARCH) for url in seen) == 1
+    assert beatport_asked(seen) == 3
+
+
+def test_a_tagged_file_still_gets_its_cover_when_the_token_is_refused(tmp_path, silence):
+    path = a_file(tmp_path, silence, genre="Somebody's Own Word")
+    fetch = routed(search=results(7), releases=matching_release("Deep House"),
+                   beatport=beatport_row())
+    result = tag.tag_one(path, searcher=build(fetch, token="two words"), fetch_image=Images())
+    assert result.skipped == tag.HAS_GENRE
+    assert result.art_fetch == tag.ART_EMBEDDED
+    assert tags.read_genre_from_file(path) == "Somebody's Own Word"
