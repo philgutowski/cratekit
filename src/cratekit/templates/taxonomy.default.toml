@@ -1271,9 +1271,11 @@ kind = "kids"
 # with no genre and askable, and is named in the run's summary, which is where
 # to read what to add a row for.
 #
-# TWO SOURCES HAVE ONE, the general catalogue and Discogs. The record shops'
-# words are resolved by the aliases above, which were written for them, and a
-# table under any other name is refused, since nothing would read it. Delete a
+# TWO SOURCES HAVE ONE, the general catalogue and Discogs. A third name is
+# accepted and shipped with no table, `cyanite`, read by the Cyanite trial
+# when a copy declares one. The record shops' words are resolved by the
+# aliases above, which were written for them, and a table under any other
+# name is refused, since nothing would read it. Delete a
 # table and that source's words are filed by the aliases too, as before R-799,
 # until `crate taxonomy upgrade` adds the shipped table back: it adds any table
 # this template declares and a copy lacks, and never changes one a copy holds.

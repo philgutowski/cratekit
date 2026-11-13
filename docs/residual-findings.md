@@ -52001,3 +52001,288 @@ page rather than carrying a Next payload.
 **Closes when:** `_beatport_tracks` answers None for any payload whose steps
 are not the shapes it reads, so the searcher answers a parse break, or
 blocked when the page is a challenge. Ledger only: no producer measured.
+
+---
+
+## R-1663. A capture asks the drive for a full flush once per file and per directory, and falls back to the plain sync without a word
+
+**Found:** at the review of #701, U272, 2026-11-13.
+
+**The mechanism.** `snapshot._flush` calls `config.flush_to_disk` on every file
+and every directory of a capture, deepest first, then the store, and the
+capture directory and the store again after the manifest: ten calls for the
+suite's fixture capture. On macOS each is `F_FULLFSYNC`, which empties the
+drive's whole write cache, so a plain sync per file followed by one full flush
+at the end would give the same guarantee for less. Where a filesystem answers
+that it has no full flush, `flush_to_disk` takes the plain sync, the strongest
+flush it has, and says nothing, so a restore point on such a drive is weaker
+than on the Mac's own disk with no line in any log saying so.
+
+**Measured cost.** Not driven: the container has no full flush to ask for. The
+seconds one flushed capture of the real database costs on the library's drive
+are owed on the Mac as an attended card, and the same sitting answers whether
+a directory flush there returns an error outside the unsupported set, which
+would refuse every guarded write.
+
+**Closes when:** the Mac measurement is in, and if it is more than a second
+or two, the per file flushes become plain syncs with one full flush last; and
+the fallback logs once per capture. Ledger only.
+
+---
+
+## R-1664. A capture that cannot be flushed exits as an internal error while its remedy says to check the library drive
+
+**Found:** at the review of #701, U272, 2026-11-13.
+
+**The mechanism.** A flush failure refuses with `snapshot-integrity-failed`,
+the slug the commit gate already refuses an unverified capture with, so the
+two refusals of one capture read alike. `cause.REASONS` maps that slug to the
+internal band ("an unexpected failure"), while the flush refusal's remedy is
+`mount-library-volume`, so a pulled drive mid capture reports as an internal
+error that tells the person to mount the volume.
+
+**Measured cost.** The message names the file and the operating system's
+error, and the remedy is right; only the exit code's band is off. Chosen on
+purpose in U272 so the gate's refusal class did not grow a second slug.
+
+**Closes when:** a library band slug for a capture the drive would not take
+is declared and used here, or the pairing is recorded as intended. Ledger only.
+
+---
+
+## R-1665. Closing the integrity check's handle removes the log files a capture of an open database records, and the restore then refuses the capture
+
+**Found:** at the review of #701, U272, 2026-11-13, driven on main at b09e0da.
+
+**The mechanism.** `snapshot.capture` records which of the database's
+companion files landed in the capture by looking for them before the check
+runs. The check, `rb_writer.integrity_ok`, opens the copy through `open_db`
+and closes it through `close_db`; for a database in write ahead log mode,
+the last connection's close folds the log into the main file and deletes the
+log and its shared memory index from the capture directory. The manifest
+still lists both as captured, so `snapshot.assert_sources_present`, which
+`restore.plan` asks, refuses: "records 2 files it no longer holds".
+
+**Measured cost.** Driven by the U272 review on `main` at `b09e0da`: a write
+ahead log database with its handle open, captured with the real check and
+attached to a closed session; `restore.plan` refused the capture. No test
+combines the real check with a restore, since the suite's captures use a stand
+in verifier. Whether rekordbox's own database is in this mode, and so whether
+every capture of the real library is one the restore refuses, was not
+measured. If it is, a DJ's undo of any guarded write cannot run.
+
+**Closes when:** the real database's journal mode is read at an attended
+sitting, and the capture records what is in the directory after the check (or
+the check runs on a copy of the copy), with a test that captures with the real
+check and restores. Earns an issue: if reachable, a workflow a DJ needs, the
+restore, cannot finish.
+
+---
+
+## R-1666. board.py cloud counts a card with a freshly relayed answer as a hold, so its lane alarm fires with lanes free
+
+**Found:** at the start of #701, U272, 2026-11-13.
+
+**The mechanism.** At 15:59 on 2026-11-13 the orchestrator relayed Phillip's
+answers onto #700, #702 and #707 within a minute. `board.py cloud` listed each
+as `underway` with "phillip's answer" and counted it toward the five lanes, so
+with four sessions holding cards it printed "MORE CARDS ARE HELD THAN THERE
+ARE LANES (7 for 5)" and told every later holder, this card's thread among
+them, to withdraw. The skill's Orient step tells a thread to obey that line.
+
+**Measured cost.** None here: the coordinator assigned the card and counts
+lanes by its own threads, as METHOD says, so the thread built it. A thread
+that followed the skill to the letter would have withdrawn a card it was
+assigned, and the lane would have sat empty until the next hourly fill.
+
+**Closes when:** the lane count leaves out a card whose latest comment is a
+relayed answer with no hold after it, or the skill says the coordinator's
+assignment wins over the alarm. Ledger only.
+
+---
+
+## R-1667. A Cyanite trial killed between asking for a library track and reading the answer loses the track, and its resume pays for it again
+
+**Found:** at the review of #674, U245, round two, 2026-11-13.
+
+**The mechanism.** `tagging/cyanite.py` writes a file's row, with the
+library track Cyanite made, the moment the create's answer is read
+(`CyaniteAsker.on_made`), ahead of the analysis wait, so a run ended by an
+error, an interrupt or a signal during the wait keeps the track and a
+`--resume` asks about it without uploading. A run ended after the create was
+sent and before its answer was read has no track id to write: Cyanite has
+made the track, the table has no row, and the resume uploads the file again.
+
+**Measured cost.** Driven by the round two reviewer with a recorded seam
+raising KeyboardInterrupt after Cyanite registered the track and before its
+reply: the resume uploaded the file again. The window is one round trip wide,
+so how often a person meets it is unmeasured. The cost is one track paid for
+twice.
+
+**Closes when:** a resume looks the file up in Cyanite's library before
+uploading it, by the `libraryTracks(filter: { sha256 })` lookup Cyanite
+documents for duplicates or by the title the trial sends, and asks about the
+track it finds. Ledger only: it is a paid trial's corner, not a shipped verb.
+
+---
+
+## R-1668. The Cyanite trial's mutations and its reading of a rejected key are written from Cyanite's documentation and never driven against the service
+
+**Found:** at the build of #674, U245, 2026-11-13.
+
+**The mechanism.** `tagging/cyanite.py` asks Cyanite's GraphQL API with three
+texts: `fileUploadRequest`, `libraryTrackCreate(input: { uploadId, title })`
+and `libraryTrack(id)` with `audioAnalysisV6`'s `genreTags`, `subgenreTags`,
+`moodTags` and `energyLevel`. The documentation read on 2026-11-13 shows the
+read query and the answers' shapes, not the two mutations' text or input
+type, and does not say how a bad key is answered; the trial reads a 401, or a
+GraphQL error coded or worded as unauthenticated, as a rejected key. The free
+preflight proves the read query's shape and the key before any upload; a
+mutation's shape is proved only by the first file.
+
+**Measured cost.** Not driven: no live key and no live call in the cloud, by
+standing rule. A wrong mutation text is answered with a GraphQL error, which
+stops the run at the first file before anything is billed, so the cost is a
+stopped run, never a silent wrong answer.
+
+**Closes when:** the attended trial's first run reads its first row, or its
+stop line, and the texts are corrected if Cyanite refused them. Ledger only.
+
+---
+
+## R-1669. The Cyanite trial sends MP3s only, so a filed track held as AIFF, WAV or FLAC cannot be measured
+
+**Found:** at the build of #674, U245, 2026-11-13.
+
+**The mechanism.** Cyanite's API takes MP3 uploads of up to fifteen minutes,
+by its documentation, so `tagging/cyanite.py` sends a file only when its
+suffix is `.mp3` and lists every other file as not sent. Nothing converts a
+lossless file for the trial. A file over fifteen minutes is uploaded and its
+refusal, whatever Cyanite answers, is written on its row.
+
+**Measured cost.** A trial over folders of lossless files measures nothing
+for them, and says so on each one. How much of the filed library is MP3 is
+unmeasured. Converting was out of the card's scope; whether the trial should
+convert a temporary copy is asked on the card as a Question for Phillip.
+
+**Closes when:** Phillip chooses MP3s for the trial, or a later card converts
+a temporary MP3 copy of each chosen lossless file for the upload and deletes
+it after. Ledger only.
+
+---
+
+## R-1670. The Cyanite trial waits on each file's analysis before uploading the next, so a run of forty files can take hours
+
+**Found:** at the build of #674, U245, 2026-11-13.
+
+**The mechanism.** `tagging/cyanite.py` uploads a file, makes its library
+track, and polls its analysis every ten seconds for up to five minutes before
+it uploads the next. A file still unfinished after the window is kept,
+pending, for a resumed run.
+
+**Measured cost.** Not measured against the service. At Cyanite's stated
+analysis time of about a minute a track, forty files take about forty
+minutes; at the window's worst, over three hours. Nothing is lost or paid
+twice either way, since every made track is written down before its wait.
+
+**Closes when:** the attended trial measures the time a track takes, and, if
+it matters, a later card uploads every file first and then polls them
+together. Ledger only.
+
+---
+
+## R-1671. A ceiling or a cooldown met while an export batch is matched writes none of the batch
+
+**Found:** at the build of #699, U270, 2026-11-13.
+
+**The mechanism.** `export.cli.run_export_items` matches each track of a
+batch of up to a hundred before it writes any of them, and a `jobs.Parked`
+raised by the provider gate during that matching releases the whole batch.
+Before U270 each track was matched and written as its own item, so the tracks
+matched before the park were on the playlist and done.
+
+**Measured cost.** Not driven. Reasoned from the code: no track is lost or
+added twice, since nothing of the batch was written, and the resume matches
+the batch again, its ISRC lookups read from the on disk ISRC cache where the
+first run reached them. What is lost is the time of the matches made before
+the park, at most a hundred. Whether a hundred matches can need more than the
+command's ceiling of 500 calls, which would make every resume park at the same
+batch, was not measured; the match makes one ISRC lookup a track and more only
+for a row several releases carry.
+
+**Closes when:** a live export reads its matches per track against the
+ceiling, or a park during matching writes the tracks already matched before
+it stops. Ledger only: the cost is time, never a write.
+
+---
+
+## R-1672. A stop between a landed export batch and its ledger write leaves up to a hundred tracks the ledger never records
+
+**Found:** at the review of #699, U270, 2026-11-13.
+
+**The mechanism.** R-1543 a batch at a time. `export.apply` records a batch's
+tracks once `add_tracks` answers. A kill, or a provider gate park at the
+client's read after the POST, between the request and that write leaves every
+track of the batch on the playlist and none recorded; the resumed batch finds
+them on the playlist and reports them as already there. Recording the rows
+sent before the request and settling them on the next read was built and
+taken out at round one of the review, because that read cannot tell a landed
+add from a person's own add of the same track. A question for Phillip on #699
+asks whether he wants that settle back.
+
+**Measured cost.** Driven by round two of the review with a park after the
+POST through the driver, 100 tracks: 100 on the playlist, none twice, 0
+recorded, counts `written 0, already 100`. A prune after one of those rows
+leaves the crate takes nothing off. Before U270 the same stop cost one track.
+A refused read after the POST no longer reaches it: `add_tracks` reopens and
+reads back on its retry.
+
+**Closes when:** a track a stopped batch sent is recorded on evidence that
+tells it from a person's add, or Phillip answers that the later read is
+evidence enough. Ledger only: the cost is a prune that leaves a track.
+
+---
+
+## R-1673. The adapter's add_to_playlist and its held playlist have no caller in src after U270
+
+**Found:** at the build of #699, U270, 2026-11-13.
+
+**The mechanism.** `export.apply` was the one caller of
+`RemoteAccount.add_to_playlist`, and U270 moves it to `add_tracks`. The held
+playlist U255 built for it (`TidalAccount._held`, `_opened`) is now reached
+only by `add_to_playlist`, which nothing in `src` calls, and by
+`_membership`, which still holds what it opened. The attended card U255 owed,
+A131 (#716), reads the 412s of adds through that held object from a live
+`export playlist`, which no longer makes one.
+
+**Measured cost.** None to a library: the code path is unreached. The cost is
+a maintainer reading U255's held object as the export's path, and an attended
+check that can no longer read what it asks for.
+
+**Closes when:** `add_to_playlist` is given a caller again or is taken out of
+the protocol, the adapter and the fakes, and A131's add checks are rewritten
+to the batched add. Ledger only.
+
+---
+
+## R-1674. The adapter's read back records a track a person added by hand during an export as the export's own
+
+**Found:** at the review of #699, U270, 2026-11-13.
+
+**The mechanism.** `TidalAccount.add_tracks` reads the playlist back when the
+provider's answer leaves out a track it was asked for, and returns every asked
+track the playlist then holds. The membership it decides what to send from is
+read once per playlist per process. A track a person adds by hand while an
+export runs, if a later batch of the same run sends it, is skipped by the
+provider as a duplicate, found by the read back, and recorded by
+`export.apply` as added, row and all.
+
+**Measured cost.** Driven by round two of the review through the driver, 150
+tracks: a person's hand add of a batch two track during batch one is recorded
+as written, and `prune.plan_export` with its row gone takes it off. `main`
+does the same a track at a time, so U270 did not cause it.
+
+**Closes when:** a track the read back holds and the answer did not name is
+reported as already there rather than recorded, or the membership is read
+again before each batch. Ledger only by origin; its cost is a prune taking off
+a person's track, so it is worth a card if it is ever met live.

@@ -8,7 +8,7 @@ component: tooling
 severity: high
 root_cause: wrong_api
 resolution_type: code_fix
-tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220, u231, u255, reparse, hold, pending]
+tags: [outbound, order, playlist, tidalapi, etag, 412, read-lag, sync-pair, u220, u231, u255, u270, reparse, hold, pending, batch]
 applies_when:
   - "Anything moves, removes or adds tracks on a playlist on the streaming account"
   - "A write on the account is answered 412, or its read back does not show it"
@@ -124,6 +124,41 @@ the reading its positions came from, is for a move or a removal.
   never reused.
 - The client's read after each write (point three of U231 above) is now
   what the next add relies on for its tag and its position.
+
+## Changed by U270, the export adds through `add_tracks`
+
+`export playlist` no longer adds through the held playlist. The driver hands
+its worker a hundred items at a time and the worker sends the tracks the
+playlist lacks in one `add_tracks`, which opens the playlist afresh, so
+every batch carries the tag and the length of an open made just before it
+and a person's write between two batches is read rather than met with a
+412. The first batch to a recorded playlist costs five GETs, one tracks
+read and one POST however many tracks it carries, and each batch after it
+in the same run three GETs and one POST. `add_to_playlist` and its held object, above, have no caller in
+`src` after U270; the rules about them stand for whatever calls them next.
+
+`add_tracks` now follows U255's rule on a failed attempt: it drops the
+object and the retry opens the playlist afresh. Before, it retried on the
+same object, and a POST that landed with its read after refused left that
+object's tag stale, so the retry was driven refused 412 with the whole
+batch on the playlist and the batch failed (U270's review). On a fresh
+object the retry is skipped as duplicates and the answer is read back.
+
+The export records a track as `added` only once the answer, or the
+adapter's one read back, names it. A later read of the playlist is never
+taken as that answer: recording the rows sent before the request and
+settling them on the next read was built and taken out at the review,
+because the read cannot tell a landed add from the same track a person
+added by hand, and a prune would then take theirs off. A stop between the
+request and the record therefore still leaves the landed tracks unrecorded,
+a batch where it was one track (R-1543).
+
+The adapter's own read back, which settles an answer naming part of a
+chunk, has the same blind spot and is kept, since it is the read Phillip's
+answer named: a track a person adds by hand while an export runs, if a later
+batch of the same run sends it, is skipped as a duplicate, found by the read
+back and recorded as the export's. `main` did the same a track at a time;
+U270 files it rather than closing it.
 
 ## Still unmeasured
 
