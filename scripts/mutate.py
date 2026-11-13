@@ -206,6 +206,7 @@ from __future__ import annotations
 import argparse
 import ast
 import hashlib
+import importlib.util
 import json
 import os
 import shlex
@@ -222,6 +223,25 @@ from pathlib import Path
 import platformdirs
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
+
+
+def _load_battery():
+    """``scripts/cloud_battery.py``, whose places for temporary files this driver uses.
+
+    Loaded by path from beside this file, and registered, since it declares
+    dataclasses. One definition of what memory and disk are, and of when a
+    machine can give either, serves the battery that measures the known
+    failures and the driver that subtracts them (U273).
+    """
+    path = Path(__file__).resolve().with_name("cloud_battery.py")
+    spec = importlib.util.spec_from_file_location("cratekit_cloud_battery_places", path)
+    module = importlib.util.module_from_spec(spec)
+    sys.modules[spec.name] = module
+    spec.loader.exec_module(module)
+    return module
+
+
+BATTERY = _load_battery()
 
 #: Appended by the null control row. A Python comment is invisible to the
 #: interpreter and to an AST walk, which is what makes the control a control.
@@ -290,6 +310,8 @@ ADDED_ENV = (
     "PYTHONDONTWRITEBYTECODE=1",
     "PYTHONPATH (the plugin's temp directory, prepended)",
     "MUTATE_REPORT_PATH (the plugin's output file)",
+    "TMPDIR, with a known failures file only (a fresh directory in the place its "
+    "baseline was measured in, or on disk for the tests rerun there, U273)",
     "the installation state sandbox: "
     + ", ".join(sorted(SANDBOXED_ENV))
     + " (all pointed inside the run's workspace, R-343)",
@@ -948,8 +970,25 @@ def run_pytest(
     that kills one of them kills nothing it could be credited for. The set is
     measured on the base commit by ``scripts/cloud_battery.py baseline``; a
     hand written one would be the list this driver exists to refuse.
+
+    When ``known`` names the place its failures were measured in (U273), the
+    run keeps its temporary files there, in a fresh directory given as
+    ``TMPDIR``, as the battery's own run did. After a run in memory, the tests
+    the baseline ran on disk and this run collected run again on disk, and
+    their outcome there replaces their outcome in memory. Without a place, a
+    driver run with no known failures, the temporary directory is inherited
+    as it always was.
     """
-    with tempfile.TemporaryDirectory(prefix="mutate-run-") as tmp:
+    place = getattr(known, "place", "")
+    root = None
+    if place:
+        root, why = BATTERY.place_root(place)
+        if root is None:
+            raise DriverRefusal(
+                f"{label} cannot keep its temporary files "
+                f"{'in memory' if place == BATTERY.MEMORY else 'on disk'} on this machine: {why}"
+            )
+    with tempfile.TemporaryDirectory(prefix="mutate-run-", dir=root) as tmp:
         workspace = Path(tmp)
         (workspace / f"{PLUGIN_MODULE}.py").write_text(PLUGIN_SOURCE, encoding="utf-8")
         report_path = workspace / "report.json"
@@ -975,6 +1014,10 @@ def run_pytest(
             env[name] = str(path)
         for name in SCRUBBED_ENV:
             env.pop(name, None)
+        if place:
+            temp = workspace / "tmp"
+            temp.mkdir()
+            env["TMPDIR"] = str(temp)
 
         command = [
             sys.executable,
@@ -1031,13 +1074,52 @@ def run_pytest(
             f"{done.stdout[-1500:]}\n{done.stderr[-1500:]}"
         )
 
+    failed = tuple(i for i in state["failed"] if i not in known)
+    errored = tuple(i for i in state["errored"] if i not in known)
+    collect_errors = tuple(state["collect_errors"])
+    on_disk = getattr(known, "on_disk", ())
+    rerun = [one for one in on_disk if runs_node(one, paths)] if place == BATTERY.MEMORY else []
+    if rerun:
+        again = run_pytest(
+            repo_root,
+            rerun,
+            timeout=timeout,
+            guard=guard,
+            label=f"{label}, its tests on disk",
+            known=KnownFailures(known, place=BATTERY.DISK),
+        )
+        if again.collected != len(rerun) and not again.collect_errors:
+            raise MeasurementFailure(
+                f"the run on disk of {rerun} collected {again.collected}, so it cannot stand "
+                f"for them"
+            )
+        failed = tuple(i for i in failed if i not in rerun) + again.failed
+        errored = tuple(i for i in errored if i not in rerun) + again.errored
+        collect_errors = collect_errors + again.collect_errors
+
     return RunResult(
         collected=int(state["collected"]),
-        failed=tuple(i for i in state["failed"] if i not in known),
-        errored=tuple(i for i in state["errored"] if i not in known),
-        collect_errors=tuple(state["collect_errors"]),
+        failed=failed,
+        errored=errored,
+        collect_errors=collect_errors,
         exit_code=done.returncode,
     )
+
+
+def runs_node(nodeid: str, paths: list[str] | None) -> bool:
+    """Whether a run over ``paths`` collects ``nodeid``; every run over no paths does."""
+    if not paths:
+        return True
+    for path in paths:
+        path = path.rstrip("/")
+        if (
+            nodeid == path
+            or nodeid.startswith(f"{path}::")
+            or nodeid.startswith(f"{path}[")
+            or nodeid.startswith(f"{path}/")
+        ):
+            return True
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -1046,7 +1128,9 @@ def run_pytest(
 
 #: Where ``scripts/cloud_battery.py`` leaves the record of its last run, relative
 #: to the repository root, and the record format this driver reads. Repeated
-#: from that script, which this one never imports, and held to it by a test.
+#: from that script rather than read off ``BATTERY``, the copy of it this driver
+#: loads for its places (U273), so the record's keys stay named here, and held
+#: to it by a test.
 BATTERY_VERDICT = Path(".cloud-battery") / "verdict.json"
 BATTERY_VERDICT_FORMAT = 1
 #: The same boot id the battery records. Every cloud container is called `vm`,
@@ -1366,6 +1450,8 @@ class Batch:
     reused_rows: int = 0
     known_failures: int = 0
     known_source: str = ""
+    temp_place: str = ""
+    temp_on_disk: int = 0
     baseline_source: str = "measured"
     baseline_note: str = ""
     subset_baselines: int = 0
@@ -1386,6 +1472,8 @@ class Batch:
             "reused_rows": self.reused_rows,
             "known_failures": self.known_failures,
             "known_source": self.known_source,
+            "temp_place": self.temp_place,
+            "temp_on_disk": self.temp_on_disk,
             "baseline_source": self.baseline_source,
             "baseline_note": self.baseline_note,
             "subset_baselines": self.subset_baselines,
@@ -1439,6 +1527,8 @@ def measure_batch(
         dropped=dropped,
         known_failures=len(known),
         known_source=known_source,
+        temp_place=getattr(known, "place", ""),
+        temp_on_disk=len(getattr(known, "on_disk", ())),
     )
 
     control = null_control_row(rows)
@@ -1727,6 +1817,20 @@ def render_markdown(batch: Batch) -> str:
             "This is a Linux measure of a macOS suite; the full battery is owed on "
             "a Mac."
         )
+    if batch.temp_place:
+        again = (
+            f", and after each run that collected them the {batch.temp_on_disk} test(s) "
+            "the baseline ran on disk ran again on disk, their outcome there standing, "
+            "in runs the invocation count above does not include"
+            if batch.temp_on_disk
+            else ""
+        )
+        add("")
+        add(
+            f"Temporary files: {'in memory' if batch.temp_place == 'memory' else 'on disk'}, "
+            "the place the known failures were "
+            f"measured in, each run given a fresh directory there as `TMPDIR`{again} (U273)."
+        )
     add("")
     add(
         "Environment: inherited from the calling shell, then added to. Added: "
@@ -1895,7 +1999,9 @@ def build_parser() -> argparse.ArgumentParser:
             "a file of whole node ids that fail on this machine and not for the tree, one "
             "a line, # comments allowed, as scripts/cloud_battery.py baseline writes "
             "it with full history and whole ids; subtracted from every run, and refused "
-            "on a shallow clone"
+            "on a shallow clone. It also names where its temporary files were, memory or "
+            "disk: every child keeps its own there, the tests it ran on disk run again on "
+            "disk after a run in memory, and a file naming no place is refused"
         ),
     )
     parser.add_argument(
@@ -1915,9 +2021,24 @@ KNOWN_FAILURES_FULL_HISTORY = "history full"
 KNOWN_FAILURES_WHOLE_IDS = "ids whole"
 
 
-def read_known_failures(path: Path) -> frozenset[str]:
-    """The node ids of a baseline, refused unless it was measured with full history
-    and its ids are whole.
+class KnownFailures(frozenset):
+    """The ids a baseline measured failing, and where it kept its temporary files.
+
+    The place travels with the ids because they are true only of that place
+    (U273): a run subtracting them keeps its own files there, and after a run
+    in memory reruns ``on_disk``, the tests the baseline ran on disk, on disk.
+    """
+
+    def __new__(cls, ids=(), *, place: str = "", on_disk=()):
+        made = super().__new__(cls, ids)
+        made.place = place
+        made.on_disk = tuple(on_disk)
+        return made
+
+
+def read_known_failures(path: Path) -> KnownFailures:
+    """The node ids of a baseline, refused unless it was measured with full history,
+    its ids are whole and it names the place of its temporary files.
 
     A shallow clone fails every test that reads old history, and a failure
     subtracted by id hides each later failure of that test (R-1191), so a file
@@ -1925,7 +2046,9 @@ def read_known_failures(path: Path) -> frozenset[str]:
     writes, an older baseline or one written by hand, is refused. A baseline
     measured before U268 holds each id only up to its first space, and a cut id
     equals no node id this driver reads off a report, so it is refused too, with
-    the command that measures it again.
+    the command that measures it again. A baseline measured before U273 names no
+    place for its temporary files, so which machine its failures belong to is
+    unknown, and it is refused the same way.
     """
     text = path.read_text(encoding="utf-8").splitlines()
     first = text[0].strip() if text else ""
@@ -1942,8 +2065,20 @@ def read_known_failures(path: Path) -> frozenset[str]:
             f"{path} does not say it was measured with full history; measure it with "
             f"`scripts/cloud_battery.py baseline`, never write one by hand"
         )
+    fields = first[: -len(whole)].split()
+    place = fields[-1] if len(fields) >= 2 and fields[-2] == BATTERY.TEMP_FIELD else ""
+    if place not in BATTERY.PLACES:
+        raise DriverRefusal(
+            f"{path} does not say where its temporary files were: it was measured before "
+            f"U273, so whether its failures are the memory filesystem's or the disk's is "
+            f"unknown; measure it again with `scripts/cloud_battery.py baseline`, never "
+            f"write one by hand"
+        )
+    prefix = BATTERY.ON_DISK_PREFIX
+    on_disk = [line[len(prefix) :] for line in text if line.startswith(prefix)]
     lines = (line.strip() for line in text)
-    return frozenset(line for line in lines if line and not line.startswith("#"))
+    ids = (line for line in lines if line and not line.startswith("#"))
+    return KnownFailures(ids, place=place, on_disk=on_disk)
 
 
 def refuse_a_shallow_clone(repo_root: Path) -> None:
@@ -1956,6 +2091,26 @@ def refuse_a_shallow_clone(repo_root: Path) -> None:
             f"a test the missing history holds red would be subtracted unread, so run "
             f"`git fetch --unshallow origin main` first"
         )
+
+
+def refuse_a_place_this_machine_cannot_give(known: KnownFailures) -> None:
+    """Before anything runs: every place a run in the known failures' place uses
+    must be one this machine can give, the disk for the tests rerun there included."""
+    needed = [known.place]
+    if known.place == BATTERY.MEMORY and known.on_disk:
+        needed.append(BATTERY.DISK)
+    for place in needed:
+        root, why = BATTERY.place_root(place)
+        if root is None:
+            run = (
+                f"temporary files in {place}"
+                if place == known.place
+                else "the tests the baseline ran on disk run again on disk"
+            )
+            raise DriverRefusal(
+                f"the known failures were measured with their temporary files in "
+                f"{known.place}, and this machine cannot now give a run with {run}: {why}"
+            )
 
 
 def main(argv: list[str]) -> int:
@@ -1977,6 +2132,7 @@ def main(argv: list[str]) -> int:
             known = read_known_failures(args.known_failures)
             known_digest = file_digest(args.known_failures)
             refuse_a_shallow_clone(args.repo_root)
+            refuse_a_place_this_machine_cannot_give(known)
         except DriverRefusal as refusal:
             print(f"refused: {refusal}", file=sys.stderr)
             return 2

@@ -1,0 +1,211 @@
+name = "u273"
+pass_kind = "light"
+
+[[rows]]
+id = "P1_memory_any_filesystem"
+description = "place_root: accept any filesystem as memory, so a run named memory may be on disk"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        if kind not in MEMORY_FILESYSTEMS:
+            return None, f"{root} is not a memory filesystem here ({kind or 'no mount table'})"'''
+new = '''        if False:
+            return None, f"{root} is not a memory filesystem here ({kind or 'no mount table'})"'''
+
+[[rows]]
+id = "P2_no_floor"
+description = "place_root: drop the free space floor, so a small /dev/shm fills partway through a run"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        if free < MEMORY_FLOOR:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "P3_disk_on_memory_accepted"
+description = "place_root: accept a disk TMPDIR that is itself on a memory filesystem"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        if kind in MEMORY_FILESYSTEMS:
+            return None, ('''
+new = '''        if False:
+            return None, ('''
+
+[[rows]]
+id = "P4_mount_first_match"
+description = "filesystem_of: take every mount point holding the path rather than the longest"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        if inside and len(point) >= len(best):'''
+new = '''        if inside:'''
+
+[[rows]]
+id = "P5_tmpdir_not_set"
+description = "_run_suite: do not point the run's TMPDIR at its place, so it inherits the caller's"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        env["TMPDIR"] = str(temp)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "P6_no_rerun_on_disk"
+description = "failing_ids: never run the listed tests again on disk after a run in memory"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    listed = tuple(ON_DISK) if place == MEMORY else ()'''
+new = '''    listed = ()'''
+
+[[rows]]
+id = "P7_memory_outcome_kept"
+description = "failing_ids: add the disk run's failures to the memory run's rather than replacing the listed tests' outcome"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    return Run((ids - set(listed)) | disk_ids, summary, place, listed, disk_summary)'''
+new = '''    return Run(ids | disk_ids, summary, place, listed, disk_summary)'''
+
+[[rows]]
+id = "P8_disk_run_unchecked"
+description = "failing_ids: accept an on disk run that skipped or never collected a listed test"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    if unread or stray:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P9_header_names_no_place"
+description = "cmd_baseline: leave the place out of the header"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''        f"# commit {head()} host {socket.gethostname()} {TEMP_FIELD} {place} "'''
+new = '''        f"# commit {head()} host {socket.gethostname()} "'''
+
+[[rows]]
+id = "P10_placeless_baseline_read"
+description = "read_baseline: read a baseline that names no place, as every one before U273"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    if match.group(3) not in PLACES:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P11_other_place_compared"
+description = "cmd_compare: run a compare in the place it asks for even when the baseline was measured in the other"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    if requested is not None and requested != base.place:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "P12_compare_always_disk"
+description = "cmd_compare: measure the branch on disk whatever the baseline's place"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    measured = failing_ids(base.place)'''
+new = '''    measured = failing_ids(DISK)'''
+
+[[rows]]
+id = "D1_driver_placeless_read"
+description = "read_known_failures: read a known failures file that names no place"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    if place not in BATTERY.PLACES:
+        raise DriverRefusal('''
+new = '''    if False:
+        raise DriverRefusal('''
+
+[[rows]]
+id = "D2_driver_tmpdir_inherited"
+description = "run_pytest: do not point the child's TMPDIR at the known failures' place"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            env["TMPDIR"] = str(temp)
+'''
+new = '''
+'''
+
+[[rows]]
+id = "D3_driver_no_rerun"
+description = "run_pytest: never run the listed tests again on disk after a run in memory"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    rerun = [one for one in on_disk if runs_node(one, paths)] if place == BATTERY.MEMORY else []'''
+new = '''    rerun = []'''
+
+[[rows]]
+id = "D4_driver_reruns_every_subset"
+description = "runs_node: read every listed test as collected by any subset"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    if not paths:
+        return True
+    for path in paths:'''
+new = '''    if True:
+        return True
+    for path in paths:'''
+
+[[rows]]
+id = "D5_driver_place_unchecked_upfront"
+description = "main: skip the refusal of a place this machine cannot give before the batch starts"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            refuse_a_place_this_machine_cannot_give(known)
+        except DriverRefusal as refusal:'''
+new = '''            pass
+        except DriverRefusal as refusal:'''
+
+[[rows]]
+id = "P13_rerun_disk_unchecked_upfront"
+description = "refusal_for: check only the run's own place, so a disk the rerun cannot have refuses after a whole run in memory"
+file = "scripts/cloud_battery.py"
+surface = "maintainer"
+tests = ["tests/test_cloud_battery.py"]
+old = '''    return (MEMORY, DISK) if place == MEMORY and ON_DISK else (place,)'''
+new = '''    return (place,)'''
+
+[[rows]]
+id = "D6_driver_errored_kept"
+description = "run_pytest: keep a listed test's memory error beside its disk outcome"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        errored = tuple(i for i in errored if i not in rerun) + again.errored'''
+new = '''        errored = errored + again.errored'''
+
+[[rows]]
+id = "D7_driver_lost_place_runs_elsewhere"
+description = "run_pytest: drop the refusal of a place lost after main's check, so the child runs in the inherited temporary directory"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        root, why = BATTERY.place_root(place)
+        if root is None:
+            raise DriverRefusal('''
+new = '''        root, why = BATTERY.place_root(place)
+        if False:
+            raise DriverRefusal('''
+
+[[rows]]
+id = "D8_driver_disk_needed_without_rerun"
+description = "refuse_a_place_this_machine_cannot_give: require the disk for every memory file, even one with nothing to run on disk"
+file = "scripts/mutate.py"
+surface = "maintainer"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    if known.place == BATTERY.MEMORY and known.on_disk:'''
+new = '''    if known.place == BATTERY.MEMORY:'''

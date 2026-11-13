@@ -1,0 +1,267 @@
+name = "u284"
+pass_kind = "light"
+
+[[rows]]
+id = "R1_since_moves_every_refusal"
+description = "refused._change: a later refusal resets since to now, so the date says the latest refusal rather than when it began"
+file = "src/cratekit/tagging/refused.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py"]
+old = '''                    since=before.since if before is not None else now,'''
+new = '''                    since=now,'''
+
+[[rows]]
+id = "R2_an_answer_never_clears"
+description = "refused._change: a match or a miss leaves the date, so a catalogue that answers again still reads as refusing"
+file = "src/cratekit/tagging/refused.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py"]
+old = '''            elif held.pop(source, None) is None:
+                return'''
+new = '''            else:
+                return'''
+
+[[rows]]
+id = "R3_write_without_the_lock"
+description = "refused._change: write though the lock was not had, so two sweeps can lose each other's dates"
+file = "src/cratekit/tagging/refused.py"
+surface = "maintainer"
+tests = ["tests/test_sync_refused.py"]
+old = '''            if not had:
+                LOG.info'''
+new = '''            if False:
+                LOG.info'''
+
+[[rows]]
+id = "R4_empty_since_read"
+description = "refused._parse: an entry with an empty since is read as refusing"
+file = "src/cratekit/tagging/refused.py"
+surface = "maintainer"
+tests = ["tests/test_sync_refused.py"]
+old = '''        if isinstance(since, str) and since and isinstance(last, str)'''
+new = '''        if isinstance(since, str) and isinstance(last, str)'''
+
+[[rows]]
+id = "R5_count_never_grows"
+description = "refused._change: the refusal count stays where it was"
+file = "src/cratekit/tagging/refused.py"
+surface = "maintainer"
+tests = ["tests/test_sync_refused.py"]
+old = '''                    count=(before.count if before is not None else 0) + 1,'''
+new = '''                    count=(before.count if before is not None else 0) + 0,'''
+
+[[rows]]
+id = "R6_write_failure_raises"
+description = "refused._change: catch only ValueError, so a record that cannot be written fails the file it was asked about"
+file = "src/cratekit/tagging/refused.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py"]
+old = '''    except (OSError, ValueError, RecursionError) as exc:'''
+new = '''    except ValueError as exc:'''
+
+[[rows]]
+id = "R7_deep_record_raises"
+description = "refused._parse: a record nested past the parser's depth raises out of every read"
+file = "src/cratekit/tagging/refused.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py"]
+old = '''    except (ValueError, RecursionError):
+        # A RECORD NESTED'''
+new = '''    except ValueError:
+        # A RECORD NESTED'''
+
+[[rows]]
+id = "S1_sweep_keeps_no_record"
+description = "searchers.for_run: the sweep's run count keeps no record, so no date is ever known"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''        _run_refusals[:] = [(run, Refusals(record=True))]'''
+new = '''        _run_refusals[:] = [(run, Refusals())]'''
+
+[[rows]]
+id = "S2_outage_sets_a_date"
+description = "Refusals.heard: an outage is recorded as a refusal, giving a false refusing since date"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''        if outcome.answer is Answer.BLOCKED:
+            refused.refused(outcome.source)'''
+new = '''        if outcome.answer in (Answer.BLOCKED, Answer.UNREACHABLE):
+            refused.refused(outcome.source)'''
+
+[[rows]]
+id = "S3_answer_never_clears"
+description = "Refusals.heard: a match or a miss never clears the record"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''            refused.answered(outcome.source)'''
+new = '''            pass'''
+
+[[rows]]
+id = "S4_record_kept_without_flag"
+description = "Refusals.heard: every run count keeps the record, a searcher built by any caller included"
+file = "src/cratekit/tagging/searchers.py"
+surface = "maintainer"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''        if not self.record:
+            return
+'''
+new = ''''''
+
+[[rows]]
+id = "S5_refusal_said_as_outage"
+description = "searchers._decide: a refusal by every catalogue raises the outage refusal, network step first and no token step"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''    if len(blocked) == len(outcomes):
+        raise _refused_by_all'''
+new = '''    if False:
+        raise _refused_by_all'''
+
+[[rows]]
+id = "S6_partial_refusal_said_as_refusal"
+description = "searchers._decide: a refusal beside an outage is said as a refusal by all, hiding the outage"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''    if len(blocked) == len(outcomes):
+        raise _refused_by_all'''
+new = '''    if blocked:
+        raise _refused_by_all'''
+
+[[rows]]
+id = "S7_token_step_dropped"
+description = "searchers._refused_by_all: no token step when Discogs went unasked"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''    if unasked:
+        steps.append(
+            f"record a Discogs token'''
+new = '''    if False:
+        steps.append(
+            f"record a Discogs token'''
+
+[[rows]]
+id = "S8_refusal_not_retryable"
+description = "searchers._refused_by_all: the refusal is not retryable, so a resumed sweep cannot ask again"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''        retryable=True,
+        origin=("tagging", "searchers"),
+        detail={
+            "sources": [outcome.source for outcome in outcomes],
+            "answers": [outcome.answer.value for outcome in outcomes],
+            "notes": [outcome.note for outcome in outcomes],
+            REFUSED_DETAIL: since,'''
+new = '''        retryable=False,
+        origin=("tagging", "searchers"),
+        detail={
+            "sources": [outcome.source for outcome in outcomes],
+            "answers": [outcome.answer.value for outcome in outcomes],
+            "notes": [outcome.note for outcome in outcomes],
+            REFUSED_DETAIL: since,'''
+
+[[rows]]
+id = "S9_rejected_token_names_any_shop"
+description = "searchers._beside_refusals: a rejected token names the shops as refusing whatever they answered"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_beatport_refusal.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py"]
+old = '''    if not outcomes or any(outcome.answer is not Answer.BLOCKED for outcome in outcomes):'''
+new = '''    if not outcomes:'''
+
+[[rows]]
+id = "C1_tagged_file_named_refused"
+description = "tagging.cli._refused_out: a file with a genre written is named among those left with none"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''    if reason not in (tag_engine.SOURCES_UNREAD, tag_engine.UNMAPPED_GENRE):
+        return ()'''
+new = '''    if False:
+        return ()'''
+
+[[rows]]
+id = "C2_outage_named_refused"
+description = "tagging.cli._refused_out: a file another catalogue was down for is named as refused"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''    if not others or any(said[source] != searchers.Answer.BLOCKED.value for source in others):'''
+new = '''    if not others:'''
+
+[[rows]]
+id = "C3_unread_discogs_named"
+description = "tagging.cli._refused_out: a file Discogs never read is named as one it could not tag"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''    if said.get(searchers.DISCOGS) not in (searchers.Answer.MISS.value, searchers.Answer.MATCHED.value):
+        return ()'''
+new = '''    if False:
+        return ()'''
+
+[[rows]]
+id = "C4_stop_never_collected"
+description = "tagging.cli._summary: no failed file is read as one every catalogue refused"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''        if cause is not None and isinstance((cause.detail or {}).get(searchers.REFUSED_DETAIL), dict):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "C5_sweep_stop_unsaid"
+description = "tagging.cli._with_report: the sweep's own refusal says nothing of who refused"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''    if stop:
+        # WHO REFUSED'''
+new = '''    if False:
+        # WHO REFUSED'''
+
+[[rows]]
+id = "C6_token_unsaid"
+description = "tagging.cli._refusal_stop: Discogs unasked is never said and its token step never given"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''    if unasked:
+        why = '''
+new = '''    if False:
+        why = '''
+
+[[rows]]
+id = "C7_rejected_token_told_to_wait"
+description = "tagging.cli._refusal_stop: a stop over a rejected token says waiting mends it"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_tag_workers.py", "tests/test_tag_folder_copyright.py", "tests/test_discogs_first.py"]
+old = '''    if unasked != searchers.DISCOGS_TOKEN_REFUSED:'''
+new = '''    if True:'''
+
+[[rows]]
+id = "T1_pass_names_nothing"
+description = "tail.tail_step: the pass never names the files the catalogues refused"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_tag_guess.py", "tests/test_tag_folder_copyright.py"]
+old = '''    if step == TAG:
+        refused_files(chain, chain.settled.get(step))'''
+new = '''    if False:
+        refused_files(chain, chain.settled.get(step))'''
+
+[[rows]]
+id = "T2_pass_stop_unsaid"
+description = "tail.tail_step: the pass's stop at its tag step says nothing of who refused or the token"
+file = "src/cratekit/cli/tail.py"
+surface = "user"
+tests = ["tests/test_sync_refused.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py", "tests/test_tag_guess.py", "tests/test_tag_folder_copyright.py"]
+old = '''        raise Stop(step, refused_stop(error, chain.settled.get(step)) if step == TAG else error)'''
+new = '''        raise Stop(step, error)'''

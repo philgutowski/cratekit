@@ -332,6 +332,39 @@ def _no_live_general_catalogue():
 
 
 @pytest.fixture(autouse=True)
+def _no_live_discogs():
+    """Fail any test that reaches the live Discogs API through the shipped getter.
+
+    U283. Setup checks a Discogs token before storing it, and the shipped
+    ``default_fetch`` folds every transport failure into an unreachable answer,
+    which setup stores with a note. So a refusal raised from the getter would
+    not fail a test that reached the network by mistake: it would store the
+    token and pass. The guard records the address instead and fails the test
+    at teardown. Other hosts pass through untouched, and a test that fakes the
+    getter itself replaces this one for its own duration.
+    """
+    from cratekit.tagging import searchers
+
+    reached: list[str] = []
+    shipped = searchers._requests_get
+
+    def guarded(url, *, headers, timeout):
+        if url.startswith(searchers.DISCOGS_API):
+            reached.append(url.split("?", 1)[0])
+            raise ConnectionError("a test reached the live Discogs API")
+        return shipped(url, headers=headers, timeout=timeout)
+
+    with _own_patch() as monkeypatch:
+        monkeypatch.setattr(searchers, "_requests_get", guarded)
+        yield
+    if reached:
+        pytest.fail(
+            f"a test reached the live Discogs API, {reached}; hand the step or the "
+            f"asker a fake fetch"
+        )
+
+
+@pytest.fixture(autouse=True)
 def _no_live_cyanite():
     """Refuse the Cyanite trial's shipped send in every test, structurally.
 

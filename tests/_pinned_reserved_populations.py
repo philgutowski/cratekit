@@ -2057,6 +2057,7 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'tag-guess-split',
         'tag-guess-unwritten',
     ],
+    'tagging/refused.py': ['utf-8'],  # 2026-11-13, U284
     'tagging/remap.py': [
         'ambiguous-record',
         'changed-since',

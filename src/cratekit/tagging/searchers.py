@@ -60,6 +60,12 @@ again from its first file, and Discogs keeps its own memory and is asked
 whatever Beatport said. A picture's question asks Beatport under the same
 count (U282).
 
+A REFUSAL BY EVERY CATALOGUE ASKED IS SAID AS ONE (U284). It keeps its slug
+and its retry, and names the refusing catalogues with the date each began
+refusing, off :mod:`cratekit.tagging.refused`, which a sweep's run count
+keeps, and the Discogs token when Discogs went unasked for want of one; the
+network is the first step only when something was unreachable.
+
 ``no-hit`` NEEDS EVERY SOURCE ASKED TO HAVE SAID MISS. One MISS beside a source
 that could not be read is not an absence, because the unread one may carry the
 track, so the hit says which sources went unread and the file stays untagged
@@ -180,10 +186,10 @@ from urllib.parse import quote_plus, urlencode
 
 from cratekit import __version__
 from cratekit.core import art, routing, secrets
-from cratekit.core.cause import CratekitError, Scope, refuse
+from cratekit.core.cause import CratekitError, Scope, rebuilt, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.taxonomy import Taxonomy
-from cratekit.tagging import titles
+from cratekit.tagging import refused, titles
 from cratekit.tagging.tag import FetchImage, Searcher, SearchHit, SourceAnswer
 
 log = logging.getLogger(__name__)
@@ -459,6 +465,10 @@ class Refusals:
     limit: int = REFUSALS_BEFORE_STOP
     running: dict[str, int] = field(default_factory=dict)
     last: dict[str, SourceOutcome] = field(default_factory=dict)
+    #: Whether this run's answers move the record of when each catalogue
+    #: began refusing (U284), :mod:`cratekit.tagging.refused`. A sweep's run
+    #: count does, :func:`for_run`; a count built anywhere else keeps none.
+    record: bool = False
 
     def stopped(self, source: str) -> SourceOutcome | None:
         """The answer for a catalogue this run no longer asks, or None to ask it."""
@@ -482,6 +492,15 @@ class Refusals:
         else:
             self.running.pop(outcome.source, None)
             self.last.pop(outcome.source, None)
+        if not self.record:
+            return
+        # ONLY A REFUSAL SENT, OR AN ANSWER (U284). A stopped catalogue's
+        # answer never reaches here, since it was not sent; an outage or a
+        # parse break says nothing about whether the catalogue would refuse.
+        if outcome.answer is Answer.BLOCKED:
+            refused.refused(outcome.source)
+        elif outcome.answer in (Answer.MATCHED, Answer.MISS):
+            refused.answered(outcome.source)
 
 
 # ---------------------------------------------------------------------------
@@ -1250,6 +1269,8 @@ def _search_bandcamp(
 DISCOGS_API = "https://api.discogs.com"
 DISCOGS_SEARCH = f"{DISCOGS_API}/database/search"
 DISCOGS_RELEASE = f"{DISCOGS_API}/releases/"
+#: Who a token belongs to, the one call setup spends to check one (U283).
+DISCOGS_IDENTITY = f"{DISCOGS_API}/oauth/identity"
 
 #: How many search results are asked for, and how many of the releases they
 #: name are read. Each release is a paced request, so three is the cost a miss
@@ -1317,6 +1338,26 @@ def discogs_headers(token: str) -> dict[str, str]:
         "Accept": "application/json",
         "Authorization": f"Discogs token={token}",
     }
+
+
+class TokenVerdict(Enum):
+    """What Discogs said about a token setup was given (U283)."""
+
+    #: Discogs named the account the token belongs to.
+    ACCEPTED = "accepted"
+    #: Discogs answered 401, or the token could not be sent at all.
+    REJECTED = "rejected"
+    #: Discogs said nothing about the token: a block, an outage, or an answer
+    #: that was not the identity.
+    UNCHECKED = "unchecked"
+
+
+@dataclass(frozen=True, slots=True)
+class TokenCheck:
+    """One token check's verdict, and a note that never carries the token."""
+
+    verdict: TokenVerdict
+    note: str
 
 
 @dataclass(frozen=True, slots=True)
@@ -1498,6 +1539,48 @@ class DiscogsAsker:
             self.refused = said
         return said
 
+    def identity(self) -> TokenCheck:
+        """Whether Discogs accepts this asker's token, by one identity call (U283).
+
+        THE SAME CLIENT A SWEEP ASKS THROUGH: :meth:`_read`, so the agent, the
+        header the token rides in, the pacer, the remaining count and the rate
+        limit ladder are the searcher's own, and a 401 is read by the one line
+        that reads it for a search. A token that is not one printable word is
+        rejected without a request, as a search rejects it.
+
+        THREE VERDICTS, because "Discogs refused the token" and "Discogs could
+        not be asked" send a person to different places: a rejection is a token
+        to make again, and nothing may store it; an unchecked token is one
+        Discogs said nothing about, a block, an outage or an answer that is not
+        the identity, which the caller may store and say so. Only a JSON object
+        naming the account by number is acceptance. The name Discogs answers is
+        not kept, and every note is scrubbed of the token.
+        """
+        if self.token is None:
+            return TokenCheck(TokenVerdict.REJECTED, "no token was given, so Discogs was not asked")
+        if not _TOKEN_SHAPE.fullmatch(self.token):
+            return TokenCheck(
+                TokenVerdict.REJECTED,
+                "the token is not one printable word, so it was not sent to Discogs",
+            )
+        try:
+            read = self._read(DISCOGS_IDENTITY, release=False)
+        except CratekitError:
+            if self.rejected is None:
+                raise
+            return TokenCheck(TokenVerdict.REJECTED, "Discogs answered 401, it does not accept this token")
+        if isinstance(read, SourceOutcome):
+            # Built by ``_said``, which scrubs the token from every note.
+            return TokenCheck(TokenVerdict.UNCHECKED, read.note)
+        assert isinstance(read, dict)
+        if type(read.get("id")) is not int:
+            return TokenCheck(
+                TokenVerdict.UNCHECKED,
+                "Discogs answered and the answer did not name an account, so the "
+                "token was neither accepted nor refused",
+            )
+        return TokenCheck(TokenVerdict.ACCEPTED, "Discogs accepted the token")
+
     def _scrub(self, text: str) -> str:
         return text.replace(self.token, _SCRUBBED) if self.token else text
 
@@ -1678,6 +1761,22 @@ def discogs_asker(
         sent = discogs_headers(token) if token is not None else {}
         fetch = default_fetch(sleep=naps, headers=sent)
     return DiscogsAsker(token=token, fetch=fetch, pacer=pacer, unasked=unasked)
+
+
+def check_discogs_token(
+    token: str,
+    *,
+    fetch: Fetch | None = None,
+    sleep: Callable[[float], None] | None = None,
+) -> TokenCheck:
+    """Whether Discogs accepts ``token``, asked through the searcher's own client.
+
+    A fresh asker for this one token, built exactly as a sweep builds one, so
+    the shipped fetch sends :func:`discogs_headers` under the shared timeout and
+    rate limit ladder. Never the process's shared asker: that one holds the
+    recorded token, and this one is checked before anything is recorded.
+    """
+    return discogs_asker(token=token, fetch=fetch, sleep=sleep).identity()
 
 
 def _recorded_token() -> tuple[str | None, str]:
@@ -1916,6 +2015,8 @@ def _decide(
         )
 
     blocked = [outcome.source for outcome in outcomes if outcome.answer is Answer.BLOCKED]
+    if len(blocked) == len(outcomes):
+        raise _refused_by_all(outcomes, passed, artist, title)
     steps = [
         "check this machine's network connection and run the tagging job again; "
         "the job resumes at the item it stopped on",
@@ -1944,6 +2045,113 @@ def _decide(
             "answers": [outcome.answer.value for outcome in outcomes],
             "notes": [outcome.note for outcome in outcomes],
         },
+    )
+
+
+#: The detail keys a refusal by every catalogue asked carries (U284): the
+#: refusing catalogues with the date each began refusing, empty where none is
+#: recorded, and the note Discogs was passed over with, empty when it was asked.
+REFUSED_DETAIL = "refused"
+DISCOGS_DETAIL = "discogs"
+
+
+def refusing_since(since: Mapping[str, str]) -> str:
+    """The refusing catalogues in words, each with the date it began when one is recorded."""
+    return ", ".join(
+        f"{source}, refusing since {began}" if began else source
+        for source, began in since.items()
+    )
+
+
+def _refused_by_all(
+    outcomes: Sequence[SourceOutcome],
+    passed: Sequence[NotAsked],
+    artist: str,
+    title: str,
+) -> CratekitError:
+    """The refusal of a file every catalogue asked refused, said as a refusal (U284).
+
+    NOT AN OUTAGE, SO THE NETWORK IS NOT THE FIRST STEP. Sitting 94's pass
+    stopped over 23 files Beatport refused, and the refusal's first step sent
+    the person to their network over a block no network check moves (u281-a).
+    The slug and the retry are unchanged: nothing is known of the track, and
+    the next run asks again.
+
+    THE TOKEN IS NAMED WHEN DISCOGS WAS PASSED OVER FOR WANT OF ONE, because
+    with a token recorded a file Discogs searched and could not tag beside a
+    refusing Beatport is settled askable rather than failed, and a sync pass
+    or a label go carries on to its landing (Phillip's answer on #790). A
+    Discogs that was asked and refused too is named among the refusing, and
+    the pass stops: carrying on needs Discogs to have read the file.
+    """
+    since = refused.since(outcome.source for outcome in outcomes)
+    named = refusing_since(since)
+    unasked = next((skipped.note for skipped in passed if skipped.source == DISCOGS), "")
+    steps: list[str] = []
+    if unasked:
+        steps.append(
+            f"record a Discogs token, then run the tagging job again: "
+            f"{DISCOGS_LOGIN_STEPS}. With one recorded Discogs is asked first, "
+            f"and a file it searched and could not tag while every other "
+            f"catalogue refuses is left untagged and askable rather than "
+            f"failing, so a sync pass or a label go carries on to its landing"
+        )
+    steps.append(
+        f"{', '.join(since)} refused this client, with a bot check, a block page "
+        f"or a rate limit that outlasted the backoff, rather than a result; this "
+        f"tool does not try to get past one, so a later run asks again and the "
+        f"job resumes at the item it stopped on"
+    )
+    steps.extend(f"{skipped.source} was {skipped.note}" for skipped in passed)
+    return refuse(
+        UNREACHABLE_REASON,
+        f"every catalogue asked refused this client: {named}, so nothing is "
+        f"known about {artist!r} {title!r}. A refusal is not the catalogues not "
+        f"carrying it, and it is not recorded as one",
+        remedy=Remedy.RETRY_LATER,
+        steps=tuple(steps),
+        scope=Scope.RUN,
+        retryable=True,
+        origin=("tagging", "searchers"),
+        detail={
+            "sources": [outcome.source for outcome in outcomes],
+            "answers": [outcome.answer.value for outcome in outcomes],
+            "notes": [outcome.note for outcome in outcomes],
+            REFUSED_DETAIL: since,
+            DISCOGS_DETAIL: unasked,
+        },
+    )
+
+
+def _beside_refusals(rejected: CratekitError, outcomes: Sequence[SourceOutcome]) -> CratekitError:
+    """A token Discogs rejected, naming the record shops that refused too (U284).
+
+    Raised where it always was, when no shop matched; when every shop asked
+    refused, a person fixing the token learns the shops are no help meanwhile,
+    and since when.
+    """
+    if not outcomes or any(outcome.answer is not Answer.BLOCKED for outcome in outcomes):
+        return rejected
+    since = refused.since(outcome.source for outcome in outcomes)
+    cause = rejected.cause
+    return rebuilt(
+        rejected,
+        replace(
+            cause,
+            remediation=replace(
+                cause.remediation,
+                steps=(
+                    *cause.remediation.steps,
+                    f"meanwhile every record shop asked refused this client too: "
+                    f"{refusing_since(since)}",
+                ),
+            ),
+            detail={
+                **dict(cause.detail or {}),
+                REFUSED_DETAIL: since,
+                DISCOGS_DETAIL: DISCOGS_TOKEN_REFUSED,
+            },
+        ),
     )
 
 
@@ -2071,7 +2279,7 @@ def catalogue_searcher(
                 shown,
             )
         if rejected is not None:
-            raise rejected
+            raise _beside_refusals(rejected, outcomes) from rejected.__cause__
         return _decide(order, outcomes, passed, artist, title)
 
     return search
@@ -2194,9 +2402,14 @@ def for_run(run: str) -> Refusals:
     a resumed run each ask a refusing catalogue again from their first file,
     as U281 asks. A test replaces this attribute, as it does
     :func:`for_taxonomy`; :func:`reset_runs` forgets the count.
+
+    THE ONE COUNT THAT KEEPS THE RECORD (U284). A sweep's refusals sent, and
+    its matches and misses, move :mod:`cratekit.tagging.refused`, so the date a
+    catalogue began refusing outlives the run; a count built anywhere else
+    keeps none.
     """
     if not _run_refusals or _run_refusals[0][0] != run:
-        _run_refusals[:] = [(run, Refusals())]
+        _run_refusals[:] = [(run, Refusals(record=True))]
     return _run_refusals[0][1]
 
 
@@ -2246,6 +2459,7 @@ __all__ = [
     "DISCOGS",
     "DISCOGS_API",
     "DISCOGS_CREDENTIAL",
+    "DISCOGS_IDENTITY",
     "DISCOGS_LOGIN_STEPS",
     "DISCOGS_NO_TOKEN",
     "DISCOGS_RELEASE",
@@ -2257,6 +2471,7 @@ __all__ = [
     "DISCOGS_SLOWDOWN_S",
     "DISCOGS_TOKEN_LOST",
     "DISCOGS_TOKEN_REFUSED",
+    "DISCOGS_DETAIL",
     "DISCOGS_UNASKED_NOTES",
     "HEADERS",
     "IMAGE_MEMORY",
@@ -2273,6 +2488,7 @@ __all__ = [
     "SOURCES",
     "TRAXSOURCE",
     "TRAXSOURCE_SEARCH",
+    "REFUSED_DETAIL",
     "UNREACHABLE_REASON",
     "UNREAD_ANSWERS",
     "WALK",
@@ -2284,7 +2500,10 @@ __all__ = [
     "Pacer",
     "Refusals",
     "SourceOutcome",
+    "TokenCheck",
+    "TokenVerdict",
     "catalogue_searcher",
+    "check_discogs_token",
     "choose_word",
     "default_fetch",
     "default_image_fetch",
@@ -2296,6 +2515,7 @@ __all__ = [
     "for_taxonomy",
     "remembering",
     "reset_images",
+    "refusing_since",
     "reset_runs",
     "unread_outcome",
 ]

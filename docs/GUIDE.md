@@ -18,6 +18,20 @@ crate doctor
   proposes a rekordbox version pin and any location prefix rule, which only a
   yes adopts. Every other answer is also a flag (`crate setup --help`). Re-running keeps earlier
   answers unless a flag changes one, and ends by running doctor.
+- Linking Discogs is a step of its own. Setup says what Discogs does for
+  genre tagging, that it is free with a Discogs account, and where to make a
+  personal access token (discogs.com/settings/developers, Generate new
+  token), then asks `Link Discogs now?`. The token is typed or pasted unseen,
+  checked with one call to Discogs, and stored in the keychain as
+  `discogs-token` once Discogs accepts it. A token Discogs refuses is
+  said so and never stored, and setup asks for one again, three tries in all. If Discogs cannot
+  be reached, or refuses the computer rather than the token, the token is
+  stored with a note that it was not checked. Saying no, or entering
+  nothing, is a note saying what is lost and how to link later. A token
+  already recorded is left as it is; `crate setup --relink-discogs` offers to
+  replace it, and keeps the old one unless Discogs accepts the new. If your
+  taxonomy copy predates the `[vocabulary.discogs]` table, setup points you
+  to `crate taxonomy upgrade`.
 - `doctor` writes nothing. Each line is `ok`, `FAIL` (blocks a verb, names the
   fix) or `note` (no action).
 - `crate profile show` lists the modules the profile switches on; `crate
@@ -40,7 +54,7 @@ crate login NAME --from-file PATH
 | `identify-key`, `identify-signing-key` | The recognition service's key and signing value, for `intake set` and `intake identify`. |
 | `catalogue-app-id`, `catalogue-app-key` | Optional. Cratekit's own app on the provider's developer platform. With both recorded, catalogue lookups go under the app rather than your account; doctor says where lookups go and how many calls each side made. |
 | `cyanite-key` | Optional. An integration access token from your Cyanite account's integrations section, for the Cyanite trial below and nothing else. Doctor reports it and never fails on it; setup does not offer it. |
-| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup offers it; doctor reports it and never fails on it. |
+| `discogs-token` | Optional. A personal access token from your Discogs account's developer settings. With it, `tag folder`, `tag retag` and `tag suggest --catalogue` ask Discogs first, and Beatport only when Discogs gives no genre; without it Discogs is recorded as not asked on every file that needs a genre and Beatport is asked as before, a file Beatport misses stays askable rather than `no-hit`, and the sweep's summary and a warning say how many files Discogs was not asked about. A token Discogs refuses does not stop Beatport being asked: a file Beatport settles is tagged as before, a file it cannot settle fails with the token's refusal while the sweep goes on, and the sweep warns how many files Discogs was not read for because it refused the token. Setup links it as its own step, checking the token with Discogs before storing it (above); doctor reports it and never fails on it. |
 
 A provider that rejects the stored session is reported as rejected, with the
 sign in step. A provider that fails or cannot be reached is reported as an
@@ -173,6 +187,23 @@ the two commands that answer and apply it and the rekordbox visit after.
 
 - A tail step that fails ends the pass there; no landing is planned over
   files the tail did not run on.
+- When every genre catalogue but Discogs refuses this machine (Beatport's 403,
+  a bot wall), a pass with a `discogs-token` recorded carries on: a file
+  Discogs searched and could not tag is left with no genre, never recorded
+  `no-hit`, goes through `tag guess`, analysis, naming and the landing, and
+  lands under needs genre unless the guess gave it one; `tag retag` and `tag
+  suggest` ask the catalogues again later. The pass names each such file and
+  the refusing catalogues, with the date each began refusing, in its
+  `refused` row and its summary's `refused` (under `tail` for `label sync
+  --go`). With no token, or with Discogs refusing too, the pass stops at its
+  tag step as before and says which catalogues refused this machine and since
+  when, and, with no token, that `crate login discogs-token` lets it carry on.
+  A file no catalogue could be read for, by a timeout, a failed name lookup or
+  a server error, still fails its item and stops the pass at its tag step; a
+  file Discogs missed beside a Beatport that was down is settled askable and
+  carries on, as it has since a token was first asked for, and is not named
+  among the refused. `label sync --go` and `sync bandcamp` run the same tail
+  and behave the same.
 - A track the download refuses for good (lossy only, gone from the provider)
   is named and skipped. Anything a wait would mend ends the pass.
 - A missing track already staged by an earlier unlanded download is not
@@ -366,7 +397,14 @@ crate route pending
   again by the next run; after three refusals in a row from Beatport (or a
   record shop on an older walk) a sweep stops sending it requests until the
   next sweep, and says so in each later file's record, while Discogs, once it
-  refuses, is not asked again in the run. `tag suggest --catalogue` stops the
+  refuses, is not asked again in the run. A sweep keeps the date each record
+  shop began refusing this machine, cleared by its next match or miss, in
+  `catalogue_refusals.json` in the installation state directory; losing the
+  file loses only the date. A file every catalogue asked refused fails with a
+  refusal naming them and since when, and, when Discogs went unasked for want
+  of a token, how to record one; with `--output json` the summary lists such
+  files under `refusal_stop`, and lists under `refused` the files Discogs
+  searched and could not tag while every other catalogue refused. `tag suggest --catalogue` stops the
   same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
   refused this client, and a Cloudflare challenge as one, and keeps
   `unreachable` for a catalogue that is down. A file no catalogue knows keeps

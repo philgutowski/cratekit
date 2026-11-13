@@ -553,7 +553,18 @@ for the branch, and both refuse a baseline whose header does not end `ids
 whole`, which is measured again (U268). Each run of the battery that reaches
 its reading leaves a record of what it measured, which the mutation driver may read in place of
 its own full baseline for the same commit (U271, The mutation table above).
-Nothing
+Both name where the run kept
+its temporary files, `disk` or `memory` (U273): `baseline` runs on disk
+unless `--temp memory` asks for the memory filesystem, the header records
+the place, `compare` runs in the baseline's place and refuses a `--temp`
+naming the other, and the driver keeps every child in the place its known
+failures name. In memory the tests on the battery's `ON_DISK` list, the
+inode bound test alone today, run a second time on disk and their disk
+outcome stands. Disk stays the default while Phillip decides (#702): that
+test fails on the container's disk whenever it runs alone, so a memory
+baseline would read it as the machine's, so `--temp memory` is not for a
+merge battery until #702 is answered. A baseline naming no place is measured
+again. Nothing
 is skipped or marked, a newly failing test is the branch's, and a test that
 fails only under a parallel run on ext4 is rerun alone before it is called
 either. The macOS battery is owed on a Mac and named in each record's OWED
