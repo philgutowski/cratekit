@@ -53,10 +53,10 @@ without it, which is every baseline measured before U268.
 Every run keeps its temporary files in one named place (U273), `memory` or
 `disk`, chosen by `baseline` and written into its header, since the suite
 writes about 2 GB of scratch files a run and a container's disk makes it wait
-on them. `baseline` takes the memory filesystem, `/dev/shm`, when it is a
-`tmpfs` with room for a run, and the disk otherwise, or the place `--temp`
-names. `compare` runs in the baseline's place and refuses a `--temp` naming
-the other, so the base and the branch are always measured on the same
+on them. `baseline` runs on disk unless `--temp memory` asks for the memory
+filesystem, `/dev/shm`, which it refuses unless that is a `tmpfs` with room
+for a run. `compare` runs in the baseline's place and refuses a `--temp`
+naming the other, so the base and the branch are always measured on the same
 machine. A run in either place gets a fresh directory there as `TMPDIR`,
 removed when it ends, and a disk run whose temporary directory is itself on a
 memory filesystem is refused, so neither place is ever a name only.
@@ -125,6 +125,15 @@ ON_DISK: tuple[str, ...] = (
     # counter and, usually, the container's ext4 give.
     "tests/test_repair_rows.py::test_an_id_above_the_bound_that_is_the_files_inode_is_not_random",
 )
+
+#: Where `baseline` runs when `--temp` names no place. Disk, decided by U273 as
+#: the conservative call while Phillip decides: on the container a file on disk
+#: gets an inode near 600,000 unless a busy run has already written gigabytes,
+#: so the one test on `ON_DISK` fails when it runs there alone, and a baseline
+#: in memory would read it as the machine's where the disk battery mostly
+#: passes it. A test newly read as the machine's is never traded for speed
+#: without his say.
+DEFAULT_PLACE = DISK
 
 #: The command that measures a baseline again, named in every refusal of one.
 REMEASURE = "`.venv/bin/python scripts/cloud_battery.py baseline` on origin/main"
@@ -318,12 +327,6 @@ def place_root(place: str) -> tuple[Path | None, str]:
     return None, f"{place!r} is not a place for temporary files; name one of {', '.join(PLACES)}"
 
 
-def default_place() -> str:
-    """Memory when this machine has room for a run there, else disk."""
-    root, _ = place_root(MEMORY)
-    return MEMORY if root is not None else DISK
-
-
 @contextmanager
 def run_directory(place: str) -> Iterator[tuple[Path, Path]]:
     """A fresh workspace in ``place`` and the temporary directory inside it, removed after."""
@@ -477,7 +480,7 @@ def _requested_place(args) -> str | None:
 
 
 def cmd_baseline(args) -> int:
-    place = _requested_place(args) or default_place()
+    place = _requested_place(args) or DEFAULT_PLACE
     root, why = place_root(place)
     if root is None:
         print(f"temporary files: REFUSED, {why}")
@@ -641,8 +644,8 @@ def main(argv: list[str]) -> int:
         "--temp",
         choices=PLACES,
         default=None,
-        help="where the run keeps its temporary files; memory when this machine has room "
-        "for a run there, else disk",
+        help="where the run keeps its temporary files; disk unless memory is named, and "
+        "memory only on a memory filesystem with room for a run",
     )
     baseline.set_defaults(func=cmd_baseline)
     compare = sub.add_parser("compare", help="run the suite and diff it against the baseline")

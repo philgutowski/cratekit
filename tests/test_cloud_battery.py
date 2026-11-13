@@ -182,10 +182,10 @@ def test_a_baseline_header_says_it_was_measured_with_full_history(
     assert battery.cmd_baseline(None) == 0
 
     header = (state / "baseline.txt").read_text(encoding="utf-8").splitlines()[0]
-    assert header.endswith(" temp memory history full ids whole")
+    assert header.endswith(" temp disk history full ids whole")
     assert _is_shallow(clone) == "false"
     assert battery.read_baseline() == battery.Baseline(
-        {"tests/a.py::t"}, header.split()[2], "memory", ()
+        {"tests/a.py::t"}, header.split()[2], "disk", ()
     )
 
 
@@ -714,18 +714,15 @@ def test_a_mount_table_is_read_by_its_longest_mount_point(tmp_path, monkeypatch)
 def test_memory_is_a_place_only_on_a_memory_filesystem_with_room(places, monkeypatch):
     memory, _ = places
     assert battery.place_root("memory") == (memory, "")
-    assert battery.default_place() == "memory"
 
     monkeypatch.setattr(battery, "MEMORY_FLOOR", 2**80)
     root, why = battery.place_root("memory")
     assert root is None and "GiB" in why
-    assert battery.default_place() == "disk"
 
     monkeypatch.setattr(battery, "MEMORY_FLOOR", 0)
     monkeypatch.setattr(battery, "MEMORY_ROOT", memory.parent / "disk")
     root, why = battery.place_root("memory")
     assert root is None and "not a memory filesystem" in why
-    assert battery.default_place() == "disk"
 
 
 def test_disk_is_refused_when_the_temporary_directory_is_itself_in_memory(places, monkeypatch):
@@ -887,7 +884,7 @@ def test_an_on_disk_run_that_did_not_run_a_listed_test_is_refused(listed, placed
 
 def test_a_baseline_header_names_its_place_and_lists_its_tests_on_disk(placed, capsys):
     suite, _log, _memory = placed
-    assert battery.main(["baseline"]) == 0
+    assert battery.main(["baseline", "--temp", "memory"]) == 0
     lines = (suite / ".cloud-battery" / "baseline.txt").read_text(encoding="utf-8").splitlines()
     assert lines[0] == (
         f"# commit abc1234 host {socket.gethostname()} temp memory history full ids whole"
@@ -900,7 +897,8 @@ def test_a_baseline_header_names_its_place_and_lists_its_tests_on_disk(placed, c
     out = capsys.readouterr().out
     assert "NEWLY FAILING, yours: 0" in out
 
-    assert battery.main(["baseline", "--temp", "disk"]) == 0
+    # Naming no place is disk, the default while Phillip decides (U273).
+    assert battery.main(["baseline"]) == 0
     lines = (suite / ".cloud-battery" / "baseline.txt").read_text(encoding="utf-8").splitlines()
     assert " temp disk " in lines[0]
     assert not any(line.startswith("# on disk") for line in lines)
