@@ -551,7 +551,7 @@ def bound(monkeypatch, searcher):
     fixed three argument ``ItemHandler`` leaves a test nowhere else to hand a
     fake in, and without one every case below would touch the network.
     """
-    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None: searcher)
+    monkeypatch.setattr(searchers, "for_taxonomy", lambda declared=None, refusals=None: searcher)
     # THE GENERAL CATALOGUE IS BOUND TOO, to a lookup that fails the test on any
     # request (R-796). The worker hands every searched file to it, and a file
     # carrying an ISRC would otherwise be asked about on the real network. A
@@ -1005,12 +1005,290 @@ def test_blocked_fallbacks_reach_every_artifact_and_the_summary_and_never_read_a
     assert tag_cli.SOURCE_BLOCKED == "tag-folder-source-blocked"
     unread = warnings[tag_cli.SOURCES_UNREAD]
     assert "2 files were left untagged" in unread
-    assert "Across the sweep: traxsource blocked on 2; bandcamp blocked on 2" in unread
+    assert "Across the sweep: traxsource refused this client on 2; bandcamp refused this client on 2" in unread
     assert "parse break" not in unread
     blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
     assert len(blocked) == 2
     assert blocked[0].startswith("traxsource refused every one of the 2 searches")
     assert blocked[1].startswith("bandcamp refused every one of the 2 searches")
+
+
+#: Beatport's answer at sitting 97, as the shipped fetch hands it on (U281).
+BEATPORT_CHALLENGE = searchers.Fetched(note="Cloudflare challenge, HTTP 403", status=403)
+
+
+def _refusing_sweep(monkeypatch, seen: list[str]):
+    """Bind the worker's searcher to the shipped one over a Beatport refusing every lookup.
+
+    A SEARCHER PER CALL, as the shipped binder builds one, carrying the run's
+    count the worker hands in, so the property under test is the worker's run
+    scope and not a searcher this test kept alive across files. Discogs is
+    asked with a token and answers an empty result set, so every file settles
+    ``sources-unread`` rather than failing.
+    """
+    from tests.test_discogs_searcher import SENT, results
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            return BEATPORT_CHALLENGE
+        if url.startswith(searchers.DISCOGS_SEARCH):
+            return searchers.Fetched(text=results(), status=200)
+        return searchers.Fetched(note=f"no route for {url}")
+
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+
+    def for_taxonomy(declared=None, refusals=None):
+        return searchers.catalogue_searcher(
+            TAXONOMY,
+            fetch=fetch,
+            sleep=lambda _s: None,
+            discogs=asker,
+            refusals=refusals,
+        )
+
+    monkeypatch.setattr(searchers, "for_taxonomy", for_taxonomy)
+    general(monkeypatch, None)
+
+
+def _beatport_asked(seen: list[str]) -> int:
+    return sum(url.startswith(searchers.BEATPORT_SEARCH) for url in seen)
+
+
+def test_a_sweep_stops_asking_a_refusing_beatport_after_three_and_says_it_refused(
+    cfg, folder, silence, monkeypatch
+):
+    """U281 through the verb: five files, Beatport refusing every lookup with
+    Cloudflare's challenge. Three requests reach Beatport, not five; the two
+    files after them record it blocked and unsent, every file stays askable,
+    Discogs is asked on all five, and the warning names a refusal rather than
+    an outage."""
+    for name in ("a", "b", "c", "d", "e"):
+        place(folder, silence, name)
+    seen: list[str] = []
+    _refusing_sweep(monkeypatch, seen)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert _beatport_asked(seen) == 3
+    assert sum(url.startswith(searchers.DISCOGS_SEARCH) for url in seen) == 5
+    reports = sorted(artifacts.committed(cfg, job.job_id), key=lambda r: r["item"])
+    assert len(reports) == 5
+    notes = []
+    for report in reports:
+        assert report["skipped"] == tag.SOURCES_UNREAD
+        assert report["unread"] == {searchers.BEATPORT: "blocked"}
+        (beatport,) = [s for s in report["answers"] if s["source"] == searchers.BEATPORT]
+        assert beatport["answer"] == "blocked"
+        notes.append(beatport["note"])
+    assert [note.startswith(searchers.NOT_SENT) for note in notes] == [
+        False, False, False, True, True,
+    ]
+    assert tags.read_genre_from_file(folder / "e.flac") is None
+
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["skipped"][tag.NO_HIT] == 0
+    assert tagging["answers"][searchers.BEATPORT]["blocked"] == 5
+    assert tagging["answers"][searchers.BEATPORT]["unreachable"] == 0
+    assert tagging["challenged"][searchers.BEATPORT] == 5
+    assert tagging["not_sent"][searchers.BEATPORT] == 2
+    assert tagging["not_sent"][searchers.DISCOGS] == 0, "zero filled"
+
+    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    unread = warnings[tag_cli.SOURCES_UNREAD]
+    assert (
+        "Across the sweep: beatport refused this client (Cloudflare challenge) on 5, "
+        "2 of them not asked once it had refused this client"
+    ) in unread
+    assert "unreachable" not in unread
+    blocked = warnings[tag_cli.SOURCE_BLOCKED]
+    assert blocked.startswith("beatport refused every one of the 3 searches it was sent")
+    assert "and was not asked about 2 more file(s) once it had refused this client" in blocked
+
+
+def test_the_next_sweep_asks_a_refusing_beatport_again_from_its_first_file(
+    cfg, folder, silence, monkeypatch
+):
+    """The count is the run's: a second sweep in the same process, a new job,
+    sends Beatport its first three lookups again rather than inheriting the
+    first sweep's stop."""
+    for name in ("a", "b", "c", "d"):
+        place(folder, silence, name)
+    seen: list[str] = []
+    _refusing_sweep(monkeypatch, seen)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    first = tag_job()
+    code, _ = drive(resume_argv(first.job_id))
+    assert code == int(ExitCode.OK)
+    assert _beatport_asked(seen) == 3
+
+    again = folder.parent / "again"
+    for name in ("f", "g", "h", "i"):
+        place(again, silence, name)
+    drive(["tag", "folder", "--queue-only", str(again)])
+    with jobs.open_store() as store:
+        (second,) = [
+            job
+            for job in jobs.list_jobs(store)
+            if job.handler_key == registry.entry("tag.folder").handler_key
+            and job.job_id != first.job_id
+        ]
+    code, _ = drive(resume_argv(second.job_id))
+    assert code == int(ExitCode.OK)
+    assert _beatport_asked(seen) == 6
+
+
+def test_a_resumed_run_asks_a_refusing_beatport_again_from_its_first_file(
+    cfg, folder, silence, monkeypatch
+):
+    """The count is the RUN's, not the job's: a retried job driven again in
+    the same process is a new drive, and asks Beatport its first three lookups
+    again. With no Discogs token every file fails ``catalogue-unreachable``,
+    retryable, which is the shape a retry re-arms."""
+    from tests.test_discogs_searcher import results
+
+    for name in ("a", "b", "c", "d", "e"):
+        place(folder, silence, name)
+    seen: list[str] = []
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            return BEATPORT_CHALLENGE
+        return searchers.Fetched(text=results(), status=200)
+
+    asker = searchers.discogs_asker(token=None, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    drive(resume_argv(job.job_id))
+    assert _beatport_asked(seen) == 3
+    assert set(item_causes(job.job_id).values()) == {searchers.UNREACHABLE_REASON}
+
+    with jobs.open_store() as store:
+        jobs.retry(store, job.job_id)
+    drive(resume_argv(job.job_id))
+
+    assert _beatport_asked(seen) == 6
+
+
+def test_a_discogs_refusal_remembered_for_the_run_is_not_counted_as_a_search_sent(
+    cfg, folder, silence, monkeypatch
+):
+    """Discogs remembers its first refusal and sends nothing more in the run,
+    recording each later file blocked and unsent, so the source blocked
+    warning counts the one search it was sent and names the files it was not
+    (U281's review)."""
+    for name in ("a", "b", "c", "d"):
+        place(folder, silence, name)
+    seen: list[str] = []
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            return searchers.Fetched(text=beatport_page([]), status=200)
+        return searchers.Fetched(note="HTTP 403", status=403)
+
+    from tests.test_discogs_searcher import SENT
+
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    job = tag_job()
+    code, resumed = drive(resume_argv(job.job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert sum(url.startswith(searchers.DISCOGS_SEARCH) for url in seen) == 1
+    tagging = resumed["data"]["progress"]["tagging"]
+    assert tagging["answers"][searchers.DISCOGS]["blocked"] == 4
+    assert tagging["not_sent"][searchers.DISCOGS] == 3
+    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    assert (
+        "discogs refused this client on 4, 3 of them not asked once it had "
+        "refused this client"
+    ) in warnings[tag_cli.SOURCES_UNREAD]
+    blocked = warnings[tag_cli.SOURCE_BLOCKED]
+    assert blocked.startswith("discogs refused every one of the 1 searches it was sent")
+    assert "and was not asked about 3 more file(s) once it had refused this client" in blocked
+
+
+def test_a_sweep_some_of_whose_refusals_were_a_challenge_says_how_many():
+    """Named whole only when every refusal counted was a challenge."""
+    summary = {
+        "challenged": {searchers.BEATPORT: 2},
+        "not_sent": {searchers.BEATPORT: 1},
+    }
+
+    said = tag_cli._unread_phrase(summary, searchers.BEATPORT, "blocked", 4)
+    whole = tag_cli._unread_phrase(
+        {"challenged": {searchers.BEATPORT: 4}}, searchers.BEATPORT, "blocked", 4
+    )
+    plain = tag_cli._unread_phrase({}, searchers.BEATPORT, "blocked", 4)
+
+    assert said == (
+        "beatport refused this client on 4 (Cloudflare challenge on 2), "
+        "1 of them not asked once it had refused this client"
+    )
+    assert whole == "beatport refused this client (Cloudflare challenge) on 4"
+    assert plain == "beatport refused this client on 4"
+    assert tag_cli._unread_phrase({}, searchers.BEATPORT, "unreachable", 4) == (
+        "beatport unreachable on 4"
+    )
+
+
+def test_an_outage_keeps_its_own_word_in_the_sweeps_warning(cfg, folder, silence, monkeypatch):
+    """A Beatport that is down is unreachable, said so, and asked on every file."""
+    from tests.test_discogs_searcher import SENT, results
+
+    for name in ("a", "b", "c", "d"):
+        place(folder, silence, name)
+    seen: list[str] = []
+
+    def fetch(url: str) -> searchers.Fetched:
+        seen.append(url)
+        if url.startswith(searchers.BEATPORT_SEARCH):
+            return searchers.Fetched(note="HTTP 503", status=503)
+        return searchers.Fetched(text=results(), status=200)
+
+    asker = searchers.discogs_asker(token=SENT, fetch=fetch, sleep=lambda _s: None)
+    monkeypatch.setattr(
+        searchers,
+        "for_taxonomy",
+        lambda declared=None, refusals=None: searchers.catalogue_searcher(
+            TAXONOMY, fetch=fetch, sleep=lambda _s: None, discogs=asker, refusals=refusals
+        ),
+    )
+    general(monkeypatch, None)
+
+    drive(["tag", "folder", "--queue-only", str(folder)])
+    code, resumed = drive(resume_argv(tag_job().job_id))
+    assert code == int(ExitCode.OK), resumed
+
+    assert _beatport_asked(seen) == 4
+    warnings = {w["code"]: w["message"] for w in resumed["warnings"]}
+    assert "Across the sweep: beatport unreachable on 4" in warnings[tag_cli.SOURCES_UNREAD]
+    assert "refused" not in warnings[tag_cli.SOURCES_UNREAD]
+    assert tag_cli.SOURCE_BLOCKED not in warnings
 
 
 def test_a_fallback_blocked_on_every_file_it_was_asked_about_is_named_by_the_warning(
@@ -1256,7 +1534,7 @@ def test_a_general_catalogue_unread_on_every_file_is_named_in_the_summary(
     blocked = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCE_BLOCKED]
     assert blocked == [], "the general catalogue has its own warning and is named once"
     unread = [w["message"] for w in resumed["warnings"] if w["code"] == tag_cli.SOURCES_UNREAD]
-    assert len(unread) == 1 and f"{published.SOURCE} blocked on 2" in unread[0]
+    assert len(unread) == 1 and f"{published.SOURCE} refused this client on 2" in unread[0]
 
 
 def test_a_general_catalogue_unread_on_some_files_says_how_many_of_how_many(

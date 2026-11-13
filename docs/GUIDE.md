@@ -348,8 +348,17 @@ crate route pending
   folder is a decline. A library set up before that table shipped gets it
   with `crate taxonomy upgrade`, which doctor names; until then nine of the
   common dance styles, Nu-Disco and Techno among them, are declined. Traxsource and Bandcamp, which answer every search
-  with a bot check, are no longer asked. A file no catalogue knows keeps no
-  genre. A file's label is its label
+  with a bot check, are no longer asked. A catalogue that refuses this
+  machine, with a 403, a spent rate limit or Cloudflare's challenge page, is
+  recorded `blocked` and never a miss, so the file stays untagged and is asked
+  again by the next run; after three refusals in a row from Beatport (or a
+  record shop on an older walk) a sweep stops sending it requests until the
+  next sweep, and says so in each later file's record, while Discogs, once it
+  refuses, is not asked again in the run. `tag suggest --catalogue` stops the
+  same way within one run; `tag retag` asks afresh for each file. The sweep's warning names such a catalogue as having
+  refused this client, and a Cloudflare challenge as one, and keeps
+  `unreachable` for a catalogue that is down. A file no catalogue knows keeps
+  no genre. A file's label is its label
   tag, else `--label`, else the one registered label whose whole `--match`
   needle its copyright line carries, as whole words, so a folder of several
   labels is tagged in one call with every catalogue refusing, as long as each
