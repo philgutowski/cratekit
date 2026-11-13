@@ -6853,25 +6853,28 @@ def test_the_title_floor_is_pinned_from_both_sides_by_the_nearest_score_either_w
 def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     """THE REFERENCE, WRITTEN APART FROM THE CODE: the shipped scorer's every
     hit over the floor, in its order, each recording kept when its folded
-    title, or both halves crossed, reaches the title floor by
-    ``token_set_ratio``, or when either title folds to nothing, then the first
-    five. And U265's identity where nothing is dropped: a row whose shipped
+    title, or both halves crossed, is one string with the spaces gone or
+    reaches the title floor by ``token_set_ratio``, or when either title folds
+    to nothing, then the first five. And U265's identity where nothing is dropped: a row whose shipped
     five all pass is offered exactly the shipped five, every candidate and
     order unchanged. The generated libraries are asserted to carry rows of
     both kinds, and rows where a dropped hit makes room for a sixth."""
     from rapidfuzz import fuzz
 
+    def agree(one_name, other_name):
+        joined = "".join(one_name.split())
+        if joined and joined == "".join(other_name.split()):
+            return True
+        return fuzz.token_set_ratio(one_name, other_name) >= match.APPROXIMATE_TITLE_FLOOR
+
     def passes(wanted, held):
         asked, found = match.fold(wanted.title), match.fold(held.title)
         if not asked or not found:
             return True
-        if "".join(asked.split()) == "".join(found.split()):
+        if agree(asked, found):
             return True
-        floor = match.APPROXIMATE_TITLE_FLOOR
-        if fuzz.token_set_ratio(asked, found) >= floor:
-            return True
-        crossed = fuzz.token_set_ratio(asked, match.fold(held.artist)) >= floor
-        return crossed and fuzz.token_set_ratio(match.fold(wanted.artist), found) >= floor
+        crossed = agree(asked, match.fold(held.artist))
+        return crossed and agree(match.fold(wanted.artist), found)
 
     def by_recording(rows):
         grouped: dict[str, list[match.Owned]] = {}
@@ -6883,7 +6886,7 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     # THE CARD'S SHAPE BESIDE U265'S: short titles by one artist, related and
     # not, so rows drop hits and a drop makes room for a hit past the five.
     short = ("Joy", "Jay", "Joys", "Box", "Cox", "Fox", "Lox", "Pox", "Sox",
-             "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye")
+             "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye", "O.K.")
     held = [owned for versions in generated.by_recording.values() for owned in versions]
     held += [
         match.Owned(path=Path(f"s{n:03d}.flac"), artist=artist, title=title, version="", key=None)
@@ -6896,14 +6899,19 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     rows = rows + [
         one(artist=artist, title=title)
         for artist in ("Aurora Bloom", "Nova Reef")
-        for title in ("Joy", "Wow", "Mana", "Rea", "Get Out", "A")
+        for title in ("Joy", "Wow", "Mana", "Rea", "Get Out", "A", "OK", "Good Bye")
     ]
-    unchanged = dropped = refilled = 0
+    unchanged = dropped = refilled = joined = 0
     for wanted in rows:
         every = by_recording(_shipped_approximate(wanted, index, limit=None))
         kept = [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
         expected = tuple(held for group in kept for held in group)
         assert match._resembling(wanted, index) == expected, wanted.recording
+        joined += any(
+            "".join(match.fold(wanted.title).split()) == "".join(match.fold(g[0].title).split())
+            and match.fold(wanted.title) != match.fold(g[0].title)
+            for g in kept
+        )
 
         shipped = by_recording(_shipped_approximate(wanted, index))
         if all(passes(wanted, group[0]) for group in shipped):
@@ -6912,7 +6920,7 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
         else:
             dropped += 1
             refilled += len(kept) > len([g for g in shipped if passes(wanted, g[0])])
-    assert unchanged and dropped and refilled, (unchanged, dropped, refilled)
+    assert unchanged and dropped and refilled and joined, (unchanged, dropped, refilled, joined)
 
 
 def test_titles_split_differently_are_kept_by_equality_and_not_by_a_ratio():
@@ -6926,3 +6934,25 @@ def test_titles_split_differently_are_kept_by_equality_and_not_by_a_ratio():
     assert not match._title_resembles(one(artist="Traumer", title="Get Out"), agenou)
     goodbye = match.Owned(path=Path("x.flac"), artist="Traumer", title="Goodbye", version="", key=None)
     assert match._title_resembles(one(artist="Traumer", title="Good Bye"), goodbye)
+
+
+@pytest.mark.parametrize(
+    ("held", "listed"),
+    [
+        ("Aurora Bloom - OK", "O.K. - Aurora Bloom"),
+        ("Aurora Bloom - Goodbye", "Good Bye - Aurora Bloom"),
+        ("Aurora Bloom - Every Day", "Everyday - Aurora Bloom"),
+        ("M.I.A. - Paper Planes", "Paper Planes - MIA"),
+    ],
+)
+def test_a_swapped_listing_split_differently_is_still_offered(cfg, music, tmp_path, held, listed):
+    """Review round two's finding: the swap allowance compared each crossed
+    half by its score alone, so a title first listing whose title or artist
+    is split or dotted differently from the file's read missing and was
+    downloaded again. Each half now gets the same equality the titles do."""
+    hold(music, f"08A - 124 - {held}")
+    path = write_list(tmp_path, f"{listed}\n", "swapped.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    (row,) = envelope["data"]["needs_review"]
+    assert row["why"] == str(match.Why.TITLE_APPROXIMATE)

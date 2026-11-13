@@ -44,7 +44,9 @@ were the same shape (U286).
   nothing about it. Titles equal once their spaces are gone, `O.K.` and
   `OK`, `Good Bye` and `Goodbye`, are one title, since `fold` turns a dot
   into a space and they then share no word; compare them for equality, not
-  by a ratio, which lets `Get Out` and `Agenou` in at 66.67. Dropping any of
+  by a ratio, which lets `Get Out` and `Agenou` in at 66.67. Give the swap's
+  crossed halves the same equality, or `Paper Planes - MIA` against the file
+  `M.I.A. - Paper Planes` reads missing (U286's round two). Dropping any of
   these would download a duplicate.
 - **A floor between short titles is narrow.** One changed letter in a three
   letter title scores 66.67 and `Get Out` against `Agenou` 61.5, so the free

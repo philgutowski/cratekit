@@ -2695,21 +2695,29 @@ def _title_resembles(wanted: Wanted, held: Owned) -> bool:
     card's unrelated pairs back in. And a file whose artist and
     title are the row's swapped, a listing pasted title first or a file named
     the wrong way round, is the same record, which the word sort scores as one
-    string at 100: each half then has to resemble the other side's other half.
+    string at 100: each half then has to agree with the other side's other
+    half by the same test, the equality included, so a dotted artist,
+    ``M.I.A.`` against ``MIA``, crosses as a dotted title does (review round
+    two's finding).
     """
-    from rapidfuzz import fuzz
-
     asked, found = fold(wanted.title), fold(held.title)
     if not asked or not found:
         return True
-    if asked.replace(" ", "") == found.replace(" ", ""):
+    if _agree(asked, found):
         return True
-    if fuzz.token_set_ratio(asked, found) >= APPROXIMATE_TITLE_FLOOR:
+    return _agree(asked, fold(held.artist)) and _agree(fold(wanted.artist), found)
+
+
+def _agree(one: str, other: str) -> bool:
+    """Whether two folded names agree for :func:`_title_resembles`: one string
+    once their spaces are gone, or ``token_set_ratio`` at or over
+    :data:`APPROXIMATE_TITLE_FLOOR`. An empty side agrees with nothing here;
+    the caller decides what a title that folds to nothing means."""
+    from rapidfuzz import fuzz
+
+    if one and one.replace(" ", "") == other.replace(" ", ""):
         return True
-    return (
-        fuzz.token_set_ratio(asked, fold(held.artist)) >= APPROXIMATE_TITLE_FLOOR
-        and fuzz.token_set_ratio(fold(wanted.artist), found) >= APPROXIMATE_TITLE_FLOOR
-    )
+    return fuzz.token_set_ratio(one, other) >= APPROXIMATE_TITLE_FLOOR
 
 
 def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:

@@ -293,9 +293,10 @@ crate match run /path/to/tracklist.txt
   item) or missing. The title is judged on its own as well as with the
   artist: a typo, a dropped or reordered word, or a title spelled `O.K.`
   for `OK` is still offered, but a short title like `Joy` beside the same
-  artist's `Goodbye` reads missing and is listed for download. A title a
-  letter or two away, `Joy` beside `Boy`, is still offered. It downloads
-  nothing and writes nothing to the account.
+  artist's `Goodbye` reads missing and is listed for download. A short title
+  one letter away, `Joy` beside `Boy`, is still offered; two letters away,
+  `Joy` beside `Boys`, reads missing. It downloads nothing and writes nothing
+  to the account.
 - `intake file` plans one file. On the xml bridge it writes only with
   `--export`; once the intake tree is native it takes no export, plans one
   collection row and one INBOX playlist for the file where it sits (it must be

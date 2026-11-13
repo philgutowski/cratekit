@@ -15,4 +15,8 @@ shipped five exactly, but a wrong rule written the same way in both places
 passes it. The rule itself is held by the named pairs and the floor's
 neighbours, which are computed, and the mutation table.
 
+Round two found the mirror's spaces removed line unreached by its corpus;
+the fix round added split titles to the corpus and the test now asserts a row
+kept by that equality, but the mirror stands.
+
 **Closes when:** ledger only. A maintainer reading the test is told so here.
