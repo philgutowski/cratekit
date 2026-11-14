@@ -381,6 +381,20 @@ def test_two_isrcs_that_differ_do_not_fold_even_when_the_names_agree():
     assert len(folded) == 2
 
 
+def test_two_emoji_titles_by_one_artist_played_back_to_back_stay_two_rows():
+    """Two titles that fold to nothing, here: with no ISRC the recording token decided, and two titles
+    of emoji alone by one artist fold to one token, so a set playing one after
+    the other read as one track."""
+    folded = acrcloud.fold(
+        [
+            _match(0, "Aurora Bloom", "\U0001f525"),
+            _match(25, "Aurora Bloom", "\U0001f525"),
+            _match(50, "Aurora Bloom", "\U0001f4a7"),
+        ]
+    )
+    assert [(m.offset_s, m.wanted.title) for m in folded] == [(0, "\U0001f525"), (50, "\U0001f4a7")]
+
+
 # ---------------------------------------------------------------------------
 # Identification through the fakes
 # ---------------------------------------------------------------------------

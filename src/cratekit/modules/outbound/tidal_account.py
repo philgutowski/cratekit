@@ -381,8 +381,8 @@ def _agrees(row: match.Wanted, track: Any) -> bool | None:
         return None
     if not _artist_agrees(row.artist, listed.artist, track):
         return False
-    ours = {(match.fold(one.title), one.version_key) for one in row.readings}
-    theirs = {(match.fold(one.title), one.version_key) for one in listed.readings}
+    ours = {(match.title_identity(one.title), one.version_key) for one in row.readings}
+    theirs = {(match.title_identity(one.title), one.version_key) for one in listed.readings}
     return bool(ours & theirs)
 
 

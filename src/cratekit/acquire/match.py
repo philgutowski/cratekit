@@ -522,6 +522,78 @@ def fold(text: object) -> str:
     return _RUNS.sub(" ", _MARKS.sub(" ", stripped.casefold())).strip()
 
 
+#: The code points a title's bare text leaves out: characters a
+#: source adds or drops without changing what the title says. The variation
+#: selectors, which pick text or emoji presentation of one symbol, and the
+#: invisible format characters, the zero width space, joiner and non joiner,
+#: the word joiner, the byte order mark, the soft hyphen and the directional
+#: marks and controls. The tag characters, which spell a regional flag, are
+#: format characters too and are KEPT, since two flags are two titles.
+_TAG_CHARACTERS = range(0xE0000, 0xE0080)
+_VARIATION_SELECTORS = (range(0xFE00, 0xFE10), range(0xE0100, 0xE01F0))
+
+
+def _invisible(ch: str) -> bool:
+    point = ord(ch)
+    if any(point in selectors for selectors in _VARIATION_SELECTORS):
+        return True
+    return unicodedata.category(ch) == "Cf" and point not in _TAG_CHARACTERS
+
+
+def bare_title(title: object) -> str:
+    """A title's own text, for the one case :func:`fold` cannot read.
+
+    ``""`` for a title that folds to something, so the pair
+    (``fold(title)``, ``bare_title(title)``) is exactly ``fold`` wherever
+    ``fold`` says anything. For a title that folds to nothing, emoji or marks
+    alone, the text itself: NFKC, which takes one title at another width or a
+    compatibility form to one spelling (``！！！`` is ``!!!``, ``…`` is
+    ``...``), then every space and every invisible character taken out (see
+    :func:`_invisible`), so ``❤`` and ``❤️`` are one title and ``🔥`` and
+    ``💧`` are two. NO CASEFOLD: such a title holds no letter, and over every
+    code point folding to nothing case changes two Greek combining marks
+    only, which compare equal either way, so a casefold here was dead code
+    the mutation table could not kill.
+
+    WHY NOT FOLD THEM IN. ``fold`` drops every mark on purpose, and the
+    recording token the index is keyed by and the approximate pass scores
+    stays the fold, so discovery is unchanged. What reads a title as one
+    title, or hashes one into an identity, reads :func:`title_identity`.
+    """
+    if fold(title):
+        return ""
+    composed = unicodedata.normalize("NFKC", str(title))
+    return "".join(ch for ch in composed if not ch.isspace() and not _invisible(ch))
+
+
+def title_identity(title: object) -> str:
+    """What one title IS to the matcher: its fold, and for a title that folds
+    to nothing, its bare text behind a unit separator.
+
+    The fold, unchanged, for every title that folds to something, so every
+    identity hashed from one is the identity it always was. A title that
+    folds to nothing and has text is ``"\x1f"`` and its bare text: two
+    titles of emoji or marks alone were ONE title to every comparison and
+    every identity, so a wanted ``💧`` was called owned by a held ``🔥``,
+    shared its review item, its match identifier and its search question
+    with every other such title by the artist, and one answer or one
+    dedupe settled them all. The separator is one :func:`fold` never
+    leaves, so the value cannot equal any title's fold. A title with no
+    text at all stays ``""``.
+    """
+    folded = fold(title)
+    if folded:
+        return folded
+    bare = bare_title(title)
+    return f"\x1f{bare}" if bare else ""
+
+
+def same_title(one: object, other: object) -> bool:
+    """Whether two titles are one title to the matcher. For every title that
+    folds to something this is ``fold(one) == fold(other)``."""
+    return title_identity(one) == title_identity(other)
+
+
 def _is_a_credit(inside: str) -> bool:
     """Whether a bracketed group names a PERFORMER rather than an edit.
 
@@ -835,6 +907,19 @@ def recording_token(artist: str, title: str) -> str:
     collide with a different split of the same characters.
     """
     return f"{fold(artist)}\x1f{fold(title)}"
+
+
+def recording_identity(artist: str, title: str) -> str:
+    """The identity of a RECORDING, version excluded: :func:`recording_token`
+    with the title read by :func:`title_identity`.
+
+    EQUAL TO THE TOKEN for every title that folds to something, so no
+    recorded identity of one moves. The token stays what the index is keyed
+    by and what the approximate pass scores; this is what tells two
+    recordings apart, in every comparison and every identity hashed from one,
+    so two titles of emoji alone by one artist are two recordings.
+    """
+    return f"{fold(artist)}\x1f{title_identity(title)}"
 
 
 #: The whitespace ``rapidfuzz``'s token scorers split a NARROW string on, one
@@ -1194,7 +1279,11 @@ def _identity_asking(
     identifiers.
     """
     return {
-        "recording": recording_token(artist, title),
+        # THE RECORDING'S IDENTITY, which is the token for every title that
+        # folds to something, so no recorded item of one moves. Two titles of
+        # emoji alone were one item, so one answer settled both, and a held
+        # row's retirement superseded the other's question every run.
+        "recording": recording_identity(artist, title),
         "version": version_token(version),
         "key": key_token(key),
         "asks": asks,
@@ -1330,6 +1419,13 @@ class Wanted:
     @property
     def recording(self) -> str:
         return recording_token(self.artist, self.title)
+
+    @property
+    def distinct(self) -> str:
+        """The recording's IDENTITY, :func:`recording_identity`: the token for
+        every title that folds to something, and what tells two titles of
+        emoji or marks alone apart. Every identifier is hashed from this."""
+        return recording_identity(self.artist, self.title)
 
     @property
     def version_key(self) -> str:
@@ -1910,6 +2006,11 @@ class Owned:
         return recording_token(self.artist, self.title)
 
     @property
+    def distinct(self) -> str:
+        """The recording's identity. See :attr:`Wanted.distinct`."""
+        return recording_identity(self.artist, self.title)
+
+    @property
     def version_key(self) -> str:
         return version_token(self.version)
 
@@ -1999,13 +2100,24 @@ class LibraryIndex:
         band's own name far more often than a join, ``Above & Beyond``, so
         splitting on it would invent members, and the other two are a
         population of 37 a person can answer from the review queue.
+
+        BOTH RULES READ THE TITLE BY :func:`title_identity`. A token and a
+        folded title agree for every title that folds to nothing, so a held
+        ``🔥`` answered for a wanted ``💧`` by the same artist, the row was
+        called owned and never downloaded. Files under the token or the title
+        whose title identity differs from the row's are not this recording.
         """
-        exact = self.versions(recording_token(artist, title))
+        distinct = recording_identity(artist, title)
+        exact = tuple(
+            one for one in self.versions(recording_token(artist, title))
+            if one.distinct == distinct
+        )
         member = fold(artist)
         counted = {one.path for one in exact}
         credited = tuple(
             one for one in self.by_title.get(fold(title), ())
-            if member in one.members and one.path not in counted
+            if same_title(one.title, title) and member in one.members
+            and one.path not in counted
         )
         return exact + credited
 
@@ -2393,7 +2505,7 @@ def acquisition_options(wanted: Wanted) -> tuple[Acquisition, ...]:
         )
     built.append(
         Acquisition(
-            option_id=f"aq_{_digest(BY_SEARCH, wanted.recording, wanted.version_key)}",
+            option_id=f"aq_{_digest(BY_SEARCH, wanted.distinct, wanted.version_key)}",
             how=BY_SEARCH,
             query=f"{wanted.artist} {wanted.listed}".strip(),
             artist=wanted.artist,
@@ -2454,7 +2566,7 @@ class TrackMatch:
     @property
     def match_id(self) -> str:
         return (
-            f"mt_{_digest(self.wanted.recording, self.wanted.version_key, self.wanted.key_key)}"
+            f"mt_{_digest(self.wanted.distinct, self.wanted.version_key, self.wanted.key_key)}"
         )
 
     @property
@@ -2560,9 +2672,15 @@ def _candidates_for(wanted: Wanted, owned: Sequence[Owned]) -> tuple[Candidate, 
     shows ONE key, so every path under it has to be at that key or the value on
     screen is true of some of what the person is accepting.
     """
+    #
+    # BY THE RECORDING'S IDENTITY and not its token, so two files whose titles
+    # fold to nothing, ``🔥`` and ``❄`` by one artist, are two candidates and
+    # not one titled by whichever came first and carrying the other's path.
+    # The identity is the token for every title that folds to something, so
+    # every such candidate keeps the identifier a recorded answer names.
     grouped: dict[tuple[str, str, str], list[Owned]] = {}
     for held in owned:
-        grouped.setdefault((held.recording, held.version_key, held.key_key), []).append(held)
+        grouped.setdefault((held.distinct, held.version_key, held.key_key), []).append(held)
     built: list[Candidate] = []
     token = isrc_token(wanted.isrc)
     # INSERTION ORDER, NOT SORTED. Sorting looked harmless and threw away the one
@@ -2613,12 +2731,14 @@ def _same_recording(wanted: Wanted, held: Owned, token: str) -> bool:
     :func:`resolve_one` applies, so a credited hit or an ISRC hit at another
     version is reported as the version question it is and not as a scored
     resemblance. ``token`` is the row's folded ISRC, computed once by the
-    caller. An ISRC agrees only WITH the folded title, see :func:`resolve_one`.
+    caller. An ISRC agrees only WITH the title, see :func:`resolve_one`, and
+    the title is read by :func:`same_title`, so two titles that fold to nothing
+    are one recording only when their bare text agrees.
     """
-    if held.recording == wanted.recording:
-        return True
-    if fold(held.title) != fold(wanted.title):
+    if not same_title(held.title, wanted.title):
         return False
+    if held.distinct == wanted.distinct:
+        return True
     return fold(wanted.artist) in held.members or _carries(held, token)
 
 
@@ -2888,10 +3008,13 @@ def resolve_one(
     # key is checked over those. A copy matched on text alone at the same
     # version is not appended: the reason says the identity was carried, and it
     # has to be true of every path it stands beside.
-    title = fold(wanted.title)
+    #
+    # THE TITLE IS READ BY :func:`same_title`: two titles that fold
+    # to nothing agree only when their bare text does, so a file carrying the
+    # row's ISRC under another emoji title is doubtful, as another title is.
     carrying = index.held_by_isrc(isrc_token(wanted.isrc))
-    settled = [held for held in carrying if fold(held.title) == title]
-    doubtful = [held for held in carrying if fold(held.title) != title]
+    settled = [held for held in carrying if same_title(held.title, wanted.title)]
+    doubtful = [held for held in carrying if not same_title(held.title, wanted.title)]
     owned = index.held(wanted.artist, wanted.title)
     if settled:
         exact, agreed = settled, Why.ISRC_EXACT
@@ -3026,6 +3149,43 @@ def resolve_all(
             for one in wanted
         )
     )
+
+
+def _former_candidate_id(candidate: Candidate) -> str:
+    """The identifier ``candidate`` had before a title's identity was read
+    (card 834): the digest of the recording TOKEN rather than its identity.
+    Equal to :attr:`Candidate.candidate_id` for every title that folds to
+    something."""
+    token = recording_token(candidate.artist, candidate.title)
+    return f"cd_{_digest(token, version_token(candidate.version), candidate.key or '')}"
+
+
+def current_option(found: TrackMatch, option: str, title: object) -> str:
+    """The candidate a recorded answer names today, by the identifier and the
+    title it was given about.
+
+    ``option`` unchanged unless it names no candidate on offer and a
+    candidate's FORMER identifier is ``option`` and that candidate's title is
+    ``title`` by :func:`same_title`; then that candidate's identifier. A file
+    whose title folds to nothing was offered under an identifier hashed from
+    the artist's empty fold, and reading titles by their identity moved it, so
+    a person's acceptance of that file, recorded before, read as a candidate
+    gone while the file was on disk (review round two). The title is what
+    keeps the old identifier from answering for ANOTHER such file now under
+    it: the old identifier was every such file by the artist at that version
+    and key, so a held ``🔥`` replaced by a ``❄`` stays a candidate gone. A
+    caller with no stored title passes ``None`` and the answer is not carried.
+    """
+    if title is None or any(one.candidate_id == option for one in found.candidates):
+        return option
+    carried = [
+        one for one in found.candidates
+        if _former_candidate_id(one) == option and same_title(one.title, title)
+    ]
+    # AT MOST ONE FITS: the former identifier fixes the token, the version
+    # and the key, the title fixes the title's identity, and together those
+    # are the group :func:`_candidates_for` makes one candidate of.
+    return carried[0].candidate_id if carried else option
 
 
 def apply_verdict(
@@ -3211,7 +3371,9 @@ __all__ = [
     "Why",
     "acquisition_options",
     "apply_verdict",
+    "bare_title",
     "credited_members",
+    "current_option",
     "digest",
     "fold",
     "fold_isrc",
@@ -3233,13 +3395,16 @@ __all__ = [
     "remembered",
     "reset_cache",
     "row_isrc",
+    "recording_identity",
     "recording_token",
     "resolve_all",
     "resolve_one",
+    "same_title",
     "split_ambiguous",
     "split_title",
     "split_version",
     "standing_tombstone",
+    "title_identity",
     "tombstone_fold",
     "version_identity",
     "version_token",

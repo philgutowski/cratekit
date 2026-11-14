@@ -613,3 +613,22 @@ def test_the_mirrors_request_count_holds_what_the_screen_spent_and_no_more():
     nothing = mirror.Counted(outbound_fakes.FakeAccount({}))
     assert nothing.screen_isrcs([code(0), code(1)]) == 0
     assert nothing.requests == 0
+
+
+def test_a_provider_track_under_another_emoji_title_does_not_agree():
+    """Two titles of emoji alone fold to one title, so a ``🔥`` track carrying
+    the row's ISRC agreed with a ``💧`` row. The title is read by its identity,
+    the fold for every title that folds to something."""
+    from types import SimpleNamespace
+
+    def provider(title: str) -> SimpleNamespace:
+        artist = SimpleNamespace(name="Aurora Bloom")
+        return SimpleNamespace(
+            id="1", name=title, version=None, artist=artist, artists=[artist], isrc="X"
+        )
+
+    drop = match.Wanted(artist="Aurora Bloom", title="\U0001f4a7")
+    assert tidal_account._agrees(drop, provider("\U0001f525")) is False
+    assert tidal_account._agrees(drop, provider("\U0001f4a7")) is True
+    plain = match.Wanted(artist="Aurora Bloom", title="Sun Path")
+    assert tidal_account._agrees(plain, provider("SUN PATH")) is True

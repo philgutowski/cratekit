@@ -1064,3 +1064,54 @@ def test_a_store_that_cannot_be_read_is_not_read_as_nobody_was_asked(cfg, monkey
     with review.open_store(cfg) as items, pytest.raises(CratekitError) as caught:
         candidates.settled(items, wanted)
     assert caught.value.cause.reason == "unavailable-transient"
+
+
+def test_a_search_answered_by_another_emoji_title_is_not_exact():
+    """The same defect one module over: the exact flag compared recording tokens, and
+    two emoji titles by one artist fold to one, so a search for ``💧``
+    answered only by the artist's ``🔥`` listed it without a person and
+    downloaded a record nobody asked for."""
+    _wanted, answer = answer_of("Aurora Bloom - \U0001f4a7", Hit("7001", "Aurora Bloom", "\U0001f525"))
+    assert [one.exact for one in answer.candidates] == [False]
+    assert candidates.sole_exact(answer) is None
+
+
+def test_a_search_answered_by_the_same_emoji_title_is_exact():
+    _wanted, answer = answer_of("Aurora Bloom - ❤", Hit("7001", "Aurora Bloom", "❤️"))
+    assert [one.exact for one in answer.candidates] == [True]
+    assert candidates.sole_exact(answer) is not None
+
+
+def test_two_emoji_rows_are_each_searched_and_listed(cfg, library, tmp_path, monkeypatch):
+    """Review round one's third finding: the dedupe of a line listed twice is
+    keyed on the match identifier, which two emoji titles by one artist
+    shared, so the second was never searched and never downloaded."""
+    drop, wave = "\U0001f4a7", "\U0001f30a"
+    path = tracklist(tmp_path, f"Aurora Bloom - {drop}", f"Aurora Bloom - {wave}")
+    fake = bind(
+        monkeypatch,
+        FakeCatalogue(
+            searches={
+                ("Aurora Bloom", drop): [Hit("7001", "Aurora Bloom", drop)],
+                ("Aurora Bloom", wave): [Hit("7002", "Aurora Bloom", wave)],
+            }
+        ),
+    )
+    code, envelope = found(path)
+    assert code == int(ExitCode.OK), envelope
+    assert sorted(fake.searched_for) == sorted([("Aurora Bloom", drop), ("Aurora Bloom", wave)])
+    body = json.loads(Path(envelope["data"]["summary"]["list"]).read_text())
+    assert sorted(t["id"] for t in body["tracks"]) == ["7001", "7002"]
+
+
+def test_a_search_question_about_one_emoji_title_is_not_another_ones():
+    """Review round one's fourth finding: the question was keyed on the
+    folded title, so an accepted ``💧`` was listed for a later ``🌊`` row.
+    Every title that folds to something keeps its identity."""
+    drop = match.read_text_lines("Aurora Bloom - \U0001f4a7")[0]
+    wave = match.read_text_lines("Aurora Bloom - \U0001f30a")[0]
+    assert candidates.item_id(drop) != candidates.item_id(wave)
+    plain = match.read_text_lines("Aurora Bloom - Sun Path (Extended Mix)")[0]
+    assert candidates.identity(plain) == {
+        "artist": "aurora bloom", "title": "sun path", "version": "extended mix",
+    }

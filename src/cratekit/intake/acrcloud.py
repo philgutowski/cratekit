@@ -664,8 +664,11 @@ def fold(matches: list[Match] | tuple[Match, ...]) -> tuple[Match, ...]:
 def _same_recording(one: Match, other: Match) -> bool:
     if one.wanted.isrc and other.wanted.isrc:
         return one.wanted.isrc == other.wanted.isrc
+    # The recording's identity, not its token: two titles that fold to
+    # nothing by one artist share a token, and two such records played back
+    # to back are two rows. See ``match.recording_identity``.
     return (
-        one.wanted.recording == other.wanted.recording
+        one.wanted.distinct == other.wanted.distinct
         and one.wanted.version_key == other.wanted.version_key
     )
 

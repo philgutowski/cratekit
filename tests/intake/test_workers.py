@@ -1549,6 +1549,18 @@ def test_a_recognised_track_is_keyed_by_recording_version_and_isrc_and_a_provide
     assert "Sun" not in intake_cli.item_key(plain), "an item identifier is never a display name"
 
 
+def test_two_recognised_emoji_titles_by_one_artist_are_two_items():
+    """Two titles of emoji alone fold to one recording token, and the key
+    hashes the recording's identity, so they are two items; a title that
+    folds to something keeps the key it always had."""
+    fire = match.Wanted(artist="Aurora Bloom", title="\U0001f525")
+    drop = match.Wanted(artist="Aurora Bloom", title="\U0001f4a7")
+    assert intake_cli.item_key(fire) != intake_cli.item_key(drop)
+    plain = match.Wanted(artist="Aurora Bloom", title="Sun Path")
+    token = match.recording_token("Aurora Bloom", "Sun Path")
+    assert intake_cli.item_key(plain) == "rc_" + match.digest(token, "", "")
+
+
 def test_a_frozen_row_thaws_to_the_row_the_engine_reads():
     row = match.Wanted(
         artist="Aurora Bloom", title="Sun Path", version="Someone Remix", key="8A",

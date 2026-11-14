@@ -462,11 +462,13 @@ def identity(wanted: match.Wanted) -> dict[str, str]:
 
     Keyed on the row and not on the list, so one track in two lists is one
     question. A different queue and kind keep it a different item from the
-    provider's question about the same row.
+    provider's question about the same row. The title is its
+    :func:`match.title_identity`, as the provider's question reads it, so two
+    titles of emoji alone by one artist are two questions.
     """
     return {
         "artist": match.fold(wanted.artist),
-        "title": match.fold(wanted.title),
+        "title": match.title_identity(wanted.title),
         "version": wanted.version_key,
     }
 

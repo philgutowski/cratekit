@@ -170,11 +170,14 @@ def identity(wanted: match.Wanted) -> dict[str, str]:
 
     KEYED ON THE ROW, not on the list it arrived in and not on its position, so
     the same line typed into two tracklists is one question with one answer.
-    The three fields are the ones the exact test compares.
+    The three fields are the ones the exact test compares. The title is its
+    :func:`match.title_identity`, the fold for every title that folds to
+    something, so two titles of emoji alone by one artist are two questions:
+    one answer about ``💧`` listed its track for a later ``🌊`` row.
     """
     return {
         "artist": match.fold(wanted.artist),
-        "title": match.fold(wanted.title),
+        "title": match.title_identity(wanted.title),
         "version": wanted.version_key,
     }
 
@@ -204,8 +207,13 @@ def _tokens(wanted: match.Wanted) -> frozenset[tuple[str, str]]:
     reading is for what to OFFER and that nothing identifying is derived from
     it, and the string cannot say which reading is the first, so a row with two
     readings is never listed without a person: see :func:`sole_exact`.
+
+    THE RECORDING'S IDENTITY, NOT ITS TOKEN. Two titles that fold to nothing,
+    ``🔥`` and ``💧`` by one artist, share a recording token, so a search for
+    one answered only by the other was exact, listed without a person, and the
+    record nobody asked for downloaded. See :func:`match.recording_identity`.
     """
-    return frozenset((one.recording, one.version_key) for one in wanted.readings)
+    return frozenset((one.distinct, one.version_key) for one in wanted.readings)
 
 
 def _album_of(row: object) -> str:
@@ -236,7 +244,7 @@ def read_answer(wanted: match.Wanted, rows: tuple[Any, ...]) -> Answer:
         candidates.append(
             Candidate(
                 track=track,
-                exact=(track.recording, track.version_key) in exact_tokens,
+                exact=(track.distinct, track.version_key) in exact_tokens,
                 score=round(float(fuzz.token_sort_ratio(wanted.recording, track.recording)), 1),
                 album=_album_of(row),
             )
