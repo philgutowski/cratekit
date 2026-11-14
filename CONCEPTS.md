@@ -493,12 +493,17 @@ tombstone.
 ### Bare title
 A title's own text when it folds to nothing, emoji or marks alone
 (`match.bare_title`): NFKC, casefolded, with spacing, variation selectors and
-invisible format characters taken out; empty for every other title. The
-recording token cannot tell two such titles apart, so every comparison that
-reads two titles as one recording asks `match.same_title`, the fold and the
-bare title together. Identities still hash the token alone.
+invisible format characters taken out; empty for every other title. A title's
+identity (`match.title_identity`) is its fold, or for such a title the bare
+text behind a unit separator, and a recording's identity
+(`match.recording_identity`) is the token with the title read that way. Every
+comparison of two titles and every identifier hashed from a recording (the
+review item, the match identifier, the candidate, the search question) reads
+the identity, which equals the token for every title that folds to something.
+The index and the approximate pass still read the token.
 
-*Avoid:* folding it into `fold` or the token; that moves every recorded answer.
+*Avoid:* folding it into `fold` or the token, which would change discovery and
+the tombstone identity.
 
 ### Credited list rule
 The second rule of `LibraryIndex.held` (`acquire/match.py`): a file whose title

@@ -280,14 +280,15 @@ def item_key(row: Wanted) -> str:
     A provider row is keyed by the provider's own identifier, which is the one
     thing a later acquisition can be asked for and the key the acquisition
     verb uses for the same row. A recognised track carries none, so it is
-    keyed by the match module's own digest over the recording token, the
-    version token and the ISRC, which is the identity that module already
-    gives the same record from any list. Two different recordings cannot
+    keyed by the match module's own digest over the recording's identity
+    (``match.recording_identity``, the token for every title that folds to
+    something), the version token and the ISRC, which is the identity that
+    module already gives the same record from any list. Two different recordings cannot
     share it and the same recording from two chunks folds to it.
     """
     if row.ref:
         return row.ref
-    return "rc_" + match.digest(row.recording, row.version_key, row.isrc or "")
+    return "rc_" + match.digest(row.distinct, row.version_key, row.isrc or "")
 
 
 def _frozen(row: Wanted) -> dict[str, Any]:
