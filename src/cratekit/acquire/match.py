@@ -548,9 +548,12 @@ def bare_title(title: object) -> str:
     ``fold`` says anything. For a title that folds to nothing, emoji or marks
     alone, the text itself: NFKC, which takes one title at another width or a
     compatibility form to one spelling (``！！！`` is ``!!!``, ``…`` is
-    ``...``), then case, then every space and every invisible character
-    taken out (see :func:`_invisible`), so ``❤`` and ``❤️`` are one title and
-    ``🔥`` and ``💧`` are two.
+    ``...``), then every space and every invisible character taken out (see
+    :func:`_invisible`), so ``❤`` and ``❤️`` are one title and ``🔥`` and
+    ``💧`` are two. NO CASEFOLD: such a title holds no letter, and over every
+    code point folding to nothing case changes two Greek combining marks
+    only, which compare equal either way, so a casefold here was dead code
+    the mutation table could not kill.
 
     WHY NOT FOLD THEM IN. ``fold`` drops every mark on purpose, and the
     recording token the index is keyed by and the approximate pass scores
@@ -559,7 +562,7 @@ def bare_title(title: object) -> str:
     """
     if fold(title):
         return ""
-    composed = unicodedata.normalize("NFKC", str(title)).casefold()
+    composed = unicodedata.normalize("NFKC", str(title))
     return "".join(ch for ch in composed if not ch.isspace() and not _invisible(ch))
 
 
@@ -3161,7 +3164,7 @@ def current_option(found: TrackMatch, option: str, title: object) -> str:
     """The candidate a recorded answer names today, by the identifier and the
     title it was given about.
 
-    ``option`` unchanged unless it names no candidate on offer and exactly one
+    ``option`` unchanged unless it names no candidate on offer and a
     candidate's FORMER identifier is ``option`` and that candidate's title is
     ``title`` by :func:`same_title`; then that candidate's identifier. A file
     whose title folds to nothing was offered under an identifier hashed from
@@ -3179,7 +3182,10 @@ def current_option(found: TrackMatch, option: str, title: object) -> str:
         one for one in found.candidates
         if _former_candidate_id(one) == option and same_title(one.title, title)
     ]
-    return carried[0].candidate_id if len(carried) == 1 else option
+    # AT MOST ONE FITS: the former identifier fixes the token, the version
+    # and the key, the title fixes the title's identity, and together those
+    # are the group :func:`_candidates_for` makes one candidate of.
+    return carried[0].candidate_id if carried else option
 
 
 def apply_verdict(

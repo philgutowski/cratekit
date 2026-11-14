@@ -543,7 +543,7 @@ def adjudicate(
                 accepted=accepted,
                 # AN ANSWER RECORDED BEFORE A TITLE'S IDENTITY WAS READ names
                 # an emoji titled file by its former identifier, which is
-                # carried to the file it was about when only that one fits.
+                # carried to the file it was about, by its stored title.
                 option=(
                     None if held.option is None
                     else match.current_option(found, held.option, titles.get(held.option))

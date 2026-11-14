@@ -7265,7 +7265,7 @@ def test_a_title_that_folds_to_nothing_never_equals_one_that_folds_to_something(
             assert not match.same_title(right, left)
 
 
-def _answer_recorded_before(cfg, music, listed: str, held: str) -> str:
+def _answer_recorded_before(cfg, music, listed: str, held: str, *, named: bool = True) -> str:
     """An acceptance as the build before this card recorded it: the emoji
     titled candidate under its former identifier, the digest of the token."""
     index = index_of(music)
@@ -7280,7 +7280,10 @@ def _answer_recorded_before(cfg, music, listed: str, held: str) -> str:
             identity=found.question_identity, payload=found.to_json(),
             options=(review.Option(option_id=former, summary=held, detail=detail),),
         )
-        review.resolve(items, item.item_id, review.Verdict.ACCEPTED, option=former, actor="test")
+        review.resolve(
+            items, item.item_id, review.Verdict.ACCEPTED,
+            option=former if named else None, actor="test",
+        )
     return former
 
 
@@ -7297,6 +7300,18 @@ def test_an_answer_recorded_before_naming_an_emoji_file_still_applies(cfg, music
     (row,) = envelope["data"]["matched"]
     assert row["why"] == str(match.Why.VERDICT_ACCEPTED)
     assert [Path(p).name for p in row["paths"]] == [f"08A - 124 - Aurora Bloom - {FIRE}.flac"]
+
+
+def test_a_yes_recorded_before_naming_no_option_still_applies(cfg, music, tmp_path):
+    """An unspecific yes is bound to the one option the item offered, which
+    the store keeps under its former identifier, so that is carried too."""
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    _answer_recorded_before(cfg, music, "Fire", FIRE, named=False)
+    path = write_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK), envelope["data"]["needs_review"]
+    (row,) = envelope["data"]["matched"]
+    assert row["why"] == str(match.Why.VERDICT_ACCEPTED)
 
 
 def test_an_answer_recorded_before_is_not_carried_to_another_emoji_file(cfg, music, tmp_path):

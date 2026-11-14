@@ -492,7 +492,7 @@ tombstone.
 
 ### Bare title
 A title's own text when it folds to nothing, emoji or marks alone
-(`match.bare_title`): NFKC, casefolded, with spacing, variation selectors and
+(`match.bare_title`): NFKC, with spacing, variation selectors and
 invisible format characters taken out; empty for every other title. A title's
 identity (`match.title_identity`) is its fold, or for such a title the bare
 text behind a unit separator, and a recording's identity

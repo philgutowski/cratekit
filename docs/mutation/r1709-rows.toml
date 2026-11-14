@@ -7,20 +7,20 @@ description = "bare_title composes with NFC rather than NFKC, so a title of full
 file = "src/cratekit/acquire/match.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
-old = '''    composed = unicodedata.normalize("NFKC", str(title)).casefold()
+old = '''    composed = unicodedata.normalize("NFKC", str(title))
 '''
-new = '''    composed = unicodedata.normalize("NFC", str(title)).casefold()
+new = '''    composed = unicodedata.normalize("NFC", str(title))
 '''
 
 [[rows]]
-id = "M2_bare_no_casefold"
-description = "bare_title keeps case, the casefold removed"
-file = "src/cratekit/acquire/match.py"
+id = "M2_adjudicate_offered_not_carried"
+description = "adjudicate binds an unspecific yes to the stored option unchanged, so a yes recorded before about an emoji file reads as a candidate gone"
+file = "src/cratekit/acquire/match_cli.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
-old = '''    composed = unicodedata.normalize("NFKC", str(title)).casefold()
+old = '''                    match.current_option(found, one.option_id, titles.get(one.option_id))
 '''
-new = '''    composed = unicodedata.normalize("NFKC", str(title))
+new = '''                    one.option_id
 '''
 
 [[rows]]
@@ -229,14 +229,14 @@ new = '''        if _former_candidate_id(one) == option
 '''
 
 [[rows]]
-id = "M21_current_option_first_fit"
-description = "current_option carries to the first fit when several share the former identifier"
+id = "M21_current_option_never_carries"
+description = "current_option never carries, so every answer recorded before about an emoji file reads as a candidate gone"
 file = "src/cratekit/acquire/match.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py", "tests/modules/test_outbound.py", "tests/test_sync_pair_account.py"]
-old = '''    return carried[0].candidate_id if len(carried) == 1 else option
+old = '''    return carried[0].candidate_id if carried else option
 '''
-new = '''    return carried[0].candidate_id if carried else option
+new = '''    return option
 '''
 
 [[rows]]
