@@ -740,3 +740,16 @@ def test_a_provider_route_beside_an_unfound_row_is_reported_not_refused(
     assert (summary["provider_routed"], summary["unfound"]) == (1, 1)
     assert checks(envelope)["unfound"]["status"] == "fail"
     assert "Mira Vale - Glass Hour" in checks(envelope)["unfound"]["detail"]
+
+
+def test_an_upload_question_about_one_emoji_title_is_not_another_ones():
+    """Two titles of emoji alone by one artist fold to one title, so an
+    accepted upload for ``💧`` answered a later ``🌊`` row. The title is read
+    by its identity, the fold for every title that folds to something."""
+    drop = match.Wanted(artist="Aurora Bloom", title="\U0001f4a7")
+    wave = match.Wanted(artist="Aurora Bloom", title="\U0001f30a")
+    assert fallback.item_id(drop) != fallback.item_id(wave)
+    plain = match.Wanted(artist="Aurora Bloom", title="Sun Path", version="Extended Mix")
+    assert fallback.identity(plain) == {
+        "artist": "aurora bloom", "title": "sun path", "version": "extended mix",
+    }

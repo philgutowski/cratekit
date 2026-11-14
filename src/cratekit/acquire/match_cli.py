@@ -529,6 +529,9 @@ def adjudicate(
         # nobody can reach to correct. Only a PERSON'S verdict is an answer at
         # all, which is the layer under the clear above: a verdict the product
         # wrote, and any it may write later, is never read as a rejection.
+        titles = {
+            one.option_id: (one.detail or {}).get("title") for one in held.options
+        }
         accepted = (
             None
             if held.verdict not in review.PERSON_VERDICTS
@@ -538,14 +541,23 @@ def adjudicate(
             match.apply_verdict(
                 found,
                 accepted=accepted,
-                option=held.option,
+                # AN ANSWER RECORDED BEFORE A TITLE'S IDENTITY WAS READ names
+                # an emoji titled file by its former identifier, which is
+                # carried to the file it was about when only that one fits.
+                option=(
+                    None if held.option is None
+                    else match.current_option(found, held.option, titles.get(held.option))
+                ),
                 # WHAT THE ANSWER WAS ABOUT. The store keeps the options an item
                 # was offered with and ``offer`` leaves a RESOLVED item's row
                 # alone, so this is the candidate list that was on the screen
                 # when somebody answered, not the one this run just built. An
                 # unspecific yes is bound to it, which is the only thing that
                 # tells "yes, that copy" apart from "yes, whatever you hold now".
-                offered=tuple(one.option_id for one in held.options),
+                offered=tuple(
+                    match.current_option(found, one.option_id, titles.get(one.option_id))
+                    for one in held.options
+                ),
                 item_id=held.item_id,
                 suppresses=suppresses,
                 suppression_id=suppression_id,

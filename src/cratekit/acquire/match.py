@@ -3148,6 +3148,40 @@ def resolve_all(
     )
 
 
+def _former_candidate_id(candidate: Candidate) -> str:
+    """The identifier ``candidate`` had before a title's identity was read
+    (card 834): the digest of the recording TOKEN rather than its identity.
+    Equal to :attr:`Candidate.candidate_id` for every title that folds to
+    something."""
+    token = recording_token(candidate.artist, candidate.title)
+    return f"cd_{_digest(token, version_token(candidate.version), candidate.key or '')}"
+
+
+def current_option(found: TrackMatch, option: str, title: object) -> str:
+    """The candidate a recorded answer names today, by the identifier and the
+    title it was given about.
+
+    ``option`` unchanged unless it names no candidate on offer and exactly one
+    candidate's FORMER identifier is ``option`` and that candidate's title is
+    ``title`` by :func:`same_title`; then that candidate's identifier. A file
+    whose title folds to nothing was offered under an identifier hashed from
+    the artist's empty fold, and reading titles by their identity moved it, so
+    a person's acceptance of that file, recorded before, read as a candidate
+    gone while the file was on disk (review round two). The title is what
+    keeps the old identifier from answering for ANOTHER such file now under
+    it: the old identifier was every such file by the artist at that version
+    and key, so a held ``🔥`` replaced by a ``❄`` stays a candidate gone. A
+    caller with no stored title passes ``None`` and the answer is not carried.
+    """
+    if title is None or any(one.candidate_id == option for one in found.candidates):
+        return option
+    carried = [
+        one for one in found.candidates
+        if _former_candidate_id(one) == option and same_title(one.title, title)
+    ]
+    return carried[0].candidate_id if len(carried) == 1 else option
+
+
 def apply_verdict(
     found: TrackMatch,
     *,
@@ -3333,6 +3367,7 @@ __all__ = [
     "apply_verdict",
     "bare_title",
     "credited_members",
+    "current_option",
     "digest",
     "fold",
     "fold_isrc",

@@ -7263,3 +7263,78 @@ def test_a_title_that_folds_to_nothing_never_equals_one_that_folds_to_something(
         for right in _FOLDED_TITLES:
             assert not match.same_title(left, right)
             assert not match.same_title(right, left)
+
+
+def _answer_recorded_before(cfg, music, listed: str, held: str) -> str:
+    """An acceptance as the build before this card recorded it: the emoji
+    titled candidate under its former identifier, the digest of the token."""
+    index = index_of(music)
+    found = resolve([one(title=listed)], index).matches[0]
+    (offered,) = found.candidates
+    former = match._former_candidate_id(offered)
+    assert former != offered.candidate_id
+    detail = {**offered.to_json(), "id": former, "title": held}
+    with review.open_store(cfg) as items:
+        item = review.offer(
+            items, queue=match_cli.QUEUE, kind=match.QUESTION_KIND,
+            identity=found.question_identity, payload=found.to_json(),
+            options=(review.Option(option_id=former, summary=held, detail=detail),),
+        )
+        review.resolve(items, item.item_id, review.Verdict.ACCEPTED, option=former, actor="test")
+    return former
+
+
+def test_an_answer_recorded_before_naming_an_emoji_file_still_applies(cfg, music, tmp_path):
+    """Review round two's finding: a file whose title folds to nothing was
+    offered under an identifier hashed from the artist's empty fold, which
+    moved, so a person's acceptance read as a candidate gone with the file on
+    disk. It is carried to the file it was about."""
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    _answer_recorded_before(cfg, music, "Fire", FIRE)
+    path = write_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.OK), envelope["data"]["needs_review"]
+    (row,) = envelope["data"]["matched"]
+    assert row["why"] == str(match.Why.VERDICT_ACCEPTED)
+    assert [Path(p).name for p in row["paths"]] == [f"08A - 124 - Aurora Bloom - {FIRE}.flac"]
+
+
+def test_an_answer_recorded_before_is_not_carried_to_another_emoji_file(cfg, music, tmp_path):
+    """The former identifier was every such file by the artist, so an answer
+    about ``🔥`` is not carried to a ``❄`` now held in its place."""
+    hold(music, f"08A - 124 - Aurora Bloom - {FIRE}")
+    _answer_recorded_before(cfg, music, "Fire", FIRE)
+    (music / f"08A - 124 - Aurora Bloom - {FIRE}.flac").unlink()
+    hold(music, f"08A - 124 - Aurora Bloom - {SNOW}")
+    path = write_list(tmp_path, "Aurora Bloom - Fire\n", "fire.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert envelope["data"]["matched"] == []
+    (row,) = envelope["data"]["needs_review"]
+    assert row["why"] == str(match.Why.CANDIDATE_GONE)
+
+
+def test_a_former_identifier_is_carried_only_with_one_fit_and_its_title():
+    owned = (
+        match.Owned(path=Path("a.flac"), artist="Aurora Bloom", title=FIRE, version="", key=None),
+        match.Owned(path=Path("b.flac"), artist="Aurora Bloom", title=SNOW, version="", key=None),
+    )
+    found = resolve([one(title="Fire")], _index_of_owned(*owned)).matches[0]
+    by_title = {c.title: c for c in found.candidates}
+    former = match._former_candidate_id(by_title[FIRE])
+    assert former == match._former_candidate_id(by_title[SNOW])
+    assert match.current_option(found, former, FIRE) == by_title[FIRE].candidate_id
+    assert match.current_option(found, former, SNOW) == by_title[SNOW].candidate_id
+    assert match.current_option(found, former, DROP) == former
+    assert match.current_option(found, former, None) == former
+    current = by_title[FIRE].candidate_id
+    assert match.current_option(found, current, SNOW) == current
+
+
+def test_a_candidate_titled_with_letters_has_the_identifier_it_had():
+    sun = match.Candidate(
+        candidate_id="x", artist="Aurora Bloom", title="Sun Path", version="Extended Mix",
+        key="08A", difference=match.Why.VERSION_DIFFERS, paths=("a",),
+    )
+    token = match.recording_token("Aurora Bloom", "Sun Path")
+    assert match._former_candidate_id(sun) == f"cd_{match._digest(token, 'extended mix', '08A')}"
