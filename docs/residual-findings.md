@@ -53150,3 +53150,76 @@ building its allowance. How many live titles fold to nothing is unmeasured.
 text, or never read as exact, with a test that two different emoji titles by
 one artist do not match. Earns an issue: the product calls a track owned
 that the library does not hold, and skips it.
+
+---
+
+## R-1710. A title that folds to something still drops its emoji and marks, so Sun with one emoji is owned by Sun with another
+
+**Found:** at review round one of #834, R-1709, 2026-11-14.
+
+**The mechanism.** `match.fold` takes every mark and emoji off a title, and
+#834 reads a title's own text only when the fold is empty. A title with a
+letter or digit beside its emoji, `Sun 💧`, folds to `sun`, the same as
+`Sun 🔥`, so every comparison and identity reads the two as one recording.
+
+**Measured cost.** Driven by the review through `resolve_one`: a wanted
+`Aurora Bloom - Sun 💧` against a held `Aurora Bloom - Sun 🔥` resolves
+`matched`, `exact`, so the wanted track is never downloaded. How many live
+titles differ only in a mark or an emoji is unmeasured. Folding marks is
+deliberate (`Sun Path!` and `Sun Path` are one record far more often than
+two), so the line between a decoration and a title's meaning is a product
+decision, not a bug fix.
+
+**Closes when:** a rule says when a mark or emoji beside letters names a
+different record, with the live count read first. Ledger only: the cost
+needs two releases by one artist whose titles differ only by an emoji.
+
+---
+
+## R-1711. An artist that folds to nothing is every other such artist, so one title by two of them is one recording
+
+**Found:** while building #834, R-1709, 2026-11-14.
+
+**The mechanism.** #834 tells apart two titles that fold to nothing. The
+artist half of the recording token has the same shape: `!!!` and `✝✝✝`
+both fold to the empty string, so one title by the two of them is one
+token, one recording and one identity, and the credited list rule reads an
+empty member in any artist list holding such a name.
+
+**Measured cost.** Not driven past the token: two such acts would need a
+title in common, and none was found in the fixtures. Telling them apart the
+way #834 tells titles apart would also turn a spelling variant (`✝✝✝`
+against `†††`) from owned into missing through the credited list rule,
+where the approximate pass does not reach, and so download a duplicate. The
+trade is unmeasured both ways.
+
+**Closes when:** the live library is read for artists that fold to nothing
+and the trade is decided on what it holds. Ledger only.
+
+---
+
+## R-1712. An open question about an emoji title filed before #834 stays in the queue under its old identity and nothing reads its answer
+
+**Found:** at review round two of #834, R-1709, 2026-11-14.
+
+**The mechanism.** #834 hashes a title of emoji or marks alone into the
+review item by its own text, where it was hashed from the artist's empty
+fold. An item the build before it filed about such a title, and nobody
+answered, is under the old identity. The next run files the question under
+the new one and leaves the old item open.
+
+**Measured cost.** Driven by the review on a fixed state directory, the
+base then the branch: a held `🔥` and a listed `💧 (Extended Mix)` left
+`rv_79d6...` open on the base; on the branch `review list` shows it beside
+the new item, `review resolve` takes an answer on it, and the next run is
+unchanged. A dead question in the queue whose answer is recorded and
+ignored; nothing false is said about the library and nothing downloads
+wrongly. An ANSWERED item is carried by `match.current_option` when the
+answer named an emoji titled file; an answered item about an emoji ROW is
+under the old identity and that row is asked again once, the choice on the
+card's Question for Phillip. Intake's provider and fallback questions have
+the same shape, not driven.
+
+**Closes when:** a run that asks about an emoji row supersedes the open item
+under the row's old identity, or Phillip's answer on #834 settles the
+recorded answers another way. Ledger only.
