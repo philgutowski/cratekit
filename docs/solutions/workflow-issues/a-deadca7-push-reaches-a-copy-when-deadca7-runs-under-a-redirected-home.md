@@ -44,11 +44,20 @@ backs up there, and the real settings are never touched.
      from the real one with `db-path`, `analysis-data-root-path` and
      `settings-root-path` pointed into the copy, and clone the `rekordbox6`
      settings folder and DEADCA7's `deadcatalog` folder into that home.
-2. `HOME=<copy>/home /Applications/DEADCA7.app/Contents/MacOS/DEADCA7 &`
+2. `HOME=<copy>/home CFFIXED_USER_HOME=<copy>/home /Applications/DEADCA7.app/Contents/MacOS/DEADCA7 &`
+   **Set both.** At sitting 100 (2026-11-15) a launch with `HOME` alone, the
+   form that worked at sitting 98, logged into the REAL
+   `~/Library/Logs/deadca7/` and its `rekordbox found` line named the LIVE
+   `master.db`; `HOME` had reached the process (an `env` child launched the
+   same way printed it). macOS Foundation resolves the home from the account
+   record unless `CFFIXED_USER_HOME` is set, and with both set the next launch
+   logged into the copy's home and named the copy. The launch was quit at
+   once and the live database's hash was unchanged.
 3. **Before touching anything**, read the newest log under
    `<copy>/home/Library/Logs/deadca7/`: its `rekordbox found` line must name the
-   copy's `master.db`. If it names the live one, quit; a launch alone writes
-   nothing.
+   copy's `master.db`. If no log appears there, read the newest one under the
+   real `~/Library/Logs/deadca7/` instead, and if it names the live database,
+   quit; a launch alone writes nothing.
 4. The library's rows record the volume's old name, which is not mounted, so
    DEADCA7 reads them as not on disk. Import real files from the library volume
    with Choose, linked in place; DEADCA7 matches them to the existing rows.
@@ -59,6 +68,18 @@ backs up there, and the real settings are never touched.
 `crate doctor` run with the same `HOME` reads that backup folder, so its
 `deadca7.push` line compares the push with the product's last backup. Run with
 the normal home it reads the real, empty one.
+
+**Run every other `crate` verb over the copy with the normal home**, only the
+copy's `CRATEKIT_CONFIG_DIR` and `CRATEKIT_STATE_DIR` set. Under the redirected
+home the keychain and rekordbox's database key are not found, so `organize`
+reports the database as one that "could not be opened" and every account step
+as having no stored session (sitting 100).
+
+**Where the push writes its analysis files.** DEADCA7 0.2.3 writes them under
+`$HOME/Library/Pioneer/rekordbox/share/PIONEER/USBANLZ/`, not under the
+agent settings' `analysis-data-root-path`, and the rows record
+`/PIONEER/USBANLZ/...` relative paths. Under the redirected home that is inside
+the copy; hash them there for a read back (12 files for 4 tracks at sitting 100).
 
 ## What the first real push showed
 
