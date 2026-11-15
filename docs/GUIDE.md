@@ -564,6 +564,33 @@ taken first, refuses by name any whose plain title another playlist already
 carries, and stops at the provider's call ceiling; run it again to carry on.
 `crate sync unmark --pass prefix-strip` puts the old titles back.
 
+### Tracks you took off a downloaded playlist
+
+```bash
+crate sync removed
+```
+
+`sync removed` reads every account playlist a pass downloaded and landed
+again, and lists each track its pass recorded that the account no longer
+lists, with what it would do about the track's row in the collection. It
+removes nothing and writes nothing: the database is read on a copy, so
+rekordbox must be closed, and taking an offered track out of the collection
+is still done by hand, then `crate delete review` for the file.
+
+- **Offered**: the pass downloaded it, its file is where the pass's landing
+  filed it, no other synced playlist on the account still holds it, and only
+  Cratekit's own filing holds it in rekordbox (its INBOX playlists, the genre
+  tree, a label year playlist its landing filed, its custom playlist twin).
+- **Kept**: a track the library held before the pass, one whose file the pass
+  did not bring, one still on another synced playlist (by its id, its ISRC,
+  or its artist and title), and one in any playlist of yours, All Favorites
+  included. Each is shown with what keeps it.
+- **Left**: a track with no row now, or whose file two rows claim.
+- A synced playlist that could not be read whole (unreadable, short of the
+  count it declares, or empty with nothing saying it holds none) stops every
+  offer, and is named. A downloaded playlist you deleted on the account is
+  named as gone and offers nothing.
+
 ### Follow record labels
 
 ```bash
@@ -1019,7 +1046,9 @@ Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
-removed in rekordbox; confirmed ones go to the system Trash only. It refuses
+removed in rekordbox; confirmed ones go to the system Trash only. `crate sync
+removed` lists the downloaded tracks you took off their playlist on the
+account, to remove from the collection. It refuses
 while any active row records a path it cannot resolve, naming each prefix and
 the `library.location_prefix_map` rule that would resolve it; rows that are no
 local file, rekordbox's streaming rows and `soundcloud:` locations among them,
