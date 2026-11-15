@@ -84,7 +84,10 @@ The injected component that asks the record catalogues for a track's genre,
 `tagging/searchers.py`: Discogs through its API with a person's token, then
 Beatport when Discogs gives no genre (U282; U244 asked Beatport first). A
 Discogs decline gives way to Beatport, and a file Discogs tagged with no
-picture asks Beatport for its cover only. Traxsource and Bandcamp are kept off the walk, since both answer
+picture asks Beatport for its cover only. Every source is asked one question
+per file, the artist and the title read past the naming verb's head and marker
+(`titles.question`, U289), and matches its rows against the file's own text.
+Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
 limit, never got past) or a parse break; Beatport's 403 is `blocked` too since

@@ -22,6 +22,16 @@ beside a Beatport refusal it is the same with Beatport unread, never a
 decline is its own word for the track and carries its row's picture, and on
 any walk it settles the file as it always has.
 
+ONE QUESTION PER FILE, AND THE MATCH ON THE FILE'S OWN TEXT (U289). The
+library's title tags carry the naming verb's ``KEY - BPM - `` head, and
+Discogs' structured track field asked with it matched none of nineteen files
+at sitting 100. So :func:`catalogue_searcher` reads the question once, the
+title past the head, the marker after it and the artist's own part
+(:func:`titles.question`), and asks every source it, Discogs' track field and
+each record shop's free text query. A title with no head is asked exactly as
+written. What a source's rows are matched against is still the file's own
+text, read by :func:`titles.read_file`, so only what is asked changes.
+
 WHY THE OUTCOME OF ONE SOURCE HAS FOUR VALUES AND NOT TWO. The obvious shape is
 a genre or nothing, and it is the shape that quietly ruins a library. A source
 that could not be reached returns nothing, a source whose markup changed returns
