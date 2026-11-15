@@ -2125,6 +2125,9 @@ def _sample_arguments(entry: registry.Entry, monkeypatch=None) -> list[str]:
         # verbs are driven in tests/test_u242_taken.py.
         "sync.taken": _an_account_with_no_year_folder,
         "sync.strip": _an_account_with_no_year_folder,
+        # U287. Nothing downloaded, so the account is never asked and the plan
+        # is empty; the verb is driven in tests/test_sync_removed.py.
+        "sync.removed": _an_account_with_no_year_folder,
     }[entry.name]
     if not callable(sample):
         return sample

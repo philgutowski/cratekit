@@ -437,6 +437,15 @@ def _listed_or_refuse(found: Catalogue) -> tuple[AccountPlaylist, ...]:
         ) from exc
 
 
+def account_listing(found: Catalogue) -> tuple[AccountPlaylist, ...]:
+    """Every playlist the account lists, with the count it declares, or the refusal.
+
+    The listing ``sync removed`` reads (U287), which needs each playlist's
+    declared count beside its identifier, through the same refusal.
+    """
+    return _listed_or_refuse(found)
+
+
 def account_names(found: Catalogue) -> dict[str, str]:
     """Every playlist the account lists, identifier to name, or the refusal.
 
@@ -772,6 +781,7 @@ __all__ = [
     "SWEPT_PREFIX",
     "Excluded",
     "Sweep",
+    "account_listing",
     "account_names",
     "completed",
     "exclusion",

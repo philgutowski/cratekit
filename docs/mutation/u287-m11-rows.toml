@@ -1,0 +1,11 @@
+name = "u287-m11"
+pass_kind = "light"
+
+[[rows]]
+id = "M11_gone_offers_nothing"
+description = "removals: read a playlist not read whole as removing every track, measured again after the zero of the first table was given a test"
+file = "src/cratekit/sync/removed.py"
+surface = "user"
+tests = ["tests/test_sync_removed.py"]
+old = '''        if one.account in reads and reads[one.account].state == READ'''
+new = '''        if one.account in reads'''
