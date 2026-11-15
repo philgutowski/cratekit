@@ -2170,6 +2170,8 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'suggest-unmatched',
         'tag-suggest-unwritten',
     ],
+    # 2026-11-15, U289: how a catalogue's question was read off a file.
+    'tagging/titles.py': ['as-written', 'by-name', 'head-alone', 'name-ambiguous', 'past-head'],
     # 2026-10-31, U178: the label genre disposition joined.
     'tagging/tag.py': [
         'has-genre',
@@ -2624,6 +2626,8 @@ PINNED_NAMED_WITH_OWN = {
         'parse-break',
     ],
     # 2026-10-31, U178: the engine refuses a file that would not take its genre.
+    # 2026-11-15, U289: how a catalogue's question was read off a file.
+    'tagging/titles.py': ['as-written', 'by-name', 'head-alone', 'name-ambiguous', 'past-head'],
     'tagging/tag.py': ['tag-folder-unwritten'],
     'write/genre_favorites.py': ['favorites-class-undeclared', 'favorites-source-missing'],
     'write/metadata_cli.py': ['library-paths-majority-unresolved'],
@@ -2657,6 +2661,8 @@ PINNED_NAMED_WITH_INTEGER = frozenset({
     'label/kept_reads.py',  # 2026-11-01, R-1091: its version and flush count.
     'modules/tools/mastering.py',
     'tagging/searchers.py',
+    # 2026-11-15, U289.
+    'tagging/titles.py',
     'write/naming_cli.py',  # 2026-11-01, U169: the --root refusal is named.
 })
 
