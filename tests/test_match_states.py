@@ -6854,18 +6854,44 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     """THE REFERENCE, WRITTEN APART FROM THE CODE: the shipped scorer's every
     hit over the floor, in its order, each recording kept when its folded
     title, or both halves crossed, is one string with the spaces gone or
-    reaches the title floor by ``token_set_ratio``, or when either title folds
-    to nothing, then the first five. And U265's identity where nothing is dropped: a row whose shipped
-    five all pass is offered exactly the shipped five, every candidate and
-    order unchanged. The generated libraries are asserted to carry rows of
-    both kinds, and rows where a dropped hit makes room for a sixth."""
+    reaches the title floor by ``token_set_ratio``, or is one string once
+    each listed slang word is spelled out (card 833), or when either title
+    folds to nothing, then the first five, led by what card 833's lookup
+    finds that the score did not. And U265's identity where nothing is
+    dropped and nothing looked up: a row whose shipped five all pass is
+    offered exactly the shipped five, every candidate and order unchanged.
+    The generated libraries are asserted to carry rows of every kind, rows
+    where a dropped hit makes room for a sixth and rows the lookup leads."""
     from rapidfuzz import fuzz
+
+    listed = match._SPELLED_OUT
+
+    def spelled(name):
+        return "".join(listed.get(word, word) for word in name.split())
 
     def agree(one_name, other_name):
         joined = "".join(one_name.split())
         if joined and joined == "".join(other_name.split()):
             return True
+        # Card 833: a third way to agree, the two spelled out, by equality.
+        if joined and spelled(one_name) == spelled(other_name):
+            return True
         return fuzz.token_set_ratio(one_name, other_name) >= match.APPROXIMATE_TITLE_FLOOR
+
+    def looked_up(wanted, groups, scored):
+        """Card 833's lookup, written apart: every recording by the row's
+        folded artist whose title spelled out is the row's, one of the two
+        holding a listed word, that the score did not find, in token order."""
+        artist, title = match.fold(wanted.artist), match.fold(wanted.title)
+        asks = any(word in listed for word in title.split())
+        return [
+            group
+            for group in sorted(groups, key=lambda g: g[0].recording)
+            if match.fold(group[0].artist) == artist
+            and spelled(match.fold(group[0].title)) == spelled(title)
+            and (asks or any(word in listed for word in match.fold(group[0].title).split()))
+            and group[0].recording not in scored
+        ]
 
     def passes(wanted, held):
         asked, found = match.fold(wanted.title), match.fold(held.title)
@@ -6886,7 +6912,8 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     # THE CARD'S SHAPE BESIDE U265'S: short titles by one artist, related and
     # not, so rows drop hits and a drop makes room for a hit past the five.
     short = ("Joy", "Jay", "Joys", "Box", "Cox", "Fox", "Lox", "Pox", "Sox",
-             "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye", "O.K.")
+             "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye", "O.K.",
+             "Love You", "For You", "Luv Us", "Tonight", "2 Nite", "Luv U")
     held = [owned for versions in generated.by_recording.values() for owned in versions]
     held += [
         match.Owned(path=Path(f"s{n:03d}.flac"), artist=artist, title=title, version="", key=None)
@@ -6899,12 +6926,20 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     rows = rows + [
         one(artist=artist, title=title)
         for artist in ("Aurora Bloom", "Nova Reef")
-        for title in ("Joy", "Wow", "Mana", "Rea", "Get Out", "A", "OK", "Good Bye")
+        for title in (
+            "Joy", "Wow", "Mana", "Rea", "Get Out", "A", "OK", "Good Bye",
+            "Luv U", "4 U", "Love You", "Tonite",
+        )
     ]
-    unchanged = dropped = refilled = joined = 0
+    every_recording = by_recording(held)
+    unchanged = dropped = refilled = joined = led = 0
     for wanted in rows:
         every = by_recording(_shipped_approximate(wanted, index, limit=None))
-        kept = [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
+        scored = {group[0].recording for group in every}
+        first = looked_up(wanted, every_recording, scored)
+        led += bool(first)
+        kept = [group for group in first + every if passes(wanted, group[0])]
+        kept = kept[: match.APPROXIMATE_LIMIT]
         expected = tuple(held for group in kept for held in group)
         assert match._resembling(wanted, index) == expected, wanted.recording
         joined += any(
@@ -6914,13 +6949,15 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
         )
 
         shipped = by_recording(_shipped_approximate(wanted, index))
-        if all(passes(wanted, group[0]) for group in shipped):
+        if not first and all(passes(wanted, group[0]) for group in shipped):
             assert match._resembling(wanted, index) == _shipped_approximate(wanted, index)
             unchanged += bool(shipped)
         else:
             dropped += 1
             refilled += len(kept) > len([g for g in shipped if passes(wanted, g[0])])
-    assert unchanged and dropped and refilled and joined, (unchanged, dropped, refilled, joined)
+    assert unchanged and dropped and refilled and joined and led, (
+        unchanged, dropped, refilled, joined, led
+    )
 
 
 def test_titles_split_differently_are_kept_by_equality_and_not_by_a_ratio():
@@ -6959,7 +6996,7 @@ def test_a_swapped_listing_split_differently_is_still_offered(cfg, music, tmp_pa
 
 
 # ═══════════════════════════════════════════════════════════════════════════
-# R-1705 (card 833): a title spelled in slang or numerals, ``Luv U`` against a
+# Card 833: a title spelled in slang or numerals, ``Luv U`` against a
 # held ``Love You`` or ``4 U`` against ``For You`` by one artist, is offered as
 # the possible copy it is, never read missing and downloaded again, and never
 # called owned. Phillip chose a short curated word list, read only when two
