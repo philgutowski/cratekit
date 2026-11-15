@@ -524,6 +524,17 @@ and the recording token.
 
 *Avoid:* reading the split as identity; a provider artist is never split.
 
+### Spelled out reading
+A title read with each word of a short curated list of slang and numeral
+spellings (`match._SPELLED_OUT`: `luv` love, `u` you, `4` for, `2` to, `n`
+and, and the like) spelled out, read only by the approximate pass: `_agree`
+takes two titles one string that way, and `LibraryIndex.spelled_alike` finds
+such a recording by the same artist that the discovery score misses. So `Luv
+U` beside a held `Love You` is offered for review (card 833).
+
+*Avoid:* spelling a title out anywhere else; it is never in a token, an
+identity or a candidate, so a pair it joins is offered and never owned.
+
 ## Backup and restore
 
 ### Snapshot marker

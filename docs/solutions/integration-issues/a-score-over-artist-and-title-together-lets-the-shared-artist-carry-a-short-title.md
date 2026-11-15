@@ -11,7 +11,8 @@ applies_when:
   - "A unit scores a fuzzy resemblance over a string that joins two fields, an artist and a title"
   - "A unit filters the hits of a scorer that is itself capped at a number of results"
   - "A unit changes APPROXIMATE_FLOOR, APPROXIMATE_TITLE_FLOOR or the approximate pass"
-tags: [match, approximate, rapidfuzz, token-set-ratio, title-floor, short-title, filter-before-cap, u286]
+  - "A unit widens what the title test accepts, a word list or a new allowance"
+tags: [match, approximate, rapidfuzz, token-set-ratio, title-floor, short-title, filter-before-cap, slang, spelled-out, u286, r1705]
 ---
 
 # A score over artist and title together lets the shared artist carry a short title
@@ -52,3 +53,17 @@ were the same shape (U286).
   letter title scores 66.67 and `Get Out` against `Agenou` 61.5, so the free
   band is a few points wide: pin it with computed neighbours either side, as
   `TITLE_FLOOR_NEIGHBOURS` does, never a remembered number.
+- **A filter after discovery cannot offer what discovery never found**
+  (card 833). Widening the title test reaches only the hits the joined
+  score already returned, and a short title against its spelled out form
+  falls under that score's floor for a short artist: `Prince, 4 U` against
+  `Prince, For You` scores 75.0 and `Aurora Bloom, I Would Die 4 U` against
+  its spelled out title 80.0. So the slang list is read twice, in `_agree`
+  and in an exact lookup beside the score (`LibraryIndex.spelled_alike`).
+  Measure the discovery score of every pair a title test change is meant to
+  admit, for a short artist too, before trusting a fixture artist that
+  clears it.
+- **Compare a widened reading by equality, and as an extra way to agree.**
+  Spelled out, `2` is `to`, which scores 80 against an unrelated `Tom` by a
+  ratio; and `U Turn` spelled out is no longer one string with `UTurn`, so a
+  reading that replaced the old comparison would drop a pair U286 kept.

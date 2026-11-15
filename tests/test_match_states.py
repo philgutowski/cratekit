@@ -6854,18 +6854,45 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     """THE REFERENCE, WRITTEN APART FROM THE CODE: the shipped scorer's every
     hit over the floor, in its order, each recording kept when its folded
     title, or both halves crossed, is one string with the spaces gone or
-    reaches the title floor by ``token_set_ratio``, or when either title folds
-    to nothing, then the first five. And U265's identity where nothing is dropped: a row whose shipped
-    five all pass is offered exactly the shipped five, every candidate and
-    order unchanged. The generated libraries are asserted to carry rows of
-    both kinds, and rows where a dropped hit makes room for a sixth."""
+    reaches the title floor by ``token_set_ratio``, or is one string once
+    each listed slang word is spelled out (card 833), or when either title
+    folds to nothing, then the first five, led by what card 833's lookup
+    finds that the score did not, which rides on top of the five. And U265's identity where nothing is
+    dropped and nothing looked up: a row whose shipped five all pass is
+    offered exactly the shipped five, every candidate and order unchanged.
+    The generated libraries are asserted to carry rows of every kind, rows
+    where a dropped hit makes room for a sixth and rows the lookup leads."""
     from rapidfuzz import fuzz
+
+    listed = match._SPELLED_OUT
+
+    def spelled(name):
+        return "".join(listed.get(word, word) for word in name.split())
 
     def agree(one_name, other_name):
         joined = "".join(one_name.split())
         if joined and joined == "".join(other_name.split()):
             return True
+        # Card 833: a third way to agree, the two spelled out, by equality.
+        if joined and spelled(one_name) == spelled(other_name):
+            return True
         return fuzz.token_set_ratio(one_name, other_name) >= match.APPROXIMATE_TITLE_FLOOR
+
+    def looked_up(wanted, groups, offered):
+        """Card 833's lookup, written apart: every recording by the row's
+        folded artist whose title spelled out is the row's, one of the two
+        holding a listed word, that the five offered do not hold, in token
+        order."""
+        artist, title = match.fold(wanted.artist), match.fold(wanted.title)
+        asks = any(word in listed for word in title.split())
+        return [
+            group
+            for group in sorted(groups, key=lambda g: g[0].recording)
+            if match.fold(group[0].artist) == artist
+            and spelled(match.fold(group[0].title)) == spelled(title)
+            and (asks or any(word in listed for word in match.fold(group[0].title).split()))
+            and group[0].recording not in offered
+        ]
 
     def passes(wanted, held):
         asked, found = match.fold(wanted.title), match.fold(held.title)
@@ -6886,7 +6913,9 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     # THE CARD'S SHAPE BESIDE U265'S: short titles by one artist, related and
     # not, so rows drop hits and a drop makes room for a hit past the five.
     short = ("Joy", "Jay", "Joys", "Box", "Cox", "Fox", "Lox", "Pox", "Sox",
-             "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye", "O.K.")
+             "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye", "O.K.",
+             "Love You", "For You", "Luv Us", "Tonight", "2 Nite", "Luv U",
+             "I Love You", "Love You More", "Love You Babe", "Love You Down", "Love You So")
     held = [owned for versions in generated.by_recording.values() for owned in versions]
     held += [
         match.Owned(path=Path(f"s{n:03d}.flac"), artist=artist, title=title, version="", key=None)
@@ -6899,12 +6928,20 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     rows = rows + [
         one(artist=artist, title=title)
         for artist in ("Aurora Bloom", "Nova Reef")
-        for title in ("Joy", "Wow", "Mana", "Rea", "Get Out", "A", "OK", "Good Bye")
+        for title in (
+            "Joy", "Wow", "Mana", "Rea", "Get Out", "A", "OK", "Good Bye",
+            "Luv U", "4 U", "Love You", "Tonite",
+        )
     ]
-    unchanged = dropped = refilled = joined = 0
+    every_recording = by_recording(held)
+    unchanged = dropped = refilled = joined = led = outranked = 0
     for wanted in rows:
         every = by_recording(_shipped_approximate(wanted, index, limit=None))
-        kept = [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
+        five = [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
+        first = looked_up(wanted, every_recording, {group[0].recording for group in five})
+        led += bool(first)
+        outranked += any(group in every for group in first)
+        kept = first + five
         expected = tuple(held for group in kept for held in group)
         assert match._resembling(wanted, index) == expected, wanted.recording
         joined += any(
@@ -6914,13 +6951,15 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
         )
 
         shipped = by_recording(_shipped_approximate(wanted, index))
-        if all(passes(wanted, group[0]) for group in shipped):
+        if not first and all(passes(wanted, group[0]) for group in shipped):
             assert match._resembling(wanted, index) == _shipped_approximate(wanted, index)
             unchanged += bool(shipped)
         else:
             dropped += 1
             refilled += len(kept) > len([g for g in shipped if passes(wanted, g[0])])
-    assert unchanged and dropped and refilled and joined, (unchanged, dropped, refilled, joined)
+    assert unchanged and dropped and refilled and joined and led and outranked, (
+        unchanged, dropped, refilled, joined, led, outranked
+    )
 
 
 def test_titles_split_differently_are_kept_by_equality_and_not_by_a_ratio():
@@ -6956,6 +6995,295 @@ def test_a_swapped_listing_split_differently_is_still_offered(cfg, music, tmp_pa
     assert code == int(ExitCode.PENDING_HUMAN)
     (row,) = envelope["data"]["needs_review"]
     assert row["why"] == str(match.Why.TITLE_APPROXIMATE)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# Card 833: a title spelled in slang or numerals, ``Luv U`` against a
+# held ``Love You`` or ``4 U`` against ``For You`` by one artist, is offered as
+# the possible copy it is, never read missing and downloaded again, and never
+# called owned. Phillip chose a short curated word list, read only when two
+# titles are compared, on 2026-11-15.
+# ═══════════════════════════════════════════════════════════════════════════
+
+#: (artist, slang spelling, spelled out), each the same title by one artist.
+#: Monkey Safari clears the discovery floor with ``Luv U`` and ``4 U``; Prince
+#: and Aurora Bloom do not, so those reach the offer through the spelled out
+#: lookup alone.
+SPELLED_PAIRS = (
+    ("Monkey Safari", "Luv U", "Love You"),
+    ("Monkey Safari", "4 U", "For You"),
+    ("Prince", "Luv U", "Love You"),
+    ("Prince", "4 U", "For You"),
+    ("Aurora Bloom", "4 U", "For You"),
+    ("Prince", "I Would Die 4 U", "I Would Die For You"),
+    ("Aurora Bloom", "I Would Die 4 U", "I Would Die For You"),
+    ("Aurora Bloom", "2 Nite", "Tonight"),
+    ("Monkey Safari", "2 Nite", "Tonight"),
+    ("Aurora Bloom", "4Ever", "Forever"),
+    ("Aurora Bloom", "B4 U Go", "Before You Go"),
+    ("Aurora Bloom", "Luv U 2", "Love You Too"),
+    ("Aurora Bloom", "U", "You"),
+)
+
+
+@pytest.mark.parametrize("reverse", [False, True], ids=["slang-wanted", "slang-held"])
+@pytest.mark.parametrize(("artist", "slang", "spelled"), SPELLED_PAIRS)
+def test_a_title_in_slang_or_numerals_is_offered_its_spelled_out_copy(
+    music, artist, slang, spelled, reverse
+):
+    """The card's goal, both ways round: offered for review as a resemblance,
+    with the held file as the one candidate, never matched and never missing."""
+    asked, held = (spelled, slang) if reverse else (slang, spelled)
+    hold(music, f"08A - 124 - {artist} - {held}")
+    found = resolve([one(artist=artist, title=asked)], index_of(music)).matches[0]
+    assert found.state is match.MatchState.NEEDS_REVIEW
+    assert found.why is match.Why.TITLE_APPROXIMATE
+    assert [(c.artist, c.title) for c in found.candidates] == [(artist, held)]
+    assert found.paths == (), "a spelled out reading is a question, never ownership"
+    assert found.acquisitions == ()
+
+
+def test_the_lookup_is_what_reaches_a_pair_discovery_cannot_score():
+    """Two of the card's pairs score under the discovery floor for a short
+    artist, so the title test never sees them: the spelled out lookup beside
+    the score is what offers them. Scores computed, not remembered."""
+    for artist, slang, spelled in (("Prince", "4 U", "For You"), ("Prince", "Luv U", "Love You")):
+        assert _discovery_score(artist, slang, artist, spelled) < match.APPROXIMATE_FLOOR
+        held = match.Owned(path=Path("x.flac"), artist=artist, title=spelled, version="", key=None)
+        index = _index_of_owned(held)
+        asked = one(artist=artist, title=slang)
+        assert match._approximate(asked, index, limit=None) == ()
+        assert match._resembling(asked, index) == (held,)
+
+
+def test_a_slang_title_through_the_real_verb_is_asked_and_not_downloaded(cfg, music, tmp_path):
+    hold(music, "08A - 124 - Prince - For You")
+    path = write_list(tmp_path, "Prince - 4 U\n", "slang.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    assert envelope["data"]["missing"] == []
+    (asked,) = envelope["data"]["needs_review"]
+    assert asked["why"] == str(match.Why.TITLE_APPROXIMATE)
+
+
+def test_the_slang_title_itself_held_is_owned_and_the_spelled_out_one_is_not_offered(music):
+    """Nothing new is owned, and the exact branch still comes first: holding
+    both spellings, the row is matched to its own spelling only."""
+    own = hold(music, "08A - 124 - Prince - 4 U")
+    hold(music, "08A - 124 - Prince - For You")
+    found = resolve([one(artist="Prince", title="4 U")], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MATCHED
+    assert found.paths == (str(own),)
+
+
+def test_a_spelled_out_copy_by_another_artist_is_not_offered(music):
+    hold(music, "08A - 124 - Nova Reef - For You")
+    found = resolve([one(artist="Prince", title="4 U")], index_of(music)).matches[0]
+    assert found.state is match.MatchState.MISSING
+
+
+#: Pairs that must still read missing, each scored over the discovery floor
+#: for :data:`LONG_ARTIST` so the title test is what decides. A word the list
+#: lacks (``Wot``, ``Cos``), and a listed word whose spelled out form is
+#: merely CLOSE to an unrelated short title: a ratio over the spelled out
+#: words would offer ``2`` against ``Tom`` at 80, which is why the reading is
+#: compared by equality.
+STILL_MISSING = (
+    ("Wot", "What"),
+    ("Cos", "Because"),
+    ("2", "Tom"),
+    ("4", "Fort"),
+    ("N", "Ant"),
+    ("B", "Bee"),
+    ("U", "Yo"),
+    ("Luv", "Lover"),
+)
+
+
+@pytest.mark.parametrize(("wanted", "held"), STILL_MISSING)
+def test_a_pair_the_spelled_out_reading_does_not_join_still_settles_missing(wanted, held):
+    owned = match.Owned(path=Path("x.flac"), artist=LONG_ARTIST, title=held, version="", key=None)
+    index = _index_of_owned(owned)
+    asked = one(artist=LONG_ARTIST, title=wanted)
+    assert match._approximate(asked, index, limit=None) == (owned,), (
+        "the pair no longer clears the discovery floor, so it tests nothing here"
+    )
+    found = resolve([asked], index).matches[0]
+    assert found.state is match.MatchState.MISSING
+
+
+def test_a_title_split_differently_is_still_kept_when_its_spelled_out_reading_is_not():
+    """MONOTONE: the reading is a third way to agree, never a replacement.
+    ``U Turn`` spelled out is ``you turn``, no longer one string with
+    ``UTurn``, but the two still agree by the equality U286 gave them."""
+    assert match._agree("u turn", "uturn")
+    assert match._agree("n joy", "njoy")
+
+
+def test_the_lookup_does_not_widen_a_title_split_differently():
+    """The lookup reads a pair only when one title holds a listed word, so
+    ``OK`` against ``O.K.``, which is U286's class and not this card's, is
+    offered by the score exactly where it was, and never by the lookup."""
+    held = match.Owned(path=Path("x.flac"), artist="Prince", title="O.K.", version="", key=None)
+    index = _index_of_owned(held)
+    assert index.spelled_alike(match.recording_token("Prince", "OK")) == ()
+    assert index.spelled_alike(match.recording_token("Prince", "K.O.")) == ()
+
+
+def test_a_scored_hit_keeps_its_place_and_a_lookup_hit_only_discovery_missed_leads(music):
+    """ORDER. A recording discovery scored and the lookup also finds keeps its
+    scored place, so a row the score already offered is offered exactly as
+    before; a recording only the lookup finds is put first, as the same title
+    under the reading."""
+    hold(music, "08A - 124 - Monkey Safari - Love You")
+    hold(music, "08A - 124 - Monkey Safari - Luv Us")
+    found = resolve([one(artist="Monkey Safari", title="Luv U")], index_of(music)).matches[0]
+    near = match._approximate(one(artist="Monkey Safari", title="Luv U"), index_of(music), limit=None)
+    assert [held.title for held in near][0] == "Luv Us"
+    assert [c.title for c in found.candidates] == [held.title for held in near]
+
+    hold(music, "08A - 124 - Prince - Luv Us")
+    hold(music, "08A - 124 - Prince - Love You")
+    found = resolve([one(artist="Prince", title="Luv U")], index_of(music)).matches[0]
+    assert [c.title for c in found.candidates] == ["Love You", "Luv Us"]
+
+
+def test_a_lookup_hit_pushing_a_scored_one_out_of_the_offer_says_so(music):
+    """The five recordings are the scored ones and a lookup hit rides on top,
+    so the offer still shows five and the one it drops is counted as withheld
+    (review round one: spent once over both, the scored sixth vanished with
+    nothing saying so)."""
+    for title in ("Luv Ua", "Luv Ub", "Luv Uc", "Luv Ud", "Luv Ue", "Luv Uf"):
+        hold(music, f"08A - 124 - Prince - {title}")
+    hold(music, "08A - 124 - Prince - Love You")
+    asked = one(artist="Prince", title="Luv U")
+    assert len(match._approximate(asked, index_of(music), limit=None)) == 6, (
+        "the six near titles no longer clear the discovery floor"
+    )
+    found = resolve([asked], index_of(music)).matches[0]
+    assert len(found.candidates) == match.APPROXIMATE_LIMIT
+    assert found.withheld == 1, "five scored plus one looked up, five shown"
+    assert found.candidates[0].title == "Love You"
+
+
+#: The curated list as the card's decision names it, written here and not
+#: read from the code, so an entry dropped there fails a case here.
+SPELLINGS = (
+    ("u", "you"), ("ur", "your"), ("luv", "love"), ("4", "for"), ("2", "to"),
+    ("too", "to"), ("n", "and"), ("r", "are"), ("b", "be"), ("c", "see"),
+    ("y", "why"), ("thru", "through"), ("tho", "though"), ("nite", "night"),
+    ("tonite", "tonight"), ("2nite", "tonight"), ("2day", "today"),
+    ("2morrow", "tomorrow"), ("4ever", "forever"), ("b4", "before"),
+    ("cuz", "because"), ("coz", "because"), ("lil", "little"), ("gr8", "great"),
+    ("l8r", "later"),
+)
+
+
+@pytest.mark.parametrize(("word", "spelled"), SPELLINGS)
+def test_every_listed_spelling_offers_its_spelled_out_title(word, spelled):
+    """Each entry driven on its own, both ways round, for an artist short
+    enough that the discovery score cannot reach the pair, so an entry
+    dropped from the list fails here rather than nowhere."""
+    artist = "Moby"
+    for asked, held_title in ((word, spelled), (spelled, word)):
+        held = match.Owned(path=Path("x.flac"), artist=artist, title=held_title, version="", key=None)
+        found = resolve([one(artist=artist, title=asked)], _index_of_owned(held)).matches[0]
+        assert found.state is match.MatchState.NEEDS_REVIEW, (asked, held_title)
+        assert [c.title for c in found.candidates] == [held_title]
+
+
+def test_the_lookup_reads_the_artist_as_it_folds_and_never_spelled_out():
+    """``Lil Kid`` and ``Little Kid`` are two artists: only the title is read
+    spelled out, so their ``4 U`` and ``For You`` are not one title."""
+    held = match.Owned(path=Path("x.flac"), artist="Little Kid", title="For You", version="", key=None)
+    found = resolve([one(artist="Lil Kid", title="4 U")], _index_of_owned(held)).matches[0]
+    assert found.state is match.MatchState.MISSING
+
+
+@pytest.mark.parametrize(("wanted", "held"), [("Two Day", "Today"), ("Four Tune", "Fortune")])
+def test_a_spelled_number_is_not_read_as_a_numeral(wanted, held):
+    """Review round one: with ``two`` and ``four`` read as ``to`` and ``for``
+    and the spaces gone, two unrelated titles became one. Neither is listed."""
+    owned = match.Owned(path=Path("x.flac"), artist="Moby", title=held, version="", key=None)
+    found = resolve([one(artist="Moby", title=wanted)], _index_of_owned(owned)).matches[0]
+    assert found.state is match.MatchState.MISSING
+
+
+def test_a_lookup_hit_discovery_ranked_past_the_five_still_leads(cfg, music, tmp_path):
+    """Review round two: ``Luv U`` is discovered sixth, behind five passing
+    titles, so taken as scored it was skipped by the lookup and cut by the
+    cap, never offered and never counted. It is the row's own title spelled
+    out, so it leads, and the scored fifth is reported withheld."""
+    for title in ("I Love You", "Love You More", "Love You Babe", "Love You Down", "Love You So"):
+        hold(music, f"08A - 124 - Aurora Bloom - {title}")
+    hold(music, "08A - 124 - Aurora Bloom - Luv U")
+    asked = one(title="Love You")
+    near = [held.title for held in match._approximate(asked, index_of(music), limit=None)]
+    assert near.index("Luv U") >= match.APPROXIMATE_LIMIT, near
+    found = resolve([asked], index_of(music)).matches[0]
+    assert found.candidates[0].title == "Luv U"
+    assert len(found.candidates) == match.APPROXIMATE_LIMIT
+    assert found.withheld == 1
+    path = write_list(tmp_path, "Aurora Bloom - Love You\n", "ranked.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    (row,) = envelope["data"]["needs_review"]
+    assert row["candidates"][0]["title"] == "Luv U"
+
+
+def test_the_word_list_is_the_curated_one():
+    assert dict(SPELLINGS) == dict(match._SPELLED_OUT)
+
+
+def test_the_word_list_maps_no_word_to_itself_and_only_folded_words():
+    """A key is one folded word, so the lookup can find it after :func:`fold`;
+    a value is what the key stands for, folded, and never the key itself."""
+    for word, spelled in match._SPELLED_OUT.items():
+        assert word == match.fold(word) and " " not in word, word
+        assert spelled == match.fold(spelled) and spelled != word, word
+
+
+def _old_agree(one_name: str, other_name: str) -> bool:
+    """U286's ``_agree`` as it shipped, written apart from the code."""
+    from rapidfuzz import fuzz
+
+    if one_name and one_name.replace(" ", "") == other_name.replace(" ", ""):
+        return True
+    return fuzz.token_set_ratio(one_name, other_name) >= match.APPROXIMATE_TITLE_FLOOR
+
+
+def test_the_title_test_only_adds_agreement_and_only_for_a_spelled_out_equal_pair():
+    """THE DIFFERENTIAL. Over every pair of a corpus of titles, the near and
+    unrelated tables above, U265's words and the card's pairs: whatever agreed
+    still agrees, a pair holding no listed word agrees exactly as before, and
+    every pair that newly agrees is one string with the spaces gone once each
+    listed word is spelled out."""
+    listed = match._SPELLED_OUT
+
+    def spelled(name: str) -> str:
+        return "".join(listed.get(word, word) for word in name.split())
+
+    corpus = {match.fold(t) for pair in U286_NEAR for t in pair}
+    corpus |= {match.fold(t) for _a, *titles in U286_UNRELATED for t in titles}
+    corpus |= {match.fold(t) for _a, *titles in SPELLED_PAIRS for t in titles}
+    corpus |= {match.fold(t) for pair in STILL_MISSING for t in pair}
+    corpus |= {match.fold(t) for pair in TITLE_FLOOR_NEIGHBOURS for t in pair}
+    corpus |= {match.fold(w) for w in _U265_WORDS}
+    corpus |= {match.fold(w) for w in list(listed) + list(listed.values())}
+    corpus.discard("")
+    added = 0
+    for one_name in sorted(corpus):
+        for other_name in sorted(corpus):
+            before, now = _old_agree(one_name, other_name), match._agree(one_name, other_name)
+            if before:
+                assert now, (one_name, other_name)
+            holds = any(w in listed for w in (one_name + " " + other_name).split())
+            if not holds:
+                assert now == before, (one_name, other_name)
+            if now and not before:
+                assert holds and spelled(one_name) == spelled(other_name), (one_name, other_name)
+                added += 1
+    assert added, "no pair in the corpus exercises the reading"
 
 
 # ═══════════════════════════════════════════════════════════════════════════
