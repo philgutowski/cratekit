@@ -1582,5 +1582,14 @@ def handle(job, item, cfg) -> jobs.Produced:
             # when it could not settle the file (U240).
             "label_from": result.label_from,
             "copyright_labels": list(result.copyright_labels),
+            # THE QUESTION THE CATALOGUES WERE ASKED (U289): the artist, the
+            # title past the head the naming verb writes, and how each was
+            # read, so a file asked as written, past its head, by its name, or
+            # with no artist because its name read to no one split says so.
+            "asked": {
+                "artist": result.asked_artist,
+                "title": result.asked_title,
+                "read": result.asked_read,
+            },
         },
     )

@@ -579,7 +579,7 @@ def test_only_a_refused_token_is_held_and_any_other_refusal_from_discogs_propaga
     token's, and holding it would hide it behind Beatport's answer."""
 
     class Broken:
-        def ask(self, artist, title):
+        def ask(self, artist, title, *, track=None):
             raise refuse("internal-error", "the asker broke", remedy=Remedy.REPORT_DEFECT)
 
     fetch = routed(search=results(), beatport=beatport_row())

@@ -36,11 +36,14 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from cratekit.core import routing, tags
+from cratekit.core.exit_codes import ExitCode
 from cratekit.core.taxonomy import default_taxonomy
-from cratekit.tagging import searchers, tag, titles
+from cratekit.tagging import artifacts, searchers, tag, titles
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import _beatport_page
 from tests.test_discogs_searcher import SENT, release, results
+from tests.test_tag_folder_copyright import cfg, sweep  # noqa: F401
+from tests.test_tag_workers import bound
 from tests.test_title_matcher import DIFFERENT, HEADED, HEADED_NOT, SAME
 
 TAXONOMY = default_taxonomy()
@@ -84,7 +87,7 @@ def typed_fetch(seen: list[str] | None = None, *, beatport: str | None = None):
         if url.startswith(searchers.BEATPORT_SEARCH):
             return searchers.Fetched(text=beatport or _beatport_page([]), status=200)
         if url.startswith(searchers.DISCOGS_SEARCH):
-            asked = parse_qs(urlsplit(url).query)
+            asked = parse_qs(urlsplit(url).query, keep_blank_values=True)
             key = (_typed(asked.get("artist", [""])[0]), _typed(asked.get("track", [""])[0]))
             number = by_question.get(key)
             return searchers.Fetched(text=results(*(() if number is None else (number,))), status=200)
@@ -106,7 +109,7 @@ def build(fetch, *, token: str | None = SENT, walk=None):
 def discogs_questions(seen: list[str]) -> list[dict[str, str]]:
     """The artist and track of every Discogs search the fetch was sent."""
     return [
-        {key: values[0] for key, values in parse_qs(urlsplit(url).query).items()}
+        {key: values[0] for key, values in parse_qs(urlsplit(url).query, keep_blank_values=True).items()}
         for url in seen
         if url.startswith(searchers.DISCOGS_SEARCH)
     ]
@@ -285,7 +288,7 @@ FRESH = [
     ("[Remix] Sunrise Mood", "[Remix] Sunrise Mood", "Bernard+Badie+%5BRemix%5D+Sunrise+Mood"),
     ("Bernard Badie - Sunrise Mood", "Bernard Badie - Sunrise Mood", "Bernard+Badie+Bernard+Badie+-+Sunrise+Mood"),
     ("(Intro)", "(Intro)", "Bernard+Badie+%28Intro%29"),
-    ("  Sunrise Mood  ", "Sunrise Mood", "Bernard+Badie+Sunrise+Mood"),
+    ("  Sunrise Mood  ", "Sunrise Mood", "Bernard+Badie+++Sunrise+Mood"),
     ("08A", "08A", "Bernard+Badie+08A"),
 ]
 
@@ -416,3 +419,39 @@ def test_a_name_splits_only_when_it_reads_to_exactly_one_artist_and_title(stem, 
         # The searcher, handed the split's artist and the name, asks the split's title.
         assert titles.question(stem, split.artist).title == split.title
         assert split.title.startswith("On My Way")
+
+
+# ---------------------------------------------------------------------------
+# E. The sweep's record says what was asked
+# ---------------------------------------------------------------------------
+
+
+def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path, silence, monkeypatch):  # noqa: F811
+    folder = tmp_path / "staging"
+    folder.mkdir()
+    tagged(folder, silence, "a.flac", title="03B - 83 - That's the Way of the World", artist="Earth, Wind & Fire")
+    tagged(folder, silence, "8A - 122 - Kerri Chandler - On My Way - Live At Space.flac")
+    tagged(folder, silence, "8A - 122 - Kerri Chandler - On My Way.flac")
+    bound(monkeypatch, build(typed_fetch()))
+
+    code, job, resumed = sweep(str(folder))
+
+    assert code == int(ExitCode.OK), resumed
+    reports = {report["item"]: report for report in artifacts.committed(cfg, job.job_id)}
+    assert reports["a.flac"]["asked"] == {
+        "artist": "Earth, Wind & Fire",
+        "title": "That's the Way of the World",
+        "read": "past-head",
+    }
+    assert reports["a.flac"]["genre_written"] == genre_of("Funk")
+    assert reports["8A - 122 - Kerri Chandler - On My Way - Live At Space.flac"]["asked"] == {
+        "artist": "",
+        "title": "Kerri Chandler - On My Way - Live At Space",
+        "read": "name-ambiguous",
+    }
+    assert reports["8A - 122 - Kerri Chandler - On My Way.flac"]["asked"] == {
+        "artist": "Kerri Chandler",
+        "title": "On My Way",
+        "read": "by-name",
+    }
+    assert reports["8A - 122 - Kerri Chandler - On My Way.flac"]["genre_written"] == genre_of("House")

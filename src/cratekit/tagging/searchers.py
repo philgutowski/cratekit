@@ -773,6 +773,10 @@ def _query(artist: str, title: str) -> str:
     Escaping is not cosmetic here: an unescaped ampersand truncates the query at
     the first delimiter, which returns a page for a different search and reports
     it as a miss.
+
+    THE TITLE IS THE QUESTION'S (U289): the file's title read past the head
+    the naming verb writes (:func:`titles.question`), handed to each shop as
+    its ``track``, while its rows are matched against the file's own text.
     """
     return quote_plus(f"{artist} {title}".strip())
 
@@ -933,10 +937,10 @@ def _beatport_best(tracks: Iterable[dict[str, Any]], artist: str, title: str) ->
 
 
 def _search_beatport(
-    artist: str, title: str, *, fetch: Fetch, pacer: Pacer, **_: Any
+    artist: str, title: str, *, fetch: Fetch, pacer: Pacer, track: str | None = None, **_: Any
 ) -> SourceOutcome:
     pacer.wait()
-    page = fetch(f"{BEATPORT_SEARCH}?q={_query(artist, title)}")
+    page = fetch(f"{BEATPORT_SEARCH}?q={_query(artist, title if track is None else track)}")
     # A PAYLOAD IS READ FIRST, AND THE REFUSAL CHECK THE FALLBACKS USE ONLY
     # WHEN THERE IS NONE (U281). A 403 or a spent 429 has no text, so it is
     # always checked: a refusal of this client and not an outage. A 200
@@ -1041,10 +1045,10 @@ def _traxsource_rows(page: str) -> list[str]:
 
 
 def _search_traxsource(
-    artist: str, title: str, *, fetch: Fetch, pacer: Pacer, **_: Any
+    artist: str, title: str, *, fetch: Fetch, pacer: Pacer, track: str | None = None, **_: Any
 ) -> SourceOutcome:
     pacer.wait()
-    page = fetch(f"{TRAXSOURCE_SEARCH}?term={_query(artist, title)}&page=1")
+    page = fetch(f"{TRAXSOURCE_SEARCH}?term={_query(artist, title if track is None else track)}&page=1")
     refused = unread_outcome(TRAXSOURCE, page)
     if refused is not None:
         return refused
@@ -1153,10 +1157,16 @@ def _bandcamp_tag(tags: Sequence[str], declared: Taxonomy) -> str:
 
 
 def _search_bandcamp(
-    artist: str, title: str, *, fetch: Fetch, pacer: Pacer, declared: Taxonomy
+    artist: str,
+    title: str,
+    *,
+    fetch: Fetch,
+    pacer: Pacer,
+    declared: Taxonomy,
+    track: str | None = None,
 ) -> SourceOutcome:
     pacer.wait()
-    page = fetch(f"{BANDCAMP_SEARCH}?q={_query(artist, title)}&item_type=t")
+    page = fetch(f"{BANDCAMP_SEARCH}?q={_query(artist, title if track is None else track)}&item_type=t")
     refused = unread_outcome(BANDCAMP, page)
     if refused is not None:
         return refused
@@ -1516,8 +1526,14 @@ class DiscogsAsker:
     refused: SourceOutcome | None = None
     rejected: str | None = None
 
-    def ask(self, artist: str, title: str) -> SourceOutcome | NotAsked:
-        """Discogs' answer about one track, or why it was not asked."""
+    def ask(self, artist: str, title: str, *, track: str | None = None) -> SourceOutcome | NotAsked:
+        """Discogs' answer about one track, or why it was not asked.
+
+        ``track`` is the title Discogs is asked for, the question's
+        (:func:`titles.question`, U289), and ``title`` the file's own text
+        its releases are matched against. With no ``track`` the title is the
+        question too, as it was before.
+        """
         if self.token is None:
             return NotAsked(DISCOGS, self.unasked)
         if self.rejected is not None:
@@ -1534,7 +1550,7 @@ class DiscogsAsker:
                     f"is not asked again in it. Then, {self.refused.note}"
                 ),
             )
-        said = self._search(artist, title)
+        said = self._search(artist, title, title if track is None else track)
         if said.answer is Answer.BLOCKED:
             self.refused = said
         return said
@@ -1624,11 +1640,13 @@ class DiscogsAsker:
             )
         return payload
 
-    def _search(self, artist: str, title: str) -> SourceOutcome:
+    def _search(self, artist: str, title: str, track: str) -> SourceOutcome:
         # THE MIX IS LEFT OUT OF THE QUESTION, its last bracketed group only, and
         # a title that is nothing but brackets is asked whole: an empty track
-        # field asks Discogs for every release by the artist.
-        bare = _last_group_stripped(title.strip()) or title.strip()
+        # field asks Discogs for every release by the artist. The question is
+        # ``track``, the title past its head (U289); every release is matched
+        # against ``title``, the file's own text, as it always was.
+        bare = _last_group_stripped(track.strip()) or track.strip()
         query = urlencode(
             {
                 "type": "release",
@@ -2206,16 +2224,32 @@ def catalogue_searcher(
     asker = discogs_asker(token=None, sleep=naps) if discogs is None else discogs
     counted = Refusals() if refusals is None else refusals
 
-    def shop(source: str, artist: str, title: str) -> SourceOutcome:
-        """One record shop's answer, or the run's word that it is not sent (U281)."""
+    def shop(source: str, artist: str, title: str, track: str) -> SourceOutcome:
+        """One record shop's answer, or the run's word that it is not sent (U281).
+
+        Asked for ``track``, the question's title, and matched against
+        ``title``, the file's own text (U289).
+        """
         stopped = counted.stopped(source)
         if stopped is not None:
             return stopped
-        outcome = _SEARCHES[source](artist, title, fetch=touch, pacer=pacer, declared=declared)
+        outcome = _SEARCHES[source](
+            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track
+        )
         counted.heard(outcome)
         return outcome
 
     def search(artist: str, title: str) -> SearchHit | None:
+        # THE QUESTION IS READ ONCE, HERE, AND EVERY SOURCE IS ASKED IT (U289):
+        # the file's title past the head the naming verb writes, the marker
+        # after it and the artist's own part. Every row is matched against the
+        # file's own text, so only what is asked changes. The hit carries it,
+        # so the item's record says what the catalogues were asked.
+        asked = titles.question(title, artist)
+        hit = answer(asked.artist, title, asked.title)
+        return None if hit is None else replace(hit, asked=asked)
+
+    def answer(artist: str, title: str, track: str) -> SearchHit | None:
         outcomes: list[SourceOutcome] = []
         passed: list[NotAsked] = []
         declined: SearchHit | None = None
@@ -2224,7 +2258,7 @@ def catalogue_searcher(
         for place, source in enumerate(order):
             if source == DISCOGS:
                 try:
-                    said = asker.ask(artist, title)
+                    said = asker.ask(artist, title, track=track)
                 except CratekitError as refusal:
                     # A REJECTED TOKEN WAITS FOR THE RECORD SHOPS (U282's review).
                     # Raised at once it would stop every file before Beatport,
@@ -2243,7 +2277,7 @@ def catalogue_searcher(
                     continue
                 outcome = said
             else:
-                outcome = shop(source, artist, title)
+                outcome = shop(source, artist, title, track)
             outcomes.append(outcome)
             if outcome.answer is not Answer.MATCHED:
                 continue
@@ -2268,7 +2302,7 @@ def catalogue_searcher(
                 return hit
             if hit.genre is None:
                 return _lent(hit, shown)
-            return _pictured(hit, order[place + 1 :], artist, title, shop)
+            return _pictured(hit, order[place + 1 :], artist, title, track, shop)
         if declined is not None:
             return _lent(
                 replace(
@@ -2303,7 +2337,8 @@ def _pictured(
     rest: Sequence[str],
     artist: str,
     title: str,
-    shop: Callable[[str, str, str], SourceOutcome],
+    track: str,
+    shop: Callable[[str, str, str, str], SourceOutcome],
 ) -> SearchHit:
     """A genre decided by a source that names no picture, with the picture's question (U282).
 
@@ -2337,7 +2372,7 @@ def _pictured(
         answers = list(current.answers)
         unread = list(current.unread)
         for source in later:
-            outcome = shop(source, artist, title)
+            outcome = shop(source, artist, title, track)
             entry = SourceAnswer(
                 source=source,
                 answer=outcome.answer.value,
