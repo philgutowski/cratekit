@@ -295,11 +295,15 @@ crate match run /path/to/tracklist.txt
   for `OK` is still offered, but a short title like `Joy` beside the same
   artist's `Goodbye` reads missing and is listed for download. A short title
   one letter away, `Joy` beside `Boy`, is still offered; two letters away,
-  `Joy` beside `Boys`, reads missing. A title of emoji or marks alone is
-  owned only by a file with the same symbols (width, spacing and an emoji's
-  presentation aside), so the artist's `💧` beside a held `🔥` is offered
-  for review rather than called owned, and an answer about one such title
-  settles no other. It downloads nothing and writes nothing to the account.
+  `Joy` beside `Boys`, reads missing. A title spelled in slang or numerals
+  from a short list, `Luv U` or `4 U`, is offered beside the artist's `Love
+  You` or `For You`, and the reverse, however short the artist's name; a
+  spelling the list lacks, `Wot` for `What`, reads as any other title. A
+  title of emoji or marks alone is owned only by a file with the same
+  symbols (width, spacing and an emoji's presentation aside), so the
+  artist's `💧` beside a held `🔥` is offered for review rather than called
+  owned, and an answer about one such title settles no other. It downloads
+  nothing and writes nothing to the account.
 - `intake file` plans one file. On the xml bridge it writes only with
   `--export`; once the intake tree is native it takes no export, plans one
   collection row and one INBOX playlist for the file where it sits (it must be
@@ -563,6 +567,44 @@ as taken; it changes nothing on the account and a second run records nothing.
 taken first, refuses by name any whose plain title another playlist already
 carries, and stops at the provider's call ceiling; run it again to carry on.
 `crate sync unmark --pass prefix-strip` puts the old titles back.
+
+### Tracks you took off a downloaded playlist
+
+```bash
+crate sync removed
+```
+
+`sync removed` reads every account playlist a pass downloaded and landed
+again, and lists each track its pass recorded that the account no longer
+lists, with what it would do about the track's row in the collection. It
+removes nothing and writes nothing: the database is read on a copy, so
+rekordbox must be closed, and taking an offered track out of the collection
+is still done by hand, then `crate delete review` for the file.
+
+- **Offered**: the pass downloaded it, its file is where the pass's landing
+  filed it, no other synced playlist on the account and none of your hearts
+  still holds it, and only Cratekit's own filing holds it in rekordbox (its
+  INBOX playlists, the genre tree once it is database native, its custom
+  playlist twin).
+- **Kept**: a track the library held before the pass, one whose file the pass
+  did not bring, one still on another synced playlist (by its id, its ISRC,
+  or its artist and title), and one in any other playlist, All Favorites
+  and label year playlists included. Each is shown with what keeps it. A
+  synced playlist is one a pass swept, queued or took, one still titled
+  with the old `DOWNLOADED ` prefix, a pair, or one a landing downloaded.
+- **Left**: a track no single row holds now: none does, two claim its file,
+  its match waits on a question you have not answered, it was deleted on
+  purpose, or the pass never brought a file for it.
+- A synced playlist or the hearts not read whole (unreadable, short of the
+  count declared, or empty with nothing saying they hold none) stop every
+  offer, and are named. A synced playlist neither the account's list nor its
+  id finds is named as gone: it offers none of its own tracks, and is read as
+  still holding what its finished jobs recorded; one nothing readable records
+  stops every offer.
+- A run that finds a removal reads every synced playlist, about two calls
+  each, so on an account with hundreds of them it stops at the call ceiling
+  with nothing offered; run it again as `crate --calls N --calls-per-hour M
+  sync removed`, as a first `sync pair` plan needs.
 
 ### Follow record labels
 
@@ -1023,7 +1065,9 @@ removed in rekordbox; confirmed ones go to the system Trash only. It refuses
 while any active row records a path it cannot resolve, naming each prefix and
 the `library.location_prefix_map` rule that would resolve it; rows that are no
 local file, rekordbox's streaming rows and `soundcloud:` locations among them,
-are left out and counted on the gate. `crate tombstone list` shows what was
+are left out and counted on the gate. `crate sync removed` lists the
+downloaded tracks you took off their playlist on the account, to remove from
+the collection first. `crate tombstone list` shows what was
 removed; `--revoke ID` lets that version be acquired again. A removed track
 also stays off its label's year playlists: `label playlists` never adds it,
 `label heard` never merges it in from a dated playlist (nor a track `label

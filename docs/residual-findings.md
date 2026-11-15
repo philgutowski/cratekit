@@ -53223,3 +53223,174 @@ the same shape, not driven.
 **Closes when:** a run that asks about an emoji row supersedes the open item
 under the row's old identity, or Phillip's answer on #834 settles the
 recorded answers another way. Ledger only.
+
+---
+
+## R-1713. A synced playlist sync removed reads as gone is held to what its jobs recorded, so a track added to it on the account since cannot keep a row
+
+**Found:** at the review of #373, U287, rounds one and two, 2026-11-15.
+
+**The mechanism.** A playlist neither the account's list nor its id finds is read as gone, and a failed open there is any provider failure (`PlaylistUnresolvable` wraps every exception), not a not found. Since round one a gone playlist holds what its finished intake jobs recorded, and one nothing records stops every offer. What it cannot hold is a track Phillip added to that playlist on the account after its sweep, a row the reader set aside at the sweep (a job queues only rows it can read), a row a short listing withheld, or, for a pair's or a mirror's job, a track the library owned when it was queued: if the playlist still exists and only failed to open, such a track reads as on no other synced playlist, and is offered.
+
+**Measured cost.** Driven on fixtures through the fake catalogue by round two: a track moved onto a gone playlist after its sweep is offered. The real producer needs the account's list to omit an owned playlist (R-385, unmeasured) and its open to fail in the same run; not driven.
+
+**Closes when:** the provider's not found is told apart from its other failures at `playlist_for`, so only a real not found reads as gone and anything else as not read whole. Ledger only.
+
+---
+
+## R-1714. A synced playlist the provider never lists whole, or an account with no hearts, stops every offer of sync removed for good
+
+**Found:** at the build of #373, U287, and its review round two, 2026-11-15.
+
+**The mechanism.** A partial read offers nothing, anywhere, while any synced listing is unreadable, short of its declared count, or empty with nothing saying it holds none. A playlist the cursor holds that the provider always refuses to open, one that always withholds a track it counts, an account whose hearts are empty, or a synced playlist deleted on the account that no finished, readable job records (a pair that never needed a download, a sweep job cancelled or failed), therefore keeps every row on every run, each named in the warning. No verb clears it.
+
+**Measured cost.** Driven on fixtures only, each shape once: nothing is offered and the stopping listing is named. On the live account it is unmeasured how many such listings there are.
+
+**Closes when:** a person can say a named listing is to be read as holding nothing (a recorded release of it), or the live account shows none. Ledger only.
+
+---
+
+## R-1715. A playlist a person makes under INBOX, or a hand placement in the genre tree, keeps no removed track
+
+**Found:** at the build of #373, U287, 2026-11-15.
+
+**The mechanism.** The pass's own filing is named by place, not by who put the membership there: every live node under the intake root and the routing root counts, so a playlist a person made inside INBOX, or a track a person dragged into a genre playlist by hand, reads as Cratekit's filing and keeps nothing.
+
+**Measured cost.** Not driven. The row is still only offered, and U288's gate lists it before anything is removed.
+
+**Closes when:** the routing tree's memberships Cratekit wrote are told from a person's by the session records, or Phillip says a hand placement there is filing. Ledger only.
+
+---
+
+## R-1716. sync removed reads every synced playlist again on each run that finds a removal, past the default call ceiling on a large account
+
+**Found:** at the build of #373, U287, 2026-11-15.
+
+**The mechanism.** "Still on another synced playlist" is a claim about every playlist the cursor, the taken record and the pairs hold, so a run that finds any removal opens and lists each of them, about two calls a playlist. The taken record held 599 playlists when U242 migrated it, so a run on the live account passes `[provider] calls_per_command` (500) and the hour's reading line, and stops as the call ceiling or the hour's budget with nothing offered.
+
+**Measured cost.** Not driven against the live account. It fails closed: the refusal names the ceiling, and `crate --calls N --calls-per-hour M sync removed` finishes it, the way a first `sync pair` plan does. Every run pays the calls again.
+
+**Closes when:** the synced listings are read once per pass and kept, or the playlists a removed track could be on are narrowed by something the account says, or Phillip judges the cost acceptable. Ledger only.
+
+---
+
+## R-1717. The finished job filter of sync removed's recorded contents kills no test
+
+**Found:** at the review of #373, U287, round two, 2026-11-15.
+
+**The mechanism.** `recorded_contents` reads only the jobs of a gone playlist that SUCCEEDED. No test puts a job of a gone playlist in any other state in the store, so dropping the filter leaves every test green (round two's N6).
+
+**Measured cost.** None to a person: an unfinished job's reports are a subset of its tracks, and a refusal reading one is caught and reads the playlist as not whole. Maintainer facing.
+
+**Closes when:** a test holds a gone playlist whose only job was cancelled to not read whole, and one with a cancelled and a finished job to the finished one's contents. Ledger only.
+
+---
+
+## R-1718. Whether Cratekit's own filing keeps a removed track, and whether a playlist deleted whole offers its tracks, wait on Phillip
+
+**Found:** at the build of #373, U287, 2026-11-15.
+
+**The mechanism.** `crate sync removed` counts a membership in the intake tree, the routing tree, a label year playlist the pass's landing recorded, or the twin a landing recorded for the playlist the track left, as the pass's own filing, which keeps nothing; any other live membership keeps the row. A downloaded playlist neither the account's list nor its id finds is gone, and offers none of its tracks. Both are the build's calls on two questions posted on the card under its question heading, each with the other option named.
+
+**Measured cost.** None driven: each is a choice of what is offered, and nothing is removed by this card. Answered the other way, the first keeps almost every filed track and the second offers a deleted playlist's tracks.
+
+**Closes when:** Phillip answers the two questions on #373, and U288's brief carries the answer. Ledger only.
+
+---
+
+## R-1719. A slang title that also has an unlisted spelling or an added word still reads missing
+
+**Found:** while building #833, R-1705, 2026-11-15.
+
+**The mechanism.** Card 833's reading joins two titles only when they are
+one string once each listed word is spelled out, by equality and not a
+ratio, so that `2` does not resemble `Tom`. A title mixing a listed
+spelling with an unlisted one, `Wot U Want` against `What You Want`, or
+carrying a word the other lacks, `Luv U` against `Love You Baby`, is
+neither equal under the reading nor close enough on its letters (60.9 and
+44.4 against the title floor of 66), so it reads missing, as it did on
+main.
+
+**Measured cost.** A record the library holds under the spelled out title
+is downloaded again, as before this card. Not driven on a real library;
+the pairs are the author's.
+
+**Closes when:** the reading is widened to a shared word plus a ratio over
+the spelled out forms, with the false offers that brings measured, or a
+sitting finds none of the class in its queue. Ledger only.
+
+---
+
+## R-1720. An answer recorded before the spelled out lookup reads differently once it adds a candidate
+
+**Found:** at review round one of #833, R-1705, 2026-11-15.
+
+**The mechanism.** A review answer is read against the candidates the
+matcher offers now. Where card 833's lookup adds a candidate to an item
+answered before it landed, the answer meets an offer it was not given. A
+yes recorded without naming a candidate, over `Prince - Luv U` offered only
+`Luv Us`, matched on main and now reads `needs_review` with
+`verdict-unspecific` once the library's `Love You` joins the offer. A
+rejection still reads `missing`, `verdict-rejected`, and downloads, and its
+report lists `Love You` among the rejected candidates though the person was
+never shown it.
+
+**Measured cost.** A settled row reopens and needs `review clear` or a new
+answer; a row rejected before the change still downloads the copy this card
+was meant to catch. Driven through `apply_verdict` in the review; how many
+such answers sit in a real queue is unmeasured. It is the existing
+behaviour of any change that adds a candidate.
+
+**Closes when:** a sitting reads the review queue for answered
+`title-approximate` items whose offer the lookup widened, or the answer
+reader tells an offer widened since it was answered from one it was given.
+Ledger only.
+
+---
+
+## R-1721. Spelled out slang words can run together into an unrelated title, which is offered for review
+
+**Found:** at review round one of #833, R-1705, 2026-11-15.
+
+**The mechanism.** `match._agree` and `LibraryIndex.spelled_alike` compare
+two titles with each word of `_SPELLED_OUT` spelled out and the spaces gone,
+because `2 Nite` is `Tonight`. So a few listed letters run together into an
+unrelated word: `B Side` against `Beside`, `C Saw` against `Seesaw`, and the
+single letter titles `Y`, `C`, `R` and `N` against `Why`, `See`, `Are` and
+`And`, by one artist, are offered for review where main read them missing
+(driven through `resolve_one` and `crate match run` for the artist `Moby`).
+`two` and `four` were taken out of the list in fix round one for the same
+reason (`Two Day` against `Today`).
+
+**Measured cost.** One wrong question per such pair, and the row waits on
+it rather than downloading. Nothing is called owned. How often a real
+library holds such a pair by one artist is unmeasured; `B Side` against
+`Beside` was already offered on main wherever the discovery score reached
+it, since their letters score 83.
+
+**Closes when:** a sitting's version-match queue is read for
+`title-approximate` items that a spelled out join made, and either none is
+found or the join is limited (spaces kept, with only listed multi word
+forms such as `2 nite` joined). Ledger only.
+
+---
+
+## R-1722. The spelled out lookup and title test cost more CPU on a library heavy in slang titles
+
+**Found:** at review round one of #833, R-1705, 2026-11-15.
+
+**The mechanism.** Every approximate pass now spells out the wanted title,
+looks it up in a map built once per index, and spells out both titles in
+each title test it runs. The author measured 0.569 s on main against
+0.668 s on the branch for 1,000 rows over 10,000 recordings, CPU median of
+five, on a corpus of their own; the review, on titles heavy in listed
+words, measured 0.851 s against 1.403 s, about 0.55 ms more a row, with no
+state changing in that corpus. The author's number came from a fixture
+written alongside the change.
+
+**Measured cost.** Not user facing at the library's size: a list of a few
+hundred rows pays a fraction of a second. Unmeasured on the live volume.
+
+**Closes when:** the approximate pass is timed on the live library at a
+sitting, or the spelled out forms are cached per recording as the sorted
+words are. Ledger only.

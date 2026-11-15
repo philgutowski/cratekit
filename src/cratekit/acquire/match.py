@@ -158,6 +158,7 @@ from enum import StrEnum
 from itertools import groupby
 from operator import attrgetter
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any
 
 from cratekit.core import naming, tags
@@ -437,7 +438,9 @@ APPROXIMATE_FLOOR = 82
 #: nothing is withheld; with the cap raised, eight are built, five are shown and
 #: three are reported kept back. So a run that says "3 further candidates were
 #: never shown" over a library of one-version recordings is a run whose
-#: recording cap is not this constant, and
+#: recording cap is not this constant, or one where card 833's spelled out
+#: lookup found recordings outside the five, which ride on top of them (see
+#: :func:`_resembling`), and
 #: ``test_the_scorer_is_capped_at_the_same_number_the_offer_is`` asserts the
 #: number is spent in both places.
 APPROXIMATE_LIMIT = 5
@@ -462,6 +465,65 @@ APPROXIMATE_LIMIT = 5
 #: ``test_the_title_floor_is_pinned_from_both_sides_by_the_nearest_score_either_way``
 #: holds the value between its nearest neighbours.
 APPROXIMATE_TITLE_FLOOR = 66
+
+#: A short CURATED list of slang and numeral spellings, each folded word
+#: beside the folded word it stands for (card 833, chosen by Phillip on
+#: 2026-11-15). ``Luv U`` against a held ``Love You`` and ``4 U`` against
+#: ``For You`` by one artist share no word and score on their letters alone,
+#: 61.5 and 40.0, under :data:`APPROXIMATE_TITLE_FLOOR`, exactly where the
+#: unrelated ``Get Out`` against ``Agenou`` sits, so no floor tells them apart
+#: and the row read missing and downloaded a record the library holds.
+#:
+#: READ ONLY WHEN TWO TITLES ARE COMPARED. Nothing is ever spelled out in a
+#: token, an identity, a candidate, a review item or anything written: the
+#: approximate pass reads a title this way (:func:`_agree` and
+#: :meth:`LibraryIndex.spelled_alike`) and nothing else does, so a pair it
+#: joins is OFFERED for review, never called owned.
+#:
+#: DELIBERATELY SHORT, and a word missing from it reads as it always did. A
+#: spelling with more than one reading takes the one a title means most
+#: (``2`` is ``to``), and ``too`` is read as ``to`` so that ``Luv U 2`` is
+#: ``Love You Too``; it is the one real word listed. ``two`` and ``four``
+#: were measured and left out: read as ``to`` and ``for`` with the spaces
+#: gone, ``Two Day`` became ``Today`` and ``Four Tune`` ``Fortune``
+#: (review round one). The spaces are gone because ``2 Nite`` is
+#: ``Tonight``, so a few spelled out words can still run together into an
+#: unrelated title (``B Side`` and ``Beside``); that costs a question, never
+#: ownership, and is the residual this card filed. Not here: ``da`` (``Da
+#: Funk`` is not ``The Funk``), ``ya`` (you or yeah), and cardinals (``1``
+#: for ``One``), which agree already wherever the titles share another word.
+#: ``test_every_listed_spelling_offers_its_spelled_out_title`` drives each
+#: entry and ``test_the_word_list_maps_no_word_to_itself_and_only_folded_words``
+#: holds its form.
+_SPELLED_OUT: Mapping[str, str] = MappingProxyType(
+    {
+        "u": "you",
+        "ur": "your",
+        "luv": "love",
+        "4": "for",
+        "2": "to",
+        "too": "to",
+        "n": "and",
+        "r": "are",
+        "b": "be",
+        "c": "see",
+        "y": "why",
+        "thru": "through",
+        "tho": "though",
+        "nite": "night",
+        "tonite": "tonight",
+        "2nite": "tonight",
+        "2day": "today",
+        "2morrow": "tomorrow",
+        "4ever": "forever",
+        "b4": "before",
+        "cuz": "because",
+        "coz": "because",
+        "lil": "little",
+        "gr8": "great",
+        "l8r": "later",
+    }
+)
 
 
 # ---------------------------------------------------------------------------
@@ -2047,6 +2109,13 @@ class LibraryIndex:
     _sorted: tuple[tuple[str, ...], tuple[str, ...]] | None = field(
         default=None, init=False, repr=False, compare=False
     )
+    #: The recordings under their artist and their title spelled out (see
+    #: :func:`_spelled_key`), built the first time the approximate pass asks
+    #: and kept for the life of the index, as :attr:`_sorted` is. Read it
+    #: through :meth:`spelled_alike`.
+    _spelled: Mapping[str, tuple[str, ...]] | None = field(
+        default=None, init=False, repr=False, compare=False
+    )
 
     @property
     def recordings(self) -> tuple[str, ...]:
@@ -2067,6 +2136,35 @@ class LibraryIndex:
 
     def versions(self, recording: str) -> tuple[Owned, ...]:
         return self.by_recording.get(recording, ())
+
+    def spelled_alike(self, recording: str) -> tuple[str, ...]:
+        """The recordings by this recording's artist whose title is this
+        one's once each word of :data:`_SPELLED_OUT` is spelled out and the
+        spaces are gone, where one of the two titles holds such a word
+        (card 833), in token order.
+
+        AN EXACT LOOKUP BESIDE THE DISCOVERY SCORE, NEVER IN PLACE OF IT. The
+        score reads the artist and the title together, and a short slang
+        title against its spelled out form falls under its floor for a short
+        artist: ``Prince, 4 U`` against ``Prince, For You`` scores 75.0, so
+        the title test never saw the pair and the row was downloaded. Read
+        only when one title holds a listed word, so a pair the list does not
+        join, ``OK`` against ``O.K.`` included, is found by the score alone,
+        exactly as before.
+        """
+        cached = self._spelled
+        if cached is None:
+            grouped: dict[str, list[str]] = {}
+            for token in self.by_recording:
+                grouped.setdefault(_spelled_key(token), []).append(token)
+            cached = {key: tuple(sorted(tokens)) for key, tokens in grouped.items()}
+            object.__setattr__(self, "_spelled", cached)
+        asks = _holds_spelling(recording)
+        return tuple(
+            token
+            for token in cached.get(_spelled_key(recording), ())
+            if asks or _holds_spelling(token)
+        )
 
     def held_by_isrc(self, isrc: str) -> tuple[Owned, ...]:
         """Every file carrying this folded ISRC. Empty for an empty token, so a
@@ -2830,19 +2928,51 @@ def _title_resembles(wanted: Wanted, held: Owned) -> bool:
 
 def _agree(one: str, other: str) -> bool:
     """Whether two folded names agree for :func:`_title_resembles`: one string
-    once their spaces are gone, or ``token_set_ratio`` at or over
+    once their spaces are gone, as written or with each word of
+    :data:`_SPELLED_OUT` spelled out, or ``token_set_ratio`` at or over
     :data:`APPROXIMATE_TITLE_FLOOR`. An empty side agrees with nothing here;
-    the caller decides what a title that folds to nothing means."""
+    the caller decides what a title that folds to nothing means.
+
+    THE SPELLED OUT READING IS A THIRD WAY TO AGREE, NEVER A REPLACEMENT
+    (card 833), so every pair that agreed still agrees: ``U Turn`` spelled out
+    is ``youturn`` and no longer ``UTurn``, which still agrees as written.
+    And it is compared by EQUALITY, NOT A RATIO: spelled out, ``2`` is ``to``,
+    which scores 80 against an unrelated ``Tom``, and ``N`` is ``and``, 66.67
+    against ``Ant``, the short title class U286 stopped offering."""
     from rapidfuzz import fuzz
 
-    if one and one.replace(" ", "") == other.replace(" ", ""):
+    if one and (
+        one.replace(" ", "") == other.replace(" ", "")
+        or _spelled_out(one) == _spelled_out(other)
+    ):
         return True
     return fuzz.token_set_ratio(one, other) >= APPROXIMATE_TITLE_FLOOR
 
 
+def _spelled_out(folded: str) -> str:
+    """A folded name with each word of :data:`_SPELLED_OUT` spelled out and
+    the spaces gone, ``luv u`` as ``loveyou``. Read in comparison only."""
+    return "".join(_SPELLED_OUT.get(word, word) for word in folded.split())
+
+
+def _holds_spelling(recording: str) -> bool:
+    """Whether a recording token's TITLE holds a word of :data:`_SPELLED_OUT`."""
+    _artist, _separator, title = recording.partition("\x1f")
+    return any(word in _SPELLED_OUT for word in title.split())
+
+
+def _spelled_key(recording: str) -> str:
+    """A recording token with its title read by :func:`_spelled_out`, what
+    :meth:`LibraryIndex.spelled_alike` looks a recording up by. The artist is
+    kept as it folds, so the lookup is the same artist always."""
+    artist, separator, title = recording.partition("\x1f")
+    return f"{artist}{separator}{_spelled_out(title)}"
+
+
 def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     """What the approximate pass offers: the recordings discovery finds whose
-    title resembles too, best score first, at most :data:`APPROXIMATE_LIMIT`.
+    title resembles too, best score first, at most :data:`APPROXIMATE_LIMIT`
+    of them, led by any the spelled out lookup finds outside those five.
 
     FILTERED BEFORE THE CAP, NOT AFTER IT (U286). Discovery returns every
     recording over the floor and the title test runs on each in score order,
@@ -2854,8 +2984,19 @@ def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
 
     One recording's versions are adjacent in discovery's answer and share one
     folded artist and title, so the first version answers for them all.
+
+    THE SPELLED OUT LOOKUP FIRST, FOR WHAT THE FIVE LEFT OUT (card 833). A
+    recording :meth:`LibraryIndex.spelled_alike` finds that is not among the
+    five scored recordings, never scored or scored too low, is the same
+    title under the reading, so it leads. One the five hold keeps its scored
+    place, so a row the score already offered everything to is offered
+    exactly as before. The five are the SCORED recordings, as before, and a
+    lookup hit rides on top of them: spent once over both, a lookup hit
+    pushed a scored recording out of the offer with nothing saying so
+    (review round one). Now the offer's truncation drops it and the withheld
+    count reports it.
     """
-    kept: list[Owned] = []
+    scored: list[Owned] = []
     recordings = 0
     for _recording, versions in groupby(
         _approximate(wanted, index, limit=None), key=attrgetter("recording")
@@ -2863,11 +3004,23 @@ def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
         held = tuple(versions)
         if not _title_resembles(wanted, held[0]):
             continue
-        kept.extend(held)
+        scored.extend(held)
         recordings += 1
         if recordings == APPROXIMATE_LIMIT:
             break
-    return tuple(kept)
+    # NOT AMONG THE FIVE, NOT MERELY NOT SCORED (review round two): a lookup
+    # hit discovery ranked sixth or lower was skipped as scored and then cut
+    # by the cap, never offered and never counted. No title test here: a
+    # lookup hit is the row's title spelled out, which ``_agree`` always
+    # takes.
+    offered = {held.recording for held in scored}
+    looked_up = [
+        held
+        for recording in index.spelled_alike(wanted.recording)
+        if recording not in offered
+        for held in index.versions(recording)
+    ]
+    return tuple(looked_up + scored)
 
 
 def standing_tombstone(

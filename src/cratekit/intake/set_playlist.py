@@ -691,8 +691,13 @@ class _Collection:
         one of a duplicate pair is the row that does not play. Such a track is
         left and the screen says two rows claim its file.
         """
+        held, _path, why = self.row_and_path(paths)
+        return held, why
+
+    def row_and_path(self, paths: Sequence[str]) -> tuple[str | None, str, str]:
+        """:meth:`row_for`, with the path the row was found by (U287)."""
         if not paths:
-            return None, NO_ROW
+            return None, "", NO_ROW
         ambiguous = False
         for found in trees.match_indexed_rows(
             paths, self._index, root=self._cfg.library.root, prefix_map=self._prefix_map
@@ -701,8 +706,8 @@ class _Collection:
                 ambiguous = True
                 continue
             if found.content_id:
-                return str(found.content_id), ""
-        return None, (AMBIGUOUS_ROWS if ambiguous else NO_ROW)
+                return str(found.content_id), str(found.requested), ""
+        return None, "", (AMBIGUOUS_ROWS if ambiguous else NO_ROW)
 
 
 class _LibraryView:
@@ -1028,6 +1033,48 @@ def library_rows(cfg: config.Config, db: Any) -> Callable[[match.Wanted], tuple[
         if found.state is match.MatchState.SUPPRESSED:
             return "", TOMBSTONED
         return "", NOT_HELD
+
+    return row_of
+
+
+#: One track's collection row, the file it was found by, and why there is none.
+RowAndPath = tuple[str, str, str]
+
+
+def collection_rows(cfg: config.Config, db: Any) -> Callable[[Sequence[str]], RowAndPath]:
+    """The one row each set of library paths resolves to on ``db``, with its path (U287).
+
+    The rule an owned report's paths are asked by, :meth:`_Collection.row_for`,
+    indexed once on ``db``. Empty strings and why when no single row holds it.
+    """
+    collection = _Collection(cfg, db)
+
+    def row_of(paths: Sequence[str]) -> RowAndPath:
+        held, path, why = collection.row_and_path(tuple(paths))
+        return held or "", path, why
+
+    return row_of
+
+
+def library_matches(cfg: config.Config, db: Any) -> Callable[[match.Wanted], RowAndPath]:
+    """:func:`library_rows`, with the library file the row was found by (U287).
+
+    ``sync removed`` asks whether that file sits where the pass's landing filed
+    it, so the path is the answer's, not the match's first.
+    """
+    collection = _Collection(cfg, db)
+    library = _LibraryView(cfg)
+
+    def row_of(wanted: match.Wanted) -> RowAndPath:
+        found = library.resolve(wanted)
+        if found.state is match.MatchState.MATCHED:
+            held, path, why = collection.row_and_path(tuple(found.paths))
+            return held or "", path, why
+        if found.state is match.MatchState.NEEDS_REVIEW:
+            return "", "", UNANSWERED
+        if found.state is match.MatchState.SUPPRESSED:
+            return "", "", TOMBSTONED
+        return "", "", NOT_HELD
 
     return row_of
 
@@ -1527,6 +1574,8 @@ __all__ = [
     "ignored_note",
     "ignored_posted",
     "left_warning",
+    "collection_rows",
+    "library_matches",
     "library_rows",
     "nothing_note",
     "page_of",
