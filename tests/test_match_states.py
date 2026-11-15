@@ -6857,7 +6857,7 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     reaches the title floor by ``token_set_ratio``, or is one string once
     each listed slang word is spelled out (card 833), or when either title
     folds to nothing, then the first five, led by what card 833's lookup
-    finds that the score did not. And U265's identity where nothing is
+    finds that the score did not, which rides on top of the five. And U265's identity where nothing is
     dropped and nothing looked up: a row whose shipped five all pass is
     offered exactly the shipped five, every candidate and order unchanged.
     The generated libraries are asserted to carry rows of every kind, rows
@@ -6938,8 +6938,8 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
         scored = {group[0].recording for group in every}
         first = looked_up(wanted, every_recording, scored)
         led += bool(first)
-        kept = [group for group in first + every if passes(wanted, group[0])]
-        kept = kept[: match.APPROXIMATE_LIMIT]
+        kept = [group for group in first if passes(wanted, group[0])]
+        kept += [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
         expected = tuple(held for group in kept for held in group)
         assert match._resembling(wanted, index) == expected, wanted.recording
         joined += any(
@@ -7146,9 +7146,11 @@ def test_a_scored_hit_keeps_its_place_and_a_lookup_hit_only_discovery_missed_lea
     assert [c.title for c in found.candidates] == ["Love You", "Luv Us"]
 
 
-def test_the_lookup_counts_toward_the_five_recordings_offered(music):
-    """The cap is spent once over both sources, so a lookup hit cannot make a
-    sixth recording appear in the offer."""
+def test_a_lookup_hit_pushing_a_scored_one_out_of_the_offer_says_so(music):
+    """The five recordings are the scored ones and a lookup hit rides on top,
+    so the offer still shows five and the one it drops is counted as withheld
+    (review round one: spent once over both, the scored sixth vanished with
+    nothing saying so)."""
     for title in ("Luv Ua", "Luv Ub", "Luv Uc", "Luv Ud", "Luv Ue", "Luv Uf"):
         hold(music, f"08A - 124 - Prince - {title}")
     hold(music, "08A - 124 - Prince - Love You")
@@ -7158,8 +7160,55 @@ def test_the_lookup_counts_toward_the_five_recordings_offered(music):
     )
     found = resolve([asked], index_of(music)).matches[0]
     assert len(found.candidates) == match.APPROXIMATE_LIMIT
-    assert found.withheld == 0
+    assert found.withheld == 1, "five scored plus one looked up, five shown"
     assert found.candidates[0].title == "Love You"
+
+
+#: The curated list as the card's decision names it, written here and not
+#: read from the code, so an entry dropped there fails a case here.
+SPELLINGS = (
+    ("u", "you"), ("ur", "your"), ("luv", "love"), ("4", "for"), ("2", "to"),
+    ("too", "to"), ("n", "and"), ("r", "are"), ("b", "be"), ("c", "see"),
+    ("y", "why"), ("thru", "through"), ("tho", "though"), ("nite", "night"),
+    ("tonite", "tonight"), ("2nite", "tonight"), ("2day", "today"),
+    ("2morrow", "tomorrow"), ("4ever", "forever"), ("b4", "before"),
+    ("cuz", "because"), ("coz", "because"), ("lil", "little"), ("gr8", "great"),
+    ("l8r", "later"),
+)
+
+
+@pytest.mark.parametrize(("word", "spelled"), SPELLINGS)
+def test_every_listed_spelling_offers_its_spelled_out_title(word, spelled):
+    """Each entry driven on its own, both ways round, for an artist short
+    enough that the discovery score cannot reach the pair, so an entry
+    dropped from the list fails here rather than nowhere."""
+    artist = "Moby"
+    for asked, held_title in ((word, spelled), (spelled, word)):
+        held = match.Owned(path=Path("x.flac"), artist=artist, title=held_title, version="", key=None)
+        found = resolve([one(artist=artist, title=asked)], _index_of_owned(held)).matches[0]
+        assert found.state is match.MatchState.NEEDS_REVIEW, (asked, held_title)
+        assert [c.title for c in found.candidates] == [held_title]
+
+
+def test_the_lookup_reads_the_artist_as_it_folds_and_never_spelled_out():
+    """``Lil Kid`` and ``Little Kid`` are two artists: only the title is read
+    spelled out, so their ``4 U`` and ``For You`` are not one title."""
+    held = match.Owned(path=Path("x.flac"), artist="Little Kid", title="For You", version="", key=None)
+    found = resolve([one(artist="Lil Kid", title="4 U")], _index_of_owned(held)).matches[0]
+    assert found.state is match.MatchState.MISSING
+
+
+@pytest.mark.parametrize(("wanted", "held"), [("Two Day", "Today"), ("Four Tune", "Fortune")])
+def test_a_spelled_number_is_not_read_as_a_numeral(wanted, held):
+    """Review round one: with ``two`` and ``four`` read as ``to`` and ``for``
+    and the spaces gone, two unrelated titles became one. Neither is listed."""
+    owned = match.Owned(path=Path("x.flac"), artist="Moby", title=held, version="", key=None)
+    found = resolve([one(artist="Moby", title=wanted)], _index_of_owned(owned)).matches[0]
+    assert found.state is match.MatchState.MISSING
+
+
+def test_the_word_list_is_the_curated_one():
+    assert dict(SPELLINGS) == dict(match._SPELLED_OUT)
 
 
 def test_the_word_list_maps_no_word_to_itself_and_only_folded_words():

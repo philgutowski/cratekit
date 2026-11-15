@@ -480,24 +480,27 @@ APPROXIMATE_TITLE_FLOOR = 66
 #:
 #: DELIBERATELY SHORT, and a word missing from it reads as it always did. A
 #: spelling with more than one reading takes the one a title means most
-#: (``2`` is ``to``), and ``too`` and ``two``, and ``four``, are read as
-#: ``to`` and ``for`` so that ``Luv U 2`` is ``Love You Too``. Those three are
-#: the only real words listed, and each pair they newly join differs by
-#: nothing but that spelling. Not here: ``da`` (``Da Funk`` is not ``The
-#: Funk``), ``ya`` (you or yeah), and cardinals (``1`` for ``One``), which
-#: agree already wherever the titles share another word.
-#: ``test_the_word_list_maps_no_word_to_itself_and_only_folded_words`` holds
-#: its form.
+#: (``2`` is ``to``), and ``too`` is read as ``to`` so that ``Luv U 2`` is
+#: ``Love You Too``; it is the one real word listed. ``two`` and ``four``
+#: were measured and left out: read as ``to`` and ``for`` with the spaces
+#: gone, ``Two Day`` became ``Today`` and ``Four Tune`` ``Fortune``
+#: (review round one). The spaces are gone because ``2 Nite`` is
+#: ``Tonight``, so a few spelled out words can still run together into an
+#: unrelated title (``B Side`` and ``Beside``); that costs a question, never
+#: ownership, and is the residual this card filed. Not here: ``da`` (``Da
+#: Funk`` is not ``The Funk``), ``ya`` (you or yeah), and cardinals (``1``
+#: for ``One``), which agree already wherever the titles share another word.
+#: ``test_every_listed_spelling_offers_its_spelled_out_title`` drives each
+#: entry and ``test_the_word_list_maps_no_word_to_itself_and_only_folded_words``
+#: holds its form.
 _SPELLED_OUT: Mapping[str, str] = MappingProxyType(
     {
         "u": "you",
         "ur": "your",
         "luv": "love",
         "4": "for",
-        "four": "for",
         "2": "to",
         "too": "to",
-        "two": "to",
         "n": "and",
         "r": "are",
         "b": "be",
@@ -2981,23 +2984,24 @@ def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
 
     THE SPELLED OUT LOOKUP FIRST, FOR WHAT THE SCORE MISSED (card 833). A
     recording :meth:`LibraryIndex.spelled_alike` finds and discovery did not
-    is the same title under the reading, so it leads, and the five are spent
-    once over both. A recording both find keeps its scored place, so a row
-    the score already offered everything to is offered exactly as before.
+    is the same title under the reading, so it leads. A recording both find
+    keeps its scored place, so a row the score already offered everything to
+    is offered exactly as before. The five recordings are the SCORED ones,
+    as before, and a lookup hit rides on top of them: spent once over both,
+    a lookup hit pushed a scored recording out of the offer with nothing
+    saying so (review round one). Now the offer's truncation drops it and
+    the withheld count reports it.
     """
     found = _approximate(wanted, index, limit=None)
     scored = {held.recording for held in found}
-    groups = [
-        index.versions(recording)
-        for recording in index.spelled_alike(wanted.recording)
-        if recording not in scored
-    ]
-    groups += [
-        tuple(versions) for _recording, versions in groupby(found, key=attrgetter("recording"))
-    ]
     kept: list[Owned] = []
+    for recording in index.spelled_alike(wanted.recording):
+        held = index.versions(recording)
+        if recording not in scored and _title_resembles(wanted, held[0]):
+            kept.extend(held)
     recordings = 0
-    for held in groups:
+    for _recording, versions in groupby(found, key=attrgetter("recording")):
+        held = tuple(versions)
         if not _title_resembles(wanted, held[0]):
             continue
         kept.extend(held)
