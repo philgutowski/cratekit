@@ -330,6 +330,17 @@ the landing date, mirroring it: every track the library holds, in account order.
 A track neither owned nor landed is LEFT and warned. Files still land in the one
 batch folder.
 
+### Removed track
+A track a pass downloaded for an account playlist that the account no longer
+lists there (U287): no row of it by its id, ISRC, or artist and title folded as
+a recording. `crate sync removed` answers each one's row **offered** for
+removal from the collection or **kept** (held before the pass, not this pass's
+file, on another synced playlist, in a playlist of yours), or **left** when no
+single row holds it. Nothing is offered while a synced playlist is not read
+whole. Only listed; the removal is a later card's.
+
+*Avoid:* a pair removal, which takes a membership and never a track.
+
 ### Playlist pair
 An account playlist and a plain rekordbox playlist kept the same list, marked
 with `crate sync pair ACCOUNT_ID --rekordbox PLAYLIST_ID`, by identifier, one to
