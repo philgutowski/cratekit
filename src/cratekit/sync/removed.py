@@ -72,7 +72,7 @@ opens no database of its own; the verb hands it a read only copy.
 
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
 from typing import Any
 
@@ -278,10 +278,14 @@ def synced(
     *,
     paired: Iterable[str] = (),
     swept_now: Iterable[str] = (),
+    listed: Mapping[str, catalogue.AccountPlaylist] | None = None,
 ) -> tuple[str, ...]:
     """Every synced account playlist, the downloaded ones first, each once.
 
     ``swept_now`` is :func:`job_playlists`, the cursor as it is in effect.
+    ``listed`` is the account's own list: a playlist still titled with the
+    retired swept prefix is taken until ``sync strip`` records it (U242,
+    :func:`playlists.is_taken`), so it is synced too (round two).
 
     THE TAKEN RECORD IS READ, AND REFUSES WHEN IT CANNOT BE: an unread record
     is a set of synced playlists nobody can name, and "on no other synced
@@ -296,6 +300,11 @@ def synced(
                 *(one.account for one in found),
                 *swept,
                 *swept_now,
+                *sorted(
+                    key
+                    for key, one in (listed or {}).items()
+                    if playlists.is_swept_name(one.name)
+                ),
                 *taken,
                 *sorted(str(one) for one in paired),
             ]
@@ -313,31 +322,46 @@ def _held(tracks: Iterable[match.Wanted]) -> dict[str, frozenset[str]]:
     }
 
 
-def recorded_contents(cfg: config.Config) -> dict[str, tuple[match.Wanted, ...]]:
-    """What each account playlist's finished intake jobs recorded, by the account's id.
+#: What a GONE playlist is asked of: an account's id to what its finished jobs recorded,
+#: or None when nothing can say.
+Recorded = Callable[[str], "tuple[match.Wanted, ...] | None"]
 
-    Every ``intake.playlist`` job of this library that SUCCEEDED, every report
-    read, the hearts' job left out. It is what a GONE playlist is read as still
-    holding.
+
+def recorded_contents(cfg: config.Config) -> Recorded:
+    """What one account playlist's finished intake jobs recorded, asked only of a GONE playlist.
+
+    Every ``intake.playlist`` job of this library for that playlist that
+    SUCCEEDED, every report read, the hearts' job left out. ASKED PER PLAYLIST
+    AND ONLY WHEN ONE READS GONE, so a damaged or pre U57 job of some other
+    playlist never refuses the verb (round two): a job of this playlist whose
+    reports cannot be read answers None, and the playlist is not read whole.
     """
     from cratekit.intake import missing_cli
 
-    found: dict[str, list[match.Wanted]] = {}
-    with jobs.open_store() as store:
-        for job in playlists.playlist_jobs(store, cfg, handler_key=account_playlists.PLAYLIST_KEY):
-            account = playlists.playlist_of(job)
-            if (
-                not account
-                or job.state is not jobs.JobState.SUCCEEDED
-                or str((job.payload or {}).get("source_id") or "") == intake_cli.FAVORITES_SOURCE_ID
-            ):
-                continue
-            found.setdefault(account, []).extend(
-                intake_cli.thawed(report["track"])
-                for report in missing_cli.job_reports(store, job)
-                if isinstance(report.get("track"), Mapping)
-            )
-    return {key: tuple(value) for key, value in found.items()}
+    def contents(account: str) -> tuple[match.Wanted, ...] | None:
+        found: list[match.Wanted] = []
+        try:
+            with jobs.open_store() as store:
+                for job in playlists.playlist_jobs(
+                    store, cfg, handler_key=account_playlists.PLAYLIST_KEY
+                ):
+                    if (
+                        playlists.playlist_of(job) != account
+                        or job.state is not jobs.JobState.SUCCEEDED
+                        or str((job.payload or {}).get("source_id") or "")
+                        == intake_cli.FAVORITES_SOURCE_ID
+                    ):
+                        continue
+                    found.extend(
+                        intake_cli.thawed(report["track"])
+                        for report in missing_cli.job_reports(store, job)
+                        if isinstance(report.get("track"), Mapping)
+                    )
+        except CratekitError:
+            return None
+        return tuple(found) or None
+
+    return contents
 
 
 def job_playlists(cfg: config.Config) -> tuple[str, ...]:
@@ -363,7 +387,7 @@ def read_one(
     found: catalogue.Catalogue,
     account: str,
     listed: Mapping[str, catalogue.AccountPlaylist],
-    recorded: Mapping[str, Sequence[match.Wanted]] | None = None,
+    recorded: Recorded | None = None,
 ) -> Listing:
     """One synced playlist read through the sweep's own reader, or why it is not read whole."""
     shown = listed.get(account)
@@ -379,7 +403,7 @@ def read_one(
             # (R-385), and the id's failure is any provider failure, not a not
             # found, so a gone playlist still holds what its finished jobs
             # recorded; one nothing records is not read whole at all.
-            known = (recorded or {}).get(account)
+            known = recorded(account) if recorded is not None else None
             if not known:
                 return Listing(
                     account=account,
@@ -387,7 +411,7 @@ def read_one(
                     state=UNREADABLE,
                     why=(
                         "the account no longer lists it, its id does not open, and no "
-                        "finished job records what it held"
+                        "finished job readable now records what it held"
                     ),
                 )
             return Listing(
@@ -396,7 +420,7 @@ def read_one(
                 state=GONE,
                 why=(
                     "the account no longer lists it and its id does not open; read as "
-                    "still holding what its pass recorded"
+                    "still holding what its finished jobs recorded"
                 ),
                 **_held(known),
             )
@@ -499,7 +523,7 @@ def read_account(
     wanted: Sequence[str],
     *,
     listed: Mapping[str, catalogue.AccountPlaylist],
-    recorded: Mapping[str, Sequence[match.Wanted]] | None = None,
+    recorded: Recorded | None = None,
 ) -> dict[str, Listing]:
     """Each playlist in ``wanted`` read once, against the account's listing read once."""
     return {

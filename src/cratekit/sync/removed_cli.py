@@ -143,6 +143,7 @@ def sync_removed(ctx) -> Envelope:
                         found,
                         paired=pairs.paired_ids(cfg),
                         swept_now=removed.job_playlists(cfg),
+                        listed=listed,
                     )
                     if one not in reads
                 ]

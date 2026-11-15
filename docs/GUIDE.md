@@ -586,8 +586,8 @@ is still done by hand, then `crate delete review` for the file.
   did not bring, one still on another synced playlist (by its id, its ISRC,
   or its artist and title), and one in any other playlist, All Favorites
   and label year playlists included. Each is shown with what keeps it. A
-  synced playlist is one a pass swept, queued or took, a pair, or one a
-  landing downloaded.
+  synced playlist is one a pass swept, queued or took, one still titled
+  with the old `DOWNLOADED ` prefix, a pair, or one a landing downloaded.
 - **Left**: a track no single row holds now: none does, two claim its file,
   its match waits on a question you have not answered, it was deleted on
   purpose, or the pass never brought a file for it.
@@ -595,7 +595,8 @@ is still done by hand, then `crate delete review` for the file.
   count declared, or empty with nothing saying they hold none) stop every
   offer, and are named. A synced playlist neither the account's list nor its
   id finds is named as gone: it offers none of its own tracks, and is read as
-  still holding what its pass recorded; one nothing records stops every offer.
+  still holding what its finished jobs recorded; one nothing readable records
+  stops every offer.
 - A run that finds a removal reads every synced playlist, about two calls
   each, so on an account with hundreds of them it stops at the call ceiling
   with nothing offered; run it again as `crate --calls N --calls-per-hour M

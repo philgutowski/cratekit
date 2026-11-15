@@ -696,6 +696,83 @@ def test_a_genre_playlist_of_a_native_routing_tree_keeps_nothing(
     assert filed["New1"]["action"] == removed.OFFERED
 
 
+def _damage_reports(job_id: str) -> None:
+    """Take one committed report of the job off disk, as a store from before U57 lacks one."""
+    import os
+
+    for base in {os.environ.get(key) for key in ("XDG_STATE_HOME", "XDG_DATA_HOME", "HOME")}:
+        if not base:
+            continue
+        for path in Path(base).rglob("*"):
+            if path.is_file() and job_id in str(path) and "intake-artifacts" in str(path):
+                path.unlink()
+                return
+    raise AssertionError(f"no report file of job {job_id} was found")
+
+
+def _job_of(account: str) -> str:
+    with jobs.open_store() as store:
+        (job,) = [one for one in jobs.list_jobs(store) if playlists.playlist_of(one) == account]
+    return job.job_id
+
+
+@pytest.mark.parametrize("listed", [True, False])
+def test_a_damaged_job_of_another_playlist_never_refuses_the_verb(
+    native_library, silence, monkeypatch, offline, listed
+):
+    """Round two: the recorded contents are read only of a playlist that reads gone."""
+    cfg, _root = native_library
+    _five(cfg, silence)
+    swept(cfg, {"pl-z": ("Other", ("Zed1", "Zed2"))}, run_id=OTHER_RUN)
+    _damage_reports(_job_of("pl-z"))
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    if listed:
+        account.lists("pl-z", "Other", [track("Zed1"), track("Zed2")])
+
+    out = _run()
+
+    answers = _by_title(out)
+    if listed:
+        assert answers["New1"]["action"] == removed.OFFERED
+    else:
+        # Gone, and its record cannot be read: not read whole, so nothing offered.
+        assert answers["New1"]["why"] == removed.PARTIAL_READ
+        (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+        assert stopped["account"] == "pl-z" and stopped["state"] == removed.UNREADABLE
+
+
+def test_a_gone_playlist_a_pass_swept_and_never_landed_holds_what_it_recorded(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _five(cfg, silence)
+    swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1")])
+
+    answers = _by_title(_run())
+
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+    assert answers["New2"]["action"] == removed.OFFERED
+
+
+def test_a_playlist_still_titled_with_the_old_prefix_is_synced(
+    native_library, silence, monkeypatch, offline
+):
+    """Round two: the prefix holds a playlist as taken until the strip records it (U242)."""
+    cfg, _root = native_library
+    _five(cfg, silence)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    account.lists("pl-old", playlists.SWEPT_PREFIX + "Old Mix", [track("New1")])
+
+    answers = _by_title(_run())
+
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+    assert answers["New1"]["kept_by"] == [playlists.SWEPT_PREFIX + "Old Mix"]
+
+
 def test_one_row_taken_off_two_downloaded_playlists_is_one_offer_naming_both(
     native_library, silence, monkeypatch, offline
 ):
