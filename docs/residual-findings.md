@@ -53295,3 +53295,102 @@ recorded answers another way. Ledger only.
 **Measured cost.** None driven: each is a choice of what is offered, and nothing is removed by this card. Answered the other way, the first keeps almost every filed track and the second offers a deleted playlist's tracks.
 
 **Closes when:** Phillip answers the two questions on #373, and U288's brief carries the answer. Ledger only.
+
+---
+
+## R-1719. A slang title that also has an unlisted spelling or an added word still reads missing
+
+**Found:** while building #833, R-1705, 2026-11-15.
+
+**The mechanism.** Card 833's reading joins two titles only when they are
+one string once each listed word is spelled out, by equality and not a
+ratio, so that `2` does not resemble `Tom`. A title mixing a listed
+spelling with an unlisted one, `Wot U Want` against `What You Want`, or
+carrying a word the other lacks, `Luv U` against `Love You Baby`, is
+neither equal under the reading nor close enough on its letters (60.9 and
+44.4 against the title floor of 66), so it reads missing, as it did on
+main.
+
+**Measured cost.** A record the library holds under the spelled out title
+is downloaded again, as before this card. Not driven on a real library;
+the pairs are the author's.
+
+**Closes when:** the reading is widened to a shared word plus a ratio over
+the spelled out forms, with the false offers that brings measured, or a
+sitting finds none of the class in its queue. Ledger only.
+
+---
+
+## R-1720. An answer recorded before the spelled out lookup reads differently once it adds a candidate
+
+**Found:** at review round one of #833, R-1705, 2026-11-15.
+
+**The mechanism.** A review answer is read against the candidates the
+matcher offers now. Where card 833's lookup adds a candidate to an item
+answered before it landed, the answer meets an offer it was not given. A
+yes recorded without naming a candidate, over `Prince - Luv U` offered only
+`Luv Us`, matched on main and now reads `needs_review` with
+`verdict-unspecific` once the library's `Love You` joins the offer. A
+rejection still reads `missing`, `verdict-rejected`, and downloads, and its
+report lists `Love You` among the rejected candidates though the person was
+never shown it.
+
+**Measured cost.** A settled row reopens and needs `review clear` or a new
+answer; a row rejected before the change still downloads the copy this card
+was meant to catch. Driven through `apply_verdict` in the review; how many
+such answers sit in a real queue is unmeasured. It is the existing
+behaviour of any change that adds a candidate.
+
+**Closes when:** a sitting reads the review queue for answered
+`title-approximate` items whose offer the lookup widened, or the answer
+reader tells an offer widened since it was answered from one it was given.
+Ledger only.
+
+---
+
+## R-1721. Spelled out slang words can run together into an unrelated title, which is offered for review
+
+**Found:** at review round one of #833, R-1705, 2026-11-15.
+
+**The mechanism.** `match._agree` and `LibraryIndex.spelled_alike` compare
+two titles with each word of `_SPELLED_OUT` spelled out and the spaces gone,
+because `2 Nite` is `Tonight`. So a few listed letters run together into an
+unrelated word: `B Side` against `Beside`, `C Saw` against `Seesaw`, and the
+single letter titles `Y`, `C`, `R` and `N` against `Why`, `See`, `Are` and
+`And`, by one artist, are offered for review where main read them missing
+(driven through `resolve_one` and `crate match run` for the artist `Moby`).
+`two` and `four` were taken out of the list in fix round one for the same
+reason (`Two Day` against `Today`).
+
+**Measured cost.** One wrong question per such pair, and the row waits on
+it rather than downloading. Nothing is called owned. How often a real
+library holds such a pair by one artist is unmeasured; `B Side` against
+`Beside` was already offered on main wherever the discovery score reached
+it, since their letters score 83.
+
+**Closes when:** a sitting's version-match queue is read for
+`title-approximate` items that a spelled out join made, and either none is
+found or the join is limited (spaces kept, with only listed multi word
+forms such as `2 nite` joined). Ledger only.
+
+---
+
+## R-1722. The spelled out lookup and title test cost more CPU on a library heavy in slang titles
+
+**Found:** at review round one of #833, R-1705, 2026-11-15.
+
+**The mechanism.** Every approximate pass now spells out the wanted title,
+looks it up in a map built once per index, and spells out both titles in
+each title test it runs. The author measured 0.569 s on main against
+0.668 s on the branch for 1,000 rows over 10,000 recordings, CPU median of
+five, on a corpus of their own; the review, on titles heavy in listed
+words, measured 0.851 s against 1.403 s, about 0.55 ms more a row, with no
+state changing in that corpus. The author's number came from a fixture
+written alongside the change.
+
+**Measured cost.** Not user facing at the library's size: a list of a few
+hundred rows pays a fraction of a second. Unmeasured on the live volume.
+
+**Closes when:** the approximate pass is timed on the live library at a
+sitting, or the spelled out forms are cached per recording as the sorted
+words are. Ledger only.
