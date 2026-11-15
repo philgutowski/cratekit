@@ -384,7 +384,17 @@ crate route pending
   Beatport when Discogs gives no genre (it misses, refuses, is not asked for
   want of a token or for a token it refused, or names only styles no folder
   holds), then of the general
-  catalogue by ISRC. A Discogs style no folder holds is written nowhere and is
+  catalogue by ISRC. Each catalogue is asked by the file's artist and its
+  title read past the `KEY - BPM` head and the `[MP3]` marker the naming
+  verb writes, and past the artist's own name when the title opens with it,
+  so a library file is asked as a person would type it; a title with no head,
+  a fresh download's, is asked exactly as written, and a title that is a head
+  alone is asked as written too. A file with no tags is asked by its name: a
+  headed name of two parts, `Artist - Title`, is asked as that artist and
+  that title, and any other headed name with no artist, as before, and its
+  name past the head. Each file's record names the artist and the title read
+  past the head, and how they were read, under `asked`; Discogs is sent that
+  title with a round bracketed group it ends with set aside, as before. A Discogs style no folder holds is written nowhere and is
   the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the
   `KEY - BPM` head are set aside; a file's title is read from where it

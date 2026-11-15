@@ -70,6 +70,7 @@ from pathlib import Path
 from cratekit.core import art, tags
 from cratekit.core.cause import CratekitError, rebuilt, refuse
 from cratekit.core.naming import AUDIO_EXTS
+from cratekit.tagging import titles
 
 Searcher = Callable[[str, str], "SearchHit | None"]
 
@@ -265,6 +266,12 @@ class SearchHit:
     nothing left to ask. It is not part of a hit's value, so two hits that say
     the same thing are equal whatever question either still carries.
 
+    ``asked`` is the question the catalogues were asked (U289): the artist,
+    the title read past the head the naming verb writes, and how it was read
+    (:func:`cratekit.tagging.titles.question`). None from a searcher that does
+    not say, a fake in a suite. Like ``ask_picture`` it is not part of a
+    hit's value.
+
     All of them default to empty so a caller that predates them, and a fake
     searcher in a suite, keep working unchanged.
     """
@@ -280,6 +287,7 @@ class SearchHit:
     ask_picture: Callable[[SearchHit], SearchHit] | None = field(
         default=None, compare=False, repr=False
     )
+    asked: titles.Question | None = field(default=None, compare=False)
 
 
 #: Why a file was passed over. ``HAS_GENRE`` is the fill-if-empty policy this
@@ -385,6 +393,12 @@ class TagResult:
     label the file's copyright line named when that was not one label with a
     genre, so a file asked of the catalogues says why its line did not decide
     it; empty when the line was not read, named nothing, or decided it.
+
+    ``asked_artist``, ``asked_title`` and ``asked_read`` are the question the
+    catalogues were asked about the file (U289), the title past the head the
+    naming verb writes, and how it was read, one of
+    :class:`cratekit.tagging.titles.Read`'s values; empty when nothing was
+    asked or the searcher did not say.
     """
 
     path: Path
@@ -403,6 +417,9 @@ class TagResult:
     label_tag: str = ""
     label_from: str = ""
     copyright_labels: tuple[str, ...] = ()
+    asked_artist: str = ""
+    asked_title: str = ""
+    asked_read: str = ""
 
 
 def audio_files(root: Path) -> tuple[Path, ...]:
@@ -709,6 +726,15 @@ def tag_one(
     repair placed after that return would never reach it. The repair never
     raises, so a picture that cannot be fixed is reported and the genre work on
     the same file still happens.
+
+    A FILE WITH NO TAGS IS ASKED BY ITS NAME (U289). With neither an artist
+    nor a title tag, the name's artist and title are read here, the one place
+    that knows a name from a tag (:func:`cratekit.tagging.titles.by_name`),
+    and the searcher is handed that artist and the name: it reads the title
+    it asks past the head, the marker and the artist's own part, and matches
+    every row against the name itself. A name that does not read to one
+    artist and title is asked with no artist, as before, and its record says
+    so in ``asked_read``.
     """
     repair = art.repair_in_place(path)
     repaired = {"art_repair": repair.status, "art_repair_detail": repair.detail}
@@ -741,7 +767,11 @@ def tag_one(
     # label gave none. Every other file reaching this line is asked for its art.
     needs_genre = not existing and by_label is None
     artist = tags.read_tag(path, "artist") or ""
-    title = tags.read_tag(path, "title") or path.stem
+    title_tag = tags.read_tag(path, "title")
+    title = title_tag or path.stem
+    named = titles.by_name(path.stem) if not artist and not title_tag else None
+    if named is not None:
+        artist = named.artist
     try:
         hit = searcher(artist, title)
     except CratekitError as exc:
@@ -832,6 +862,18 @@ def tag_one(
         if hit
         else {}
     )
+    if hit is not None and hit.asked is not None:
+        # HOW THE NAME WAS READ OUTRANKS HOW THE TITLE WAS, for a file asked by
+        # its name: the searcher sees an artist and a headed text either way.
+        read = hit.asked.read
+        if named is not None and named.read in (titles.Read.BY_NAME, titles.Read.NAME_AMBIGUOUS):
+            read = named.read
+        found = {
+            **found,
+            "asked_artist": hit.asked.artist,
+            "asked_title": hit.asked.title,
+            "asked_read": read.value,
+        }
     if by_label is not None:
         # THE LABEL IS WHERE THE GENRE CAME FROM, whatever catalogue answered
         # about the picture, so the record's source is the label's and only the

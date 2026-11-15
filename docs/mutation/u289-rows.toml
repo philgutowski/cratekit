@@ -1,0 +1,247 @@
+name = "u289"
+pass_kind = "light"
+
+[[rows]]
+id = "Q1_head_needs_a_key"
+description = "_past_head: read any leading head, a tempo alone included, so a fresh title like 99 - Luftballons is asked past it"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if not body or not _a_head(words(DASH.join(parts[:body]))):
+        return None'''
+new = '''    if not body:
+        return None'''
+
+[[rows]]
+id = "Q2_head_alone_two_parts"
+description = "_past_head: drop the head alone check, so a title 08A - 124 is asked as 124"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if len(parts) <= 2 and _a_head(words(DASH.join(parts))):
+        return []'''
+new = '''    if False:
+        return []'''
+
+[[rows]]
+id = "Q3_marker_kept"
+description = "_past_head: keep the marker after the head, so [MP3] rides into the question"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if marker is not None:
+        rest[0] = rest[0][marker.end() :]'''
+new = '''    if False:
+        rest[0] = rest[0][marker.end() :]'''
+
+[[rows]]
+id = "Q4_artist_part_kept"
+description = "question: never read the artist's own part off, so an untagged split asks Artist - Title as its track"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if len(rest) > 1 and _same_name(rest[0], artist) and identifies(DASH.join(rest[1:])):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "Q5_artist_part_needs_title"
+description = "question: read the artist's part off even when no title follows it"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if len(rest) > 1 and _same_name(rest[0], artist) and identifies(DASH.join(rest[1:])):'''
+new = '''    if len(rest) > 1 and _same_name(rest[0], artist):'''
+
+[[rows]]
+id = "Q6_same_name_any_overlap"
+description = "_same_name: any shared first word reads a part as the artist's own"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    return bool(mine) and mine == tuple(_folded(word) for word in words(normalized(artist)))'''
+new = '''    return bool(mine) and mine[:1] == tuple(_folded(word) for word in words(normalized(artist)))[:1]'''
+
+[[rows]]
+id = "Q7_empty_title_asked"
+description = "question: ask an empty title past the head rather than the text as written"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if not identifies(title):
+        return Question(artist, value, Read.HEAD_ALONE)'''
+new = '''    if False:
+        return Question(artist, value, Read.HEAD_ALONE)'''
+
+[[rows]]
+id = "Q8_headless_read_past"
+description = "question: a text with no head is asked stripped and NFC normalized instead of byte for byte"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if rest is None:
+        return Question(artist, value, Read.AS_WRITTEN)'''
+new = '''    if rest is None:
+        return Question(artist, value.strip(), Read.AS_WRITTEN)'''
+
+[[rows]]
+id = "N1_unheaded_name_split"
+description = "by_name: an unheaded untagged name is split too"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if rest is None:
+        return Question("", stem, Read.AS_WRITTEN)'''
+new = '''    if rest is None:
+        rest = stem.split(DASH)'''
+
+[[rows]]
+id = "N2_head_alone_ambiguous"
+description = "by_name: a head alone name is recorded ambiguous rather than head alone"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if unsplit.read is Read.HEAD_ALONE:
+        return unsplit'''
+new = '''    if False:
+        return unsplit'''
+
+[[rows]]
+id = "N3_three_parts_split"
+description = "by_name: a name of three or more parts is split at its first dash"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if len(rest) == 2:
+        artist, title = (part.strip() for part in rest)'''
+new = '''    if len(rest) >= 2:
+        artist, title = rest[0].strip(), DASH.join(rest[1:]).strip()'''
+
+[[rows]]
+id = "N4_version_title_split"
+description = "by_name: a second part ending in a version is split, Artist - Original Mix"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''            and not _ends_in_version(folded_title)'''
+new = '''            and True'''
+
+[[rows]]
+id = "N5_numbered_title_split"
+description = "by_name: a second part opening with a track number is split, Album - 01 Title"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''            and not _opens_with_a_track_number(folded_title)'''
+new = '''            and True'''
+
+[[rows]]
+id = "N6_track_number_artist_split"
+description = "by_name: a lone track number is taken as the artist"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''            and not _a_track_number(folded_artist)'''
+new = '''            and True'''
+
+[[rows]]
+id = "N7_numbered_artist_split"
+description = "by_name: a first part opening with a track number is taken as the artist"
+file = "src/cratekit/tagging/titles.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''            and not _numbered(words(folded_artist))'''
+new = '''            and True'''
+
+[[rows]]
+id = "T1_title_tag_split"
+description = "tag_one: a file with a title tag and no artist tag is split by its name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    named = titles.by_name(path.stem) if not artist and not title_tag else None'''
+new = '''    named = titles.by_name(path.stem) if not artist else None'''
+
+[[rows]]
+id = "T2_split_artist_dropped"
+description = "tag_one: the name's artist is read and never handed to the searcher"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''    if named is not None:
+        artist = named.artist'''
+new = '''    if False:
+        artist = named.artist'''
+
+[[rows]]
+id = "T3_record_read_from_title"
+description = "tag_one: the record says how the title was read for a file asked by its name"
+file = "src/cratekit/tagging/tag.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''        if named is not None and named.read in (titles.Read.BY_NAME, titles.Read.NAME_AMBIGUOUS):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "S1_question_unused"
+description = "catalogue_searcher: ask every source the file's own text, the head included, as main did"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''        hit = answer(asked.artist, title, asked.title)'''
+new = '''        hit = answer(asked.artist, title, title)'''
+
+[[rows]]
+id = "S2_asked_not_carried"
+description = "catalogue_searcher: the hit does not carry the question, so the record names nothing"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''        return None if hit is None else replace(hit, asked=asked)'''
+new = '''        return hit'''
+
+[[rows]]
+id = "S3_match_on_question"
+description = "DiscogsAsker._search: match releases against the question instead of the file's own text"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''            if not _release_matches(release, artist, title):'''
+new = '''            if not _release_matches(release, artist, track):'''
+
+[[rows]]
+id = "S4_discogs_asked_head"
+description = "DiscogsAsker._search: ask the track field with the file's own text"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''        bare = _last_group_stripped(track.strip()) or track.strip()'''
+new = '''        bare = _last_group_stripped(title.strip()) or title.strip()'''
+
+[[rows]]
+id = "S5_shop_asked_head"
+description = "shop: the record shops are sent no question, so their free text carries the head"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''            artist, title, fetch=touch, pacer=pacer, declared=declared, track=track'''
+new = '''            artist, title, fetch=touch, pacer=pacer, declared=declared'''
+
+[[rows]]
+id = "S6_picture_asked_head"
+description = "_pictured: the picture's question to a record shop after a Discogs genre carries the head"
+file = "src/cratekit/tagging/searchers.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''        for source in later:
+            outcome = shop(source, artist, title, track)'''
+new = '''        for source in later:
+            outcome = shop(source, artist, title, title)'''
+
+[[rows]]
+id = "C1_record_drops_asked"
+description = "the sweep's record leaves the question's read out"
+file = "src/cratekit/tagging/cli.py"
+surface = "user"
+tests = ["tests/test_discogs_question.py", "tests/test_discogs_searcher.py", "tests/test_discogs_first.py", "tests/test_title_matcher.py", "tests/test_catalogue_searcher.py", "tests/test_tag_workers.py", "tests/test_tagging_engine.py", "tests/test_beatport_refusal.py"]
+old = '''                "read": result.asked_read,'''
+new = '''                "read": "",'''

@@ -1076,3 +1076,126 @@ def matches(file: FileName, row: Row) -> bool:
     if file.outcome is Outcome.AMBIGUOUS:
         return bool(file.splits & row.splits) or _any_same(whole, row.titles)
     return _any_same((*file.titles, *whole), row.titles)
+
+
+# ---------------------------------------------------------------------------
+# The question a catalogue is asked (U289)
+# ---------------------------------------------------------------------------
+
+
+class Read(Enum):
+    """How the artist and title a catalogue is asked were read off a file."""
+
+    #: No leading head with a key: the title is asked as written, byte for byte.
+    AS_WRITTEN = "as-written"
+    #: The head, the marker after it and the artist's own part were read off.
+    PAST_HEAD = "past-head"
+    #: Nothing past the head names a title: asked as written, never empty.
+    HEAD_ALONE = "head-alone"
+    #: A file with no tags: its name read to one artist and one title.
+    BY_NAME = "by-name"
+    #: A headed name with no tags that read to no one split: no artist is read.
+    NAME_AMBIGUOUS = "name-ambiguous"
+
+
+@dataclass(frozen=True, slots=True)
+class Question:
+    """The artist and title a catalogue is asked about one file, and how they were read."""
+
+    artist: str
+    title: str
+    read: Read
+
+
+def _past_head(value: str) -> list[str] | None:
+    """A text's dash parts after a leading ``KEY - BPM`` head and the marker
+    after it, or None when it opens with no head that carries a key.
+
+    The head is :func:`_head_end`'s, the matcher's own, held to a Camelot key
+    among its parts (:func:`_a_head`), so a title that opens with a number, a
+    fresh download's "99 - Luftballons", is never read as headed. A head is
+    at most two parts, so a text of two parts that are both a head's words is
+    a head alone, and its remainder is empty.
+    """
+    parts = unicodedata.normalize("NFC", value).strip().split(DASH)
+    body = _head_end(parts)
+    if not body or not _a_head(words(DASH.join(parts[:body]))):
+        return None
+    if len(parts) <= 2 and _a_head(words(DASH.join(parts))):
+        return []
+    rest = parts[body:]
+    marker = _MARKER.match(rest[0])
+    if marker is not None:
+        rest[0] = rest[0][marker.end() :]
+    return rest
+
+
+def _same_name(part: str, artist: str) -> bool:
+    """Whether a part's words are the artist's words, accents and case aside."""
+    mine = tuple(_folded(word) for word in words(normalized(part)))
+    return bool(mine) and mine == tuple(_folded(word) for word in words(normalized(artist)))
+
+
+def question(value: str, artist: str) -> Question:
+    """The title a catalogue is asked for a file whose title, or name, is
+    ``value``, by ``artist``.
+
+    Past the head the naming verb writes and the marker after it, and past a
+    first part that is the artist's own name word for word when a title
+    follows it, so "03B - 83 - That's the Way of the World" is asked as
+    "That's the Way of the World", and a name split by :func:`by_name` is
+    asked as its title. A text with no head is asked as written, so a freshly
+    downloaded file is asked exactly as it always was, and a text with nothing
+    past its head that names a title is asked as written too, never as an
+    empty field. Only the question: what a catalogue's row is matched against
+    stays the file's own text (:func:`read_file`).
+    """
+    rest = _past_head(value)
+    if rest is None:
+        return Question(artist, value, Read.AS_WRITTEN)
+    # A TITLE MUST FOLLOW THE ARTIST'S PART for it to be read off, so a title
+    # that is the artist's own name, a self titled track, is asked whole. A
+    # head alone leaves no part at all.
+    if len(rest) > 1 and _same_name(rest[0], artist) and identifies(DASH.join(rest[1:])):
+        rest = rest[1:]
+    title = DASH.join(rest).strip()
+    if not identifies(title):
+        return Question(artist, value, Read.HEAD_ALONE)
+    return Question(artist, title, Read.PAST_HEAD)
+
+
+def by_name(stem: str) -> Question:
+    """The artist and title a file with no tags is asked by, read off its name.
+
+    The naming verb writes a name as ``KEY - BPM - [marker] Artist - Title``,
+    so a headed name whose body is exactly two parts is that artist and that
+    title (:attr:`Read.BY_NAME`). Any other headed name is
+    :attr:`Read.NAME_AMBIGUOUS` and asked with no artist, as before: three
+    parts or more ("Artist - Title - Album", "Title - Artist - Album"), one
+    part, a first part that is or opens with a track number, and a second that
+    opens with one ("Album - 01 Title") or ends in a version ("Artist -
+    Original Mix", "Title - Kerri Chandler Remix"), since only a guess could
+    say which part is the artist. A name with no head is asked as written,
+    with no artist, exactly as before.
+    """
+    rest = _past_head(stem)
+    if rest is None:
+        return Question("", stem, Read.AS_WRITTEN)
+    unsplit = question(stem, "")
+    if unsplit.read is Read.HEAD_ALONE:
+        return unsplit
+    if len(rest) == 2:
+        artist, title = (part.strip() for part in rest)
+        # THE READER'S PIECES READ NORMALIZED TEXT, as :func:`read_file` hands
+        # them, so the version list's lower case words are found.
+        folded_artist, folded_title = normalized(artist), normalized(title)
+        if (
+            identifies(folded_artist)
+            and identifies(folded_title)
+            and not _a_track_number(folded_artist)
+            and not _numbered(words(folded_artist))
+            and not _opens_with_a_track_number(folded_title)
+            and not _ends_in_version(folded_title)
+        ):
+            return Question(artist, title, Read.BY_NAME)
+    return Question("", unsplit.title, Read.NAME_AMBIGUOUS)

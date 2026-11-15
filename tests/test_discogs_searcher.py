@@ -816,18 +816,20 @@ def test_the_worker_asker_is_one_per_process_and_reads_the_recorded_token(monkey
 
 
 def test_for_taxonomy_hands_the_worker_asker_to_the_searcher(monkeypatch):
-    calls: list[tuple[str, str]] = []
+    calls: list[tuple[str, str, str | None]] = []
 
     class Recording:
-        def ask(self, artist, title):
-            calls.append((artist, title))
+        def ask(self, artist, title, *, track=None):
+            calls.append((artist, title, track))
             return searchers.SourceOutcome(searchers.DISCOGS, searchers.Answer.MISS)
 
     monkeypatch.setattr(searchers, "for_discogs", lambda: Recording())
     monkeypatch.setattr(searchers, "default_fetch", lambda **_k: routed(search=results()))
     monkeypatch.setattr(searchers.Pacer, "wait", lambda self: 0.0)
     hit = searchers.for_taxonomy(TAXONOMY)(ARTIST, TITLE)
-    assert calls == [(ARTIST, TITLE)]
+    # The question's title rides beside the file's own text (U289); a title
+    # with no head is asked as written.
+    assert calls == [(ARTIST, TITLE, TITLE)]
     assert said(hit) == [(searchers.DISCOGS, "miss"), (searchers.BEATPORT, "miss")]
 
 
