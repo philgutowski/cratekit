@@ -1153,6 +1153,9 @@ def question(value: str, artist: str) -> Question:
     rest = _past_head(value)
     if rest is None:
         return Question(artist, value, Read.AS_WRITTEN)
+    # A TITLE MUST FOLLOW THE ARTIST'S PART for it to be read off, so a title
+    # that is the artist's own name, a self titled track, is asked whole. A
+    # head alone leaves no part at all.
     if len(rest) > 1 and _same_name(rest[0], artist) and identifies(DASH.join(rest[1:])):
         rest = rest[1:]
     title = DASH.join(rest).strip()

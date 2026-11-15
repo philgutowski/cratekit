@@ -391,8 +391,10 @@ crate route pending
   a fresh download's, is asked exactly as written, and a title that is a head
   alone is asked as written too. A file with no tags is asked by its name: a
   headed name of two parts, `Artist - Title`, is asked as that artist and
-  that title, and any other name with no artist, as before. Each file's
-  record names what was asked and how under `asked`. A Discogs style no folder holds is written nowhere and is
+  that title, and any other headed name with no artist, as before, and its
+  name past the head. Each file's record names the artist and the title read
+  past the head, and how they were read, under `asked`; Discogs is sent that
+  title with its last bracketed mix set aside, as before. A Discogs style no folder holds is written nowhere and is
   the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the
   `KEY - BPM` head are set aside; a file's title is read from where it

@@ -331,11 +331,13 @@ def test_an_untagged_name_with_no_head_is_asked_as_before(tmp_path, silence):
 # ---------------------------------------------------------------------------
 
 
+#: The shared matcher's own corpus of file titles and rows, both ways round
+#: and headed, from ``tests/test_title_matcher.py``.
 CORPUS = [*SAME, *DIFFERENT, *HEADED, *HEADED_NOT]
 
 
 @pytest.mark.parametrize(("searched", "found"), CORPUS)
-def test_every_earlier_case_keeps_its_verdict_when_asked_past_its_head(searched, found):
+def test_every_matcher_corpus_case_keeps_its_verdict_when_asked_past_its_head(searched, found):
     expected = (searched, found) in SAME or (searched, found) in HEADED
     seen: list[str] = []
     tracks = [{"position": "A1", "type_": "track", "title": found}]
@@ -351,14 +353,15 @@ def test_every_earlier_case_keeps_its_verdict_when_asked_past_its_head(searched,
     hit = build(fetch)("Bernard Badie", searched)
     (discogs,) = [said for said in hit.answers if said.source == searchers.DISCOGS]
     assert (discogs.answer == "matched") is expected
-    asked = titles.question(searched, "Bernard Badie")
     (question,) = discogs_questions(seen)
-    if asked.read is titles.Read.PAST_HEAD:
-        assert searched.endswith(asked.title) and len(asked.title) < len(searched)
+    assert hit.asked is not None and hit.asked.artist == "Bernard Badie"
+    if hit.asked.read is titles.Read.PAST_HEAD:
+        # The head is read off the front and nothing else is changed.
+        assert searched.endswith(hit.asked.title) and len(hit.asked.title) < len(searched)
+        assert titles.words(searched)[0] not in titles.words(question["track"])
     else:
-        assert asked.title == searched
-    assert question["track"] == (searchers._last_group_stripped(asked.title) or asked.title)
-    assert hit.asked == asked
+        assert hit.asked.title == searched
+    assert question["track"] in (hit.asked.title.strip(), searchers._last_group_stripped(hit.asked.title))
 
 
 def test_the_headed_cases_are_asked_past_their_head():
@@ -455,3 +458,38 @@ def test_the_sweeps_record_names_the_question_each_file_was_asked(cfg, tmp_path,
         "read": "by-name",
     }
     assert reports["8A - 122 - Kerri Chandler - On My Way.flac"]["genre_written"] == genre_of("House")
+
+
+# ---------------------------------------------------------------------------
+# F. The guards round one found unpinned
+# ---------------------------------------------------------------------------
+
+
+def test_a_title_tag_with_no_artist_tag_is_never_split_by_its_name(tmp_path, silence):
+    """Only a file with neither tag is asked by its name: one with a title tag
+    and no artist is asked past its head with no artist, whatever its name says."""
+    path = tagged(
+        tmp_path, silence, "8A - 122 - Kerri Chandler - On My Way.flac", title="8A - 122 - Kerri Chandler - On My Way"
+    )
+    assert not tags.read_tag(path, "artist")
+    seen: list[str] = []
+    result = tag.tag_one(path, searcher=build(typed_fetch(seen)))
+    (question,) = discogs_questions(seen)
+    assert (question["artist"], question["track"]) == ("", "Kerri Chandler - On My Way")
+    assert (result.asked_artist, result.asked_read) == ("", titles.Read.PAST_HEAD.value)
+    assert result.genre_written is None
+
+
+@pytest.mark.parametrize("stem", ["8A - 122 - !! - On My Way", "8A - 122 - [MP3] - On My Way"])
+def test_a_name_whose_artist_part_names_nobody_is_not_split(stem):
+    assert titles.by_name(stem).read is titles.Read.NAME_AMBIGUOUS
+
+
+@pytest.mark.parametrize("stem", ["8A - 122 - Kerri Chandler - !!", "8A - 122 - Kerri Chandler - ()"])
+def test_a_name_whose_title_part_names_nothing_is_not_split(stem):
+    assert titles.by_name(stem).read is titles.Read.NAME_AMBIGUOUS
+
+
+def test_the_artists_part_is_read_off_only_when_a_title_follows_it():
+    asked = titles.question("03B - 83 - Kerri Chandler - !!", "Kerri Chandler")
+    assert (asked.title, asked.read) == ("Kerri Chandler - !!", titles.Read.PAST_HEAD)
