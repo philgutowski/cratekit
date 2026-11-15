@@ -53394,3 +53394,190 @@ hundred rows pays a fraction of a second. Unmeasured on the live volume.
 **Closes when:** the approximate pass is timed on the live library at a
 sitting, or the spelled out forms are cached per recording as the sorted
 words are. Ledger only.
+
+---
+
+## R-1723. An untagged name written title first is split with its title as the artist
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** `titles.by_name` reads a headed name of exactly two body
+parts as `Artist - Title`, the order `naming.compose_body` writes. A name
+written the other way round, `08A - 124 - Sunrise Mood - Bernard Badie` (the
+reader's own corpus holds a `{title} - {credit}` body,
+`tests/test_title_matcher.py`), is asked with artist `Sunrise Mood` and
+track `Bernard Badie`, recorded `by-name`. Nothing in the name tells the two
+orders apart without an artist tag.
+
+**Measured cost.** Driven at round one through `tag_one` with a recorded
+release credited `Sunrise Mood` carrying a track `Bernard Badie`: that
+release's style is written, where main gave `no-hit`. The real recording's
+row misses on both. Reachability is unmeasured: no catalogue holding a
+release credited to the title's words with a track named after the artist
+was driven, and both gates of the unchanged matcher (artist and title) must
+pass for a write.
+
+**Closes when:** the split is refused, or both orders are asked and the
+catalogue's row decides, or a live sweep over untagged library names counts
+how many are written title first. Ledger only.
+
+---
+
+## R-1724. The brief's untagged Obiman name is asked right and still matched by no release, for its _PN tail
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** `9A - 136 - Obiman - On The Rocks (Cafe Del Mar Mix)_PN`
+is now asked as artist `Obiman` and track `On The Rocks (Cafe Del Mar
+Mix)_PN`, as the card asks. The `_PN` tail after the bracket keeps
+`searchers._last_group_stripped` from setting the mix aside, and the shared
+matcher reads `mix)_pn` as part of the title's words, so the release
+`On The Rocks (Cafe Del Mar Mix)` is not read as the file's own.
+
+**Measured cost.** Driven at round one with that release recorded: `no-hit`
+on main and on the branch, and a match (Chill / Ambient) with the tail
+removed. A file of this shape stays untagged, as before; not a regression.
+How many library names carry a suffix after their mix is unmeasured.
+
+**Closes when:** the name reader or the matcher reads a trailing
+underscore suffix after a bracket group as no part of the title, decided on
+a count of such names on the live library. Ledger only.
+
+---
+
+## R-1725. The record's asked title is the question before Discogs sets its last bracketed mix aside
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** The sweep's record carries `asked.title`, the title read
+past the head, which is what the record shops' free text query is sent.
+Discogs' `_search` then sets the last bracketed group aside, as it always
+has, so for `03B - 83 - On My Way (Original Mix)` the record says
+`On My Way (Original Mix)` and Discogs was sent `On My Way`.
+
+**Measured cost.** Driven at round one. A person reading the record against
+Discogs' own search sees a mix the request did not carry. GUIDE now says the
+mix is set aside; the record itself does not.
+
+**Closes when:** the record carries what each source was sent, or a
+`track` beside `title` for Discogs. Ledger only.
+
+---
+
+## R-1726. An untagged file's split artist changes which uncredited Traxsource and Bandcamp rows match it
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** For a file with no tags, main handed every matcher an
+empty artist; the branch hands the artist its name reads to. Discogs and
+Beatport gate every row on the artist, so an empty artist could never match
+there and the split can only add matches. Traxsource and Bandcamp read a row
+with no credit by its title alone, and the shared reader lays out a name's
+title by the artist it is given, so the verdict on such a row moves both
+ways.
+
+**Measured cost.** At round one, a matcher level differential over 5192
+names that split: 29820 uncredited row verdicts lost and 27352 gained, for
+example row `Bernard Badie` no longer matching `08A - 124 - Bernard Badie -
+Sunrise Mood`. No product path reaches either shop: `for_taxonomy` builds
+the searcher over `WALK`, Discogs then Beatport, and only an explicit walk
+names them. The suite's corpus differential runs with an artist tag only.
+
+**Closes when:** either shop returns to the default walk, at which point the
+split's effect on uncredited rows is measured and pinned. Ledger only.
+
+---
+
+## R-1727. tag retag and tag suggest ask an untagged file with no artist, since only tag folder reads a name's artist
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** The question's title is read in the catalogue searcher,
+so `tag retag` and `tag suggest` ask every headed title past its head as
+`tag folder` does. The name's artist is read only in `tag.tag_one`, the one
+caller that knows a name from a title tag; `retag.py` reads `artist` and
+`title or stem` as before and `suggest.py` asks by the database row's
+artist and title. An untagged file there is still asked with no artist,
+which no catalogue on the walk can match.
+
+**Measured cost.** Read, not driven. Not a regression: main asked the same
+files with no artist and the head too. A retag candidate carries a genre,
+so it was tagged once, and is rarely untagged.
+
+**Closes when:** retag reads the name's artist the way `tag_one` does, or a
+count shows no untagged file reaches either verb. Ledger only.
+
+---
+
+## R-1728. The question reads off a title's first part only when it is the artist's exact name, so a collaboration or a The keeps the artist in the track field
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** `titles.question` reads a first part off the title
+asked only when its words are the searched artist's exactly
+(`_same_name`). The shared matcher's own reader of a credit
+(`_names_the_artist`) also takes a collaboration (`&`, `,`, `x`, `vs`), a
+dropped or added `The`, and one name of several. So
+`08A - 124 - Bernard Badie & Tide - Sun Path` is asked
+`Bernard Badie & Tide - Sun Path`, and a title tag
+`08A - 124 - Black Madonna - Sun Path` by `The Black Madonna` keeps
+`Black Madonna` in the question. The same rule reads a dash written version
+of a self titled record as its title: `08A - 124 - Bernard Badie - Vocal Mix`
+is asked `Vocal Mix`, where `by_name` refuses that split.
+
+**Measured cost.** Driven at round two through the shipped searcher against
+a fetch answering only the typed artist and title: 15 of the matcher's 18
+`ARTIST_AS_WRITTEN` shapes miss. Each is the miss main gave, since main asked
+with the head too; nothing regresses, and the card's own shapes, a title
+after the head, match. How many library title tags carry the artist's
+credit after the head is unmeasured.
+
+**Closes when:** the question reads the artist's part off by the matcher's
+own credit reader, with a version tail kept on a self titled record, and a
+live count of such tags is taken. Ledger only.
+
+---
+
+## R-1729. A file with a title tag and no artist tag is not asked by its name's artist
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** The brief asks that "a file with no artist tag is asked
+with the artist and title its name reads to". The session read "its name"
+as the file's name, asked by `tag_one` only when the file has no title tag
+either, since a title tag is not the name and the name's artist beside a
+tag's title is two sources for one question. So a file whose title tag is
+`8A - 122 - Kerri Chandler - On My Way` and whose artist tag is empty is
+asked artist empty and track `Kerri Chandler - On My Way`, which no
+catalogue on the walk can match, and the test
+`test_a_title_tag_with_no_artist_tag_is_never_split_by_its_name` pins it.
+
+**Measured cost.** Driven at round two: no genre for that file, where the
+same file with no tags writes House. Not a regression: main asked it with
+no artist and the head too. Sitting 100 cleared both tags on every file it
+stripped, so how many library files carry a title tag and no artist tag is
+unmeasured.
+
+**Closes when:** a live count says such files exist, and the split is read
+off the title tag or the name for them, Phillip's call if the two disagree.
+Ledger only.
+
+---
+
+## R-1730. Three guards of the question kill nothing, one of them equivalent
+
+**Found:** at the review of #843, U289, 2026-11-15.
+
+**The mechanism.** At round two, over the nine tagging suites: removing
+`bool(mine) and` from `titles._same_name` (a wordless part read off as the
+artist's own when the artist is empty), asking `title or value` at
+`question`'s head alone return (a title past the head of punctuation alone,
+`8A - 122 - !!`), and the title `by_name` answers for an ambiguous name,
+which no caller reads (`tag_one` reads its artist and its read only), each
+kill no test. The third is equivalent in production.
+
+**Measured cost.** None driven: each changes a question only for a title
+with no letter or digit past its head, or a value nothing reads.
+
+**Closes when:** a test pins the first two, and `by_name`'s answer drops
+the unread title or a caller reads it. Ledger only.
