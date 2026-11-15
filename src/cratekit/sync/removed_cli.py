@@ -106,9 +106,10 @@ def warnings_of(plan: removed.RemovedPlan) -> list[dict[str, str]]:
             {
                 "code": RECORDS_UNREADABLE,
                 "message": (
-                    f"{plan.unreadable} session record(s) could not be read, so a playlist "
-                    f"or folder a landing named there is not known; every row that "
-                    f"depends on one is kept, never offered"
+                    f"{plan.unreadable} session record(s) could not be read, so a "
+                    f"playlist a landing downloaded, the folder it filed into, or the "
+                    f"twin it made may be unknown here; a row that needed one is kept "
+                    f"or left out, never offered on its account"
                 ),
             }
         )
@@ -130,14 +131,24 @@ def sync_removed(ctx) -> Envelope:
 
             account = catalogue.resolve(cfg)
             listed = removed.account_listing(account)
-            reads = removed.read_account(account, [one.account for one in found], listed=listed)
+            recorded = removed.recorded_contents(cfg)
+            reads = removed.read_account(
+                account, [one.account for one in found], listed=listed, recorded=recorded
+            )
             if removed.removals(found, reads):
                 others = [
                     one
-                    for one in removed.synced(cfg, found, paired=pairs.paired_ids(cfg))
+                    for one in removed.synced(
+                        cfg,
+                        found,
+                        paired=pairs.paired_ids(cfg),
+                        swept_now=removed.job_playlists(cfg),
+                    )
                     if one not in reads
                 ]
-                reads.update(removed.read_account(account, others, listed=listed))
+                reads.update(
+                    removed.read_account(account, others, listed=listed, recorded=recorded)
+                )
                 reads[removed.HEARTS] = removed.read_hearts(account)
         plan = removed.plan_removed(
             cfg,

@@ -25,7 +25,7 @@ from cratekit.cli import registry
 from cratekit.core import config, jobs, rb_writer, session, tree_registry
 from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import cli as intake_cli
-from cratekit.intake import native, set_playlist
+from cratekit.intake import missing_cli, native, set_playlist
 from cratekit.label import catalogue
 from cratekit.label.catalogue import AccountPlaylist
 from cratekit.sync import playlists, removed, removed_cli, twins
@@ -33,6 +33,7 @@ from tests.cli_drive import drive
 from tests.label_fakes import FakeCatalogue, FakePagedPlaylist, catalogue_factory
 from tests.test_intake_land_account_playlists_native import (
     RUN,
+    _land,
     _landed,
     _owned,
     _stage,
@@ -41,7 +42,7 @@ from tests.test_intake_land_account_playlists_native import (
     pinned_day as pinned_day,  # noqa: PLC0414
 )
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
-from tests.test_intake_land_native import _query
+from tests.test_intake_land_native import _query, _two_acts
 from tests.test_intake_land_native import (
     _release_process_locks as _release_process_locks,  # noqa: PLC0414
 )
@@ -554,6 +555,147 @@ def test_a_job_no_landing_names_is_not_read_as_downloaded(
     assert "pl-c" not in account.fake.playlists_asked_for
 
 
+def test_a_playlist_a_later_pass_swept_and_never_landed_still_keeps_its_tracks(
+    native_library, silence, monkeypatch, offline
+):
+    """Round one's finding: the cursor's file holds a finished job only after the next sweep."""
+    cfg, _root = native_library
+    _five(cfg, silence)
+    swept(cfg, {"pl-c": (DEEP, ("New1",))}, run_id=OTHER_RUN)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    account.lists("pl-c", DEEP, [track("New1")])
+
+    answers = _by_title(_run())
+
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+    assert answers["New1"]["kept_by"] == [DEEP]
+    assert "pl-c" in account.fake.playlists_asked_for
+
+
+def test_a_gone_downloaded_playlist_holds_what_its_pass_recorded(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _five(cfg, silence, also={"pl-b": (DEEP, ("New1", "New3"))})
+    account = Account(monkeypatch)
+    # Deep Cuts is neither listed nor openable: gone, and still read as holding
+    # New1 and New3, which its pass recorded.
+    account.lists("pl-a", SUNSET, [track("Held1")])
+
+    out = _run()
+
+    answers = _by_title(out)
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+    assert answers["New1"]["kept_by"] == [DEEP]
+    assert answers["New2"]["action"] == removed.OFFERED
+    assert "New3" not in answers
+    assert out["data"]["totals"]["partial"] is False
+
+
+def test_a_synced_playlist_nothing_records_that_neither_read_finds_offers_nothing(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    from cratekit.modules.outbound import pairs
+
+    _five(cfg, silence)
+    pairs.PairStore(config.load()).mark("acc-paired", "901", name="A Pair")
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1")])
+
+    out = _run()
+
+    assert out["data"]["totals"][removed.OFFERED] == 0
+    assert out["data"]["totals"]["partial"] is True
+    (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+    assert stopped["account"] == "acc-paired" and stopped["state"] == removed.UNREADABLE
+
+
+def test_a_row_the_reader_set_aside_keeps_a_track_by_its_isrc(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))}, codes=True)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+    # A row with no title is set aside by the reader (U213), and its ISRC is New1's.
+    account.lists(
+        "pl-b", DEEP, [track("New3"), Listed("tid-relinked", "", code=isrc_of("New1"))]
+    )
+
+    out = _run()
+
+    answers = _by_title(out)
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+    assert answers["New1"]["kept_by"] == [DEEP]
+
+
+def test_a_file_another_pass_filed_is_not_this_pass_s_file(
+    native_library, silence, monkeypatch, offline
+):
+    """Each report's pass is asked of its own landing's folder, never of any pass's."""
+    cfg, _root = native_library
+    other = missing_cli.synced_name(OTHER_RUN)
+    swept(cfg, {"pl-a": (SUNSET, ("New1", "New2"))})
+    swept(cfg, {"pl-b": (DEEP, ("New1", "New6"))}, run_id=OTHER_RUN)
+    for title in ("New1", "New2"):
+        _stage(cfg, silence, title)
+    _landed(cfg)
+    _stage(cfg, silence, "New6")
+    code, acted, _ = _two_acts(_land(other))
+    assert code == int(ExitCode.OK), acted
+    account = Account(monkeypatch)
+    # New1 is off Deep Cuts, whose pass found its file in the first pass's folder.
+    account.lists("pl-a", SUNSET, [track("New1"), track("New2")])
+    account.lists("pl-b", DEEP, [track("New6")])
+
+    answers = _by_title(_run())
+
+    assert answers["New1"]["why"] == removed.NOT_THIS_PASS
+
+
+def test_a_genre_playlist_of_a_native_routing_tree_keeps_nothing(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    from datetime import date
+
+    from cratekit.core import active_taxonomy
+
+    _five(cfg, silence)
+    declared = active_taxonomy.load(cfg)
+    handle = rb_writer.open_db(Path(cfg.library.db_path), unlock=False, cfg=cfg)
+    try:
+        folder = handle.create_playlist_folder("Genres")
+        genre = handle.create_playlist("Deep House", parent=folder)
+        handle.add_to_playlist(genre, _row(cfg, "New1"))
+        handle.session.commit()
+        root_id = str(folder.ID)
+    finally:
+        rb_writer.close_db(handle)
+    native = tree_registry.read(cfg).with_record(
+        tree_registry.TreeRecord(
+            tree_id=declared.tree.id,
+            mode=tree_registry.Mode.DATABASE,
+            cutover_on=date(2026, 10, 1),
+            root_id=root_id,
+            source=next(iter(tree_registry.DerivationSource)),
+        )
+    )
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1"), track("New2")])
+
+    bridged = _by_title(_run())
+    monkeypatch.setattr(tree_registry, "read", lambda _cfg: native)
+    filed = _by_title(_run())
+
+    # On the bridge the genre playlist cannot be told from a person's: kept.
+    assert bridged["New1"]["why"] == removed.IN_YOURS
+    assert bridged["New1"]["kept_by"] == ["Deep House"]
+    assert filed["New1"]["action"] == removed.OFFERED
+
+
 def test_one_row_taken_off_two_downloaded_playlists_is_one_offer_naming_both(
     native_library, silence, monkeypatch, offline
 ):
@@ -623,13 +765,15 @@ def _listing(**kwargs) -> removed.Listing:
     return removed.Listing(account="pl", name="P", state=removed.READ, **kwargs)
 
 
-def test_a_listing_holds_a_track_by_any_of_three_tests_and_nothing_unread_holds_anything():
+def test_a_listing_holds_a_track_by_any_of_three_tests_and_only_a_read_or_gone_one_holds():
     wanted = match.Wanted(artist="Probe", title="Song", isrc="usprb2600001", ref="tid-1")
     assert _listing(refs=frozenset({"tid-1"})).holds(wanted)
     assert _listing(isrcs=frozenset({"USPRB2600001"})).holds(wanted)
     assert _listing(recordings=frozenset({removed.recording(wanted)})).holds(wanted)
     assert not _listing(refs=frozenset({"tid-2"})).holds(wanted)
-    for state in (removed.GONE, removed.UNREADABLE, removed.SHORT, removed.EMPTY):
+    gone = removed.Listing(account="pl", name="P", state=removed.GONE, refs=frozenset({"tid-1"}))
+    assert gone.holds(wanted)
+    for state in (removed.UNREADABLE, removed.SHORT, removed.EMPTY):
         unread = removed.Listing(
             account="pl", name="P", state=state, refs=frozenset({"tid-1"})
         )

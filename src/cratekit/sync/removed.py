@@ -18,9 +18,10 @@ it by the account's identifier and the pass (U128's ``inbox_playlists``
 entry). A job no landing names is not downloaded, since nothing of it reached
 the collection. What is SYNCED, for the question "is it still on another
 synced playlist", is wider: every playlist the sweep's cursor holds, every one
-the mark record holds as taken, every one ``sync pair`` keeps, every
-downloaded one, and the account's hearts, which the favourites source brings
-into All Favorites.
+an intake job of this library was queued for (the cursor as it is in effect,
+before the next sweep reconciles a finished job into it), every one the mark
+record holds as taken, every one ``sync pair`` keeps, every downloaded one, and
+the account's hearts, which the favourites source brings into All Favorites.
 
 A PARTIAL READ OFFERS NOTHING, the deletion pass's rule (R37) applied to the
 account. "Still on another synced playlist" is a claim about every synced
@@ -30,11 +31,12 @@ contributes nothing to it, so the claim would pass on absence of evidence. So
 while any synced playlist is not read whole, every row that would be offered
 is kept, and the plan says which playlists stopped it. A playlist the
 account's own listing no longer names, and that cannot be opened by its id
-either, is GONE: two reads agreeing, since the listing alone stops on an empty
-page with no total to check it against (R-385). Its tracks are offered
-nothing, since deleting a playlist whole is not taking a track off it, and it
-keeps no other track. A playlist the listing omits and its id still opens is
-read as any other.
+either, is GONE, since the listing alone stops on an empty page with no total
+to check it against (R-385). Its tracks are offered nothing, since deleting a
+playlist whole is not taking a track off it. A failed open is any provider
+failure, not a not found, so a gone playlist is still read as holding what its
+finished jobs recorded, and one nothing records is not read whole. A playlist
+the listing omits and its id still opens is read as any other.
 
 A TRACK IS REMOVED when its playlist's listing holds no row of its provider
 id, and no read row of it carries its ISRC or its artist and title as the
@@ -54,8 +56,9 @@ EACH ROW GETS ONE ANSWER, the first that holds of these:
   match found a file this pass did not bring;
 * ``kept, on another synced playlist``;
 * ``kept, in a playlist of yours``: a live membership anywhere but the intake
-  tree, the routing tree, a label year playlist its pass's landing recorded,
-  or the custom playlist twin a landing recorded for a playlist it left;
+  tree, the routing tree, or the custom playlist twin a landing recorded for a
+  playlist it left. A label year playlist keeps the row, the brief's rule,
+  until Phillip answers whether Cratekit's own filing does;
 * ``offered``.
 
 One collection row reached from two playlists, or two passes, is one answer
@@ -77,7 +80,7 @@ from cratekit.acquire import match
 from cratekit.cli.output import digest_of
 from cratekit.core import config, jobs, locations, rb_writer, session, taxonomy, tree_registry
 from cratekit.core.cause import CratekitError
-from cratekit.intake import account_playlists, ingest, label_filing, native, refill, set_playlist
+from cratekit.intake import account_playlists, ingest, native, refill, set_playlist
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
 from cratekit.sync import playlists, twins
@@ -143,8 +146,14 @@ class Listing:
     recordings: frozenset[str] = frozenset()
 
     def holds(self, wanted: match.Wanted) -> bool:
-        """Whether this listing still holds the track, by any of the three tests."""
-        if self.state != READ:
+        """Whether this listing still holds the track, by any of the three tests.
+
+        A GONE playlist holds what its finished jobs recorded, its last known
+        contents, since "gone" is two reads failing and not a provider's not
+        found; nothing else not read whole holds anything, and stops every
+        offer instead.
+        """
+        if self.state not in (READ, GONE):
             return False
         if wanted.ref and wanted.ref in self.refs:
             return True
@@ -264,9 +273,15 @@ def downloaded(cfg: config.Config, records: Sequence[session.SessionRecord]) -> 
 
 
 def synced(
-    cfg: config.Config, found: Sequence[Downloaded], *, paired: Iterable[str] = ()
+    cfg: config.Config,
+    found: Sequence[Downloaded],
+    *,
+    paired: Iterable[str] = (),
+    swept_now: Iterable[str] = (),
 ) -> tuple[str, ...]:
     """Every synced account playlist, the downloaded ones first, each once.
+
+    ``swept_now`` is :func:`job_playlists`, the cursor as it is in effect.
 
     THE TAKEN RECORD IS READ, AND REFUSES WHEN IT CANNOT BE: an unread record
     is a set of synced playlists nobody can name, and "on no other synced
@@ -280,6 +295,7 @@ def synced(
             [
                 *(one.account for one in found),
                 *swept,
+                *swept_now,
                 *taken,
                 *sorted(str(one) for one in paired),
             ]
@@ -287,8 +303,67 @@ def synced(
     )
 
 
+def _held(tracks: Iterable[match.Wanted]) -> dict[str, frozenset[str]]:
+    """The three identity sets a listing is asked by, over ``tracks``."""
+    wanted = list(tracks)
+    return {
+        "refs": frozenset(one.ref for one in wanted if one.ref),
+        "isrcs": frozenset(one.isrc.strip().upper() for one in wanted if one.isrc),
+        "recordings": frozenset(recording(one) for one in wanted),
+    }
+
+
+def recorded_contents(cfg: config.Config) -> dict[str, tuple[match.Wanted, ...]]:
+    """What each account playlist's finished intake jobs recorded, by the account's id.
+
+    Every ``intake.playlist`` job of this library that SUCCEEDED, every report
+    read, the hearts' job left out. It is what a GONE playlist is read as still
+    holding.
+    """
+    from cratekit.intake import missing_cli
+
+    found: dict[str, list[match.Wanted]] = {}
+    with jobs.open_store() as store:
+        for job in playlists.playlist_jobs(store, cfg, handler_key=account_playlists.PLAYLIST_KEY):
+            account = playlists.playlist_of(job)
+            if (
+                not account
+                or job.state is not jobs.JobState.SUCCEEDED
+                or str((job.payload or {}).get("source_id") or "") == intake_cli.FAVORITES_SOURCE_ID
+            ):
+                continue
+            found.setdefault(account, []).extend(
+                intake_cli.thawed(report["track"])
+                for report in missing_cli.job_reports(store, job)
+                if isinstance(report.get("track"), Mapping)
+            )
+    return {key: tuple(value) for key, value in found.items()}
+
+
+def job_playlists(cfg: config.Config) -> tuple[str, ...]:
+    """Every account playlist an ``intake.playlist`` job of this library was queued for, any state.
+
+    THE CURSOR AS IT IS IN EFFECT, not as its file stands: a job that finished
+    since the last sweep is in the cursor only once the next sweep reconciles
+    it, and an open one holds its playlist back, so either is a synced playlist
+    now. The hearts' job names no playlist and is left out.
+    """
+    with jobs.open_store() as store:
+        return tuple(
+            dict.fromkeys(
+                account
+                for job in playlists.playlist_jobs(store, cfg, handler_key=account_playlists.PLAYLIST_KEY)
+                if (account := playlists.playlist_of(job))
+                and str((job.payload or {}).get("source_id") or "") != intake_cli.FAVORITES_SOURCE_ID
+            )
+        )
+
+
 def read_one(
-    found: catalogue.Catalogue, account: str, listed: Mapping[str, catalogue.AccountPlaylist]
+    found: catalogue.Catalogue,
+    account: str,
+    listed: Mapping[str, catalogue.AccountPlaylist],
+    recorded: Mapping[str, Sequence[match.Wanted]] | None = None,
 ) -> Listing:
     """One synced playlist read through the sweep's own reader, or why it is not read whole."""
     shown = listed.get(account)
@@ -299,15 +374,31 @@ def read_one(
         if exc.cause.reason not in playlists.PER_PLAYLIST_REASONS:
             raise
         if shown is None:
-            # GONE ONLY WHEN TWO READS AGREE. The account's list stops on an
-            # empty page and publishes no total (R-385), so its silence alone
-            # is weak evidence, and a gone playlist keeps no other track; a
-            # playlist it omits is opened by its id as well.
+            # GONE ONLY WHEN TWO READS AGREE, and even then not read as empty.
+            # The account's list stops on an empty page and publishes no total
+            # (R-385), and the id's failure is any provider failure, not a not
+            # found, so a gone playlist still holds what its finished jobs
+            # recorded; one nothing records is not read whole at all.
+            known = (recorded or {}).get(account)
+            if not known:
+                return Listing(
+                    account=account,
+                    name=name,
+                    state=UNREADABLE,
+                    why=(
+                        "the account no longer lists it, its id does not open, and no "
+                        "finished job records what it held"
+                    ),
+                )
             return Listing(
                 account=account,
                 name=name,
                 state=GONE,
-                why="the account no longer lists it, and it cannot be opened by its id",
+                why=(
+                    "the account no longer lists it and its id does not open; read as "
+                    "still holding what its pass recorded"
+                ),
+                **_held(known),
             )
         return Listing(account=account, name=name, state=UNREADABLE, why=exc.cause.message)
     if readable.short is not None:
@@ -328,14 +419,24 @@ def read_one(
             state=EMPTY,
             why="read with no tracks and nothing says it holds none",
         )
+    # A ROW THE READER SET ASIDE (U213) STILL SAYS WHAT IT IS: its id is in
+    # the order, and its ISRC, and its artist and title where it has both,
+    # count as the read rows' do.
     wanted = [intake_cli.thawed(one) for one in readable.tracks.values()]
+    wanted.extend(
+        match.Wanted(artist=one.artist, title=one.title, isrc=one.isrc or None, ref=one.ref)
+        for one in readable.unread.values()
+    )
+    held = _held(wanted)
     return Listing(
         account=account,
         name=name,
         state=READ,
         refs=frozenset(str(one) for one in readable.order),
-        isrcs=frozenset(one.isrc.strip().upper() for one in wanted if one.isrc),
-        recordings=frozenset(recording(one) for one in wanted),
+        isrcs=held["isrcs"],
+        recordings=frozenset(
+            recording(one) for one in wanted if one.artist.strip() and one.title.strip()
+        ),
     )
 
 
@@ -398,9 +499,12 @@ def read_account(
     wanted: Sequence[str],
     *,
     listed: Mapping[str, catalogue.AccountPlaylist],
+    recorded: Mapping[str, Sequence[match.Wanted]] | None = None,
 ) -> dict[str, Listing]:
     """Each playlist in ``wanted`` read once, against the account's listing read once."""
-    return {account: read_one(found, account, listed) for account in dict.fromkeys(wanted)}
+    return {
+        account: read_one(found, account, listed, recorded) for account in dict.fromkeys(wanted)
+    }
 
 
 def removals(
@@ -435,20 +539,6 @@ def _under(path: str, folders: Iterable[str]) -> bool:
         if root and (held.startswith(root + "/") or held.startswith(root + "\\")):
             return True
     return False
-
-
-def _label_years(records: Iterable[session.SessionRecord]) -> dict[str, frozenset[str]]:
-    """The label year playlists each pass's standing landings recorded filing into, by pass."""
-    years: dict[str, set[str]] = {}
-    for record in _standing(records):
-        pass_name = str(record.detail.get(native.PASS_KEY) or "")
-        filed = record.detail.get(label_filing.RECORD_KEY)
-        if not pass_name or not isinstance(filed, list):
-            continue
-        for entry in filed:
-            if isinstance(entry, Mapping) and entry.get("id"):
-                years.setdefault(pass_name, set()).add(str(entry["id"]))
-    return {key: frozenset(value) for key, value in years.items()}
 
 
 def _twins(records: Iterable[session.SessionRecord]) -> dict[str, frozenset[str]]:
@@ -579,16 +669,21 @@ def plan_removed(
                 held.carried = True
                 if _under(path, folders.get(one.pass_name, ())):
                     held.brought = True
-        years = _label_years(records)
         made = _twins(records)
         members = memberships(db, reached)
         for held in reached.values():
             own = own_nodes.union(
-                *(years.get(name, frozenset()) for name in held.passes),
                 *(made.get(account, frozenset()) for account in held.accounts),
             )
             answers.append(
-                _answer(held, reads=listings, held_by=members.get(held.content_id, ()), own=own, partial=partial)
+                _answer(
+                    held,
+                    reads=listings,
+                    held_by=members.get(held.content_id, ()),
+                    own=own,
+                    partial=partial,
+                    names={one.account: one.name for one in found},
+                )
             )
     plan = RemovedPlan(
         listings=listings,
@@ -606,6 +701,7 @@ def _answer(
     held_by: Sequence[tuple[str, str]],
     own: frozenset[str],
     partial: bool,
+    names: Mapping[str, str] | None = None,
 ) -> Answer:
     """The one answer a reached row gets, the first of the kept reasons that holds."""
     shown = Answer(
@@ -623,7 +719,7 @@ def _answer(
         return replace(shown, why=NOT_THIS_PASS)
     still = tuple(
         dict.fromkeys(
-            one.name or one.account
+            one.name or (names or {}).get(one.account) or one.account
             for one in reads
             if any(one.holds(wanted) for wanted in held.wanted)
         )
@@ -660,11 +756,13 @@ __all__ = [
     "account_listing",
     "downloaded",
     "identity",
+    "job_playlists",
     "memberships",
     "plan_removed",
     "read_account",
     "read_hearts",
     "read_one",
+    "recorded_contents",
     "recording",
     "removals",
     "synced",
