@@ -29,6 +29,7 @@ touches the network, and the token is a fixture word.
 
 from __future__ import annotations
 
+import re
 import shutil
 from pathlib import Path
 from urllib.parse import parse_qs, urlsplit
@@ -356,12 +357,17 @@ def test_every_matcher_corpus_case_keeps_its_verdict_when_asked_past_its_head(se
     (question,) = discogs_questions(seen)
     assert hit.asked is not None and hit.asked.artist == "Bernard Badie"
     if hit.asked.read is titles.Read.PAST_HEAD:
-        # The head is read off the front and nothing else is changed.
+        # Only the front is read off, the head and the marker after it: the
+        # rest of the title is the file's own.
         assert searched.endswith(hit.asked.title) and len(hit.asked.title) < len(searched)
         assert titles.words(searched)[0] not in titles.words(question["track"])
     else:
         assert hit.asked.title == searched
-    assert question["track"] in (hit.asked.title.strip(), searchers._last_group_stripped(hit.asked.title))
+    # Discogs sets a round bracketed group the title ends with aside, and asks
+    # a title that is nothing but one whole, written out here rather than read
+    # off the searcher.
+    asked = hit.asked.title.strip()
+    assert question["track"] == (re.sub(r"\s*\([^()]*\)\s*$", "", asked).strip() or asked)
 
 
 def test_the_headed_cases_are_asked_past_their_head():
@@ -493,3 +499,13 @@ def test_a_name_whose_title_part_names_nothing_is_not_split(stem):
 def test_the_artists_part_is_read_off_only_when_a_title_follows_it():
     asked = titles.question("03B - 83 - Kerri Chandler - !!", "Kerri Chandler")
     assert (asked.title, asked.read) == ("Kerri Chandler - !!", titles.Read.PAST_HEAD)
+
+
+def test_the_pictures_question_after_a_discogs_genre_carries_no_head(tmp_path, silence):
+    """A file Discogs tagged that has no picture asks Beatport for its cover
+    (U282), by the same question: the title past its head."""
+    path = tagged(tmp_path, silence, "x.flac", title="08A - 124 - [MP3] Aba", artist="Lane 8")
+    seen: list[str] = []
+    result = tag.tag_one(path, searcher=build(typed_fetch(seen)), fetch_image=lambda _url: None)
+    assert result.genre_written == genre_of("Progressive House")
+    assert beatport_queries(seen) == [f"{searchers.BEATPORT_SEARCH}?q=Lane+8+Aba"]

@@ -394,7 +394,7 @@ crate route pending
   that title, and any other headed name with no artist, as before, and its
   name past the head. Each file's record names the artist and the title read
   past the head, and how they were read, under `asked`; Discogs is sent that
-  title with its last bracketed mix set aside, as before. A Discogs style no folder holds is written nowhere and is
+  title with a round bracketed group it ends with set aside, as before. A Discogs style no folder holds is written nowhere and is
   the file's unmapped word only if Beatport writes no genre either. A catalogue's row counts only when its title names the file's own
   recording word for word, once the version, a featured artist and the
   `KEY - BPM` head are set aside; a file's title is read from where it
