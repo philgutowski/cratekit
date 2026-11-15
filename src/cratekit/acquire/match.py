@@ -438,7 +438,9 @@ APPROXIMATE_FLOOR = 82
 #: nothing is withheld; with the cap raised, eight are built, five are shown and
 #: three are reported kept back. So a run that says "3 further candidates were
 #: never shown" over a library of one-version recordings is a run whose
-#: recording cap is not this constant, and
+#: recording cap is not this constant, or one where card 833's spelled out
+#: lookup found recordings outside the five, which ride on top of them (see
+#: :func:`_resembling`), and
 #: ``test_the_scorer_is_capped_at_the_same_number_the_offer_is`` asserts the
 #: number is spent in both places.
 APPROXIMATE_LIMIT = 5
@@ -2969,7 +2971,8 @@ def _spelled_key(recording: str) -> str:
 
 def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     """What the approximate pass offers: the recordings discovery finds whose
-    title resembles too, best score first, at most :data:`APPROXIMATE_LIMIT`.
+    title resembles too, best score first, at most :data:`APPROXIMATE_LIMIT`
+    of them, led by any the spelled out lookup finds outside those five.
 
     FILTERED BEFORE THE CAP, NOT AFTER IT (U286). Discovery returns every
     recording over the floor and the title test runs on each in score order,
@@ -2982,33 +2985,42 @@ def _resembling(wanted: Wanted, index: LibraryIndex) -> tuple[Owned, ...]:
     One recording's versions are adjacent in discovery's answer and share one
     folded artist and title, so the first version answers for them all.
 
-    THE SPELLED OUT LOOKUP FIRST, FOR WHAT THE SCORE MISSED (card 833). A
-    recording :meth:`LibraryIndex.spelled_alike` finds and discovery did not
-    is the same title under the reading, so it leads. A recording both find
-    keeps its scored place, so a row the score already offered everything to
-    is offered exactly as before. The five recordings are the SCORED ones,
-    as before, and a lookup hit rides on top of them: spent once over both,
-    a lookup hit pushed a scored recording out of the offer with nothing
-    saying so (review round one). Now the offer's truncation drops it and
-    the withheld count reports it.
+    THE SPELLED OUT LOOKUP FIRST, FOR WHAT THE FIVE LEFT OUT (card 833). A
+    recording :meth:`LibraryIndex.spelled_alike` finds that is not among the
+    five scored recordings, never scored or scored too low, is the same
+    title under the reading, so it leads. One the five hold keeps its scored
+    place, so a row the score already offered everything to is offered
+    exactly as before. The five are the SCORED recordings, as before, and a
+    lookup hit rides on top of them: spent once over both, a lookup hit
+    pushed a scored recording out of the offer with nothing saying so
+    (review round one). Now the offer's truncation drops it and the withheld
+    count reports it.
     """
-    found = _approximate(wanted, index, limit=None)
-    scored = {held.recording for held in found}
-    kept: list[Owned] = []
-    for recording in index.spelled_alike(wanted.recording):
-        held = index.versions(recording)
-        if recording not in scored and _title_resembles(wanted, held[0]):
-            kept.extend(held)
+    scored: list[Owned] = []
     recordings = 0
-    for _recording, versions in groupby(found, key=attrgetter("recording")):
+    for _recording, versions in groupby(
+        _approximate(wanted, index, limit=None), key=attrgetter("recording")
+    ):
         held = tuple(versions)
         if not _title_resembles(wanted, held[0]):
             continue
-        kept.extend(held)
+        scored.extend(held)
         recordings += 1
         if recordings == APPROXIMATE_LIMIT:
             break
-    return tuple(kept)
+    # NOT AMONG THE FIVE, NOT MERELY NOT SCORED (review round two): a lookup
+    # hit discovery ranked sixth or lower was skipped as scored and then cut
+    # by the cap, never offered and never counted. No title test here: a
+    # lookup hit is the row's title spelled out, which ``_agree`` always
+    # takes.
+    offered = {held.recording for held in scored}
+    looked_up = [
+        held
+        for recording in index.spelled_alike(wanted.recording)
+        if recording not in offered
+        for held in index.versions(recording)
+    ]
+    return tuple(looked_up + scored)
 
 
 def standing_tombstone(

@@ -6878,10 +6878,11 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
             return True
         return fuzz.token_set_ratio(one_name, other_name) >= match.APPROXIMATE_TITLE_FLOOR
 
-    def looked_up(wanted, groups, scored):
+    def looked_up(wanted, groups, offered):
         """Card 833's lookup, written apart: every recording by the row's
         folded artist whose title spelled out is the row's, one of the two
-        holding a listed word, that the score did not find, in token order."""
+        holding a listed word, that the five offered do not hold, in token
+        order."""
         artist, title = match.fold(wanted.artist), match.fold(wanted.title)
         asks = any(word in listed for word in title.split())
         return [
@@ -6890,7 +6891,7 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
             if match.fold(group[0].artist) == artist
             and spelled(match.fold(group[0].title)) == spelled(title)
             and (asks or any(word in listed for word in match.fold(group[0].title).split()))
-            and group[0].recording not in scored
+            and group[0].recording not in offered
         ]
 
     def passes(wanted, held):
@@ -6913,7 +6914,8 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
     # not, so rows drop hits and a drop makes room for a hit past the five.
     short = ("Joy", "Jay", "Joys", "Box", "Cox", "Fox", "Lox", "Pox", "Sox",
              "Wow", "Wild", "Rea", "Tique", "Mana", "Nebula", "Goodbye", "O.K.",
-             "Love You", "For You", "Luv Us", "Tonight", "2 Nite", "Luv U")
+             "Love You", "For You", "Luv Us", "Tonight", "2 Nite", "Luv U",
+             "I Love You", "Love You More", "Love You Babe", "Love You Down", "Love You So")
     held = [owned for versions in generated.by_recording.values() for owned in versions]
     held += [
         match.Owned(path=Path(f"s{n:03d}.flac"), artist=artist, title=title, version="", key=None)
@@ -6932,14 +6934,14 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
         )
     ]
     every_recording = by_recording(held)
-    unchanged = dropped = refilled = joined = led = 0
+    unchanged = dropped = refilled = joined = led = outranked = 0
     for wanted in rows:
         every = by_recording(_shipped_approximate(wanted, index, limit=None))
-        scored = {group[0].recording for group in every}
-        first = looked_up(wanted, every_recording, scored)
+        five = [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
+        first = looked_up(wanted, every_recording, {group[0].recording for group in five})
         led += bool(first)
-        kept = [group for group in first if passes(wanted, group[0])]
-        kept += [group for group in every if passes(wanted, group[0])][: match.APPROXIMATE_LIMIT]
+        outranked += any(group in every for group in first)
+        kept = first + five
         expected = tuple(held for group in kept for held in group)
         assert match._resembling(wanted, index) == expected, wanted.recording
         joined += any(
@@ -6955,8 +6957,8 @@ def test_the_offer_is_the_shipped_hits_filtered_by_title_then_capped(seed):
         else:
             dropped += 1
             refilled += len(kept) > len([g for g in shipped if passes(wanted, g[0])])
-    assert unchanged and dropped and refilled and joined and led, (
-        unchanged, dropped, refilled, joined, led
+    assert unchanged and dropped and refilled and joined and led and outranked, (
+        unchanged, dropped, refilled, joined, led, outranked
     )
 
 
@@ -7205,6 +7207,28 @@ def test_a_spelled_number_is_not_read_as_a_numeral(wanted, held):
     owned = match.Owned(path=Path("x.flac"), artist="Moby", title=held, version="", key=None)
     found = resolve([one(artist="Moby", title=wanted)], _index_of_owned(owned)).matches[0]
     assert found.state is match.MatchState.MISSING
+
+
+def test_a_lookup_hit_discovery_ranked_past_the_five_still_leads(cfg, music, tmp_path):
+    """Review round two: ``Luv U`` is discovered sixth, behind five passing
+    titles, so taken as scored it was skipped by the lookup and cut by the
+    cap, never offered and never counted. It is the row's own title spelled
+    out, so it leads, and the scored fifth is reported withheld."""
+    for title in ("I Love You", "Love You More", "Love You Babe", "Love You Down", "Love You So"):
+        hold(music, f"08A - 124 - Aurora Bloom - {title}")
+    hold(music, "08A - 124 - Aurora Bloom - Luv U")
+    asked = one(title="Love You")
+    near = [held.title for held in match._approximate(asked, index_of(music), limit=None)]
+    assert near.index("Luv U") >= match.APPROXIMATE_LIMIT, near
+    found = resolve([asked], index_of(music)).matches[0]
+    assert found.candidates[0].title == "Luv U"
+    assert len(found.candidates) == match.APPROXIMATE_LIMIT
+    assert found.withheld == 1
+    path = write_list(tmp_path, "Aurora Bloom - Love You\n", "ranked.txt")
+    code, envelope = drive(["match", "run", path])
+    assert code == int(ExitCode.PENDING_HUMAN)
+    (row,) = envelope["data"]["needs_review"]
+    assert row["candidates"][0]["title"] == "Luv U"
 
 
 def test_the_word_list_is_the_curated_one():
