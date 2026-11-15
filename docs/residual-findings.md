@@ -53223,3 +53223,75 @@ the same shape, not driven.
 **Closes when:** a run that asks about an emoji row supersedes the open item
 under the row's old identity, or Phillip's answer on #834 settles the
 recorded answers another way. Ledger only.
+
+---
+
+## R-1713. A synced playlist sync removed reads as gone is held to what its jobs recorded, so a track added to it on the account since cannot keep a row
+
+**Found:** at the review of #373, U287, rounds one and two, 2026-11-15.
+
+**The mechanism.** A playlist neither the account's list nor its id finds is read as gone, and a failed open there is any provider failure (`PlaylistUnresolvable` wraps every exception), not a not found. Since round one a gone playlist holds what its finished intake jobs recorded, and one nothing records stops every offer. What it cannot hold is a track Phillip added to that playlist on the account after its sweep, a row the reader set aside at the sweep (a job queues only rows it can read), a row a short listing withheld, or, for a pair's or a mirror's job, a track the library owned when it was queued: if the playlist still exists and only failed to open, such a track reads as on no other synced playlist, and is offered.
+
+**Measured cost.** Driven on fixtures through the fake catalogue by round two: a track moved onto a gone playlist after its sweep is offered. The real producer needs the account's list to omit an owned playlist (R-385, unmeasured) and its open to fail in the same run; not driven.
+
+**Closes when:** the provider's not found is told apart from its other failures at `playlist_for`, so only a real not found reads as gone and anything else as not read whole. Ledger only.
+
+---
+
+## R-1714. A synced playlist the provider never lists whole, or an account with no hearts, stops every offer of sync removed for good
+
+**Found:** at the build of #373, U287, and its review round two, 2026-11-15.
+
+**The mechanism.** A partial read offers nothing, anywhere, while any synced listing is unreadable, short of its declared count, or empty with nothing saying it holds none. A playlist the cursor holds that the provider always refuses to open, one that always withholds a track it counts, an account whose hearts are empty, or a synced playlist deleted on the account that no finished, readable job records (a pair that never needed a download, a sweep job cancelled or failed), therefore keeps every row on every run, each named in the warning. No verb clears it.
+
+**Measured cost.** Driven on fixtures only, each shape once: nothing is offered and the stopping listing is named. On the live account it is unmeasured how many such listings there are.
+
+**Closes when:** a person can say a named listing is to be read as holding nothing (a recorded release of it), or the live account shows none. Ledger only.
+
+---
+
+## R-1715. A playlist a person makes under INBOX, or a hand placement in the genre tree, keeps no removed track
+
+**Found:** at the build of #373, U287, 2026-11-15.
+
+**The mechanism.** The pass's own filing is named by place, not by who put the membership there: every live node under the intake root and the routing root counts, so a playlist a person made inside INBOX, or a track a person dragged into a genre playlist by hand, reads as Cratekit's filing and keeps nothing.
+
+**Measured cost.** Not driven. The row is still only offered, and U288's gate lists it before anything is removed.
+
+**Closes when:** the routing tree's memberships Cratekit wrote are told from a person's by the session records, or Phillip says a hand placement there is filing. Ledger only.
+
+---
+
+## R-1716. sync removed reads every synced playlist again on each run that finds a removal, past the default call ceiling on a large account
+
+**Found:** at the build of #373, U287, 2026-11-15.
+
+**The mechanism.** "Still on another synced playlist" is a claim about every playlist the cursor, the taken record and the pairs hold, so a run that finds any removal opens and lists each of them, about two calls a playlist. The taken record held 599 playlists when U242 migrated it, so a run on the live account passes `[provider] calls_per_command` (500) and the hour's reading line, and stops as the call ceiling or the hour's budget with nothing offered.
+
+**Measured cost.** Not driven against the live account. It fails closed: the refusal names the ceiling, and `crate --calls N --calls-per-hour M sync removed` finishes it, the way a first `sync pair` plan does. Every run pays the calls again.
+
+**Closes when:** the synced listings are read once per pass and kept, or the playlists a removed track could be on are narrowed by something the account says, or Phillip judges the cost acceptable. Ledger only.
+
+---
+
+## R-1717. The finished job filter of sync removed's recorded contents kills no test
+
+**Found:** at the review of #373, U287, round two, 2026-11-15.
+
+**The mechanism.** `recorded_contents` reads only the jobs of a gone playlist that SUCCEEDED. No test puts a job of a gone playlist in any other state in the store, so dropping the filter leaves every test green (round two's N6).
+
+**Measured cost.** None to a person: an unfinished job's reports are a subset of its tracks, and a refusal reading one is caught and reads the playlist as not whole. Maintainer facing.
+
+**Closes when:** a test holds a gone playlist whose only job was cancelled to not read whole, and one with a cancelled and a finished job to the finished one's contents. Ledger only.
+
+---
+
+## R-1718. Whether Cratekit's own filing keeps a removed track, and whether a playlist deleted whole offers its tracks, wait on Phillip
+
+**Found:** at the build of #373, U287, 2026-11-15.
+
+**The mechanism.** `crate sync removed` counts a membership in the intake tree, the routing tree, a label year playlist the pass's landing recorded, or the twin a landing recorded for the playlist the track left, as the pass's own filing, which keeps nothing; any other live membership keeps the row. A downloaded playlist neither the account's list nor its id finds is gone, and offers none of its tracks. Both are the build's calls on two questions posted on the card under its question heading, each with the other option named.
+
+**Measured cost.** None driven: each is a choice of what is offered, and nothing is removed by this card. Answered the other way, the first keeps almost every filed track and the second offers a deleted playlist's tracks.
+
+**Closes when:** Phillip answers the two questions on #373, and U288's brief carries the answer. Ledger only.
