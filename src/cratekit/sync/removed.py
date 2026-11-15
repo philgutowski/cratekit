@@ -18,8 +18,9 @@ it by the account's identifier and the pass (U128's ``inbox_playlists``
 entry). A job no landing names is not downloaded, since nothing of it reached
 the collection. What is SYNCED, for the question "is it still on another
 synced playlist", is wider: every playlist the sweep's cursor holds, every one
-the mark record holds as taken, every one ``sync pair`` keeps, and every
-downloaded one.
+the mark record holds as taken, every one ``sync pair`` keeps, every
+downloaded one, and the account's hearts, which the favourites source brings
+into All Favorites.
 
 A PARTIAL READ OFFERS NOTHING, the deletion pass's rule (R37) applied to the
 account. "Still on another synced playlist" is a claim about every synced
@@ -28,9 +29,12 @@ provider declares, or read with no tracks while nothing says it holds none,
 contributes nothing to it, so the claim would pass on absence of evidence. So
 while any synced playlist is not read whole, every row that would be offered
 is kept, and the plan says which playlists stopped it. A playlist the
-account's own listing no longer names is GONE: an answer, not a failure. Its
-tracks are offered nothing, since deleting a playlist whole is not taking a
-track off it, and they keep no other track.
+account's own listing no longer names, and that cannot be opened by its id
+either, is GONE: two reads agreeing, since the listing alone stops on an empty
+page with no total to check it against (R-385). Its tracks are offered
+nothing, since deleting a playlist whole is not taking a track off it, and it
+keeps no other track. A playlist the listing omits and its id still opens is
+read as any other.
 
 A TRACK IS REMOVED when its playlist's listing holds no row of its provider
 id, and no read row of it carries its ISRC or its artist and title as the
@@ -288,14 +292,23 @@ def read_one(
 ) -> Listing:
     """One synced playlist read through the sweep's own reader, or why it is not read whole."""
     shown = listed.get(account)
-    if shown is None:
-        return Listing(account=account, name="", state=GONE, why="the account no longer lists it")
-    name = shown.name
+    name = shown.name if shown is not None else ""
     try:
         readable = intake_cli.list_playlist_readable(found, account)
     except CratekitError as exc:
         if exc.cause.reason not in playlists.PER_PLAYLIST_REASONS:
             raise
+        if shown is None:
+            # GONE ONLY WHEN TWO READS AGREE. The account's list stops on an
+            # empty page and publishes no total (R-385), so its silence alone
+            # is weak evidence, and a gone playlist keeps no other track; a
+            # playlist it omits is opened by its id as well.
+            return Listing(
+                account=account,
+                name=name,
+                state=GONE,
+                why="the account no longer lists it, and it cannot be opened by its id",
+            )
         return Listing(account=account, name=name, state=UNREADABLE, why=exc.cause.message)
     if readable.short is not None:
         block = readable.short.block()
@@ -305,7 +318,7 @@ def read_one(
             state=SHORT,
             why=f"listed {block.get('listed')} of the {block.get('declared')} tracks it declares",
         )
-    if not readable.order and shown.tracks != 0:
+    if not readable.order and (shown is None or shown.tracks != 0):
         # AN EMPTY READ IS TRUSTED ONLY WHEN THE ACCOUNT'S OWN LISTING SAYS NONE,
         # two answers agreeing; an unknown count beside an empty read is the
         # shape a provider fault takes, and every track would read removed.
@@ -333,6 +346,51 @@ def account_listing(found: catalogue.Catalogue) -> dict[str, catalogue.AccountPl
     as gone, which is the shape a provider fault would otherwise take.
     """
     return {one.playlist_id: one for one in playlists.account_listing(found)}
+
+
+#: The account's hearts, read as one more synced listing.
+HEARTS = "hearts"
+HEARTS_NAME = "the account's hearts"
+
+
+def read_hearts(found: catalogue.Catalogue) -> Listing:
+    """The account's hearts as one more synced listing, through the favourites source's reader.
+
+    A HEART KEEPS A TRACK as a synced playlist does: the favourites source
+    brings every heart into All Favorites, and a heart made since the last
+    ``sync favorites`` is in no rekordbox playlist yet. Read whole or not at
+    all, by the rules a playlist is: unreadable, short of what the account
+    declares, or empty, and nothing is offered.
+    """
+    try:
+        frozen, short = intake_cli.list_favorites(found)
+    except CratekitError as exc:
+        if exc.cause.reason not in playlists.PER_PLAYLIST_REASONS:
+            raise
+        return Listing(account=HEARTS, name=HEARTS_NAME, state=UNREADABLE, why=exc.cause.message)
+    if short is not None:
+        return Listing(
+            account=HEARTS,
+            name=HEARTS_NAME,
+            state=SHORT,
+            why="listed fewer hearts than the account declares",
+        )
+    if not frozen:
+        return Listing(
+            account=HEARTS,
+            name=HEARTS_NAME,
+            state=EMPTY,
+            why="read with no hearts and nothing says it holds none",
+        )
+    wanted = [intake_cli.thawed(one) for one in frozen.values()]
+    return Listing(
+        account=HEARTS,
+        name=HEARTS_NAME,
+        state=READ,
+        refs=frozenset(str(one) for one in frozen),
+        isrcs=frozenset(one.isrc.strip().upper() for one in wanted if one.isrc),
+        recordings=frozenset(recording(one) for one in wanted),
+    )
 
 
 def read_account(
@@ -583,6 +641,7 @@ def _answer(
 __all__ = [
     "EMPTY",
     "GONE",
+    "HEARTS",
     "HELD_BEFORE",
     "IN_YOURS",
     "KEPT",
@@ -604,6 +663,7 @@ __all__ = [
     "memberships",
     "plan_removed",
     "read_account",
+    "read_hearts",
     "read_one",
     "recording",
     "removals",

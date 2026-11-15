@@ -9,9 +9,9 @@ answered. This module is the order a person meets it in:
 * the database is read on a disposable copy, so the verb refuses while
   rekordbox or its agent runs and never holds the live file;
 * the account is asked only when something was downloaded: its playlist list
-  once, then each downloaded playlist, and every other synced playlist only
-  when a removal was found, since only then does "still on another synced
-  playlist" need an answer;
+  once, then each downloaded playlist, and every other synced playlist and
+  the account's hearts only when a removal was found, since only then does
+  "still on another synced playlist" need an answer;
 * the plan is shown, digested, and NOTHING IS WRITTEN: no row, no file, no
   account write, no record. Removing an offered row from the collection is
   U288's, behind its own gate, and the file reaches the Trash only through
@@ -138,6 +138,7 @@ def sync_removed(ctx) -> Envelope:
                     if one not in reads
                 ]
                 reads.update(removed.read_account(account, others, listed=listed))
+                reads[removed.HEARTS] = removed.read_hearts(account)
         plan = removed.plan_removed(
             cfg,
             db,

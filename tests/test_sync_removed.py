@@ -148,7 +148,9 @@ class Account:
     """The account as the fake catalogue lists it now: each playlist and its tracks."""
 
     def __init__(self, monkeypatch) -> None:
-        self.fake = FakeCatalogue()
+        # ONE HEART THE PASS NEVER ASKED FOR, so the hearts read whole and keep
+        # nothing unless a test hearts one of its own tracks.
+        self.fake = FakeCatalogue(hearts=[track("Elsewhere", track_id="tid-heart")])
         monkeypatch.setattr(catalogue, "resolve", catalogue_factory(self.fake))
 
     def lists(
@@ -379,6 +381,56 @@ def test_a_synced_playlist_not_read_whole_offers_nothing_from_any_playlist(
     assert stopped["state"] == shape
 
 
+def test_a_track_hearted_on_the_account_is_kept_by_the_hearts(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _five(cfg, silence)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1")])
+    account.fake.hearts.append(track("New1"))
+
+    answers = _by_title(_run())
+
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+    assert answers["New1"]["kept_by"] == [removed.HEARTS_NAME]
+    assert answers["New2"]["action"] == removed.OFFERED
+
+
+@pytest.mark.parametrize("shape", ["unreadable", "short", "empty"])
+def test_hearts_not_read_whole_offer_nothing(
+    native_library, silence, monkeypatch, offline, shape
+):
+    cfg, _root = native_library
+    _five(cfg, silence)
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1")])
+    if shape == "unreadable":
+
+        def refused():
+            raise RuntimeError("the provider is down")
+
+        account.fake.favourite_tracks = refused
+    elif shape == "short":
+        served = tuple(account.fake.hearts)
+
+        def short():
+            # THE REAL CATALOGUE'S SHAPE: it raises the shortfall with the rows
+            # it served when the account declares more (R-504).
+            raise catalogue.HeartsShortfall(served, 5)
+
+        account.fake.favourite_tracks = short
+    else:
+        account.fake.hearts = []
+
+    out = _run()
+
+    assert out["data"]["totals"][removed.OFFERED] == 0
+    assert out["data"]["totals"]["partial"] is True
+    (stopped,) = [item for item in out["data"]["items"] if item["action"] == "playlist"]
+    assert stopped["account"] == removed.HEARTS and stopped["state"] == shape
+
+
 def test_a_playlist_the_account_says_holds_none_is_read_empty_and_every_new_track_offered(
     native_library, silence, monkeypatch, offline
 ):
@@ -408,6 +460,25 @@ def test_a_downloaded_playlist_gone_from_the_account_is_named_and_offers_nothing
     assert gone["state"] == removed.GONE and gone["account"] == "pl-a"
     assert [one["code"] for one in out["warnings"]] == [removed_cli.GONE]
     assert out["data"]["totals"]["playlists gone"] == 1
+
+
+def test_a_playlist_the_account_list_omits_and_its_id_opens_is_read_and_keeps_its_tracks(
+    native_library, silence, monkeypatch, offline
+):
+    cfg, _root = native_library
+    _five(cfg, silence, also={"pl-b": (DEEP, ("New3",))})
+    account = Account(monkeypatch)
+    account.lists("pl-a", SUNSET, [track("Held1")])
+    # Deep Cuts still opens by its id and holds New1, though the account's own
+    # list of playlists stopped before it.
+    account.fake.playlists["pl-b"] = FakePagedPlaylist([track("New3"), track("New1")], declared=2)
+
+    out = _run()
+
+    answers = _by_title(out)
+    assert answers["New1"]["why"] == removed.ON_ANOTHER
+    assert answers["New2"]["action"] == removed.OFFERED
+    assert out["data"]["totals"]["playlists gone"] == 0
 
 
 def test_a_removed_track_whose_row_is_gone_or_claimed_twice_is_left(

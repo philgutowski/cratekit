@@ -578,7 +578,8 @@ rekordbox must be closed, and taking an offered track out of the collection
 is still done by hand, then `crate delete review` for the file.
 
 - **Offered**: the pass downloaded it, its file is where the pass's landing
-  filed it, no other synced playlist on the account still holds it, and only
+  filed it, no other synced playlist on the account and none of your hearts
+  still holds it, and only
   Cratekit's own filing holds it in rekordbox (its INBOX playlists, the genre
   tree, a label year playlist its landing filed, its custom playlist twin).
 - **Kept**: a track the library held before the pass, one whose file the pass
@@ -586,10 +587,11 @@ is still done by hand, then `crate delete review` for the file.
   or its artist and title), and one in any playlist of yours, All Favorites
   included. Each is shown with what keeps it.
 - **Left**: a track with no row now, or whose file two rows claim.
-- A synced playlist that could not be read whole (unreadable, short of the
-  count it declares, or empty with nothing saying it holds none) stops every
-  offer, and is named. A downloaded playlist you deleted on the account is
-  named as gone and offers nothing.
+- A synced playlist or the hearts not read whole (unreadable, short of the
+  count declared, or empty with nothing saying they hold none) stop every
+  offer, and are named. A downloaded playlist you deleted on the account,
+  which neither its list nor its id finds, is named as gone and offers
+  nothing.
 
 ### Follow record labels
 
