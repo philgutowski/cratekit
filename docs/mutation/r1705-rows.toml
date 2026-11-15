@@ -170,72 +170,52 @@ description = "_resembling never reads the lookup, so a pair the discovery score
 file = "src/cratekit/acquire/match.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
-old = '''    for recording in index.spelled_alike(wanted.recording):
+old = '''        for recording in index.spelled_alike(wanted.recording)
 '''
-new = '''    for recording in ():
-'''
-
-[[rows]]
-id = "M17_lookup_repeats_scored"
-description = "the lookup's hits are not checked against the scored ones, so a recording both find is offered twice"
-file = "src/cratekit/acquire/match.py"
-surface = "user"
-tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
-old = '''        if recording not in scored and _title_resembles(wanted, held[0]):
-'''
-new = '''        if _title_resembles(wanted, held[0]):
+new = '''        for recording in ()
 '''
 
 [[rows]]
-id = "M18_lookup_counts_in_the_five"
-description = "the lookup's hits count toward the five recordings, round one's shape, so a scored recording is pushed out with nothing withheld"
+id = "M17_lookup_repeats_the_five"
+description = "the lookup's hits are not checked against the five scored recordings, so a recording both hold is offered twice"
 file = "src/cratekit/acquire/match.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
-old = '''            kept.extend(held)
-    recordings = 0
+old = '''        if recording not in offered
 '''
-new = '''            kept.extend(held)
-    recordings = len({held.recording for held in kept})
+new = ''''''
+
+[[rows]]
+id = "M18_lookup_skips_every_scored"
+description = "the lookup skips every recording discovery scored, round two's shape, so a lookup hit ranked sixth is cut by the cap, never offered and never counted withheld"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''    offered = {held.recording for held in scored}
+'''
+new = '''    offered = {held.recording for held in _approximate(wanted, index, limit=None)}
 '''
 
 [[rows]]
 id = "M19_lookup_after_the_scored"
-description = "the lookup's hits follow the scored ones rather than leading, so the same title under the reading is offered behind a fuzzy hit and can be truncated"
+description = "the lookup's hits follow the scored five rather than leading, so the same title under the reading sits behind fuzzy hits and is truncated"
 file = "src/cratekit/acquire/match.py"
 surface = "user"
 tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
-old = '''    kept: list[Owned] = []
-    for recording in index.spelled_alike(wanted.recording):
-        held = index.versions(recording)
-        if recording not in scored and _title_resembles(wanted, held[0]):
-            kept.extend(held)
-    recordings = 0
-    for _recording, versions in groupby(found, key=attrgetter("recording")):
-        held = tuple(versions)
-        if not _title_resembles(wanted, held[0]):
-            continue
-        kept.extend(held)
-        recordings += 1
-        if recordings == APPROXIMATE_LIMIT:
-            break
-    return tuple(kept)
+old = '''    return tuple(looked_up + scored)
 '''
-new = '''    kept: list[Owned] = []
-    recordings = 0
-    for _recording, versions in groupby(found, key=attrgetter("recording")):
-        held = tuple(versions)
-        if not _title_resembles(wanted, held[0]):
-            continue
-        kept.extend(held)
-        recordings += 1
-        if recordings == APPROXIMATE_LIMIT:
-            break
-    for recording in index.spelled_alike(wanted.recording):
-        held = index.versions(recording)
-        if recording not in scored and _title_resembles(wanted, held[0]):
-            kept.extend(held)
-    return tuple(kept)
+new = '''    return tuple(scored + looked_up)
+'''
+
+[[rows]]
+id = "M20_lookup_counts_in_the_five"
+description = "the lookup's hits are cut to the five with the scored ones, round one's shape, so a scored recording is pushed out with nothing withheld"
+file = "src/cratekit/acquire/match.py"
+surface = "user"
+tests = ["tests/test_match_states.py", "tests/intake/test_pipeline.py", "tests/intake/test_recognition.py", "tests/intake/test_workers.py", "tests/test_acquire_fallback.py", "tests/test_acquire_fallback_fetch.py", "tests/test_catalogue_app.py", "tests/test_cli_contract.py", "tests/test_export_set.py", "tests/test_export_set_rename.py", "tests/test_intake_land_account_playlists.py", "tests/test_intake_land_account_playlists_native.py", "tests/test_intake_land_hearts_native.py", "tests/test_intake_missing.py", "tests/test_intake_missing_search.py", "tests/test_intake_missing_staged.py", "tests/test_isrc_cache.py", "tests/test_isrc_screen.py", "tests/test_label_tidal_catalogue.py", "tests/test_library_reads_remembered.py", "tests/test_listdoc.py", "tests/test_set_inspiration_playlist.py", "tests/test_u129_set_account_playlist.py", "tests/test_setbuilder_cli.py", "tests/test_title_matcher.py", "tests/test_review_queue.py", "tests/test_render_payloads.py"]
+old = '''    return tuple(looked_up + scored)
+'''
+new = '''    return tuple((looked_up + scored)[: len(scored)])
 '''
 
 [[rows]]
