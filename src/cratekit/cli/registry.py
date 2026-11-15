@@ -3890,6 +3890,28 @@ ENTRIES: tuple[Entry, ...] = (
         taxonomy_terms=("genre_energy",),
         doctor_checks=("library.mounted",),
     ),
+    # ── Tracks taken off a downloaded playlist (U287) ───────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives.
+    Entry(
+        name="sync.removed",
+        summary="list each downloaded track you took off its playlist on the streaming "
+        "account, and which would leave the collection; removes nothing",
+        module="cratekit.sync.removed_cli",
+        builder="build_removed",
+        handler_key="sync.removed",
+        # NO FEATURE ROW. The source system never read a playlist again once
+        # it had downloaded it.
+        #
+        # CORE, as ``sync.taken`` is: it reads what the playlists source swept.
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: NO WRITE SURFACE, not destructive and NO GATE: the account is read,
+        #: the database is read on a disposable copy, and nothing anywhere is
+        #: written. Removing an offered row is U288's, behind its own gate.
+        writes=frozenset(),
+        doctor_checks=("credential.provider",),
+    ),
 )
 
 #: The verb names, as data. ``tests/test_layering.py`` reads this to enforce that

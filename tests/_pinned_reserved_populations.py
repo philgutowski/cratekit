@@ -1982,6 +1982,13 @@ PINNED_KEBAB_LITERALS_BY_MODULE = {
         'sync-release-released',
         'sync-release-unnamed',
     ],
+    # 2026-11-15, U287: the removed tracks plan and its verb joined.
+    'sync/removed.py': ['sync-removed'],
+    'sync/removed_cli.py': [
+        'sync-removed-partial',
+        'sync-removed-playlist-gone',
+        'sync-removed-records-unreadable',
+    ],
     'sync/run.py': ['sync-source-lookups-failed', 'utf-8'],
     # 2026-11-01, U149: the custom playlist twins and their backfill.
     'sync/twins.py': [
