@@ -374,6 +374,9 @@ def test_a_synced_playlist_not_read_whole_offers_nothing_from_any_playlist(
     answers = _by_title(out)
     assert answers["New1"]["action"] == removed.KEPT
     assert answers["New1"]["why"] == removed.PARTIAL_READ
+    # A playlist not read whole says nothing about its own tracks: none of
+    # Deep Cuts' is a removal, kept or otherwise.
+    assert "New3" not in answers
     assert out["data"]["totals"][removed.OFFERED] == 0
     assert out["data"]["totals"]["partial"] is True
     (warned,) = [one for one in out["warnings"] if one["code"] == removed_cli.PARTIAL]
