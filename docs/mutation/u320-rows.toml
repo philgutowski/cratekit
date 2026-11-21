@@ -7,8 +7,12 @@ description = "read_hearts: drop the withheld count from the hearts rule, so a s
 file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''    if short is not None and not (frozen and short.withheld > 0):'''
-new = '''    if short is not None and not frozen:'''
+old = '''    if short is not None and not (
+        frozen and 0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+    ):'''
+new = '''    if short is not None and not (
+        frozen and short.withheld <= short.declared * WITHHELD_AT_MOST
+    ):'''
 
 [[rows]]
 id = "M2_hearts_none_served_reads_whole"
@@ -16,17 +20,21 @@ description = "read_hearts: drop the served hearts from the hearts rule, so a li
 file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''    if short is not None and not (frozen and short.withheld > 0):'''
-new = '''    if short is not None and not (short.withheld > 0):'''
+old = '''    if short is not None and not (
+        frozen and 0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+    ):'''
+new = '''    if short is not None and not (
+        0 < short.withheld <= short.declared * WITHHELD_AT_MOST
+    ):'''
 
 [[rows]]
-id = "M3_hearts_withheld_named_read"
-description = "read_hearts: name the withheld hearts read, so the plan never says they were short"
-file = "src/cratekit/sync/removed.py"
+id = "M3_any_not_found_name_counts"
+description = "answered_unavailable: read any class whose name holds not found, Python's FileNotFoundError included, round one's BLOCKING finding"
+file = "src/cratekit/sync/unavailable.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''        state=READ if short is None else WITHHELD,'''
-new = '''        state=READ,'''
+old = '''        if declared and type(link).__name__ == CLIENT_NOT_FOUND:'''
+new = '''        if declared and "notfound" in type(link).__name__.lower():'''
 
 [[rows]]
 id = "M4_withheld_hearts_hold_nothing"
@@ -74,7 +82,7 @@ description = "read_one: never read a retired entry as retired"
 file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''            if noted is not None and noted.is_retired:'''
+old = '''            if said_none and noted is not None and noted.is_retired:'''
 new = '''            if False:'''
 
 [[rows]]
@@ -117,15 +125,13 @@ old = '''    if latest - datetime.fromisoformat(held.first) >= APART:'''
 new = '''    if latest - datetime.fromisoformat(held.first) > APART:'''
 
 [[rows]]
-id = "M13_retired_entry_moves"
-description = "sighted: move a retired entry's latest sighting, so the dates shown at its retirement drift"
-file = "src/cratekit/sync/unavailable.py"
+id = "M13_withheld_bound_widened"
+description = "WITHHELD_AT_MOST: read the hearts whole when short by up to half their count, so a dropped window reads as withheld"
+file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''    if prior.is_retired:
-        return prior
-    latest'''
-new = '''    latest'''
+old = '''WITHHELD_AT_MOST = 0.10'''
+new = '''WITHHELD_AT_MOST = 0.5'''
 
 [[rows]]
 id = "M14_any_status_is_not_found"
@@ -142,8 +148,8 @@ description = "answered_unavailable: read the not found class off a link met onl
 file = "src/cratekit/sync/unavailable.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''        if declared and "notfound" in type(link).__name__.lower():'''
-new = '''        if "notfound" in type(link).__name__.lower():'''
+old = '''        if declared and type(link).__name__ == CLIENT_NOT_FOUND:'''
+new = '''        if type(link).__name__ == CLIENT_NOT_FOUND:'''
 
 [[rows]]
 id = "M16_damaged_record_reads_empty"
@@ -165,13 +171,13 @@ old = '''        if raw.get("library_id") != self.cfg.library.volume_id:'''
 new = '''        if False:'''
 
 [[rows]]
-id = "M18_retired_by_nobody_read"
-description = "UnavailableRecord: read an entry retired by nobody, or by an unknown hand"
-file = "src/cratekit/sync/unavailable.py"
+id = "M18_opened_and_refused_is_unopened"
+description = "read_one: read a playlist that opened and whose rows the reader refused as unlisted and unopened, so it keeps its retirement"
+file = "src/cratekit/sync/removed.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
-old = '''            if bool(fields["retired"]) != bool(fields["by"]) or ('''
-new = '''            if False and (bool(fields["retired"]) != bool(fields["by"])) or ('''
+old = '''        if shown is None and exc.cause.reason != SERVED_UNREADABLE:'''
+new = '''        if shown is None:'''
 
 [[rows]]
 id = "M19_none_drops_nothing"
@@ -207,7 +213,7 @@ file = "src/cratekit/sync/removed_cli.py"
 surface = "user"
 tests = ["tests/test_sync_removed_gone.py", "tests/test_sync_removed.py"]
 old = '''    if ctx.gate.require(_gate(ctx.entry, RETIRE_GATE), plan=data, context=context) != "retire":
-        return ctx.envelope(data=data, outcome=Outcome.NO_OP)'''
+        return ctx.envelope(data=data, outcome=Outcome.NO_OP, warnings=warnings)'''
 new = '''    ctx.gate.require(_gate(ctx.entry, RETIRE_GATE), plan=data, context=context)'''
 
 [[rows]]
