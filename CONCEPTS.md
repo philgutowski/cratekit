@@ -768,6 +768,26 @@ acquires. A resume is a new drive.
 
 ## Sync
 
+### Night pass
+`crate sync night` (`cli/sync_night.py`, U293): `crate sync land` run with
+nobody watching, for a schedule overnight, stopping at the landing's gate. It
+answers no gate, refuses beside rekordbox, a live job driver, the staging lock
+and a staging folder holding what a landing takes, holds the **night's
+budget** (`[provider] night_calls`, 1,200, noon to noon across every firing,
+read off the gate's running total and charged before the first call; one
+firing's line is the lower of what is left and one command's ceiling, and its
+hour is lowered to `[provider] night_calls_per_hour`, 600; a call past it parks
+as `provider-night-budget`), continues its own pass a wait would mend, and
+leaves one line, doctor's `sync.night`, that `--last` prints with its fields. A
+refused firing keeps a pass still owed; a wait whose pass has landed since, by
+its native landing's record, reads `settled`.
+
+### Staging lock
+`core/staging_lock.py` (U293): one advisory lock, held by `sync land`,
+`label sync --go` and `sync night` for a whole run, so two passes never
+download into the one staging folder; a second refuses `staging-held`. The
+driver lock's rules, and reentrant within one process.
+
 ### Sync watermark
 An audit record of how far one source got on a clean increment that processed
 items. It never decides scope. Exception: the playlists source's `swept` set of

@@ -1,0 +1,244 @@
+name = "u293"
+pass_kind = "light"
+
+# The gate's night line, src/cratekit/core/provider_gate.py
+
+[[rows]]
+id = "G1_night_line_asked"
+description = "Gate.call: never ask the night's line, so a night pass spends past its budget"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''                if held_night is not None and ('''
+new = '''                if False and ('''
+
+[[rows]]
+id = "G2_night_line_off_by_one"
+description = "Gate.call: stop only past the line, so one call beyond the night's budget is sent"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''                    state.calls - held_night.start >= held_night.budget'''
+new = '''                    state.calls - held_night.start > held_night.budget'''
+
+[[rows]]
+id = "G3_total_below_mark"
+description = "Gate.call: a total below the night's mark reads as nothing spent rather than stopping"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''                    or state.calls < held_night.start'''
+new = '''                    or False'''
+
+[[rows]]
+id = "G4_child_reads_no_line"
+description = "command: a scope opened in a child reads no night line off the environment"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''        night=_night_from_env(),'''
+new = '''        night=None,'''
+
+[[rows]]
+id = "G5_line_held_to_ceiling"
+description = "night: the firing's line is the night's remainder alone, past one command's ceiling"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''budget=max(0, min(int(calls), left_of_ceiling))'''
+new = '''budget=max(0, int(calls))'''
+
+[[rows]]
+id = "G6_nested_lower_line"
+description = "night: a nested line widens the outer night's remainder"
+file = "src/cratekit/core/provider_gate.py"
+surface = "maintainer"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''        if left < held.budget:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "G7_hour_never_raised"
+description = "night: the night's hour replaces the configured one, raising it when set higher"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''    hour = min(hourly(settings), max(1, int(calls_per_hour)))'''
+new = '''    hour = max(1, int(calls_per_hour))'''
+
+[[rows]]
+id = "G8_line_exported"
+description = "night: the line is not exported, so a detached child runs without it"
+file = "src/cratekit/core/provider_gate.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_provider_gate.py", "tests/test_provider_budget.py", "tests/test_sync_night.py"]
+old = '''        with _exported(NIGHT_ENV, held.to_env()), _exported(BUDGET_ENV, hour):'''
+new = '''        with _exported(NIGHT_ENV, None), _exported(BUDGET_ENV, hour):'''
+
+# The night's ledger, src/cratekit/core/night_budget.py
+
+[[rows]]
+id = "L1_dead_mark_charged"
+description = "open_night: a dead firing's mark is not charged, so a crash is a free night"
+file = "src/cratekit/core/night_budget.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_sync_night.py"]
+old = '''        spent += max(0, moved)'''
+new = '''        spent += 0'''
+
+[[rows]]
+id = "L2_night_reset"
+description = "open_night: every firing starts from nothing, whatever the night spent"
+file = "src/cratekit/core/night_budget.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_sync_night.py"]
+old = '''    spent = ledger.spent if ledger.night == night else 0
+    if ledger.open_start is not None:
+        # A DEAD'''
+new = '''    spent = 0
+    if ledger.open_start is not None:
+        # A DEAD'''
+
+[[rows]]
+id = "L3_spent_off_by_one"
+description = "open_night: a night with exactly its budget spent is not refused"
+file = "src/cratekit/core/night_budget.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_sync_night.py"]
+old = '''    if spent >= budget:'''
+new = '''    if spent > budget:'''
+
+[[rows]]
+id = "L4_noon_to_noon"
+description = "night_of: a night runs midnight to midnight, so a three in the morning firing starts a new night"
+file = "src/cratekit/core/night_budget.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_sync_night.py"]
+old = '''    return (local - timedelta(hours=NOON)).date().isoformat()'''
+new = '''    return (local - timedelta(hours=0)).date().isoformat()'''
+
+[[rows]]
+id = "L5_close_adds_to_night"
+description = "close_night: a firing's spend replaces the night's rather than adding to it"
+file = "src/cratekit/core/night_budget.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_sync_night.py"]
+old = '''        Ledger(night=opened.night, spent=opened.spent_before + spent, open_start=None), target'''
+new = '''        Ledger(night=opened.night, spent=spent, open_start=None), target'''
+
+[[rows]]
+id = "L6_unreadable_gate_refuses"
+description = "_total: a gate file that cannot be read is a total of nothing"
+file = "src/cratekit/core/night_budget.py"
+surface = "user"
+tests = ["tests/test_provider_gate_night.py", "tests/test_sync_night.py"]
+old = '''    if spend is None:
+        raise _unreadable("the provider gate's state file could not be read", path)'''
+new = '''    if spend is None:
+        return 0'''
+
+# The staging lock, src/cratekit/core/staging_lock.py, and its holders
+
+[[rows]]
+id = "S1_reentrant"
+description = "held: a process holding the lock takes it again on a second descriptor and refuses itself"
+file = "src/cratekit/core/staging_lock.py"
+surface = "user"
+tests = ["tests/test_staging_lock.py", "tests/test_sync_night.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''    if _HANDLE is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "S2_second_holder_refused"
+description = "held: a second holder goes on beside the first rather than refusing"
+file = "src/cratekit/core/staging_lock.py"
+surface = "user"
+tests = ["tests/test_staging_lock.py", "tests/test_sync_night.py", "tests/test_sync_land.py", "tests/test_label_sync_go.py"]
+old = '''                raise _held_error(what or verb, _read_holder(handle.read()), path) from None'''
+new = '''                pass'''
+
+[[rows]]
+id = "S3_sync_land_holds"
+description = "sync_land: a pass by hand takes no staging lock"
+file = "src/cratekit/cli/sync_land.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_sync_land.py", "tests/test_sync_land_beside.py"]
+old = '''    with staging_lock.held("crate sync land", run_id=ctx.run.run_id):'''
+new = '''    if True:'''
+
+[[rows]]
+id = "S4_label_go_holds"
+description = "label_sync: a label go takes no staging lock"
+file = "src/cratekit/cli/label_sync.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_label_sync_go.py", "tests/test_label_sync.py"]
+old = '''    with staging_lock.held("crate label sync --go", run_id=ctx.run.run_id):'''
+new = '''    if True:'''
+
+# The night verb, src/cratekit/cli/sync_night.py
+
+[[rows]]
+id = "N1_no_answer"
+description = "_no_answer: an answer or a raised line given to the night is taken"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_crate_sync_skill.py", "tests/test_cli_contract.py"]
+old = '''    if given:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N2_rekordbox_refused"
+description = "sync_night: the night runs beside rekordbox or its agent"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_crate_sync_skill.py", "tests/test_cli_contract.py"]
+old = '''            rb_writer.assert_rekordbox_closed("crate sync night")'''
+new = '''            pass'''
+
+[[rows]]
+id = "N3_live_job_refused"
+description = "sync_night: the night runs beside a job with a live driver"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_crate_sync_skill.py", "tests/test_cli_contract.py"]
+old = '''            _no_live_job()
+            pass_run'''
+new = '''            pass_run'''
+
+[[rows]]
+id = "N4_occupied_refused"
+description = "sync_night: a new pass runs beside what the staging folder holds"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_crate_sync_skill.py", "tests/test_cli_contract.py"]
+old = '''                _nothing_waits(cfg, last)'''
+new = '''                pass'''
+
+[[rows]]
+id = "N5_owed_kept"
+description = "_refused: a refusal writes a fresh record over a pass still owed"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_crate_sync_skill.py", "tests/test_cli_contract.py"]
+old = '''    if _owed(last) and last is not None:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N6_settled_by_landing"
+description = "settle: the pass's own landing never ends a wait, so a landed pass reads as waiting"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_crate_sync_skill.py", "tests/test_cli_contract.py"]
+old = '''    if _landed(cfg, record.get("land_name")):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "N7_unread_landing_is_not_settled"
+description = "_landed: a landing log that cannot be read is read as landed, so a waiting pass reads settled"
+file = "src/cratekit/cli/sync_night.py"
+surface = "user"
+tests = ["tests/test_sync_night.py", "tests/test_crate_sync_skill.py", "tests/test_cli_contract.py"]
+old = '''    except (CratekitError, OSError):
+        return None'''
+new = '''    except (CratekitError, OSError):
+        return True'''
