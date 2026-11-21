@@ -78,9 +78,10 @@ asserted item states and written genres, and nothing asked what the refusal told
 the person to do next.
 
 The same shape sits behind `cratekit.adopt.shell`, which since U298 runs the same
-`cratekit.core.jobs.advance`, and `cratekit.modules.outbound.shell`, the one copy of
-this resume left, so anything learned here applies to every queued verb in the
-repository.
+`cratekit.core.jobs.advance`, and behind the resumes that are still copies of it,
+`cratekit.modules.outbound.shell` and the ones in `analysis/cli.py`,
+`vocals/cli.py` and `acquire/cli.py` among them, so anything learned here applies
+to every queued verb in the repository.
 
 ## What to do instead
 

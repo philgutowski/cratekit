@@ -172,7 +172,10 @@ What every package once wrote for itself has one home (U298), each in the
 lowest layer that can host it. A feature package may import `cli.output`,
 `cli.exit_codes` and `cli.prompt` from the shell and nothing else of it, and
 the core modules on `CORE_INTERFACE`. Before writing a helper in a feature
-package, look here first; `tests/test_shared_homes.py` holds each of them.
+package, look here first. `tests/test_shared_homes.py` holds the homes U298
+added; the capture is held in `tests/test_write_session.py`, and the locks,
+`mkdir_private` and `is_inside`, which were public spellings of what core
+already had, through the config and writer suites that drove them before.
 
 | Need | Home |
 |---|---|

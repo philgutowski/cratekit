@@ -59,14 +59,16 @@ the watch's refusal passes through the record on its way out and closes it
 signature for a boolean parameter and refuses one, correctly: that is what a
 blanket affirmative looks like (R34).
 
-A caller that takes a capture does three things, and an AST guard in
-`tests/test_write_session.py` asks every function in `src` that calls
-`snapshot.capture` for all three:
+A caller that takes a capture does three things, and the AST guards in
+`tests/test_write_session.py` hold them: since U298 the one function in `src`
+that calls `snapshot.capture` is `write.trees.attached_capture`, and every
+writer that calls it is asked for the other two:
 
 1. `keep=session.Keep.RECORD` on the gates.
-2. `session.attach_capture(gates.record, capture.root, cfg)` the instant the
-   capture exists, BEFORE `snapshot.assert_verified`, because `restore list`
-   lists an unusable capture rather than dropping it.
+2. The capture through `write.trees.attached_capture(gates, cfg, db)`, which
+   attaches it to `gates.record` the instant it exists, BEFORE
+   `snapshot.assert_verified`, because `restore list` lists an unusable capture
+   rather than dropping it. A writer never takes one itself.
 3. `session.record_commit(...)` the instant the commit lands, and only when the
    write added something. `restore._committed` reads committed sources to decide
    whether a restore would discard work, so a no-op that claims a commit makes
