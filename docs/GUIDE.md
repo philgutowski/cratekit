@@ -1392,7 +1392,7 @@ the source and refuses to replace a master without `--overwrite`.
 
 ```bash
 crate backup run --dry-run
-crate backup run [--check | --full]
+crate backup run [--check | --full] [--library-emptied]
 crate restore list
 crate restore run [SESSION_ID] --dry-run
 crate restore run --from-backup --target /path/to/empty/dir
@@ -1422,6 +1422,24 @@ long it took and when the next full check is due:
   record of what the last backup left, and only the files added, changed or
   removed are sent or moved to the dated archive, without listing the remote.
 - **skip**: nothing changed, so nothing is sent.
+
+Before any of the three, the files backup proves the root is the library,
+since an empty folder left where an unmounted volume was would otherwise be
+mirrored as a library with no files, moving the whole remote into the
+archive. It refuses `library-root-foreign` when the library's recorded volume
+identity is read and is not the root's, and `library-root-unproven` when the
+root holds no file at all, none outside the library's own state folder while
+the last completed backup held some, or under a tenth of what it held. The
+refused files backup sends no file, archives nothing and leaves the files age
+as it was; the database part runs or refuses on its own, as always. Mount the
+volume and run it again. A library emptied on purpose is backed up with
+`--library-emptied`, which passes only a root still carrying the library's
+own record of a completed files backup, kept in its state folder, and never
+passes the identity. A library holding only its state folder, a new one or
+one emptied before, is mirrored with rclone told to delete nothing from the
+remote, so a remote holding files it lacks fails that run rather than
+archiving them; a skip and a quick run of its state folder are planned as
+any other.
 
 A quick run that completes resets the files age, since the remote then holds
 everything. A skip resets it too, because the comparison proved nothing
@@ -1644,6 +1662,7 @@ Read the refusal's reason and remedy before retrying, then `crate doctor`.
 | `schedule-crate-unresolved` | The `crate` an install would schedule is not an executable file. Run `crate schedule install` from the `crate` you installed. |
 | `rekordbox-absence-unconfirmed` | A process the check could not read, usually one still exiting. Wait, then continue with the printed `crate --run RUN_ID ...`. Inspect with `ps -p PID -o pid,stat,comm`. |
 | `backup-acknowledgment-missing` | [The backup acknowledgment](#the-backup-acknowledgment). |
+| `library-root-unproven`, `library-root-foreign` | The backup found no library at the root, usually the volume not mounted. Mount it and run `crate backup run` again; `--library-emptied` only for a library emptied on purpose. |
 | `sync land` lists intake jobs left open | `crate job cancel --stale-days DAYS --dry-run`, then without `--dry-run`. A queued `crate organize` download is taken by the next new pass. |
 | An unknown verb | `crate profile show`: its module is off. |
 | A tree "unconverged" | `crate converge`, `crate rebuild`, `crate converge`. |

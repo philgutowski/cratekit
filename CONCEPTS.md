@@ -612,6 +612,19 @@ and the settings and share folders' sizes and times. A record is removed
 before a transfer and written only after it completes, from two walks that
 agree; an entry they disagree on is a **doubt** that matches nothing.
 
+### Census
+How many files outside the library's own state folder the last completed
+files backup walked, for this library root and mirror (installation state,
+never removed before a transfer, unlike the backup record). A backup refuses
+`library-root-unproven` when the root holds none of the library's files while
+the census, or failing it the record or the library's files fact, says a
+backup held some, or under a tenth of the census; `library-root-foreign` when
+the recorded volume identity is read and is not the root's. A root with
+only its state folder, a new library or one emptied before, is mirrored with
+rclone told to delete nothing from the remote. `--library-emptied` passes the
+first only at a root still carrying the library's own files fact, and never
+the second.
+
 ### Journal ledger
 A state file kept as a header line and one record per line: each write appends
 one record and syncs it under the file's lock (`config.append_durable_bytes`),

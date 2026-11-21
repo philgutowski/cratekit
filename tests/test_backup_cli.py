@@ -72,6 +72,9 @@ def cfg(tmp_path, monkeypatch):
     root = tmp_path / "library"
     (root / "Music").mkdir(parents=True)
     (root / "db").mkdir(parents=True)
+    # R-1761. A library holds its music: an empty folder at the root is what an
+    # unmounted volume leaves, and a backup now refuses it.
+    (root / "Music" / "fixture.flac").write_bytes(b"one track")
     monkeypatch.setenv(config.ENV_LIBRARY_ROOT, str(root))
     monkeypatch.setenv(config.ENV_CONFIG_DIR, str(tmp_path / "config"))
     built = config.from_dict(
@@ -374,12 +377,35 @@ def test_the_frozen_payload_and_the_parser_agree_about_the_flag(cfg):
         assert code == int(ExitCode.OK), envelope
         with jobs.open_store() as store:
             job = jobs.get(store, envelope["data"]["job_id"])
+        assert "--library-emptied" not in backup_cli.backup_argv(job)
         assert job.payload == {
-            backup_cli.DRY_RUN: wanted, backup_cli.FULL: False, backup_cli.CHECK: False
+            backup_cli.DRY_RUN: wanted,
+            backup_cli.FULL: False,
+            backup_cli.CHECK: False,
+            backup_cli.EMPTIED: False,
         }, (
             f"{argv} froze {job.payload}, so the resume would do different work "
             f"from the run it continues"
         )
+
+
+def test_the_emptied_flag_is_frozen_by_the_parser_and_rebuilt_by_the_resume(cfg):
+    """R-1761's flag, through the real parser for the reason the test above
+    gives, and a second ask with it told that the open job lacks it."""
+    code, envelope = _drive(["backup", "run", "--dry-run", "--library-emptied"])
+    assert code == int(ExitCode.OK), envelope
+    with jobs.open_store() as store:
+        job = jobs.get(store, envelope["data"]["job_id"])
+    assert job.payload[backup_cli.EMPTIED] is True, job.payload
+    assert backup_cli.backup_argv(job) == [
+        "backup", "run", "--dry-run", "--library-emptied", "--job", job.job_id,
+    ]
+
+    code, envelope = _drive(["backup", "run"])
+    assert code == int(ExitCode.OK), envelope
+    code, envelope = _drive(["backup", "run", "--library-emptied"])
+    (twin,) = [w for w in envelope["warnings"] if w["code"] == backup_cli.ALREADY_QUEUED]
+    assert "--library-emptied" in twin["message"], twin["message"]
 
 
 # ---------------------------------------------------------------------------
