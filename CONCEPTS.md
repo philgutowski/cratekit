@@ -88,7 +88,10 @@ picture asks Beatport for its cover only. Every source is asked one question
 per file, the artist and the title read past the naming verb's head and marker
 (`titles.question`, U289), and matches its rows against the file's own text,
 for a file with no title tag its name past the older naming's `_PN` tail
-(`titles.name_title`, R-1724).
+(`titles.name_title`, R-1724); Discogs also takes a release only when it
+writes a mix the file's title names by its maker (`titles.named_versions`,
+U318), a maker being the mix's words that are neither version words nor
+`titles.MIX_DESCRIPTIONS`.
 Traxsource and Bandcamp are kept off the walk, since both answer
 a bot check, and still counted in old records. Each source answers one of
 `matched`, `miss`, `unreachable`, `blocked` (bot check, block page, spent rate
@@ -747,6 +750,38 @@ must kill nothing. A zero on a subset is promoted to a full run before reporting
 ### Composite
 The second mutation a zero on a user facing guard owes, aimed at what the guard
 protects and reported beside it. A maintainer facing zero owes none.
+
+### Kill set
+Every row under `docs/mutation/` that recorded a death, the same substitution
+counted once, as `scripts/killset.py` reads it. A row is **live** when its
+file exists and its `old` text stands in it exactly once, **stale** when the
+text is gone, **ambiguous** when it stands more than once, and **gone** when
+the file is. The live rows are what "every guard a test kills today" means
+for a card that restructures code (U290).
+
+### Replay pass
+The driver's third pass kind, `replay`: recorded kills measured again, each
+row naming the table and id it came from, with no row cap because it chooses
+no rows. A row whose file or text is no longer its source's carries a
+**moved** reason, and a kill with no row left is **mapped**, with a reason, to
+a row that is killed. The same text in another file is not the same guard, so
+`killset.py check` holds a moved row to a test in common with its source, by
+name, or to a reason a person wrote.
+
+*Avoid:* a replay as a unit's own table, whose cap of 25 stands.
+
+### Scenario
+One function in a file under `tests/behaviour/`, one file per package, that
+runs verbs through the `stage` fixture on a disposable library with the clock
+and every generated id pinned. The suite does not collect it.
+
+### Capture
+What one run of the scenarios left, written by `scripts/behaviour_compare.py
+capture`: per command its arguments, both streams and its exit code, then
+every file by bytes and permission bits and every SQLite database as its
+schema, settings and rows. A base's capture is compared with a branch's. A
+process id, a process start and a file's inode are a capture's **own words**,
+read past only where each side holds its own at the same place.
 
 ### Pinned population
 A count the suite recomputes from the tree and asserts exactly. When a merge

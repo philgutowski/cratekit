@@ -1262,6 +1262,12 @@ def _search_bandcamp(
 # an artist matches through ``_artist_matches``. A wrong release is worse than a
 # miss: its style would be written onto the file for good.
 #
+# A NAMED MIX MUST BE ON THE RELEASE (U318). A file whose title names a mix,
+# "Two Months Off (Tim Green Remix)", takes a release only when a track, or
+# for a single the release's title or a track that is the mix alone, writes
+# the same mix; a release holding the recording in other mixes only is a
+# miss, and its note names the release.
+#
 # THE STYLES RIDE THE HIT AND THE GENRES RIDE THE NOTE. Styles are the field a
 # folder can be chosen from, so all of them ride the outcome in Discogs' order
 # and :func:`_resolved` takes the first that names a folder. Genres ("Electronic",
@@ -1480,24 +1486,69 @@ def _discogs_release(payload: dict[str, Any], release_id: int) -> _Release | Non
     )
 
 
-def _release_matches(release: _Release, artist: str, title: str) -> bool:
-    """Whether a release carries the searched recording.
+class _Carries(Enum):
+    """Whether a Discogs release carries the searched recording (U318)."""
+
+    #: A track, or the release itself for a single, is the file's recording
+    #: in the file's own version.
+    YES = "yes"
+    #: The recording is there and the file's named version is not.
+    ANOTHER_VERSION = "another version"
+    #: Neither.
+    NO = "no"
+
+
+def _release_carries(
+    release: _Release, artist: str, title: str, named: frozenset[titles.Words]
+) -> _Carries:
+    """Whether a release carries the searched recording, in its own version.
 
     A TRACK of the release whose title matches, credited to a matching artist,
     the track's own credit when it names one and the release's otherwise. Or, for
     a single, the release's own title and artist, both through the shared
     :func:`_title_matches`, which refuses a title that strips to nothing rather
     than reading it as a substring of every title (R-1534).
+
+    A REMIX IS NOT ITS TITLE (U318). The shared matcher reads a title past
+    its version, so a file naming a version, ``named``
+    (:func:`titles.named_versions`), counts a track only when the track
+    writes that version (:func:`titles.writes_version`), and the single only
+    when the release's title writes it or one of its tracks is the mix
+    alone, "Tim Green Remix", never another title's remix. Otherwise
+    a remix took a release of four other mixes, and the genre of a recording
+    it was never given. A file naming none, or a version that names no one,
+    "Extended Mix", "Vocal Mix" or "LP Version" (:data:`titles.MIX_DESCRIPTIONS`), is
+    matched as before. The seam is Discogs' alone: the record shops' rows
+    are read by the shared matcher as they were.
     """
+    found = False
     for track_title, track_artists in release.tracks:
         credited = track_artists or release.artists
         if credited and _title_matches(title, track_title, artist=artist):
             if _artist_matches(artist, credited):
-                return True
-    return bool(
+                if not named or titles.writes_version(track_title, named, titled=True):
+                    return _Carries.YES
+                found = True
+    if (
         release.artists
         and _title_matches(title, release.title, artist=artist)
         and _artist_matches(artist, release.artists)
+    ):
+        if (
+            not named
+            or titles.writes_version(release.title, named, titled=True)
+            or any(titles.writes_version(track, named, titled=False) for track, _ in release.tracks)
+        ):
+            return _Carries.YES
+        found = True
+    return _Carries.ANOTHER_VERSION if found else _Carries.NO
+
+
+def _another_version(numbers: Sequence[int], named: frozenset[titles.Words]) -> str:
+    """The miss's note when releases were refused for the file's version."""
+    version = " or ".join(sorted(" ".join(name) for name in named))
+    return "; ".join(
+        f"Discogs release {number} holds no track with this version ({version})" for number in numbers
     )
 
 
@@ -1690,6 +1741,11 @@ class DiscogsAsker:
             )
         held: SourceOutcome | None = None
         styleless: SourceOutcome | None = None
+        # THE FILE'S OWN VERSION, read once off its own text (U318): a
+        # release holding the recording in other mixes only is refused, and
+        # the miss says which.
+        named = titles.named_versions(titles.read_file(title, artist))
+        refused_version: list[int] = []
         for number in numbers[:DISCOGS_RELEASES_READ]:
             read = self._read(f"{DISCOGS_RELEASE}{number}", release=True)
             if read is _GONE:
@@ -1710,7 +1766,10 @@ class DiscogsAsker:
                     f"release {number} answered without a tracklist this reader knows",
                 )
                 continue
-            if not _release_matches(release, artist, title):
+            carries = _release_carries(release, artist, title, named)
+            if carries is _Carries.ANOTHER_VERSION:
+                refused_version.append(number)
+            if carries is not _Carries.YES:
                 continue
             matched = SourceOutcome(
                 DISCOGS,
@@ -1735,7 +1794,7 @@ class DiscogsAsker:
             return styleless
         # A RELEASE THAT COULD NOT BE READ IS NOT A MISS: it may have been the
         # one carrying the track.
-        return held if held is not None else self._said(Answer.MISS)
+        return held if held is not None else self._said(Answer.MISS, _another_version(refused_version, named))
 
 
 def _remaining(headers: Mapping[str, str]) -> int | None:

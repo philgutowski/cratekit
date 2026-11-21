@@ -54570,3 +54570,546 @@ reach the ISRC lookup either way.
 
 **Closes when:** a test names a tail alone stem with trailing whitespace,
 and the ISRC test asserts what Discogs was asked. Ledger only.
+
+---
+
+## R-1783. CLAUDE.md's "never on a real track" reads two ways against an analysis setting probe run on a landed batch
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** The clause U321 adds to CLAUDE.md's rekordbox constraint
+lets a session change an analysis setting a probe names and put it back,
+"never on a real track". A probe owed inside the visit runs in place of its
+first analysis, on the landed batch, which is real tracks; sitting 101's Auto
+Analysis probe analysed three of them. Analysing real tracks is already
+allowed by the constraint's "to let it analyse", so the clause is most
+naturally read as barring the throwaway's changes on a real track and not the
+setting change, but a reader can take it the other way.
+
+**Measured cost.** Not driven. A session could refuse a probe a card owes, or
+run one believing the clause allows more than it does.
+
+**Closes when:** Phillip says which reading holds, beside the present for
+question on #890, and a docs unit words the clause to match, or the record
+says the wording stands. Ledger only.
+
+---
+
+## R-1784. The volume copies folder may sit inside the tree the backup mirrors, where a restore from backup also refuses a target
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** U321 moves a sitting's library and database copies out of
+the checkout, which is mirrored to Google Drive, into a folder one level down
+in the library volume's scratch folder. Driven at the review in a sandbox with
+that folder under the configured library root: the backup's mirror is one sync
+of the whole root, excluding only its clutter patterns and the live
+database's own files, so copies left there while a settlement's BEFORE and
+AFTER backups run are sent to the remote, which is a Drive remote too. And
+`crate restore run --from-backup --target` with a target inside the root
+refuses, saying the target sits inside the live library, so the product's own
+fetch cannot fill that folder.
+
+**Measured cost.** Not driven on the Mac: whether the volume's scratch folder
+sits inside the configured library root there is unmeasured, and sitting 102
+fetched its copies by a means its record does not name. If it does, the copies
+reach a mirrored remote all the same, and a restore into the folder is
+refused.
+
+**Closes when:** an attended sitting reads whether the volume's scratch folder
+is inside the library root, and either records that it is not, or a docs unit
+names a place outside it (or a mirror exclude for it) in the skill and its
+worker rules. Ledger only.
+
+---
+
+## R-1785. Whether a sitting Phillip started and then left is one he is present for is unanswered
+
+**Found:** at the build of #890, U321, 2026-11-21.
+
+**The mechanism.** CLAUDE.md lets "a session Phillip is present for" open,
+drive and quit rekordbox, and the `rekordbox-visit` skill stops a session that
+is not one. Sittings 101 and 102 were started by Phillip and then run while he
+was away, under his standing instruction of 2026-11-21, and each opened
+rekordbox. Read strictly, neither was a session he was present for. U321's
+brief kept the wording out of scope and asked the question on #890 under
+Question for Phillip, with three options: a sitting he started counts for its
+whole length (recommended), only while he is at the desk, or he confirms at
+each opening. The wording is left as written meanwhile.
+
+**Measured cost.** Not driven. The attended orchestrator's settlements and
+visits run while Phillip is away, which the strict reading forbids, so a later
+session reading CLAUDE.md alone could stop a sitting the skill expects to
+finish.
+
+**Closes when:** Phillip answers on #890 and a docs unit writes his answer into
+CLAUDE.md's rekordbox constraint and the `rekordbox-visit` skill's stop, or the
+record says why the wording stands. Ledger only.
+
+---
+
+## R-1786. A replay resumed from a sidecar that was measured while a tracked file was changed reuses its rows once the file is put back
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** `scripts/mutate.py` lets a replay pass reuse a row from a
+prior sidecar only when the sidecar's `head` is this commit and no tracked
+file differs from the commit now (`replay_resume_refusal`). The sidecar does
+not record whether a tracked file differed while it was being measured. So a
+replay measured with a test edited and uncommitted, then resumed after the
+edit was reverted, reuses rows that were measured against the edited suite.
+The same holds for a light or a full pass, which resume across commits as
+they always did, and for `--allow-dirty`.
+
+**Measured cost.** Not driven. The review drove the other half, a test
+deleted and not committed after the measurement, where `killset.py check`
+passed a lost kill, and that half is closed. This half takes a replay run on
+a tree the procedure says is committed, which it is not. Maintainer facing.
+
+**Closes when:** the replay's sidecar records that the tree was clean when
+each row was measured and a resume reads it, or the driver refuses a replay
+on a tree with a tracked change. Ledger only.
+
+---
+
+## R-1787. Guards in killset.py, behaviour_compare.py and the stage that kill no test when reverted alone, as the two reviews of U297 left them
+
+**Found:** at the review of #854, U297, rounds one and two, 2026-11-21.
+
+**The mechanism.** The reviewer reverted 56 guards at round one and 60 fix
+round guards at round two, one at a time in a copy of the tree, and ran each
+one's test file. 22 and 12 killed nothing. The two fix rounds gave a test to
+the ones with a named cost. These stayed at zero, each a line the suite does
+not notice when it is reverted alone:
+
+- `scripts/killset.py`: the `isinstance(..., bool)` half of `killed`; the
+  suffix filter and the skipped directories in `Tree.holders`; the reading of
+  a before table's `head` only when it is a string; the `^{commit}` peel that
+  tells a commit from another object in `Commit._read`.
+- `scripts/mutate.py`: that the line `main` prints when a resume reuses
+  nothing is printed for a replay alone.
+- `scripts/behaviour_compare.py`: that only a table's declaration is put in
+  one order (an index's or a trigger's with two parenthesised items is
+  returned as written, and no test hands it one); the `UnicodeDecodeError`
+  arm in `dump_databases`; the longest word first order in `same_but_for`,
+  which matters only when one word of a capture is the prefix of another.
+- `tests/behaviour/`: the check against the system's temporary directory
+  inside `refuse_a_root_outside`, which the check against the scenario's own
+  directory covers; the stage fixture's refusal at set up, which the refusal
+  before each command covers; the reseeding of the shared `random` generator
+  and its restoring.
+
+**Measured cost.** None to a person using the shipped verbs: all three are
+maintainer tools, and each guard was seen to work when driven by hand. The
+cost is that a later edit can remove one of them with the suite green. The
+card's own mutation table, `docs/mutation/u297.md`, measures 25 other rows.
+
+**Closes when:** each has a test that fails with it reverted, or is shown
+equivalent and removed. Ledger only.
+
+---
+
+## R-1788. The test that captures every behaviour scenario twice takes about sixteen seconds, and grows with every scenario an area card adds
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.**
+`tests/test_behaviour_compare.py::test_two_captures_of_one_commit_are_equal`
+runs `scripts/behaviour_compare.py capture` twice as two real processes over
+every file under `tests/behaviour/` and compares the two. It is the one test
+that goes red when a scenario prints or writes something the stage did not
+pin. One capture of the six shipped scenarios is about eight seconds, most of
+it the scenario run's own start up and the 152 help screens.
+
+**Measured cost.** 15.5 and 16.5 seconds in two runs on the four core cloud
+container, of a suite that sums to about 1,870 seconds of test time, so under
+one percent, and real work: two child runs of pytest. It is over METHOD's ten
+second line for a slow test, and each area card under U290 adds its verbs'
+scenarios to it, while U312 has to make the suite 30 percent faster.
+
+**Closes when:** U312 decides it: the equality is held over a fixed sample
+of scenarios in the suite and over all of them by each card's own capture,
+or the two captures share one scenario run. Ledger only.
+
+---
+
+## R-1789. A behaviour capture cannot hold still a file's own times read back in the command that wrote it, or its change time, and no shipped scenario records one
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.** The stage pins what Python reads: the clock, the two
+duration clocks, the id sources and the rekordbox binding's row stamps. It
+sets every file's access and modification time to the pinned instant between
+commands (`Stage.settle`). It cannot set a change time at all, and a file
+written and then read back for its times inside one command carries the real
+time. A process id, a process start and a file's inode are read past by
+`compare` where each capture holds its own. Product code that persists a
+file's `st_mtime_ns` or `st_ctime_ns` taken in the same command (the library
+index's cache key in `acquire/match.py`, the ISRC cache in
+`acquire/isrc_cache.py`, the adoption fingerprint in `adopt/apply.py`) would
+make two captures of one commit differ.
+
+**Measured cost.** None today: the six shipped scenarios compare with no
+difference, run after run. The first area card whose scenario reaches such a
+write will see the equality test fail with the differing value shown, which
+is loud, and will have to pair that value as a capture's own word or pin it.
+
+**Closes when:** a scenario records such a value and the stage or `compare`
+is taught it. Ledger only.
+
+---
+
+## R-1790. The suite's disposable rekordbox database is built with its foreign keys in an order that changes from one process to the next
+
+**Found:** at the review of #854, U297, fix round one, 2026-11-21.
+
+**The mechanism.** `tests/test_rb_writer_db.py::_relaxed_schema` copies the
+binding's tables into a fresh `MetaData` with `Table.to_metadata`, which
+walks each table's constraints as a set of objects. The copies take their
+creation order from that walk, the order follows the objects' addresses, and
+`create_all` writes the FOREIGN KEY clauses of each CREATE TABLE in it. A
+fixed hash seed does not hold it still.
+
+**Measured cost.** Found by the schema comparison the review asked for, on
+its first run: two captures of one commit differed in five table
+declarations. The review then built the schema in ten processes and read ten
+distinct digests. `scripts/behaviour_compare.py` reads a table's declaration
+with its table constraints in one order, which the review checked changes
+nothing but that order over the 40 declarations of a real capture. No test
+of the suite reads the declaration's text, so nothing else pays.
+
+**Closes when:** the builder orders the copied constraints, at which point
+`canonical_declaration` could go; the file is on U300's list. Ledger only.
+
+---
+
+## R-1791. killset.py list counts a row that broke collection and recorded a death as a recorded kill, 24 of 8,541, while check ranks it under one
+
+**Found:** at the review of #854, U297, round one, 2026-11-21.
+
+**The mechanism.** The reader calls a row killed when its table recorded at
+least one death, which is the rule the survey of U290 used and what
+reproduces its 8,541 and its 7,093 live rows. 24 of those rows have the
+status `collect-error`: the mutation broke an import, the collected count
+moved, and the driver says of such a row that it is neither a zero nor a
+clean kill. `rows` writes the 20 of them that are live into a replay, and
+`check` ranks one under a kill: it holds it to no less after than before,
+and reports a clean kill that became one.
+
+**Measured cost.** An area card's replay holds up to 20 rows across the tree
+whose before measurement is a collection error, each held only to staying
+one. Counted, never driven on a card.
+
+**Closes when:** U315's audit says which the definition of done means, or
+the 20 are measured and those that break collection for a reason of the
+row's own making are dropped from the set. Ledger only.
+
+---
+
+## R-1792. A new row can still pass as a replay by naming a recorded source and writing a moved reason
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** A replay pass has no row cap because every row names a
+recorded kill. `scripts/mutate.py` reads each source before anything runs:
+the table exists under `docs/mutation/`, holds that row, the row recorded a
+death, and a row whose file or text is not its source's must carry a `moved`
+reason. A row anchored again by hand is exactly that, so the reason cannot be
+refused, and nothing ties the new text to the old guard but the author's
+word, which is committed in the table.
+
+**Measured cost.** The review drove 26 new rows under real sources with no
+reason, which is now refused. With a reason on each they would be measured.
+Maintainer facing, and it takes an author writing 26 false reasons into a
+committed table.
+
+**Closes when:** it is accepted as the limit of a text based check, or
+`killset.py check` is made the only reader of a replay table and holds a row
+at new text to a test in common whoever wrote its reason. Ledger only.
+
+---
+
+## R-1793. killset.py list piped into head ends in a BrokenPipeError traceback after the lines asked for
+
+**Found:** at the last battery of #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `scripts/killset.py list` prints its counts and then one
+line per source file, 326 of them on the merged tree, with plain `print`.
+When the reader closes the pipe early, `list | head -12`, the next `print`
+raises `BrokenPipeError`, nothing in `main` catches it, and Python prints a
+traceback on standard error and exits 1. `list --rows`, which prints every
+row, does the same. The lines that were asked for are printed whole and
+correct before it.
+
+**Measured cost.** Driven once: `scripts/killset.py list | head -12` printed
+its count lines and the head of the per file table, then the traceback. Maintainer facing and cosmetic: no count is wrong and no file is
+written. A reader who sees the traceback may take the counts for
+unreliable, and a shell running under `pipefail` reads the pipeline as
+failed. `rows` and `check` print a handful of lines and were not seen to do
+it.
+
+**Closes when:** `main` in `scripts/killset.py` ends quietly when its output
+is closed, as a filter does, with a test that closes the pipe after one
+line. Ledger only.
+
+---
+
+## R-1794. behaviour_compare.py capture of a revision that lacks a module the tree's test fixtures import fails every scenario
+
+**Found:** at the last merge of main into #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `capture --rev REV` runs the working tree's scenarios,
+fixtures and `tests/conftest.py` against a copy of that revision's `src/`.
+U295 landed while this unit was built and added an autouse fixture to
+`tests/conftest.py` that imports `cratekit.cli.schedule`. A revision from
+before U295 has no such module, so every scenario errors as its fixtures are
+set up. The same holds for any revision that lacks a product module, or a
+name in one, that the tree's conftest or a fixture a scenario imports reads.
+
+**Measured cost.** Driven once on the final tree: `capture --rev 0f0f1032`,
+the commit before U295's merge, ended `6 errors`, exit 1, with no scenario
+recorded and no manifest, so `compare` refuses the directory. It is loud and
+nothing is compared wrongly. A card that compares its branch with
+`origin/main` after merging it is not touched, since that base holds
+everything the tree's fixtures import, unless the card's own branch adds a
+module and makes the suite's fixtures import it: then its base cannot be
+captured with the branch's tests, and the comparison the card owes has to be
+taken before that fixture is added.
+
+**Closes when:** the script's docstring says a revision must hold everything
+the tree's fixtures import and what to do when it does not, or `capture`
+names the missing module in its own words instead of six errors. Ledger
+only.
+
+---
+
+## R-1795. A remix's Discogs search reads three releases ranked for its plain title, so a refusal can spend the cap before its own release
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** `DiscogsAsker._search` asks Discogs for the title with
+its last bracketed group set aside (`_last_group_stripped`), so a remix is
+asked as its plain title, and reads the first `DISCOGS_RELEASES_READ`, three,
+of the releases the search names. Before U318 the first plain pressing was
+taken; since U318 a pressing without the file's mix is refused, so three
+plain pressings ranked first spend the cap and a fourth release carrying the
+remix is never read.
+
+**Measured cost.** Driven on hand built answers: four search results, three
+plain pressings and a fourth "Sunrise Mood (Remixes)" holding "Sunrise Mood
+(Tide Remix)", through `tag_one`: a miss naming releases 1 to 3, release 4
+never fetched. How often Discogs ranks the remix release past three is a live
+service's order and unmeasured; a sitting recorded 43 releases for one title.
+The cost is a miss, never a wrong genre.
+
+**Closes when:** a remix's search asks with its mix (or reads further when a
+named mix was refused), measured at the next attended tag sweep. Ledger
+only: a miss is no board bar cost.
+
+---
+
+## R-1796. A Discogs track whose remixer is named only in its credits is read as no mix, and the miss says the release lacks it
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** `_discogs_release` reads each track's `title` and
+`artists` and never its `extraartists`, so a track "Sunrise Mood (Remix)"
+credited Remix: Tide writes no maker, and a file "Sunrise Mood (Tide Remix)"
+is refused with a note that the release holds no track with its version,
+over a field that was never read.
+
+**Measured cost.** Driven on a hand built release through `tag_one`: main
+matched, the branch misses with that note. How often Discogs names a
+remixer only in a track's credits is unmeasured.
+
+**Closes when:** the release reader carries each track's remix credits and
+`writes_version` reads them. Ledger only: the cost is a miss.
+
+---
+
+## R-1797. A maker's mix in another length or edition counts as the file's own version on Discogs
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** A version is compared by its maker's words, the version
+words and `titles.MIX_DESCRIPTIONS` folded away, so "Still In Love (DJ Spen
+7" Version)" and a track "Still In Love (DJ Spen Long Version)" are one
+version, and "Two Months Off (Tim Green Remix)" takes "Two Months Off (Tim
+Green Dub)". The session's call: the brief folds the reader's noise words,
+and a maker's other cut is the same recording's arrangement by the same
+hand, so its genre is the file's; the third pair sitting 101 recorded
+(docs/cutover.md, "U318's version blindness") is kept by design.
+
+**Measured cost.** Driven over eight spellings of the long version row:
+matched on five. No wrong genre was measured; whether Phillip wants a
+length to count as another version is his.
+
+**Closes when:** Phillip decides whether a maker's other length or edition
+is another version; ledger only until then.
+
+---
+
+## R-1798. A remix written with no bracket, or with a feature credit after it, still takes another mix's Discogs release
+
+**Found:** at the build and review of #882, U318, 2026-11-21.
+
+**The mechanism.** `titles.named_versions` reads a version only from a
+bracket group the title part ends with or the dash part after the title.
+"Sunrise Mood Tim Green Remix", where only a list could cut the title from
+the mix, "Sunrise Mood - Tide Remix feat. Sun" and "Two Months Off (Tim
+Green Remix) feat. Tide - Artist", whose feature credit follows the mix, and
+a remixer whose whole name is folded words, "(Mono Remix)", name nothing, so
+they are matched as main matched them, another mix's release included.
+
+**Measured cost.** Round one's shape drive: 9 of 1,056 names, all the
+feature credit after the mix, still take the four other mixes release, as on
+main. Not new; a wrong genre where main wrote the same one.
+
+**Closes when:** the reader reads a version before a trailing feature
+credit and the unbracketed shapes have a rule that is not a list. Ledger
+only: no cost beyond main's.
+
+---
+
+## R-1799. A remix Discogs refuses for its version walks on to Beatport, which takes the original mix's row
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** A version refusal is a Discogs miss, so the walk asks
+Beatport, as the brief orders, and Beatport's scorer reads a title past its
+version (R-1637's mirror), so "Two Months Off (Tim Green Remix)" takes a
+Beatport row "Two Months Off", mix "Original Mix".
+
+**Measured cost.** Driven through `tag_one` on a hand built Beatport page:
+Deep House from Beatport where main wrote Techno from Discogs; neither is
+the file's mix. Today Beatport refuses this machine, so the card's goal
+holds; it holds only while it does.
+
+**Closes when:** Beatport's scorer requires a named mix the way Discogs now
+does, the remix side of R-1637. Ledger only, beside R-1637.
+
+---
+
+## R-1800. A mix description no list holds reads as a maker's name, and a file so titled misses a release of its plain title
+
+**Found:** at the build and review of #882, U318, 2026-11-21.
+
+**The mechanism.** `titles._naming_words` folds the domain's version words
+and `titles.MIX_DESCRIPTIONS`; any other word is a maker's. "Juno Mix",
+"Jack Mix", "Acid Mix", "Summer Mix" and "Friday Night Mix" name "juno",
+"jack", "acid", "summer" and "friday night", as "HD Remaster", "Vinyl
+Version", "CD Version", "2019 Mix", "Studio Version" and "(A Dub)" name
+theirs, so a file so titled takes no Discogs release of its plain title.
+And name folding stops at accents, "and", "the" and a possessive: "T. Green Remix" and "DJ Tide" against "Tide" with
+another word are other makers. A row writing its maker after the mix,
+"(Remixed By Tim Green)" or "(Remix By Tim Green)", writes no maker, so a
+file "(Tim Green Remix)" misses it.
+
+**Measured cost.** One of the 147 labels round one drove, "Juno Mix", and
+146 of round two's 274 holdout labels, none among the 147 (styles, places
+and times of day mostly, "Tech House Mix", "Ibiza Mix", "Late Night Mix",
+and media, "Vinyl Version"), measured at the final head; the author's
+differential over the matcher corpus refused 662 pairs for "Jack Mix" and 17
+for "Acid Mix" against plain rows. Every label was written by a session,
+none read from a library. Each is a miss the record explains, never a wrong
+genre; widening the list further buys these back at `u318-g`'s price.
+
+**Closes when:** a mix's description can be told from a maker's name by
+something other than a list, or the list grows from the sweeps' records.
+Ledger only: the cost is a miss.
+
+---
+
+## R-1801. A maker named by the mix descriptions' words alone is read as no one, so their remix takes another mix's Discogs release as on main
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** `titles._naming_words` folds `titles.MIX_DESCRIPTIONS`
+off both ends of a version, so a maker whose name is only those words, "DJ
+Deep", "DJ Promo", "Digital", "Final Cut", "Classic", is read as no one and
+the file is matched as main matched it. And `writes_version` reads a titled
+row's unbracketed whole by its last words, across a dash, so "Dixon Remix"
+takes "Sunrise Mood - Alan Dixon Remix", and a fold can make one maker end
+another's ("New Order" folds to "order" and meets "Out Of Order Remix").
+With a refusal ahead of it on one result page, such a release can be the
+one taken where main took an earlier one (round two's row 4).
+
+**Measured cost.** Round two: 29 of 377 maker names it wrote are folded
+away whole, 25 of them by the round one widening, "dj" alone 7; on 60,000
+generated releases that never write the file's maker the fix took 4,579
+where round one's head took 4,153. Against main nothing is newly taken at
+the release level (0 of 330,000); round two's row 4, two crafted releases
+on one page, writes House from the second where main wrote Techno from the
+first. No such maker or pair was driven from a real library. The fold and
+the misses of `u318-f` pull against each other: a word taken out of the list
+buys back makers and loses the plain recording's mixes main matched.
+
+**Closes when:** a description can be told from a maker by something other
+than a list (Discogs' own credits, `u318-b`), or Phillip decides which way
+the list should fail. Ledger only: no cost beyond main's for one release.
+
+---
+
+## R-1802. A Discogs single whose track writes the file's mix in full is refused when that track is not read as the file's own title or artist
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** Since round one the single fallback counts another
+track only when it is the mix alone, so a single "Two Months Off" whose
+track "Two Months Off (Tim Green Remix)" is credited to a name sharing none
+with the file's artist, or written "Two Months Off, Pt. 1 (Tim Green
+Remix)", "The Two Months Off (...)" or "... (Tim Green Remix) - Bonus
+Track", which the matcher does not read as the file's title, is refused.
+The note then says the release holds no track with the version while a
+track writes it.
+
+**Measured cost.** Round two drove 24 track shapes by 7 file spellings:
+the credited track and 8 of 44 full row spellings lost against main. Hand
+built; whether Discogs credits a single's remix track that way is
+unmeasured. The cost is a miss with a note false on its face.
+
+**Closes when:** the fallback reads a track writing the full title and
+mix by the release's credit, without reading another title's remix
+(round one's finding 6). Ledger only.
+
+---
+
+## R-1803. The Discogs version miss names the maker's folded words, "(tale of)" or "(order)", not the maker as the file writes them
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** `searchers._another_version` writes the named
+versions' words, which `titles._naming_words` has folded: descriptions off
+both ends, "and", "the" and a possessive dropped, accents off. "(Tale Of Us
+Remix)" reads "(tale of)", "(New Order Remix)" "(order)", "(DJ Koze Remix)"
+"(koze)".
+
+**Measured cost.** Round two: 191 of 377 maker names read differently from
+the file. Garbled, never false: the release named is the one refused.
+
+**Closes when:** the note quotes the file's own version text beside the
+words compared. Ledger only, a wording fix.
+
+---
+
+## R-1804. A bracketed subtitle ending in a version word, "(On The Radio)" or "(Welcome To The Club)", is read as a mix and misses the plain track
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** A bracket group the title ends with is a version when
+its last word is a version word, so a subtitle "(On The Radio)", "(Welcome
+To The Club)", "(Back To The Original)" or "(In Session)" names "on", "welcome
+to", "back to" and "in", and the file takes no Discogs release that does
+not write it. A feature credit group is no version since fix round two
+("(feat. Tom Tom Club)", "(with Bombay Bicycle Club)"), so this is what is
+left of round two's row 7. And a title naming two mixes is satisfied by
+either: "Song (Tim Green Remix) (Dark Lane Edit)" takes "Song (Dark Lane
+Edit)".
+
+**Measured cost.** Round two drove 10 such groups against an album's plain
+track: main matched all; four subtitles still miss. Whether a library title
+carries one is unmeasured. A miss, never a wrong genre; the two mixes case
+is main's own match.
+
+**Closes when:** a subtitle can be told from a mix by something other
+than its last word. Ledger only.

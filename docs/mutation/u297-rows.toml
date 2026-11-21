@@ -1,0 +1,313 @@
+name = "u297"
+pass_kind = "light"
+
+# ---------------------------------------------------------------------------
+# scripts/mutate.py: the replay pass's own guards
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "D1_replay_row_without_a_source"
+description = "load_spec: accept a replay row that names no source, so an uncapped pass takes rows no table recorded"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''            if source is None:
+                raise DriverRefusal(
+                    f"row {row_id}: a replay row names where it came from and this one "'''
+new = '''            if False:
+                raise DriverRefusal(
+                    f"row {row_id}: a replay row names where it came from and this one "'''
+
+[[rows]]
+id = "D2_cap_lifted_for_every_pass"
+description = "load_spec: read the cap as the row count for every pass kind, so a light pass of 26 rows and a full pass of 46 load"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    cap = ROW_CAPS.get(pass_kind, len(rows))'''
+new = '''    cap = len(rows)'''
+
+[[rows]]
+id = "D3_mapped_to_no_row"
+description = "load_mapped: accept a mapping whose target is no row in the batch, so a lost kill is covered by nothing"
+file = "scripts/mutate.py"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        if target not in ids:'''
+new = '''        if False:'''
+
+[[rows]]
+id = "D4_a_measured_row_loses_its_source"
+description = "measure_row: stop carrying a replay row's source and moved reason into its result, so check has nothing to match the row by"
+file = "scripts/mutate.py"
+tests = ["tests/test_mutation_driver.py", "tests/test_killset.py"]
+old = '''        head_verified=head_verify,
+        **replay_fields(row),
+    )'''
+new = '''        head_verified=head_verify,
+    )'''
+
+[[rows]]
+id = "D5_a_replay_resumed_from_anywhere"
+description = "measure_batch: let a replay reuse rows from any sidecar, another commit's or one measured before a tracked file changed"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''    stale = pass_kind == REPLAY and bool(replay_resume_refusal(repo_root, prior))'''
+new = '''    stale = False'''
+
+[[rows]]
+id = "D6_sources_taken_on_trust"
+description = "main: skip the reading of each replay row's source against the table it names, so new rows ride past the caps under a table's name"
+file = "scripts/mutate.py"
+surface = "user"
+tests = ["tests/test_mutation_driver.py"]
+old = '''        if pass_kind == REPLAY:
+            refuse_unrecorded_sources(args.repo_root, rows, mapped)'''
+new = '''        if False:
+            refuse_unrecorded_sources(args.repo_root, rows, mapped)'''
+
+# ---------------------------------------------------------------------------
+# scripts/killset.py: the reader, the placing of a moved row, and check
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "K1_a_zero_row_counted_as_a_kill"
+description = "killed: count a row with zero deaths as killed, so the kill set holds rows no test ever killed"
+file = "scripts/killset.py"
+tests = ["tests/test_killset.py"]
+old = '''    return isinstance(deaths, int) and not isinstance(deaths, bool) and deaths > 0'''
+new = '''    return isinstance(deaths, int) and not isinstance(deaths, bool) and deaths >= 0'''
+
+[[rows]]
+id = "K2_a_lost_kill_passes_check"
+description = "compare_tables: stop reading a row that is weaker after than before as lost, so check passes a refactor that lost a kill"
+file = "scripts/killset.py"
+surface = "user"
+tests = ["tests/test_killset.py"]
+old = '''            if strength(now) < held:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "K3_mapped_to_a_row_that_is_not_killed"
+description = "compare_tables: accept a mapping whose target row is weaker after than the kill it covers"
+file = "scripts/killset.py"
+surface = "user"
+tests = ["tests/test_killset.py"]
+old = '''        elif strength(target) < held:'''
+new = '''        elif False:'''
+
+[[rows]]
+id = "K4_a_collection_error_counts_as_a_kill"
+description = "strength: rank a row that broke collection with a death as high as a clean kill, so a kill that became one is kept"
+file = "scripts/killset.py"
+tests = ["tests/test_killset.py"]
+old = '''    return 2 if row.get("status") in (None, "killed") else 1'''
+new = '''    return 2'''
+
+[[rows]]
+id = "K5_any_reason_vouches_for_a_move"
+description = "unvouched_move: accept the reason rows --after wrote with no test in common, so a row killed at another guard's line passes check"
+file = "scripts/killset.py"
+surface = "user"
+tests = ["tests/test_killset.py"]
+old = '''    if killers_before & now or not reason.startswith(AUTOMATIC_MOVE):'''
+new = '''    if reason:'''
+
+[[rows]]
+id = "K6_a_twin_read_as_a_move"
+description = "moved_to: place a row at the one file that holds its text now though the text stood in two places at the measured commit"
+file = "scripts/killset.py"
+surface = "user"
+tests = ["tests/test_killset.py"]
+old = '''    if stood != 1:'''
+new = '''    if False:'''
+
+[[rows]]
+id = "K7_a_batch_in_progress_read_as_finished"
+description = "read_measured: read a table still in progress as a finished batch, so its unmeasured rows are compared as if measured"
+file = "scripts/killset.py"
+tests = ["tests/test_killset.py"]
+old = '''    if table.get("valid") is not True or table.get("invalid_reason"):'''
+new = '''    if table.get("valid") is not True:'''
+
+# ---------------------------------------------------------------------------
+# scripts/behaviour_compare.py and the stage: the refusals and the comparison
+# ---------------------------------------------------------------------------
+
+[[rows]]
+id = "B1_a_root_outside_the_temporary_directory"
+description = "refuse_outside_temporary: accept any root, so a capture can be pointed at a directory somebody keeps"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''    if not is_inside(path, temporary_directory()):'''
+new = '''    if False:'''
+
+[[rows]]
+id = "B2_the_temporary_directory_itself"
+description = "is_inside: read a directory as inside itself, so the whole temporary directory can be a capture's root and be emptied"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''    return relative != Path(".")'''
+new = '''    return True'''
+
+[[rows]]
+id = "B3_somebodys_directory_emptied"
+description = "take_root: take a root, or the source directory beside it, that holds files no capture left"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''        if not left_by_a_capture(folder, holder):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B4_a_failed_run_closed_as_a_capture"
+description = "run_capture: write the manifest though the scenario run failed, so a capture missing scenarios reads as finished"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''    if done.returncode != 0 or not recorded or missing:'''
+new = '''    if not recorded or missing:'''
+
+[[rows]]
+id = "B5_a_scenario_with_no_record_closed_over"
+description = "run_capture: close the capture though a scenario the run collected, or a whole scenario file, left no record"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''    if done.returncode != 0 or not recorded or missing:'''
+new = '''    if done.returncode != 0 or not recorded:'''
+
+[[rows]]
+id = "B6_any_two_texts_the_same"
+description = "same_but_for: read any two texts as the same once a capture has a word of its own, so no difference in output, a file or a row is seen"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''    return re.fullmatch("".join(pattern), second, flags=re.DOTALL) is not None'''
+new = '''    return True'''
+
+[[rows]]
+id = "B7_a_word_read_inside_a_longer_one"
+description = "same_but_for: drop the leading end of the whole word rule, so a process id is read inside a longer number"
+file = "scripts/behaviour_compare.py"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''        r"(?<![0-9A-Za-z_])(?:" + "|".join(re.escape(one) for one in longest_first) + r")(?![0-9A-Za-z_])"'''
+new = '''        r"(?:" + "|".join(re.escape(one) for one in longest_first) + r")(?![0-9A-Za-z_])"'''
+
+[[rows]]
+id = "B8_a_changed_exit_code_unseen"
+description = "compare_commands: stop comparing exit codes"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''            if one["exit"] != other["exit"]:'''
+new = '''            if False:'''
+
+[[rows]]
+id = "B9_a_file_in_one_capture_only_unseen"
+description = "compare_files: walk only the paths both captures hold, so an extra file and a missing one are never reported"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''    for relative in sorted(set(before) | set(after)):'''
+new = '''    for relative in sorted(set(before) & set(after)):'''
+
+[[rows]]
+id = "B10_a_changed_mode_unseen"
+description = "compare_files: stop comparing permission bits, so a private file written world readable compares clean"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''        if one.get("mode") != other.get("mode"):'''
+new = '''        if False:'''
+
+[[rows]]
+id = "B11_a_changed_schema_unseen"
+description = "compare_databases: compare no declarations, so a table that lost its key, a constraint or an index compares clean"
+file = "scripts/behaviour_compare.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''            one.get("schema", []), other.get("schema", []), words, limit,'''
+new = '''            [], [], words, limit,'''
+
+[[rows]]
+id = "S1_a_root_outside_the_scenarios_own_directory"
+description = "refuse_a_root_outside: accept a configuration or state directory anywhere in the temporary directory, another test's included"
+file = "tests/behaviour/conftest.py"
+surface = "user"
+tests = ["tests/test_behaviour_compare.py"]
+old = '''        if not compare.is_inside(path, scenario_root):'''
+new = '''        if False:'''
+
+# ---------------------------------------------------------------------------
+# Ranked below the cap of 25, and not measured by this table. The two review
+# rounds reverted 116 guards between them in a copy; what those left at zero
+# is in the residual this unit files.
+# ---------------------------------------------------------------------------
+
+[[dropped]]
+id = "two_rows_one_source"
+description = "load_spec: accept two replay rows naming one source."
+reason = "ranked below the cap: check refuses a table with two rows under one key, so this fails loud"
+
+[[dropped]]
+id = "mapped_outside_a_replay"
+description = "load_mapped: accept a [[mapped]] entry in a light pass."
+reason = "ranked below the cap: nothing reads a light table's mappings"
+
+[[dropped]]
+id = "mapped_for_no_reason_or_for_a_replayed_source"
+description = "load_mapped: accept a mapping with no reason, or one for a source the batch also replays."
+reason = "ranked below the cap: D3 measures the mapping that covers nothing, and check asks for the reason again"
+
+[[dropped]]
+id = "unset_keys_in_a_light_sidecar"
+description = "RowResult.to_dict and Batch.to_dict: write the replay's keys into every pass's sidecar."
+reason = "ranked below the cap: a changed output, not a lost guard, and a test of its own holds it"
+
+[[dropped]]
+id = "a_borrowed_name_over_new_text"
+description = "refuse_unrecorded_sources: accept a row whose text is not its source's with no moved reason."
+reason = "ranked below the cap: D6 measures the reading of sources as a whole"
+
+[[dropped]]
+id = "ambiguous_or_stale_rows_written"
+description = "Tree.state and cmd_rows: read ambiguous text as live, or write stale rows."
+reason = "ranked below the cap: the driver refuses such a row when it applies it, so it cannot be measured as a kill"
+
+[[dropped]]
+id = "a_promoted_row_keeps_its_subset"
+description = "tests_of: give a promoted row the subset that killed nothing."
+reason = "ranked below the cap: it costs a full suite a row and loses no kill"
+
+[[dropped]]
+id = "a_replay_table_counted_as_a_table_and_duplicates_left_live"
+description = "read_kill_set: count a replay table as a table of its own, or leave a duplicate live."
+reason = "ranked below the cap: counts, and the same row replayed twice"
+
+[[dropped]]
+id = "a_move_git_cannot_vouch_for"
+description = "moved_to: place a row though git could not read the tree at the measured commit."
+reason = "ranked below the cap: with the reading absent the next check, K6's, still leaves the row unplaced"
+
+[[dropped]]
+id = "a_root_another_capture_holds_and_captures_under_two_roots"
+description = "take_root: take a root whose holder is running; compare_captures: compare captures under two roots."
+reason = "ranked below the cap: both fail loud, as files written over or as a difference in every path"
+
+[[dropped]]
+id = "rows_only_in_the_second_dump_and_an_undumped_database"
+description = "only_in_one: report the first capture's rows alone; compare_files: skip the bytes of a database that could not be dumped."
+reason = "ranked below the cap: B6, B9 and B11 measure the comparison's sensitivity on the same paths"
+
+[[dropped]]
+id = "a_column_read_as_a_constraint"
+description = "TABLE_CONSTRAINT: match a keyword without what must follow it."
+reason = "ranked below the cap: no table on the tree has such a column, and a parametrized test holds each form"
+
+[[dropped]]
+id = "the_stage_s_pins_and_its_first_refusal"
+description = "Stage.crate: run a command before asking where the roots are, or stop setting file times; pin: leave the binding's row stamps real."
+reason = "ranked below the cap: S1 measures the refusal itself, and the pins are held by the test that captures every scenario twice"
