@@ -70,7 +70,9 @@ def asked(title: str, number: int, *, release_title: str = "An EP", tracks: tupl
     search names one release, ``number``, holding ``tracks``."""
     fetch = routed(
         search=results(number),
-        releases={number: release(number, artist=ARTIST, title=release_title, tracks=listed(*tracks))},
+        releases={
+            number: release(number, artist=ARTIST, title=release_title, tracks=listed(*tracks))
+        },
     )
     return discogs_answer(searcher(fetch)(ARTIST, title))
 
@@ -113,8 +115,18 @@ def test_the_mita_gami_extended_mix_refuses_the_16bl_remix_single():
 
 def test_the_sitting_files_headed_as_the_library_writes_them_refuse_too():
     for title, number, release_title, tracks in (
-        ("04A - 126 - Two Months Off (Tim Green Remix)", TWO_MONTHS_OFF, "Two Months Off", TWO_MONTHS_OFF_TRACKS),
-        ("09B - 122 - [MP3] As You Fly (Mita Gami Extended Mix)", AS_YOU_FLY, "As You Fly", AS_YOU_FLY_TRACKS),
+        (
+            "04A - 126 - Two Months Off (Tim Green Remix)",
+            TWO_MONTHS_OFF,
+            "Two Months Off",
+            TWO_MONTHS_OFF_TRACKS,
+        ),
+        (
+            "09B - 122 - [MP3] As You Fly (Mita Gami Extended Mix)",
+            AS_YOU_FLY,
+            "As You Fly",
+            AS_YOU_FLY_TRACKS,
+        ),
     ):
         assert asked(title, number, release_title=release_title, tracks=tracks).answer == "miss"
 
@@ -166,8 +178,16 @@ def test_a_refused_release_gives_way_to_a_later_one_that_carries_the_mix():
     fetch = routed(
         search=results(1, 2),
         releases={
-            1: release(1, artist=ARTIST, title="Two Months Off", tracks=listed(*TWO_MONTHS_OFF_TRACKS)),
-            2: release(2, artist=ARTIST, title="Remixes", tracks=listed("Two Months Off (Tim Green Remix)"), styles=("Techno",)),
+            1: release(
+                1, artist=ARTIST, title="Two Months Off", tracks=listed(*TWO_MONTHS_OFF_TRACKS)
+            ),
+            2: release(
+                2,
+                artist=ARTIST,
+                title="Remixes",
+                tracks=listed("Two Months Off (Tim Green Remix)"),
+                styles=("Techno",),
+            ),
         },
     )
     said = discogs_answer(searcher(fetch)(ARTIST, "Two Months Off (Tim Green Remix)"))
@@ -181,7 +201,9 @@ def test_the_miss_names_every_release_refused_for_its_version_and_no_other():
         releases={
             1: release(1, artist=ARTIST, title="Two Months Off", tracks=listed("Two Months Off")),
             2: release(2, artist=ARTIST, title="Other", tracks=listed("Another Song")),
-            3: release(3, artist=ARTIST, title="Two Months Off", tracks=listed("Two Months Off (B Remix)")),
+            3: release(
+                3, artist=ARTIST, title="Two Months Off", tracks=listed("Two Months Off (B Remix)")
+            ),
         },
     )
     said = discogs_answer(searcher(fetch)(ARTIST, "Two Months Off (Tim Green Remix)"))
@@ -241,6 +263,32 @@ def test_the_extended_and_original_noise_follows_the_reader():
     assert matched("X (Original Mix)", tracks=("X (Extended Mix)",))
     assert matched("X (Radio Edit)", tracks=("X",))
     assert matched("X (2014 Remaster)", tracks=("X",))
+
+
+@pytest.mark.parametrize(
+    "title",
+    [
+        "X (Main Mix)",
+        "X (Vocal Mix)",
+        "X - Vocal Mix",
+        "X (Album Version)",
+        'X (12" Version)',
+        "X (12 Inch Mix)",
+        "X (Short Edit)",
+        "X (Clean Edit)",
+        "X (Extended Vocal Mix)",
+    ],
+)
+def test_a_mix_that_names_no_one_still_takes_the_plain_title(title):
+    """A description of a mix, "Main", "Vocal", "Album", "12 Inch", names no
+    other mix (``titles.MIX_DESCRIPTIONS``), so it matches as it did."""
+    assert matched(title, tracks=("X",))
+
+
+def test_a_named_mix_after_a_description_still_names_its_maker():
+    assert not matched("X (Tim Green Vocal Mix)", tracks=("X",))
+    assert matched("X (Tim Green Vocal Mix)", tracks=("X (Tim Green Remix)",))
+    assert not matched("X (Main Tim Green Mix)", tracks=("X (Dark Lane Mix)",))
 
 
 def test_the_single_fallback_refuses_a_remix_on_a_one_track_release_of_the_title():
@@ -312,14 +360,18 @@ def test_an_artist_that_does_not_match_still_refuses_a_track_that_writes_the_ver
 def test_the_shared_matcher_still_reads_a_remix_as_its_title():
     """The seam is Discogs': ``titles.matches`` is unchanged for every caller,
     so Beatport, Traxsource and Bandcamp read the row as they did."""
-    assert searchers._title_matches("Two Months Off (Tim Green Remix)", "Two Months Off", artist=ARTIST)
+    assert searchers._title_matches(
+        "Two Months Off (Tim Green Remix)", "Two Months Off", artist=ARTIST
+    )
 
 
 def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
     fetch = routed(
         search=results(),
         beatport=searchers.Fetched(
-            text=_beatport_page([_beatport_track(ARTIST, "Two Months Off", BUCKET_GENRE, mix="Original Mix")]),
+            text=_beatport_page(
+                [_beatport_track(ARTIST, "Two Months Off", BUCKET_GENRE, mix="Original Mix")]
+            ),
             status=200,
         ),
     )
@@ -350,6 +402,11 @@ def test_beatport_is_unchanged_for_a_remix_against_the_plain_row():
         ("Two Months Off (Extended Mix)", set()),
         ("Two Months Off (Original Mix)", set()),
         ("Two Months Off (Radio Edit)", set()),
+        ("Two Months Off (Main Mix)", set()),
+        ("Two Months Off (Vocal Mix)", set()),
+        ("Two Months Off (Album Version)", set()),
+        ("Two Months Off (Tim Green Vocal Mix)", {("tim", "green")}),
+        ("Two Months Off (Mike's (Dub) Mix)", {("mike", "s")}),
         ("Two Months Off (2014 Remaster)", set()),
         ("Two Months Off (Remix)", set()),
         ("Two Months Off (Part 1)", set()),
