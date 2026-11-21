@@ -737,9 +737,12 @@ def probe(root: Path, excludes: Sequence[str], state_dirname: str) -> tuple[bool
     THE STAND IN FOR A WALK THAT REFUSED, and the check just before the mirror.
     Best effort by design and failing closed: a folder it cannot list is passed
     over, so what it cannot read is never counted as a file, and a root it can
-    read nothing of reads as empty and is refused.
+    read nothing of reads as empty and is refused. An exclude the walk cannot
+    translate is left out rather than refusing, since the probe stands in for
+    a walk that may have refused for that very reason; what it then counts is
+    the database set a configuration with such a name keeps under the root.
     """
-    matcher = _excludes(excludes)
+    matcher = _excludes([p for p in excludes if not any(c in _UNTRANSLATED for c in p)])
     anything = False
     pending: list[tuple[Path, str]] = [(root, "")]
     while pending:

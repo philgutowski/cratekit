@@ -557,3 +557,21 @@ def test_the_census_is_kept_for_its_root_and_mirror_only(cfg, real_rclone, tmp_p
     held["dest"] = "remote:elsewhere"
     backup_record.census_path().write_text(json.dumps(held))
     assert backup_record.read_census(cfg) is None
+
+
+def test_the_probe_reads_past_an_exclude_the_walk_cannot_translate(tmp_path):
+    """A walk refused for an untranslatable exclude is where the probe stands
+    in, so the probe must not refuse for the same reason."""
+    root = tmp_path / "root"
+    _write(root / ".cratekit" / "state.json", b"{}")
+    assert backup_record.probe(root, ("/db/[master].db", ".DS_Store"), ".cratekit") == (
+        True,
+        False,
+    )
+    _write(root / "Music" / "a.flac", b"a")
+    assert backup_record.probe(root, ("/db/[master].db",), ".cratekit") == (True, True)
+    _write(tmp_path / "empty" / ".DS_Store", b"")
+    assert backup_record.probe(tmp_path / "empty", (".DS_Store",), ".cratekit") == (
+        False,
+        False,
+    )
