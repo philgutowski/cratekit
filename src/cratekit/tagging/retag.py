@@ -394,10 +394,10 @@ def retag_one(
         answer = accepted_genre(item)
     if not answer:
         artist = tags.read_tag(candidate.path, "artist") or ""
-        # A NAME IS READ AS ``tag folder`` READS ONE, past the older naming's
-        # tail, and one whose title is that tail alone asks nothing (R-1724).
+        # A NAME IS READ PAST THE OLDER NAMING'S TAIL (R-1724), as ``tag
+        # folder`` reads the title of one; its artist is not read (R-1727).
         title = tags.read_tag(candidate.path, "title") or titles.name_title(candidate.path.stem)
-        hit = searcher(artist, title) if title else None
+        hit = searcher(artist, title)
         answer = (hit.genre or "").strip() if hit is not None and hit.genre else ""
     if not answer:
         return _ask(

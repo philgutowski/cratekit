@@ -739,9 +739,8 @@ def tag_one(
     A NAME IS READ PAST THE ``_PN`` TAIL the older naming wrote after its
     title (R-1724, :func:`cratekit.tagging.titles.name_title`), so the
     question and the text every row is matched against carry the name's own
-    title. A title tag is never read so. A name whose title is that tail alone
-    asks no catalogue by artist and title, ``no-hit`` with ``asked_read``
-    ``no-title``, and is still asked by its ISRC.
+    title. A title tag is never read so, and a name whose last part is that
+    tail alone is read as written, as before.
     """
     repair = art.repair_in_place(path)
     repaired = {"art_repair": repair.status, "art_repair_detail": repair.detail}
@@ -782,13 +781,7 @@ def tag_one(
     if named is not None:
         artist = named.artist
     try:
-        # A NAME THAT READS TO NO TITLE ASKS NO CATALOGUE by artist and title,
-        # and its empty decline still carries the file to the ISRC question.
-        hit = (
-            searcher(artist, title)
-            if title
-            else SearchHit(asked=titles.Question(artist, "", titles.Read.NO_TITLE))
-        )
+        hit = searcher(artist, title)
     except CratekitError as exc:
         if needs_genre and tier.copyright_labels and type(exc) is CratekitError:
             # A PLAIN REFUSAL ONLY: ``rebuilt`` keeps the job's own carried

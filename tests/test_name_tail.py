@@ -17,8 +17,10 @@ WHAT THIS SUITE GUARDS, the card's merge blockers first:
 * A TITLE TAG IS NEVER TOUCHED: a tag ending in "_PN" is asked as written.
 * A NAME WITH NO TAIL IS READ EXACTLY AS BEFORE, byte for byte, and every
   case of the matcher's corpus keeps its verdict.
-* A NAME WHOSE TITLE IS THE TAIL ALONE ASKS NO CATALOGUE, and keeps its
-  ISRC's question of the general catalogue.
+* A NAME WHOSE LAST PART IS THE TAIL ALONE IS READ AS WRITTEN, as before,
+  so it still reaches the general catalogue by its ISRC once the record
+  shops miss (round one of the review found the ISRC lost when such a name
+  asked nothing).
 
 Nothing here touches the network; the token is a fixture word.
 """
@@ -31,10 +33,17 @@ from urllib.parse import parse_qs, urlsplit
 import pytest
 
 from cratekit.core import review, tags
-from cratekit.tagging import retag, searchers, tag, titles
+from cratekit.tagging import published, retag, searchers, tag, titles
 from tests._containers import synth_container
 from tests.test_catalogue_searcher import _beatport_page
-from tests.test_discogs_question import beatport_queries, build, discogs_questions, genre_of, tagged
+from tests.test_discogs_question import (
+    TAXONOMY,
+    beatport_queries,
+    build,
+    discogs_questions,
+    genre_of,
+    tagged,
+)
 from tests.test_discogs_searcher import release, results
 from tests.test_genre_retag import CATCH_ALL, SPECIFIC, answering, place
 from tests.test_genre_retag import TAXONOMY as RETAG_TAXONOMY
@@ -129,6 +138,7 @@ def typed(seen: list[str], wanted: dict[tuple[str, str], str]):
         ("Attention_PN", "Attention"),
         ("Promise to Stay Here_PN", "Promise to Stay Here"),
         ("Sunrise Mood _PN", "Sunrise Mood"),
+        ("Sunrise Mood_PN  ", "Sunrise Mood"),
         ("8A - 124 - [MP3] Lane 8 - Aba_PN", "8A - 124 - [MP3] Lane 8 - Aba"),
         ("Sunrise Mood [Nightwave Remix]_PN", "Sunrise Mood [Nightwave Remix]"),
     ],
@@ -159,11 +169,25 @@ def test_a_name_with_no_tail_is_read_byte_for_byte(stem):
 
 
 @pytest.mark.parametrize(
-    "stem", ["_PN", " _PN", "8A - 124 - Sean Doron - _PN", "Sean Doron - _PN", "8A - 124 - _PN"]
+    ("stem", "asked"),
+    [
+        ("_PN", titles.Question("", "_PN", titles.Read.AS_WRITTEN)),
+        (" _PN", titles.Question("", " _PN", titles.Read.AS_WRITTEN)),
+        ("Sean Doron - _PN", titles.Question("", "Sean Doron - _PN", titles.Read.AS_WRITTEN)),
+        ("8A - 124 - Sean Doron - _PN", titles.Question("Sean Doron", "_PN", titles.Read.BY_NAME)),
+        ("8A - 124 - _PN", titles.Question("", "_PN", titles.Read.NAME_AMBIGUOUS)),
+        (
+            "8A - 124 - Artist - Title - _PN",
+            titles.Question("", "Artist - Title - _PN", titles.Read.NAME_AMBIGUOUS),
+        ),
+        ("8A - 124 - Artist - ?_PN", titles.Question("Artist", "?_PN", titles.Read.BY_NAME)),
+    ],
 )
-def test_a_name_whose_title_is_the_tail_alone_reads_no_title(stem):
-    assert titles.name_title(stem) == ""
-    assert titles.by_name(stem) == titles.Question("", "", titles.Read.NO_TITLE)
+def test_a_name_whose_last_part_is_the_tail_alone_is_read_as_written(stem, asked):
+    """No title is left past the tail, so the name is the same string and its
+    by-name read is the one main gave, written out here."""
+    assert titles.name_title(stem) is stem
+    assert titles.by_name(stem) == asked
 
 
 @pytest.mark.parametrize(
@@ -293,36 +317,38 @@ def test_a_name_with_no_tail_is_asked_as_before(tmp_path, silence):
     assert result.asked_read == titles.Read.BY_NAME.value
 
 
-def test_a_name_whose_title_is_the_tail_alone_asks_no_catalogue(tmp_path, silence):
+def test_a_name_whose_last_part_is_the_tail_alone_is_asked_as_before(tmp_path, silence):
     path = tagged(tmp_path, silence, "8A - 124 - Sean Doron - _PN.flac")
     seen: list[str] = []
-    result = tag.tag_one(path, searcher=build(answering_every_question(seen)))
-    assert seen == []
-    assert result.genre_written is None
-    assert result.skipped == tag.NO_HIT
+    result = tag.tag_one(path, searcher=build(typed(seen, {})))
+    (question,) = discogs_questions(seen)
+    assert (question["artist"], question["track"]) == ("Sean Doron", "_PN")
     assert (result.asked_artist, result.asked_title, result.asked_read) == (
-        "",
-        "",
-        titles.Read.NO_TITLE.value,
+        "Sean Doron",
+        "_PN",
+        titles.Read.BY_NAME.value,
     )
-    assert tags.read_genre_from_file(path) in (None, "")
+    assert result.skipped == tag.NO_HIT
 
 
-def test_a_name_that_reads_no_title_still_asks_the_general_catalogue_its_isrc(tmp_path, silence):
-    """Its ISRC is no part of its name, so the question by ISRC the file was
-    asked before is asked still; only the artist and title question goes."""
-    path = tagged(tmp_path, silence, "_PN.flac", isrc="GBAAA2600001")
-    asked: list[tuple[tag.SearchHit, str | None]] = []
+@pytest.mark.parametrize("name", ["_PN", "8A - 124 - Sean Doron - _PN", "8A - 124 - Artist - ?_PN"])
+def test_a_name_with_no_title_past_its_tail_still_takes_its_genre_by_isrc(tmp_path, silence, name):
+    """Through the shipped ISRC seam, which asks the general catalogue only
+    once the record shops have answered: a name read to nothing and asked
+    nothing never reached it (review round one, finding 1)."""
+    path = tagged(tmp_path, silence, f"{name}.flac", isrc="GBAAA2600001")
+    looked: list[str] = []
 
-    def published(hit: tag.SearchHit, isrc: str | None) -> tag.SearchHit:
-        asked.append((hit, isrc))
-        return tag.SearchHit(genre="House", source="isrc fixture", source_genre="House")
+    def lookup(isrc: str) -> published.Published:
+        looked.append(isrc)
+        return published.Published(published.SOURCE, "matched", genres=("House",))
 
-    result = tag.tag_one(path, searcher=build(answering_every_question([])), published=published)
-    ((hit, isrc),) = asked
-    assert isrc == "GBAAA2600001"
-    assert hit.genre is None and hit.answers == ()
-    assert result.genre_written == "House"
+    seam = published.second_opinion(TAXONOMY, lookup=lookup)
+    result = tag.tag_one(path, searcher=build(typed([], {})), published=seam)
+    assert looked == ["GBAAA2600001"]
+    assert result.source == published.SOURCE
+    assert result.genre_written
+    assert tags.read_genre_from_file(path) == result.genre_written
 
 
 # ---------------------------------------------------------------------------
@@ -366,10 +392,9 @@ def test_retag_asks_a_title_tag_ending_in_the_tail_as_written(folder, silence, s
     assert searcher.asked == [("", "Sunshine Hotel_PN")]
 
 
-def test_retag_asks_no_catalogue_about_a_name_whose_title_is_the_tail_alone(folder, silence, store):
-    path = place(folder, silence, "Sean Doron - _PN", CATCH_ALL)
-    searcher = answering({"": SPECIFIC})
+def test_retag_asks_a_name_whose_last_part_is_the_tail_alone_as_written(folder, silence, store):
+    place(folder, silence, "Sean Doron - _PN", CATCH_ALL)
+    searcher = answering({})
     retag.retag_folder(folder, searcher=searcher, declared=RETAG_TAXONOMY, store=store)
-    assert searcher.asked == []
-    assert tags.read_genre_from_file(path) == CATCH_ALL
+    assert searcher.asked == [("", "Sean Doron - _PN")]
 
