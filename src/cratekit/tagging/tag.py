@@ -735,6 +735,12 @@ def tag_one(
     every row against the name itself. A name that does not read to one
     artist and title is asked with no artist, as before, and its record says
     so in ``asked_read``.
+
+    A NAME IS READ PAST THE ``_PN`` TAIL the older naming wrote after its
+    title (R-1724, :func:`cratekit.tagging.titles.name_title`), so the
+    question and the text every row is matched against carry the name's own
+    title. A title tag is never read so, and a name whose last part is that
+    tail alone is read as written, as before.
     """
     repair = art.repair_in_place(path)
     repaired = {"art_repair": repair.status, "art_repair_detail": repair.detail}
@@ -768,7 +774,9 @@ def tag_one(
     needs_genre = not existing and by_label is None
     artist = tags.read_tag(path, "artist") or ""
     title_tag = tags.read_tag(path, "title")
-    title = title_tag or path.stem
+    # A NAME IS READ PAST THE OLDER NAMING'S TAIL, and a title tag never is
+    # (R-1724): the searcher asks and matches the one text it is handed.
+    title = title_tag or titles.name_title(path.stem)
     named = titles.by_name(path.stem) if not artist and not title_tag else None
     if named is not None:
         artist = named.artist

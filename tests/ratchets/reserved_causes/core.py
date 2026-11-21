@@ -219,6 +219,11 @@ KEBAB_LITERALS = {
         'routing-ledger-unusable',
         'routing-outstanding',
         'run-not-continuable',  # 2026-10-31, U168
+        'schedule-agent-unusable',  # 2026-11-21, U295
+        'schedule-agent-unwritten',  # 2026-11-21, U295
+        'schedule-crate-unresolved',  # 2026-11-21, U295
+        'schedule-launchctl-failed',  # 2026-11-21, U295
+        'schedule-platform-unsupported',  # 2026-11-21, U295
         'session-committed-unverified',
         'session-lock-held',
         'set-playlist-unnamed',

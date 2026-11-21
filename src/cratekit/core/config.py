@@ -894,6 +894,19 @@ STATE_FILES: tuple[StateFile, ...] = (
         ),
     ),
     StateFile(
+        key="schedule_log",
+        snapshot=SnapshotRole.NEVER_RESTORED,
+        root=StateRoot.INSTALLATION,
+        medium=Medium.FILE,
+        relative="schedule/sync-night.log",
+        why=(
+            "What the scheduled night pass printed (U295): launchd appends the "
+            "agent's output and errors here, the one place a night that never "
+            "reached its own record says why. It describes this installation's "
+            "schedule, not a library, and losing it loses only the output."
+        ),
+    ),
+    StateFile(
         key="staging_lock",
         snapshot=SnapshotRole.NEVER_RESTORED,
         root=StateRoot.INSTALLATION,
@@ -903,7 +916,8 @@ STATE_FILES: tuple[StateFile, ...] = (
             "One pass stages at a time (U293): crate sync land, crate label "
             "sync --go and crate sync night hold it for the whole of a run, so "
             "the night pass and a pass by hand never download into the one "
-            "staging folder together. The kernel releases it when its holder "
+            "staging folder together; crate schedule install and remove hold "
+            "it around their bootout (U295), so they never end a night pass. The kernel releases it when its holder "
             "dies; the holder written inside is for the refusal's words."
         ),
     ),

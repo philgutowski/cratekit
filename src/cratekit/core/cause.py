@@ -775,6 +775,17 @@ REASONS: Mapping[str, ExitCode] = MappingProxyType(
         # prevent, one level in from where it was last prevented.
         "path-read-only": ExitCode.PRECONDITION,
         "path-locked": ExitCode.PRECONDITION,
+        # U295. ``crate schedule``, the night pass on launchd. The platform has
+        # no launchd; the crate the agent would run is not an executable file;
+        # launchctl answered a failure, in its own words; the agent's plist
+        # could not be written or removed; the installed agent cannot be read,
+        # or runs something other than the night. The installation band, since each
+        # is a fact about this machine a person changes, never a defect.
+        "schedule-platform-unsupported": ExitCode.PRECONDITION,
+        "schedule-crate-unresolved": ExitCode.PRECONDITION,
+        "schedule-launchctl-failed": ExitCode.PRECONDITION,
+        "schedule-agent-unwritten": ExitCode.PRECONDITION,
+        "schedule-agent-unusable": ExitCode.PRECONDITION,
         "no-evidence": ExitCode.INTERNAL,
         # R-391. A failed job whose permanent item failures do not share one
         # reason. Beside ``no-evidence`` because it is the same kind of thing, a

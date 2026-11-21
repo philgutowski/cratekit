@@ -54234,3 +54234,649 @@ unit's own table, `docs/mutation/u317.md`, measures its 25 rows against the
 whole suite and names its own zeros.
 
 **Closes when:** a test pins each. Ledger only.
+
+---
+
+## R-1764. The Auto Analysis path's wait can reach its count on rows outside INBOX / Analyze and end before the batch is analysed
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** Auto Analysis analyses every row rekordbox finds not
+analysed, not only the batch, and the skill's wait counts every
+`ANLZ0000.DAT` newer than the marker. Driven on a simulated store: seven
+files for other rows and none for the batch print `done: 7 of 7`. The skill
+says the count can pass `expected` and leans on step 7, whose check then
+exits 12 and stops the visit, so nothing is cleared wrongly. A related
+shape: a row with `Analysed` 1 and no analysis path judges as waiting and is
+counted in `data.summary.not_analysed`, which Auto Analysis may leave alone,
+so a wait on it stalls one short. One candidate producer driven, a native
+landing, which writes `Analysed` 0 and does not produce it.
+
+**Measured cost.** A visit that stops at waiting and is run again, not a
+false report. Reachability on the live library unmeasured.
+
+**Closes when:** `crate analyze check` can say before the launch how many
+rows of the whole collection wait (its `unanalysed` scope is read today only
+when INBOX / Analyze is empty), and the skill waits for that count. Ledger
+only: no data is lost and no report is false.
+
+---
+
+## R-1765. The Auto Analysis launch dialog's field list and whether an Auto Analysis run sets cues are unmeasured, so the visit's short path cancels until a visit records them
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** Sitting 101 recorded the launch dialog only as "showing
+the analysis fields (KEY unticked, as set)". The Analysis preference it read
+back holds nine fields and no CUE. The `rekordbox-visit` skill reads every
+field of its table from the dialog and holds a table field the dialog does
+not show as unread and not equal, CUE included, so if the dialog mirrors the
+preference every visit with Auto Analysis on pays a Cancel and thirty
+seconds before the Analyze Tracks path. That is the conservative call: an
+Auto Analysis run that set cue points would be a run on other fields, and
+nothing has measured that it does not. Also unmeasured: what Cancel does
+with Auto Analysis on, and how long a launch in front takes to raise the
+dialog (the skill waits thirty seconds).
+
+**Measured cost.** None while Auto Analysis stays off, which it is. Once on,
+the short path never runs until this is measured. Not driven: no rekordbox
+here.
+
+**Closes when:** an attended visit with Auto Analysis on records the
+dialog's exact fields, whether Cancel stops the run, and the cue rows of the
+rows an Auto Analysis run analysed, read on a disposable copy; then a card
+lets an unshown CUE pass if the run sets none. Ledger only: it closes at an
+attended sitting, which the owed attended card carries.
+
+---
+
+## R-1766. The rekordbox visit skill's Auto Analysis rules are pinned as sentences, so a rewording that keeps a rule passes only if it keeps the words
+
+**Found:** at the review of #887, U319, 2026-11-21.
+
+**The mechanism.** `tests/test_rekordbox_visit_skill.py` holds each new
+rule of the Auto Analysis path by its sentence, the order of its parts and
+the values it reads from the owning modules. Round one's thirteen surviving
+text mutations are now each pinned, but the forbidden word list ("tick Auto
+Analysis", "turn Auto Analysis on", "untick") forbids a phrasing, not the
+act, so a step telling a session to change the preference in other words
+passes. The skill is procedure text no test can drive.
+
+**Measured cost.** None to a person today; a later edit could reword a rule
+away with the suite green.
+
+**Closes when:** a reader of the skill's steps as data replaces the sentence
+pins, or a card decides sentence pins are the guard. Ledger only.
+
+---
+
+## R-1767. crate schedule install and remove hold the staging lock of the shell's installation, not the one the agent carries
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `install` and `remove` in `src/cratekit/cli/schedule.py` hold `staging_lock.held` around their bootout so a night pass in progress is never ended by launchd. The lock is resolved under the shell's `installation_state_dir()`. A shell pointed at another `CRATEKIT_STATE_DIR`, or one that lost the XDG variable the install was found through, holds another lock, and boots the agent out while the night it runs holds its own. The lock is reentrant per process through module state, so holding a second one under the agent's carried state is not a one line change.
+
+**Measured cost.** Driven at round two with launchd stood in: four of four cases exit 0 and call `launchctl bootout` while a process held the agent's lock as `crate sync night`. What launchd then does to the running pass, and what a pass ended mid download leaves in the staging folder, was not driven.
+
+**Closes when:** install and remove also hold, or refuse beside, the lock under the state directory the installed agent carries.
+
+---
+
+## R-1768. crate schedule install and remove refuse beside any pass, a first install included, in words about staging
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** The schedule verbs take the staging lock with no `what=`, so beside a `crate label sync --go` or a pass by hand the refusal reads "another pass is staging downloads (...), so crate schedule install stages nothing until it has finished", and a first install with nothing to boot out waits as well. The other way round, a night refused beside the schedule verb is told another pass is staging downloads.
+
+**Measured cost.** Driven at round two: exit 20, launchctl never asked, the refusal's words untrue for the schedule verb. The block ends with the pass and is retryable.
+
+**Closes when:** the schedule verbs take the lock only when there is an agent to boot out, and both refusals name a schedule change rather than a download.
+
+---
+
+## R-1769. crate schedule show cannot tell a carried directory changed by hand, and settles the agent's night against the shell's configuration
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `read_agent` fails over a carried directory that is missing or relative and a log outside the carried state, but a directory changed by hand to another absolute one, a directory put in front of the agent's PATH, or the crate pointed at another executable named crate reads clean. `_night_line` reads the night's record from the agent's carried state and then settles it through `sync_night.settle` against the shell's configuration and run store.
+
+**Measured cost.** Driven at round two: three hand edits of that shape read clean at exit 0. Install was driven under five environment shapes and none produces such a plist; a hand edit is the only producer found. The settle against the shell's configuration was read, not driven.
+
+**Closes when:** show compares the carried environment against what this install would write, and settles the record against the configuration the agent carries.
+
+---
+
+## R-1770. Several of the schedule's guards kill no test
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** Round two's 48 rows over the fix's guards in `src/cratekit/cli/schedule.py` found 15 with zero deaths. Mended in fix round two: words after `sync night` on the reading side, a relative log, the minute range and the type check of the calendar. Still killing nothing on the round's own reading: the environment shape check in `read_agent`; `_boot_out` returning `state == LOADED` alone or `out.ok` alone; the write failure message saying the earlier schedule is off whether or not one was booted out; `replaced = had_plist` alone; the launchctl timeout's value (the hang test sets its own); and `settle` dropped from `show`'s night line.
+
+**Measured cost.** None today: each is a guard whose removal no test notices. The unit's own table, `docs/mutation/u295.md`, measures the 25 rows it ranked above these.
+
+**Closes when:** each has a test that dies when it is removed, or the record says why it need not.
+
+---
+
+## R-1771. A bootout that answers a failure after an unreadable first print is counted as nothing booted out
+
+**Found:** at the review of #852, U295, 2026-11-21.
+
+**The mechanism.** `_boot_out` in `src/cratekit/cli/schedule.py` counts an agent booted out only when launchd read it loaded first or the bootout answered success. When the first `launchctl print` cannot be read, the bootout answers a failure and launchd then reads the agent absent, `remove` answers no op and a failed install's refusal omits that the earlier schedule is gone.
+
+**Measured cost.** Eight of 1,088 stood in launchd answer combinations at round two, one shape. Not driven against a real launchctl, and whether launchd produces that sequence is unknown.
+
+**Closes when:** the ambiguous case is said as such in the report rather than counted either way.
+
+---
+
+## R-1772. The schedule assumes launchctl's answers, and none has been read on a Mac
+
+**Found:** at the record of #852, U295, 2026-11-21.
+
+**The mechanism.** `src/cratekit/cli/schedule.py` reads `launchctl print gui/<uid>/cratekit.sync-night` answering 113 as not loaded and anything else but 0 as unknown, bootstraps straight after a bootout, and expects `gui/<uid>` to exist for the logged in person. The suite stands launchd in whole and the container has no launchctl.
+
+**Measured cost.** Not driven anywhere. If print answers another code for an absent service, every show reads launchd as unknown and every install refuses at its first bootout; the refusal names launchctl's words, so nothing is lost.
+
+**Closes when:** the attended install (A183, #879) records each answer launchctl gave, and the code reads them as they are.
+
+---
+
+## R-1773. The second fix round of U295 was not reviewed
+
+**Found:** at the record of #852, U295, 2026-11-21.
+
+**The mechanism.** Both fix rounds were spent. Round two reviewed `767ffa84..6cca323c`; the commit after it, `69765ae4`, was not reviewed. What to read: the agent's PATH built from `binaries.find` over the installable binaries, `read_agent`'s new checks (carried directories present and absolute, the log inside the carried state, the name of the crate), `show` refusing root, the summary's environment filtered to names this build carries, and the structural test's launcher names.
+
+**Measured cost.** None measured; the unit's own tests and the mutation table cover the commit.
+
+**Closes when:** a review of `6cca323c..69765ae4` reports nothing that holds.
+
+---
+
+## R-1774. The scheduled night's log grows without bound
+
+**Found:** at the plan of #852, U295, 2026-11-21.
+
+**The mechanism.** launchd appends the agent's output and errors to `schedule/sync-night.log` under the installation's state (`schedule_log`) every night, and nothing rotates or trims it.
+
+**Measured cost.** Not measured. A night's output is a few lines when the pass refuses and a pass's whole report when it runs, so the file grows by kilobytes a night.
+
+**Closes when:** the log is trimmed or rotated, or the record measures that it need not be.
+
+---
+
+## R-1775. A replace that fails at the load leaves no schedule rather than the earlier one
+
+**Found:** at the build of #852, U295, 2026-11-21.
+
+**The mechanism.** `crate schedule install` over an installed agent boots the earlier one out, writes the new plist and bootstraps it. When the bootstrap fails, the new plist is removed and nothing is installed; the earlier schedule is not restored. The refusal says the earlier schedule was removed too. Decided at the build as the conservative reading of the brief's "leaves no half installed agent".
+
+**Measured cost.** Driven with launchd stood in: no agent afterwards, and the refusal says so. The person installs again.
+
+**Closes when:** Phillip rules that a failed replace should restore the earlier agent, or the ledger keeps this as decided.
+
+---
+
+## R-1776. The naming suffixes DJ_tools once wrote beside _PN were not read, since DJ_tools is not in a cloud container
+
+**Found:** at the build of #883, R-1724, 2026-11-21.
+
+**The mechanism.** The brief asks that any other suffix the naming verb or
+DJ_tools once wrote be checked against DJ_tools' naming docs, read only,
+and handled as `_PN` is only if it is the same kind of marker. DJ_tools is
+not cloned into a cloud container, so its docs could not be read. Cratekit's
+own code, docs and ledger name only `_PN` (R-168's and R-1192's samples,
+sitting 101's count), and Cratekit's naming verb writes no suffix of its
+own (`_mastered.flac` and `_set` are the mastering tool's output names, not
+a library name's tail). So `titles.name_title` reads `_PN` only, exactly
+and case sensitively.
+
+**Measured cost.** Not driven. A library name ending in another such marker
+is asked and matched with it, as on main.
+
+**Closes when:** a local session greps DJ_tools' naming docs and code, read
+only, for every suffix it wrote after a title, and either finds none other
+or a card adds each to `titles.NAME_TAIL`'s reading. Ledger only.
+
+---
+
+## R-1777. A name whose last part is _PN alone is asked as written, the bare tail as its title, where the brief said it asks nothing
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** The brief's fifth scenario says a name whose title is
+only `_PN` reads nothing and asks nothing. Round one of the review drove
+that build through `tag folder` with the shipped ISRC seam: three tagless
+files of that shape with an ISRC took their genre by ISRC on main and none
+on the branch, because `published.second_opinion` asks the general catalogue
+only once Beatport has answered, and a file asked nothing has no answer.
+So `titles.name_title` returns such a name unchanged and it is asked
+exactly as on main, `8A - 124 - Sean Doron - _PN` as `Sean Doron` / `_PN`.
+The choice is put to Phillip on the card (#883) as a Question for Phillip.
+
+**Measured cost.** One question that will miss per such file, main's
+question byte for byte. No such name is known in the library.
+
+**Closes when:** Phillip answers the question on #883: as built, ledger
+only; asking nothing with the ISRC lookup freed from Beatport's answer, its
+own card.
+
+---
+
+## R-1778. The tail is read off when the last dash part keeps a title, though the title past the head and marker may be the tail alone
+
+**Found:** at the review of #883, R-1724, round two, 2026-11-21.
+
+**The mechanism.** `titles.name_title` keeps a name unchanged only when its
+last dash part is the tail alone. In `8A - 124 - [MP3] _PN`, `8A - 124 -
+[MP3]_PN`, `8A - 124_PN` and `8A_PN` the last part keeps a letter or digit
+once the tail is off (`[MP3]`, `124`, `8A`), so the name is read past the
+tail, and the question is a head alone, `8A - 124 - [MP3]` (`head-alone`),
+where main asked `_PN`. The guard reads the last dash part; the question
+reads past the head and the marker.
+
+**Measured cost.** Driven at round two through `tag_one`, the `tag folder`
+verb and `tag retag`: every such file took the same genre by ISRC on both
+sides, and only the record's `asked` text differs. A main match was lost
+only against a contrived row titled `PN`. No producer writes such a name in
+this container.
+
+**Closes when:** the tail alone test reads the title past the head and the
+marker, or the shape is measured absent from the library. Ledger only.
+
+---
+
+## R-1779. A file named with a title that truly ends in _PN loses it, and a doubled or numbered tail is read only once or not at all
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** `titles.name_title` drops a trailing `_PN` from any name
+with no title tag, as the brief asks. A title that is truly spelled with it,
+`8A - 124 - Artist - Vitamin_PN`, is asked and matched as `Vitamin`, so a
+release titled `Vitamin PN` or `Vitamin_PN` is no longer read as the file's
+own. `Track_PN_PN` is read as `Track_PN`, and `Track_PN (1)`, a copy's
+numbered name, keeps its tail.
+
+**Measured cost.** Driven at round one: the `Vitamin PN` rows matched on
+main and miss on the branch, 4 runs, through Discogs and Beatport. No real
+title of this kind is known; the doubled and numbered names are main's
+reading, unchanged.
+
+**Closes when:** the library is counted for names whose tail is doubled or
+followed by a copy number, and for titles a catalogue spells with `PN`.
+Ledger only.
+
+---
+
+## R-1780. tag suggest and tag backlog ask by the library row's title, which this unit does not read past a _PN tail
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** `tag folder` and `tag retag` read a file with no title
+tag by its name through `titles.name_title`. `tag suggest --catalogue` and
+`tag backlog --catalogue` ask by the rekordbox row's Title column
+(`suggest.catalogue_lookup`), so a row whose Title carries `_PN` is asked
+with it: handed `06A - 126 - Sean Doron - Sunshine Hotel_PN`, the shipped
+searcher asks Discogs `Sunshine Hotel_PN`. Whether rekordbox writes a file's
+name into Title for a file with no title tag was not driven.
+
+**Measured cost.** Driven to the question only, at round one; the library's
+Title column was not read.
+
+**Closes when:** an attended sitting counts library rows whose Title ends in
+`_PN`; none closes it, any earns a card reading the column through
+`name_title`. Ledger only.
+
+---
+
+## R-1781. The 5,637 names ending in _PN are not the files this reading changes, which are only those with no title tag
+
+**Found:** at the review of #883, R-1724, 2026-11-21.
+
+**The mechanism.** Sitting 101 counted 5,637 of 10,997 library names ending
+in `_PN`. The tail is read off a name only for a file with no title tag, so
+the files whose question changes are the tagless ones among them, and the
+three misses the brief cites came from copies whose tags were cleared. How
+many library files carry the tail and no title tag, and whether library
+title tags carry the tail themselves, was not counted.
+
+**Measured cost.** Not measured; the unit's reach on the live library is
+unknown.
+
+**Closes when:** the attended sweep owed at landing counts both. Ledger
+only.
+
+---
+
+## R-1782. The tail alone guard's choice of the stem over the stripped text, and the ISRC test's hold on the reading, are pinned loosely
+
+**Found:** at the review of #883, R-1724, round two, 2026-11-21.
+
+**The mechanism.** Two of round two's mutations on a scratch copy. The tail
+alone guard in `titles.name_title` returning the stripped text rather than
+the stem survives, 0 kills of 1,285 collected: a file named `_PN  .flac`
+would be asked `_PN` rather than `_PN  `, and no test lists a tail alone
+name with trailing whitespace. Round one's reading restored alone, a tail
+alone name reading to the empty string with `tag_one` still asking, is
+killed by 9 tests but not by
+`test_a_name_with_no_title_past_its_tail_still_takes_its_genre_by_isrc`,
+since an empty title is still asked and the ISRC lookup still runs; that
+test fails 3 of 3 against round one's whole source, the defect it was
+written for.
+
+**Measured cost.** None driven: both inputs ask a question that misses and
+reach the ISRC lookup either way.
+
+**Closes when:** a test names a tail alone stem with trailing whitespace,
+and the ISRC test asserts what Discogs was asked. Ledger only.
+
+---
+
+## R-1783. CLAUDE.md's "never on a real track" reads two ways against an analysis setting probe run on a landed batch
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** The clause U321 adds to CLAUDE.md's rekordbox constraint
+lets a session change an analysis setting a probe names and put it back,
+"never on a real track". A probe owed inside the visit runs in place of its
+first analysis, on the landed batch, which is real tracks; sitting 101's Auto
+Analysis probe analysed three of them. Analysing real tracks is already
+allowed by the constraint's "to let it analyse", so the clause is most
+naturally read as barring the throwaway's changes on a real track and not the
+setting change, but a reader can take it the other way.
+
+**Measured cost.** Not driven. A session could refuse a probe a card owes, or
+run one believing the clause allows more than it does.
+
+**Closes when:** Phillip says which reading holds, beside the present for
+question on #890, and a docs unit words the clause to match, or the record
+says the wording stands. Ledger only.
+
+---
+
+## R-1784. The volume copies folder may sit inside the tree the backup mirrors, where a restore from backup also refuses a target
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** U321 moves a sitting's library and database copies out of
+the checkout, which is mirrored to Google Drive, into a folder one level down
+in the library volume's scratch folder. Driven at the review in a sandbox with
+that folder under the configured library root: the backup's mirror is one sync
+of the whole root, excluding only its clutter patterns and the live
+database's own files, so copies left there while a settlement's BEFORE and
+AFTER backups run are sent to the remote, which is a Drive remote too. And
+`crate restore run --from-backup --target` with a target inside the root
+refuses, saying the target sits inside the live library, so the product's own
+fetch cannot fill that folder.
+
+**Measured cost.** Not driven on the Mac: whether the volume's scratch folder
+sits inside the configured library root there is unmeasured, and sitting 102
+fetched its copies by a means its record does not name. If it does, the copies
+reach a mirrored remote all the same, and a restore into the folder is
+refused.
+
+**Closes when:** an attended sitting reads whether the volume's scratch folder
+is inside the library root, and either records that it is not, or a docs unit
+names a place outside it (or a mirror exclude for it) in the skill and its
+worker rules. Ledger only.
+
+---
+
+## R-1785. Whether a sitting Phillip started and then left is one he is present for is unanswered
+
+**Found:** at the build of #890, U321, 2026-11-21.
+
+**The mechanism.** CLAUDE.md lets "a session Phillip is present for" open,
+drive and quit rekordbox, and the `rekordbox-visit` skill stops a session that
+is not one. Sittings 101 and 102 were started by Phillip and then run while he
+was away, under his standing instruction of 2026-11-21, and each opened
+rekordbox. Read strictly, neither was a session he was present for. U321's
+brief kept the wording out of scope and asked the question on #890 under
+Question for Phillip, with three options: a sitting he started counts for its
+whole length (recommended), only while he is at the desk, or he confirms at
+each opening. The wording is left as written meanwhile.
+
+**Measured cost.** Not driven. The attended orchestrator's settlements and
+visits run while Phillip is away, which the strict reading forbids, so a later
+session reading CLAUDE.md alone could stop a sitting the skill expects to
+finish.
+
+**Closes when:** Phillip answers on #890 and a docs unit writes his answer into
+CLAUDE.md's rekordbox constraint and the `rekordbox-visit` skill's stop, or the
+record says why the wording stands. Ledger only.
+
+---
+
+## R-1786. A replay resumed from a sidecar that was measured while a tracked file was changed reuses its rows once the file is put back
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** `scripts/mutate.py` lets a replay pass reuse a row from a
+prior sidecar only when the sidecar's `head` is this commit and no tracked
+file differs from the commit now (`replay_resume_refusal`). The sidecar does
+not record whether a tracked file differed while it was being measured. So a
+replay measured with a test edited and uncommitted, then resumed after the
+edit was reverted, reuses rows that were measured against the edited suite.
+The same holds for a light or a full pass, which resume across commits as
+they always did, and for `--allow-dirty`.
+
+**Measured cost.** Not driven. The review drove the other half, a test
+deleted and not committed after the measurement, where `killset.py check`
+passed a lost kill, and that half is closed. This half takes a replay run on
+a tree the procedure says is committed, which it is not. Maintainer facing.
+
+**Closes when:** the replay's sidecar records that the tree was clean when
+each row was measured and a resume reads it, or the driver refuses a replay
+on a tree with a tracked change. Ledger only.
+
+---
+
+## R-1787. Guards in killset.py, behaviour_compare.py and the stage that kill no test when reverted alone, as the two reviews of U297 left them
+
+**Found:** at the review of #854, U297, rounds one and two, 2026-11-21.
+
+**The mechanism.** The reviewer reverted 56 guards at round one and 60 fix
+round guards at round two, one at a time in a copy of the tree, and ran each
+one's test file. 22 and 12 killed nothing. The two fix rounds gave a test to
+the ones with a named cost. These stayed at zero, each a line the suite does
+not notice when it is reverted alone:
+
+- `scripts/killset.py`: the `isinstance(..., bool)` half of `killed`; the
+  suffix filter and the skipped directories in `Tree.holders`; the reading of
+  a before table's `head` only when it is a string; the `^{commit}` peel that
+  tells a commit from another object in `Commit._read`.
+- `scripts/mutate.py`: that the line `main` prints when a resume reuses
+  nothing is printed for a replay alone.
+- `scripts/behaviour_compare.py`: that only a table's declaration is put in
+  one order (an index's or a trigger's with two parenthesised items is
+  returned as written, and no test hands it one); the `UnicodeDecodeError`
+  arm in `dump_databases`; the longest word first order in `same_but_for`,
+  which matters only when one word of a capture is the prefix of another.
+- `tests/behaviour/`: the check against the system's temporary directory
+  inside `refuse_a_root_outside`, which the check against the scenario's own
+  directory covers; the stage fixture's refusal at set up, which the refusal
+  before each command covers; the reseeding of the shared `random` generator
+  and its restoring.
+
+**Measured cost.** None to a person using the shipped verbs: all three are
+maintainer tools, and each guard was seen to work when driven by hand. The
+cost is that a later edit can remove one of them with the suite green. The
+card's own mutation table, `docs/mutation/u297.md`, measures 25 other rows.
+
+**Closes when:** each has a test that fails with it reverted, or is shown
+equivalent and removed. Ledger only.
+
+---
+
+## R-1788. The test that captures every behaviour scenario twice takes about sixteen seconds, and grows with every scenario an area card adds
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.**
+`tests/test_behaviour_compare.py::test_two_captures_of_one_commit_are_equal`
+runs `scripts/behaviour_compare.py capture` twice as two real processes over
+every file under `tests/behaviour/` and compares the two. It is the one test
+that goes red when a scenario prints or writes something the stage did not
+pin. One capture of the six shipped scenarios is about eight seconds, most of
+it the scenario run's own start up and the 152 help screens.
+
+**Measured cost.** 15.5 and 16.5 seconds in two runs on the four core cloud
+container, of a suite that sums to about 1,870 seconds of test time, so under
+one percent, and real work: two child runs of pytest. It is over METHOD's ten
+second line for a slow test, and each area card under U290 adds its verbs'
+scenarios to it, while U312 has to make the suite 30 percent faster.
+
+**Closes when:** U312 decides it: the equality is held over a fixed sample
+of scenarios in the suite and over all of them by each card's own capture,
+or the two captures share one scenario run. Ledger only.
+
+---
+
+## R-1789. A behaviour capture cannot hold still a file's own times read back in the command that wrote it, or its change time, and no shipped scenario records one
+
+**Found:** at the build of #854, U297, 2026-11-21.
+
+**The mechanism.** The stage pins what Python reads: the clock, the two
+duration clocks, the id sources and the rekordbox binding's row stamps. It
+sets every file's access and modification time to the pinned instant between
+commands (`Stage.settle`). It cannot set a change time at all, and a file
+written and then read back for its times inside one command carries the real
+time. A process id, a process start and a file's inode are read past by
+`compare` where each capture holds its own. Product code that persists a
+file's `st_mtime_ns` or `st_ctime_ns` taken in the same command (the library
+index's cache key in `acquire/match.py`, the ISRC cache in
+`acquire/isrc_cache.py`, the adoption fingerprint in `adopt/apply.py`) would
+make two captures of one commit differ.
+
+**Measured cost.** None today: the six shipped scenarios compare with no
+difference, run after run. The first area card whose scenario reaches such a
+write will see the equality test fail with the differing value shown, which
+is loud, and will have to pair that value as a capture's own word or pin it.
+
+**Closes when:** a scenario records such a value and the stage or `compare`
+is taught it. Ledger only.
+
+---
+
+## R-1790. The suite's disposable rekordbox database is built with its foreign keys in an order that changes from one process to the next
+
+**Found:** at the review of #854, U297, fix round one, 2026-11-21.
+
+**The mechanism.** `tests/test_rb_writer_db.py::_relaxed_schema` copies the
+binding's tables into a fresh `MetaData` with `Table.to_metadata`, which
+walks each table's constraints as a set of objects. The copies take their
+creation order from that walk, the order follows the objects' addresses, and
+`create_all` writes the FOREIGN KEY clauses of each CREATE TABLE in it. A
+fixed hash seed does not hold it still.
+
+**Measured cost.** Found by the schema comparison the review asked for, on
+its first run: two captures of one commit differed in five table
+declarations. The review then built the schema in ten processes and read ten
+distinct digests. `scripts/behaviour_compare.py` reads a table's declaration
+with its table constraints in one order, which the review checked changes
+nothing but that order over the 40 declarations of a real capture. No test
+of the suite reads the declaration's text, so nothing else pays.
+
+**Closes when:** the builder orders the copied constraints, at which point
+`canonical_declaration` could go; the file is on U300's list. Ledger only.
+
+---
+
+## R-1791. killset.py list counts a row that broke collection and recorded a death as a recorded kill, 24 of 8,541, while check ranks it under one
+
+**Found:** at the review of #854, U297, round one, 2026-11-21.
+
+**The mechanism.** The reader calls a row killed when its table recorded at
+least one death, which is the rule the survey of U290 used and what
+reproduces its 8,541 and its 7,093 live rows. 24 of those rows have the
+status `collect-error`: the mutation broke an import, the collected count
+moved, and the driver says of such a row that it is neither a zero nor a
+clean kill. `rows` writes the 20 of them that are live into a replay, and
+`check` ranks one under a kill: it holds it to no less after than before,
+and reports a clean kill that became one.
+
+**Measured cost.** An area card's replay holds up to 20 rows across the tree
+whose before measurement is a collection error, each held only to staying
+one. Counted, never driven on a card.
+
+**Closes when:** U315's audit says which the definition of done means, or
+the 20 are measured and those that break collection for a reason of the
+row's own making are dropped from the set. Ledger only.
+
+---
+
+## R-1792. A new row can still pass as a replay by naming a recorded source and writing a moved reason
+
+**Found:** at the review of #854, U297, round two, 2026-11-21.
+
+**The mechanism.** A replay pass has no row cap because every row names a
+recorded kill. `scripts/mutate.py` reads each source before anything runs:
+the table exists under `docs/mutation/`, holds that row, the row recorded a
+death, and a row whose file or text is not its source's must carry a `moved`
+reason. A row anchored again by hand is exactly that, so the reason cannot be
+refused, and nothing ties the new text to the old guard but the author's
+word, which is committed in the table.
+
+**Measured cost.** The review drove 26 new rows under real sources with no
+reason, which is now refused. With a reason on each they would be measured.
+Maintainer facing, and it takes an author writing 26 false reasons into a
+committed table.
+
+**Closes when:** it is accepted as the limit of a text based check, or
+`killset.py check` is made the only reader of a replay table and holds a row
+at new text to a test in common whoever wrote its reason. Ledger only.
+
+---
+
+## R-1793. killset.py list piped into head ends in a BrokenPipeError traceback after the lines asked for
+
+**Found:** at the last battery of #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `scripts/killset.py list` prints its counts and then one
+line per source file, 326 of them on the merged tree, with plain `print`.
+When the reader closes the pipe early, `list | head -12`, the next `print`
+raises `BrokenPipeError`, nothing in `main` catches it, and Python prints a
+traceback on standard error and exits 1. `list --rows`, which prints every
+row, does the same. The lines that were asked for are printed whole and
+correct before it.
+
+**Measured cost.** Driven once: `scripts/killset.py list | head -12` printed
+its count lines and the head of the per file table, then the traceback. Maintainer facing and cosmetic: no count is wrong and no file is
+written. A reader who sees the traceback may take the counts for
+unreliable, and a shell running under `pipefail` reads the pipeline as
+failed. `rows` and `check` print a handful of lines and were not seen to do
+it.
+
+**Closes when:** `main` in `scripts/killset.py` ends quietly when its output
+is closed, as a filter does, with a test that closes the pipe after one
+line. Ledger only.
+
+---
+
+## R-1794. behaviour_compare.py capture of a revision that lacks a module the tree's test fixtures import fails every scenario
+
+**Found:** at the last merge of main into #854, U297, 2026-11-21, after both review rounds were spent.
+
+**The mechanism.** `capture --rev REV` runs the working tree's scenarios,
+fixtures and `tests/conftest.py` against a copy of that revision's `src/`.
+U295 landed while this unit was built and added an autouse fixture to
+`tests/conftest.py` that imports `cratekit.cli.schedule`. A revision from
+before U295 has no such module, so every scenario errors as its fixtures are
+set up. The same holds for any revision that lacks a product module, or a
+name in one, that the tree's conftest or a fixture a scenario imports reads.
+
+**Measured cost.** Driven once on the final tree: `capture --rev 0f0f1032`,
+the commit before U295's merge, ended `6 errors`, exit 1, with no scenario
+recorded and no manifest, so `compare` refuses the directory. It is loud and
+nothing is compared wrongly. A card that compares its branch with
+`origin/main` after merging it is not touched, since that base holds
+everything the tree's fixtures import, unless the card's own branch adds a
+module and makes the suite's fixtures import it: then its base cannot be
+captured with the branch's tests, and the comparison the card owes has to be
+taken before that fixture is added.
+
+**Closes when:** the script's docstring says a revision must hold everything
+the tree's fixtures import and what to do when it does not, or `capture`
+names the missing module in its own words instead of six errors. Ledger
+only.

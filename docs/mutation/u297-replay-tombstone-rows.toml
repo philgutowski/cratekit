@@ -1,0 +1,22 @@
+name = "u297-replay-tombstone"
+pass_kind = "replay"
+
+[[rows]]
+id = "r431-a.A1_a_plain_row_gains_a_companion"
+source = { table = "r431-a.json", id = "A1_a_plain_row_gains_a_companion" }
+description = "uncredited_title answers the stripped title even when nothing was stripped, so a plain deletion writes a companion"
+file = "src/cratekit/core/tombstone.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_deletion.py", "tests/test_label_workers.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = '    return stripped if dropped else ""'
+new = '    return stripped'
+
+[[rows]]
+id = "r431-a.A2_one_kind_for_both"
+source = { table = "r431-a.json", id = "A2_one_kind_for_both" }
+description = "The companion is recorded under the tombstone's own kind, where every verbatim lookup lands on it"
+file = "src/cratekit/core/tombstone.py"
+surface = "user"
+tests = ["tests/modules/test_labels.py", "tests/test_deletion.py", "tests/test_label_workers.py", "tests/test_match_states.py", "tests/test_tombstones.py", "tests/test_uncredited_tombstone.py"]
+old = 'KIND_VERSION_UNCREDITED = "version-uncredited"'
+new = 'KIND_VERSION_UNCREDITED = "version"'

@@ -93,7 +93,12 @@ def test_every_crate_command_it_names_parses(text):
     """
     spans = _spans(text)
     worker = _spans(WORKER.read_text())
-    assert {"crate --version", "crate backup run", "crate session ack"} <= set(spans)
+    assert {
+        "crate --version",
+        "crate backup run",
+        "crate backup run --job ID",
+        "crate session ack",
+    } <= set(spans)
     assert worker == ["crate backup run"], worker
     for span in spans + worker:
         assert _verb_problems(span, SKILL_DIR.name, real_parser) == [], span
@@ -156,8 +161,8 @@ def test_the_worker_rules_ship_beside_it_and_are_copied_into_the_state_folder(fl
     worker = WORKER.read_text()
     assert worker.startswith("# Cratekit attended worker\n")
     assert "`WORKER.md`" in flat and "copy this skill's `WORKER.md`" in flat
-    # The placeholder the orchestrator writes the date into on the copy.
-    assert ".local/attended/<DATE>/" in worker
+    # The placeholder the orchestrator writes the date and sitting into on the copy.
+    assert ".local/attended/<DATE>-s<N>/" in worker
     flat_worker = " ".join(worker.split())
     for rule in (
         "never write a beat grid",
@@ -176,12 +181,12 @@ def test_the_worker_rules_ship_beside_it_and_are_copied_into_the_state_folder(fl
 def test_the_state_folder_is_under_an_ignored_directory(text):
     flat = " ".join(text.split())
     assert "the checkout's ignored `.local/` directory" in flat
-    assert "folder inside" in flat and "`.local/attended/<DATE>/`" in flat
+    assert "folder inside" in flat and "`.local/attended/<DATE>-s<N>/`" in flat
     # Every place the folder is spelled, the wait loop included, is under .local.
     for body in (text, WORKER.read_text()):
-        places = re.findall(r"(\S*)attended/<DATE>/", body)
+        places = re.findall(r"(\S*)attended/<DATE>-s<N>/", body)
         assert places and all(p.lstrip("`").endswith(".local/") for p in places), places
-    probe = ".local/attended/2026-11-21/STATE.md"
+    probe = ".local/attended/2026-11-21-s103/STATE.md"
     ignored = subprocess.run(
         ["git", "check-ignore", "--no-index", "-q", probe], cwd=REPO_ROOT, check=False
     )
@@ -254,3 +259,143 @@ def test_the_docs_name_it_as_how_a_whole_sitting_runs():
     ):
         flat = " ".join((REPO_ROOT / doc).read_text().split())
         assert sentence in flat, doc
+
+
+def _section(text: str, heading: str) -> str:
+    """One bold headed paragraph of the skill, from its heading to the next one.
+
+    A paragraph ends at the next bold heading or the next section heading,
+    whichever comes first, so a sentence moved into another section leaves it.
+    """
+    start = text.index(heading)
+    ends = [i for i in (text.find(m, start + len(heading)) for m in ("\n\n**", "\n## ")) if i != -1]
+    return " ".join(text[start : min(ends) if ends else None].split())
+
+
+def test_the_state_folder_carries_the_sitting_number_and_a_fresh_one_resumes(flat):
+    """Two sittings on one day never share a folder (U321, sitting 102)."""
+    worker = " ".join(WORKER.read_text().split())
+    for body in (flat, worker):
+        assert "attended/<DATE>-s<N>/" in body
+        assert "attended/<DATE>/" not in body
+    assert "`<N>` the sitting number, this sitting's own" in flat
+    # The resume reads the folder whose ledger is not at its end state, and the
+    # end state is one the ledger can be read for.
+    assert flat.count("`none, the sitting is over`") == 2, "the ledger's line and the end step"
+    assert "a folder named by date alone predates this form and is finished" in flat
+    assert "resumes from the folder whose STATE.md is not at its end state" in flat
+
+
+def test_each_kickoff_line_goes_to_the_clipboard_one_at_a_time(text, flat):
+    """Printed lines Phillip could not see to copy, so each is put on the clipboard."""
+    kickoff = (
+        "You are Cratekit attended worker W1. Read .local/attended/<DATE>-s<N>/WORKER.md "
+        "and follow it."
+    )
+    assert f"    {kickoff}\n" in text, "the printed kickoff line"
+    assert f"printf '%s' '{kickoff}' | pbcopy" in text, "the clipboard command"
+    assert "W1's first, and W2's once he says W1's is pasted" in flat
+    # A replacement worker's line goes the same way.
+    assert "printed and put on the clipboard as Starting the workers says" in _section(
+        text, "**Keeping context small.**"
+    )
+
+
+def test_copies_go_on_the_library_volume_and_never_in_the_state_folder(text, flat):
+    """The checkout is mirrored to Google Drive, so no audio or database copy sits in it."""
+    worker = " ".join(WORKER.read_text().split())
+    for body in (flat, worker):
+        assert "one level down in the library volume's scratch folder" in body
+        assert "mirrored to Google Drive" in body
+        assert "the volume copies folder" in body
+    assert (
+        "The state folder keeps orders, reports, STATE.md, JSON summaries and the throwaway audio only."
+        in flat
+    )
+    # The sweep and the settlement each name the volume, and the end deletes it.
+    for heading in (
+        "**Who does what.**",
+        "**Sweeps and other reads on copies",
+        "**Settlements in rekordbox",
+    ):
+        assert "the volume copies folder" in _section(text, heading), heading
+    assert "the volume copies folder deleted" in flat and "the throwaway audio deleted" in flat
+    assert "an order names it to the worker" in flat
+    # The old places that sent a copy into the state folder are gone, each one.
+    for old in ("copies in `scratch/`", "temporary copies", "to copy them into scratch/"):
+        assert old not in flat and old not in worker, old
+    assert (
+        "scratch/ keeps reports, JSON summaries, long output and the throwaway audio only" in worker
+    )
+
+
+def test_a_worker_reads_a_database_copy_and_never_the_live_file():
+    worker = " ".join(WORKER.read_text().split())
+    assert (
+        "a dated backup the orchestrator made, fetched read only from the backup remote" in worker
+    )
+    assert "the disposable copy run CLAUDE.md describes" in worker
+    assert "Never a direct read of the live database file by you." in worker
+
+
+def test_the_backup_from_a_session_is_driven_by_its_job(flat):
+    """With no terminal the verb only queues; the job it prints is driven under nohup."""
+    assert "`crate backup run --job ID` under `nohup`" in flat
+    assert "only queues, with a terminal or without" in flat
+    assert "queues its job, prints the job's identifier and exits" in flat
+    assert "waits on that process, and read the job's result" in flat
+    # A BEFORE over an unchanged database is the newest earlier snapshot.
+    assert "a database portion that reads `unchanged` made no new snapshot" in flat
+
+
+def test_the_worker_takes_the_conservative_reading_and_names_no_personal_literal():
+    worker = " ".join(WORKER.read_text().split())
+    assert "no library paths, absolute home paths, credentials or personal data" in worker
+    # The report's draft keeps the same rule, where the brief's "no paths" stood.
+    assert "with no dashes and no library paths, absolute home paths or personal data" in worker
+    assert "take the conservative reading" in worker
+    assert "the orchestrator's to take, not yours" in worker
+
+
+def test_ask_nothing_departs_from_the_stop_and_nothing_else(text):
+    ask = _section(text, "**Ask nothing.**")
+    assert "the one place" not in ask
+    assert "departs from CLAUDE.md's stop" in ask
+    assert "a worker still takes the conservative reading" in ask
+
+
+def test_settlements_stay_inside_claude_md_and_their_throwaway_can_be_analysed(text):
+    """The skill points to CLAUDE.md's clause, which carries the list (U321, R-1754)."""
+    claude = " ".join((REPO_ROOT / "CLAUDE.md").read_text().split())
+    assert (
+        "Where an attended card asks what rekordbox itself writes, it may also "
+        "make, on a throwaway track and a playlist made by hand for the check, "
+        "the change that card names"
+    ) in claude
+    assert (
+        "(removing it from the collection, setting cues, playing it on a deck, deleting "
+        "that playlist), and may change an analysis setting a probe names and put it back "
+        "to Phillip's standard, read back by a screenshot; never on a real track, and never "
+        "a change the card does not name"
+    ) in claude
+    settle = _section(text, "**Settlements in rekordbox")
+    assert "only what CLAUDE.md's rekordbox constraint allows" in settle
+    assert "silent unless the card needs it analysed, and then a click track" in settle
+    assert "ten second silent AIFF" not in settle
+    assert "never touches a real track" in settle
+    assert "A probe changes only the setting it names" in " ".join(text.split())
+
+
+def test_a_cutover_line_is_proven_live_until_phillip_has_lived_on_it(text):
+    u29 = _section(text, "**U29 (#29), the cutover")
+    assert '"proven live"' in u29
+    assert 'moves to "cut over" only on Phillip\'s word that he has lived on' in u29
+    assert "quotes him and names the sitting" in u29
+    cutover = (REPO_ROOT / "docs" / "cutover.md").read_text()
+    blocks = cutover[
+        cutover.index("## What blocks retiring DJ_tools") : cutover.index("## Sitting 43,")
+    ]
+    flat_blocks = " ".join(blocks.split())
+    assert "Sitting 101's 19 per workflow lines" in flat_blocks
+    assert "read as proven live until Phillip says he has lived on each" in flat_blocks
+    assert 'From U321 a sitting writes "proven live"' in flat_blocks
