@@ -54570,3 +54570,78 @@ reach the ISRC lookup either way.
 
 **Closes when:** a test names a tail alone stem with trailing whitespace,
 and the ISRC test asserts what Discogs was asked. Ledger only.
+
+---
+
+## R-1783. CLAUDE.md's "never on a real track" reads two ways against an analysis setting probe run on a landed batch
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** The clause U321 adds to CLAUDE.md's rekordbox constraint
+lets a session change an analysis setting a probe names and put it back,
+"never on a real track". A probe owed inside the visit runs in place of its
+first analysis, on the landed batch, which is real tracks; sitting 101's Auto
+Analysis probe analysed three of them. Analysing real tracks is already
+allowed by the constraint's "to let it analyse", so the clause is most
+naturally read as barring the throwaway's changes on a real track and not the
+setting change, but a reader can take it the other way.
+
+**Measured cost.** Not driven. A session could refuse a probe a card owes, or
+run one believing the clause allows more than it does.
+
+**Closes when:** Phillip says which reading holds, beside the present for
+question on #890, and a docs unit words the clause to match, or the record
+says the wording stands. Ledger only.
+
+---
+
+## R-1784. The volume copies folder may sit inside the tree the backup mirrors, where a restore from backup also refuses a target
+
+**Found:** at the review of #890, U321, 2026-11-21.
+
+**The mechanism.** U321 moves a sitting's library and database copies out of
+the checkout, which is mirrored to Google Drive, into a folder one level down
+in the library volume's scratch folder. Driven at the review in a sandbox with
+that folder under the configured library root: the backup's mirror is one sync
+of the whole root, excluding only its clutter patterns and the live
+database's own files, so copies left there while a settlement's BEFORE and
+AFTER backups run are sent to the remote, which is a Drive remote too. And
+`crate restore run --from-backup --target` with a target inside the root
+refuses, saying the target sits inside the live library, so the product's own
+fetch cannot fill that folder.
+
+**Measured cost.** Not driven on the Mac: whether the volume's scratch folder
+sits inside the configured library root there is unmeasured, and sitting 102
+fetched its copies by a means its record does not name. If it does, the copies
+reach a mirrored remote all the same, and a restore into the folder is
+refused.
+
+**Closes when:** an attended sitting reads whether the volume's scratch folder
+is inside the library root, and either records that it is not, or a docs unit
+names a place outside it (or a mirror exclude for it) in the skill and its
+worker rules. Ledger only.
+
+---
+
+## R-1785. Whether a sitting Phillip started and then left is one he is present for is unanswered
+
+**Found:** at the build of #890, U321, 2026-11-21.
+
+**The mechanism.** CLAUDE.md lets "a session Phillip is present for" open,
+drive and quit rekordbox, and the `rekordbox-visit` skill stops a session that
+is not one. Sittings 101 and 102 were started by Phillip and then run while he
+was away, under his standing instruction of 2026-11-21, and each opened
+rekordbox. Read strictly, neither was a session he was present for. U321's
+brief kept the wording out of scope and asked the question on #890 under
+Question for Phillip, with three options: a sitting he started counts for its
+whole length (recommended), only while he is at the desk, or he confirms at
+each opening. The wording is left as written meanwhile.
+
+**Measured cost.** Not driven. The attended orchestrator's settlements and
+visits run while Phillip is away, which the strict reading forbids, so a later
+session reading CLAUDE.md alone could stop a sitting the skill expects to
+finish.
+
+**Closes when:** Phillip answers on #890 and a docs unit writes his answer into
+CLAUDE.md's rekordbox constraint and the `rekordbox-visit` skill's stop, or the
+record says why the wording stands. Ledger only.
