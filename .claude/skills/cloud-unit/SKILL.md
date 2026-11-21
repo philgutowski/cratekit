@@ -360,6 +360,34 @@ measured, and a hand added id is a regression excused for every later run.
 A zero row is driven the way METHOD says. Commit
 the table, `docs/mutation/uN.md` and `.json`, and post `Progress`.
 
+**A card that restructures code** proves two more things, beside its own
+table and never in place of it (U297, METHOD's mutation table). It replays
+the recorded kills of the files it owns before its first edit and after its
+last, each replay run as a table is, `compare` on the committed head and
+then the driver, and `check` must exit 0:
+
+    .venv/bin/python scripts/killset.py rows <paths> --out docs/mutation/uN-replay-before-rows.toml
+    .venv/bin/python scripts/mutate.py docs/mutation/uN-replay-before-rows.toml --known-failures .cloud-battery/baseline.txt
+    .venv/bin/python scripts/killset.py rows --after docs/mutation/uN-replay-before.json --out docs/mutation/uN-replay-after-rows.toml
+    .venv/bin/python scripts/mutate.py docs/mutation/uN-replay-after-rows.toml --known-failures .cloud-battery/baseline.txt
+    .venv/bin/python scripts/killset.py check docs/mutation/uN-replay-before.json docs/mutation/uN-replay-after.json
+
+`rows` names the batch for its row file without the closing `-rows`, so the
+driver writes the tables the next command reads. A row `rows --after` lists
+as unplaced is anchored by hand, the same `source`, the new text and a
+`moved` reason, or mapped under `[[mapped]]` to the row that now covers it.
+A replay cut at its timeout is run again with `--resume`, on the same commit:
+it reuses nothing measured at another. And it compares what the verbs print and write, base against
+branch, in a scratch directory, adding a scenario to its package's file
+under `tests/behaviour/` first for any verb it touches that has none:
+
+    .venv/bin/python scripts/behaviour_compare.py capture --out <scratch>/base --rev origin/main
+    .venv/bin/python scripts/behaviour_compare.py capture --out <scratch>/branch
+    .venv/bin/python scripts/behaviour_compare.py compare <scratch>/base <scratch>/branch
+
+The record carries both results, and every difference `compare` printed is
+either removed or named there as a listed cleanup.
+
 ## 8. The battery
 
     .venv/bin/python scripts/cloud_battery.py compare
