@@ -1144,6 +1144,35 @@ def test_a_checkout_with_no_scenario_files_is_refused(tmp_path, capsys, no_run):
     assert "no scenario files under" in capsys.readouterr().err
 
 
+def test_a_run_that_failed_with_every_record_written_is_not_a_capture(
+    tmp_path, monkeypatch, capsys
+):
+    """Every scenario recorded and listed, and the run still exited 1.
+
+    A fixture that fails as it is torn down does this: the stage has written
+    its record by then. Nothing is missing, so the run's own exit code is the
+    one thing that says a scenario went wrong, and the mutation table of U297
+    found no test held it: the tests of a failed run above also trip the
+    reading of what was left unrecorded.
+    """
+    out = tmp_path / "out"
+    passing = _passing_run(out, tmp_path, ["write/route"])
+
+    def failed_late(command, **kwargs):
+        done = passing(command, **kwargs)
+        if command[0] == "git":
+            return done
+        return subprocess.CompletedProcess(command, 1, "1 passed, 1 error", "")
+
+    monkeypatch.setattr(compare.subprocess, "run", failed_late)
+    checkout = _checkout(tmp_path, "write.py")
+    assert _capture_in(checkout, "--out", str(out), "--root", str(tmp_path / "root")) == 1
+    said = capsys.readouterr().out
+    assert "exited 1 with 1 scenarios recorded, so" in said and "left no record" not in said
+    assert not (out / compare.MANIFEST).exists()
+    assert compare.unrecorded(out, compare.recorded_scenarios(out), ["tests/behaviour/write.py"]) == []
+
+
 def test_a_run_that_passes_and_records_nothing_is_not_a_capture(tmp_path, monkeypatch, capsys):
     monkeypatch.setattr(
         compare.subprocess,
