@@ -3213,6 +3213,55 @@ ENTRIES: tuple[Entry, ...] = (
             "library.paths_resolved",
         ),
     ),
+    # ── The needs genre campaign (U294) ─────────────────────────────────────
+    #
+    # Appended, for the reason the deferred routing block above gives. A
+    # COMPOSER, as ``organize`` is: every step it runs is another verb's plan
+    # and another verb's write, under one gate over ``tag.backlog``'s plan.
+    Entry(
+        name="tag.campaign",
+        summary="apply the needs genre backlog under one gate: tag rows, tag "
+        "suggest at the floor, the answered words, then tag rows again; writes "
+        "file and row, names the resort",
+        module="cratekit.cli.verbs.tag_campaign",
+        builder="build",
+        handler_key="tag.campaign",
+        # NO FEATURE ROW AND NO SOURCE SCRIPT, for the reason ``tag.backlog``
+        # gives.
+        #
+        # GATED BY ``repair``, as ``tag.rows`` is: its first and last steps are
+        # that verb, and a composer is never a way round a module switched off.
+        module_id="repair",
+        emits=frozenset({"plan"}),
+        output_schema="plan/1",
+        #: The union of its steps' surfaces: ``tag.rows`` the row, ``tag.suggest``
+        #: file and row, ``taxonomy.alias`` the files. ``taxonomy.folder``
+        #: writes the copy, which no surface names there either.
+        writes=frozenset({"files", "db_metadata"}),
+        destructive=True,
+        taxonomy_terms=("genre_energy",),
+        doctor_checks=(
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+            "library.paths_resolved",
+        ),
+        gates=(
+            GateSpec(
+                name="tag.campaign.approve",
+                options=("apply", "abort"),
+                prompt="Apply the needs genre campaign: the rows from their files, "
+                "the suggestions at the floor, and the answered words, each through "
+                "its own verb? Filing them into their folders asks its own gate.",
+                #: EXPLICIT (R34). It stands for ``tag.rows.confirm``,
+                #: ``tag.suggest.confirm``, ``taxonomy.alias.apply`` and
+                #: ``taxonomy.folder.apply``, all explicit.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
+    ),
     # ── The INBOX rotation (U111) ───────────────────────────────────────────
     #
     # Appended, for the reason the deferred routing block above gives. The

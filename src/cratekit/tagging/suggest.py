@@ -814,6 +814,48 @@ def write_files(plan: SuggestPlan) -> FilesWritten:
     return FilesWritten(tuple(read_back), tuple(moved), tuple(failed), tuple(wrong))
 
 
+def narrowed(plan: SuggestPlan, keep: Mapping[str, str]) -> SuggestPlan:
+    """The plan with every write held out but those ``keep`` names with the same genre.
+
+    FOR A COMPOSER THAT MAY WRITE ONLY WHAT IT SHOWED (U294). ``tag campaign``
+    plans this verb again once the steps before it have written, and a
+    proposal may have appeared or moved since the backlog showed it: a row's
+    neighbours read new genres. A write is kept only where its row was shown
+    with exactly this genre, so the campaign writes nothing a person was not
+    shown and never a genre the floor would not give now, since only this
+    plan's own writes, each at or above its band, can be kept. A held write
+    becomes the item ``--leave`` makes and its change leaves the write. Pure.
+    """
+    held = {
+        item.content_id
+        for item in plan.writes
+        if keep.get(item.content_id) != item.genre
+    }
+    if not held:
+        return plan
+    items = tuple(
+        replace(item, action=LEAVE, reason=HELD_OUT, genre_id="", chosen=False)
+        if item.content_id in held
+        else item
+        for item in plan.items
+    )
+    counts = dict(plan.counts)
+    counts[WRITE] -= len(held)
+    counts[HELD_OUT] += len(held)
+    return replace(
+        plan,
+        items=items,
+        counts=MappingProxyType(counts),
+        changes=metadata.Plan(
+            owner=plan.changes.owner,
+            changes=tuple(
+                change for change in plan.changes.changes if change.content_id not in held
+            ),
+            skipped=plan.changes.skipped,
+        ),
+    )
+
+
 def rows_plan(plan: SuggestPlan, content_ids: Iterable[str]) -> rows.RowsPlan:
     """The row half of an apply, as the row verb's engine takes it.
 
@@ -873,6 +915,7 @@ __all__ = [
     "band_of",
     "catalogue_lookup",
     "catalogue_path",
+    "narrowed",
     "plan_suggestions",
     "rows_plan",
     "suggestable",

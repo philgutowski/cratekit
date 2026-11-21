@@ -16,13 +16,12 @@ from __future__ import annotations
 
 import sqlite3
 from dataclasses import replace
-from pathlib import Path
 from types import MappingProxyType
 
 import pytest
 
 from cratekit.cli.verbs import tag_campaign
-from cratekit.core import active_taxonomy, config, rb_writer, tags, taxonomy
+from cratekit.core import active_taxonomy, config, rb_writer, tags
 from cratekit.core.cause import refuse
 from cratekit.core.exit_codes import ExitCode
 from cratekit.tagging import backlog, rows, suggest
@@ -90,7 +89,10 @@ def _steps(envelope: dict) -> dict[str, dict]:
 
 
 def _tempo(cfg: config.Config, paths) -> dict[str, object]:
-    """Every row's BPM column and every file's tempo tag, for the beat grid rule."""
+    """Every row's BPM column and every file's tags but its genre, for the beat
+    grid rule: a written file moved its genre and nothing else."""
+    import mutagen
+
     connection = sqlite3.connect(cfg.library.db_path)
     try:
         found: dict[str, object] = {
@@ -101,7 +103,11 @@ def _tempo(cfg: config.Config, paths) -> dict[str, object]:
         connection.close()
     for content_id, path in paths.items():
         if path.exists():
-            found[f"file {content_id}"] = tags.read_tag_values(path, "bpm")
+            held = mutagen.File(path).tags
+            found[f"file {content_id}"] = sorted(
+                (key.lower(), tuple(values)) for key, values in held.as_dict().items()
+                if key.lower() != "genre"
+            )
     return found
 
 
@@ -359,10 +365,14 @@ def test_a_folder_answer_makes_the_folder_and_the_rows_follow_their_files(acknow
     assert code == int(ExitCode.OK), acted
     declared = active_taxonomy.load(cfg)
     assert any(bucket.display == INDIE for bucket in declared.buckets)
-    # The files are not rewritten; the rows whose file carries the word follow.
+    # The files are not rewritten; the row whose file carries the word follows,
+    # and the one carrying another case stays, since the library has no genre
+    # row for that spelling and tag rows links one and never makes one.
     assert tags.read_genre_from_file(paths["15"]) == INDIE
-    assert _genre_of(cfg, "15") == INDIE and _genre_of(cfg, "16") == "indie tech"
-    assert not {"15", "16", "17"} & _census_needing(cfg)
+    assert _genre_of(cfg, "15") == INDIE and _genre_of(cfg, "16") == ""
+    needing = _census_needing(cfg)
+    assert "16" in needing and not {"15", "17"} & needing
+    assert _steps(acted)["follow"]["left"] == {"16": rows.GENRE_UNKNOWN}
 
 
 def test_a_word_left_or_unanswered_is_named_and_nothing_retags_it(acknowledged, silence):
