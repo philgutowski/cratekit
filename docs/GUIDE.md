@@ -1055,6 +1055,7 @@ writes their genre tags.
 
 | Verb | Does |
 |---|---|
+| `tag backlog [--catalogue]` | Sorts every row adoption leaves under needs genre by cause, names the verb that settles each and one question per genre word no folder takes; writes nothing. |
 | `tag rows [--leave ID]` | Writes each row's genre from its file where they disagree. |
 | `tag suggest [--band] [--set ID=GENRE] [--catalogue]` | Suggests a genre for rows with none, from artist, folder and optionally the catalogues; writes file and row. |
 | `tag retag FOLDER` | Replaces a genre too coarse to be final. |
@@ -1069,6 +1070,26 @@ one already filed, or a genre the taxonomy does not declare. A word that is a
 genre folder's name in another case takes only `taxonomy alias WORD "Exact
 Name"`, which retags without touching the taxonomy. After an alias, run `tag
 rows`, then `route resort`.
+
+**The needs genre backlog.** `tag backlog` reads every row adoption files
+nowhere for want of a genre and puts each in one cause: its file carries a
+genre the row lacks (`tag rows` writes it), no genre on the row or the file
+(`tag suggest` weighs it), a word too coarse to be a genre (`tag retag`), a
+genre word no folder takes, or a file whose genre could not be read. A row
+with no genre is proposed a genre only at `tag suggest`'s `high` band, the
+floor, and each proposal names its source (the catalogue that matched and
+its own word, or the neighbours) and its share of the votes; with
+`--catalogue` the catalogues are asked as `tag suggest --catalogue` asks
+them and the answers are kept a week, so `tag suggest --catalogue` reads the
+same ones. The words no folder takes are grouped across spellings and ranked
+by rows, each with one question: an alias of the genre the rows' artist and
+folder neighbours agree on, its own folder (recommended at 50 rows or more),
+or left for hand tagging (recommended when nothing agrees), with how many
+rows each answer would move. A word neither `taxonomy alias` nor `taxonomy
+folder` takes is named with why. The report ends with the campaign, the
+existing verbs in the order that settles the backlog with the rows each
+moves, the rows left by hand with what would settle them, and needs genre
+now and after. It opens the database only to read and writes nothing.
 
 **Removing tracks.** `crate delete review` offers the files behind rows you
 removed in rekordbox; confirmed ones go to the system Trash only. It refuses

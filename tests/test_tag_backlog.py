@@ -291,8 +291,8 @@ def _library():
         Track("10", "", MELODIC, artist="Someone", folder="two"),
         # A row lagging a file whose genre the library has no lookup row for.
         Track("11", "", AFRO, artist="Someone", folder="two"),
-        # No genre anywhere, beside eight agreeing tracks by the artist.
-        Track("12", "", "", artist="The Artist", folder="one"),
+        # No genre anywhere, in the folder of eight agreeing tracks.
+        Track("12", "", "", artist="Solo", folder="one"),
         # No genre anywhere and nothing beside it.
         Track("13", "", "", artist="Nobody", folder="three"),
         # A catch all.
@@ -342,9 +342,11 @@ def test_a_row_lagging_its_file_is_served_exactly_when_tag_rows_would_write_it(m
         written = {item.content_id for item in rows.plan_rows(machine, db, DECLARED).writes}
     finally:
         rb_writer.close_db(db)
-    assert {row.content_id for row in plan.rows if row.status == backlog.SERVED} == written & {
-        row.content_id for row in plan.rows
-    }
+    lagging = {row.content_id for row in plan.rows if row.cause == backlog.ROW_LAGS_FILE}
+    assert {row.content_id for row in plan.rows if row.status == backlog.SERVED} == written & lagging
+    # TAG ROWS ALSO WRITES A WORD NO FOLDER TAKES onto a blank row, which moves
+    # nothing out of needs genre, so those rows stay their word's.
+    assert {"15", "18"} <= written and _row(plan, "15").cause == backlog.OFF_TAXONOMY
 
 
 def test_a_row_with_no_genre_and_agreeing_neighbours_is_proposed_from_the_neighbours(machine, silence):
@@ -353,6 +355,7 @@ def test_a_row_with_no_genre_and_agreeing_neighbours_is_proposed_from_the_neighb
     assert (row.status, row.verb) == (backlog.PROPOSED, backlog.SUGGEST_VERB)
     assert row.proposal.genre == MELODIC and row.proposal.band == suggest.HIGH
     assert row.proposal.source == backlog.NEIGHBOURS and row.proposal.share == 1.0
+    assert row.proposal.votes == ((MELODIC, 8 * suggest.FOLDER_WEIGHT),)
 
 
 def test_a_row_below_the_floor_is_never_proposed_and_is_left_with_its_band(machine, silence):
@@ -498,9 +501,7 @@ def test_the_verb_reports_the_backlog_and_asks_no_gate(machine, silence):
     code, envelope = drive(VERB)
     assert code == int(ExitCode.OK), envelope
     assert _tree(machine) == before
-    data = envelope["data"]
-    assert len(data["items"]) == 9 and data["chunk"] is None
-    totals = data["totals"]
+    totals = envelope["data"]["summary"]
     assert totals["causes"][backlog.OFF_TAXONOMY] == 4 and totals["floor"] == backlog.FLOOR
     assert totals["projected"]["now"] == 9 and not totals["catalogue"]
     words = {word["word"]: word for word in totals["words"]}
@@ -508,7 +509,10 @@ def test_the_verb_reports_the_backlog_and_asks_no_gate(machine, silence):
     assert words[INDIE]["recommended"] == 0 and words[INDIE]["options"][0]["answer"] == backlog.ALIAS
     codes = {warning["code"] for warning in envelope["warnings"]}
     assert {"backlog-words-asked", "backlog-library-alone", "backlog-remainder"} <= codes
-    assert all("path" in item for item in data["items"])
+    assert len(totals["items"]) == 9 and all("path" in item for item in totals["items"])
+    keys = [check["key"] for check in envelope["data"]["checks"]]
+    assert keys[0] == f"backlog.cause.{backlog.ROW_LAGS_FILE}" and keys[-1] == "backlog.projected"
+    assert "backlog.word.Indie Tech" in keys and "backlog.step.1" in keys
 
 
 def test_the_verb_with_catalogue_asks_the_recorded_catalogue_and_keeps_its_answers(
@@ -524,7 +528,7 @@ def test_the_verb_with_catalogue_asks_the_recorded_catalogue_and_keeps_its_answe
     monkeypatch.setattr(published, "for_taxonomy", lambda declared: lambda hit, isrc: hit)
     code, envelope = drive([*VERB, "--catalogue"])
     assert code == int(ExitCode.OK), envelope
-    (item,) = envelope["data"]["items"]
+    (item,) = envelope["data"]["summary"]["items"]
     assert item["proposal"]["source"] == "discogs" and item["status"] == backlog.PROPOSED
     assert search.asked == [("Nobody", "track 60")]
     # Kept for tag suggest, which reads the answer rather than asking again.
@@ -553,15 +557,17 @@ def test_a_catalogue_nobody_could_read_is_named(machine, silence, monkeypatch):
 def test_an_empty_backlog_is_a_no_op(machine, silence):
     build(machine, silence, *_eight())
     code, envelope = drive(VERB)
-    assert code == int(ExitCode.OK) and envelope["outcome"] == "no-op", envelope
-    assert envelope["data"]["totals"]["campaign"] == []
+    assert code == int(ExitCode.OK) and envelope["outcome"] == "no_op", envelope
+    assert envelope["data"]["summary"]["campaign"] == []
 
 
 def test_a_person_reads_the_backlog(machine, silence):
     build(machine, silence, *_library())
     code, text = drive_human(VERB)
     assert code == int(ExitCode.OK), text
-    assert text.strip()
+    assert "Indie Tech: 3 track(s) carry this genre word" in text
+    assert "1) An alias of Melodic House (recommended)" in text
+    assert "crate tag rows: 1 row(s)" in text and "9 row(s) need a genre now" in text
 
 
 def test_the_verb_declares_no_write_and_no_gate():
@@ -569,4 +575,4 @@ def test_the_verb_declares_no_write_and_no_gate():
 
     entry = registry.entry("tag.backlog")
     assert entry.writes == frozenset() and not entry.destructive and entry.gates == ()
-    assert entry.output_schema == "plan/1"
+    assert entry.output_schema == "diagnostic/1"
