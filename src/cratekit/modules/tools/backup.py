@@ -778,10 +778,17 @@ def plan_backup(
 
     ``check`` asks for a FULL CHECK (U317), the backup as it always was: the
     mirror lists the remote and compares every file, and the database is
-    snapshotted whether or not it changed. Without it the plan runs one only
-    when :func:`_full_reason` names a reason, and otherwise compares the
-    library with the record of the last completed backup and plans a quick run
-    of the difference, or a skip. ``full`` is a full check too.
+    snapshotted whether or not it changed. Without it the files portion runs
+    one only when :func:`_full_reason` names a reason, and otherwise compares
+    the library with the record of the last completed backup and plans a quick
+    run of the difference, or a skip; the database is snapshotted only when it
+    changed. ``full`` is a full check too.
+
+    THE WEEKLY FULL CHECK IS THE FILES PORTION'S ALONE. It exists to read the
+    remote again, which only the mirror lists. A queued backup plans each
+    portion in its own item, after the one before it published, so a due date
+    read by the database item would already have moved, and only the frozen
+    flags force a snapshot the same way in both items.
 
     ``only`` plans one portion, so the item that backs up the database does not
     walk the library and the item that mirrors it does not read the database.
@@ -822,12 +829,12 @@ def plan_backup(
             ),
         )
 
-    asked = (
-        "a full check was asked for"
-        if check or full
-        else _full_reason(cfg, now=moment)
-    )
     if backup_facts.Portion.FILES in wanted:
+        asked = (
+            "a full check was asked for"
+            if check or full
+            else _full_reason(cfg, now=moment)
+        )
         portions.append(
             _plan_files(
                 cfg,
@@ -846,7 +853,7 @@ def plan_backup(
                 stamp=stamp,
                 process_lister=process_lister,
                 settings_dirs=settings_dirs,
-                snapshot_anyway=bool(asked),
+                snapshot_anyway=check or full,
             )
         )
     return BackupPlan(stamp=stamp, archive_keep=archive_keep, portions=tuple(portions))
@@ -942,10 +949,17 @@ def _plan_files(
                 changes=found.counts(),
                 basis=before,
             )
+        uncomposed = backup_record.first_uncomposed(found.paths)
         if len(found.paths) > backup_record.QUICK_LIMIT:
             why = (
                 f"{len(found.paths)} paths changed, more than the "
                 f"{backup_record.QUICK_LIMIT} a quick run is for"
+            )
+        elif uncomposed is not None:
+            why = (
+                f"the changed name {uncomposed!r} is not in composed Unicode form, "
+                f"and a quick run looks each name up on the remote, where a remote "
+                f"that composes names would not find it"
             )
         else:
             return PortionPlan(

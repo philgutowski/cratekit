@@ -458,8 +458,8 @@ def test_the_last_full_check_eight_days_old_makes_a_full_run(cfg, real_rclone):
     _, outcome = _backup(cfg, at=MOMENT + timedelta(days=8))
     files = _portion(outcome, FILES)
     assert files.kind == backup_facts.KIND_FULL and "8 days ago" in files.why, files
-    assert _portion(outcome, DATABASE).kind == backup_facts.KIND_SNAPSHOT, (
-        "a full check is the backup as it always was, the snapshot included"
+    assert _portion(outcome, DATABASE).kind == backup_facts.KIND_UNCHANGED, (
+        "the weekly full check is the mirror's; an unchanged database is not copied"
     )
     check = backup_facts.full_check_age(cfg, now=MOMENT + timedelta(days=8))
     assert check.age == timedelta(0)
@@ -637,6 +637,22 @@ def test_the_walk_and_the_mirror_agree_on_what_the_library_holds(cfg, real_rclon
     assert set(_mirrored(cfg, tmp_path)) == walked - {fact}
     plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
     assert plan.portion(FILES).kind == backup_facts.KIND_SKIPPED
+
+
+def test_a_changed_name_in_decomposed_form_makes_a_full_run(cfg, real_rclone):
+    music = _seed(cfg)
+    _backup(cfg, at=MOMENT)
+    _write(music / "Cafe\u0301.flac", b"decomposed")
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=1), only=FILES, settings_dirs=())
+    assert plan.portion(FILES).kind == backup_facts.KIND_FULL
+    assert "composed Unicode form" in plan.portion(FILES).why
+
+    _write(music / "Caf\u00e9.flac", b"composed")
+    (music / "Cafe\u0301.flac").unlink()
+    _backup(cfg, at=MOMENT + timedelta(hours=2), check=True)
+    _write(music / "Caf\u00e9.flac", b"composed, again")
+    plan = backup.plan_backup(cfg, now=MOMENT + timedelta(hours=3), only=FILES, settings_dirs=())
+    assert plan.portion(FILES).kind == backup_facts.KIND_QUICK
 
 
 def test_more_changes_than_a_quick_run_is_for_make_a_full_run(cfg, real_rclone, monkeypatch):

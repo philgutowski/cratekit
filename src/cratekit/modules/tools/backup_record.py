@@ -57,6 +57,7 @@ import os
 import re
 import stat
 import time
+import unicodedata
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import datetime
@@ -570,6 +571,21 @@ def write_fingerprint(key: Mapping[str, object], fingerprint: str, *, at: dateti
     return path
 
 
+def first_uncomposed(paths: Iterable[str]) -> str | None:
+    """The first path not in composed Unicode form (NFC), or None.
+
+    A full sync matches names across a remote that composes them, because rclone
+    normalises names when it compares two listings. A quick run lists nothing
+    and looks each name up as written, so a decomposed name, which a Mac volume
+    can hold, could miss the file on such a remote: a removal archived nothing
+    and a change uploaded beside the old copy. Such a path makes the run full.
+    """
+    for path in paths:
+        if not unicodedata.is_normalized("NFC", path):
+            return path
+    return None
+
+
 def paths_list(paths: Iterable[str]) -> str:
     """A list rclone reads from standard input with ``--files-from-raw -``."""
     return "".join(f"{path}\n" for path in paths)
@@ -591,6 +607,7 @@ __all__ = [
     "difference",
     "fingerprint_key",
     "fingerprint_path",
+    "first_uncomposed",
     "invalidate",
     "manifest_mismatch",
     "manifest_path",
