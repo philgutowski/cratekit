@@ -31,7 +31,7 @@ from cratekit.core.exit_codes import ExitCode
 from cratekit.intake import land_cli
 from cratekit.organize import account as account_area
 from cratekit.organize import cli as organize_cli
-from cratekit.sync import mark_cli
+from cratekit.sync import mark_cli, removed_cli
 from tests.cli_drive import drive
 from tests.test_intake_land_native import _land, _landed_rows, _stage
 from tests.test_intake_land_native import _platform_seams as _platform_seams  # noqa: PLC0414
@@ -109,7 +109,8 @@ def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
     decides = [line for line in _commands(text) if line.startswith("crate run decide")]
     # TWO SINCE U184: the backup acknowledgment is minted in one command with no
     # gate (``test_the_acknowledgment_is_minted_in_one_command_as_the_session``).
-    assert len(decides) == 2, decides
+    # THREE SINCE U288: the removal from the collection after the marks.
+    assert len(decides) == 3, decides
     for line in decides:
         words = line.split()
         gate, option = words[4], words[5]
@@ -119,6 +120,7 @@ def test_every_gate_it_answers_is_answered_by_its_own_name_and_option(text):
     assert {line.split()[4] for line in decides} == {
         tail.LAND_GATE,
         organize_cli.ACCOUNT_GATE,
+        removed_cli.CONFIRM_GATE,
     }
     assert tail.LAND_OPTION == "apply" and organize_cli.APPLY == "apply"
 

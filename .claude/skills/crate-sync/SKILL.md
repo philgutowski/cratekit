@@ -1,6 +1,6 @@
 ---
 name: crate-sync
-description: One command from the streaming account's new music to filed and analysed in rekordbox. Runs the whole sync pass in an attended session, preflight, crate sync land, the rehearsed landing, the rekordbox visit and its check, then the account's marks and filing, and ends on one report, deciding by the standing rules in CLAUDE.md and asking Phillip only what no rule answers, batched at the end. Use when Phillip says /crate-sync, sync, run a pass, or bring in the new music.
+description: One command from the streaming account's new music to filed and analysed in rekordbox. Runs the whole sync pass in an attended session, preflight, crate sync land, the rehearsed landing, the rekordbox visit and its check, then the account's marks and filing and the tracks taken off a downloaded playlist, and ends on one report, deciding by the standing rules in CLAUDE.md and asking Phillip only what no rule answers, batched at the end. Use when Phillip says /crate-sync, sync, run a pass, or bring in the new music.
 ---
 
 # One command sync
@@ -219,6 +219,33 @@ To mark one playlist of a pass and not the others, `crate sync mark --pass
 PASS --playlist ID` plans only that playlist and refuses one the pass did not
 complete. The pass itself always marks whole passes.
 
+**Then the tracks Phillip took off a downloaded playlist**, once the marks
+and the filing are answered:
+
+    crate --output json sync removed
+
+It reads every downloaded playlist on the account again and answers each
+track taken off one as offered, kept or left. A run that offers nothing
+writes nothing; report its counts. One that offers a track needs the backup
+acknowledgment (mint it with `crate session ack --as session`, as CLAUDE.md's
+rule says) and stops at its explicit gate, `sync.removed.confirm`, whose
+screen lists each offered track by artist, title, the playlists it left and
+its file. `apply` takes them out of the rekordbox collection as rekordbox's
+Remove from Collection does, so the gate is answered by CLAUDE.md's
+rehearsal rule: the same verb driven on a disposable copy with library state
+redirected, as `docs/solutions/workflow-issues/a-disposable-database-copy-does-not-make-library-state-disposable.md`
+sets out, its offered rows read against the live plan's, then the live gate
+answered as the session:
+
+    crate run decide RUN_ID sync.removed.confirm apply --actor session --continue
+
+A track a My Tag or another table rekordbox's removal was never measured on
+names is answered kept with that table named, which is the ordinary answer
+for a `vox` or `dyn` track; report it. A plan the copy offers differently, or
+any refusal on the copy, stops this step: report it and answer nothing. A run that stops at the call ceiling is run again with
+`crate --calls N --calls-per-hour M sync removed`. The files are not touched:
+`crate delete review`, which only Phillip runs, offers them to the Trash.
+
 ## 6. One closing report
 
 One message, in this order, and nothing before it except a stop:
@@ -227,7 +254,9 @@ One message, in this order, and nothing before it except a stop:
    playlists in rekordbox it joined, from step 3.
 2. **The visit.** `crate analyze check`'s verdict, its key agreement, and the
    rows cleared from INBOX / Analyze.
-3. **The account.** The playlists marked, by pass, and where each was filed.
+3. **The account.** The playlists marked, by pass, and where each was filed,
+   and every track `sync removed` offered, kept or left, with those it took
+   out of the collection and their files, waiting for `delete review`.
 4. **What was refused or left.** Every download refused (`lossy-refused`
    above all), the genre guess (`data.summary.guess`: how many files carried a
    genre before and after it, and the ties it wrote, from the `tag-guess-split`
