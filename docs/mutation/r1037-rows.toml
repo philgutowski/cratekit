@@ -1,0 +1,245 @@
+name = "r1037"
+pass_kind = "light"
+
+[[rows]]
+id = "M1_identity_unchecked"
+description = "landed_absences: read a landing record of any database, so another library's landed rows are offered here"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if str(landed.get("database_identity") or "") != str(database_identity):
+            continue
+        sequence = landed.get("sequence")'''
+new = '''        sequence = landed.get("sequence")'''
+
+[[rows]]
+id = "M2_no_sequence_read"
+description = "landed_absences: read a record whose update count is missing or not a number"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if not isinstance(sequence, int) or isinstance(sequence, bool):
+            continue
+        playlists = landed.get("playlists") or ()'''
+new = '''        sequence = sequence if isinstance(sequence, int) else 0
+        playlists = landed.get("playlists") or ()'''
+
+[[rows]]
+id = "M3_empty_playlists_read"
+description = "landed_absences: read a landing that made no playlist, so a rolled back landing into a playlist already there is offered"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if not isinstance(playlists, (list, tuple)) or not playlists:'''
+new = '''        if not isinstance(playlists, (list, tuple)):'''
+
+[[rows]]
+id = "M4_playlists_unasked"
+description = "landed_absences: never ask whether the landing's playlists remain, so a landing a restore rolled back is offered"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if not all(playlist_held(str(one)) for one in playlists):
+            continue'''
+new = '''        if False:
+            continue'''
+
+[[rows]]
+id = "M5_any_playlist_held"
+description = "landed_absences: one playlist of the landing's still held is enough, not all of them"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if not all(playlist_held(str(one)) for one in playlists):'''
+new = '''        if not any(playlist_held(str(one)) for one in playlists):'''
+
+[[rows]]
+id = "M6_held_rows_read"
+description = "landed_absences: read a row the database still holds, live or marked, as absent"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''            if not content_id or content_id in held:'''
+new = '''            if not content_id:'''
+
+[[rows]]
+id = "M7_earlier_landing_kept"
+description = "landed_absences: keep the earlier of two landings naming one row"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''            if seen is None or seen.landed < sequence:'''
+new = '''            if seen is None or seen.landed > sequence:'''
+
+[[rows]]
+id = "M8_playlist_ids_live_only"
+description = "playlist_ids: count no playlist at all, so every landing reads as rolled back"
+file = "src/cratekit/deletion/library.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''    return frozenset(str(getattr(row, "ID", "")) for row in playlists if getattr(row, "ID", None))'''
+new = '''    return frozenset()'''
+
+[[rows]]
+id = "M9_recorded_not_excluded"
+description = "plan: a row sync removed recorded is read again as a landed absence, so one row is two candidates"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        present=held | {row.content_id for row in recorded},'''
+new = '''        present=held,'''
+
+[[rows]]
+id = "M10_landed_not_joined"
+description = "plan: leave the absent landed rows out of the removals, which is the defect R-1037 names"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        removed=seen.removed
+        + tuple(one.row(mark.absent[key]) for key, one in absent.items()),'''
+new = '''        removed=seen.removed,'''
+
+[[rows]]
+id = "M11_sightings_never_forgotten"
+description = "plan: tell the sightings no row is held, so a row a restore put back keeps its old number"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        absent=absent,
+        present=held,'''
+new = '''        absent=absent,
+        present=(),'''
+
+[[rows]]
+id = "M12_playlists_always_held"
+description = "_playlists_held: answer every playlist held, so a rolled back landing is offered"
+file = "src/cratekit/deletion/run.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        return playlist_id in read[0]'''
+new = '''        return True'''
+
+[[rows]]
+id = "M13_sight_renumbers"
+description = "sight: number a row again at every run, so it moves past every advance and is offered again"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''                if content_id in kept or content_id in held:
+                    continue
+                kept[str(content_id)] = int(counter)'''
+new = '''                if content_id in held:
+                    continue
+                kept[str(content_id)] = int(counter)'''
+
+[[rows]]
+id = "M14_sight_at_the_watermark"
+description = "sight: number a new sighting at the watermark, so every outright removal is hidden"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''                kept[str(content_id)] = int(counter)'''
+new = '''                kept[str(content_id)] = existing.sequence'''
+
+[[rows]]
+id = "M15_sight_keeps_held"
+description = "sight: drop no sighting of a row held again"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''            kept = {key: value for key, value in existing.absent.items() if key not in held}'''
+new = '''            kept = dict(existing.absent)'''
+
+[[rows]]
+id = "M16_advance_drops_sightings"
+description = "advance: write the position without the sightings, so the next run renumbers and re-offers"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''                absent=dict(existing.absent) if existing is not None else {},'''
+new = '''                absent={},'''
+
+[[rows]]
+id = "M17_sightings_unchecked"
+description = "_recognize: accept sightings of any shape"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''        if not isinstance(absent, Mapping):
+            raise self._unusable(f"its sightings are a {type(absent).__name__}, not a mapping")'''
+new = '''        if not isinstance(absent, Mapping):
+            absent = {}'''
+
+[[rows]]
+id = "M18_sighting_value_unchecked"
+description = "_recognize: accept a sighting that is not a whole number"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''            if isinstance(sighted, bool) or not isinstance(sighted, int):'''
+new = '''            if False:'''
+
+[[rows]]
+id = "M19_version_two_refused"
+description = "_recognize: read only version 1, so this build refuses its own document"
+file = "src/cratekit/deletion/watermark.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_deletion.py", "tests/test_sync_removed.py"]
+old = '''READABLE_VERSIONS = frozenset({1, WATERMARK_VERSION})'''
+new = '''READABLE_VERSIONS = frozenset({1})'''
+
+[[rows]]
+id = "N1_landed_not_recorded"
+description = "_record_landing_commit: never write collection_landed, so no landed row is ever offered"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''    if landed is not None:
+        record.detail[LANDED_ROWS_KEY] = dict(landed)'''
+new = '''    if False:
+        record.detail[LANDED_ROWS_KEY] = dict(landed)'''
+
+[[rows]]
+id = "N2_joined_not_made"
+description = "_landed_rows: record every playlist the rows joined, made or already there"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''    playlists = sorted({str(one) for one in joined if one and str(one) not in before})'''
+new = '''    playlists = sorted({str(one) for one in joined if one})'''
+
+[[rows]]
+id = "N3_identity_wrong"
+description = "_landed_rows: record no database identity"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''        "database_identity": plan.master_db_id,'''
+new = '''        "database_identity": "",'''
+
+[[rows]]
+id = "N4_size_not_read"
+description = "_landed_rows: record no file size, so no landed file can be proved by its size"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''                    "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS},'''
+new = '''                    "columns": {name: _plain(getattr(content, name, None)) for name in LANDED_COLUMNS if name != "FileSize"},'''
+
+[[rows]]
+id = "N5_count_before_commit"
+description = "_landed_rows: record a count short of the one the commit left"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''        sequence = int(db.get_local_usn())'''
+new = '''        sequence = int(db.get_local_usn()) - 1'''
+
+[[rows]]
+id = "N6_before_empty"
+description = "apply_rows: read no playlist before the landing, so a playlist already there is recorded as made"
+file = "src/cratekit/intake/native.py"
+surface = "user"
+tests = ["tests/test_delete_landed_removed.py", "tests/test_intake_land_native.py", "tests/test_intake_writers_native.py"]
+old = '''        playlists_before = frozenset(str(row.ID) for row in db.get_playlist())'''
+new = '''        playlists_before = frozenset()'''
