@@ -372,10 +372,12 @@ then the driver, and `check` must exit 0:
     .venv/bin/python scripts/mutate.py docs/mutation/uN-replay-after-rows.toml --known-failures .cloud-battery/baseline.txt
     .venv/bin/python scripts/killset.py check docs/mutation/uN-replay-before.json docs/mutation/uN-replay-after.json
 
-A row `rows --after` lists as unplaced is anchored by hand, the same
-`source`, the new text and a `moved` reason, or mapped under `[[mapped]]` to
-the row that now covers it. A replay cut at its timeout is run again with
-`--resume`. And it compares what the verbs print and write, base against
+`rows` names the batch for its row file without the closing `-rows`, so the
+driver writes the tables the next command reads. A row `rows --after` lists
+as unplaced is anchored by hand, the same `source`, the new text and a
+`moved` reason, or mapped under `[[mapped]]` to the row that now covers it.
+A replay cut at its timeout is run again with `--resume`, on the same commit:
+it reuses nothing measured at another. And it compares what the verbs print and write, base against
 branch, in a scratch directory, adding a scenario to its package's file
 under `tests/behaviour/` first for any verb it touches that has none:
 

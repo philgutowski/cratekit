@@ -221,18 +221,22 @@ which recorded kills still apply as written, and `killset.py rows PATH ...
 name the table and id it came from, and it is never a unit's own table, whose
 cap of 25 stands. A unit that restructures code replays the kills of the
 files it owns before its first edit and after its last, the second from
-`killset.py rows --after BEFORE.json`, which follows text that moved to
-another file, and `killset.py check BEFORE.json AFTER.json` fails on any kill
+`killset.py rows --after BEFORE.json`, which follows text to another file
+only when that file did not hold it at the commit the first table was
+measured on, and `killset.py check BEFORE.json AFTER.json` fails on any kill
 the second table lost that is not mapped there, with its reason, to a row
-that is killed.
+that is killed. The driver checks every replay row's source against the
+table it names, and a replay resumes only from a sidecar of the same commit.
 
 **Behaviour is compared, not argued** (U297). `scripts/behaviour_compare.py
 capture --out DIR` runs the scenarios under `tests/behaviour/`, one file per
 package, on a disposable library under the suite's own isolation with the
 clock and every generated id pinned, and keeps each command's output and exit
-code, every file written and every database row. `--rev` runs the same
-scenarios against another revision's `src/`, and `compare` prints every
-difference between two captures and exits 1 on any. A unit that must leave
+code, every file written with its permission bits, and every database's
+schema, settings and rows. `--rev` runs the same scenarios against another
+revision's `src/`, and `compare` prints each difference in what the two
+captures hold and exits 1 on any; the script's own docstring lists what a
+capture does not hold, a file's times among them. A unit that must leave
 behaviour unchanged compares its base with its branch, and first adds a
 scenario for any verb it touches that has none.
 
