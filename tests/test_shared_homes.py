@@ -19,28 +19,58 @@ What each section holds:
    the two shell modules that now only name them.
 3. ``core.private_store``: the store both queues open, with each queue's own
    rule for a file it cannot make private.
+4. ``core.config``: the lock held across a read then write cycle, the two
+   locks that do not wait and the one that does, and the read of a state
+   document that refuses what it cannot parse.
+5. The small readers a second package came to need: a count, the two name
+   templates, the name budget, a path's device, a registry entry by its tree.
+6. ``core.jobs``: the tail of every resume.
+7. ``write``: the rollback that never hides its cause, where a membership row
+   holds its columns, and the commit a row write records.
+8. What two modules of one feature each wrote, where it now lives.
 """
 
 from __future__ import annotations
 
 import ast
+import dataclasses
+import errno
 import json
+import logging
+import os
 import sqlite3
+import stat
 from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
 
+from cratekit.acquire import adapter as acquire_adapter
+from cratekit.acquire import isrc_screen, match, provider_session
 from cratekit.adopt import artifacts as adopt_artifacts
 from cratekit.adopt import shell as adopt_shell
 from cratekit.analysis import artifacts as analysis_artifacts
 from cratekit.cli import output
-from cratekit.core import config, jobs, private_store, review
-from cratekit.core.cause import DATABASE_PATH_ATTRIBUTE, CratekitError
+from cratekit.core import (
+    config,
+    jobs,
+    naming,
+    preflight,
+    private_store,
+    rb_writer,
+    review,
+    session,
+    tree_registry,
+)
+from cratekit.core.cause import DATABASE_PATH_ATTRIBUTE, CratekitError, Scope
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.outbound import artifacts as outbound_artifacts
+from cratekit.sync import marks
 from cratekit.tagging import artifacts as tagging_artifacts
+from cratekit.tagging import backlog_cli
+from cratekit.tagging import rows as tagging_rows
 from cratekit.tagging import shell as tagging_shell
+from cratekit.write import row_defaults, trees
 from tests.test_config import valid_data
 
 SRC_ROOT = Path(__file__).resolve().parent.parent / "src" / "cratekit"
@@ -478,3 +508,671 @@ def test_a_store_that_cannot_be_opened_names_its_path_on_the_drivers_own_error(t
         kind(missing)
 
     assert getattr(raised.value, DATABASE_PATH_ATTRIBUTE) == str(missing)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 4. core.config: the lock and the read every state document's store shared
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+class StoreRefused(Exception):
+    """A store's own refusal, as each caller builds one from what went wrong."""
+
+
+def is_free(lock: Path) -> bool:
+    """Whether nothing holds the lock at ``lock``, asked without waiting."""
+    handle, had = config.lock_now(lock)
+    handle.close()
+    return had
+
+
+@pytest.fixture
+def descriptors(monkeypatch):
+    """Every descriptor ``os.open`` hands out during the test, by the path it was opened on."""
+    opened: list[tuple[str, int]] = []
+    real = os.open
+
+    def remembering(path, *args, **kwargs):
+        descriptor = real(path, *args, **kwargs)
+        opened.append((str(path), descriptor))
+        return descriptor
+
+    monkeypatch.setattr(os, "open", remembering)
+    return opened
+
+
+def is_closed(descriptor: int) -> bool:
+    try:
+        os.fstat(descriptor)
+    except OSError:
+        return True
+    return False
+
+
+def test_a_held_lock_shuts_out_a_second_holder_until_the_body_ends(tmp_path):
+    lock = tmp_path / "state" / "ledger.lock"
+
+    with config.held(lock, StoreRefused):
+        assert not is_free(lock)
+
+    assert is_free(lock)
+    assert lock.is_file(), "the lock file is never unlinked"
+
+
+def test_a_lock_that_cannot_be_taken_is_refused_in_the_stores_own_words(tmp_path):
+    """The store's refusal is built from the lock's, and raised from it."""
+    lock = tmp_path / "ledger.lock"
+    lock.mkdir()  # a directory where the lock file belongs cannot be opened to lock
+    met: list[BaseException] = []
+
+    def refused(exc):
+        met.append(exc)
+        return StoreRefused("the ledger is in use")
+
+    with pytest.raises(StoreRefused) as raised:
+        with config.held(lock, refused):
+            pytest.fail("the body ran without the lock")
+
+    assert [type(one) for one in met] == [config.ConfigLockUnavailable]
+    assert raised.value.__cause__ is met[0]
+
+
+def test_a_failure_in_the_body_keeps_its_own_name_and_gives_the_lock_back(tmp_path):
+    lock = tmp_path / "ledger.lock"
+
+    with pytest.raises(KeyError):
+        with config.held(lock, StoreRefused):
+            raise KeyError("a row")
+
+    assert is_free(lock)
+
+
+def test_the_locks_own_error_raised_by_the_body_is_not_the_stores_refusal(tmp_path):
+    """Only a failed ACQUISITION is translated; an inner store's refusal is its own."""
+    lock = tmp_path / "ledger.lock"
+    inner = config.ConfigLockUnavailable("an inner store could not take its lock")
+
+    with pytest.raises(config.ConfigLockUnavailable) as raised:
+        with config.held(lock, StoreRefused):
+            raise inner
+
+    assert raised.value is inner
+    assert is_free(lock)
+
+
+def test_a_lock_had_in_time_is_yielded_as_had_and_its_file_is_private_and_stays(tmp_path):
+    lock = tmp_path / "state" / "cache.lock"
+    slept: list[float] = []
+
+    with config.lock_within(lock, wait_s=1.0, poll_s=0.25, sleep=slept.append) as had:
+        assert had is True
+        assert not is_free(lock)
+
+    assert slept == []
+    assert is_free(lock)
+    assert lock.is_file()
+    assert stat.S_IMODE(lock.stat().st_mode) == config.PRIVATE_FILE_MODE
+    assert stat.S_IMODE(lock.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
+
+
+def test_a_lock_another_holds_is_asked_for_until_the_wait_is_spent_and_then_given_up(tmp_path):
+    lock = tmp_path / "cache.lock"
+    slept: list[float] = []
+    holder, _ = config.lock_now(lock)
+    try:
+        with config.lock_within(lock, wait_s=1.0, poll_s=0.25, sleep=slept.append) as had:
+            assert had is False
+    finally:
+        holder.close()
+
+    assert slept == [0.25, 0.25, 0.25, 0.25]
+
+
+def test_a_lock_freed_during_the_wait_is_had_at_the_next_look(tmp_path):
+    lock = tmp_path / "cache.lock"
+    holder, _ = config.lock_now(lock)
+    slept: list[float] = []
+
+    def sleep(seconds: float) -> None:
+        slept.append(seconds)
+        holder.close()
+
+    with config.lock_within(lock, wait_s=1.0, poll_s=0.25, sleep=sleep) as had:
+        assert had is True
+
+    assert slept == [0.25]
+
+
+def test_a_lock_file_that_cannot_be_opened_is_not_had_and_raises_nothing(tmp_path):
+    """A writer that would rather skip than wait skips here too, without a sleep."""
+    lock = tmp_path / "cache.lock"
+    lock.mkdir()
+    slept: list[float] = []
+
+    with config.lock_within(lock, wait_s=1.0, poll_s=0.25, sleep=slept.append) as had:
+        assert had is False
+
+    assert slept == []
+
+
+def test_a_failure_under_a_lock_had_in_time_gives_the_lock_back(tmp_path):
+    lock = tmp_path / "cache.lock"
+
+    with pytest.raises(KeyError):
+        with config.lock_within(lock, wait_s=1.0, poll_s=0.25, sleep=lambda _s: None):
+            raise KeyError("a tally")
+
+    assert is_free(lock)
+
+
+def test_a_lock_taken_without_waiting_is_had_by_one_and_read_by_the_other(tmp_path):
+    """The loser keeps an open handle, since the holder's own words are in the file."""
+    lock = tmp_path / "state" / "staging.lock"
+    first, had_first = config.lock_now(lock)
+    second, had_second = config.lock_now(lock)
+    try:
+        assert (had_first, had_second) == (True, False)
+        first.write("crate sync night")
+        first.flush()
+        second.seek(0)
+        assert second.read() == "crate sync night"
+        assert stat.S_IMODE(lock.stat().st_mode) == config.PRIVATE_FILE_MODE
+        assert stat.S_IMODE(lock.parent.stat().st_mode) == config.PRIVATE_DIR_MODE
+    finally:
+        first.close()
+        second.close()
+
+    assert is_free(lock)
+
+
+def test_a_lock_without_waiting_that_fails_some_other_way_closes_its_handle(
+    tmp_path, monkeypatch, descriptors
+):
+    """Held by another is an answer; anything else leaves as itself with nothing left open."""
+    import fcntl  # noqa: PLC0415 - POSIX only, as the lock is
+
+    lock = tmp_path / "staging.lock"
+
+    def breaks(handle, how):
+        raise OSError(errno.EIO, "the volume went away")
+
+    monkeypatch.setattr(fcntl, "flock", breaks)
+
+    with pytest.raises(OSError) as raised:
+        config.lock_now(lock)
+
+    assert raised.value.errno == errno.EIO
+    mine = [descriptor for path, descriptor in descriptors if path == str(lock)]
+    assert len(mine) == 1 and is_closed(mine[0])
+
+
+def test_the_waiting_lock_hardens_its_file_before_it_locks_and_returns_the_holder(tmp_path):
+    target = tmp_path / "reconcile.lock"
+    hardened: list[tuple[Path, bool]] = []
+
+    def harden(path: Path) -> None:
+        hardened.append((path, is_free(path)))
+
+    handle = config.flock_exclusive(target, harden)
+    try:
+        assert hardened == [(target, True)], "hardened once, before the lock was taken"
+        assert not is_free(target)
+        assert stat.S_IMODE(target.stat().st_mode) == config.PRIVATE_FILE_MODE
+    finally:
+        handle.close()
+
+    assert is_free(target)
+
+
+@pytest.mark.parametrize("failure", [PermissionError("another account's lock"), KeyboardInterrupt()])
+def test_a_waiting_lock_that_fails_closes_its_handle_and_leaves_as_itself(
+    tmp_path, descriptors, failure
+):
+    """An interrupt included: the caller decides which failure is its own refusal."""
+    target = tmp_path / "reconcile.lock"
+
+    def harden(path: Path) -> None:
+        raise failure
+
+    with pytest.raises(type(failure)) as raised:
+        config.flock_exclusive(target, harden)
+
+    assert raised.value is failure
+    mine = [descriptor for path, descriptor in descriptors if path == str(target)]
+    assert len(mine) == 1 and is_closed(mine[0])
+    assert is_free(target)
+
+
+def test_an_absent_state_file_is_no_bytes_and_any_other_failure_is_its_own(tmp_path):
+    held = tmp_path / "held.bin"
+    held.write_bytes(b"\x00\xff")
+
+    assert config.read_bytes_if_present(tmp_path / "absent.bin") is None
+    assert config.read_bytes_if_present(held) == b"\x00\xff"
+    with pytest.raises(IsADirectoryError):
+        config.read_bytes_if_present(tmp_path)
+
+
+def test_an_absent_document_is_not_a_document_that_holds_null(tmp_path):
+    path = tmp_path / "document.json"
+
+    assert config.read_json(path, StoreRefused) == (False, None)
+    path.write_text("null", encoding="utf-8")
+    assert config.read_json(path, StoreRefused) == (True, None)
+    path.write_text('{"since": "2026-11-21", "count": 2}', encoding="utf-8")
+    assert config.read_json(path, StoreRefused) == (True, {"since": "2026-11-21", "count": 2})
+
+
+@pytest.mark.parametrize("content", [b"{not json", b"", b"\xff\xfe\x00"])
+def test_a_document_that_does_not_parse_is_refused_and_never_read_as_empty(tmp_path, content):
+    """Bytes that are not UTF-8 are told as not JSON as well, in the store's own refusal."""
+    path = tmp_path / "document.json"
+    path.write_bytes(content)
+
+    with pytest.raises(StoreRefused) as raised:
+        config.read_json(path, StoreRefused)
+
+    assert raised.value.args == ("it is not JSON",)
+    assert isinstance(raised.value.__cause__, ValueError)
+
+
+def test_a_document_that_cannot_be_opened_is_refused_and_never_read_as_empty(tmp_path):
+    path = tmp_path / "document.json"
+    path.mkdir()
+
+    with pytest.raises(StoreRefused) as raised:
+        config.read_json(path, StoreRefused)
+
+    assert raised.value.args == ("it could not be opened",)
+    assert isinstance(raised.value.__cause__, OSError)
+
+
+def test_a_document_read_as_a_map_is_none_when_absent_and_the_map_when_it_is_one(tmp_path):
+    path = tmp_path / "document.json"
+
+    assert config.read_json_map(path, StoreRefused) is None
+    path.write_text('{"version": 1}', encoding="utf-8")
+    assert config.read_json_map(path, StoreRefused) == {"version": 1}
+
+
+@pytest.mark.parametrize(
+    ("text", "kind"), [("[]", "list"), ('"words"', "str"), ("3", "int"), ("null", "NoneType")]
+)
+def test_a_document_that_is_no_map_is_refused_by_what_it_is(tmp_path, text, kind):
+    """A list or a scalar read as an empty record is deleted by the next write."""
+    path = tmp_path / "document.json"
+    path.write_text(text, encoding="utf-8")
+
+    with pytest.raises(StoreRefused) as raised:
+        config.read_json_map(path, StoreRefused)
+
+    assert raised.value.args == (f"the document is a {kind}, not a map",)
+
+
+def test_the_read_in_the_platforms_encoding_agrees_with_the_other_on_every_shared_case(tmp_path):
+    path = tmp_path / "document.json"
+    assert config.read_json_as_text(path, StoreRefused) == (False, None)
+    path.write_text('{"version": 1}')
+    assert config.read_json_as_text(path, StoreRefused) == (True, {"version": 1})
+    path.write_text("{not json")
+    with pytest.raises(StoreRefused) as raised:
+        config.read_json_as_text(path, StoreRefused)
+    assert raised.value.args == ("it is not JSON",)
+
+    folder = tmp_path / "folder.json"
+    folder.mkdir()
+    with pytest.raises(StoreRefused) as raised:
+        config.read_json_as_text(folder, StoreRefused)
+    assert raised.value.args == ("it could not be opened",)
+
+
+def test_bytes_that_are_not_text_leave_the_platform_read_as_the_decoding_failure_they_are(tmp_path):
+    """The one case the two reads differ on, which is why they are two functions.
+
+    What the platform's own decoder makes of the bytes is read here and not
+    assumed: where it refuses them, the failure leaves undressed, and where it
+    accepts any byte, what it produced is refused as not JSON.
+    """
+    path = tmp_path / "document.json"
+    path.write_bytes(b"\xff\xfe\x00")
+    try:
+        path.read_text()
+    except UnicodeDecodeError:
+        expected: type[BaseException] = UnicodeDecodeError
+    else:
+        expected = StoreRefused
+
+    with pytest.raises(expected):
+        config.read_json_as_text(path, StoreRefused)
+    with pytest.raises(StoreRefused):
+        config.read_json(path, StoreRefused)
+
+
+def test_a_remedied_error_carries_its_classes_remedy_unless_the_raise_names_one():
+    class ShopClosed(config.RemediedError):
+        remedy = Remedy.RUN_DOCTOR
+
+    plain = ShopClosed("the shop is closed")
+    named = ShopClosed("the shop is closed", remedy=Remedy.REPORT_DEFECT)
+
+    assert str(plain) == "the shop is closed"
+    assert plain.remedy is Remedy.RUN_DOCTOR
+    assert named.remedy is Remedy.REPORT_DEFECT
+    assert ShopClosed.remedy is Remedy.RUN_DOCTOR, "a raise's remedy is that raise's alone"
+
+
+def test_a_config_failure_and_an_adapter_failure_are_remedied_and_neither_is_the_other():
+    """A handler written for one of them never catches the other by their shared base."""
+    assert issubclass(config.ConfigError, config.RemediedError)
+    assert issubclass(acquire_adapter.AdapterError, config.RemediedError)
+    assert not issubclass(acquire_adapter.AdapterError, config.ConfigError)
+    assert not issubclass(config.ConfigError, acquire_adapter.AdapterError)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 5. The small readers a second package came to need
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+@pytest.mark.parametrize(
+    ("value", "count"),
+    [(0, 0), (7, 7), (-1, None), (True, None), (False, None), (2.0, None), ("3", None), (None, None)],
+)
+def test_a_count_is_a_whole_number_that_is_not_negative_and_never_a_boolean(value, count):
+    read = output.count_of(value)
+
+    assert read == count and type(read) is type(count)
+
+
+def test_the_lossy_template_declares_the_marker_in_the_text_configuration_holds():
+    assert naming.NameTemplate.lossy("[MP3]") == naming.NameTemplate(
+        markers=(naming.MarkerRule(field="lossy", literal="[MP3]"),)
+    )
+    assert naming.NameTemplate.lossy(" [MP3] ").markers[0].literal == " [MP3] "
+
+
+def test_a_marker_of_nothing_is_refused_by_the_strict_template_and_plain_for_the_tolerant_one():
+    with pytest.raises(ValueError, match="empty literal"):
+        naming.NameTemplate.lossy("")
+
+    for absent in (None, "", "   "):
+        assert naming.NameTemplate.lossy_if_marked(absent) == naming.NameTemplate()
+    assert naming.NameTemplate.lossy_if_marked(" [MP3] ") == naming.NameTemplate.lossy("[MP3]")
+
+
+def test_the_name_budget_is_the_two_ceilings_a_naming_section_holds():
+    section = SimpleNamespace(path_budget_bytes=411, filename_max_bytes=177)
+
+    budget = naming.NameBudget.of(section)
+
+    assert (budget.path_budget_bytes, budget.filename_max_bytes) == (411, 177)
+    assert budget == naming.NameBudget(path_budget_bytes=411, filename_max_bytes=177)
+
+
+def test_the_device_of_a_path_is_read_off_its_nearest_ancestor_that_exists(tmp_path):
+    here = tmp_path.stat().st_dev
+
+    assert preflight.device_of(tmp_path) == here
+    assert preflight.device_of(tmp_path / "not" / "yet" / "made") == here
+
+
+def test_a_path_nothing_can_be_read_above_has_no_device(monkeypatch):
+    """So a caller comparing two devices never takes two unreadable paths for one volume."""
+    asked: list[str] = []
+
+    def refuses(self, **_kwargs):
+        asked.append(str(self))
+        raise PermissionError(str(self))
+
+    with monkeypatch.context() as patched:
+        patched.setattr(Path, "stat", refuses)
+        found = preflight.device_of(Path("/library/Music/House"))
+
+    assert found is None
+    assert asked == ["/library/Music/House", "/library/Music", "/library", "/"]
+
+
+def test_a_registry_entry_is_found_by_its_tree_identifier_and_the_first_recorded_wins():
+    entries = [
+        SimpleNamespace(tree_id="genres", name="first"),
+        SimpleNamespace(tree_id="labels", name="second"),
+        SimpleNamespace(tree_id="genres", name="third"),
+    ]
+
+    assert tree_registry.by_tree_id(entries, "genres").name == "first"
+    assert tree_registry.by_tree_id(entries, "labels").name == "second"
+    assert tree_registry.by_tree_id(entries, "first") is None, "never found by a name"
+    assert tree_registry.by_tree_id(iter(()), "genres") is None
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 6. core.jobs: the tail of every resume
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def a_job(job_id: str, *, is_open: bool):
+    return SimpleNamespace(job_id=job_id, is_open=lambda: is_open)
+
+
+def test_a_job_still_open_is_driven_once_and_read_again_before_it_is_judged(monkeypatch):
+    calls: list[tuple] = []
+    queued, ended = a_job("job-1", is_open=True), a_job("job-1", is_open=False)
+    warnings = ({"code": "slow", "message": "one item took a minute"},)
+
+    def run_job(store, job):
+        calls.append(("drive", store, job))
+        return "the driver's result", warnings
+
+    def get(store, job_id):
+        calls.append(("read", store, job_id))
+        return ended
+
+    monkeypatch.setattr(jobs, "get", get)
+    monkeypatch.setattr(jobs, "raise_for_state", lambda job: calls.append(("judge", job)))
+
+    assert jobs.resumed(SimpleNamespace(run_job=run_job), "the store", queued) == (ended, warnings)
+    assert calls == [
+        ("drive", "the store", queued),
+        ("read", "the store", "job-1"),
+        ("judge", ended),
+    ]
+
+
+def test_a_job_already_closed_is_judged_without_being_driven(monkeypatch):
+    """The raise is outside the open branch, so the second ask answers as the first did (R-225)."""
+    failed = a_job("job-2", is_open=False)
+    cause = RuntimeError("the job failed when it ran")
+
+    def judge(job):
+        assert job is failed
+        raise cause
+
+    def run_job(store, job):
+        pytest.fail("a closed job was driven")
+
+    monkeypatch.setattr(jobs, "get", lambda store, job_id: pytest.fail("a closed job was read again"))
+    monkeypatch.setattr(jobs, "raise_for_state", judge)
+
+    with pytest.raises(RuntimeError) as raised:
+        jobs.resumed(SimpleNamespace(run_job=run_job), "the store", failed)
+    assert raised.value is cause
+
+
+def test_a_job_that_ended_cleanly_before_the_ask_is_returned_with_no_warnings(monkeypatch):
+    done = a_job("job-3", is_open=False)
+    monkeypatch.setattr(jobs, "raise_for_state", lambda job: None)
+
+    assert jobs.resumed(SimpleNamespace(run_job=None), "the store", done) == (done, ())
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 7. write: what every guarded writer does on its way in and on its way out
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def a_handle(rollback):
+    return SimpleNamespace(session=SimpleNamespace(rollback=rollback))
+
+
+def test_a_rollback_that_works_says_nothing(caplog):
+    done: list[str] = []
+
+    with caplog.at_level(logging.WARNING, logger=trees.logger.name):
+        trees.rollback_quietly(a_handle(lambda: done.append("rolled back")))
+
+    assert done == ["rolled back"]
+    assert caplog.records == []
+
+
+def test_a_rollback_that_fails_is_said_once_and_never_replaces_the_failure_it_follows(caplog):
+    def fails():
+        raise sqlite3.OperationalError("database is locked")
+
+    with caplog.at_level(logging.WARNING, logger=trees.logger.name):
+        try:
+            raise ValueError("the write that failed")
+        except ValueError as original:
+            trees.rollback_quietly(a_handle(fails))
+            kept = original
+
+    assert str(kept) == "the write that failed"
+    assert [record.getMessage() for record in caplog.records] == [
+        "could not roll back the pending session after a failed write"
+    ]
+
+
+def test_an_interrupt_during_the_rollback_is_not_swallowed():
+    def interrupted():
+        raise KeyboardInterrupt
+
+    with pytest.raises(KeyboardInterrupt):
+        trees.rollback_quietly(a_handle(interrupted))
+
+
+def test_membership_positions_are_read_off_the_tables_own_column_order():
+    columns = ["ID", rb_writer.SOFT_DELETE_COLUMN, "ContentID", "TrackNo", "PlaylistID"]
+
+    found = trees.membership_positions(SimpleNamespace(membership_columns=columns))
+
+    assert found == (4, 2, 1), "the playlist, the content row, the removal marker"
+
+
+def test_a_row_write_that_wrote_nothing_claims_no_commit(monkeypatch):
+    """A restore reads a committed source as work it would discard."""
+    recorded: list[tuple] = []
+    monkeypatch.setattr(session, "record_commit", lambda *args: recorded.append(args))
+
+    row_defaults.record_commit("the record", "genre", 0, "the config")
+    row_defaults.record_commit("the record", "genre", -1, "the config")
+
+    assert recorded == []
+
+
+def test_a_row_write_records_its_commit_under_its_key_as_rows_updated(monkeypatch):
+    recorded: list[tuple] = []
+    monkeypatch.setattr(session, "record_commit", lambda *args: recorded.append(args))
+
+    row_defaults.record_commit("the record", "genre", 3, "the config")
+
+    assert recorded == [
+        (
+            "the record",
+            "genre",
+            session.ChangeSummary((session.TreeChange(tree="genre", updated=3),)),
+            "the config",
+        )
+    ]
+
+
+def test_the_two_row_writes_report_through_one_shape_and_one_adds_what_it_renumbered():
+    base = row_defaults.RowsWritten(session_id="s-1", written=2, read_back=2)
+    defaults = row_defaults.Written(session_id="s-1", written=2, read_back=2, renumbered=1)
+    genres = tagging_rows.Written(session_id="s-1", written=2, read_back=2)
+
+    assert (base.wrong, base.moved) == ((), ())
+    assert [one.name for one in dataclasses.fields(base)] == [
+        "session_id",
+        "written",
+        "read_back",
+        "wrong",
+        "moved",
+    ]
+    assert [one.name for one in dataclasses.fields(genres)] == [
+        one.name for one in dataclasses.fields(base)
+    ]
+    assert [one.name for one in dataclasses.fields(defaults)][-1] == "renumbered"
+    assert isinstance(defaults, row_defaults.RowsWritten)
+    assert isinstance(genres, row_defaults.RowsWritten)
+    assert not isinstance(genres, row_defaults.Written)
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. What two modules of one feature each wrote, held where it now lives
+# ═══════════════════════════════════════════════════════════════════════════
+
+
+def test_a_module_this_build_can_import_is_importable_and_one_it_cannot_is_not(tmp_path, monkeypatch):
+    """An import that fails INSIDE the module counts: its client library is part of it."""
+    (tmp_path / "u298_needs_a_client.py").write_text(
+        "import u298_a_client_library_nobody_installed\n", encoding="utf-8"
+    )
+    monkeypatch.syspath_prepend(str(tmp_path))
+
+    assert provider_session.importable("json") is True
+    assert provider_session.importable("u298_no_such_module") is False
+    assert provider_session.importable("u298_needs_a_client") is False
+
+
+def test_a_marks_refusal_carries_the_verbs_own_origin_its_steps_and_its_detail():
+    refusal = marks.blocked(
+        ("sync", "cli", "mark"),
+        "the account's marks cannot be read",
+        "log in again",
+        "run crate sync mark again",
+        playlist="Inbox",
+        tracks=3,
+    )
+
+    cause = refusal.cause
+    assert (cause.reason, cause.message) == ("sync-marks-blocked", "the account's marks cannot be read")
+    assert cause.origin == ("sync", "cli", "mark")
+    assert tuple(cause.remediation.steps) == ("log in again", "run crate sync mark again")
+    assert cause.scope is Scope.SOURCE
+    assert dict(cause.detail) == {"playlist": "Inbox", "tracks": 3}
+
+
+def test_the_first_few_of_a_list_are_named_and_the_rest_are_counted():
+    few = [f"word {number}" for number in range(backlog_cli._NAMED)]
+
+    assert backlog_cli.named([]) == ""
+    assert backlog_cli.named(few) == ", ".join(few)
+    assert backlog_cli.named([*few, "one over", "two over"]) == ", ".join(few) + " and 2 more"
+
+
+def test_a_review_question_is_addressed_by_the_three_fields_the_exact_test_compares():
+    typed = match.Wanted(artist="Beyoncé", title="Halo (Remastered)", version="Extended Mix")
+
+    assert typed.folded_row() == {
+        "artist": match.fold("Beyoncé"),
+        "title": match.title_identity("Halo (Remastered)"),
+        "version": typed.version_key,
+    }
+
+
+def test_a_screen_leaves_out_every_code_the_cache_already_answers(monkeypatch):
+    """A batch about an answered code would be the one request a second run still paid."""
+    asked: list[tuple[object, list[str]]] = []
+    held = {("GBAYE0000001", "US"), ("", "US")}
+    cache = SimpleNamespace(holds=lambda code, country: (code, country) in held)
+    screen = isrc_screen.Screen.__new__(isrc_screen.Screen)
+    monkeypatch.setattr(isrc_screen.isrc_cache, "country_of", lambda client: "US")
+    monkeypatch.setattr(
+        isrc_screen.Screen,
+        "screen",
+        lambda self, client, codes: asked.append((client, list(codes))) or len(asked[-1][1]),
+    )
+
+    sent = screen.screen_uncached("the client", cache, ["GBAYE0000001", "GBAYE0000002", None, "USRC10000003"])
+
+    assert asked == [("the client", ["GBAYE0000002", "USRC10000003"])]
+    assert sent == 2

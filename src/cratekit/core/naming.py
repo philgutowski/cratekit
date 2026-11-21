@@ -197,6 +197,9 @@ class NameTemplate:
     #: system's separate padding sweep. The budget below was measured against
     #: this form from the start, so the flip widens nothing.
     key_pad: str = "camelot2"
+    #: How the key is MEASURED. The widest form the key will ever take, so a later
+    #: padding stage cannot push a fitted name over the ceiling.
+    budget_key_pad: str = "camelot2"
 
     @classmethod
     def lossy(cls, marker: str) -> NameTemplate:
@@ -204,7 +207,7 @@ class NameTemplate:
 
         One constructor for every caller, since this module imports no
         configuration and each of them built the rule for itself. An empty
-        marker is refused, as :class:`MarkerRule` refuses it.
+        marker is refused, by the template's own check of its marker rules.
         """
         return cls(markers=(MarkerRule(field="lossy", literal=marker),))
 
@@ -221,9 +224,6 @@ class NameTemplate:
         """
         text = (marker or "").strip()
         return cls.lossy(text) if text else cls()
-    #: How the key is MEASURED. The widest form the key will ever take, so a later
-    #: padding stage cannot push a fitted name over the ceiling.
-    budget_key_pad: str = "camelot2"
 
     def __post_init__(self) -> None:
         for name in self.head_fields:
