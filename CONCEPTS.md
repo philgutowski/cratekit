@@ -633,15 +633,17 @@ reading only, never a rule.
 ### Window
 Exactly six consecutive logical lines, the unit a copied block is held in. A
 whole block's edges move when a partner copy is removed elsewhere; a window
-either still stands twice or it does not, so removing any copy anywhere can
-only shrink what the check finds.
+either still stands twice or it does not, so removing a place of a copy can
+only shrink what the check finds. An edit that brings two stretches of lines
+together can form a window that was never there, which is a new copy.
 
 ### Allowance
 A file of lines, one per place a package may still hold something a rule
 forbids, under `tests/ratchets/`: one file per package for copied blocks and one
 for seam crossings. Lines are only ever removed. A line whose finding is gone
-fails nothing, so one card's cleanup cannot fail another card's package, and
-`scripts/refactor_measure.py prune` removes such lines and can add none.
+fails nothing, so a card that removes a copy or a crossing cannot fail another
+card's package by removing it, and `scripts/refactor_measure.py prune` removes
+such lines and can add none.
 
 ### Named interface
 The core modules a feature package may import, `CORE_INTERFACE` in

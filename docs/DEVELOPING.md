@@ -109,9 +109,13 @@ interface, seam crossing, toggle home and dangling verb.
 - When a module is split or added, three registers are per package or per
   line, so no other package's card edits the same lines: the reserved cause
   pins in `tests/ratchets/reserved_causes/<package>.py` (read by
-  `tests/_pinned_reserved_populations.py`), the allowances above, which need
-  no edit for a split, and `_PLACED` in `tests/test_layering.py`, where a part
+  `tests/_pinned_reserved_populations.py`), the allowances above, which a
+  split does not edit, and `_PLACED` in `tests/test_layering.py`, where a part
   split from a module placed by name gets one line of its own.
+- A copied block is read across function boundaries, so a split that sets two
+  functions side by side, or a deletion between two stretches of lines, can
+  form a window that stands elsewhere already. That is a new copy and fails:
+  keep the order the lines had, or give the lines their one home.
 
 ## CI
 
