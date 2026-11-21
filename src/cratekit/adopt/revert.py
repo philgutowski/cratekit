@@ -152,7 +152,31 @@ LOCK_KEY = "adoption_locks"
 SCHEMA_VERSION = 1
 
 
-class RevertLedgerUnreadable(CratekitError):
+class LedgerUnreadable(CratekitError):
+    """One of adoption's two ledgers exists and cannot be understood.
+
+    One slug covers every way either file can be wrong and the REMEDY is what
+    differs. ``document`` is the state key of the ledger a subclass is about.
+    """
+
+    document: str
+
+    def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
+        super().__init__(
+            Cause(
+                reason="adoption-ledger-unusable",
+                message=message,
+                remediation=Remediation(remedy=remedy),
+                scope=Scope.RUN,
+                origin=("adopt",),
+                detail={"path": str(path), "document": self.document},
+            )
+        )
+        self.path = path
+        self.remedy = remedy
+
+
+class RevertLedgerUnreadable(LedgerUnreadable):
     """The revert ledger exists and cannot be understood.
 
     Deliberately NOT collapsed into "no records". An empty ledger reads as
@@ -164,19 +188,7 @@ class RevertLedgerUnreadable(CratekitError):
     corrupt one asks for the doctor.
     """
 
-    def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
-        super().__init__(
-            Cause(
-                reason="adoption-ledger-unusable",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("adopt",),
-                detail={"path": str(path), "document": STATE_KEY},
-            )
-        )
-        self.path = path
-        self.remedy = remedy
+    document = STATE_KEY
 
 
 class AdoptedFileUnidentifiable(CratekitError):

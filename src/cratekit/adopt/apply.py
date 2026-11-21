@@ -93,7 +93,7 @@ from cratekit.adopt.approval import require_approval
 from cratekit.adopt.plan import AdoptionPlan, PlanEntry
 from cratekit.cli.output import timestamp
 from cratekit.core import config, tags, taxonomy
-from cratekit.core.cause import Cause, CratekitError, Remediation, Scope
+from cratekit.core.cause import CratekitError
 from cratekit.core.exit_codes import Remedy
 from cratekit.write.routing_pass import destination
 
@@ -121,7 +121,7 @@ JOURNAL_FORMAT = "journal"
 ADOPTED_TAG_FIELD = "genre"
 
 
-class AppliedLedgerUnreadable(CratekitError):
+class AppliedLedgerUnreadable(revert.LedgerUnreadable):
     """The applied ledger exists and cannot be understood.
 
     Deliberately NOT collapsed into "nothing applied yet", which is the reading
@@ -132,19 +132,7 @@ class AppliedLedgerUnreadable(CratekitError):
     everything else.
     """
 
-    def __init__(self, message: str, *, path: Path, remedy: Remedy) -> None:
-        super().__init__(
-            Cause(
-                reason="adoption-ledger-unusable",
-                message=message,
-                remediation=Remediation(remedy=remedy),
-                scope=Scope.RUN,
-                origin=("adopt",),
-                detail={"path": str(path), "document": STATE_KEY},
-            )
-        )
-        self.path = path
-        self.remedy = remedy
+    document = STATE_KEY
 
 
 @dataclass(frozen=True, slots=True)

@@ -242,6 +242,17 @@ def _matches_type(value: Any, declared: str) -> bool:
     return False
 
 
+def count_of(value: Any) -> int | None:
+    """A count as a stored document carries one, or None for anything else.
+
+    A whole number that is not negative. A boolean is an int in Python and is
+    never a count here, the rule :func:`payload_problems` holds a payload to.
+    """
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        return None
+    return value
+
+
 # ---------------------------------------------------------------------------
 # Identity and time
 # ---------------------------------------------------------------------------
@@ -663,6 +674,7 @@ __all__ = [
     "build",
     "canonical_json",
     "confirm_gate",
+    "count_of",
     "current_schema",
     "declared_gate",
     "digest_of",

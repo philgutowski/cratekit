@@ -75,6 +75,7 @@ from dataclasses import dataclass
 from datetime import datetime
 from typing import Any
 
+from cratekit.cli.output import count_of
 from cratekit.favorites import placeholders
 
 #: The fields an ordering step records, by name.
@@ -183,13 +184,7 @@ def _moving(
     end = _ids(value.get(TARGET))
     if at is None or start is None or end is None:
         return None
-    return at, start, end, _count(value.get(SENT)), _count(value.get(LANDED))
-
-
-def _count(value: Any) -> int | None:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        return None
-    return value
+    return at, start, end, count_of(value.get(SENT)), count_of(value.get(LANDED))
 
 
 def _counts(

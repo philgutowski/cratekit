@@ -281,18 +281,25 @@ class Remedy(StrEnum):
     RECORD_REKORDBOX_PIN = "record-rekordbox-pin"
 
 
-class ConfigError(Exception):
+class RemediedError(Exception):
+    """An exception that always carries a structured remedy token.
+
+    Its class's own, or the one a raise names, for the case where one type
+    covers two remediations: an unrecorded rekordbox pin is a ConfigInvalid
+    whose answer is one specific decision, not "go read your config file".
+    The acquisition adapter's errors are this as well, with their own tokens.
+    """
+
+    def __init__(self, message: str, *, remedy=None) -> None:
+        super().__init__(message)
+        if remedy is not None:
+            self.remedy = remedy
+
+
+class ConfigError(RemediedError):
     """Base for every configuration failure. Always carries a structured remedy."""
 
     remedy: Remedy = Remedy.FIX_CONFIG_VALUES
-
-    def __init__(self, message: str, *, remedy: Remedy | None = None) -> None:
-        super().__init__(message)
-        if remedy is not None:
-            # Per-raise override, for the case where one type covers two
-            # remediations. An unrecorded rekordbox pin is a ConfigInvalid whose
-            # answer is one specific decision, not "go read your config file".
-            self.remedy = remedy
 
 
 class ConfigMissing(ConfigError):
@@ -5351,6 +5358,7 @@ __all__ = [
     "PrefixMapping",
     "ProfileConfig",
     "RekordboxConfig",
+    "RemediedError",
     "Remedy",
     "RollbackEffect",
     "Sidecar",

@@ -52,6 +52,7 @@ from pathlib import Path
 from typing import Protocol, runtime_checkable
 
 from cratekit.core.cause import answered_not_found
+from cratekit.core.config import RemediedError
 from cratekit.core.provider_gate import GateSettings
 
 # ---------------------------------------------------------------------------
@@ -100,15 +101,10 @@ class Remedy(StrEnum):
     REPORT_DEFECT = "report-defect"
 
 
-class AdapterError(Exception):
+class AdapterError(RemediedError):
     """Base for acquisition failures. Always carries a structured remedy token."""
 
     remedy: Remedy = Remedy.SWITCH_ADAPTER
-
-    def __init__(self, message: str, *, remedy: Remedy | None = None) -> None:
-        super().__init__(message)
-        if remedy is not None:
-            self.remedy = remedy
 
 
 class UnknownAdapter(AdapterError):
