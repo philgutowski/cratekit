@@ -82,13 +82,15 @@ conservative reading, as `WORKER.md` says.
 All coordination lives in one folder inside the checkout's ignored `.local/`
 directory, so nothing in it is ever committed:
 `.local/attended/<DATE>-s<N>/`, with `<DATE>` the sitting's start date in
-the form 2026-11-21 and `<N>` the sitting number orientation read, so two
+the form 2026-11-21 and `<N>` the sitting number, this sitting's own, one
+past the last that orientation read, so two
 sittings on one day never share a folder. The name is kept for the whole
 sitting across midnight. Create it at the start, and write the real date and
 number wherever `<DATE>-s<N>` appears, in the copy of `WORKER.md` and the
 kickoff line too. A fresh orchestrator lists `.local/attended/` first and
-resumes from the folder whose STATE.md is not at its end state; with none,
-it starts a new sitting in a new folder. Its layout:
+resumes from the folder whose STATE.md is not at its end state, the newest
+if two are; a folder named by date alone predates this form and is
+finished. With none, it starts a new sitting in a new folder. Its layout:
 
     STATE.md                 the ledger, written by the orchestrator only
     WORKER.md                the worker rules, copied from this skill's folder
@@ -171,9 +173,9 @@ folder, database diffs on disposable copies there, reading the code and
 docs, drafting records and card briefs. `WORKER.md` lists what a worker
 never does, and where its database copy comes from.
 
-**The backup from this session.** `crate backup run` typed here has no
-terminal, so it queues its job, prints the job's identifier and exits
-without copying anything. Drive that job with
+**The backup from this session.** `crate backup run` only queues, with a
+terminal or without: it queues its job, prints the job's identifier
+and exits without copying anything. Drive that job with
 `crate backup run --job ID` under `nohup`, started in a background shell
 that waits on that process, and read the job's result before the step that
 needed the backup.
@@ -187,7 +189,8 @@ preflight finds no job running.
 
 **Keeping context small.** Give each order one job. A worker near half its
 context finishes its order, writes `retiring` and stops; notify Phillip to
-start a fresh one in a new tab with the same kickoff line, and it takes the
+start a fresh one in a new tab with the same kickoff line, printed and put
+on the clipboard as Starting the workers says, and it takes the
 same name and reads `done/` for history. When this session's context passes
 about half, finish the step in hand, bring STATE.md fully up to date,
 release desktop control as the `rekordbox-visit` skill's preflight says, and
@@ -262,7 +265,8 @@ Bring it in beside a playlist made by hand for the check; take the BEFORE
 and AFTER copies the card asks for with `crate backup run`, each after both
 processes are confirmed gone; hand the table by table comparison of
 disposable copies to a free worker, which fetches both read only from the
-backup remote into the volume copies folder; put the library back as it was the next time rekordbox is open; and
+backup remote into the volume copies folder (a database portion that reads
+`unchanged` made no new snapshot, so its copy is the newest earlier one); put the library back as it was the next time rekordbox is open; and
 record the shape as a `docs/solutions/` entry and a sitting line, and in the
 waiting unit's brief under a heading naming the settling card. If rekordbox
 raises its Auto Analysis dialog on a launch that is not the visit, answer it
