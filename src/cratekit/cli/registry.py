@@ -3949,7 +3949,7 @@ ENTRIES: tuple[Entry, ...] = (
     Entry(
         name="sync.removed",
         summary="list each downloaded track you took off its playlist on the streaming "
-        "account, and which would leave the collection; removes nothing",
+        "account, and take the offered ones out of the rekordbox collection behind a gate",
         module="cratekit.sync.removed_cli",
         builder="build_removed",
         handler_key="sync.removed",
@@ -3959,11 +3959,31 @@ ENTRIES: tuple[Entry, ...] = (
         # CORE, as ``sync.taken`` is: it reads what the playlists source swept.
         emits=frozenset({"plan"}),
         output_schema="plan/1",
-        #: NO WRITE SURFACE, not destructive and NO GATE: the account is read,
-        #: the database is read on a disposable copy, and nothing anywhere is
-        #: written. Removing an offered row is U288's, behind its own gate.
-        writes=frozenset(),
-        doctor_checks=("credential.provider",),
+        #: THE COLLECTION ITSELF (U288): an offered content row and every
+        #: membership, cue, history entry, analysis file row and mixer row
+        #: naming it, deleted as rekordbox's Remove from Collection deletes
+        #: them. The account is only read, and no file is touched: the file
+        #: reaches the Trash through ``delete review`` alone.
+        writes=frozenset({"db_tree", "db_metadata"}),
+        destructive=True,
+        doctor_checks=(
+            "credential.provider",
+            "library.mounted",
+            "rekordbox.closed",
+            "rekordbox.pins",
+        ),
+        gates=(
+            GateSpec(
+                name="sync.removed.confirm",
+                options=("apply", "abort"),
+                prompt="Take these tracks out of the rekordbox collection?",
+                #: EXPLICIT (R34). A removal from the collection, answered by a
+                #: recorded act, as every destructive gate is.
+                explicit=True,
+                digest_source="plan",
+            ),
+            CLOUD_SYNC_UNREADABLE_GATE,
+        ),
     ),
 )
 

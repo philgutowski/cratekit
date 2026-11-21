@@ -86,7 +86,7 @@ from typing import Any
 # whose name would otherwise be ambiguous says what it is instead.
 from cratekit.cli import exit_codes as reservations
 from cratekit.cli.output import Envelope, digest_of
-from cratekit.core import analysis_store, config, processes, restore
+from cratekit.core import analysis_store, config, processes, rb_writer, restore
 from cratekit.core.cause import Cause, CratekitError, Outcome, Remediation
 from cratekit.core.exit_codes import Remedy
 from cratekit.modules.tools import backup
@@ -175,17 +175,29 @@ def _listed(entry: restore.Restorable) -> dict[str, Any]:
     session a person is about to go looking for, and dropping it from the list
     answers their question with silence.
     """
-    return {
+    listed: dict[str, Any] = {
         "session_id": entry.session_id,
         "started": entry.started,
         "workflow": entry.workflow,
         "restorable": entry.restorable,
         "unusable": entry.unusable,
-        "change": [
-            {"tree": tree.tree, "created": tree.created, "updated": tree.updated}
-            for tree in entry.change.trees
-        ],
+        "change": [tree.to_json() for tree in entry.change.trees],
     }
+    # A SESSION THAT TOOK ROWS OUT OF THE COLLECTION NAMES EACH ONE (U288), so a
+    # person deciding whether to restore it reads which tracks come back.
+    recorded = entry.record.detail.get(rb_writer.RECORDED_REMOVALS_KEY)
+    if isinstance(recorded, dict):
+        listed["removed"] = [
+            {
+                "content_id": str(row.get("content_id", "")),
+                "artist": str(row.get("artist", "")),
+                "title": str(row.get("title", "")),
+                "file": str(row.get("file", "")),
+            }
+            for row in recorded.get("rows") or ()
+            if isinstance(row, dict)
+        ]
+    return listed
 
 
 def list_restorable(ctx) -> Envelope:
@@ -669,10 +681,7 @@ def _offer(
                 "session_id": chosen.session_id,
                 "started": chosen.started,
                 "workflow": chosen.workflow,
-                "change": [
-                    {"tree": tree.tree, "created": tree.created, "updated": tree.updated}
-                    for tree in chosen.change.trees
-                ],
+                "change": [tree.to_json() for tree in chosen.change.trees],
                 "discarding": list(discarding),
             }
         )

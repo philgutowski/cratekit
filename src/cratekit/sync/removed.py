@@ -74,12 +74,23 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field, replace
+from pathlib import Path
 from typing import Any
 
 from cratekit.acquire import match
 from cratekit.cli.output import digest_of
-from cratekit.core import config, jobs, locations, rb_writer, session, taxonomy, tree_registry
-from cratekit.core.cause import CratekitError
+from cratekit.core import (
+    config,
+    convergence,
+    jobs,
+    locations,
+    rb_writer,
+    session,
+    snapshot,
+    taxonomy,
+    tree_registry,
+)
+from cratekit.core.cause import CratekitError, refuse
 from cratekit.intake import account_playlists, ingest, native, refill, set_playlist
 from cratekit.intake import cli as intake_cli
 from cratekit.label import catalogue
@@ -758,7 +769,211 @@ def _answer(
     return replace(shown, answer=OFFERED)
 
 
+# ---------------------------------------------------------------------------
+# The removal, behind the gate (U288)
+# ---------------------------------------------------------------------------
+
+#: The workflow a removal's session record names.
+WORKFLOW = "sync-removed"
+
+#: What the change summary calls the place the rows left: the collection
+#: itself, not a playlist tree, since a content row belongs to no tree.
+COLLECTION = "collection"
+
+_ORIGIN = ("sync.removed",)
+
+
+@dataclass(frozen=True, slots=True)
+class Removed:
+    """What one apply took out of the collection, read back."""
+
+    session_id: str
+    rows: tuple[Answer, ...]
+    #: Rows deleted, by table, the content rows included.
+    deleted: Mapping[str, int]
+    #: The update count the commit left, which the record carries.
+    sequence: int | None
+
+
+def _rollback_quietly(db: Any) -> None:
+    try:
+        db.session.rollback()
+    except Exception:  # noqa: BLE001 - a failed cleanup must not hide its cause
+        pass
+
+
+def apply_removed(
+    cfg: config.Config,
+    db: Any,
+    plan: RemovedPlan,
+    *,
+    declared: taxonomy.Taxonomy,
+    registry: tree_registry.Registry,
+    records: Sequence[session.SessionRecord],
+    found: Sequence[Downloaded],
+    reads: Mapping[str, Listing],
+    unreadable: int,
+    analysis_roots: Iterable[Path | str],
+) -> Removed:
+    """Take every offered row out of the collection in one guarded commit, and read it back.
+
+    THE PLAN IS TAKEN AGAIN ON THIS HANDLE FIRST, the refill's rule, over the
+    same account reads, and a digest that moved refuses with nothing written:
+    the plan the person approved was read on a copy that has since closed.
+
+    WHAT IS WRITTEN IS REKORDBOX'S OWN REMOVE FROM COLLECTION (A178, A185),
+    through :func:`rb_writer.remove_from_collection`: each offered content row
+    and every row naming it in the six tables beside it, deleted outright, the
+    playlist and history list rows left as they are. A row any other table
+    names refuses the whole apply. Nothing else: no kept or left row, no
+    playlist row, no file, never a beat grid. The analysis files rekordbox
+    deletes are left, and the orphan artist and album rows are left for
+    rekordbox's next removal, which sweeps them.
+
+    THE SESSION SPINE IS CALLED, NOT REBUILT: the gates with a record kept, a
+    capture verified before anything is written, the analysis watch over the
+    roots named, the commit witness, the SQL confinement before the commit and
+    the guarded commit, whose whitelist admits the deletes by name and nothing
+    else. Then the read back, the whole database from SQL against the reading
+    taken before the first delete.
+
+    THE RECORD NAMES EVERY ROW REMOVED, with the columns the deletion pass
+    reads, the database's identity and the update count the commit left, so
+    ``restore list`` names them and the next ``crate delete review`` offers
+    their files (R-1037), each behind its own proofs and its own gate.
+    """
+    watched = [Path(root) for root in analysis_roots]
+    if not watched:
+        raise ValueError(
+            "analysis_roots is empty, so the analysis-file watch would watch nothing "
+            "and this session would report itself clean whatever happened to the "
+            "library's grids; name the roots this write could touch"
+        )
+    again = plan_removed(
+        cfg,
+        db,
+        declared=declared,
+        registry=registry,
+        records=records,
+        found=found,
+        reads=reads,
+        unreadable=unreadable,
+    )
+    if again.digest != plan.digest:
+        raise refuse(
+            "decision-stale",
+            "the collection, the playlists or the session records are not as the "
+            "approved plan read them, so nothing was written; run it again and approve "
+            "what it shows now",
+            origin=_ORIGIN,
+            detail={"approved": plan.digest, "now": again.digest},
+        )
+    offered = plan.offered
+    if not offered:
+        return Removed(session_id="", rows=(), deleted={}, sequence=None)
+    identity = rb_writer.database_id(db)
+    if not identity:
+        raise refuse(
+            "canary-read-failed",
+            "the rekordbox database reports no identity of its own, so the record of "
+            "what was removed could not be bound to it and the deletion pass could "
+            "never offer the files; nothing was written",
+            origin=_ORIGIN,
+            detail={"column": "DBID"},
+        )
+    convergence.assert_tree_writable(cfg, db, declared.intake.id, registry)
+    columns: dict[str, dict[str, Any]] = {}
+    for one in offered:
+        row = db.get_content(ID=one.content_id)
+        columns[one.content_id] = rb_writer.recorded_columns(row) if row is not None else {}
+    ids = [one.content_id for one in offered]
+
+    deleted: dict[str, int] = {}
+    with (
+        session.assert_gates(
+            cfg, workflow=WORKFLOW, analysis_roots=watched, keep=session.Keep.RECORD
+        ) as gates,
+        rb_writer.commit_witness(db) as witness,
+    ):
+        record = gates.record
+        capture = snapshot.capture(cfg, db=db)
+        session.attach_capture(record, capture.root, cfg)
+        snapshot.assert_verified(capture)
+        before = rb_writer.database_reading(db)
+        try:
+            for content_id in ids:
+                for table, rows in rb_writer.remove_from_collection(db, content_id).items():
+                    deleted[table] = deleted.get(table, 0) + len(rows)
+            rb_writer.assert_collection_removal_confined(db, before, removed=ids)
+            rb_writer.commit_guarded(db, deletions=rb_writer.DELETABLE_TABLES)
+        except BaseException:
+            _rollback_quietly(db)
+            if witness.landed:
+                _record_removal(record, offered, columns, deleted, identity, _counter(db), cfg)
+            raise
+        sequence = _counter(db)
+        _record_removal(record, offered, columns, deleted, identity, sequence, cfg)
+        convergence.record_fingerprint(cfg, db)
+        violations = rb_writer.collection_removal_violations(
+            before, rb_writer.database_reading(db), removed=ids, committed=True
+        )
+        if violations:
+            raise refuse(
+                "session-committed-unverified",
+                "the removal committed, and the database read back from SQL is not what "
+                "it planned, so this answer cannot be vouched for:\n  - "
+                + "\n  - ".join(violations[:20]),
+                origin=_ORIGIN,
+                detail={"violations": violations, "session_id": record.session_id},
+            )
+        session_id = record.session_id
+    return Removed(session_id=session_id, rows=offered, deleted=deleted, sequence=sequence)
+
+
+def _counter(db: Any) -> int | None:
+    try:
+        return int(db.get_local_usn())
+    except Exception:  # noqa: BLE001 - an unread counter is recorded as unknown
+        return None
+
+
+def _record_removal(
+    record: session.SessionRecord,
+    offered: Sequence[Answer],
+    columns: Mapping[str, Mapping[str, Any]],
+    deleted: Mapping[str, int],
+    identity: str,
+    sequence: int | None,
+    cfg: config.Config,
+) -> None:
+    """Record the commit, every row named, under the collection, the way a restore reads one.
+
+    Named the way the write session guard reads a commit helper. A sequence
+    that could not be read is recorded as unknown, and the deletion pass then
+    offers none of these files, keeping them rather than guessing.
+    """
+    record.detail[rb_writer.RECORDED_REMOVALS_KEY] = {
+        "database_identity": identity,
+        "sequence": sequence,
+        "deleted": dict(sorted(deleted.items())),
+        "rows": [
+            {
+                "content_id": one.content_id,
+                "artist": one.artist,
+                "title": one.title,
+                "file": one.file,
+                "removed_from": list(one.removed_from),
+                "columns": dict(columns.get(one.content_id, {})),
+            }
+            for one in offered
+        ],
+    }
+    changes = (session.TreeChange(tree=COLLECTION, removed=len(offered)),)
+    session.record_commit(record, COLLECTION, session.ChangeSummary(changes), cfg)
+
+
 __all__ = [
+    "COLLECTION",
     "EMPTY",
     "GONE",
     "HEARTS",
@@ -776,8 +991,11 @@ __all__ = [
     "Answer",
     "Downloaded",
     "Listing",
+    "Removed",
     "RemovedPlan",
+    "WORKFLOW",
     "account_listing",
+    "apply_removed",
     "downloaded",
     "identity",
     "job_playlists",

@@ -28,8 +28,9 @@ no verb.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any, Iterable
+from typing import Any, Iterable, Mapping
 
+from cratekit.core import rb_writer
 from cratekit.core.cause import CratekitError, Scope, refuse
 from cratekit.core.exit_codes import Remedy
 from cratekit.core.tombstone import reads_as_version
@@ -512,13 +513,99 @@ def playlist_referenced(memberships: Any) -> frozenset[str]:
     return frozenset(referenced)
 
 
+# ---------------------------------------------------------------------------
+# A removal recorded rather than marked (U288)
+# ---------------------------------------------------------------------------
+
+#: The key a session record names its removed rows under, and the columns
+#: each keeps: the guarded writer's, beside the removal that writes them
+#: (U288), read here. rekordbox's Remove from Collection, and Cratekit's
+#: imitation of it, delete the row OUTRIGHT (A178, A185), so the soft delete
+#: marker this module partitions on never says the row went (R-1037).
+RECORDED_REMOVALS_KEY = rb_writer.RECORDED_REMOVALS_KEY
+RECORDED_COLUMNS = rb_writer.RECORDED_COLUMNS
+
+
+class _Recorded:
+    """A recorded row's columns as attributes, so the readers above read it as a row."""
+
+    def __init__(self, columns: Mapping[str, Any]) -> None:
+        for name in RECORDED_COLUMNS:
+            setattr(self, name, columns.get(name))
+
+
+def _recorded_row(columns: Mapping[str, Any], sequence: int) -> RemovedRow:
+    row = _Recorded(columns)
+    version, kind, unbelieved = _version_of(row)
+    return RemovedRow(
+        content_id=_identifier(row, "ID"),
+        recorded=_text(row, "FolderPath"),
+        sequence=sequence,
+        size=_size_of(row),
+        artist=_text(row, "ArtistName"),
+        title=_text(row, "Title"),
+        isrc=_text(row, "ISRC") or None,
+        version=version,
+        version_kind=kind or VERSION_IS_A_DESIGNATION,
+        version_unbelieved=unbelieved,
+    )
+
+
+def recorded_removals(
+    details: Iterable[Mapping[str, Any]],
+    *,
+    database_identity: str,
+    present: Iterable[str],
+) -> tuple[RemovedRow, ...]:
+    """Every row a recorded removal took out of THIS database that it still does not hold.
+
+    ``details`` is each session record's ``detail``. A record of another
+    database is not this one's (its identity differs, so its sequence means
+    nothing here, as a watermark's does not). A row the database holds again,
+    live or marked, is no removal: a restore brought it back, and the marker or
+    the live row then answers for it. Each row is read through the same readers
+    a marked row is, at the update count the record names, the counter as the
+    removal's commit left it, so the watermark orders it with every other
+    removal. One content id recorded twice keeps its later sequence.
+
+    A RECORD THAT CANNOT SAY IS SKIPPED, never guessed at: a row with no
+    sequence, or a record with no identity, offers nothing, which keeps a file
+    rather than trashing one.
+    """
+    held = {str(one) for one in present}
+    found: dict[str, RemovedRow] = {}
+    for detail in details:
+        recorded = detail.get(RECORDED_REMOVALS_KEY) if isinstance(detail, Mapping) else None
+        if not isinstance(recorded, Mapping):
+            continue
+        if str(recorded.get("database_identity") or "") != str(database_identity):
+            continue
+        sequence = recorded.get("sequence")
+        if not isinstance(sequence, int) or isinstance(sequence, bool):
+            continue
+        for entry in recorded.get("rows") or ():
+            columns = entry.get("columns") if isinstance(entry, Mapping) else None
+            if not isinstance(columns, Mapping):
+                continue
+            row = _recorded_row(columns, sequence)
+            if not row.content_id or row.content_id in held:
+                continue
+            seen = found.get(row.content_id)
+            if seen is None or seen.sequence < row.sequence:
+                found[row.content_id] = row
+    return tuple(found[key] for key in sorted(found))
+
+
 __all__ = [
     "VERSION_IS_AN_ARTIST",
     "VERSION_IS_A_DESIGNATION",
     "CollectionRead",
+    "RECORDED_COLUMNS",
+    "RECORDED_REMOVALS_KEY",
     "RemovedRow",
     "current_sequence",
     "database_identity",
     "playlist_referenced",
     "read_collection",
+    "recorded_removals",
 ]

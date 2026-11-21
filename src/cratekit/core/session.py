@@ -192,9 +192,16 @@ class TreeChange:
     tree: str
     created: int = 0
     updated: int = 0
+    #: Rows taken out, which only the removal from the collection does (U288).
+    #: Written only when it is not zero, so every record a session wrote before
+    #: it existed reads back byte for byte the same.
+    removed: int = 0
 
     def to_json(self) -> dict[str, Any]:
-        return {"tree": self.tree, "created": self.created, "updated": self.updated}
+        shown: dict[str, Any] = {"tree": self.tree, "created": self.created, "updated": self.updated}
+        if self.removed:
+            shown["removed"] = self.removed
+        return shown
 
     @classmethod
     def from_json(cls, data: Mapping[str, Any]) -> TreeChange:
@@ -202,6 +209,7 @@ class TreeChange:
             tree=str(data["tree"]),
             created=int(data.get("created", 0)),
             updated=int(data.get("updated", 0)),
+            removed=int(data.get("removed", 0)),
         )
 
 
@@ -243,6 +251,7 @@ class ChangeSummary:
                     tree=entry.tree,
                     created=seen.created + entry.created,
                     updated=seen.updated + entry.updated,
+                    removed=seen.removed + entry.removed,
                 )
             )
         return ChangeSummary(tuple(sorted(totals.values(), key=lambda e: e.tree)))
