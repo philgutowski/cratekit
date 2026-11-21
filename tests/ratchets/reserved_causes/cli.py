@@ -247,6 +247,24 @@ KEBAB_LITERALS = {
         'taxonomy-upgraded',
         'utf-8',
     ],
+    # 2026-11-21, U294: a new module, crate tag campaign. Its notes, the
+    # states of its steps, and its three causes.
+    'cli/verbs/tag_campaign.py': [
+        'campaign-landed',
+        'campaign-moved-since-plan',
+        'campaign-nothing-to-write',
+        'campaign-remainder',
+        'campaign-resort-next',
+        'campaign-rows-left',
+        'campaign-words-left',
+        'config-unusable',
+        'file-carries-another-spelling',
+        'internal-error',
+        'not-run',
+        'nothing-to-write',
+        'review-selection-invalid',
+        'tag-campaign',
+    ],
     # 2026-11-02, U194: a new module, crate taxonomy alias and crate taxonomy
     # folder. Its notes, its three causes and the kind of a left file.
     'cli/verbs/taxonomy_word.py': [
@@ -378,6 +396,8 @@ LITERAL_HOLDERS = {
     'cli/verbs/profile.py': ['config-unusable'],
     # 2026-10-31, U168: a run with no command line to continue is refused.
     'cli/verbs/runs.py': ['decision-unknown-gate', 'run-not-continuable'],
+    # 2026-11-21, U294: a new module, crate tag campaign.
+    'cli/verbs/tag_campaign.py': ['config-unusable', 'internal-error', 'review-selection-invalid'],
     # Re-pinned on the merge of main at e686759 (U125) into fable/300, 2026-10-10:
     # a new module, crate taxonomy upgrade (U132). Measured on the merged tree.
     'cli/verbs/taxonomy.py': ['config-unusable', 'internal-error'],

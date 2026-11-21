@@ -54880,3 +54880,308 @@ taken before that fixture is added.
 the tree's fixtures import and what to do when it does not, or `capture`
 names the missing module in its own words instead of six errors. Ledger
 only.
+
+---
+
+## R-1795. A remix's Discogs search reads three releases ranked for its plain title, so a refusal can spend the cap before its own release
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** `DiscogsAsker._search` asks Discogs for the title with
+its last bracketed group set aside (`_last_group_stripped`), so a remix is
+asked as its plain title, and reads the first `DISCOGS_RELEASES_READ`, three,
+of the releases the search names. Before U318 the first plain pressing was
+taken; since U318 a pressing without the file's mix is refused, so three
+plain pressings ranked first spend the cap and a fourth release carrying the
+remix is never read.
+
+**Measured cost.** Driven on hand built answers: four search results, three
+plain pressings and a fourth "Sunrise Mood (Remixes)" holding "Sunrise Mood
+(Tide Remix)", through `tag_one`: a miss naming releases 1 to 3, release 4
+never fetched. How often Discogs ranks the remix release past three is a live
+service's order and unmeasured; a sitting recorded 43 releases for one title.
+The cost is a miss, never a wrong genre.
+
+**Closes when:** a remix's search asks with its mix (or reads further when a
+named mix was refused), measured at the next attended tag sweep. Ledger
+only: a miss is no board bar cost.
+
+---
+
+## R-1796. A Discogs track whose remixer is named only in its credits is read as no mix, and the miss says the release lacks it
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** `_discogs_release` reads each track's `title` and
+`artists` and never its `extraartists`, so a track "Sunrise Mood (Remix)"
+credited Remix: Tide writes no maker, and a file "Sunrise Mood (Tide Remix)"
+is refused with a note that the release holds no track with its version,
+over a field that was never read.
+
+**Measured cost.** Driven on a hand built release through `tag_one`: main
+matched, the branch misses with that note. How often Discogs names a
+remixer only in a track's credits is unmeasured.
+
+**Closes when:** the release reader carries each track's remix credits and
+`writes_version` reads them. Ledger only: the cost is a miss.
+
+---
+
+## R-1797. A maker's mix in another length or edition counts as the file's own version on Discogs
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** A version is compared by its maker's words, the version
+words and `titles.MIX_DESCRIPTIONS` folded away, so "Still In Love (DJ Spen
+7" Version)" and a track "Still In Love (DJ Spen Long Version)" are one
+version, and "Two Months Off (Tim Green Remix)" takes "Two Months Off (Tim
+Green Dub)". The session's call: the brief folds the reader's noise words,
+and a maker's other cut is the same recording's arrangement by the same
+hand, so its genre is the file's; the third pair sitting 101 recorded
+(docs/cutover.md, "U318's version blindness") is kept by design.
+
+**Measured cost.** Driven over eight spellings of the long version row:
+matched on five. No wrong genre was measured; whether Phillip wants a
+length to count as another version is his.
+
+**Closes when:** Phillip decides whether a maker's other length or edition
+is another version; ledger only until then.
+
+---
+
+## R-1798. A remix written with no bracket, or with a feature credit after it, still takes another mix's Discogs release
+
+**Found:** at the build and review of #882, U318, 2026-11-21.
+
+**The mechanism.** `titles.named_versions` reads a version only from a
+bracket group the title part ends with or the dash part after the title.
+"Sunrise Mood Tim Green Remix", where only a list could cut the title from
+the mix, "Sunrise Mood - Tide Remix feat. Sun" and "Two Months Off (Tim
+Green Remix) feat. Tide - Artist", whose feature credit follows the mix, and
+a remixer whose whole name is folded words, "(Mono Remix)", name nothing, so
+they are matched as main matched them, another mix's release included.
+
+**Measured cost.** Round one's shape drive: 9 of 1,056 names, all the
+feature credit after the mix, still take the four other mixes release, as on
+main. Not new; a wrong genre where main wrote the same one.
+
+**Closes when:** the reader reads a version before a trailing feature
+credit and the unbracketed shapes have a rule that is not a list. Ledger
+only: no cost beyond main's.
+
+---
+
+## R-1799. A remix Discogs refuses for its version walks on to Beatport, which takes the original mix's row
+
+**Found:** at the review of #882, U318, round one, 2026-11-21.
+
+**The mechanism.** A version refusal is a Discogs miss, so the walk asks
+Beatport, as the brief orders, and Beatport's scorer reads a title past its
+version (R-1637's mirror), so "Two Months Off (Tim Green Remix)" takes a
+Beatport row "Two Months Off", mix "Original Mix".
+
+**Measured cost.** Driven through `tag_one` on a hand built Beatport page:
+Deep House from Beatport where main wrote Techno from Discogs; neither is
+the file's mix. Today Beatport refuses this machine, so the card's goal
+holds; it holds only while it does.
+
+**Closes when:** Beatport's scorer requires a named mix the way Discogs now
+does, the remix side of R-1637. Ledger only, beside R-1637.
+
+---
+
+## R-1800. A mix description no list holds reads as a maker's name, and a file so titled misses a release of its plain title
+
+**Found:** at the build and review of #882, U318, 2026-11-21.
+
+**The mechanism.** `titles._naming_words` folds the domain's version words
+and `titles.MIX_DESCRIPTIONS`; any other word is a maker's. "Juno Mix",
+"Jack Mix", "Acid Mix", "Summer Mix" and "Friday Night Mix" name "juno",
+"jack", "acid", "summer" and "friday night", as "HD Remaster", "Vinyl
+Version", "CD Version", "2019 Mix", "Studio Version" and "(A Dub)" name
+theirs, so a file so titled takes no Discogs release of its plain title.
+And name folding stops at accents, "and", "the" and a possessive: "T. Green Remix" and "DJ Tide" against "Tide" with
+another word are other makers. A row writing its maker after the mix,
+"(Remixed By Tim Green)" or "(Remix By Tim Green)", writes no maker, so a
+file "(Tim Green Remix)" misses it.
+
+**Measured cost.** One of the 147 labels round one drove, "Juno Mix", and
+146 of round two's 274 holdout labels, none among the 147 (styles, places
+and times of day mostly, "Tech House Mix", "Ibiza Mix", "Late Night Mix",
+and media, "Vinyl Version"), measured at the final head; the author's
+differential over the matcher corpus refused 662 pairs for "Jack Mix" and 17
+for "Acid Mix" against plain rows. Every label was written by a session,
+none read from a library. Each is a miss the record explains, never a wrong
+genre; widening the list further buys these back at `u318-g`'s price.
+
+**Closes when:** a mix's description can be told from a maker's name by
+something other than a list, or the list grows from the sweeps' records.
+Ledger only: the cost is a miss.
+
+---
+
+## R-1801. A maker named by the mix descriptions' words alone is read as no one, so their remix takes another mix's Discogs release as on main
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** `titles._naming_words` folds `titles.MIX_DESCRIPTIONS`
+off both ends of a version, so a maker whose name is only those words, "DJ
+Deep", "DJ Promo", "Digital", "Final Cut", "Classic", is read as no one and
+the file is matched as main matched it. And `writes_version` reads a titled
+row's unbracketed whole by its last words, across a dash, so "Dixon Remix"
+takes "Sunrise Mood - Alan Dixon Remix", and a fold can make one maker end
+another's ("New Order" folds to "order" and meets "Out Of Order Remix").
+With a refusal ahead of it on one result page, such a release can be the
+one taken where main took an earlier one (round two's row 4).
+
+**Measured cost.** Round two: 29 of 377 maker names it wrote are folded
+away whole, 25 of them by the round one widening, "dj" alone 7; on 60,000
+generated releases that never write the file's maker the fix took 4,579
+where round one's head took 4,153. Against main nothing is newly taken at
+the release level (0 of 330,000); round two's row 4, two crafted releases
+on one page, writes House from the second where main wrote Techno from the
+first. No such maker or pair was driven from a real library. The fold and
+the misses of `u318-f` pull against each other: a word taken out of the list
+buys back makers and loses the plain recording's mixes main matched.
+
+**Closes when:** a description can be told from a maker by something other
+than a list (Discogs' own credits, `u318-b`), or Phillip decides which way
+the list should fail. Ledger only: no cost beyond main's for one release.
+
+---
+
+## R-1802. A Discogs single whose track writes the file's mix in full is refused when that track is not read as the file's own title or artist
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** Since round one the single fallback counts another
+track only when it is the mix alone, so a single "Two Months Off" whose
+track "Two Months Off (Tim Green Remix)" is credited to a name sharing none
+with the file's artist, or written "Two Months Off, Pt. 1 (Tim Green
+Remix)", "The Two Months Off (...)" or "... (Tim Green Remix) - Bonus
+Track", which the matcher does not read as the file's title, is refused.
+The note then says the release holds no track with the version while a
+track writes it.
+
+**Measured cost.** Round two drove 24 track shapes by 7 file spellings:
+the credited track and 8 of 44 full row spellings lost against main. Hand
+built; whether Discogs credits a single's remix track that way is
+unmeasured. The cost is a miss with a note false on its face.
+
+**Closes when:** the fallback reads a track writing the full title and
+mix by the release's credit, without reading another title's remix
+(round one's finding 6). Ledger only.
+
+---
+
+## R-1803. The Discogs version miss names the maker's folded words, "(tale of)" or "(order)", not the maker as the file writes them
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** `searchers._another_version` writes the named
+versions' words, which `titles._naming_words` has folded: descriptions off
+both ends, "and", "the" and a possessive dropped, accents off. "(Tale Of Us
+Remix)" reads "(tale of)", "(New Order Remix)" "(order)", "(DJ Koze Remix)"
+"(koze)".
+
+**Measured cost.** Round two: 191 of 377 maker names read differently from
+the file. Garbled, never false: the release named is the one refused.
+
+**Closes when:** the note quotes the file's own version text beside the
+words compared. Ledger only, a wording fix.
+
+---
+
+## R-1804. A bracketed subtitle ending in a version word, "(On The Radio)" or "(Welcome To The Club)", is read as a mix and misses the plain track
+
+**Found:** at the review of #882, U318, round two, 2026-11-21.
+
+**The mechanism.** A bracket group the title ends with is a version when
+its last word is a version word, so a subtitle "(On The Radio)", "(Welcome
+To The Club)", "(Back To The Original)" or "(In Session)" names "on", "welcome
+to", "back to" and "in", and the file takes no Discogs release that does
+not write it. A feature credit group is no version since fix round two
+("(feat. Tom Tom Club)", "(with Bombay Bicycle Club)"), so this is what is
+left of round two's row 7. And a title naming two mixes is satisfied by
+either: "Song (Tim Green Remix) (Dark Lane Edit)" takes "Song (Dark Lane
+Edit)".
+
+**Measured cost.** Round two drove 10 such groups against an album's plain
+track: main matched all; four subtitles still miss. Whether a library title
+carries one is unmeasured. A miss, never a wrong genre; the two mixes case
+is main's own match.
+
+**Closes when:** a subtitle can be told from a mix by something other
+than its last word. Ledger only.
+
+---
+
+## R-1805. The needs genre campaign walks every audio file under the library root three times per alias word
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** For each settled or answered alias, `plan_words` in `cli/verbs/tag_campaign.py` walks every audio file under the library root to list the files the alias retags. It does so at the run that shows the gate and again at the run that answers it, and `_words_step` walks once more through the verb's own `plan_alias` to hold the apply to what the gate listed. Round two counted 40 tag reads at the first act and 86 at the answering run, on 20 files and 2 words. Round one's head walked once per word, and showed none of the files.
+
+**Measured cost.** Time on the live campaign, which reads one tag of every file under the root three times per word. Not measured on a real library.
+
+**Closes when:** the answering run reuses one walk for the gate check and the apply, or the walk reads each file once for every word. Ledger only.
+
+---
+
+## R-1806. An alias to a genre folder the same campaign makes lands or refuses by the backlog's word order
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `plan_words` in `cli/verbs/tag_campaign.py` plans the answers in the backlog's word order, which is by rows. An alias of word A to the folder that word B's folder answer makes is planned before that folder exists when A has more rows, and the alias edit refuses it as a genre the taxonomy does not declare. Round two drove the same two answers on two libraries that differed only by row count: one landed and one refused before the gate.
+
+**Measured cost.** The second library's campaign is refused before anything is written, and needs two runs: the folder first, then the alias. The refusal says why.
+
+**Closes when:** folder answers are planned before alias answers, or the refusal names the order. Ledger only.
+
+---
+
+## R-1807. The campaign's follow step gives the another spelling reason for any follower whose file word is not the answer's
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `_rows_step` in `cli/verbs/tag_campaign.py` holds out a follower whose file word differs from the genre its answer filed, and names it `file-carries-another-spelling`. A follower whose file the alias walk never reached, so its file still carries the word exactly, gets the same reason. Round two produced it with a row whose path climbs out of the library root through `..`; a file at an absolute path outside the root is excluded by the census instead.
+
+**Measured cost.** A false reason in the report; its advice, to retag the file by hand, still works. Reachability on a real library, through a prefix rule that points outside the root, was not driven.
+
+**Closes when:** the reason tells a file the walk never reached apart from a file carrying another spelling. Ledger only.
+
+---
+
+## R-1808. An alias answer given by bucket id and repeated while its word is settled is refused
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `_same_as_settled` in `cli/verbs/tag_campaign.py` compares a repeated alias answer with the settled word's genre folder by its display name only. `Indie Tech=melodic_house`, the bucket id, is taken on the first run. Repeated while the word is still settled, because some of its files did not take the genre, it is refused with "already has its one answer".
+
+**Measured cost.** The repeated command is refused with nothing written, and runs once the answer is dropped or given by name.
+
+**Closes when:** the settled comparison reads the bucket id too. Ledger only.
+
+---
+
+## R-1809. tag backlog's alias question counts the files rows name, while the campaign retags every file under the root carrying the word
+
+**Found:** at round two of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** R-1733's shape, one verb over. `word_of` in `tagging/backlog.py` says how many files an alias retags by counting the files backlog rows name. `crate tag campaign` lists, and retags, every audio file under the library root whose one genre is the word, a file no row names included. Round two drove 12 stray files carrying the word: the question said 2 files and the campaign's gate listed 14.
+
+**Measured cost.** The question Phillip answers from understates the files an alias rewrites. The campaign's gate lists every one before anything is written, so nothing is written unseen. How many such files the real library holds is not measured.
+
+**Closes when:** the alias option reads its file count from the alias verb's own walk. Ledger only.
+
+---
+
+## R-1810. A campaign rehearsed on a copy of the database alone writes the live files, and its answer is pinned to no library
+
+**Found:** at round one of the review of #851, U294, 2026-11-21.
+
+**The mechanism.** `crate tag campaign` writes audio files in two steps: `tag suggest` writes each proposal's genre into its file, and `taxonomy alias` retags every file carrying the word under the library root. A rehearsal that copies the database and redirects library state, with the rows still naming the live files, would write those files, and the live plan afterwards would differ in what is written, which is the one case CLAUDE.md's rehearsal rule still stops on. The gate is also asked with no `pinned` fact (the shape `docs/solutions/workflow-issues/a-fact-taken-out-of-a-digest-so-a-rehearsal-can-match-must-be-pinned-on-the-run.md` describes), as `tag rows` and `tag suggest` ask theirs. Round one drove one candidate, a run answered on one library and continued under another root, and it refused with nothing written; a copy whose rows resolve under the new root was not driven.
+
+**Measured cost.** Not driven on a real library: the rehearsal is the owed attended card's. Unless the music files are cloned with the database, a rehearsal writes genres into the live files.
+
+**Closes when:** the campaign has a rehearsal of its own that clones the files it would write, as `core.rehearsal` does for the landing, or the attended procedure clones them and pins the database file. Ledger only; the attended card names the cloning step.

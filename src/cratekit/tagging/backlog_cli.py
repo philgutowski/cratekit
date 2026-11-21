@@ -82,8 +82,11 @@ def build(parser, entry) -> None:
     parser.set_defaults(_handler=tag_backlog)
 
 
-def _plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
+def read_plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlog.Backlog:
     """The backlog over the library as it stands, through a handle opened to read.
+
+    THE ONE PLAN, this report's and ``tag campaign``'s (U294), so the campaign
+    applies the backlog this verb shows.
 
     THE COPY'S TEXT IS READ HERE, the way ``taxonomy alias`` reads it, so each
     word's answers are planned on the copy those verbs would edit.
@@ -122,7 +125,7 @@ def _named(values: list[str]) -> str:
     return shown + (f" and {more} more" if more > 0 else "")
 
 
-def _advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
+def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
     found: list[dict[str, str]] = []
     asked = [word for word in plan.words if word.options]
     if asked:
@@ -346,13 +349,13 @@ def tag_backlog(ctx) -> Envelope:
     """Sort the needs genre backlog by cause and name the campaign. Writes nothing."""
     cfg = _load()
     declared = active_taxonomy.load(cfg)
-    plan = _plan(
+    plan = read_plan(
         cfg, declared, bool(getattr(ctx.args, "catalogue", False)), getattr(ctx, "progress", None)
     )
     return ctx.envelope(
         data=_payload(plan),
         outcome=Outcome.OK if plan.rows or plan.unread or plan.joining else Outcome.NO_OP,
-        warnings=_advisories(plan),
+        warnings=advisories(plan),
     )
 
 
@@ -363,7 +366,9 @@ __all__ = [
     "REMAINDER",
     "ROWS_JOINING",
     "WORDS_ASKED",
+    "advisories",
     "build",
     "checks",
+    "read_plan",
     "tag_backlog",
 ]

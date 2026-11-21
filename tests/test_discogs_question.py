@@ -45,7 +45,7 @@ from tests.test_catalogue_searcher import _beatport_page
 from tests.test_discogs_searcher import SENT, release, results
 from tests.test_tag_folder_copyright import cfg, sweep  # noqa: F401
 from tests.test_tag_workers import bound
-from tests.test_title_matcher import DIFFERENT, HEADED, HEADED_NOT, SAME
+from tests.test_title_matcher import DIFFERENT, HEADED, HEADED_NOT, NAMED_MIX_UNWRITTEN, SAME
 
 TAXONOMY = default_taxonomy()
 
@@ -342,6 +342,8 @@ CORPUS = [*SAME, *DIFFERENT, *HEADED, *HEADED_NOT]
 @pytest.mark.parametrize(("searched", "found"), CORPUS)
 def test_every_matcher_corpus_case_keeps_its_verdict_when_asked_past_its_head(searched, found):
     expected = (searched, found) in SAME or (searched, found) in HEADED
+    # A named mix its row does not write is no Discogs match (U318).
+    expected = expected and (searched, found) not in NAMED_MIX_UNWRITTEN
     seen: list[str] = []
     tracks = [{"position": "A1", "type_": "track", "title": found}]
 
