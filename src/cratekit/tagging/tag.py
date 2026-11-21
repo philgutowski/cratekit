@@ -422,6 +422,29 @@ class TagResult:
     asked_read: str = ""
 
 
+def file_genres(path: Path) -> tuple[str, ...] | None:
+    """Every genre value the file holds, or None when it could not be read.
+
+    ONE OPEN, through the exact reader that keeps a failed read apart from an
+    absent field. A file nobody could read must not be taken for a blank one,
+    and a file holding a second genre does not carry only what a tagging job
+    wrote, whatever its first value is.
+    """
+    try:
+        values = tags.read_tag_values_checked(path, "genre") or ()
+    except (tags.TagReadFailed, OSError):
+        return None
+    return tuple(word for word in (value.strip() for value in values) if word)
+
+
+def relative(path: Path, root: Path) -> str:
+    """``path`` as it reads under ``root``, or whole when it is not under it."""
+    try:
+        return str(path.relative_to(root))
+    except ValueError:
+        return str(path)
+
+
 def audio_files(root: Path) -> tuple[Path, ...]:
     """Every audio file under ``root``, sorted. The set this engine covers.
 
@@ -964,6 +987,8 @@ __all__ = [
     "TagResult",
     "UNWRITTEN_REASON",
     "audio_files",
+    "file_genres",
+    "relative",
     "tag_folder",
     "tag_one",
 ]

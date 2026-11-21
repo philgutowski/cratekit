@@ -259,7 +259,24 @@ class DefaultsPlan:
 
 
 @dataclass(frozen=True, slots=True)
-class Written:
+class RowsWritten:
+    """What one write over content rows did, and what the database says afterwards.
+
+    ``wrong`` names each written row that does not read back as planned, and
+    ``moved`` each written row with a column the write does not own changed.
+    Both are empty on a good run. The genre write in ``tagging.rows`` reports
+    through this as well.
+    """
+
+    session_id: str
+    written: int
+    read_back: int
+    wrong: tuple[str, ...] = ()
+    moved: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True, slots=True)
+class Written(RowsWritten):
     """What one apply did, and what the database says about it afterwards.
 
     ``wrong`` names each written row whose planned column does not read back as
@@ -268,11 +285,6 @@ class Written:
     :func:`assert_read_back` refuses when either is not.
     """
 
-    session_id: str
-    written: int
-    read_back: int
-    wrong: tuple[str, ...] = ()
-    moved: tuple[str, ...] = ()
     #: How many of the written rows were given their file's inode (U115).
     renumbered: int = 0
 
@@ -606,8 +618,10 @@ def judge(
     return tuple(wrong), tuple(moved)
 
 
-def _record_commit(record: session.SessionRecord, written: int, cfg: config.Config) -> None:
-    """Record this write's commit on its session record, when it wrote anything.
+def record_commit(
+    record: session.SessionRecord, key: str, written: int, cfg: config.Config
+) -> None:
+    """Record a content row write's commit on its session record, under ``key``.
 
     A RUN THAT WROTE NOTHING CLAIMS NO COMMIT: a restore reads a committed
     source as work it would discard.
@@ -616,8 +630,8 @@ def _record_commit(record: session.SessionRecord, written: int, cfg: config.Conf
         return
     session.record_commit(
         record,
-        CHANGE_KEY,
-        session.ChangeSummary((session.TreeChange(tree=CHANGE_KEY, updated=written),)),
+        key,
+        session.ChangeSummary((session.TreeChange(tree=key, updated=written),)),
         cfg,
     )
 
@@ -722,9 +736,9 @@ def apply_rows(
                 # AN EXCEPTION IS NOT PROOF NOTHING LANDED. The witness is the
                 # engine's own answer.
                 if witness.landed:
-                    _record_commit(record, written, cfg)
+                    record_commit(record, CHANGE_KEY, written, cfg)
                 raise
-            _record_commit(record, written, cfg)
+            record_commit(record, CHANGE_KEY, written, cfg)
             convergence.record_fingerprint(cfg, db)
 
             after = read_columns(db, content_ids)
@@ -789,6 +803,7 @@ __all__ = [
     "InodeBound",
     "Item",
     "Unrenumbered",
+    "RowsWritten",
     "Written",
     "apply_rows",
     "assert_read_back",
@@ -802,4 +817,5 @@ __all__ = [
     "plan_rows",
     "read_columns",
     "read_mapped",
+    "record_commit",
 ]

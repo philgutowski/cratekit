@@ -55,6 +55,7 @@ from typing import Any
 from cratekit.core import routing, tags, taxonomy
 from cratekit.tagging import rows, suggest
 from cratekit.tagging.tag import HAS_GENRE, audio_files
+from cratekit.tagging.tag import relative as relative_to
 
 #: The name a guess is digested under and the source a written file names.
 WORKFLOW = "tag-guess"
@@ -344,7 +345,7 @@ def plan(
     items: list[Item] = []
     off: dict[str, list[str]] = {}
     for one in sorted(staged, key=lambda found: str(found.path)):
-        relative = _relative(one.path, root)
+        relative = relative_to(one.path, root)
         common = {"path": one.path, "relative": relative, "artist": one.artist, "title": one.title}
         if not one.readable:
             items.append(Item(outcome=FILE_UNREADABLE, **common))
@@ -389,13 +390,6 @@ def plan(
         off_taxonomy=MappingProxyType({word: tuple(paths) for word, paths in sorted(off.items())}),
         report=report,
     )
-
-
-def _relative(path: Path, root: Path) -> str:
-    try:
-        return str(path.relative_to(root))
-    except ValueError:
-        return str(path)
 
 
 # ---------------------------------------------------------------------------

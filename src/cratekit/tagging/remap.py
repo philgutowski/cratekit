@@ -71,6 +71,7 @@ from typing import Any
 from cratekit.cli.output import digest_of
 from cratekit.core import config, tags, taxonomy
 from cratekit.tagging import artifacts, published
+from cratekit.tagging.tag import file_genres
 
 #: The name a plan digests under.
 WORKFLOW = "tag-remap"
@@ -297,21 +298,6 @@ def recorded(reports: Iterable[tuple[str, Mapping[str, Any]]]) -> tuple[Recorded
     return tuple(found)
 
 
-def _file_genres(path: Path) -> tuple[str, ...] | None:
-    """Every genre value the file holds, or None when it could not be read.
-
-    ONE OPEN, through the exact reader that keeps a failed read apart from an
-    absent field. A file nobody could read must not be taken for a blank one,
-    and a file holding a second genre does not carry only what a tagging job
-    wrote, whatever its first value is.
-    """
-    try:
-        values = tags.read_tag_values_checked(path, "genre") or ()
-    except (tags.TagReadFailed, OSError):
-        return None
-    return tuple(word for word in (value.strip() for value in values) if word)
-
-
 def _wanted(declared: taxonomy.Taxonomy, word: str) -> str:
     """The genre the taxonomy gives one of the source's words now, or empty."""
     chosen = published.choose(declared, [word]) if word else None
@@ -393,7 +379,7 @@ def _settle(
         return left(FILE_UNREADABLE)
     if not present:
         return left(FILE_MISSING)
-    values = _file_genres(target)
+    values = file_genres(target)
     if values is None:
         return left(FILE_UNREADABLE)
     current = _JOINED.join(values)
@@ -553,14 +539,14 @@ def apply(cfg: config.Config, remap_plan: RemapPlan) -> Written:
     name = f"{RECORD_PREFIX}{remap_plan.digest}"
     for ordinal, item in enumerate(remap_plan.writes):
         target = Path(item.path)
-        if _file_genres(target) != (item.current,):
+        if file_genres(target) != (item.current,):
             moved.append(item.path)
             continue
         if not tags.write_genre(target, item.wanted):
             failed.append(item.path)
             continue
         written += 1
-        if _file_genres(target) != (item.wanted,):
+        if file_genres(target) != (item.wanted,):
             wrong.append(item.path)
             continue
         read_back += 1

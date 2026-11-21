@@ -45,7 +45,8 @@ from cratekit.core import active_taxonomy, config, tags, taxonomy, taxonomy_upgr
 from cratekit.core import taxonomy_word as word_edit
 from cratekit.core.cause import Outcome, refuse
 from cratekit.core.exit_codes import Remedy
-from cratekit.tagging.tag import audio_files
+from cratekit.tagging.tag import audio_files, file_genres
+from cratekit.tagging.tag import relative as relative_to
 
 if TYPE_CHECKING:  # pragma: no cover
     from cratekit.cli import Context
@@ -212,25 +213,6 @@ class Files:
         return tuple(item for item in self.items if item.change == change)
 
 
-def _relative(path: Path, root: Path) -> str:
-    try:
-        return str(path.relative_to(root))
-    except ValueError:
-        return str(path)
-
-
-def _genres(path: Path) -> tuple[str, ...] | None:
-    """Every genre value the file holds, or None when it could not be read.
-
-    The exact reader, so a failed read is never taken for a blank one.
-    """
-    try:
-        values = tags.read_tag_values_checked(path, "genre") or ()
-    except (tags.TagReadFailed, OSError):
-        return None
-    return tuple(word for word in (value.strip() for value in values) if word)
-
-
 def carrying(root: Path, word: str, display: str) -> Files:
     """The files under ``root`` whose genre is ``word``, in any case.
 
@@ -244,8 +226,8 @@ def carrying(root: Path, word: str, display: str) -> Files:
     items: list[FileItem] = []
     read = 0
     for path in audio_files(root):
-        relative = _relative(path, root)
-        values = _genres(path)
+        relative = relative_to(path, root)
+        values = file_genres(path)
         if values is None:
             items.append(FileItem(path=path, relative=relative, change=UNREAD))
             continue
@@ -360,13 +342,13 @@ def _retag(items: tuple[FileItem, ...], display: str) -> _Written:
     """
     done = _Written()
     for item in items:
-        if _genres(item.path) != (item.current,):
+        if file_genres(item.path) != (item.current,):
             done.moved.append(item)
             continue
         if not tags.write_genre(item.path, display):
             done.failed.append(item)
             continue
-        if _genres(item.path) != (display,):
+        if file_genres(item.path) != (display,):
             done.wrong.append(item)
             continue
         done.written.append(item)

@@ -102,7 +102,8 @@ def read_plan(cfg: config.Config, declared, catalogue: bool, progress) -> backlo
         rb_writer.close_db(db)
 
 
-def _named(values: list[str]) -> str:
+def named(values: list[str]) -> str:
+    """The first few of ``values`` as a clause, and how many more there are."""
     shown = ", ".join(values[:_NAMED])
     more = len(values) - _NAMED
     return shown + (f" and {more} more" if more > 0 else "")
@@ -118,7 +119,7 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
                 "message": (
                     f"{len(asked)} genre word(s) no folder takes are carried by "
                     f"{sum(word.rows for word in asked)} row(s): "
-                    f"{_named([f'{word.spelling} ({word.rows})' for word in asked])}; "
+                    f"{named([f'{word.spelling} ({word.rows})' for word in asked])}; "
                     f"each has one question, an alias, its own folder or left by "
                     f"hand, with the recommendation first"
                 ),
@@ -145,11 +146,11 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
     if refused:
         parts.append(
             f"the catalogues could not be read for {len(refused)} row(s), "
-            f"{_named(refused)}, so those were weighed from the library alone"
+            f"{named(refused)}, so those were weighed from the library alone"
         )
     if passed:
         parts.append(
-            f"Discogs was not asked about {len(passed)} row(s), {_named(passed)}, "
+            f"Discogs was not asked about {len(passed)} row(s), {named(passed)}, "
             f"because no Discogs token is recorded, so those were weighed from the "
             f"library alone; to record one: {searchers.DISCOGS_LOGIN_STEPS}"
         )
@@ -175,7 +176,7 @@ def advisories(plan: backlog.Backlog) -> list[dict[str, str]]:
                 "message": (
                     f"{backlog.ROWS_VERB} would also write a genre no folder takes onto "
                     f"{len(plan.joining)} row(s) adoption files today, "
-                    f"{_named(list(plan.joining))}, moving them into needs genre; the "
+                    f"{named(list(plan.joining))}, moving them into needs genre; the "
                     f"projection counts them, and --leave holds a row out"
                 ),
             }
@@ -237,7 +238,7 @@ def _proposed_detail(plan: backlog.Backlog) -> str:
     parts = [f"{count} {genre} from {source}" for (genre, source), count in ordered]
     return (
         f"{len(plan.proposals)} row(s) with no genre have a proposal at {backlog.FLOOR} or "
-        f"better: {_named(parts)}; each item carries its votes and share"
+        f"better: {named(parts)}; each item carries its votes and share"
     )
 
 
@@ -352,6 +353,7 @@ __all__ = [
     "advisories",
     "build",
     "checks",
+    "named",
     "read_plan",
     "tag_backlog",
 ]

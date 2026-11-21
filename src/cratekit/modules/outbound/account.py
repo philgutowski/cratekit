@@ -95,11 +95,7 @@ def bound() -> bool:
     whether the adapter module imports, which includes its client library. Until
     U63 it returned a constant ``False``.
     """
-    try:
-        importlib.import_module(ADAPTER_MODULE)
-    except ImportError:
-        return False
-    return True
+    return provider_session.importable(ADAPTER_MODULE)
 
 
 def forget() -> None:
