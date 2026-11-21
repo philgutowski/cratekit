@@ -794,9 +794,13 @@ def needing(
     with a readable file. ``tag campaign`` reads it after each step it applies
     (U294), so needs genre after a step is measured, not projected (R-1737),
     and is the count this report would give if run again. Reads no tag.
+
+    THE CENSUS ITSELF HOLDS LIVE AND READABLE: ``scan_rows`` skips a tombstone
+    and files every row whose file it could not read as excluded, never as
+    ``needs-genre``, so the disposition is the whole filter. Checks of their own
+    here were measured dead by U294's mutation table and taken out.
     """
     mapped = {str(row.ID): row for row in db.get_content()}
-    live = {content_id for content_id, row in mapped.items() if not trees.soft_delete_marker(row)}
     census = adopt_scan.scan_rows(
         collection.collection_rows(mapped.values()),
         declared,
@@ -808,10 +812,7 @@ def needing(
     return frozenset(
         track.content_id
         for track in census
-        if track.content_id in live
-        and track.readability is adopt_scan.Readability.READABLE
-        and track.path is not None
-        and track.disposition is adopt_scan.Disposition.NEEDS_GENRE
+        if track.disposition is adopt_scan.Disposition.NEEDS_GENRE
     )
 
 

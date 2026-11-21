@@ -999,3 +999,60 @@ def test_the_joining_rows_are_said_in_the_campaigns_own_words(acknowledged, sile
     _run, refused = _first_act([])
     (note,) = [n for n in refused["cause"]["detail"]["shown"]["notes"] if "80" in n]
     assert "the campaign holds each of them out" in note and "--leave" not in note
+
+
+# ═══════════════════════════════════════════════════════════════════════════
+# 8. What the mutation table found no test for
+# ═══════════════════════════════════════════════════════════════════════════
+
+ZOUK = "zouk bass"
+
+
+def test_an_alias_to_the_folder_another_answer_makes_is_planned_on_that_folder(
+    acknowledged, silence
+):
+    """M15: each word is planned on the copy the words before it leave, so an
+    alias may name the genre folder the same campaign's folder answer makes."""
+    cfg = acknowledged
+    paths = build(cfg, silence, *_library(), Track("97", ZOUK, ZOUK, artist="Z", folder="z"))
+    argv = ["--folder", INDIE, "--alias", f"{ZOUK}={INDIE}"]
+    run_id, refused = _first_act(argv)
+    words = [
+        (item["word"], item["answer"])
+        for item in refused["cause"]["detail"]["shown"]["items"]
+        if item["kind"] == "words" and item["word"] in {INDIE, ZOUK}
+    ]
+    assert words == [(INDIE, backlog.FOLDER), (ZOUK, backlog.ALIAS)]
+    _decide(run_id)
+    code, acted = drive(["--run", run_id, *VERB, *argv])
+    assert code == int(ExitCode.OK), acted
+    assert tags.read_genre_from_file(paths["97"]) == INDIE
+    assert active_taxonomy.load(cfg).tagging_alias(ZOUK) is not None
+
+
+def test_a_folder_that_would_copy_another_bucket_after_the_gate_stops_the_words_as_stale(
+    acknowledged, silence, monkeypatch
+):
+    """M25: the folder the words step would make is held to the one the gate listed."""
+    cfg = acknowledged
+    build(cfg, silence, *_library())
+    run_id, refused = _first_act(["--folder", INDIE])
+    (shown,) = [
+        item for item in refused["cause"]["detail"]["shown"]["items"]
+        if item["kind"] == "words" and item["word"] == INDIE
+    ]
+    _decide(run_id)
+    real = tag_campaign.taxonomy_word.plan_folder
+    other = next(
+        bucket.display for bucket in active_taxonomy.load(cfg).buckets if bucket.display != shown["like"]
+    )
+
+    def plan_folder(cfg_, word, like=None):
+        # The copy moved after the approval, so the folder would copy another bucket.
+        return real(cfg_, word, other)
+
+    monkeypatch.setattr(tag_campaign.taxonomy_word, "plan_folder", plan_folder)
+    code, stopped = drive(["--run", run_id, *VERB, "--folder", INDIE])
+    assert code == int(ExitCode.DECISION_STALE), stopped
+    assert "The campaign stopped at the words" in stopped["cause"]["message"]
+    assert not any(bucket.display == INDIE for bucket in active_taxonomy.load(cfg).buckets)
