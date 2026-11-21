@@ -79,6 +79,48 @@ Nothing merges until all three are clean:
   recorded answers only; the shipped send is detonated for every test in
   `tests/conftest.py`.
 
+## The refactor's measure and its two checks
+
+`scripts/refactor_measure.py` is the one measure of the refactor epic (U290),
+standard library only, and the two suite checks below call its functions, so
+the suite and the audit read the same thing. [`CONCEPTS.md`](../CONCEPTS.md)
+defines package, logical line, copied block, window, allowance, named
+interface, seam crossing, toggle home and dangling verb.
+
+| Command | Prints |
+|---|---|
+| `lines [PATH ...]` | lines, code, docstring, comment and blank per package, every file over 1,500 lines, and with `--files` every file; `src/cratekit` and `tests` by default; exit 2 for a path that names no Python file it reads |
+| `duplicates [PATH ...]` | exact copied blocks of six logical lines or more, per package; `--min N` for another size, `--list N` for the longest, `--renamed` for the reading with names normalised, `--where DIGEST` for where one allowed window stands |
+| `imports` | the seam counts the import rules hold; `--names` lists every core name a feature package uses, `--drive` also drives each toggle off in a fresh interpreter and sets it beside the static reading |
+| `outside FILE ...` | every name of those files that code or tests outside them use, private ones marked, `--where` for each file and line; read it before moving a name |
+| `table` | points 2 to 5 of U290 in one print, exit 1 when something stands beyond an allowance or the core names are over their ceiling |
+| `prune PACKAGE ...` | lowers those packages' allowance files to what is still found; it can add no line |
+
+- `tests/test_duplication.py` fails when a package holds a copied block beyond
+  its allowance, `tests/ratchets/duplication/<package>.txt`. Give the lines
+  one home; never add a line to an allowance.
+- `tests/test_import_rules.py` fails on a new seam crossing beyond
+  `tests/ratchets/imports/<package>.txt`, and when feature packages use more
+  distinct core names than `CORE_NAMES_CEILING`. `CORE_INTERFACE` and
+  `TOGGLE_HOMES` live in that file; a toggle added to `core.profiles.MODULES`
+  must be given its homes there.
+- An allowance line is removed by the card that removes its finding, by hand
+  or with `prune`. A stale line fails nothing.
+- When a module is split or added, three registers are per package or per
+  line, so no other package's card edits the same lines: the reserved cause
+  pins in `tests/ratchets/reserved_causes/<package>.py` (read by
+  `tests/_pinned_reserved_populations.py`), the allowances above, which a
+  split does not edit, and `_PLACED` in `tests/test_layering.py`, where a part
+  split from a module placed by name gets one line of its own.
+- A part split from a module is a new module to the import rules. While every
+  name stays importable from where it was, nothing changes; a package that
+  imports the part itself can cross a seam it had not, a core part off the
+  named interface or a private name of it, and add a core name to the count.
+- A copied block is read across function boundaries, so a split that sets two
+  functions side by side, or a deletion between two stretches of lines, can
+  form a window that stands elsewhere already. That is a new copy and fails:
+  keep the order the lines had, or give the lines their one home.
+
 ## CI
 
 `.github/workflows/ci.yml` proves packaging and portability, not the suite:
