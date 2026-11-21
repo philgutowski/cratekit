@@ -986,3 +986,18 @@ def test_retire_names_a_gone_playlist_whose_id_now_fails_another_way(
     assert out["data"]["items"] == []
     (said,) = [one for one in out["warnings"] if one["code"] == removed_cli.PARTIAL]
     assert DEEP in said["message"]
+
+
+def test_a_retired_listing_holds_nothing_whatever_it_carries():
+    """The mutation table's M5: the state alone keeps a retired playlist from holding."""
+    wanted = match.Wanted(artist="Probe", title="Song", isrc="usprb2600001", ref="tid-1")
+    carried = removed.Listing(
+        account="pl",
+        name="P",
+        state=removed.RETIRED,
+        refs=frozenset({"tid-1"}),
+        isrcs=frozenset({"USPRB2600001"}),
+        recordings=frozenset({removed.recording(wanted)}),
+    )
+    assert not carried.holds(wanted)
+    assert removed.RETIRED not in removed.NOT_WHOLE

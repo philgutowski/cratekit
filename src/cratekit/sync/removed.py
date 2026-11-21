@@ -623,9 +623,10 @@ def read_hearts(found: catalogue.Catalogue) -> Listing:
         if exc.cause.reason not in playlists.PER_PLAYLIST_REASONS:
             raise
         return Listing(account=HEARTS, name=HEARTS_NAME, state=UNREADABLE, why=exc.cause.message)
+    # NO HEART SERVED NEEDS NO TEST OF ITS OWN: it is the whole count short,
+    # which the bound refuses (the mutation table's M2 found the test dead).
     if short is not None and not (
-        frozen
-        and 0 < short.withheld <= min(short.declared * WITHHELD_AT_MOST, WITHHELD_AT_MOST_HEARTS)
+        0 < short.withheld <= min(short.declared * WITHHELD_AT_MOST, WITHHELD_AT_MOST_HEARTS)
     ):
         # SHORT BY MORE THAN THE PROVIDER WITHHOLDS, or by nothing a walk
         # could reach: no heart served at all, which a provider serving nothing
