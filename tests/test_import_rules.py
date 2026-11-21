@@ -119,7 +119,25 @@ TOGGLE_HOMES = {
 #: this was built. It moves down only, and by the card that lowers the count;
 #: ``refactor_measure.py imports --names`` lists the names, so two runs of it
 #: say which one a failing branch added.
-CORE_NAMES_CEILING = 446
+#:
+#: ONE CARD RAISED IT, U298, by the coordinator's call on R-1746, and that call
+#: is no rule for any other card. U298 gave every helper the packages had each
+#: written one home, and a home in core that a feature package calls is a
+#: name. It added thirteen and freed seven, so the ceiling rose by six:
+#:
+#:   added   backup_facts.took, config.RemediedError, config.held,
+#:           config.lock_within, config.read_bytes_if_present,
+#:           config.read_json, config.read_json_as_text, config.read_json_map,
+#:           jobs.Artifacts, jobs.advance, jobs.reported, jobs.resumed,
+#:           preflight.device_of
+#:   freed   artifacts.Location, artifacts.committed, artifacts.produced,
+#:           naming.MarkerRule, session.attach_capture,
+#:           snapshot.assert_verified, snapshot.capture
+#:
+#: The three private names it made public (config.exclusive_lock,
+#: config.mkdir_private, preflight.names_one_path) each replaced the private
+#: spelling of itself and moved nothing.
+CORE_NAMES_CEILING = 452
 
 
 # ---------------------------------------------------------------------------

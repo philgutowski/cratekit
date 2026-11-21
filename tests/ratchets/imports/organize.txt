@@ -16,7 +16,6 @@ dangling export cratekit.modules.outbound.sets
 dangling export cratekit.modules.outbound.shell
 dangling labels cratekit.label.dated
 dangling labels cratekit.label.playlists_cli
-private cratekit.write.trees._rollback_quietly
 top-level cratekit.export.set_cli
 top-level cratekit.label.dated
 top-level cratekit.label.playlists_cli

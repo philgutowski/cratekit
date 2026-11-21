@@ -13,7 +13,6 @@ dangling reports cratekit.modules.reports.coverage
 dangling reports cratekit.modules.reports.duplicates
 dangling reports cratekit.modules.reports.export
 dangling reports cratekit.modules.reports.library
-private cratekit.core.config._mkdir_private
 top-level cratekit.analysis.vocals
 top-level cratekit.deletion.trash
 top-level cratekit.label.go

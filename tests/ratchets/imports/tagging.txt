@@ -10,8 +10,6 @@ dangling labels cratekit.label.registry
 dangling labels cratekit.label.verify
 off-interface cratekit.core.art
 off-interface cratekit.core.taxonomy_word
-private cratekit.core.config._mkdir_private
-private cratekit.write.trees._rollback_quietly
 top-level cratekit.label.harvest
 top-level cratekit.label.registry
 top-level cratekit.label.verify
